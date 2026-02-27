@@ -13,7 +13,6 @@ const DAMPING           = 0.75;  // velocity damping per frame
 
 // ── Grid constants ─────────────────────────────────────────────
 const MAX_COLS          = 48;   // columns at slider = 100
-const LOGO_SLIDER_VAL   = 100;  // slider value that reveals logo
 
 // ═══════════════════════════════════════════════════════════════
 //  Bean (particle)
@@ -348,7 +347,6 @@ class BeanMatrix {
     this.imagesReady  = false;
     this.useFallback  = false;
     this.prevSliderVal = 1;
-    this.isLogoMode   = false;
 
     this.audio        = new AudioEngine();
     this.sirenCanvas  = buildSirenCanvas();
@@ -357,25 +355,9 @@ class BeanMatrix {
     this.beanFront    = new Image();
     this.beanBack     = new Image();
 
-    this._addSceneLabel();
     this._bindEvents();
     this._loadImages();
     this._tick();
-  }
-
-  // ── DOM helpers ─────────────────────────────────────────────
-  _addSceneLabel() {
-    const el = document.createElement('div');
-    el.id = 'scene-label';
-    el.textContent = 'SCENE 1 · FIXED FRONT';
-    document.body.appendChild(el);
-    this.sceneLabelEl = el;
-  }
-
-  _setSceneLabel(text, highlight = false) {
-    if (!this.sceneLabelEl) return;
-    this.sceneLabelEl.textContent = text;
-    this.sceneLabelEl.classList.toggle('highlight', highlight);
   }
 
   // ── Image loading ────────────────────────────────────────────
@@ -397,6 +379,29 @@ class BeanMatrix {
     // Relative paths — place images in assets/ folder
     this.beanFront.src = 'assets/bean_front.png';
     this.beanBack.src  = 'assets/bean_back.png';
+
+    // Load user's Starbucks logo image; fallback to programmatic siren
+    const logoImg = new Image();
+    logoImg.onload = () => {
+      const SZ  = this.sirenCanvas.width;
+      const ctx = this.sirenCanvas.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, SZ, SZ);
+      ctx.drawImage(logoImg, 0, 0, SZ, SZ);
+      // Convert to high-contrast black/white for pixel mapping
+      const imgData = ctx.getImageData(0, 0, SZ, SZ);
+      const d = imgData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const brightness = (d[i] + d[i + 1] + d[i + 2]) / 3;
+        const v = brightness > 128 ? 255 : 0;
+        d[i] = d[i + 1] = d[i + 2] = v;
+        d[i + 3] = 255;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      this.sirenPixels = null; // invalidate cache
+      this._buildGrid();
+    };
+    logoImg.src = 'assets/starbucks_logo.png';
   }
 
   // ── Canvas resize ────────────────────────────────────────────
@@ -438,47 +443,35 @@ class BeanMatrix {
 
   // ── Build (or rebuild) the bean grid ─────────────────────────
   _buildGrid() {
-    const v         = parseInt(this.slider.value);
-    const logoMode  = v >= LOGO_SLIDER_VAL;
-    const cols      = this._colsFromSlider();
-    const W         = this.canvas.width;
-    const H         = this.canvas.height;
+    const cols  = this._colsFromSlider();
+    const W     = this.canvas.width;
+    const H     = this.canvas.height;
 
-    this.isLogoMode = logoMode;
-    this.beans      = [];
+    this.beans = [];
 
     // Scene 1: single large centered bean
     if (cols === 1) {
       const size = Math.min(W, H) * 0.62;
       this.beans.push(new Bean(W / 2, H / 2, size, true));
-      this._setSceneLabel('SCENE 1 · FIXED FRONT');
       return;
     }
 
-    // Scenes 2 & 3: full-screen grid
-    const cellW   = W / cols;
-    const beanSz  = cellW * 0.90;
-    const rows    = Math.ceil(H / cellW);
+    // Square grid: cols × cols, centered on screen
+    const rows   = cols;
+    const gridSz = Math.min(W, H);
+    const cellW  = gridSz / cols;
+    const beanSz = cellW * 0.90;
+    const offX   = (W - gridSz) / 2;
+    const offY   = (H - gridSz) / 2;
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        const tx = c * cellW + cellW * 0.5;
-        const ty = r * cellW + cellW * 0.5;
-
-        let isFront = true;
-        if (logoMode) {
-          // Bright logo pixel → front face; dark → back face
-          isFront = this._logoBrightness(c, cols, r, rows) > 128;
-        }
-
+        const tx = offX + c * cellW + cellW * 0.5;
+        const ty = offY + r * cellW + cellW * 0.5;
+        // Logo pixel mapping: bright → front face, dark → back face
+        const isFront = this._logoBrightness(c, cols, r, rows) > 128;
         this.beans.push(new Bean(tx, ty, beanSz, isFront));
       }
-    }
-
-    if (logoMode) {
-      this._setSceneLabel('SCENE 3 · LOGO REVEAL', true);
-    } else {
-      this._setSceneLabel(`SCENE 2 · GRID ${cols}×${rows}`);
     }
   }
 
@@ -496,12 +489,9 @@ class BeanMatrix {
       const v = parseInt(this.slider.value);
       this._updateSliderFill();
 
-      // Scene transition sounds
+      // Scene transition sound
       if (this.prevSliderVal <= 1 && v > 1) {
         this.audio.playGrind(1.0);
-      } else if (this.prevSliderVal < LOGO_SLIDER_VAL && v >= LOGO_SLIDER_VAL) {
-        this.audio.playGrind(0.5);
-        setTimeout(() => this.audio.playSnap(), 200);
       }
 
       // Hide hint after first interaction
