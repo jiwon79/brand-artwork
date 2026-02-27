@@ -7,9 +7,10 @@
 
 // ── Physics constants ──────────────────────────────────────────
 const REPULSION_RADIUS  = 80;   // px — cursor influence radius
-const REPULSION_FORCE   = 10;   // repulsion strength
+const REPULSION_FORCE   = 5;    // repulsion strength
 const SPRING_K          = 0.031; // Hooke spring constant
-const DAMPING           = 0.75;  // velocity damping per frame
+const DAMPING           = 0.75;  // velocity damping while being repelled
+const RETURN_DAMPING    = 0.92;  // lighter damping on return → spring oscillation
 
 // ── Grid constants ─────────────────────────────────────────────
 const MAX_COLS          = 48;   // columns at slider = 100
@@ -25,8 +26,9 @@ class Bean {
     this.y  = ty;
     this.vx = 0;
     this.vy = 0;
-    this.size    = size;
-    this.isFront = isFront;
+    this.size      = size;
+    this.isFront   = isFront;
+    this._repelled = false;
   }
 
   // Repulsion force from cursor (Coulomb-like fall-off)
@@ -39,6 +41,7 @@ class Bean {
       const str = (1 - d / REPULSION_RADIUS) * REPULSION_FORCE;
       this.vx  += (dx / d) * str;
       this.vy  += (dy / d) * str;
+      this._repelled = true;
     }
   }
 
@@ -49,9 +52,12 @@ class Bean {
   }
 
   // Symplectic Euler integration + damping
+  // Use heavy damping while repelled, lighter damping on return (→ spring oscillation)
   integrate() {
-    this.vx *= DAMPING;
-    this.vy *= DAMPING;
+    const damp = this._repelled ? DAMPING : RETURN_DAMPING;
+    this._repelled = false;
+    this.vx *= damp;
+    this.vy *= damp;
     this.x  += this.vx;
     this.y  += this.vy;
   }
