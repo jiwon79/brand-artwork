@@ -420,14 +420,17 @@ class BeanMatrix {
   }
 
   // ── Slider → column count mapping ────────────────────────────
+  // Slider: 0..2000, step 50 (41 positions)
+  // 0→1, 50→2, 100→3, 150→4, then true exponential 4→MAX_COLS
   _colsFromSlider() {
     const v = parseInt(this.slider.value);
-    if (v <= 1)   return 1;
-    if (v >= 100) return MAX_COLS;
-    // Gentle exponential feel: grows fast at first, then slows
-    const t = (v - 1) / 99;               // 0..1
-    const exp = Math.pow(t, 0.55);         // bias toward lower counts
-    return Math.max(2, Math.round(2 + (MAX_COLS - 2) * exp));
+    if (v <= 0)   return 1;
+    if (v <= 50)  return 2;
+    if (v <= 100) return 3;
+    if (v <= 150) return 4;
+    // Exponential: cols = 4 * (MAX_COLS/4)^t, t in [0,1]
+    const t = (v - 150) / (2000 - 150);
+    return Math.round(4 * Math.pow(MAX_COLS / 4, t));
   }
 
   // ── Logo pixel brightness at grid position ───────────────────
@@ -518,7 +521,7 @@ class BeanMatrix {
   // ── Update slider fill gradient ───────────────────────────────
   _updateSliderFill() {
     const v   = parseInt(this.slider.value);
-    const pct = ((v - 1) / 99) * 100;
+    const pct = (v / 2000) * 100;
     this.slider.style.setProperty('--pct', pct.toFixed(1) + '%');
   }
 
@@ -530,12 +533,12 @@ class BeanMatrix {
       this._updateSliderFill();
 
       // Scene transition sound
-      if (this.prevSliderVal <= 1 && v > 1) {
+      if (this.prevSliderVal <= 0 && v > 0) {
         this.audio.playGrind(1.0);
       }
 
       // Hide hint after first interaction
-      if (v > 1) this.hintEl.classList.add('hidden');
+      if (v > 0) this.hintEl.classList.add('hidden');
 
       this.prevSliderVal = v;
       this._buildGrid();

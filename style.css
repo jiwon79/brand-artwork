@@ -86,8 +86,8 @@ html, body {
   appearance: none;
   background: linear-gradient(
     to right,
-    #00704A 0%,
-    #00704A var(--pct, 0%),
+    #6F4E37 0%,
+    #6F4E37 var(--pct, 0%),
     rgba(255, 255, 255, 0.18) var(--pct, 0%),
     rgba(255, 255, 255, 0.18) 100%
   );
@@ -103,10 +103,10 @@ html, body {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: radial-gradient(circle at 38% 35%, #2bab6e, #00704A 60%, #004d2e);
+  background: radial-gradient(circle at 38% 35%, #A0745C, #6F4E37 60%, #4A3525);
   cursor: pointer;
   box-shadow:
-    0 0 0 3px rgba(0, 112, 74, 0.25),
+    0 0 0 3px rgba(111, 78, 55, 0.25),
     0 3px 10px rgba(0, 0, 0, 0.6);
   transition: transform 0.1s, box-shadow 0.1s;
 }
@@ -114,7 +114,7 @@ html, body {
 #slider:active::-webkit-slider-thumb {
   transform: scale(1.15);
   box-shadow:
-    0 0 0 5px rgba(0, 112, 74, 0.35),
+    0 0 0 5px rgba(111, 78, 55, 0.35),
     0 4px 14px rgba(0, 0, 0, 0.7);
 }
 
@@ -123,7 +123,7 @@ html, body {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: radial-gradient(circle at 38% 35%, #2bab6e, #00704A 60%, #004d2e);
+  background: radial-gradient(circle at 38% 35%, #A0745C, #6F4E37 60%, #4A3525);
   cursor: pointer;
   border: none;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
