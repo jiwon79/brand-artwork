@@ -13,7 +13,7 @@ const DAMPING           = 0.75;  // velocity damping while being repelled
 const RETURN_DAMPING    = 0.92;  // lighter damping on return → spring oscillation
 
 // ── Grid constants ─────────────────────────────────────────────
-const MAX_COLS          = 48;   // columns at slider = 100
+const MAX_COLS          = 200;  // columns at slider max (stage 49)
 
 // ═══════════════════════════════════════════════════════════════
 //  Bean (particle)
@@ -426,16 +426,16 @@ class BeanMatrix {
   }
 
   // ── Slider → column count mapping ────────────────────────────
-  // Slider: 0..2000, step 50 (41 positions)
-  // 0→1, 50→2, 100→3, 150→4, then true exponential 4→MAX_COLS
+  // Slider: 0..49 (50 stages)
+  // stage 0→1col, 1→2, 2→3, 3→4, then exponential 4→MAX_COLS (stages 4-49)
   _colsFromSlider() {
     const v = parseInt(this.slider.value);
-    if (v <= 0)   return 1;
-    if (v <= 50)  return 2;
-    if (v <= 100) return 3;
-    if (v <= 150) return 4;
+    if (v <= 0) return 1;
+    if (v <= 1) return 2;
+    if (v <= 2) return 3;
+    if (v <= 3) return 4;
     // Exponential: cols = 4 * (MAX_COLS/4)^t, t in [0,1]
-    const t = (v - 150) / (2000 - 150);
+    const t = (v - 3) / (49 - 3);
     return Math.round(4 * Math.pow(MAX_COLS / 4, t));
   }
 
@@ -499,13 +499,17 @@ class BeanMatrix {
       return;
     }
 
-    // Square grid: cols × cols, centered on screen (24px horizontal padding)
+    // Square grid: cols × cols, circle-clipped (diameter = canvas width)
     const rows   = cols;
-    const gridSz = Math.min(W - 48, H);
+    const gridSz = W;                     // grid spans full canvas width
     const cellW  = gridSz / cols;
     const beanSz = cellW * 0.90;
-    const offX   = (W - gridSz) / 2;
-    const offY   = (H - gridSz) / 2;
+    const offX   = 0;
+    const offY   = (H - gridSz) / 2;     // center vertically
+    // Circle mask: centre (W/2, H/2), radius = W/2
+    const cx = W / 2;
+    const cy = H / 2;
+    const R2 = (W / 2) * (W / 2);
 
     // Pre-scale bean images for crisp rendering at this cell size
     // For small grids (≤6 cols), use the original image directly for max quality
@@ -523,6 +527,10 @@ class BeanMatrix {
       for (let c = 0; c < cols; c++) {
         const tx = offX + c * cellW + cellW * 0.5;
         const ty = offY + r * cellW + cellW * 0.5;
+        // Skip beans outside the circle mask
+        const dx = tx - cx;
+        const dy = ty - cy;
+        if (dx * dx + dy * dy > R2) continue;
         // Logo pixel mapping: bright → front face, dark → back face
         const isFront = this._logoBrightness(c, cols, r, rows) > 128;
         this.beans.push(new Bean(tx, ty, beanSz, isFront));
@@ -533,7 +541,7 @@ class BeanMatrix {
   // ── Update slider fill gradient ───────────────────────────────
   _updateSliderFill() {
     const v   = parseInt(this.slider.value);
-    const pct = (v / 2000) * 100;
+    const pct = (v / 49) * 100;
     this.slider.style.setProperty('--pct', pct.toFixed(1) + '%');
   }
 
