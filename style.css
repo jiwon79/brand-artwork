@@ -34,7 +34,7 @@ html, body {
   right: 0;
   z-index: 10;
   padding: 12px 24px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(
     to bottom,
     transparent 0%,

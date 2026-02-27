@@ -13,7 +13,7 @@ const DAMPING           = 0.75;  // velocity damping while being repelled
 const RETURN_DAMPING    = 0.92;  // lighter damping on return → spring oscillation
 
 // ── Grid constants ─────────────────────────────────────────────
-const MAX_COLS          = 200;  // columns at slider max (stage 49)
+const MAX_COLS          = 100;  // columns at slider max (stage 49)
 
 // ═══════════════════════════════════════════════════════════════
 //  Bean (particle)
@@ -499,17 +499,17 @@ class BeanMatrix {
       return;
     }
 
-    // Square grid: cols × cols, circle-clipped (diameter = canvas width)
+    // Square grid: cols × cols, circle-clipped (24px padding each side)
     const rows   = cols;
-    const gridSz = W;                     // grid spans full canvas width
+    const gridSz = W - 48;                // 24px padding left + right
     const cellW  = gridSz / cols;
     const beanSz = cellW * 0.90;
-    const offX   = 0;
+    const offX   = 24;
     const offY   = (H - gridSz) / 2;     // center vertically
-    // Circle mask: centre (W/2, H/2), radius = W/2
+    // Circle mask: centre (W/2, H/2), radius = gridSz/2
     const cx = W / 2;
     const cy = H / 2;
-    const R2 = (W / 2) * (W / 2);
+    const R2 = (gridSz / 2) * (gridSz / 2);
 
     // Pre-scale bean images for crisp rendering at this cell size
     // For small grids (≤6 cols), use the original image directly for max quality
@@ -682,6 +682,19 @@ class BeanMatrix {
         const half = b.size * 0.5;
         ctx.drawImage(img, b.x - half, b.y - half, b.size, b.size);
       }
+    }
+
+    // Bean count above the circle (grid mode only)
+    if (this.beans.length > 1) {
+      const R    = (W - 48) / 2;
+      const topY = H / 2 - R - 12;
+      ctx.save();
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.font         = '11px "Apple SD Gothic Neo", "Noto Sans KR", monospace, sans-serif';
+      ctx.fillStyle    = 'rgba(255,255,255,0.4)';
+      ctx.fillText(this.beans.length.toLocaleString(), W / 2, topY);
+      ctx.restore();
     }
   }
 
