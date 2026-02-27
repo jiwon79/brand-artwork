@@ -377,8 +377,8 @@ class BeanMatrix {
     this.beanBack.onerror  = () => { this.useFallback = true; done(); };
 
     // Relative paths — place images in assets/ folder
-    this.beanFront.src = 'assets/bean_front.png';
-    this.beanBack.src  = 'assets/bean_back.png';
+    this.beanFront.src = 'assets/Front.png';
+    this.beanBack.src  = 'assets/Back.png';
 
     // Load user's Starbucks logo image; fallback to programmatic siren
     const logoImg = new Image();
