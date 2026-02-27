@@ -387,7 +387,11 @@ class BeanMatrix {
       const ctx = this.sirenCanvas.getContext('2d');
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, SZ, SZ);
-      ctx.drawImage(logoImg, 0, 0, SZ, SZ);
+      // Draw maintaining aspect ratio, centered (letterbox)
+      const aspect = logoImg.naturalWidth / logoImg.naturalHeight;
+      const dw = aspect >= 1 ? SZ : SZ * aspect;
+      const dh = aspect >= 1 ? SZ / aspect : SZ;
+      ctx.drawImage(logoImg, (SZ - dw) / 2, (SZ - dh) / 2, dw, dh);
       // Convert to high-contrast black/white for pixel mapping
       const imgData = ctx.getImageData(0, 0, SZ, SZ);
       const d = imgData.data;
@@ -434,11 +438,41 @@ class BeanMatrix {
     }
     const lw = this.sirenPixels.width;
     const lh = this.sirenPixels.height;
-    const px = Math.min(lw - 1, Math.floor((col / cols) * lw));
-    const py = Math.min(lh - 1, Math.floor((row / rows) * lh));
+    const px = Math.min(lw - 1, Math.floor(((col + 0.5) / cols) * lw));
+    const py = Math.min(lh - 1, Math.floor(((row + 0.5) / rows) * lh));
     const i  = (py * lw + px) * 4;
     const d  = this.sirenPixels.data;
     return (d[i] + d[i + 1] + d[i + 2]) / 3;
+  }
+
+  // ── Step-down mipmap scaler for crisp small beans ────────────
+  _makeScaledBean(img, targetSize) {
+    const sz = Math.max(1, Math.round(targetSize));
+    let src = img;
+    let w = img.naturalWidth  || img.width;
+    let h = img.naturalHeight || img.height;
+    // Halve repeatedly until within 2× of target
+    while (w > sz * 2 || h > sz * 2) {
+      w = Math.ceil(w / 2);
+      h = Math.ceil(h / 2);
+      const tmp = document.createElement('canvas');
+      tmp.width  = w;
+      tmp.height = h;
+      const c = tmp.getContext('2d');
+      c.imageSmoothingEnabled = true;
+      c.imageSmoothingQuality = 'high';
+      c.drawImage(src, 0, 0, w, h);
+      src = tmp;
+    }
+    // Final pass to exact target size
+    const out = document.createElement('canvas');
+    out.width  = sz;
+    out.height = sz;
+    const c = out.getContext('2d');
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(src, 0, 0, sz, sz);
+    return out;
   }
 
   // ── Build (or rebuild) the bean grid ─────────────────────────
@@ -463,6 +497,12 @@ class BeanMatrix {
     const beanSz = cellW * 0.90;
     const offX   = (W - gridSz) / 2;
     const offY   = (H - gridSz) / 2;
+
+    // Pre-scale bean images for crisp rendering at this cell size
+    if (!this.useFallback) {
+      this._cachedFront = this._makeScaledBean(this.beanFront, beanSz);
+      this._cachedBack  = this._makeScaledBean(this.beanBack,  beanSz);
+    }
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -613,7 +653,9 @@ class BeanMatrix {
       if (this.useFallback) {
         this._drawFallback(b);
       } else {
-        const img  = b.isFront ? this.beanFront : this.beanBack;
+        const img  = b.isFront
+          ? (this._cachedFront || this.beanFront)
+          : (this._cachedBack  || this.beanBack);
         const half = b.size * 0.5;
         ctx.drawImage(img, b.x - half, b.y - half, b.size, b.size);
       }
