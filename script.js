@@ -7,8 +7,8 @@
 
 // ── Physics constants ──────────────────────────────────────────
 const REPULSION_RADIUS  = 80;   // px — cursor influence radius
-const REPULSION_FORCE   = 20;   // repulsion strength
-const SPRING_K          = 0.062; // Hooke spring constant
+const REPULSION_FORCE   = 10;   // repulsion strength
+const SPRING_K          = 0.031; // Hooke spring constant
 const DAMPING           = 0.75;  // velocity damping per frame
 
 // ── Grid constants ─────────────────────────────────────────────
@@ -493,18 +493,24 @@ class BeanMatrix {
       return;
     }
 
-    // Square grid: cols × cols, centered on screen
+    // Square grid: cols × cols, centered on screen (24px horizontal padding)
     const rows   = cols;
-    const gridSz = Math.min(W, H);
+    const gridSz = Math.min(W - 48, H);
     const cellW  = gridSz / cols;
     const beanSz = cellW * 0.90;
     const offX   = (W - gridSz) / 2;
     const offY   = (H - gridSz) / 2;
 
     // Pre-scale bean images for crisp rendering at this cell size
+    // For small grids (≤6 cols), use the original image directly for max quality
     if (!this.useFallback) {
-      this._cachedFront = this._makeScaledBean(this.beanFront, beanSz);
-      this._cachedBack  = this._makeScaledBean(this.beanBack,  beanSz);
+      if (cols <= 6) {
+        this._cachedFront = this.beanFront;
+        this._cachedBack  = this.beanBack;
+      } else {
+        this._cachedFront = this._makeScaledBean(this.beanFront, beanSz);
+        this._cachedBack  = this._makeScaledBean(this.beanBack,  beanSz);
+      }
     }
 
     for (let r = 0; r < rows; r++) {
