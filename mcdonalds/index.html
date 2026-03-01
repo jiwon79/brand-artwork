@@ -210,15 +210,16 @@ function loadImages() {
 const STACK_ORDER = [5, 4, 3, 2, 1, 0]; // indices in INGREDIENTS array
 
 function getStackY(idx) {
-  // Build stack from bottom up
-  let totalH = INGREDIENTS.reduce((s,i) => s + i.h + 6, 0) - 6;
+  // Build stack from bottom up; negative gap compensates for transparent image padding
+  const GAP = -38;
+  let totalH = INGREDIENTS.reduce((s,i) => s + i.h + GAP, 0) - GAP;
   let startY = CY + totalH / 2;
   let offsets = [];
   let cur = startY;
   for (let si of STACK_ORDER) {
     let ing = INGREDIENTS[si];
     offsets[si] = cur - ing.h / 2;
-    cur -= (ing.h + 6);
+    cur -= (ing.h + GAP);
   }
   return offsets;
 }
@@ -259,6 +260,7 @@ function initPieces() {
     scaleY: 1,
     alpha: 1,
     landed: false,
+    bounced: false,
     targetY: stackOffsets[i],
   }));
 }
@@ -371,8 +373,9 @@ function loop(now) {
   if (state === STATE.IDLE) {
     const bob = Math.sin(bobT * 1.8) * 8;
     stackOffsets = getStackY(0);
-    for (let piece of pieces) {
-      piece.targetY = stackOffsets[piece.ing ? INGREDIENTS.indexOf(piece.ing) : 0];
+    for (let si of STACK_ORDER) {
+      const piece = pieces[si];
+      piece.targetY = stackOffsets[si];
       drawIngredient(piece, bob, 1);
     }
   }
@@ -395,9 +398,9 @@ function loop(now) {
     const shakeY = (Math.random()-0.5) * shakeAmp;
 
     stackOffsets = getStackY(0);
-    for (let piece of pieces) {
-      const i = INGREDIENTS.indexOf(piece.ing);
-      const baseY = stackOffsets[i];
+    for (let si of STACK_ORDER) {
+      const piece = pieces[si];
+      const baseY = stackOffsets[si];
       // Compress toward center
       const distFromCenter = baseY - CY;
       piece.x = CX + shakeX;
@@ -473,16 +476,16 @@ function loop(now) {
       }
     }
 
-    for (let piece of pieces) drawIngredient(piece, 0, 1);
+    for (let si of STACK_ORDER) drawIngredient(pieces[si], 0, 1);
   }
 
   // ── DROPPING — pieces fall one-by-one from top into stack ──
   else if (state === STATE.DROPPING) {
     const stackY = getStackY(0);
 
-    // Draw already-landed pieces
-    for (let piece of pieces) {
-      if (piece.landed) drawIngredient(piece, 0, 1);
+    // Draw already-landed pieces (bottom to top so upper ones render on top)
+    for (let si of STACK_ORDER) {
+      if (pieces[si].landed) drawIngredient(pieces[si], 0, 1);
     }
 
     // Active falling piece
@@ -506,14 +509,27 @@ function loop(now) {
         piece.y = target;
         piece.x = CX;
         piece.rotation = 0;
-        piece.vx = 0; piece.vy = 0;
-        piece.landed = true;
-        piece.falling = false;
-        stackedCount++;
-        spawnLandParticles(CX, piece.y + piece.ing.h / 2);
-        showIngredientTag(piece.ing.label);
-        if (stackedCount >= INGREDIENTS.length) {
-          setTimeout(() => completeAnimation(), 500);
+        piece.vx = 0;
+
+        // Show particles/tag on first hit
+        if (!piece.bounced) {
+          piece.bounced = true;
+          spawnLandParticles(CX, piece.y + piece.ing.h / 2);
+          showIngredientTag(piece.ing.label);
+        }
+
+        if (piece.vy > 70) {
+          // Bounce back up
+          piece.vy = -piece.vy * 0.32;
+        } else {
+          // Settle
+          piece.vy = 0;
+          piece.landed = true;
+          piece.falling = false;
+          stackedCount++;
+          if (stackedCount >= INGREDIENTS.length) {
+            setTimeout(() => completeAnimation(), 500);
+          }
         }
       }
       drawIngredient(piece, 0, 1);
@@ -523,8 +539,8 @@ function loop(now) {
   // ── COMPLETE ──
   else if (state === STATE.COMPLETE) {
     const bob = Math.sin(bobT * 1.5) * 6;
-    for (let piece of pieces) {
-      drawIngredient(piece, bob, 1);
+    for (let si of STACK_ORDER) {
+      drawIngredient(pieces[si], bob, 1);
     }
     // golden glow
     const glow = ctx.createRadialGradient(CX, CY, 0, CX, CY, 200);
@@ -568,7 +584,7 @@ function triggerExplosion() {
   // After bouncing, transition to one-by-one drop
   setTimeout(() => {
     // Hide all pieces, start dropping
-    pieces.forEach(p => { p.landed = false; p.falling = false; p.y = -200; });
+    pieces.forEach(p => { p.landed = false; p.falling = false; p.bounced = false; p.y = -200; });
     stackedCount = 0;
     state = STATE.DROPPING;
   }, 1800);
