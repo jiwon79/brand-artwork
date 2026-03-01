@@ -1,28 +1,740 @@
 <!DOCTYPE html>
-<html lang="en">
+
+<html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <base href="/mcdonalds/">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>The Fry Matrix</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>BIG MAC BURST</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a0a00;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Bebas Neue', sans-serif;
+    cursor: none;
+  }
+  canvas { display: block; touch-action: none; }
+
+#overlay {
+position: fixed; inset: 0;
+pointer-events: none;
+z-index: 10;
+}
+#vignette {
+position: fixed; inset: 0;
+background: radial-gradient(ellipse at center, transparent 40%, rgba(180,0,0,0) 100%);
+transition: background 0.1s;
+pointer-events: none;
+z-index: 5;
+}
+
+#ui {
+position: fixed;
+top: 0; left: 0; right: 0;
+display: flex;
+justify-content: space-between;
+align-items: flex-start;
+padding: 28px 32px;
+z-index: 15;
+pointer-events: none;
+}
+#logo {
+font-family: 'Bebas Neue', sans-serif;
+font-size: 15px;
+letter-spacing: 4px;
+color: #FFC72C;
+opacity: 0.8;
+}
+#mlogo {
+font-size: 36px;
+color: #FFC72C;
+font-family: serif;
+font-weight: 900;
+text-shadow: 0 0 20px rgba(255,199,44,0.5);
+}
+#copy {
+position: fixed;
+bottom: 60px;
+left: 0; right: 0;
+text-align: center;
+z-index: 15;
+pointer-events: none;
+transition: opacity 0.4s;
+}
+#copyText {
+font-family: 'Bebas Neue', sans-serif;
+font-size: clamp(22px, 5vw, 38px);
+letter-spacing: 6px;
+color: #fff;
+text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+}
+#copySmall {
+font-family: 'Bebas Neue', sans-serif;
+font-size: 13px;
+letter-spacing: 4px;
+color: rgba(255,255,255,0.4);
+margin-top: 8px;
+}
+#pressBar {
+position: fixed;
+bottom: 130px;
+left: 50%;
+transform: translateX(-50%);
+width: 200px;
+height: 3px;
+background: rgba(255,255,255,0.1);
+border-radius: 2px;
+z-index: 15;
+pointer-events: none;
+opacity: 0;
+transition: opacity 0.3s;
+}
+#pressBarFill {
+height: 100%;
+width: 0%;
+background: linear-gradient(90deg, #FFC72C, #FF0000);
+border-radius: 2px;
+transition: width 0.05s;
+}
+#ingredientTag {
+position: fixed;
+top: 50%;
+left: 50%;
+transform: translate(-50%, -50%);
+font-family: 'Bebas Neue', sans-serif;
+font-size: 18px;
+letter-spacing: 5px;
+color: #FFC72C;
+background: rgba(0,0,0,0.6);
+padding: 6px 16px;
+border: 1px solid rgba(255,199,44,0.3);
+opacity: 0;
+z-index: 15;
+pointer-events: none;
+transition: opacity 0.2s;
+}
+#customCursor {
+position: fixed;
+width: 20px;
+height: 20px;
+border: 2px solid rgba(255,199,44,0.8);
+border-radius: 50%;
+pointer-events: none;
+z-index: 100;
+transform: translate(-50%, -50%);
+transition: transform 0.1s, width 0.1s, height 0.1s, background 0.1s;
+}
+#customCursor.pressing {
+width: 40px;
+height: 40px;
+background: rgba(255,0,0,0.15);
+border-color: #FF0000;
+}
+</style>
+
 </head>
 <body>
-  <canvas id="canvas"></canvas>
 
-  <a href="/" id="home-link">← Home</a>
+<div id="vignette"></div>
+<div id="ui">
+  <div id="logo">MCDONALD'S × INTERACTIVE</div>
+  <div id="mlogo">M</div>
+</div>
+<div id="copy">
+  <div id="copyText">HOW MUCH CAN YOU HANDLE?</div>
+  <div id="copySmall">HOLD TO COMPRESS · RELEASE TO BURST</div>
+</div>
+<div id="pressBar"><div id="pressBarFill"></div></div>
+<div id="ingredientTag"></div>
+<div id="customCursor"></div>
+<canvas id="c"></canvas>
 
-  <div id="ui">
-    <div id="hint-text">← Move the slider to start</div>
-    <div id="slider-wrap">
-      <span class="slider-label">1</span>
-      <input type="range" id="slider" min="0" max="49" value="0" step="1">
-      <span class="slider-label">100</span>
-    </div>
-  </div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const vignette = document.getElementById('vignette');
+const copyText = document.getElementById('copyText');
+const copySmall = document.getElementById('copySmall');
+const pressBar = document.getElementById('pressBar');
+const pressBarFill = document.getElementById('pressBarFill');
+const ingredientTag = document.getElementById('ingredientTag');
+const cursor = document.getElementById('customCursor');
 
-  <script src="script.js"></script>
+let W, H, CX, CY;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  CX = W / 2;
+  CY = H / 2;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── INGREDIENTS ───────────────────────────────────────────────────────────────
+const INGREDIENTS = [
+  { id: 'TOP_BUN',   label: 'SESAME BUN',      color: '#C8722A', h: 54, w: 200, type: 'topbun'   },
+  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    color: '#4CAF50', h: 18, w: 210, type: 'lettuce'  },
+  { id: 'TOMATO',    label: 'RIPE TOMATO',      color: '#E53935', h: 14, w: 190, type: 'rect'     },
+  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   color: '#FFD600', h: 12, w: 215, type: 'cheese'   },
+  { id: 'PATTY',     label: 'BEEF PATTY',       color: '#4E2A04', h: 28, w: 195, type: 'rect'     },
+  { id: 'BOT_BUN',   label: 'SESAME BUN',       color: '#C8722A', h: 38, w: 205, type: 'botbun'   },
+];
+
+// Stack positions (from bottom): bot_bun, patty, cheese, tomato, lettuce, top_bun
+const STACK_ORDER = [5, 4, 3, 2, 1, 0]; // indices in INGREDIENTS array
+
+function getStackY(idx) {
+  // Build stack from bottom up
+  let totalH = INGREDIENTS.reduce((s,i) => s + i.h + 6, 0) - 6;
+  let startY = CY + totalH / 2;
+  let offsets = [];
+  let cur = startY;
+  for (let si of STACK_ORDER) {
+    let ing = INGREDIENTS[si];
+    offsets[si] = cur - ing.h / 2;
+    cur -= (ing.h + 6);
+  }
+  return offsets;
+}
+
+// ── STATE ──────────────────────────────────────────────────────────────────────
+const STATE = { IDLE: 0, PRESSING: 1, EXPLODING: 2, DROPPING: 3, COMPLETE: 4 };
+let state = STATE.IDLE;
+let pressStart = 0;
+let pressDuration = 0;
+let MAX_PRESS = 2000;
+
+// Particles for effects
+let particles = [];
+
+// Ingredient physics objects
+let pieces = [];
+
+// Stacking
+let stackedCount = 0;
+let stackOffsets = [];
+let stackTimers = [];
+
+// Bobbing
+let bobT = 0;
+
+// ── INIT PIECES ────────────────────────────────────────────────────────────────
+function initPieces() {
+  stackOffsets = getStackY(0); // recalculate with current CY
+  pieces = INGREDIENTS.map((ing, i) => ({
+    ing,
+    x: CX,
+    y: stackOffsets[i],
+    vx: 0,
+    vy: 0,
+    rotation: 0,
+    vr: 0,
+    scaleX: 1,
+    scaleY: 1,
+    alpha: 1,
+    landed: false,
+    targetY: stackOffsets[i],
+  }));
+}
+
+// ── DRAWING ────────────────────────────────────────────────────────────────────
+function drawRoundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.roundRect(x - w/2, y - h/2, w, h, r);
+}
+
+function drawTopBun(x, y, w, h, squeeze) {
+  const sh = h * squeeze;
+  // dome shape
+  ctx.beginPath();
+  ctx.ellipse(x, y - sh*0.1, w/2, sh/2 + 10, 0, Math.PI, 0);
+  ctx.lineTo(x + w/2, y + sh/2 - 4);
+  ctx.quadraticCurveTo(x + w/2, y + sh/2, x + w/2 - 6, y + sh/2);
+  ctx.lineTo(x - w/2 + 6, y + sh/2);
+  ctx.quadraticCurveTo(x - w/2, y + sh/2, x - w/2, y + sh/2 - 4);
+  ctx.closePath();
+}
+
+function drawBotBun(x, y, w, h, squeeze) {
+  const sh = h * squeeze;
+  ctx.beginPath();
+  ctx.roundRect(x - w/2, y - sh/2, w, sh, [4, 4, 14, 14]);
+}
+
+function drawIngredient(piece, compressY, overallScaleY) {
+  const { ing, x, y, rotation, alpha, scaleX, scaleY } = piece;
+  const sy = overallScaleY || scaleY;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y + (compressY || 0));
+  ctx.rotate(rotation);
+  ctx.scale(scaleX, sy);
+
+  if (ing.type === 'topbun') {
+    // bun shadow
+    ctx.fillStyle = '#8B4A10';
+    drawTopBun(0, 3, ing.w, ing.h, 1);
+    ctx.fill();
+    // main bun
+    const grad = ctx.createRadialGradient(-20, -20, 10, 0, 0, ing.w/2);
+    grad.addColorStop(0, '#E8902A');
+    grad.addColorStop(1, '#B06020');
+    ctx.fillStyle = grad;
+    drawTopBun(0, 0, ing.w, ing.h, 1);
+    ctx.fill();
+    // sesame seeds
+    ctx.fillStyle = 'rgba(255,240,180,0.9)';
+    [[-30,-8],[10,-15],[50,-5],[-55,-2],[25,2]].forEach(([sx,sy2]) => {
+      ctx.beginPath();
+      ctx.ellipse(sx, sy2, 6, 3.5, Math.PI/8, 0, Math.PI*2);
+      ctx.fill();
+    });
+  } else if (ing.type === 'botbun') {
+    ctx.fillStyle = '#8B4A10';
+    drawBotBun(0, 3, ing.w, ing.h, 1);
+    ctx.fill();
+    const grad = ctx.createLinearGradient(0, -ing.h/2, 0, ing.h/2);
+    grad.addColorStop(0, '#D07828');
+    grad.addColorStop(1, '#A05010');
+    ctx.fillStyle = grad;
+    drawBotBun(0, 0, ing.w, ing.h, 1);
+    ctx.fill();
+  } else if (ing.type === 'lettuce') {
+    // Wavy lettuce
+    const lw = ing.w/2;
+    ctx.beginPath();
+    ctx.moveTo(-lw, ing.h/2);
+    for (let lx = -lw; lx <= lw; lx += 20) {
+      ctx.quadraticCurveTo(lx + 10, -ing.h * 2, lx + 20, ing.h/2);
+    }
+    ctx.lineTo(lw, ing.h/2);
+    ctx.closePath();
+    const lg = ctx.createLinearGradient(0, -ing.h, 0, ing.h);
+    lg.addColorStop(0, '#66BB6A');
+    lg.addColorStop(1, '#2E7D32');
+    ctx.fillStyle = lg;
+    ctx.fill();
+  } else if (ing.type === 'cheese') {
+    // Cheese with drip corners
+    ctx.fillStyle = '#FFD600';
+    drawRoundRect(0, 0, ing.w, ing.h, 3);
+    ctx.fill();
+    ctx.fillStyle = '#F9A825';
+    // cheese corner drips
+    [[-ing.w/2 + 15, ing.h/2],[ing.w/2 - 15, ing.h/2]].forEach(([dx, dy]) => {
+      ctx.beginPath();
+      ctx.ellipse(dx, dy + 8, 10, 10, 0, 0, Math.PI*2);
+      ctx.fill();
+    });
+  } else {
+    // rect (tomato, patty)
+    if (ing.id === 'PATTY') {
+      ctx.fillStyle = '#2C1503';
+      drawRoundRect(0, 2, ing.w, ing.h, 5);
+      ctx.fill();
+      const pg = ctx.createLinearGradient(0, -ing.h/2, 0, ing.h/2);
+      pg.addColorStop(0, '#6D3B0A');
+      pg.addColorStop(0.5, '#4E2A04');
+      pg.addColorStop(1, '#3A1E02');
+      ctx.fillStyle = pg;
+      drawRoundRect(0, 0, ing.w, ing.h, 5);
+      ctx.fill();
+      // grill marks
+      ctx.strokeStyle = 'rgba(30,10,0,0.5)';
+      ctx.lineWidth = 3;
+      for (let gx = -60; gx <= 60; gx += 24) {
+        ctx.beginPath();
+        ctx.moveTo(gx - 10, -ing.h/2 + 4);
+        ctx.lineTo(gx + 10, ing.h/2 - 4);
+        ctx.stroke();
+      }
+    } else {
+      // tomato
+      const tg = ctx.createLinearGradient(0, -ing.h/2, 0, ing.h/2);
+      tg.addColorStop(0, '#EF5350');
+      tg.addColorStop(1, '#C62828');
+      ctx.fillStyle = tg;
+      drawRoundRect(0, 0, ing.w, ing.h, 4);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,200,200,0.15)';
+      for (let tx = -50; tx < 60; tx += 30) {
+        ctx.fillRect(tx, -ing.h/2, 14, ing.h);
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// ── PARTICLES ──────────────────────────────────────────────────────────────────
+function spawnBurstParticles(cx, cy, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 200 + Math.random() * 500;
+    const colors = ['#FFC72C','#FF0000','#ffffff','#FFD600','#FF5722'];
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 200,
+      life: 1,
+      decay: 0.015 + Math.random() * 0.025,
+      size: 3 + Math.random() * 8,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      isRect: Math.random() > 0.5,
+      rotation: Math.random() * Math.PI * 2,
+      vr: (Math.random() - 0.5) * 10,
+    });
+  }
+}
+
+function spawnLandParticles(cx, cy) {
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI;
+    const speed = 30 + Math.random() * 80;
+    particles.push({
+      x: cx + (Math.random()-0.5)*30, y: cy,
+      vx: Math.cos(angle) * speed * (Math.random() > 0.5 ? 1 : -1),
+      vy: -Math.random() * 60,
+      life: 1,
+      decay: 0.04,
+      size: 2 + Math.random() * 4,
+      color: 'rgba(200,160,80,0.8)',
+      isRect: false,
+      rotation: 0, vr: 0,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  const GRAV = 600;
+  particles = particles.filter(p => p.life > 0);
+  for (let p of particles) {
+    p.vy += GRAV * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.rotation += p.vr * dt;
+    p.life -= p.decay;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation);
+    if (p.isRect) {
+      ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size/2, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ── MAIN LOOP ──────────────────────────────────────────────────────────────────
+let lastT = performance.now();
+let floatAngle = 0;
+
+function loop(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.05);
+  lastT = now;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0D0500';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,199,44,0.04)';
+  ctx.lineWidth = 1;
+  for (let gx = 0; gx < W; gx += 60) { ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,H); ctx.stroke(); }
+  for (let gy = 0; gy < H; gy += 60) { ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke(); }
+
+  const GRAV = 980;
+  floatAngle += dt;
+  bobT += dt;
+
+  // ── IDLE ──
+  if (state === STATE.IDLE) {
+    const bob = Math.sin(bobT * 1.8) * 8;
+    stackOffsets = getStackY(0);
+    for (let piece of pieces) {
+      piece.targetY = stackOffsets[piece.ing ? INGREDIENTS.indexOf(piece.ing) : 0];
+      drawIngredient(piece, bob, 1);
+    }
+  }
+
+  // ── PRESSING ──
+  else if (state === STATE.PRESSING) {
+    pressDuration = Math.min(now - pressStart, MAX_PRESS);
+    const t = pressDuration / MAX_PRESS;
+    pressBarFill.style.width = (t * 100) + '%';
+
+    // Vignette red
+    const r = Math.floor(t * 180);
+    vignette.style.background = `radial-gradient(ellipse at center, transparent 30%, rgba(${r},0,0,${t * 0.7}) 100%)`;
+
+    // Squash the whole stack
+    const squashY = 1 - t * 0.55;
+    const squashX = 1 + t * 0.3;
+    const shakeAmp = t * 6;
+    const shakeX = (Math.random()-0.5) * shakeAmp;
+    const shakeY = (Math.random()-0.5) * shakeAmp;
+
+    stackOffsets = getStackY(0);
+    for (let piece of pieces) {
+      const i = INGREDIENTS.indexOf(piece.ing);
+      const baseY = stackOffsets[i];
+      // Compress toward center
+      const distFromCenter = baseY - CY;
+      piece.x = CX + shakeX;
+      piece.y = CY + distFromCenter * squashY + shakeY;
+      ctx.save();
+      ctx.translate(piece.x, piece.y);
+      ctx.scale(squashX, squashY);
+      ctx.translate(-piece.x, -piece.y);
+      drawIngredient(piece, 0, 1);
+      ctx.restore();
+    }
+
+    // Cheese drip particles at high pressure
+    if (t > 0.5 && Math.random() < 0.3) {
+      particles.push({
+        x: CX + (Math.random()-0.5)*200,
+        y: CY + 30,
+        vx: (Math.random()-0.5)*20,
+        vy: 60 + Math.random()*80,
+        life: 1, decay: 0.02,
+        size: 8 + Math.random()*12,
+        color: `rgba(255,${180+Math.floor(Math.random()*60)},0,0.9)`,
+        isRect: false, rotation: 0, vr: 0,
+      });
+    }
+
+    if (t >= 1) triggerExplosion();
+  }
+
+  // ── EXPLODING — bounce off walls and each other ──
+  else if (state === STATE.EXPLODING) {
+    for (let piece of pieces) {
+      piece.vy += GRAV * dt;
+      piece.x += piece.vx * dt;
+      piece.y += piece.vy * dt;
+      piece.rotation += piece.vr * dt;
+      piece.vr *= 0.98;
+
+      const hw = piece.ing.w / 2;
+      const hh = piece.ing.h / 2;
+
+      // Wall bounce left/right
+      if (piece.x - hw < 0) { piece.x = hw; piece.vx = Math.abs(piece.vx) * 0.7; }
+      if (piece.x + hw > W) { piece.x = W - hw; piece.vx = -Math.abs(piece.vx) * 0.7; }
+      // Floor bounce
+      if (piece.y + hh > H) { piece.y = H - hh; piece.vy = -Math.abs(piece.vy) * 0.55; piece.vx *= 0.8; }
+      // Ceiling
+      if (piece.y - hh < 0) { piece.y = hh; piece.vy = Math.abs(piece.vy) * 0.5; }
+    }
+
+    // Piece-to-piece collision (circle approximation)
+    for (let a = 0; a < pieces.length; a++) {
+      for (let b = a + 1; b < pieces.length; b++) {
+        const pa = pieces[a], pb = pieces[b];
+        const ra = (pa.ing.w + pa.ing.h) / 4;
+        const rb = (pb.ing.w + pb.ing.h) / 4;
+        const dx = pb.x - pa.x, dy = pb.y - pa.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const minDist = ra + rb;
+        if (dist < minDist && dist > 0.1) {
+          const nx = dx / dist, ny = dy / dist;
+          const overlap = (minDist - dist) / 2;
+          pa.x -= nx * overlap; pa.y -= ny * overlap;
+          pb.x += nx * overlap; pb.y += ny * overlap;
+          const dvx = pa.vx - pb.vx, dvy = pa.vy - pb.vy;
+          const dot = dvx * nx + dvy * ny;
+          if (dot > 0) {
+            const imp = dot * 0.8;
+            pa.vx -= imp * nx; pa.vy -= imp * ny;
+            pb.vx += imp * nx; pb.vy += imp * ny;
+          }
+        }
+      }
+    }
+
+    for (let piece of pieces) drawIngredient(piece, 0, 1);
+  }
+
+  // ── DROPPING — pieces fall one-by-one from top into stack ──
+  else if (state === STATE.DROPPING) {
+    const stackY = getStackY(0);
+
+    // Draw already-landed pieces
+    for (let piece of pieces) {
+      if (piece.landed) drawIngredient(piece, 0, 1);
+    }
+
+    // Active falling piece
+    const dropIdx = STACK_ORDER[stackedCount];
+    if (dropIdx !== undefined) {
+      const piece = pieces[dropIdx];
+      if (!piece.falling) {
+        // Spawn it from above
+        piece.x = CX;
+        piece.y = -piece.ing.h;
+        piece.vx = 0;
+        piece.vy = 0;
+        piece.rotation = 0;
+        piece.falling = true;
+      }
+      piece.vy += GRAV * 1.4 * dt;
+      piece.y += piece.vy * dt;
+
+      const target = stackY[dropIdx];
+      if (piece.y >= target && piece.vy > 0) {
+        piece.y = target;
+        piece.x = CX;
+        piece.rotation = 0;
+        piece.vx = 0; piece.vy = 0;
+        piece.landed = true;
+        piece.falling = false;
+        stackedCount++;
+        spawnLandParticles(CX, piece.y + piece.ing.h / 2);
+        showIngredientTag(piece.ing.label);
+        if (stackedCount >= INGREDIENTS.length) {
+          setTimeout(() => completeAnimation(), 500);
+        }
+      }
+      drawIngredient(piece, 0, 1);
+    }
+  }
+
+  // ── COMPLETE ──
+  else if (state === STATE.COMPLETE) {
+    const bob = Math.sin(bobT * 1.5) * 6;
+    for (let piece of pieces) {
+      drawIngredient(piece, bob, 1);
+    }
+    // golden glow
+    const glow = ctx.createRadialGradient(CX, CY, 0, CX, CY, 200);
+    glow.addColorStop(0, 'rgba(255,199,44,0.08)');
+    glow.addColorStop(1, 'rgba(255,199,44,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  updateParticles(dt);
+  requestAnimationFrame(loop);
+}
+
+// ── EXPLOSION ──────────────────────────────────────────────────────────────────
+function triggerExplosion() {
+  state = STATE.EXPLODING;
+  pressBar.style.opacity = '0';
+  vignette.style.background = 'transparent';
+
+  spawnBurstParticles(CX, CY, 80);
+
+  const angles = [
+    -Math.PI * 0.7, -Math.PI * 0.85, -Math.PI * 0.55,
+    -Math.PI * 0.65, -Math.PI * 0.9, -Math.PI * 0.5,
+  ];
+  pieces.forEach((piece, i) => {
+    const angle = angles[i] + (Math.random()-0.5)*0.4;
+    const speed = 500 + Math.random() * 400;
+    piece.vx = Math.cos(angle) * speed * (i % 2 === 0 ? 1 : -1);
+    piece.vy = Math.sin(angle) * speed;
+    piece.vr = (Math.random()-0.5) * 8;
+    piece.landed = false;
+    piece.falling = false;
+  });
+
+  copyText.textContent = "I'M LOVIN' IT 🍔";
+  copySmall.textContent = 'TAP TO BURST AGAIN';
+
+  stackedCount = 0;
+
+  // After bouncing, transition to one-by-one drop
+  setTimeout(() => {
+    // Hide all pieces, start dropping
+    pieces.forEach(p => { p.landed = false; p.falling = false; p.y = -200; });
+    stackedCount = 0;
+    state = STATE.DROPPING;
+  }, 1800);
+}
+
+// ── COMPLETE ──────────────────────────────────────────────────────────────────
+function completeAnimation() {
+  state = STATE.COMPLETE;
+  stackOffsets = getStackY(0);
+  pieces.forEach((piece, i) => {
+    piece.y = stackOffsets[i];
+    piece.x = CX;
+    piece.rotation = 0;
+    piece.landed = true;
+  });
+  spawnBurstParticles(CX, CY - 80, 30);
+}
+
+// ── INGREDIENT TAG ─────────────────────────────────────────────────────────────
+let tagTimer;
+function showIngredientTag(label) {
+  ingredientTag.textContent = label;
+  ingredientTag.style.opacity = '1';
+  clearTimeout(tagTimer);
+  tagTimer = setTimeout(() => { ingredientTag.style.opacity = '0'; }, 700);
+}
+
+// ── INPUT ──────────────────────────────────────────────────────────────────────
+function startPress() {
+  if (state === STATE.COMPLETE || state === STATE.IDLE) {
+    initPieces();
+    stackedCount = 0;
+    state = STATE.PRESSING;
+    pressStart = performance.now();
+    pressBar.style.opacity = '1';
+    copyText.textContent = 'KEEP PRESSING...';
+    copySmall.textContent = '';
+    cursor.classList.add('pressing');
+  }
+}
+
+function endPress() {
+  if (state === STATE.PRESSING) {
+    cursor.classList.remove('pressing');
+    if (pressDuration < 200) {
+      // too short, reset
+      state = STATE.IDLE;
+      pressBar.style.opacity = '0';
+      vignette.style.background = 'transparent';
+      copyText.textContent = 'HOW MUCH CAN YOU HANDLE?';
+      copySmall.textContent = 'HOLD TO COMPRESS · RELEASE TO BURST';
+      return;
+    }
+    triggerExplosion();
+  }
+  cursor.classList.remove('pressing');
+}
+
+canvas.addEventListener('mousedown', startPress);
+canvas.addEventListener('mouseup', endPress);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); startPress(); }, { passive: false });
+canvas.addEventListener('touchend', e => { e.preventDefault(); endPress(); }, { passive: false });
+
+window.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+});
+
+// Init
+initPieces();
+requestAnimationFrame(loop);
+</script>
+
 </body>
 </html>
