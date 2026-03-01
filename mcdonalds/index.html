@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <base href="/mcdonalds/">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>The Fry Matrix</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <a href="/" id="home-link">← Home</a>
+
+  <div id="ui">
+    <div id="hint-text">← Move the slider to start</div>
+    <div id="slider-wrap">
+      <span class="slider-label">1</span>
+      <input type="range" id="slider" min="0" max="49" value="0" step="1">
+      <span class="slider-label">100</span>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
