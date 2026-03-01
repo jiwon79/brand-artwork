@@ -177,14 +177,43 @@ function resize() {
 resize();
 window.addEventListener('resize', resize);
 
+// ── IMAGE LOADING ─────────────────────────────────────────────────────────────
+const IMGS = {};
+const IMG_SRCS = {
+  TOP_BUN: 'assets/top-bun.png',
+  LETTUCE: 'assets/lettuce.png',
+  TOMATO:  'assets/tomato.png',
+  CHEESE:  'assets/cheese.png',
+  PATTY:   'assets/patty.png',
+  BOT_BUN: 'assets/bottom-bun.png',
+};
+
+function loadImages(callback) {
+  let loaded = 0;
+  const total = Object.keys(IMG_SRCS).length;
+  for (const [id, src] of Object.entries(IMG_SRCS)) {
+    const img = new Image();
+    img.onload = () => {
+      IMGS[id] = img;
+      const ing = INGREDIENTS.find(i => i.id === id);
+      if (ing && img.naturalWidth > 0) {
+        ing.h = Math.round(ing.w * img.naturalHeight / img.naturalWidth);
+      }
+      if (++loaded === total) callback();
+    };
+    img.onerror = () => { if (++loaded === total) callback(); };
+    img.src = src;
+  }
+}
+
 // ── INGREDIENTS ───────────────────────────────────────────────────────────────
 const INGREDIENTS = [
-  { id: 'TOP_BUN',   label: 'SESAME BUN',      color: '#C8722A', h: 54, w: 200, type: 'topbun'   },
-  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    color: '#4CAF50', h: 18, w: 210, type: 'lettuce'  },
-  { id: 'TOMATO',    label: 'RIPE TOMATO',      color: '#E53935', h: 14, w: 190, type: 'rect'     },
-  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   color: '#FFD600', h: 12, w: 215, type: 'cheese'   },
-  { id: 'PATTY',     label: 'BEEF PATTY',       color: '#4E2A04', h: 28, w: 195, type: 'rect'     },
-  { id: 'BOT_BUN',   label: 'SESAME BUN',       color: '#C8722A', h: 38, w: 205, type: 'botbun'   },
+  { id: 'TOP_BUN',   label: 'SESAME BUN',      h: 80,  w: 280 },
+  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    h: 60,  w: 280 },
+  { id: 'TOMATO',    label: 'RIPE TOMATO',      h: 60,  w: 260 },
+  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   h: 60,  w: 280 },
+  { id: 'PATTY',     label: 'BEEF PATTY',       h: 60,  w: 270 },
+  { id: 'BOT_BUN',   label: 'SESAME BUN',       h: 60,  w: 280 },
 ];
 
 // Stack positions (from bottom): bot_bun, patty, cheese, tomato, lettuce, top_bun
@@ -245,131 +274,18 @@ function initPieces() {
 }
 
 // ── DRAWING ────────────────────────────────────────────────────────────────────
-function drawRoundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.roundRect(x - w/2, y - h/2, w, h, r);
-}
-
-function drawTopBun(x, y, w, h, squeeze) {
-  const sh = h * squeeze;
-  // dome shape
-  ctx.beginPath();
-  ctx.ellipse(x, y - sh*0.1, w/2, sh/2 + 10, 0, Math.PI, 0);
-  ctx.lineTo(x + w/2, y + sh/2 - 4);
-  ctx.quadraticCurveTo(x + w/2, y + sh/2, x + w/2 - 6, y + sh/2);
-  ctx.lineTo(x - w/2 + 6, y + sh/2);
-  ctx.quadraticCurveTo(x - w/2, y + sh/2, x - w/2, y + sh/2 - 4);
-  ctx.closePath();
-}
-
-function drawBotBun(x, y, w, h, squeeze) {
-  const sh = h * squeeze;
-  ctx.beginPath();
-  ctx.roundRect(x - w/2, y - sh/2, w, sh, [4, 4, 14, 14]);
-}
-
 function drawIngredient(piece, compressY, overallScaleY) {
   const { ing, x, y, rotation, alpha, scaleX, scaleY } = piece;
   const sy = overallScaleY || scaleY;
+  const img = IMGS[ing.id];
+  if (!img) return;
 
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(x, y + (compressY || 0));
   ctx.rotate(rotation);
   ctx.scale(scaleX, sy);
-
-  if (ing.type === 'topbun') {
-    // bun shadow
-    ctx.fillStyle = '#8B4A10';
-    drawTopBun(0, 3, ing.w, ing.h, 1);
-    ctx.fill();
-    // main bun
-    const grad = ctx.createRadialGradient(-20, -20, 10, 0, 0, ing.w/2);
-    grad.addColorStop(0, '#E8902A');
-    grad.addColorStop(1, '#B06020');
-    ctx.fillStyle = grad;
-    drawTopBun(0, 0, ing.w, ing.h, 1);
-    ctx.fill();
-    // sesame seeds
-    ctx.fillStyle = 'rgba(255,240,180,0.9)';
-    [[-30,-8],[10,-15],[50,-5],[-55,-2],[25,2]].forEach(([sx,sy2]) => {
-      ctx.beginPath();
-      ctx.ellipse(sx, sy2, 6, 3.5, Math.PI/8, 0, Math.PI*2);
-      ctx.fill();
-    });
-  } else if (ing.type === 'botbun') {
-    ctx.fillStyle = '#8B4A10';
-    drawBotBun(0, 3, ing.w, ing.h, 1);
-    ctx.fill();
-    const grad = ctx.createLinearGradient(0, -ing.h/2, 0, ing.h/2);
-    grad.addColorStop(0, '#D07828');
-    grad.addColorStop(1, '#A05010');
-    ctx.fillStyle = grad;
-    drawBotBun(0, 0, ing.w, ing.h, 1);
-    ctx.fill();
-  } else if (ing.type === 'lettuce') {
-    // Wavy lettuce
-    const lw = ing.w/2;
-    ctx.beginPath();
-    ctx.moveTo(-lw, ing.h/2);
-    for (let lx = -lw; lx <= lw; lx += 20) {
-      ctx.quadraticCurveTo(lx + 10, -ing.h * 2, lx + 20, ing.h/2);
-    }
-    ctx.lineTo(lw, ing.h/2);
-    ctx.closePath();
-    const lg = ctx.createLinearGradient(0, -ing.h, 0, ing.h);
-    lg.addColorStop(0, '#66BB6A');
-    lg.addColorStop(1, '#2E7D32');
-    ctx.fillStyle = lg;
-    ctx.fill();
-  } else if (ing.type === 'cheese') {
-    // Cheese with drip corners
-    ctx.fillStyle = '#FFD600';
-    drawRoundRect(0, 0, ing.w, ing.h, 3);
-    ctx.fill();
-    ctx.fillStyle = '#F9A825';
-    // cheese corner drips
-    [[-ing.w/2 + 15, ing.h/2],[ing.w/2 - 15, ing.h/2]].forEach(([dx, dy]) => {
-      ctx.beginPath();
-      ctx.ellipse(dx, dy + 8, 10, 10, 0, 0, Math.PI*2);
-      ctx.fill();
-    });
-  } else {
-    // rect (tomato, patty)
-    if (ing.id === 'PATTY') {
-      ctx.fillStyle = '#2C1503';
-      drawRoundRect(0, 2, ing.w, ing.h, 5);
-      ctx.fill();
-      const pg = ctx.createLinearGradient(0, -ing.h/2, 0, ing.h/2);
-      pg.addColorStop(0, '#6D3B0A');
-      pg.addColorStop(0.5, '#4E2A04');
-      pg.addColorStop(1, '#3A1E02');
-      ctx.fillStyle = pg;
-      drawRoundRect(0, 0, ing.w, ing.h, 5);
-      ctx.fill();
-      // grill marks
-      ctx.strokeStyle = 'rgba(30,10,0,0.5)';
-      ctx.lineWidth = 3;
-      for (let gx = -60; gx <= 60; gx += 24) {
-        ctx.beginPath();
-        ctx.moveTo(gx - 10, -ing.h/2 + 4);
-        ctx.lineTo(gx + 10, ing.h/2 - 4);
-        ctx.stroke();
-      }
-    } else {
-      // tomato
-      const tg = ctx.createLinearGradient(0, -ing.h/2, 0, ing.h/2);
-      tg.addColorStop(0, '#EF5350');
-      tg.addColorStop(1, '#C62828');
-      ctx.fillStyle = tg;
-      drawRoundRect(0, 0, ing.w, ing.h, 4);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,200,200,0.15)';
-      for (let tx = -50; tx < 60; tx += 30) {
-        ctx.fillRect(tx, -ing.h/2, 14, ing.h);
-      }
-    }
-  }
+  ctx.drawImage(img, -ing.w / 2, -ing.h / 2, ing.w, ing.h);
   ctx.restore();
 }
 
@@ -731,9 +647,11 @@ window.addEventListener('mousemove', e => {
   cursor.style.top = e.clientY + 'px';
 });
 
-// Init
-initPieces();
-requestAnimationFrame(loop);
+// Init — wait for images to load
+loadImages(() => {
+  initPieces();
+  requestAnimationFrame(loop);
+});
 </script>
 
 </body>
