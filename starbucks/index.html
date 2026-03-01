@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <base href="/starbucks/">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>The Bean Matrix</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div id="ui">
+    <div id="hint-text">← 슬라이더를 움직여 시작하세요</div>
+    <div id="slider-wrap">
+      <span class="slider-label">1</span>
+      <input type="range" id="slider" min="0" max="49" value="0" step="1">
+      <span class="slider-label">100</span>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
