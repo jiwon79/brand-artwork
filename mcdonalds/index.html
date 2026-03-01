@@ -155,6 +155,13 @@ border-color: #FF0000;
 <div id="customCursor"></div>
 <canvas id="c"></canvas>
 
+<img id="img-TOP_BUN" src="assets/top-bun.png" hidden>
+<img id="img-BOT_BUN" src="assets/bottom-bun.png" hidden>
+<img id="img-LETTUCE" src="assets/lettuce.png" hidden>
+<img id="img-TOMATO" src="assets/tomato.png" hidden>
+<img id="img-CHEESE" src="assets/cheese.png" hidden>
+<img id="img-PATTY" src="assets/patty.png" hidden>
+
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
@@ -179,32 +186,6 @@ window.addEventListener('resize', resize);
 
 // ── IMAGE LOADING ─────────────────────────────────────────────────────────────
 const IMGS = {};
-const IMG_SRCS = {
-  TOP_BUN: 'assets/top-bun.png',
-  LETTUCE: 'assets/lettuce.png',
-  TOMATO:  'assets/tomato.png',
-  CHEESE:  'assets/cheese.png',
-  PATTY:   'assets/patty.png',
-  BOT_BUN: 'assets/bottom-bun.png',
-};
-
-function loadImages(callback) {
-  let loaded = 0;
-  const total = Object.keys(IMG_SRCS).length;
-  for (const [id, src] of Object.entries(IMG_SRCS)) {
-    const img = new Image();
-    img.onload = () => {
-      IMGS[id] = img;
-      const ing = INGREDIENTS.find(i => i.id === id);
-      if (ing && img.naturalWidth > 0) {
-        ing.h = Math.round(ing.w * img.naturalHeight / img.naturalWidth);
-      }
-      if (++loaded === total) callback();
-    };
-    img.onerror = () => { if (++loaded === total) callback(); };
-    img.src = src;
-  }
-}
 
 // ── INGREDIENTS ───────────────────────────────────────────────────────────────
 const INGREDIENTS = [
@@ -647,8 +628,15 @@ window.addEventListener('mousemove', e => {
   cursor.style.top = e.clientY + 'px';
 });
 
-// Init — wait for images to load
-loadImages(() => {
+// Init — wait for all page resources (img tags) to load
+window.addEventListener('load', () => {
+  for (const ing of INGREDIENTS) {
+    const el = document.getElementById('img-' + ing.id);
+    if (el && el.naturalWidth > 0) {
+      IMGS[ing.id] = el;
+      ing.h = Math.round(ing.w * el.naturalHeight / el.naturalWidth);
+    }
+  }
   initPieces();
   requestAnimationFrame(loop);
 });
