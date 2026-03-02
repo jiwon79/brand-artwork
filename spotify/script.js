@@ -207,9 +207,11 @@ function seekTo(sec) {
 }
 
 function getAudioTime() {
-  if (!audioBuffer) return simTime;
-  if (!audioCtx) return 0;
-  return audioCtx.currentTime - audioStartTime;
+  if (!audioCtx || !audioBuffer) return simTime;
+  const t = audioCtx.currentTime - audioStartTime;
+  // 재생 중이 아닐 때는 pausedAt 반환
+  if (!isPlaying) return pausedAt;
+  return Math.max(0, Math.min(audioDuration || t, t));
 }
 
 // ── Volume reading ────────────────────────────────────────
@@ -262,22 +264,17 @@ function spawnWord(now) {
 }
 
 // ── Cleanup ───────────────────────────────────────────────
-// 캔버스 안에 완전히 들어온 단어만 기준으로 파일 높이 측정
+// 활성 단어들의 넓이 합이 캔버스 면적의 50%를 넘으면 오래된 것부터 페이드
 let lastCleanupAt = 0;
 
 function checkCleanup(ts) {
-  if (ts - lastCleanupAt < 600) return; // 600ms 간격으로만 체크
+  if (ts - lastCleanupAt < 300) return;
   lastCleanupAt = ts;
 
-  // bounds.min.y > 0 → 단어 상단이 캔버스 안에 있는 것만 집계
-  const inCanvas = wordBodies.filter(wb => !wb.fading && wb.body.bounds.min.y > 0);
-  if (inCanvas.length < 4) return; // 충분히 쌓이기 전엔 정리하지 않음
-
-  const pileTop = Math.min(...inCanvas.map(wb => wb.body.bounds.min.y));
-  if (pileTop < H * CFG.cleanupRatio) {
-    // 가장 오래된 단어(아직 fading 아닌 것)를 페이드 처리
-    const oldest = wordBodies.find(wb => !wb.fading);
-    if (oldest) oldest.fading = true;
+  const active = wordBodies.filter(wb => !wb.fading);
+  const totalArea = active.reduce((sum, wb) => sum + wb.bw * wb.bh, 0);
+  if (totalArea > W * H * 0.5 && active.length > 0) {
+    active[0].fading = true; // 가장 오래된 단어부터 페이드
   }
 }
 
@@ -381,11 +378,13 @@ async function setPlaying(val) {
   if (val) {
     document.getElementById('canvas-hint').classList.add('hidden');
     ensureAudioCtx();
+    await audioCtx.resume(); // suspended 상태 해제 (일부 브라우저 필수)
     // AudioContext 생성 후 처음 재생 시 디코딩 (사용자 제스처 필요)
     if (!audioBuffer && rawAudioData) {
       try {
         audioBuffer = await audioCtx.decodeAudioData(rawAudioData.slice(0));
         audioDuration = audioBuffer.duration;
+        updateProgressUI(pausedAt); // 총 시간 즉시 반영
       } catch (e) {
         console.warn('Audio decode failed:', e);
       }
@@ -432,7 +431,7 @@ function updateProgressUI(sec) {
   document.getElementById('progress-thumb').style.left = pct + '%';
   document.getElementById('current-time').textContent = formatTime(sec);
   document.getElementById('total-time').textContent =
-    dur > 0 ? '-' + formatTime(Math.max(0, dur - sec)) : '-∞';
+    dur > 0 ? '-' + formatTime(Math.max(0, dur - sec)) : '--:--';
 }
 
 function formatTime(s) {
@@ -550,9 +549,8 @@ function tick(ts) {
     // Physics step
     Engine.update(engine, dt);
 
-    // Progress bar
-    const t = audioBuffer ? getAudioTime() : simTime;
-    updateProgressUI(t);
+    // Progress bar — 실제 오디오 재생 시간으로 업데이트
+    updateProgressUI(getAudioTime());
   }
 
   // Clear
