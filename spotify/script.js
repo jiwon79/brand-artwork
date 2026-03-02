@@ -32,24 +32,27 @@ const CFG = {
   ],
 };
 
-// ── Sample lyrics ────────────────────────────────────────
+// ── Mock lyrics — Still D.R.E. (Dr. Dre ft. Snoop Dogg) ──
 const SAMPLE_LYRICS = [
-  '사랑해', '너를', '항상', '바라봐', '하늘처럼',
-  '높은 곳', '별처럼', '빛나는', '너의', '미소',
-  '잊을 수', '없어', '꿈인지', '생시인지', '네가 있어',
-  '숨이', '멎을 듯한', '설렘', '이 순간이', '영원했으면',
-  'love', 'you', 'forever', 'always', 'baby',
-  '세상이', '멈춰도', '넌', '내 곁에', '있잖아',
-  '목소리가', '들려', '네 이름을', '불러봐', '다시',
-  '한번 더', '달빛 아래', '춤을 춰', '너와 나',
-  'rain', 'fall', 'on me', 'tonight', 'oh',
-  '하루에도', '수백번', '생각나는', '내가', '미칠 것',
-  '이 감정이', '뭔지', '몰라도', '좋아', '정말',
-  'kiss me', 'slow', 'down', 'time stops', 'I see you',
-  '눈물도', '웃음도', '모두', '함께', '걸어가',
-  '따뜻한', '네 손을', '잡고서', '이 길을',
-  '별빛보다', '빛나는', '눈빛', '잊지 마',
-  'yeah', 'every moment', 'with you', 'shining',
+  'Still', 'D.R.E.', 'still', 'blazin\'',
+  'It\'s still', 'Dre day', 'yeah', 'uh',
+  'representing', 'gangsters', 'worldwide',
+  'Compton', 'low-lows', 'corners', 'girl',
+  'still got', 'love', 'for the', 'streets',
+  'dedicated', 'to all', 'the people',
+  'ridin\'', 'wit me', 'back then',
+  'Slim', 'Hittman', 'Mel-Man',
+  'still', 'number', 'one', 'now',
+  'platinum', 'every', 'album', 'shelf',
+  'West Coast', 'G-Funk', 'bass', 'treble',
+  'Snoop', 'Dogg', 'LBC', 'in', 'the house',
+  'microphone', 'style', 'never', 'gets', 'old',
+  'can\'t', 'stop', 'won\'t', 'stop',
+  'Dr.', 'Dre', 'still', 'here',
+  'hit \'em', 'hard', 'yeah', 'uh-huh',
+  'the game', 'don\'t', 'stop', 'for nobody',
+  'ride', 'or', 'die', 'homie',
+  'still', 'got it', 'like', 'that',
 ];
 
 // ── State ────────────────────────────────────────────────
@@ -75,7 +78,8 @@ let pausedAt = 0;
 
 // Audio
 let audioCtx, analyserNode, gainNode, audioSrc, audioBuffer;
-let volumeLevel = 0.5; // 0‥1 current
+let rawAudioData = null; // ArrayBuffer preloaded from repo
+let volumeLevel = 0.5;   // 0‥1 current
 
 // ── Init ─────────────────────────────────────────────────
 function init() {
@@ -85,8 +89,7 @@ function init() {
   setupCanvas();
   setupPhysics();
   setupEvents();
-  updateStatusTime();
-  setInterval(updateStatusTime, 10000);
+  preloadAudio(); // 백그라운드에서 음원 미리 로드
 
   requestAnimationFrame(tick);
 }
@@ -125,19 +128,6 @@ function setupEvents() {
     handleCanvasClick({ clientX: t.clientX, clientY: t.clientY, rect: r });
   });
 
-  // Audio file
-  document.getElementById('audio-file').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    loadAudio(file);
-  });
-
-  // Volume slider
-  const volSlider = document.getElementById('volume-slider');
-  volSlider.addEventListener('input', () => {
-    if (gainNode) gainNode.gain.value = volSlider.value / 100;
-  });
-
   // Progress bar seek
   document.getElementById('progress-wrap').addEventListener('click', e => {
     if (!audioDuration) return;
@@ -160,25 +150,15 @@ function ensureAudioCtx() {
   }
 }
 
-function loadAudio(file) {
-  ensureAudioCtx();
-  const reader = new FileReader();
-  reader.onload = e => {
-    audioCtx.decodeAudioData(e.target.result).then(buffer => {
-      audioBuffer = buffer;
-      audioDuration = buffer.duration;
-      document.getElementById('total-time').textContent = formatTime(audioDuration);
-
-      // Update song name from file
-      const name = file.name.replace(/\.[^.]+$/, '');
-      document.getElementById('song-title').textContent = name;
-      document.getElementById('artist-name').textContent = '업로드된 음악';
-      document.getElementById('playlist-name').textContent = name;
-      const dl = document.querySelector('.device-name');
-      if (dl) dl.style.color = '#1DB954';
-    });
-  };
-  reader.readAsArrayBuffer(file);
+// 레포에 번들된 음원을 백그라운드에서 ArrayBuffer로 미리 로드
+async function preloadAudio() {
+  try {
+    const res = await fetch('assets/still-dre.mp3');
+    if (!res.ok) throw new Error(res.status);
+    rawAudioData = await res.arrayBuffer();
+  } catch (e) {
+    console.warn('Audio preload failed — simulation mode only:', e);
+  }
 }
 
 function startAudio(fromTime = 0) {
@@ -191,7 +171,7 @@ function startAudio(fromTime = 0) {
   analyserNode.smoothingTimeConstant = 0.75;
 
   gainNode = audioCtx.createGain();
-  gainNode.gain.value = document.getElementById('volume-slider').value / 100;
+  gainNode.gain.value = 1.0; // 기본 최대 볼륨
 
   audioSrc = audioCtx.createBufferSource();
   audioSrc.buffer = audioBuffer;
@@ -393,7 +373,7 @@ function togglePlay() {
   setPlaying(!isPlaying);
 }
 
-function setPlaying(val) {
+async function setPlaying(val) {
   isPlaying = val;
   document.getElementById('play-icon').style.display = val ? 'none' : '';
   document.getElementById('pause-icon').style.display = val ? '' : 'none';
@@ -401,6 +381,15 @@ function setPlaying(val) {
   if (val) {
     document.getElementById('canvas-hint').classList.add('hidden');
     ensureAudioCtx();
+    // AudioContext 생성 후 처음 재생 시 디코딩 (사용자 제스처 필요)
+    if (!audioBuffer && rawAudioData) {
+      try {
+        audioBuffer = await audioCtx.decodeAudioData(rawAudioData.slice(0));
+        audioDuration = audioBuffer.duration;
+      } catch (e) {
+        console.warn('Audio decode failed:', e);
+      }
+    }
     if (audioBuffer) startAudio(pausedAt);
   } else {
     if (audioCtx && audioBuffer) {
