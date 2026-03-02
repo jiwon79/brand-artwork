@@ -180,12 +180,12 @@ window.addEventListener('resize', resize);
 
 // ── INGREDIENTS ───────────────────────────────────────────────────────────────
 const INGREDIENTS = [
-  { id: 'TOP_BUN',   label: 'SESAME BUN',      h: 80,  w: 140, src: 'assets/top-bun.png'    },
-  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    h: 60,  w: 140, src: 'assets/lettuce.png'    },
-  { id: 'TOMATO',    label: 'RIPE TOMATO',      h: 60,  w: 130, src: 'assets/tomato.png'     },
-  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   h: 60,  w: 140, src: 'assets/cheese.png'     },
-  { id: 'PATTY',     label: 'BEEF PATTY',       h: 60,  w: 135, src: 'assets/patty.png'      },
-  { id: 'BOT_BUN',   label: 'SESAME BUN',       h: 60,  w: 140, src: 'assets/bottom-bun.png' },
+  { id: 'TOP_BUN',   label: 'SESAME BUN',      h: 80,  w: 187, src: 'assets/top-bun.png'    },
+  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    h: 60,  w: 187, src: 'assets/lettuce.png'    },
+  { id: 'TOMATO',    label: 'RIPE TOMATO',      h: 60,  w: 173, src: 'assets/tomato.png'     },
+  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   h: 60,  w: 187, src: 'assets/cheese.png'     },
+  { id: 'PATTY',     label: 'BEEF PATTY',       h: 60,  w: 180, src: 'assets/patty.png'      },
+  { id: 'BOT_BUN',   label: 'SESAME BUN',       h: 60,  w: 187, src: 'assets/bottom-bun.png' },
 ];
 
 // ── IMAGE LOADING ─────────────────────────────────────────────────────────────
@@ -230,7 +230,7 @@ const STACK_ORDER = [5, 4, 3, 2, 1, 0]; // indices in INGREDIENTS array
 
 function getStackY(idx) {
   // Build stack from bottom up; negative gap compensates for transparent image padding
-  const GAP = -16;
+  const GAP = -40;
   let totalH = INGREDIENTS.reduce((s,i) => s + i.h + GAP, 0) - GAP;
   let startY = CY + totalH / 2;
   let offsets = [];
@@ -464,10 +464,9 @@ function loop(now) {
       // Wall bounce left/right
       if (piece.x - hw < 0) { piece.x = hw; piece.vx = Math.abs(piece.vx) * 0.7; }
       if (piece.x + hw > W) { piece.x = W - hw; piece.vx = -Math.abs(piece.vx) * 0.7; }
-      // Floor bounce
-      if (piece.y + hh > H) { piece.y = H - hh; piece.vy = -Math.abs(piece.vy) * 0.55; piece.vx *= 0.8; }
       // Ceiling
       if (piece.y - hh < 0) { piece.y = hh; piece.vy = Math.abs(piece.vy) * 0.5; }
+      // No floor — pieces fall off screen
     }
 
     // Piece-to-piece collision (pixel-perfect)
@@ -478,6 +477,13 @@ function loop(now) {
     }
 
     for (let si of STACK_ORDER) drawIngredient(pieces[si], 0, 1);
+
+    // Once every piece has fallen completely off the bottom, start the drop
+    if (pieces.every(p => p.y - p.ing.h / 2 > H + 20)) {
+      pieces.forEach(p => { p.landed = false; p.falling = false; p.bounced = false; p.y = -p.ing.h; });
+      stackedCount = 0;
+      state = STATE.DROPPING;
+    }
   }
 
   // ── DROPPING — pieces fall one-by-one from top into stack ──
@@ -653,14 +659,6 @@ function triggerExplosion() {
   copySmall.textContent = 'TAP TO BURST AGAIN';
 
   stackedCount = 0;
-
-  // After bouncing, transition to one-by-one drop
-  setTimeout(() => {
-    // Hide all pieces, start dropping
-    pieces.forEach(p => { p.landed = false; p.falling = false; p.bounced = false; p.y = -200; });
-    stackedCount = 0;
-    state = STATE.DROPPING;
-  }, 1800);
 }
 
 // ── COMPLETE ──────────────────────────────────────────────────────────────────
