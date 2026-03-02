@@ -7,16 +7,15 @@ const { Engine, Bodies, Body, World, Events, Composite } = Matter;
 
 // ── Config ──────────────────────────────────────────────
 const CFG = {
-  minFont: 13,
-  maxFont: 46,
+  minFont: 7,
+  maxFont: 23,
   spawnMs: 1400,        // base interval between word spawns (ms)
   gravity: 1.0,
   restitution: 0.28,
   friction: 0.65,
   frictionAir: 0.018,
-  explosionForce: 0.055,
+  explosionForce: 0.22,  // 4× 증가
   explosionRadius: 190,
-  cleanupRatio: 0.5,    // pile height threshold (fraction of canvas)
   fadeSpeed: 0.04,
   colors: [
     '#1DB954', // Spotify green
@@ -77,8 +76,8 @@ let audioStartTime = 0; // when audio was started (audioCtx.currentTime)
 let pausedAt = 0;
 
 // Audio
-let audioCtx, analyserNode, gainNode, audioSrc, audioBuffer;
-let rawAudioData = null; // ArrayBuffer preloaded from repo
+let audioCtx, analyserNode, gainNode, mediaSource;
+let audioEl = null;
 let volumeLevel = 0.5;   // 0‥1 current
 
 // ── Init ─────────────────────────────────────────────────
@@ -88,8 +87,8 @@ function init() {
 
   setupCanvas();
   setupPhysics();
+  setupAudio();
   setupEvents();
-  preloadAudio(); // 백그라운드에서 음원 미리 로드
 
   requestAnimationFrame(tick);
 }
@@ -144,74 +143,60 @@ function setupEvents() {
 }
 
 // ── Audio ─────────────────────────────────────────────────
+function setupAudio() {
+  audioEl = document.getElementById('audio-player');
+
+  audioEl.addEventListener('loadedmetadata', () => {
+    audioDuration = audioEl.duration;
+    updateProgressUI(0);
+  });
+
+  audioEl.addEventListener('ended', () => {
+    if (repeatOn) {
+      audioEl.currentTime = 0;
+      audioEl.play();
+    } else {
+      setPlaying(false);
+    }
+  });
+}
+
 function ensureAudioCtx() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-}
-
-// 레포에 번들된 음원을 백그라운드에서 ArrayBuffer로 미리 로드
-async function preloadAudio() {
-  try {
-    const res = await fetch('assets/still-dre.mp3');
-    if (!res.ok) throw new Error(res.status);
-    rawAudioData = await res.arrayBuffer();
-  } catch (e) {
-    console.warn('Audio preload failed — simulation mode only:', e);
-  }
-}
-
-function startAudio(fromTime = 0) {
-  if (!audioBuffer) return;
-  stopAudio();
-  ensureAudioCtx();
-
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // <audio> 엘리먼트를 Web Audio 그래프에 연결 (볼륨 분석용)
+  mediaSource = audioCtx.createMediaElementSource(audioEl);
   analyserNode = audioCtx.createAnalyser();
   analyserNode.fftSize = 512;
   analyserNode.smoothingTimeConstant = 0.75;
-
   gainNode = audioCtx.createGain();
-  gainNode.gain.value = 1.0; // 기본 최대 볼륨
-
-  audioSrc = audioCtx.createBufferSource();
-  audioSrc.buffer = audioBuffer;
-  audioSrc.connect(analyserNode);
+  gainNode.gain.value = 1.0;
+  mediaSource.connect(analyserNode);
   analyserNode.connect(gainNode);
   gainNode.connect(audioCtx.destination);
-  audioSrc.start(0, fromTime);
+}
 
-  audioStartTime = audioCtx.currentTime - fromTime;
-
-  audioSrc.onended = () => {
-    if (isPlaying) {
-      if (repeatOn) {
-        seekTo(0);
-      } else {
-        setPlaying(false);
-      }
-    }
-  };
+function startAudio(fromTime = 0) {
+  if (!audioEl) return;
+  audioEl.currentTime = fromTime;
+  audioEl.play().catch(e => console.warn('play() failed:', e));
+  audioStartTime = audioCtx ? audioCtx.currentTime - fromTime : 0;
 }
 
 function stopAudio() {
-  if (audioSrc) {
-    try { audioSrc.stop(); } catch (_) {}
-    audioSrc = null;
-  }
+  if (audioEl) audioEl.pause();
 }
 
 function seekTo(sec) {
   pausedAt = sec;
-  if (isPlaying) startAudio(sec);
+  if (audioEl) audioEl.currentTime = sec;
+  if (isPlaying && audioEl) audioEl.play().catch(() => {});
   updateProgressUI(sec);
 }
 
 function getAudioTime() {
-  if (!audioCtx || !audioBuffer) return simTime;
-  const t = audioCtx.currentTime - audioStartTime;
-  // 재생 중이 아닐 때는 pausedAt 반환
-  if (!isPlaying) return pausedAt;
-  return Math.max(0, Math.min(audioDuration || t, t));
+  if (audioEl && !isNaN(audioEl.duration)) return audioEl.currentTime;
+  return simTime;
 }
 
 // ── Volume reading ────────────────────────────────────────
@@ -264,7 +249,7 @@ function spawnWord(now) {
 }
 
 // ── Cleanup ───────────────────────────────────────────────
-// 활성 단어들의 넓이 합이 캔버스 면적의 50%를 넘으면 오래된 것부터 페이드
+// 활성 단어들의 넓이 합이 캔버스 면적의 1/3을 넘으면 오래된 것부터 페이드
 let lastCleanupAt = 0;
 
 function checkCleanup(ts) {
@@ -273,7 +258,7 @@ function checkCleanup(ts) {
 
   const active = wordBodies.filter(wb => !wb.fading);
   const totalArea = active.reduce((sum, wb) => sum + wb.bw * wb.bh, 0);
-  if (totalArea > W * H * 0.5 && active.length > 0) {
+  if (totalArea > W * H / 3 && active.length > 0) {
     active[0].fading = true; // 가장 오래된 단어부터 페이드
   }
 }
@@ -379,22 +364,10 @@ async function setPlaying(val) {
     document.getElementById('canvas-hint').classList.add('hidden');
     ensureAudioCtx();
     await audioCtx.resume(); // suspended 상태 해제 (일부 브라우저 필수)
-    // AudioContext 생성 후 처음 재생 시 디코딩 (사용자 제스처 필요)
-    if (!audioBuffer && rawAudioData) {
-      try {
-        audioBuffer = await audioCtx.decodeAudioData(rawAudioData.slice(0));
-        audioDuration = audioBuffer.duration;
-        updateProgressUI(pausedAt); // 총 시간 즉시 반영
-      } catch (e) {
-        console.warn('Audio decode failed:', e);
-      }
-    }
-    if (audioBuffer) startAudio(pausedAt);
+    startAudio(pausedAt);
   } else {
-    if (audioCtx && audioBuffer) {
-      pausedAt = getAudioTime();
-      stopAudio();
-    }
+    pausedAt = getAudioTime();
+    stopAudio();
   }
 }
 
