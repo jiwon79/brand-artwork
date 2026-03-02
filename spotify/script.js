@@ -174,7 +174,8 @@ function loadAudio(file) {
       document.getElementById('song-title').textContent = name;
       document.getElementById('artist-name').textContent = '업로드된 음악';
       document.getElementById('playlist-name').textContent = name;
-      document.getElementById('file-label').style.color = '#1DB954';
+      const dl = document.querySelector('.device-name');
+      if (dl) dl.style.color = '#1DB954';
     });
   };
   reader.readAsArrayBuffer(file);
@@ -278,21 +279,25 @@ function spawnWord(now) {
 
   World.add(world, body);
   wordBodies.push({ body, word, fontSize, color, bw, bh, spawnTime: now, fading: false, opacity: 1 });
-
-  // Cleanup if pile too high
-  checkCleanup();
 }
 
 // ── Cleanup ───────────────────────────────────────────────
-function checkCleanup() {
-  const active = wordBodies.filter(wb => !wb.fading);
-  if (active.length === 0) return;
+// 캔버스 안에 완전히 들어온 단어만 기준으로 파일 높이 측정
+let lastCleanupAt = 0;
 
-  const piledHigh = active.some(wb => wb.body.bounds.min.y < H * CFG.cleanupRatio);
-  if (piledHigh) {
-    // Find oldest non-fading word and start fading it
-    const oldest = active[0];
-    oldest.fading = true;
+function checkCleanup(ts) {
+  if (ts - lastCleanupAt < 600) return; // 600ms 간격으로만 체크
+  lastCleanupAt = ts;
+
+  // bounds.min.y > 0 → 단어 상단이 캔버스 안에 있는 것만 집계
+  const inCanvas = wordBodies.filter(wb => !wb.fading && wb.body.bounds.min.y > 0);
+  if (inCanvas.length < 4) return; // 충분히 쌓이기 전엔 정리하지 않음
+
+  const pileTop = Math.min(...inCanvas.map(wb => wb.body.bounds.min.y));
+  if (pileTop < H * CFG.cleanupRatio) {
+    // 가장 오래된 단어(아직 fading 아닌 것)를 페이드 처리
+    const oldest = wordBodies.find(wb => !wb.fading);
+    if (oldest) oldest.fading = true;
   }
 }
 
@@ -432,12 +437,13 @@ function toggleRepeat() {
 
 // ── Progress UI ───────────────────────────────────────────
 function updateProgressUI(sec) {
-  const dur = audioDuration || 1;
-  const pct = Math.min(1, Math.max(0, sec / dur)) * 100;
+  const dur = audioDuration;
+  const pct = dur > 0 ? Math.min(1, Math.max(0, sec / dur)) * 100 : 0;
   document.getElementById('progress-fill').style.width = pct + '%';
   document.getElementById('progress-thumb').style.left = pct + '%';
   document.getElementById('current-time').textContent = formatTime(sec);
-  if (!audioDuration) document.getElementById('total-time').textContent = '∞';
+  document.getElementById('total-time').textContent =
+    dur > 0 ? '-' + formatTime(Math.max(0, dur - sec)) : '-∞';
 }
 
 function formatTime(s) {
@@ -447,20 +453,13 @@ function formatTime(s) {
 }
 
 function updateStatusTime() {
+  const el = document.getElementById('status-time');
+  if (!el) return;
   const now = new Date();
-  document.getElementById('status-time').textContent =
-    now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+  el.textContent = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
 }
 
 // ── Rendering ─────────────────────────────────────────────
-function renderBackground() {
-  // Subtle vignette
-  const grad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
-  grad.addColorStop(0, 'rgba(20,20,30,0)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.55)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-}
 
 function renderWords() {
   for (let i = wordBodies.length - 1; i >= 0; i--) {
@@ -556,6 +555,9 @@ function tick(ts) {
       lastSpawnAt = ts;
     }
 
+    // Cleanup check (pile height)
+    checkCleanup(ts);
+
     // Physics step
     Engine.update(engine, dt);
 
@@ -566,9 +568,6 @@ function tick(ts) {
 
   // Clear
   ctx.clearRect(0, 0, W, H);
-
-  // Background
-  renderBackground();
 
   // Update & draw particles
   updateParticles();
