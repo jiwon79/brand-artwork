@@ -206,6 +206,25 @@ function loadImages() {
   ));
 }
 
+// ── ALPHA MAPS — cache per-pixel opacity for pixel-perfect collision ───────────
+function buildAlphaMaps() {
+  for (const ing of INGREDIENTS) {
+    const img = IMGS[ing.id];
+    if (!img) continue;
+    const oc = document.createElement('canvas');
+    oc.width = ing.w; oc.height = ing.h;
+    const octx = oc.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(img, 0, 0, ing.w, ing.h);
+    const data = octx.getImageData(0, 0, ing.w, ing.h).data;
+    // Store only the alpha channel to save memory
+    const alpha = new Uint8Array(ing.w * ing.h);
+    for (let i = 0; i < ing.w * ing.h; i++) alpha[i] = data[i * 4 + 3];
+    ing.alphaMap = alpha;
+    // Circumscribed circle radius used for fast AABB-like pre-filter
+    ing.circleR = Math.sqrt(ing.w * ing.w + ing.h * ing.h) / 2;
+  }
+}
+
 // Stack positions (from bottom): bot_bun, patty, cheese, tomato, lettuce, top_bun
 const STACK_ORDER = [5, 4, 3, 2, 1, 0]; // indices in INGREDIENTS array
 
@@ -451,28 +470,10 @@ function loop(now) {
       if (piece.y - hh < 0) { piece.y = hh; piece.vy = Math.abs(piece.vy) * 0.5; }
     }
 
-    // Piece-to-piece collision (circle approximation)
+    // Piece-to-piece collision (pixel-perfect)
     for (let a = 0; a < pieces.length; a++) {
       for (let b = a + 1; b < pieces.length; b++) {
-        const pa = pieces[a], pb = pieces[b];
-        const ra = (pa.ing.w + pa.ing.h) / 4;
-        const rb = (pb.ing.w + pb.ing.h) / 4;
-        const dx = pb.x - pa.x, dy = pb.y - pa.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        const minDist = ra + rb;
-        if (dist < minDist && dist > 0.1) {
-          const nx = dx / dist, ny = dy / dist;
-          const overlap = (minDist - dist) / 2;
-          pa.x -= nx * overlap; pa.y -= ny * overlap;
-          pb.x += nx * overlap; pb.y += ny * overlap;
-          const dvx = pa.vx - pb.vx, dvy = pa.vy - pb.vy;
-          const dot = dvx * nx + dvy * ny;
-          if (dot > 0) {
-            const imp = dot * 0.8;
-            pa.vx -= imp * nx; pa.vy -= imp * ny;
-            pb.vx += imp * nx; pb.vy += imp * ny;
-          }
-        }
+        checkPixelCollision(pieces[a], pieces[b]);
       }
     }
 
@@ -552,6 +553,77 @@ function loop(now) {
 
   updateParticles(dt);
   requestAnimationFrame(loop);
+}
+
+// ── PIXEL-PERFECT COLLISION ────────────────────────────────────────────────────
+// Sample spacing in pixels — every STEP px rather than every px for performance
+const PIXEL_STEP = 4;
+const ALPHA_THRESH = 20; // treat alpha < 20 as transparent
+
+function checkPixelCollision(pa, pb) {
+  const ia = pa.ing, ib = pb.ing;
+
+  // 1. Fast pre-filter: bounding circles (circumscribed around the full image rect)
+  const dx = pb.x - pa.x, dy = pb.y - pa.y;
+  const dist2 = dx * dx + dy * dy;
+  const rSum = ia.circleR + ib.circleR;
+  if (dist2 > rSum * rSum) return;
+
+  // 2. Pixel overlap check
+  //    Iterate A's pixel grid in A-local space.
+  //    For each opaque A-pixel, transform → world → B-local, then sample B's alpha.
+  const cosA = Math.cos(pa.rotation), sinA = Math.sin(pa.rotation);
+  const cosB = Math.cos(pb.rotation), sinB = Math.sin(pb.rotation);
+  const hw_a = ia.w * 0.5, hh_a = ia.h * 0.5;
+  const hw_b = ib.w * 0.5, hh_b = ib.h * 0.5;
+
+  let found = false;
+  outer: for (let ly = -hh_a + PIXEL_STEP * 0.5; ly < hh_a; ly += PIXEL_STEP) {
+    for (let lx = -hw_a + PIXEL_STEP * 0.5; lx < hw_a; lx += PIXEL_STEP) {
+
+      // Sample A alpha (A-local coords → image pixel index)
+      const aix = (lx + hw_a) | 0;
+      const aiy = (ly + hh_a) | 0;
+      if (ia.alphaMap[aiy * ia.w + aix] < ALPHA_THRESH) continue;
+
+      // A-local → world  (standard 2D rotation)
+      const wx = pa.x + lx * cosA - ly * sinA;
+      const wy = pa.y + lx * sinA + ly * cosA;
+
+      // World → B-local  (inverse rotation of B: transpose = [cosB, sinB; -sinB, cosB])
+      const ddx = wx - pb.x, ddy = wy - pb.y;
+      const blx = ddx * cosB + ddy * sinB;
+      const bly = -ddx * sinB + ddy * cosB;
+
+      // Sample B alpha
+      const bix = (blx + hw_b) | 0;
+      const biy = (bly + hh_b) | 0;
+      if (bix < 0 || bix >= ib.w || biy < 0 || biy >= ib.h) continue;
+      if (ib.alphaMap[biy * ib.w + bix] < ALPHA_THRESH) continue;
+
+      found = true;
+      break outer;
+    }
+  }
+  if (!found) return;
+
+  // 3. Collision response — normal along center-to-center direction (stable)
+  const dist = Math.sqrt(dist2);
+  const nx = dist > 0.1 ? dx / dist : 0;
+  const ny = dist > 0.1 ? dy / dist : -1;
+
+  // Positional correction: push apart by one sample step so they separate
+  pa.x -= nx * PIXEL_STEP; pa.y -= ny * PIXEL_STEP;
+  pb.x += nx * PIXEL_STEP; pb.y += ny * PIXEL_STEP;
+
+  // Velocity impulse (e = 0.7 restitution, equal mass → imp = (1+e)/2 * v_rel·n)
+  const dvx = pa.vx - pb.vx, dvy = pa.vy - pb.vy;
+  const vn = dvx * nx + dvy * ny;
+  if (vn > 0) {
+    const imp = vn * 0.85; // (1+0.7)/2 ≈ 0.85
+    pa.vx -= imp * nx; pa.vy -= imp * ny;
+    pb.vx += imp * nx; pb.vy += imp * ny;
+  }
 }
 
 // ── EXPLOSION ──────────────────────────────────────────────────────────────────
@@ -655,6 +727,7 @@ window.addEventListener('mousemove', e => {
 
 // Init — load images then start animation
 loadImages().then(() => {
+  buildAlphaMaps();
   initPieces();
   requestAnimationFrame(loop);
 });
