@@ -86,6 +86,7 @@ transform: translate(-50%, -50%);
 font-family: 'Bebas Neue', sans-serif;
 font-size: 18px;
 letter-spacing: 5px;
+white-space: nowrap;
 color: #FFC72C;
 background: rgba(0,0,0,0.6);
 padding: 6px 16px;
@@ -119,13 +120,14 @@ const pressBar = document.getElementById('pressBar');
 const pressBarFill = document.getElementById('pressBarFill');
 const ingredientTag = document.getElementById('ingredientTag');
 
-let W, H, CX, CY;
+let W, H, CX, CY, BURGER_CY;
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
   CX = W / 2;
   CY = H / 2;
+  BURGER_CY = CY - 60; // burger sits above screen center
 }
 resize();
 window.addEventListener('resize', resize);
@@ -186,7 +188,7 @@ function getStackY(idx) {
   // Build stack from bottom up using per-ingredient gapAbove.
   // totalH = sum of (h + gapAbove) for all ingredients; TOP_BUN.gapAbove = 0 so it doesn't add a phantom gap.
   let totalH = INGREDIENTS.reduce((s, i) => s + i.h + i.gapAbove, 0);
-  let startY = CY + totalH / 2;
+  let startY = BURGER_CY + totalH / 2;
   let offsets = [];
   let cur = startY;
   for (let si of STACK_ORDER) {
@@ -375,9 +377,9 @@ function loop(now) {
       const piece = pieces[si];
       const baseY = stackOffsets[si];
       // Compress toward center
-      const distFromCenter = baseY - CY;
+      const distFromCenter = baseY - BURGER_CY;
       piece.x = CX + shakeX;
-      piece.y = CY + distFromCenter * squashY + shakeY;
+      piece.y = BURGER_CY + distFromCenter * squashY + shakeY;
       ctx.save();
       ctx.translate(piece.x, piece.y);
       ctx.scale(squashX, squashY);
@@ -504,7 +506,7 @@ function loop(now) {
       drawIngredient(pieces[si], bob, 1);
     }
     // golden glow
-    const glow = ctx.createRadialGradient(CX, CY, 0, CX, CY, 200);
+    const glow = ctx.createRadialGradient(CX, BURGER_CY, 0, CX, BURGER_CY, 200);
     glow.addColorStop(0, 'rgba(255,199,44,0.08)');
     glow.addColorStop(1, 'rgba(255,199,44,0)');
     ctx.fillStyle = glow;
@@ -593,7 +595,7 @@ function triggerExplosion() {
   pressBar.style.opacity = '0';
   vignette.style.background = 'transparent';
 
-  spawnBurstParticles(CX, CY, 80);
+  spawnBurstParticles(CX, BURGER_CY, 80);
 
   const angles = [
     -Math.PI * 0.7, -Math.PI * 0.85, -Math.PI * 0.55,
