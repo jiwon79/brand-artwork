@@ -18,7 +18,6 @@
     align-items: center;
     justify-content: center;
     font-family: 'Bebas Neue', sans-serif;
-    cursor: none;
   }
   canvas { display: block; touch-action: none; }
 
@@ -35,30 +34,6 @@ pointer-events: none;
 z-index: 5;
 }
 
-#ui {
-position: fixed;
-top: 0; left: 0; right: 0;
-display: flex;
-justify-content: space-between;
-align-items: flex-start;
-padding: 28px 32px;
-z-index: 15;
-pointer-events: none;
-}
-#logo {
-font-family: 'Bebas Neue', sans-serif;
-font-size: 15px;
-letter-spacing: 4px;
-color: #FFC72C;
-opacity: 0.8;
-}
-#mlogo {
-font-size: 36px;
-color: #FFC72C;
-font-family: serif;
-font-weight: 900;
-text-shadow: 0 0 20px rgba(255,199,44,0.5);
-}
 #copy {
 position: fixed;
 bottom: 60px;
@@ -120,40 +95,18 @@ z-index: 15;
 pointer-events: none;
 transition: opacity 0.2s;
 }
-#customCursor {
-position: fixed;
-width: 20px;
-height: 20px;
-border: 2px solid rgba(255,199,44,0.8);
-border-radius: 50%;
-pointer-events: none;
-z-index: 100;
-transform: translate(-50%, -50%);
-transition: transform 0.1s, width 0.1s, height 0.1s, background 0.1s;
-}
-#customCursor.pressing {
-width: 40px;
-height: 40px;
-background: rgba(255,0,0,0.15);
-border-color: #FF0000;
-}
 </style>
 
 </head>
 <body>
 
 <div id="vignette"></div>
-<div id="ui">
-  <div id="logo">MCDONALD'S × INTERACTIVE</div>
-  <div id="mlogo">M</div>
-</div>
 <div id="copy">
   <div id="copyText">HOW MUCH CAN YOU HANDLE?</div>
   <div id="copySmall">HOLD TO COMPRESS · RELEASE TO BURST</div>
 </div>
 <div id="pressBar"><div id="pressBarFill"></div></div>
 <div id="ingredientTag"></div>
-<div id="customCursor"></div>
 <canvas id="c"></canvas>
 
 <script>
@@ -165,7 +118,6 @@ const copySmall = document.getElementById('copySmall');
 const pressBar = document.getElementById('pressBar');
 const pressBarFill = document.getElementById('pressBarFill');
 const ingredientTag = document.getElementById('ingredientTag');
-const cursor = document.getElementById('customCursor');
 
 let W, H, CX, CY;
 
@@ -179,13 +131,15 @@ resize();
 window.addEventListener('resize', resize);
 
 // ── INGREDIENTS ───────────────────────────────────────────────────────────────
+// gapAbove = pixels of spacing between this ingredient's top and the one stacked above it.
+// More negative = tighter. Tuned per-ingredient to compensate for varying transparent padding.
 const INGREDIENTS = [
-  { id: 'TOP_BUN',   label: 'SESAME BUN',      h: 80,  w: 187, src: 'assets/top-bun.png'    },
-  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    h: 60,  w: 187, src: 'assets/lettuce.png'    },
-  { id: 'TOMATO',    label: 'RIPE TOMATO',      h: 60,  w: 173, src: 'assets/tomato.png'     },
-  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   h: 60,  w: 187, src: 'assets/cheese.png'     },
-  { id: 'PATTY',     label: 'BEEF PATTY',       h: 60,  w: 180, src: 'assets/patty.png'      },
-  { id: 'BOT_BUN',   label: 'SESAME BUN',       h: 60,  w: 187, src: 'assets/bottom-bun.png' },
+  { id: 'TOP_BUN',   label: 'SESAME BUN',      h: 80,  w: 187, src: 'assets/top-bun.png',    gapAbove:   0 },
+  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    h: 60,  w: 187, src: 'assets/lettuce.png',    gapAbove: -45 },
+  { id: 'TOMATO',    label: 'RIPE TOMATO',      h: 60,  w: 173, src: 'assets/tomato.png',     gapAbove: -52 },
+  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   h: 60,  w: 187, src: 'assets/cheese.png',     gapAbove: -52 },
+  { id: 'PATTY',     label: 'BEEF PATTY',       h: 60,  w: 180, src: 'assets/patty.png',      gapAbove: -58 },
+  { id: 'BOT_BUN',   label: 'SESAME BUN',       h: 60,  w: 187, src: 'assets/bottom-bun.png', gapAbove: -44 },
 ];
 
 // ── IMAGE LOADING ─────────────────────────────────────────────────────────────
@@ -229,16 +183,16 @@ function buildAlphaMaps() {
 const STACK_ORDER = [5, 4, 3, 2, 1, 0]; // indices in INGREDIENTS array
 
 function getStackY(idx) {
-  // Build stack from bottom up; negative gap compensates for transparent image padding
-  const GAP = -40;
-  let totalH = INGREDIENTS.reduce((s,i) => s + i.h + GAP, 0) - GAP;
+  // Build stack from bottom up using per-ingredient gapAbove.
+  // totalH = sum of (h + gapAbove) for all ingredients; TOP_BUN.gapAbove = 0 so it doesn't add a phantom gap.
+  let totalH = INGREDIENTS.reduce((s, i) => s + i.h + i.gapAbove, 0);
   let startY = CY + totalH / 2;
   let offsets = [];
   let cur = startY;
   for (let si of STACK_ORDER) {
     let ing = INGREDIENTS[si];
     offsets[si] = cur - ing.h / 2;
-    cur -= (ing.h + GAP);
+    cur -= (ing.h + ing.gapAbove);
   }
   return offsets;
 }
@@ -508,7 +462,7 @@ function loop(now) {
         piece.rotation = 0;
         piece.falling = true;
       }
-      piece.vy += GRAV * 1.4 * dt;
+      piece.vy += GRAV * 2.0 * dt;
       piece.y += piece.vy * dt;
 
       const target = stackY[dropIdx];
@@ -693,13 +647,11 @@ function startPress() {
     pressBar.style.opacity = '1';
     copyText.textContent = 'KEEP PRESSING...';
     copySmall.textContent = '';
-    cursor.classList.add('pressing');
   }
 }
 
 function endPress() {
   if (state === STATE.PRESSING) {
-    cursor.classList.remove('pressing');
     if (pressDuration < 200) {
       // too short, reset
       state = STATE.IDLE;
@@ -711,18 +663,12 @@ function endPress() {
     }
     triggerExplosion();
   }
-  cursor.classList.remove('pressing');
 }
 
 canvas.addEventListener('mousedown', startPress);
 canvas.addEventListener('mouseup', endPress);
 canvas.addEventListener('touchstart', e => { e.preventDefault(); startPress(); }, { passive: false });
 canvas.addEventListener('touchend', e => { e.preventDefault(); endPress(); }, { passive: false });
-
-window.addEventListener('mousemove', e => {
-  cursor.style.left = e.clientX + 'px';
-  cursor.style.top = e.clientY + 'px';
-});
 
 // Init — load images then start animation
 loadImages().then(() => {
