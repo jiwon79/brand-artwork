@@ -46,14 +46,14 @@ transition: opacity 0.4s;
 #copyText {
 font-family: 'Bebas Neue', sans-serif;
 font-size: clamp(22px, 5vw, 38px);
-letter-spacing: 6px;
+letter-spacing: 2px;
 color: #fff;
 text-shadow: 0 2px 20px rgba(0,0,0,0.8);
 }
 #copySmall {
 font-family: 'Bebas Neue', sans-serif;
 font-size: 13px;
-letter-spacing: 4px;
+letter-spacing: 1px;
 color: rgba(255,255,255,0.4);
 margin-top: 8px;
 }
@@ -103,8 +103,8 @@ transition: opacity 0.2s;
 
 <div id="vignette"></div>
 <div id="copy">
-  <div id="copyText">HOW MUCH CAN YOU HANDLE?</div>
-  <div id="copySmall">HOLD TO COMPRESS · RELEASE TO BURST</div>
+  <div id="copyText">I'm lovin it Macdonald 🍔</div>
+  <div id="copySmall">Tap to burst</div>
 </div>
 <div id="pressBar"><div id="pressBarFill"></div></div>
 <div id="ingredientTag"></div>
@@ -611,8 +611,8 @@ function triggerExplosion() {
     piece.falling = false;
   });
 
-  copyText.textContent = "I'M LOVIN' IT 🍔";
-  copySmall.textContent = 'TAP TO BURST AGAIN';
+  copyText.textContent = "I'm lovin it Macdonald 🍔";
+  copySmall.textContent = 'Tap to burst again';
 
   stackedCount = 0;
 }
@@ -659,8 +659,8 @@ function endPress() {
       state = STATE.IDLE;
       pressBar.style.opacity = '0';
       vignette.style.background = 'transparent';
-      copyText.textContent = 'HOW MUCH CAN YOU HANDLE?';
-      copySmall.textContent = 'HOLD TO COMPRESS · RELEASE TO BURST';
+      copyText.textContent = "I'm lovin it Macdonald 🍔";
+      copySmall.textContent = 'Tap to burst';
       return;
     }
     triggerExplosion();
