@@ -180,12 +180,12 @@ window.addEventListener('resize', resize);
 
 // ── INGREDIENTS ───────────────────────────────────────────────────────────────
 const INGREDIENTS = [
-  { id: 'TOP_BUN',   label: 'SESAME BUN',      h: 80,  w: 280, src: 'assets/top-bun.png'    },
-  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    h: 60,  w: 280, src: 'assets/lettuce.png'    },
-  { id: 'TOMATO',    label: 'RIPE TOMATO',      h: 60,  w: 260, src: 'assets/tomato.png'     },
-  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   h: 60,  w: 280, src: 'assets/cheese.png'     },
-  { id: 'PATTY',     label: 'BEEF PATTY',       h: 60,  w: 270, src: 'assets/patty.png'      },
-  { id: 'BOT_BUN',   label: 'SESAME BUN',       h: 60,  w: 280, src: 'assets/bottom-bun.png' },
+  { id: 'TOP_BUN',   label: 'SESAME BUN',      h: 80,  w: 140, src: 'assets/top-bun.png'    },
+  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    h: 60,  w: 140, src: 'assets/lettuce.png'    },
+  { id: 'TOMATO',    label: 'RIPE TOMATO',      h: 60,  w: 130, src: 'assets/tomato.png'     },
+  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   h: 60,  w: 140, src: 'assets/cheese.png'     },
+  { id: 'PATTY',     label: 'BEEF PATTY',       h: 60,  w: 135, src: 'assets/patty.png'      },
+  { id: 'BOT_BUN',   label: 'SESAME BUN',       h: 60,  w: 140, src: 'assets/bottom-bun.png' },
 ];
 
 // ── IMAGE LOADING ─────────────────────────────────────────────────────────────
@@ -230,7 +230,7 @@ const STACK_ORDER = [5, 4, 3, 2, 1, 0]; // indices in INGREDIENTS array
 
 function getStackY(idx) {
   // Build stack from bottom up; negative gap compensates for transparent image padding
-  const GAP = -38;
+  const GAP = -16;
   let totalH = INGREDIENTS.reduce((s,i) => s + i.h + GAP, 0) - GAP;
   let startY = CY + totalH / 2;
   let offsets = [];
@@ -612,17 +612,18 @@ function checkPixelCollision(pa, pb) {
   const nx = dist > 0.1 ? dx / dist : 0;
   const ny = dist > 0.1 ? dy / dist : -1;
 
-  // Positional correction: push apart by one sample step so they separate
-  pa.x -= nx * PIXEL_STEP; pa.y -= ny * PIXEL_STEP;
-  pb.x += nx * PIXEL_STEP; pb.y += ny * PIXEL_STEP;
-
-  // Velocity impulse (e = 0.7 restitution, equal mass → imp = (1+e)/2 * v_rel·n)
+  // Velocity impulse + positional correction — only when pieces are approaching
+  // (vn > 0). Gating on vn prevents the repeated push that causes jitter when
+  // pieces are already separating after a bounce.
   const dvx = pa.vx - pb.vx, dvy = pa.vy - pb.vy;
   const vn = dvx * nx + dvy * ny;
   if (vn > 0) {
-    const imp = vn * 0.85; // (1+0.7)/2 ≈ 0.85
+    const imp = vn * 0.85; // e = 0.7 restitution, equal mass
     pa.vx -= imp * nx; pa.vy -= imp * ny;
     pb.vx += imp * nx; pb.vy += imp * ny;
+    // Small correction only while actively colliding
+    pa.x -= nx * 2; pa.y -= ny * 2;
+    pb.x += nx * 2; pb.y += ny * 2;
   }
 }
 
