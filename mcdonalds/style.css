@@ -1,0 +1,148 @@
+/* ── Reset & Base ──────────────────────────────────────────────── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1a0000;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── Canvas ────────────────────────────────────────────────────── */
+#canvas {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Home Link ─────────────────────────────────────────────────── */
+#home-link {
+  position: fixed;
+  top: 16px;
+  left: 20px;
+  z-index: 20;
+  font-family: 'Arial', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: rgba(255, 199, 44, 0.6);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+#home-link:hover {
+  color: rgba(255, 199, 44, 1);
+}
+
+/* ── UI Overlay ────────────────────────────────────────────────── */
+#ui {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: 12px 24px;
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(26, 0, 0, 0.75) 35%,
+    rgba(26, 0, 0, 0.92) 100%
+  );
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* ── Hint text ─────────────────────────────────────────────────── */
+#hint-text {
+  text-align: center;
+  font-family: 'Arial', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 199, 44, 0.5);
+  margin-bottom: 10px;
+  transition: opacity 0.5s ease;
+}
+
+#hint-text.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Slider Row ────────────────────────────────────────────────── */
+#slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slider-label {
+  font-family: 'Arial', monospace, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 199, 44, 0.45);
+  min-width: 28px;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+/* ── Range Input ───────────────────────────────────────────────── */
+#slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(
+    to right,
+    #FFC72C 0%,
+    #FFC72C var(--pct, 0%),
+    rgba(255, 255, 255, 0.18) var(--pct, 0%),
+    rgba(255, 255, 255, 0.18) 100%
+  );
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  transition: background 0.05s;
+}
+
+/* Thumb — WebKit */
+#slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 35%, #FFD966, #FFC72C 60%, #CC9900);
+  cursor: pointer;
+  box-shadow:
+    0 0 0 3px rgba(255, 199, 44, 0.25),
+    0 3px 10px rgba(0, 0, 0, 0.6);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+#slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+  box-shadow:
+    0 0 0 5px rgba(255, 199, 44, 0.35),
+    0 4px 14px rgba(0, 0, 0, 0.7);
+}
+
+/* Thumb — Firefox */
+#slider::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 35%, #FFD966, #FFC72C 60%, #CC9900);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+}

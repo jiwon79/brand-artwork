@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<base href="/mcdonalds/">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>BIG MAC BURST</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a0a00;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Bebas Neue', sans-serif;
+  }
+  canvas { display: block; touch-action: none; position: fixed; top: 0; left: 0; }
+
+#overlay {
+position: fixed; inset: 0;
+pointer-events: none;
+z-index: 10;
+}
+#vignette {
+position: fixed; inset: 0;
+background: radial-gradient(ellipse at center, transparent 40%, rgba(180,0,0,0) 100%);
+transition: background 0.1s;
+pointer-events: none;
+z-index: 5;
+}
+
+#copy {
+position: fixed;
+bottom: 60px;
+left: 0; right: 0;
+text-align: center;
+z-index: 15;
+pointer-events: none;
+transition: opacity 0.4s;
+}
+#copyText {
+font-family: 'Bebas Neue', sans-serif;
+font-size: clamp(22px, 5vw, 38px);
+letter-spacing: 2px;
+color: #fff;
+text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+}
+#copySmall {
+font-family: 'Bebas Neue', sans-serif;
+font-size: 13px;
+letter-spacing: 1px;
+color: rgba(255,255,255,0.4);
+margin-top: 8px;
+}
+#pressBar {
+position: fixed;
+bottom: 130px;
+left: 50%;
+transform: translateX(-50%);
+width: 200px;
+height: 3px;
+background: rgba(255,255,255,0.1);
+border-radius: 2px;
+z-index: 15;
+pointer-events: none;
+opacity: 0;
+transition: opacity 0.3s;
+}
+#pressBarFill {
+height: 100%;
+width: 0%;
+background: linear-gradient(90deg, #FFC72C, #FF0000);
+border-radius: 2px;
+transition: width 0.05s;
+}
+#ingredientTag {
+position: fixed;
+top: 50%;
+left: 50%;
+transform: translate(-50%, -50%);
+font-family: 'Bebas Neue', sans-serif;
+font-size: 18px;
+letter-spacing: 5px;
+white-space: nowrap;
+color: #FFC72C;
+background: rgba(0,0,0,0.6);
+padding: 6px 16px;
+border: 1px solid rgba(255,199,44,0.3);
+opacity: 0;
+z-index: 15;
+pointer-events: none;
+transition: opacity 0.2s;
+}
+</style>
+
+</head>
+<body>
+
+<div id="vignette"></div>
+<div id="copy">
+  <div id="copyText">I'm lovin it Macdonald 🍔</div>
+  <div id="copySmall">Tap to burst</div>
+</div>
+<div id="pressBar"><div id="pressBarFill"></div></div>
+<div id="ingredientTag"></div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const vignette = document.getElementById('vignette');
+const copyText = document.getElementById('copyText');
+const copySmall = document.getElementById('copySmall');
+const pressBar = document.getElementById('pressBar');
+const pressBarFill = document.getElementById('pressBarFill');
+const ingredientTag = document.getElementById('ingredientTag');
+
+let W, H, CX, CY, BURGER_CY;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  CX = W / 2;
+  CY = H / 2;
+  BURGER_CY = CY;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── INGREDIENTS ───────────────────────────────────────────────────────────────
+// gapAbove = pixels of spacing between this ingredient's top and the one stacked above it.
+// More negative = tighter. Tuned per-ingredient to compensate for varying transparent padding.
+const INGREDIENTS = [
+  { id: 'TOP_BUN',   label: 'SESAME BUN',      h: 80,  w: 187, src: 'assets/top-bun.png',    gapAbove:   0 },
+  { id: 'LETTUCE',   label: 'FRESH LETTUCE',    h: 60,  w: 187, src: 'assets/lettuce.png',    gapAbove: -45 },
+  { id: 'TOMATO',    label: 'RIPE TOMATO',      h: 60,  w: 173, src: 'assets/tomato.png',     gapAbove: -52 },
+  { id: 'CHEESE',    label: 'CHEDDAR CHEESE',   h: 60,  w: 187, src: 'assets/cheese.png',     gapAbove: -52 },
+  { id: 'PATTY',     label: 'BEEF PATTY',       h: 60,  w: 180, src: 'assets/patty.png',      gapAbove: -58 },
+  { id: 'BOT_BUN',   label: 'SESAME BUN',       h: 60,  w: 187, src: 'assets/bottom-bun.png', gapAbove: -44 },
+];
+
+// ── IMAGE LOADING ─────────────────────────────────────────────────────────────
+const IMGS = {};
+
+function loadImages() {
+  return Promise.all(INGREDIENTS.map(ing =>
+    new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        IMGS[ing.id] = img;
+        ing.h = Math.round(ing.w * img.naturalHeight / img.naturalWidth);
+        resolve();
+      };
+      img.onerror = () => { console.error('Failed to load:', ing.src); resolve(); };
+      img.src = ing.src;
+    })
+  ));
+}
+
+// ── ALPHA MAPS — cache per-pixel opacity for pixel-perfect collision ───────────
+function buildAlphaMaps() {
+  for (const ing of INGREDIENTS) {
+    const img = IMGS[ing.id];
+    if (!img) continue;
+    const oc = document.createElement('canvas');
+    oc.width = ing.w; oc.height = ing.h;
+    const octx = oc.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(img, 0, 0, ing.w, ing.h);
+    const data = octx.getImageData(0, 0, ing.w, ing.h).data;
+    // Store only the alpha channel to save memory
+    const alpha = new Uint8Array(ing.w * ing.h);
+    for (let i = 0; i < ing.w * ing.h; i++) alpha[i] = data[i * 4 + 3];
+    ing.alphaMap = alpha;
+    // Circumscribed circle radius used for fast AABB-like pre-filter
+    ing.circleR = Math.sqrt(ing.w * ing.w + ing.h * ing.h) / 2;
+  }
+}
+
+// Stack positions (from bottom): bot_bun, patty, cheese, tomato, lettuce, top_bun
+const STACK_ORDER = [5, 4, 3, 2, 1, 0]; // indices in INGREDIENTS array
+
+function getStackY(idx) {
+  // Build stack from bottom up using per-ingredient gapAbove.
+  // totalH = sum of (h + gapAbove) for all ingredients; TOP_BUN.gapAbove = 0 so it doesn't add a phantom gap.
+  let totalH = INGREDIENTS.reduce((s, i) => s + i.h + i.gapAbove, 0);
+  let startY = BURGER_CY + totalH / 2;
+  let offsets = [];
+  let cur = startY;
+  for (let si of STACK_ORDER) {
+    let ing = INGREDIENTS[si];
+    offsets[si] = cur - ing.h / 2;
+    cur -= (ing.h + ing.gapAbove);
+  }
+  return offsets;
+}
+
+// ── STATE ──────────────────────────────────────────────────────────────────────
+const STATE = { IDLE: 0, PRESSING: 1, EXPLODING: 2, DROPPING: 3, COMPLETE: 4 };
+let state = STATE.IDLE;
+let pressStart = 0;
+let pressDuration = 0;
+let MAX_PRESS = 2000;
+
+// Particles for effects
+let particles = [];
+
+// Ingredient physics objects
+let pieces = [];
+
+// Stacking
+let stackedCount = 0;
+let stackOffsets = [];
+let stackTimers = [];
+
+// Bobbing
+let bobT = 0;
+
+// ── INIT PIECES ────────────────────────────────────────────────────────────────
+function initPieces() {
+  stackOffsets = getStackY(0); // recalculate with current CY
+  pieces = INGREDIENTS.map((ing, i) => ({
+    ing,
+    x: CX,
+    y: stackOffsets[i],
+    vx: 0,
+    vy: 0,
+    rotation: 0,
+    vr: 0,
+    scaleX: 1,
+    scaleY: 1,
+    alpha: 1,
+    landed: false,
+    bounced: false,
+    targetY: stackOffsets[i],
+  }));
+}
+
+// ── DRAWING ────────────────────────────────────────────────────────────────────
+function drawIngredient(piece, compressY, overallScaleY) {
+  const { ing, x, y, rotation, alpha, scaleX, scaleY } = piece;
+  const sy = overallScaleY || scaleY;
+  const img = IMGS[ing.id];
+  if (!img) return;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y + (compressY || 0));
+  ctx.rotate(rotation);
+  ctx.scale(scaleX, sy);
+  ctx.drawImage(img, -ing.w / 2, -ing.h / 2, ing.w, ing.h);
+  ctx.restore();
+}
+
+// ── PARTICLES ──────────────────────────────────────────────────────────────────
+function spawnBurstParticles(cx, cy, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 200 + Math.random() * 500;
+    const colors = ['#FFC72C','#FF0000','#ffffff','#FFD600','#FF5722'];
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 200,
+      life: 1,
+      decay: 0.015 + Math.random() * 0.025,
+      size: 3 + Math.random() * 8,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      isRect: Math.random() > 0.5,
+      rotation: Math.random() * Math.PI * 2,
+      vr: (Math.random() - 0.5) * 10,
+    });
+  }
+}
+
+function spawnLandParticles(cx, cy) {
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI;
+    const speed = 30 + Math.random() * 80;
+    particles.push({
+      x: cx + (Math.random()-0.5)*30, y: cy,
+      vx: Math.cos(angle) * speed * (Math.random() > 0.5 ? 1 : -1),
+      vy: -Math.random() * 60,
+      life: 1,
+      decay: 0.04,
+      size: 2 + Math.random() * 4,
+      color: 'rgba(200,160,80,0.8)',
+      isRect: false,
+      rotation: 0, vr: 0,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  const GRAV = 600;
+  particles = particles.filter(p => p.life > 0);
+  for (let p of particles) {
+    p.vy += GRAV * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.rotation += p.vr * dt;
+    p.life -= p.decay;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation);
+    if (p.isRect) {
+      ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size/2, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ── MAIN LOOP ──────────────────────────────────────────────────────────────────
+let lastT = performance.now();
+let floatAngle = 0;
+
+function loop(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.05);
+  lastT = now;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0D0500';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,199,44,0.04)';
+  ctx.lineWidth = 1;
+  for (let gx = 0; gx < W; gx += 60) { ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,H); ctx.stroke(); }
+  for (let gy = 0; gy < H; gy += 60) { ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke(); }
+
+  const GRAV = 980;
+  floatAngle += dt;
+  bobT += dt;
+
+  // ── IDLE ──
+  if (state === STATE.IDLE) {
+    const bob = Math.sin(bobT * 1.8) * 8;
+    stackOffsets = getStackY(0);
+    for (let si of STACK_ORDER) {
+      const piece = pieces[si];
+      piece.targetY = stackOffsets[si];
+      drawIngredient(piece, bob, 1);
+    }
+  }
+
+  // ── PRESSING ──
+  else if (state === STATE.PRESSING) {
+    pressDuration = Math.min(now - pressStart, MAX_PRESS);
+    const t = pressDuration / MAX_PRESS;
+    pressBarFill.style.width = (t * 100) + '%';
+
+    // Vignette red
+    const r = Math.floor(t * 180);
+    vignette.style.background = `radial-gradient(ellipse at center, transparent 30%, rgba(${r},0,0,${t * 0.7}) 100%)`;
+
+    // Squash the whole stack
+    const squashY = 1 - t * 0.55;
+    const squashX = 1 + t * 0.3;
+    const shakeAmp = t * 6;
+    const shakeX = (Math.random()-0.5) * shakeAmp;
+    const shakeY = (Math.random()-0.5) * shakeAmp;
+
+    stackOffsets = getStackY(0);
+    for (let si of STACK_ORDER) {
+      const piece = pieces[si];
+      const baseY = stackOffsets[si];
+      // Compress toward center
+      const distFromCenter = baseY - BURGER_CY;
+      piece.x = CX + shakeX;
+      piece.y = BURGER_CY + distFromCenter * squashY + shakeY;
+      ctx.save();
+      ctx.translate(piece.x, piece.y);
+      ctx.scale(squashX, squashY);
+      ctx.translate(-piece.x, -piece.y);
+      drawIngredient(piece, 0, 1);
+      ctx.restore();
+    }
+
+    // Cheese drip particles at high pressure
+    if (t > 0.5 && Math.random() < 0.3) {
+      particles.push({
+        x: CX + (Math.random()-0.5)*200,
+        y: CY + 30,
+        vx: (Math.random()-0.5)*20,
+        vy: 60 + Math.random()*80,
+        life: 1, decay: 0.02,
+        size: 8 + Math.random()*12,
+        color: `rgba(255,${180+Math.floor(Math.random()*60)},0,0.9)`,
+        isRect: false, rotation: 0, vr: 0,
+      });
+    }
+
+    if (t >= 1) triggerExplosion();
+  }
+
+  // ── EXPLODING — bounce off walls and each other ──
+  else if (state === STATE.EXPLODING) {
+    for (let piece of pieces) {
+      piece.vy += GRAV * dt;
+      piece.x += piece.vx * dt;
+      piece.y += piece.vy * dt;
+      piece.rotation += piece.vr * dt;
+      piece.vr *= 0.98;
+
+      const hw = piece.ing.w / 2;
+      const hh = piece.ing.h / 2;
+
+      // Wall bounce left/right
+      if (piece.x - hw < 0) { piece.x = hw; piece.vx = Math.abs(piece.vx) * 0.7; }
+      if (piece.x + hw > W) { piece.x = W - hw; piece.vx = -Math.abs(piece.vx) * 0.7; }
+      // Ceiling
+      if (piece.y - hh < 0) { piece.y = hh; piece.vy = Math.abs(piece.vy) * 0.5; }
+      // No floor — pieces fall off screen
+    }
+
+    // Piece-to-piece collision (pixel-perfect)
+    for (let a = 0; a < pieces.length; a++) {
+      for (let b = a + 1; b < pieces.length; b++) {
+        checkPixelCollision(pieces[a], pieces[b]);
+      }
+    }
+
+    for (let si of STACK_ORDER) drawIngredient(pieces[si], 0, 1);
+
+    // Once every piece has fallen completely off the bottom, start the drop
+    if (pieces.every(p => p.y - p.ing.h / 2 > H + 20)) {
+      pieces.forEach(p => { p.landed = false; p.falling = false; p.bounced = false; p.y = -p.ing.h; });
+      stackedCount = 0;
+      state = STATE.DROPPING;
+    }
+  }
+
+  // ── DROPPING — pieces fall one-by-one from top into stack ──
+  else if (state === STATE.DROPPING) {
+    const stackY = getStackY(0);
+
+    // Draw already-landed pieces (bottom to top so upper ones render on top)
+    for (let si of STACK_ORDER) {
+      if (pieces[si].landed) drawIngredient(pieces[si], 0, 1);
+    }
+
+    // Active falling piece
+    const dropIdx = STACK_ORDER[stackedCount];
+    if (dropIdx !== undefined) {
+      const piece = pieces[dropIdx];
+      if (!piece.falling) {
+        // Spawn it from above
+        piece.x = CX;
+        piece.y = -piece.ing.h;
+        piece.vx = 0;
+        piece.vy = 0;
+        piece.rotation = 0;
+        piece.falling = true;
+      }
+      piece.vy += GRAV * 2.0 * dt;
+      piece.y += piece.vy * dt;
+
+      const target = stackY[dropIdx];
+      if (piece.y >= target && piece.vy > 0) {
+        piece.y = target;
+        piece.x = CX;
+        piece.rotation = 0;
+        piece.vx = 0;
+
+        // Show particles/tag on first hit
+        if (!piece.bounced) {
+          piece.bounced = true;
+          spawnLandParticles(CX, piece.y + piece.ing.h / 2);
+          showIngredientTag(piece.ing.label);
+        }
+
+        if (piece.vy > 70) {
+          // Bounce back up
+          piece.vy = -piece.vy * 0.32;
+        } else {
+          // Settle
+          piece.vy = 0;
+          piece.landed = true;
+          piece.falling = false;
+          stackedCount++;
+          if (stackedCount >= INGREDIENTS.length) {
+            setTimeout(() => completeAnimation(), 500);
+          }
+        }
+      }
+      drawIngredient(piece, 0, 1);
+    }
+  }
+
+  // ── COMPLETE ──
+  else if (state === STATE.COMPLETE) {
+    const bob = Math.sin(bobT * 1.5) * 6;
+    for (let si of STACK_ORDER) {
+      drawIngredient(pieces[si], bob, 1);
+    }
+    // golden glow
+    const glow = ctx.createRadialGradient(CX, BURGER_CY, 0, CX, BURGER_CY, 200);
+    glow.addColorStop(0, 'rgba(255,199,44,0.08)');
+    glow.addColorStop(1, 'rgba(255,199,44,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  updateParticles(dt);
+  requestAnimationFrame(loop);
+}
+
+// ── PIXEL-PERFECT COLLISION ────────────────────────────────────────────────────
+// Sample spacing in pixels — every STEP px rather than every px for performance
+const PIXEL_STEP = 4;
+const ALPHA_THRESH = 20; // treat alpha < 20 as transparent
+
+function checkPixelCollision(pa, pb) {
+  const ia = pa.ing, ib = pb.ing;
+
+  // 1. Fast pre-filter: bounding circles (circumscribed around the full image rect)
+  const dx = pb.x - pa.x, dy = pb.y - pa.y;
+  const dist2 = dx * dx + dy * dy;
+  const rSum = ia.circleR + ib.circleR;
+  if (dist2 > rSum * rSum) return;
+
+  // 2. Pixel overlap check
+  //    Iterate A's pixel grid in A-local space.
+  //    For each opaque A-pixel, transform → world → B-local, then sample B's alpha.
+  const cosA = Math.cos(pa.rotation), sinA = Math.sin(pa.rotation);
+  const cosB = Math.cos(pb.rotation), sinB = Math.sin(pb.rotation);
+  const hw_a = ia.w * 0.5, hh_a = ia.h * 0.5;
+  const hw_b = ib.w * 0.5, hh_b = ib.h * 0.5;
+
+  let found = false;
+  outer: for (let ly = -hh_a + PIXEL_STEP * 0.5; ly < hh_a; ly += PIXEL_STEP) {
+    for (let lx = -hw_a + PIXEL_STEP * 0.5; lx < hw_a; lx += PIXEL_STEP) {
+
+      // Sample A alpha (A-local coords → image pixel index)
+      const aix = (lx + hw_a) | 0;
+      const aiy = (ly + hh_a) | 0;
+      if (ia.alphaMap[aiy * ia.w + aix] < ALPHA_THRESH) continue;
+
+      // A-local → world  (standard 2D rotation)
+      const wx = pa.x + lx * cosA - ly * sinA;
+      const wy = pa.y + lx * sinA + ly * cosA;
+
+      // World → B-local  (inverse rotation of B: transpose = [cosB, sinB; -sinB, cosB])
+      const ddx = wx - pb.x, ddy = wy - pb.y;
+      const blx = ddx * cosB + ddy * sinB;
+      const bly = -ddx * sinB + ddy * cosB;
+
+      // Sample B alpha
+      const bix = (blx + hw_b) | 0;
+      const biy = (bly + hh_b) | 0;
+      if (bix < 0 || bix >= ib.w || biy < 0 || biy >= ib.h) continue;
+      if (ib.alphaMap[biy * ib.w + bix] < ALPHA_THRESH) continue;
+
+      found = true;
+      break outer;
+    }
+  }
+  if (!found) return;
+
+  // 3. Collision response — normal along center-to-center direction (stable)
+  const dist = Math.sqrt(dist2);
+  const nx = dist > 0.1 ? dx / dist : 0;
+  const ny = dist > 0.1 ? dy / dist : -1;
+
+  // Velocity impulse + positional correction — only when pieces are approaching
+  // (vn > 0). Gating on vn prevents the repeated push that causes jitter when
+  // pieces are already separating after a bounce.
+  const dvx = pa.vx - pb.vx, dvy = pa.vy - pb.vy;
+  const vn = dvx * nx + dvy * ny;
+  if (vn > 0) {
+    const imp = vn * 0.85; // e = 0.7 restitution, equal mass
+    pa.vx -= imp * nx; pa.vy -= imp * ny;
+    pb.vx += imp * nx; pb.vy += imp * ny;
+    // Small correction only while actively colliding
+    pa.x -= nx * 2; pa.y -= ny * 2;
+    pb.x += nx * 2; pb.y += ny * 2;
+  }
+}
+
+// ── EXPLOSION ──────────────────────────────────────────────────────────────────
+function triggerExplosion() {
+  state = STATE.EXPLODING;
+  pressBar.style.opacity = '0';
+  vignette.style.background = 'transparent';
+
+  spawnBurstParticles(CX, BURGER_CY, 80);
+
+  const angles = [
+    -Math.PI * 0.7, -Math.PI * 0.85, -Math.PI * 0.55,
+    -Math.PI * 0.65, -Math.PI * 0.9, -Math.PI * 0.5,
+  ];
+  pieces.forEach((piece, i) => {
+    const angle = angles[i] + (Math.random()-0.5)*0.4;
+    const speed = 500 + Math.random() * 400;
+    piece.vx = Math.cos(angle) * speed * (i % 2 === 0 ? 1 : -1);
+    piece.vy = Math.sin(angle) * speed;
+    piece.vr = (Math.random()-0.5) * 8;
+    piece.landed = false;
+    piece.falling = false;
+  });
+
+  copyText.textContent = "I'm lovin it Macdonald 🍔";
+  copySmall.textContent = 'Tap to burst again';
+
+  stackedCount = 0;
+}
+
+// ── COMPLETE ──────────────────────────────────────────────────────────────────
+function completeAnimation() {
+  state = STATE.COMPLETE;
+  stackOffsets = getStackY(0);
+  pieces.forEach((piece, i) => {
+    piece.y = stackOffsets[i];
+    piece.x = CX;
+    piece.rotation = 0;
+    piece.landed = true;
+  });
+  spawnBurstParticles(CX, CY - 80, 30);
+}
+
+// ── INGREDIENT TAG ─────────────────────────────────────────────────────────────
+let tagTimer;
+function showIngredientTag(label) {
+  ingredientTag.textContent = label;
+  ingredientTag.style.opacity = '1';
+  clearTimeout(tagTimer);
+  tagTimer = setTimeout(() => { ingredientTag.style.opacity = '0'; }, 700);
+}
+
+// ── INPUT ──────────────────────────────────────────────────────────────────────
+function startPress() {
+  if (state === STATE.COMPLETE || state === STATE.IDLE) {
+    initPieces();
+    stackedCount = 0;
+    state = STATE.PRESSING;
+    pressStart = performance.now();
+    pressBar.style.opacity = '1';
+    copyText.textContent = 'KEEP PRESSING...';
+    copySmall.textContent = '';
+  }
+}
+
+function endPress() {
+  if (state === STATE.PRESSING) {
+    if (pressDuration < 200) {
+      // too short, reset
+      state = STATE.IDLE;
+      pressBar.style.opacity = '0';
+      vignette.style.background = 'transparent';
+      copyText.textContent = "I'm lovin it Macdonald 🍔";
+      copySmall.textContent = 'Tap to burst';
+      return;
+    }
+    triggerExplosion();
+  }
+}
+
+canvas.addEventListener('mousedown', startPress);
+canvas.addEventListener('mouseup', endPress);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); startPress(); }, { passive: false });
+canvas.addEventListener('touchend', e => { e.preventDefault(); endPress(); }, { passive: false });
+
+// Init — load images then start animation
+loadImages().then(() => {
+  buildAlphaMaps();
+  initPieces();
+  requestAnimationFrame(loop);
+});
+</script>
+
+</body>
+</html>
