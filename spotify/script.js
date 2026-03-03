@@ -13,7 +13,7 @@ const CFG = {
   restitution: 0.28,
   friction: 0.65,
   frictionAir: 0.018,
-  explosionForce: 0.22,
+  explosionForce: 0.11,
   explosionRadius: 190,
   fadeSpeed: 0.04,
   colors: [
@@ -245,13 +245,13 @@ function spawnWordText(word) {
   const fontSize = Math.round(CFG.minFont + vol * (CFG.maxFont - CFG.minFont));
   const color = CFG.colors[Math.floor(Math.random() * CFG.colors.length)];
 
-  ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
+  ctx.font = `bold ${fontSize}px "Malgun Gothic", "Apple Gothic", "NanumGothic", sans-serif`;
   const tw = ctx.measureText(word).width;
   const bw = tw + fontSize * 0.9;
   const bh = fontSize + 10;
 
   const x = Math.random() * (W - bw) + bw / 2;
-  const y = -bh / 2 - 10;
+  const y = Math.random() * (H - bh) + bh / 2;
 
   const body = Bodies.rectangle(x, y, bw, bh, {
     restitution: CFG.restitution,
@@ -465,14 +465,13 @@ function renderWords() {
     ctx.translate(body.position.x, body.position.y);
     ctx.rotate(body.angle);
 
-    const r = bh * 0.38;
     ctx.beginPath();
-    roundRectPath(ctx, -bw / 2, -bh / 2, bw, bh, r);
+    ctx.rect(-bw / 2, -bh / 2, bw, bh);
     ctx.fillStyle = color;
     ctx.fill();
 
     ctx.beginPath();
-    roundRectPath(ctx, -bw / 2, -bh / 2, bw, bh, r);
+    ctx.rect(-bw / 2, -bh / 2, bw, bh);
     const glow = ctx.createLinearGradient(0, -bh / 2, 0, bh / 2);
     glow.addColorStop(0, 'rgba(255,255,255,0.18)');
     glow.addColorStop(1, 'rgba(0,0,0,0.15)');
@@ -480,7 +479,7 @@ function renderWords() {
     ctx.fill();
 
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${fontSize}px -apple-system, "Helvetica Neue", sans-serif`;
+    ctx.font = `bold ${fontSize}px "Malgun Gothic", "Apple Gothic", "NanumGothic", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.shadowColor = 'rgba(0,0,0,0.35)';
