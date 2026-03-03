@@ -257,7 +257,7 @@ function spawnWordText(word) {
   const bh = fontSize + 10;
 
   const x = Math.random() * (W - bw) + bw / 2;
-  const y = Math.random() * (H - bh) + bh / 2;
+  const y = bh / 2 + Math.random() * bh;
 
   const body = Bodies.rectangle(x, y, bw, bh, {
     restitution: CFG.restitution,
