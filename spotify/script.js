@@ -87,10 +87,23 @@ async function loadSong(songId) {
   // Update UI
   document.getElementById('song-title').textContent = currentSong.title;
   document.getElementById('artist-name').textContent = currentSong.artist;
+  requestAnimationFrame(updateTitleMarquee);
 
   // Update audio source
   audioEl.src = currentSong.audioFile;
   audioEl.load();
+}
+
+function updateTitleMarquee() {
+  const wrap = document.querySelector('.song-title-wrap');
+  const el = document.getElementById('song-title');
+  el.classList.remove('marquee');
+  el.style.removeProperty('--marquee-dist');
+  void el.offsetWidth; // force reflow to restart animation cleanly
+  if (el.scrollWidth > wrap.clientWidth) {
+    el.style.setProperty('--marquee-dist', `${-(el.scrollWidth - wrap.clientWidth)}px`);
+    el.classList.add('marquee');
+  }
 }
 
 // ── State ────────────────────────────────────────────────
@@ -523,6 +536,7 @@ function renderWords() {
 
 function renderParticles() {
   for (const p of particles) {
+    if (p.life <= 0.05) continue;
     ctx.save();
     ctx.globalAlpha = p.life * 0.9;
     ctx.fillStyle = p.color;
