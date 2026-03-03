@@ -15,7 +15,7 @@ const CFG = {
   restitution: 0.28,
   friction: 0.65,
   frictionAir: 0.018,
-  explosionForce: 0.11,
+  explosionForce: 0.0275,
   explosionRadius: 190,
   fadeSpeed: 0.04,
   colors: [
@@ -24,11 +24,11 @@ const CFG = {
     '#D500F9', // vivid purple
     '#2979FF', // vivid blue
     '#FF6D00', // vivid orange
-    '#00E5FF', // vivid cyan
     '#76FF03', // vivid lime
     '#FF4081', // vivid pink
     '#651FFF', // vivid indigo
-    '#FFD600', // vivid yellow
+    '#E040FB', // vivid magenta
+    '#F4511E', // vivid deep orange
   ],
 };
 
