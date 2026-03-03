@@ -407,16 +407,18 @@ function pointInBody(px, py, body) {
 
 // ── Particles ─────────────────────────────────────────────
 function spawnParticles(x, y, color) {
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 28; i++) {
     const ang = Math.random() * Math.PI * 2;
     const spd = 1.5 + Math.random() * 7;
+    const glow = Math.random() < 0.35; // 35% are large bloom particles
     particles.push({
       x, y,
       vx: Math.cos(ang) * spd,
       vy: Math.sin(ang) * spd - 2,
       life: 1,
       color,
-      size: 1.5 + Math.random() * 3.5,
+      size: glow ? (3 + Math.random() * 4) : (1.2 + Math.random() * 2.8),
+      glow,
     });
   }
 }
@@ -539,14 +541,26 @@ function renderParticles() {
     if (p.life <= 0.05) continue;
     ctx.save();
     ctx.globalAlpha = p.life * 0.9;
-    ctx.fillStyle = p.color;
-    ctx.shadowColor = p.color;
-    ctx.shadowBlur = p.size * 2;
+    // shadowBlur scales with life → shadow shrinks as particle fades (fixes flicker)
+    if (p.glow) {
+      // Bloom particle: white center with large colored halo
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = p.size * 5 * p.life;
+      ctx.fillStyle = '#ffffff';
+    } else {
+      // Spark particle: bright color with moderate glow
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = p.size * 2.5 * p.life;
+      ctx.fillStyle = p.color;
+    }
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
+  // Explicitly reset shadow state after particle rendering to prevent bleed
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = 'transparent';
 }
 
 function roundRectPath(ctx, x, y, w, h, r) {
