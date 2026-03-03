@@ -6,6 +6,8 @@
 const { Engine, Bodies, Body, World, Events, Composite } = Matter;
 
 // ── Config ──────────────────────────────────────────────
+const CANVAS_PAD = 24; // horizontal padding matching bottom section
+
 const CFG = {
   minFont: 7,
   maxFont: 23,
@@ -18,15 +20,15 @@ const CFG = {
   fadeSpeed: 0.04,
   colors: [
     '#1DB954', // Spotify green
-    '#E91E63', // pink
-    '#9C27B0', // purple
-    '#2196F3', // blue
-    '#FF9800', // orange
-    '#FF5722', // deep orange
-    '#00BCD4', // cyan
-    '#F44336', // red
-    '#8BC34A', // light green
-    '#673AB7', // deep purple
+    '#FF1744', // vivid red
+    '#D500F9', // vivid purple
+    '#2979FF', // vivid blue
+    '#FF6D00', // vivid orange
+    '#00E5FF', // vivid cyan
+    '#76FF03', // vivid lime
+    '#FF4081', // vivid pink
+    '#651FFF', // vivid indigo
+    '#FFD600', // vivid yellow
   ],
 };
 
@@ -37,11 +39,34 @@ let lyricsIdx = 0;       // index into lyricsQueue for timing-based spawn
 let fallbackWords = [];  // words extracted from lyrics for fallback (no-timing) mode
 let fallbackIdx = 0;
 
+let allSongs = [];
+let currentSongIndex = 0;
+
+async function switchSong() {
+  const wasPlaying = isPlaying;
+  if (wasPlaying) {
+    pausedAt = 0;
+    stopAudio();
+    isPlaying = false;
+    document.getElementById('play-icon').style.display = '';
+    document.getElementById('pause-icon').style.display = 'none';
+  }
+
+  // Clear current words
+  wordBodies.forEach(wb => World.remove(world, wb.body));
+  wordBodies = [];
+  particles = [];
+
+  currentSongIndex = (currentSongIndex + 1) % allSongs.length;
+  await loadSong(allSongs[currentSongIndex].id);
+
+  if (wasPlaying) {
+    setPlaying(true);
+  }
+}
+
 async function loadSong(songId) {
-  // Load songs index
-  const songsRes = await fetch('assets/songs.json');
-  const songs = await songsRes.json();
-  const meta = songs.find(s => s.id === songId) || songs[0];
+  const meta = allSongs.find(s => s.id === songId) || allSongs[0];
 
   // Load lyrics JSON
   const lyricsRes = await fetch(meta.lyricsFile);
@@ -106,8 +131,11 @@ async function init() {
   setupAudio();
   setupEvents();
 
-  // Load default song (first song in songs.json)
-  await loadSong('viva-la-vida');
+  // Load songs list then default song
+  const songsRes = await fetch('assets/songs.json');
+  allSongs = await songsRes.json();
+  currentSongIndex = 0;
+  await loadSong(allSongs[0].id);
 
   requestAnimationFrame(tick);
 }
@@ -135,8 +163,8 @@ function rebuildWalls() {
   const t = 60;
   walls = [
     Bodies.rectangle(W / 2, H + t / 2, W + t * 2, t, { isStatic: true, label: 'wall', friction: 0.6 }),
-    Bodies.rectangle(-t / 2, H / 2, t, H * 3, { isStatic: true, label: 'wall' }),
-    Bodies.rectangle(W + t / 2, H / 2, t, H * 3, { isStatic: true, label: 'wall' }),
+    Bodies.rectangle(CANVAS_PAD - t / 2, H / 2, t, H * 3, { isStatic: true, label: 'wall' }),
+    Bodies.rectangle(W - CANVAS_PAD + t / 2, H / 2, t, H * 3, { isStatic: true, label: 'wall' }),
   ];
   World.add(world, walls);
 }
@@ -256,7 +284,9 @@ function spawnWordText(word) {
   const bw = tw + fontSize * 0.9;
   const bh = fontSize + 10;
 
-  const x = Math.random() * (W - bw) + bw / 2;
+  const minX = CANVAS_PAD + bw / 2;
+  const maxX = W - CANVAS_PAD - bw / 2;
+  const x = minX + Math.random() * Math.max(0, maxX - minX);
   const y = bh / 2 + Math.random() * bh;
 
   const body = Bodies.rectangle(x, y, bw, bh, {
@@ -476,14 +506,6 @@ function renderWords() {
     ctx.fillStyle = color;
     ctx.fill();
 
-    ctx.beginPath();
-    ctx.rect(-bw / 2, -bh / 2, bw, bh);
-    const glow = ctx.createLinearGradient(0, -bh / 2, 0, bh / 2);
-    glow.addColorStop(0, 'rgba(255,255,255,0.18)');
-    glow.addColorStop(1, 'rgba(0,0,0,0.15)');
-    ctx.fillStyle = glow;
-    ctx.fill();
-
     ctx.fillStyle = '#fff';
     ctx.font = `bold ${fontSize}px "Malgun Gothic", "Apple Gothic", "NanumGothic", sans-serif`;
     ctx.textAlign = 'center';
@@ -568,3 +590,4 @@ window.toggleShuffle = toggleShuffle;
 window.toggleRepeat = toggleRepeat;
 window.skipBack = skipBack;
 window.skipForward = skipForward;
+window.switchSong = switchSong;
