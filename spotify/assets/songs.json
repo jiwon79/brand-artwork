@@ -1,0 +1,9 @@
+[
+  {
+    "id": "viva-la-vida",
+    "title": "Viva La Vida",
+    "artist": "Coldplay",
+    "audioFile": "assets/Coldplay - Viva la Vida (Lyrics).mp3",
+    "lyricsFile": "assets/viva-la-vida.json"
+  }
+]

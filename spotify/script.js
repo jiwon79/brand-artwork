@@ -9,12 +9,11 @@ const { Engine, Bodies, Body, World, Events, Composite } = Matter;
 const CFG = {
   minFont: 7,
   maxFont: 23,
-  spawnMs: 1400,        // base interval between word spawns (ms)
   gravity: 1.0,
   restitution: 0.28,
   friction: 0.65,
   frictionAir: 0.018,
-  explosionForce: 0.22,  // 4× 증가
+  explosionForce: 0.22,
   explosionRadius: 190,
   fadeSpeed: 0.04,
   colors: [
@@ -31,28 +30,41 @@ const CFG = {
   ],
 };
 
-// ── Mock lyrics — Still D.R.E. (Dr. Dre ft. Snoop Dogg) ──
-const SAMPLE_LYRICS = [
-  'Still', 'D.R.E.', 'still', 'blazin\'',
-  'It\'s still', 'Dre day', 'yeah', 'uh',
-  'representing', 'gangsters', 'worldwide',
-  'Compton', 'low-lows', 'corners', 'girl',
-  'still got', 'love', 'for the', 'streets',
-  'dedicated', 'to all', 'the people',
-  'ridin\'', 'wit me', 'back then',
-  'Slim', 'Hittman', 'Mel-Man',
-  'still', 'number', 'one', 'now',
-  'platinum', 'every', 'album', 'shelf',
-  'West Coast', 'G-Funk', 'bass', 'treble',
-  'Snoop', 'Dogg', 'LBC', 'in', 'the house',
-  'microphone', 'style', 'never', 'gets', 'old',
-  'can\'t', 'stop', 'won\'t', 'stop',
-  'Dr.', 'Dre', 'still', 'here',
-  'hit \'em', 'hard', 'yeah', 'uh-huh',
-  'the game', 'don\'t', 'stop', 'for nobody',
-  'ride', 'or', 'die', 'homie',
-  'still', 'got it', 'like', 'that',
-];
+// ── Song data (loaded at runtime) ───────────────────────
+let currentSong = null;  // { id, title, artist, audioFile, lyrics: [{start, end, word}] }
+let lyricsQueue = [];    // copy of lyrics sorted by start time, consumed as song plays
+let lyricsIdx = 0;       // index into lyricsQueue for timing-based spawn
+let fallbackWords = [];  // words extracted from lyrics for fallback (no-timing) mode
+let fallbackIdx = 0;
+
+async function loadSong(songId) {
+  // Load songs index
+  const songsRes = await fetch('assets/songs.json');
+  const songs = await songsRes.json();
+  const meta = songs.find(s => s.id === songId) || songs[0];
+
+  // Load lyrics JSON
+  const lyricsRes = await fetch(meta.lyricsFile);
+  const songData = await lyricsRes.json();
+
+  currentSong = {
+    ...meta,
+    lyrics: songData.lyrics,
+  };
+
+  lyricsQueue = [...currentSong.lyrics];
+  lyricsIdx = 0;
+  fallbackWords = currentSong.lyrics.map(l => l.word);
+  fallbackIdx = 0;
+
+  // Update UI
+  document.getElementById('song-title').textContent = currentSong.title;
+  document.getElementById('artist-name').textContent = currentSong.artist;
+
+  // Update audio source
+  audioEl.src = currentSong.audioFile;
+  audioEl.load();
+}
 
 // ── State ────────────────────────────────────────────────
 let engine, world;
@@ -61,7 +73,6 @@ let walls = [];
 
 let wordBodies = [];   // { body, word, fontSize, color, bw, bh, spawnTime, fading, opacity }
 let particles = [];    // explosion particles
-let lyricsIdx = 0;
 let isPlaying = false;
 let liked = false;
 let shuffleOn = false;
@@ -69,19 +80,24 @@ let repeatOn = false;
 
 // Timing
 let simTime = 0;       // simulated playback seconds
-let lastSpawnAt = 0;   // timestamp of last word spawn
 let lastRaf = 0;       // last requestAnimationFrame timestamp
 let audioDuration = 0;
-let audioStartTime = 0; // when audio was started (audioCtx.currentTime)
 let pausedAt = 0;
+
+// Last timing-spawn check
+let lastTimingSpawnAt = -999;  // last audio time we checked for a word to spawn
+
+// Fallback spawn (when no timing match)
+let lastFallbackSpawnAt = 0;
+const FALLBACK_SPAWN_MS = 1400;
 
 // Audio
 let audioCtx, analyserNode, gainNode, mediaSource;
 let audioEl = null;
-let volumeLevel = 0.5;   // 0‥1 current
+let volumeLevel = 0.5;
 
 // ── Init ─────────────────────────────────────────────────
-function init() {
+async function init() {
   canvas = document.getElementById('physics-canvas');
   ctx = canvas.getContext('2d');
 
@@ -89,6 +105,9 @@ function init() {
   setupPhysics();
   setupAudio();
   setupEvents();
+
+  // Load default song (first song in songs.json)
+  await loadSong('viva-la-vida');
 
   requestAnimationFrame(tick);
 }
@@ -118,7 +137,6 @@ function rebuildWalls() {
 
 // ── Events ───────────────────────────────────────────────
 function setupEvents() {
-  // Canvas click → explosion
   canvas.addEventListener('click', handleCanvasClick);
   canvas.addEventListener('touchend', e => {
     e.preventDefault();
@@ -127,7 +145,6 @@ function setupEvents() {
     handleCanvasClick({ clientX: t.clientX, clientY: t.clientY, rect: r });
   });
 
-  // Progress bar seek
   document.getElementById('progress-wrap').addEventListener('click', e => {
     if (!audioDuration) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -135,7 +152,6 @@ function setupEvents() {
     seekTo(pct * audioDuration);
   });
 
-  // Resize
   window.addEventListener('resize', () => {
     setupCanvas();
     rebuildWalls();
@@ -153,7 +169,7 @@ function setupAudio() {
 
   audioEl.addEventListener('ended', () => {
     if (repeatOn) {
-      audioEl.currentTime = 0;
+      seekTo(0);
       audioEl.play();
     } else {
       setPlaying(false);
@@ -164,7 +180,6 @@ function setupAudio() {
 function ensureAudioCtx() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  // <audio> 엘리먼트를 Web Audio 그래프에 연결 (볼륨 분석용)
   mediaSource = audioCtx.createMediaElementSource(audioEl);
   analyserNode = audioCtx.createAnalyser();
   analyserNode.fftSize = 512;
@@ -180,7 +195,6 @@ function startAudio(fromTime = 0) {
   if (!audioEl) return;
   audioEl.currentTime = fromTime;
   audioEl.play().catch(e => console.warn('play() failed:', e));
-  audioStartTime = audioCtx ? audioCtx.currentTime - fromTime : 0;
 }
 
 function stopAudio() {
@@ -191,6 +205,14 @@ function seekTo(sec) {
   pausedAt = sec;
   if (audioEl) audioEl.currentTime = sec;
   if (isPlaying && audioEl) audioEl.play().catch(() => {});
+
+  // Reset lyrics index to match new position
+  if (currentSong) {
+    lyricsIdx = currentSong.lyrics.findIndex(l => l.start >= sec);
+    if (lyricsIdx < 0) lyricsIdx = currentSong.lyrics.length;
+    lastTimingSpawnAt = sec - 0.1;
+  }
+
   updateProgressUI(sec);
 }
 
@@ -207,7 +229,6 @@ function readVolume() {
     const avg = data.slice(0, data.length / 2).reduce((s, v) => s + v, 0) / (data.length / 2);
     volumeLevel = avg / 200;
   } else {
-    // Simulated volume: layered sine waves
     const t = simTime;
     const v = 0.35
       + 0.25 * Math.abs(Math.sin(t * 1.3))
@@ -219,15 +240,11 @@ function readVolume() {
 }
 
 // ── Word spawning ─────────────────────────────────────────
-function spawnWord(now) {
-  const word = SAMPLE_LYRICS[lyricsIdx % SAMPLE_LYRICS.length];
-  lyricsIdx++;
-
+function spawnWordText(word) {
   const vol = volumeLevel;
   const fontSize = Math.round(CFG.minFont + vol * (CFG.maxFont - CFG.minFont));
   const color = CFG.colors[Math.floor(Math.random() * CFG.colors.length)];
 
-  // Measure text
   ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
   const tw = ctx.measureText(word).width;
   const bw = tw + fontSize * 0.9;
@@ -241,15 +258,37 @@ function spawnWord(now) {
     friction: CFG.friction,
     frictionAir: CFG.frictionAir,
     label: 'word',
-    angle: (Math.random() - 0.5) * 0.3, // slight initial tilt
+    angle: (Math.random() - 0.5) * 0.3,
   });
 
   World.add(world, body);
-  wordBodies.push({ body, word, fontSize, color, bw, bh, spawnTime: now, fading: false, opacity: 1 });
+  wordBodies.push({ body, word, fontSize, color, bw, bh, fading: false, opacity: 1 });
+}
+
+// Timing-based: spawn all words whose start time has passed
+function spawnTimingWords(now, audioTime) {
+  if (!currentSong || lyricsIdx >= currentSong.lyrics.length) return;
+
+  while (lyricsIdx < currentSong.lyrics.length) {
+    const entry = currentSong.lyrics[lyricsIdx];
+    if (audioTime >= entry.start) {
+      spawnWordText(entry.word);
+      lyricsIdx++;
+    } else {
+      break;
+    }
+  }
+}
+
+// Fallback: spawn words at fixed intervals (for silent periods or when song not loaded)
+function spawnFallbackWord(now) {
+  if (!fallbackWords.length) return;
+  const word = fallbackWords[fallbackIdx % fallbackWords.length];
+  fallbackIdx++;
+  spawnWordText(word);
 }
 
 // ── Cleanup ───────────────────────────────────────────────
-// 활성 단어들의 넓이 합이 캔버스 면적의 1/3을 넘으면 오래된 것부터 페이드
 let lastCleanupAt = 0;
 
 function checkCleanup(ts) {
@@ -259,7 +298,7 @@ function checkCleanup(ts) {
   const active = wordBodies.filter(wb => !wb.fading);
   const totalArea = active.reduce((sum, wb) => sum + wb.bw * wb.bh, 0);
   if (totalArea > W * H / 3 && active.length > 0) {
-    active[0].fading = true; // 가장 오래된 단어부터 페이드
+    active[0].fading = true;
   }
 }
 
@@ -269,7 +308,6 @@ function handleCanvasClick(e) {
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
 
-  // Find topmost body under cursor (check in reverse = top drawn last)
   let hit = -1;
   for (let i = wordBodies.length - 1; i >= 0; i--) {
     const { body } = wordBodies[i];
@@ -284,10 +322,8 @@ function handleCanvasClick(e) {
   const { body, color } = wordBodies[hit];
   const { x, y } = body.position;
 
-  // Particle burst
   spawnParticles(x, y, color);
 
-  // Apply radial impulse to neighbours
   wordBodies.forEach(({ body: b }, i) => {
     if (i === hit) return;
     const dx = b.position.x - x;
@@ -297,26 +333,22 @@ function handleCanvasClick(e) {
       const str = CFG.explosionForce * (1 - dist / CFG.explosionRadius);
       Body.applyForce(b, b.position, {
         x: (dx / dist) * str,
-        y: (dy / dist) * str - str * 0.4, // slight upward bias
+        y: (dy / dist) * str - str * 0.4,
       });
     }
   });
 
-  // Remove clicked word immediately
   World.remove(world, body);
   wordBodies.splice(hit, 1);
 }
 
-// Precise rotated-rect point test
 function pointInBody(px, py, body) {
   const { x, y } = body.position;
   const ang = body.angle;
   const dx = px - x;
   const dy = py - y;
-  // Rotate point into body local space
   const lx = dx * Math.cos(-ang) - dy * Math.sin(-ang);
   const ly = dx * Math.sin(-ang) + dy * Math.cos(-ang);
-  // Check against half-extents stored in bounds
   const hw = (body.bounds.max.x - body.bounds.min.x) / 2;
   const hh = (body.bounds.max.y - body.bounds.min.y) / 2;
   return Math.abs(lx) <= hw && Math.abs(ly) <= hh;
@@ -363,7 +395,7 @@ async function setPlaying(val) {
   if (val) {
     document.getElementById('canvas-hint').classList.add('hidden');
     ensureAudioCtx();
-    await audioCtx.resume(); // suspended 상태 해제 (일부 브라우저 필수)
+    await audioCtx.resume();
     startAudio(pausedAt);
   } else {
     pausedAt = getAudioTime();
@@ -413,21 +445,12 @@ function formatTime(s) {
   return m + ':' + String(s % 60).padStart(2, '0');
 }
 
-function updateStatusTime() {
-  const el = document.getElementById('status-time');
-  if (!el) return;
-  const now = new Date();
-  el.textContent = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
-}
-
 // ── Rendering ─────────────────────────────────────────────
-
 function renderWords() {
   for (let i = wordBodies.length - 1; i >= 0; i--) {
     const wb = wordBodies[i];
     const { body, word, fontSize, color, bw, bh, fading } = wb;
 
-    // Fade out
     if (fading) {
       wb.opacity -= CFG.fadeSpeed;
       if (wb.opacity <= 0) {
@@ -442,14 +465,12 @@ function renderWords() {
     ctx.translate(body.position.x, body.position.y);
     ctx.rotate(body.angle);
 
-    // Pill background
     const r = bh * 0.38;
     ctx.beginPath();
     roundRectPath(ctx, -bw / 2, -bh / 2, bw, bh, r);
     ctx.fillStyle = color;
     ctx.fill();
 
-    // Subtle inner glow
     ctx.beginPath();
     roundRectPath(ctx, -bw / 2, -bh / 2, bw, bh, r);
     const glow = ctx.createLinearGradient(0, -bh / 2, 0, bh / 2);
@@ -458,7 +479,6 @@ function renderWords() {
     ctx.fillStyle = glow;
     ctx.fill();
 
-    // Text
     ctx.fillStyle = '#fff';
     ctx.font = `bold ${fontSize}px -apple-system, "Helvetica Neue", sans-serif`;
     ctx.textAlign = 'center';
@@ -509,31 +529,25 @@ function tick(ts) {
     simTime += dt / 1000;
     readVolume();
 
-    // Spawn words
-    const spawnInterval = CFG.spawnMs * (0.6 + 0.8 * (1 - volumeLevel));
-    if (ts - lastSpawnAt > spawnInterval) {
-      spawnWord(ts);
-      lastSpawnAt = ts;
-    }
+    const audioTime = getAudioTime();
 
-    // Cleanup check (pile height)
+    // Timing-based spawn: spawn words that match current audio time
+    spawnTimingWords(ts, audioTime);
+
+    // Cleanup check
     checkCleanup(ts);
 
     // Physics step
     Engine.update(engine, dt);
 
-    // Progress bar — 실제 오디오 재생 시간으로 업데이트
-    updateProgressUI(getAudioTime());
+    // Progress bar
+    updateProgressUI(audioTime);
   }
 
-  // Clear
   ctx.clearRect(0, 0, W, H);
 
-  // Update & draw particles
   updateParticles();
   renderParticles();
-
-  // Draw words (updates fading too)
   renderWords();
 
   requestAnimationFrame(tick);
