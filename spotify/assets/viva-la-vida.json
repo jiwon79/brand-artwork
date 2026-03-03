@@ -1,0 +1,1433 @@
+{
+  "id": "viva-la-vida",
+  "title": "Viva La Vida",
+  "artist": "Coldplay",
+  "audioFile": "assets/Coldplay - Viva la Vida (Lyrics).mp3",
+  "lyrics": [
+    {
+      "start": 12.96,
+      "end": 13.78,
+      "word": "I"
+    },
+    {
+      "start": 13.78,
+      "end": 14.28,
+      "word": "used"
+    },
+    {
+      "start": 14.28,
+      "end": 15,
+      "word": "to"
+    },
+    {
+      "start": 15,
+      "end": 15.92,
+      "word": "rule"
+    },
+    {
+      "start": 15.92,
+      "end": 16.32,
+      "word": "the"
+    },
+    {
+      "start": 16.32,
+      "end": 17.16,
+      "word": "world,"
+    },
+    {
+      "start": 17.6,
+      "end": 17.6,
+      "word": "the"
+    },
+    {
+      "start": 17.6,
+      "end": 17.86,
+      "word": "seas"
+    },
+    {
+      "start": 17.86,
+      "end": 18.18,
+      "word": "had"
+    },
+    {
+      "start": 18.18,
+      "end": 18.52,
+      "word": "rise"
+    },
+    {
+      "start": 18.52,
+      "end": 18.74,
+      "word": "when"
+    },
+    {
+      "start": 18.74,
+      "end": 19,
+      "word": "I"
+    },
+    {
+      "start": 19,
+      "end": 19.42,
+      "word": "gave"
+    },
+    {
+      "start": 19.42,
+      "end": 19.74,
+      "word": "the"
+    },
+    {
+      "start": 19.74,
+      "end": 19.94,
+      "word": "word."
+    },
+    {
+      "start": 19.98,
+      "end": 20.32,
+      "word": "Now"
+    },
+    {
+      "start": 20.32,
+      "end": 20.54,
+      "word": "in"
+    },
+    {
+      "start": 20.54,
+      "end": 20.8,
+      "word": "the"
+    },
+    {
+      "start": 20.8,
+      "end": 21.1,
+      "word": "morning"
+    },
+    {
+      "start": 21.1,
+      "end": 21.64,
+      "word": "I"
+    },
+    {
+      "start": 21.64,
+      "end": 22.88,
+      "word": "sleep"
+    },
+    {
+      "start": 22.88,
+      "end": 23.9,
+      "word": "alone,"
+    },
+    {
+      "start": 24.52,
+      "end": 24.72,
+      "word": "sweep"
+    },
+    {
+      "start": 24.72,
+      "end": 25.14,
+      "word": "the"
+    },
+    {
+      "start": 25.14,
+      "end": 25.58,
+      "word": "streets"
+    },
+    {
+      "start": 25.58,
+      "end": 26.14,
+      "word": "I"
+    },
+    {
+      "start": 26.14,
+      "end": 26.5,
+      "word": "used"
+    },
+    {
+      "start": 26.5,
+      "end": 27,
+      "word": "to"
+    },
+    {
+      "start": 27,
+      "end": 27.72,
+      "word": "own."
+    },
+    {
+      "start": 40.7,
+      "end": 41.54,
+      "word": "I"
+    },
+    {
+      "start": 41.54,
+      "end": 41.98,
+      "word": "used"
+    },
+    {
+      "start": 41.98,
+      "end": 43.04,
+      "word": "to"
+    },
+    {
+      "start": 43.04,
+      "end": 43.64,
+      "word": "roll"
+    },
+    {
+      "start": 43.64,
+      "end": 44.1,
+      "word": "the"
+    },
+    {
+      "start": 44.1,
+      "end": 44.96,
+      "word": "dice,"
+    },
+    {
+      "start": 45.54,
+      "end": 45.68,
+      "word": "feel"
+    },
+    {
+      "start": 45.68,
+      "end": 46.04,
+      "word": "the"
+    },
+    {
+      "start": 46.04,
+      "end": 46.34,
+      "word": "fear"
+    },
+    {
+      "start": 46.34,
+      "end": 46.66,
+      "word": "in"
+    },
+    {
+      "start": 46.66,
+      "end": 46.94,
+      "word": "my"
+    },
+    {
+      "start": 46.94,
+      "end": 47.36,
+      "word": "enemies"
+    },
+    {
+      "start": 47.36,
+      "end": 48.34,
+      "word": "eyes,"
+    },
+    {
+      "start": 48.74,
+      "end": 48.9,
+      "word": "listen"
+    },
+    {
+      "start": 48.9,
+      "end": 49.14,
+      "word": "as"
+    },
+    {
+      "start": 49.14,
+      "end": 49.58,
+      "word": "the"
+    },
+    {
+      "start": 49.58,
+      "end": 50.44,
+      "word": "crowd"
+    },
+    {
+      "start": 50.44,
+      "end": 51.04,
+      "word": "would"
+    },
+    {
+      "start": 51.04,
+      "end": 51.92,
+      "word": "sing."
+    },
+    {
+      "start": 52.38,
+      "end": 52.68,
+      "word": "Now"
+    },
+    {
+      "start": 52.68,
+      "end": 52.86,
+      "word": "the"
+    },
+    {
+      "start": 52.86,
+      "end": 53.18,
+      "word": "old"
+    },
+    {
+      "start": 53.18,
+      "end": 53.66,
+      "word": "king's"
+    },
+    {
+      "start": 53.66,
+      "end": 54.08,
+      "word": "dead,"
+    },
+    {
+      "start": 54.24,
+      "end": 54.42,
+      "word": "long"
+    },
+    {
+      "start": 54.42,
+      "end": 54.6,
+      "word": "live"
+    },
+    {
+      "start": 54.6,
+      "end": 54.94,
+      "word": "the"
+    },
+    {
+      "start": 54.94,
+      "end": 55.14,
+      "word": "king."
+    },
+    {
+      "start": 55.14,
+      "end": 55.42,
+      "word": "One"
+    },
+    {
+      "start": 55.42,
+      "end": 55.92,
+      "word": "minute"
+    },
+    {
+      "start": 55.92,
+      "end": 57.06,
+      "word": "I"
+    },
+    {
+      "start": 57.06,
+      "end": 57.56,
+      "word": "held"
+    },
+    {
+      "start": 57.56,
+      "end": 57.98,
+      "word": "the"
+    },
+    {
+      "start": 57.98,
+      "end": 58.92,
+      "word": "key,"
+    },
+    {
+      "start": 59.24,
+      "end": 59.56,
+      "word": "next"
+    },
+    {
+      "start": 59.56,
+      "end": 60.02,
+      "word": "the"
+    },
+    {
+      "start": 60.02,
+      "end": 60.44,
+      "word": "walls"
+    },
+    {
+      "start": 60.44,
+      "end": 60.8,
+      "word": "were"
+    },
+    {
+      "start": 60.8,
+      "end": 61.12,
+      "word": "closed"
+    },
+    {
+      "start": 61.12,
+      "end": 61.6,
+      "word": "on"
+    },
+    {
+      "start": 61.6,
+      "end": 61.86,
+      "word": "me"
+    },
+    {
+      "start": 61.86,
+      "end": 62.1,
+      "word": "and"
+    },
+    {
+      "start": 62.1,
+      "end": 62.34,
+      "word": "I"
+    },
+    {
+      "start": 62.34,
+      "end": 62.76,
+      "word": "discovered"
+    },
+    {
+      "start": 62.76,
+      "end": 63.06,
+      "word": "that"
+    },
+    {
+      "start": 63.06,
+      "end": 63.78,
+      "word": "my"
+    },
+    {
+      "start": 63.78,
+      "end": 64.58,
+      "word": "castle"
+    },
+    {
+      "start": 64.58,
+      "end": 65.68,
+      "word": "stand"
+    },
+    {
+      "start": 65.68,
+      "end": 66.66,
+      "word": "upon"
+    },
+    {
+      "start": 66.66,
+      "end": 67.18,
+      "word": "pillars"
+    },
+    {
+      "start": 67.18,
+      "end": 67.62,
+      "word": "of"
+    },
+    {
+      "start": 67.62,
+      "end": 67.96,
+      "word": "sand,"
+    },
+    {
+      "start": 68,
+      "end": 68.48,
+      "word": "pillars"
+    },
+    {
+      "start": 68.48,
+      "end": 69.06,
+      "word": "of"
+    },
+    {
+      "start": 69.06,
+      "end": 69.51,
+      "word": "sand."
+    },
+    {
+      "start": 69.51,
+      "end": 70.37,
+      "word": "I"
+    },
+    {
+      "start": 70.37,
+      "end": 70.63,
+      "word": "hear"
+    },
+    {
+      "start": 70.63,
+      "end": 71.55,
+      "word": "jarrison"
+    },
+    {
+      "start": 71.55,
+      "end": 72.11,
+      "word": "of"
+    },
+    {
+      "start": 72.11,
+      "end": 72.45,
+      "word": "bells"
+    },
+    {
+      "start": 72.45,
+      "end": 73.39,
+      "word": "ringing,"
+    },
+    {
+      "start": 74.23,
+      "end": 74.43,
+      "word": "Roman"
+    },
+    {
+      "start": 74.43,
+      "end": 75.23,
+      "word": "cavalry"
+    },
+    {
+      "start": 75.23,
+      "end": 75.95,
+      "word": "choirs"
+    },
+    {
+      "start": 75.95,
+      "end": 76.29,
+      "word": "are"
+    },
+    {
+      "start": 76.29,
+      "end": 76.89,
+      "word": "singing,"
+    },
+    {
+      "start": 77.37,
+      "end": 77.37,
+      "word": "I"
+    },
+    {
+      "start": 77.37,
+      "end": 77.77,
+      "word": "beam"
+    },
+    {
+      "start": 77.77,
+      "end": 78.09,
+      "word": "or"
+    },
+    {
+      "start": 78.09,
+      "end": 78.41,
+      "word": "mirror"
+    },
+    {
+      "start": 78.41,
+      "end": 79.01,
+      "word": "my"
+    },
+    {
+      "start": 79.01,
+      "end": 79.33,
+      "word": "sword"
+    },
+    {
+      "start": 79.33,
+      "end": 79.77,
+      "word": "and"
+    },
+    {
+      "start": 79.77,
+      "end": 80.27,
+      "word": "shield"
+    },
+    {
+      "start": 80.27,
+      "end": 80.73,
+      "word": "my"
+    },
+    {
+      "start": 80.73,
+      "end": 81.81,
+      "word": "missionaries"
+    },
+    {
+      "start": 81.81,
+      "end": 82.15,
+      "word": "in"
+    },
+    {
+      "start": 82.15,
+      "end": 82.51,
+      "word": "the"
+    },
+    {
+      "start": 82.51,
+      "end": 82.99,
+      "word": "foreign"
+    },
+    {
+      "start": 82.99,
+      "end": 83.79,
+      "word": "field."
+    },
+    {
+      "start": 84.11,
+      "end": 84.53,
+      "word": "For"
+    },
+    {
+      "start": 84.53,
+      "end": 85.03,
+      "word": "some"
+    },
+    {
+      "start": 85.03,
+      "end": 85.43,
+      "word": "reason"
+    },
+    {
+      "start": 85.43,
+      "end": 85.75,
+      "word": "I"
+    },
+    {
+      "start": 85.75,
+      "end": 86.57,
+      "word": "can't"
+    },
+    {
+      "start": 86.57,
+      "end": 87.17,
+      "word": "explain,"
+    },
+    {
+      "start": 87.63,
+      "end": 88.11,
+      "word": "once"
+    },
+    {
+      "start": 88.11,
+      "end": 88.45,
+      "word": "he"
+    },
+    {
+      "start": 88.45,
+      "end": 88.69,
+      "word": "had"
+    },
+    {
+      "start": 88.69,
+      "end": 88.93,
+      "word": "gone"
+    },
+    {
+      "start": 88.93,
+      "end": 89.21,
+      "word": "there"
+    },
+    {
+      "start": 89.21,
+      "end": 89.51,
+      "word": "was"
+    },
+    {
+      "start": 89.51,
+      "end": 89.97,
+      "word": "never,"
+    },
+    {
+      "start": 90.13,
+      "end": 90.89,
+      "word": "never"
+    },
+    {
+      "start": 90.89,
+      "end": 91.51,
+      "word": "a"
+    },
+    {
+      "start": 91.51,
+      "end": 92.17,
+      "word": "rule"
+    },
+    {
+      "start": 92.17,
+      "end": 92.81,
+      "word": "this"
+    },
+    {
+      "start": 92.81,
+      "end": 93.65,
+      "word": "world,"
+    },
+    {
+      "start": 94.01,
+      "end": 94.21,
+      "word": "and"
+    },
+    {
+      "start": 94.21,
+      "end": 94.39,
+      "word": "that"
+    },
+    {
+      "start": 94.39,
+      "end": 94.63,
+      "word": "was"
+    },
+    {
+      "start": 94.63,
+      "end": 95.01,
+      "word": "when"
+    },
+    {
+      "start": 95.01,
+      "end": 95.59,
+      "word": "I"
+    },
+    {
+      "start": 95.59,
+      "end": 95.87,
+      "word": "ruled"
+    },
+    {
+      "start": 95.87,
+      "end": 96.63,
+      "word": "the"
+    },
+    {
+      "start": 96.63,
+      "end": 97.29,
+      "word": "world."
+    },
+    {
+      "start": 109.75,
+      "end": 110.59,
+      "word": "It"
+    },
+    {
+      "start": 110.59,
+      "end": 111.01,
+      "word": "was"
+    },
+    {
+      "start": 111.01,
+      "end": 111.19,
+      "word": "the"
+    },
+    {
+      "start": 111.19,
+      "end": 111.57,
+      "word": "wicked"
+    },
+    {
+      "start": 111.57,
+      "end": 112.21,
+      "word": "and"
+    },
+    {
+      "start": 112.21,
+      "end": 113.39,
+      "word": "wild"
+    },
+    {
+      "start": 113.39,
+      "end": 114.35,
+      "word": "wind,"
+    },
+    {
+      "start": 114.75,
+      "end": 114.97,
+      "word": "blew"
+    },
+    {
+      "start": 114.97,
+      "end": 115.33,
+      "word": "down"
+    },
+    {
+      "start": 115.33,
+      "end": 115.55,
+      "word": "the"
+    },
+    {
+      "start": 115.55,
+      "end": 116.01,
+      "word": "doors"
+    },
+    {
+      "start": 116.01,
+      "end": 116.43,
+      "word": "to"
+    },
+    {
+      "start": 116.43,
+      "end": 116.75,
+      "word": "let"
+    },
+    {
+      "start": 116.75,
+      "end": 117.17,
+      "word": "me"
+    },
+    {
+      "start": 117.17,
+      "end": 117.59,
+      "word": "in,"
+    },
+    {
+      "start": 117.85,
+      "end": 118.05,
+      "word": "shattered"
+    },
+    {
+      "start": 118.05,
+      "end": 118.47,
+      "word": "windows"
+    },
+    {
+      "start": 118.47,
+      "end": 118.87,
+      "word": "and"
+    },
+    {
+      "start": 118.87,
+      "end": 119.13,
+      "word": "the"
+    },
+    {
+      "start": 119.13,
+      "end": 120.03,
+      "word": "sound"
+    },
+    {
+      "start": 120.03,
+      "end": 120.65,
+      "word": "of"
+    },
+    {
+      "start": 120.65,
+      "end": 121.33,
+      "word": "drums,"
+    },
+    {
+      "start": 121.93,
+      "end": 122.35,
+      "word": "people"
+    },
+    {
+      "start": 122.35,
+      "end": 122.77,
+      "word": "couldn't"
+    },
+    {
+      "start": 122.77,
+      "end": 123.61,
+      "word": "believe"
+    },
+    {
+      "start": 123.61,
+      "end": 124.01,
+      "word": "what"
+    },
+    {
+      "start": 124.01,
+      "end": 124.47,
+      "word": "I'd"
+    },
+    {
+      "start": 124.47,
+      "end": 124.89,
+      "word": "become."
+    },
+    {
+      "start": 126.95,
+      "end": 127.79,
+      "word": "Revolutionaries"
+    },
+    {
+      "start": 127.79,
+      "end": 128.63,
+      "word": "wait,"
+    },
+    {
+      "start": 128.69,
+      "end": 129.13,
+      "word": "for"
+    },
+    {
+      "start": 129.13,
+      "end": 129.59,
+      "word": "my"
+    },
+    {
+      "start": 129.59,
+      "end": 129.89,
+      "word": "head"
+    },
+    {
+      "start": 129.89,
+      "end": 130.23,
+      "word": "on"
+    },
+    {
+      "start": 130.23,
+      "end": 130.49,
+      "word": "a"
+    },
+    {
+      "start": 130.49,
+      "end": 130.93,
+      "word": "silver"
+    },
+    {
+      "start": 130.93,
+      "end": 131.51,
+      "word": "plate,"
+    },
+    {
+      "start": 131.55,
+      "end": 131.87,
+      "word": "just"
+    },
+    {
+      "start": 131.87,
+      "end": 132.09,
+      "word": "a"
+    },
+    {
+      "start": 132.09,
+      "end": 132.45,
+      "word": "puppet"
+    },
+    {
+      "start": 132.45,
+      "end": 133.41,
+      "word": "on"
+    },
+    {
+      "start": 133.41,
+      "end": 133.41,
+      "word": "a"
+    },
+    {
+      "start": 133.41,
+      "end": 134.17,
+      "word": "lonely"
+    },
+    {
+      "start": 134.17,
+      "end": 135.41,
+      "word": "string,"
+    },
+    {
+      "start": 136.07,
+      "end": 136.39,
+      "word": "of"
+    },
+    {
+      "start": 136.39,
+      "end": 136.63,
+      "word": "who"
+    },
+    {
+      "start": 136.63,
+      "end": 136.89,
+      "word": "would"
+    },
+    {
+      "start": 136.89,
+      "end": 137.31,
+      "word": "ever"
+    },
+    {
+      "start": 137.31,
+      "end": 137.53,
+      "word": "want"
+    },
+    {
+      "start": 137.53,
+      "end": 137.79,
+      "word": "to"
+    },
+    {
+      "start": 137.79,
+      "end": 138.21,
+      "word": "be"
+    },
+    {
+      "start": 138.21,
+      "end": 138.89,
+      "word": "king."
+    },
+    {
+      "start": 138.89,
+      "end": 139.75,
+      "word": "I"
+    },
+    {
+      "start": 139.75,
+      "end": 140.17,
+      "word": "hear"
+    },
+    {
+      "start": 140.17,
+      "end": 141.13,
+      "word": "jarrison"
+    },
+    {
+      "start": 141.13,
+      "end": 141.55,
+      "word": "of"
+    },
+    {
+      "start": 141.55,
+      "end": 142.03,
+      "word": "bells"
+    },
+    {
+      "start": 142.03,
+      "end": 142.97,
+      "word": "ringing,"
+    },
+    {
+      "start": 143.75,
+      "end": 143.99,
+      "word": "Roman"
+    },
+    {
+      "start": 143.99,
+      "end": 144.75,
+      "word": "cavalry"
+    },
+    {
+      "start": 144.75,
+      "end": 145.55,
+      "word": "choirs"
+    },
+    {
+      "start": 145.55,
+      "end": 145.85,
+      "word": "are"
+    },
+    {
+      "start": 145.85,
+      "end": 146.41,
+      "word": "singing,"
+    },
+    {
+      "start": 146.77,
+      "end": 146.91,
+      "word": "I"
+    },
+    {
+      "start": 146.91,
+      "end": 147.39,
+      "word": "beam"
+    },
+    {
+      "start": 147.39,
+      "end": 147.67,
+      "word": "or"
+    },
+    {
+      "start": 147.67,
+      "end": 147.93,
+      "word": "mirror"
+    },
+    {
+      "start": 147.93,
+      "end": 148.45,
+      "word": "my"
+    },
+    {
+      "start": 148.45,
+      "end": 148.95,
+      "word": "sword"
+    },
+    {
+      "start": 148.95,
+      "end": 149.31,
+      "word": "and"
+    },
+    {
+      "start": 149.31,
+      "end": 149.79,
+      "word": "shield"
+    },
+    {
+      "start": 149.79,
+      "end": 150.21,
+      "word": "my"
+    },
+    {
+      "start": 150.21,
+      "end": 151.35,
+      "word": "missionaries"
+    },
+    {
+      "start": 151.35,
+      "end": 151.73,
+      "word": "in"
+    },
+    {
+      "start": 151.73,
+      "end": 151.97,
+      "word": "the"
+    },
+    {
+      "start": 151.97,
+      "end": 152.51,
+      "word": "foreign"
+    },
+    {
+      "start": 152.51,
+      "end": 153.35,
+      "word": "field."
+    },
+    {
+      "start": 153.59,
+      "end": 154.07,
+      "word": "For"
+    },
+    {
+      "start": 154.07,
+      "end": 154.57,
+      "word": "some"
+    },
+    {
+      "start": 154.57,
+      "end": 154.99,
+      "word": "reason"
+    },
+    {
+      "start": 154.99,
+      "end": 155.25,
+      "word": "I"
+    },
+    {
+      "start": 155.25,
+      "end": 156.09,
+      "word": "can't"
+    },
+    {
+      "start": 156.09,
+      "end": 156.65,
+      "word": "explain,"
+    },
+    {
+      "start": 156.99,
+      "end": 157.23,
+      "word": "I"
+    },
+    {
+      "start": 157.23,
+      "end": 157.59,
+      "word": "know"
+    },
+    {
+      "start": 157.59,
+      "end": 158.15,
+      "word": "Saint"
+    },
+    {
+      "start": 158.15,
+      "end": 158.45,
+      "word": "Peter"
+    },
+    {
+      "start": 158.45,
+      "end": 158.81,
+      "word": "won't"
+    },
+    {
+      "start": 158.81,
+      "end": 159.17,
+      "word": "call"
+    },
+    {
+      "start": 159.17,
+      "end": 159.71,
+      "word": "my"
+    },
+    {
+      "start": 159.71,
+      "end": 160.03,
+      "word": "name,"
+    },
+    {
+      "start": 160.45,
+      "end": 160.85,
+      "word": "never"
+    },
+    {
+      "start": 160.85,
+      "end": 161.67,
+      "word": "a"
+    },
+    {
+      "start": 161.67,
+      "end": 161.73,
+      "word": "rule"
+    },
+    {
+      "start": 161.73,
+      "end": 162.35,
+      "word": "this"
+    },
+    {
+      "start": 162.35,
+      "end": 163.15,
+      "word": "world,"
+    },
+    {
+      "start": 163.47,
+      "end": 163.67,
+      "word": "but"
+    },
+    {
+      "start": 163.67,
+      "end": 163.97,
+      "word": "that"
+    },
+    {
+      "start": 163.97,
+      "end": 164.21,
+      "word": "was"
+    },
+    {
+      "start": 164.21,
+      "end": 164.49,
+      "word": "when"
+    },
+    {
+      "start": 164.49,
+      "end": 165.07,
+      "word": "I"
+    },
+    {
+      "start": 165.07,
+      "end": 165.53,
+      "word": "ruled"
+    },
+    {
+      "start": 165.53,
+      "end": 165.97,
+      "word": "the"
+    },
+    {
+      "start": 165.97,
+      "end": 166.91,
+      "word": "world."
+    },
+    {
+      "start": 198.89,
+      "end": 199.63,
+      "word": "Roman"
+    },
+    {
+      "start": 199.63,
+      "end": 200.35,
+      "word": "cavalry"
+    },
+    {
+      "start": 200.35,
+      "end": 201.17,
+      "word": "choirs"
+    },
+    {
+      "start": 201.17,
+      "end": 201.49,
+      "word": "are"
+    },
+    {
+      "start": 201.49,
+      "end": 202.15,
+      "word": "singing,"
+    },
+    {
+      "start": 202.57,
+      "end": 203.01,
+      "word": "I"
+    },
+    {
+      "start": 203.01,
+      "end": 203.01,
+      "word": "beam"
+    },
+    {
+      "start": 203.01,
+      "end": 203.37,
+      "word": "or"
+    },
+    {
+      "start": 203.37,
+      "end": 203.63,
+      "word": "mirror"
+    },
+    {
+      "start": 203.63,
+      "end": 204.17,
+      "word": "my"
+    },
+    {
+      "start": 204.17,
+      "end": 204.55,
+      "word": "sword"
+    },
+    {
+      "start": 204.55,
+      "end": 204.93,
+      "word": "and"
+    },
+    {
+      "start": 204.93,
+      "end": 205.47,
+      "word": "shield"
+    },
+    {
+      "start": 205.47,
+      "end": 205.89,
+      "word": "my"
+    },
+    {
+      "start": 205.89,
+      "end": 207.05,
+      "word": "missionaries"
+    },
+    {
+      "start": 207.05,
+      "end": 207.33,
+      "word": "in"
+    },
+    {
+      "start": 207.33,
+      "end": 207.65,
+      "word": "the"
+    },
+    {
+      "start": 207.65,
+      "end": 208.11,
+      "word": "foreign"
+    },
+    {
+      "start": 208.11,
+      "end": 209.05,
+      "word": "field."
+    },
+    {
+      "start": 209.85,
+      "end": 209.85,
+      "word": "For"
+    },
+    {
+      "start": 209.85,
+      "end": 210.25,
+      "word": "some"
+    },
+    {
+      "start": 210.25,
+      "end": 210.63,
+      "word": "reason"
+    },
+    {
+      "start": 210.63,
+      "end": 210.93,
+      "word": "I"
+    },
+    {
+      "start": 210.93,
+      "end": 211.75,
+      "word": "can't"
+    },
+    {
+      "start": 211.75,
+      "end": 212.23,
+      "word": "explain,"
+    },
+    {
+      "start": 212.61,
+      "end": 212.85,
+      "word": "I"
+    },
+    {
+      "start": 212.85,
+      "end": 213.25,
+      "word": "know"
+    },
+    {
+      "start": 213.25,
+      "end": 213.73,
+      "word": "Saint"
+    },
+    {
+      "start": 213.73,
+      "end": 214.09,
+      "word": "Peter"
+    },
+    {
+      "start": 214.09,
+      "end": 214.89,
+      "word": "won't"
+    },
+    {
+      "start": 214.89,
+      "end": 214.89,
+      "word": "call"
+    },
+    {
+      "start": 214.89,
+      "end": 215.37,
+      "word": "my"
+    },
+    {
+      "start": 215.37,
+      "end": 215.65,
+      "word": "name,"
+    },
+    {
+      "start": 215.81,
+      "end": 216.51,
+      "word": "never"
+    },
+    {
+      "start": 216.51,
+      "end": 217.31,
+      "word": "a"
+    },
+    {
+      "start": 217.31,
+      "end": 217.43,
+      "word": "rule"
+    },
+    {
+      "start": 217.43,
+      "end": 218.05,
+      "word": "this"
+    },
+    {
+      "start": 218.05,
+      "end": 218.83,
+      "word": "world,"
+    },
+    {
+      "start": 219.17,
+      "end": 219.33,
+      "word": "but"
+    },
+    {
+      "start": 219.33,
+      "end": 219.61,
+      "word": "that"
+    },
+    {
+      "start": 219.61,
+      "end": 219.83,
+      "word": "was"
+    },
+    {
+      "start": 219.83,
+      "end": 220.13,
+      "word": "when"
+    },
+    {
+      "start": 220.13,
+      "end": 220.77,
+      "word": "I"
+    },
+    {
+      "start": 220.77,
+      "end": 221.09,
+      "word": "ruled"
+    },
+    {
+      "start": 221.09,
+      "end": 221.63,
+      "word": "the"
+    },
+    {
+      "start": 221.63,
+      "end": 222.61,
+      "word": "world."
+    }
+  ]
+}
