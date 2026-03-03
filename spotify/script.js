@@ -24,7 +24,7 @@ const CFG = {
     '#D500F9', // vivid purple
     '#2979FF', // vivid blue
     '#FF6D00', // vivid orange
-    '#76FF03', // vivid lime
+    '#1B5E20', // dark green
     '#FF4081', // vivid pink
     '#651FFF', // vivid indigo
     '#E040FB', // vivid magenta
@@ -56,6 +56,8 @@ async function switchSong() {
   wordBodies.forEach(wb => World.remove(world, wb.body));
   wordBodies = [];
   particles = [];
+  simTime = 0;
+  lastTimingSpawnAt = -999;
 
   currentSongIndex = (currentSongIndex + 1) % allSongs.length;
   await loadSong(allSongs[currentSongIndex].id);
