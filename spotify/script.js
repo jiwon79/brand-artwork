@@ -15,7 +15,7 @@ const CFG = {
   restitution: 0.28,
   friction: 0.65,
   frictionAir: 0.018,
-  explosionForce: 0.0275,
+  explosionForce: 0.055,
   explosionRadius: 190,
   fadeSpeed: 0.04,
   colors: [
