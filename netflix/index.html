@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Netflix Warp Tunnel</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+  font-family: 'Arial Black', Arial, sans-serif;
+}
+#app {
+  position: relative;
+  width: 393px;
+  height: 852px;
+  overflow: hidden;
+  background: #000;
+}
+#canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+}
+/* Slider */
+#slider-container {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 260px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+#slider-track {
+  position: relative;
+  width: 8px;
+  height: 220px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: visible;
+}
+#slider-fill {
+  position: absolute;
+  bottom: 0; left: 0;
+  width: 100%;
+  background: #E50914;
+  border-radius: 4px;
+  transition: box-shadow 0.2s;
+}
+#slider-thumb {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 24px;
+  background: #E50914;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  cursor: grab;
+  box-shadow: 0 0 12px #E50914;
+  transition: box-shadow 0.2s;
+}
+#slider-thumb:active { cursor: grabbing; }
+/* Speed label */
+#speed-label {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  z-index: 10;
+  text-shadow: 0 0 10px #E50914;
+  pointer-events: none;
+  white-space: nowrap;
+}
+/* Netflix logo */
+#logo {
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  z-index: 10;
+  font-size: 22px;
+  font-weight: 900;
+  color: #E50914;
+  letter-spacing: -1px;
+  text-shadow: 0 0 20px rgba(229,9,20,0.6);
+  pointer-events: none;
+}
+/* Vignette overlay */
+#vignette {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, #E50914 100%);
+  mix-blend-mode: screen;
+}
+/* Detail overlay */
+#detail-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(0,0,0,0.92);
+}
+#detail-overlay.active { display: flex; }
+#detail-bg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: 0.5;
+  z-index: 0;
+}
+#detail-content {
+  position: relative;
+  z-index: 1;
+  padding: 28px 24px 40px;
+  background: linear-gradient(to top, rgba(0,0,0,0.98) 0%, transparent 100%);
+}
+#detail-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  width: 36px; height: 36px;
+  background: rgba(255,255,255,0.15);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+#detail-close:hover { background: rgba(255,255,255,0.3); }
+#detail-title {
+  font-size: 28px;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 10px;
+  line-height: 1.1;
+}
+#detail-genre {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.genre-tag {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fff;
+}
+#detail-rating {
+  font-size: 14px;
+  color: #E50914;
+  font-weight: 900;
+  margin-bottom: 10px;
+}
+#detail-desc {
+  font-size: 13px;
+  color: rgba(255,255,255,0.8);
+  line-height: 1.5;
+  font-family: Arial, sans-serif;
+  font-weight: normal;
+}
+/* Grain overlay */
+#grain {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="canvas"></canvas>
+
+  <div id="grain"></div>
+  <div id="vignette"></div>
+
+  <div id="logo">NETFLIX</div>
+
+  <div id="slider-container">
+    <div id="slider-track">
+      <div id="slider-fill"></div>
+      <div id="slider-thumb"></div>
+    </div>
+  </div>
+
+  <div id="speed-label">SLOW</div>
+
+  <div id="detail-overlay">
+    <img id="detail-bg" src="" alt="">
+    <button id="detail-close">✕</button>
+    <div id="detail-content">
+      <div id="detail-title"></div>
+      <div id="detail-genre"></div>
+      <div id="detail-rating"></div>
+      <div id="detail-desc"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const GENRE_COLORS = {
+  horror:   '#c0392b',
+  romance:  '#e91e63',
+  scifi:    '#4a90d9',
+  mystery:  '#9b59b6',
+  crime:    '#27ae60',
+  action:   '#e67e22',
+  thriller: '#9b59b6',
+  drama:    '#4a90d9',
+};
+
+const SHOWS = [
+  {
+    title: 'Stranger Things',
+    genre: ['scifi','horror'],
+    rating: '★★★★★  97% Match',
+    desc: '어둠 속 미지의 존재와 초자연적 힘에 맞서는 아이들의 이야기.',
+    img: 'https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg',
+  },
+  {
+    title: 'Wednesday',
+    genre: ['mystery','horror'],
+    rating: '★★★★☆  94% Match',
+    desc: '수요일 아담스가 네버모어 아카데미에서 초자연적 미스터리를 파헤친다.',
+    img: 'https://image.tmdb.org/t/p/w500/9PFonBhy4cQy7Jz20NpMygczOkv.jpg',
+  },
+  {
+    title: 'Squid Game',
+    genre: ['thriller','drama'],
+    rating: '★★★★★  99% Match',
+    desc: '목숨을 건 서바이벌 게임에 참가한 456명의 이야기.',
+    img: 'https://image.tmdb.org/t/p/w500/dDlEmu3EZ0Pgg93K2SVNLCjCSvE.jpg',
+  },
+  {
+    title: 'The Crown',
+    genre: ['drama','romance'],
+    rating: '★★★★☆  91% Match',
+    desc: '영국 왕실의 내부를 파헤치는 장대한 역사 드라마.',
+    img: 'https://image.tmdb.org/t/p/w500/1M876KPjulVwppEpldhdc8V4o68.jpg',
+  },
+  {
+    title: 'Dark',
+    genre: ['scifi','mystery'],
+    rating: '★★★★★  98% Match',
+    desc: '시간 여행과 얽힌 네 가족의 비밀이 독일 소도시를 뒤흔든다.',
+    img: 'https://image.tmdb.org/t/p/w500/apbrbWs2BsDEKnAlJX05OtFikFO.jpg',
+  },
+  {
+    title: 'Ozark',
+    genre: ['crime','thriller'],
+    rating: '★★★★☆  95% Match',
+    desc: '멕시코 카르텔을 위해 돈세탁을 하게 된 가족의 생존기.',
+    img: 'https://image.tmdb.org/t/p/w500/pCGyPVrI9Fzc6Y6PBJbEMONiDqE.jpg',
+  },
+  {
+    title: 'Narcos',
+    genre: ['crime','action'],
+    rating: '★★★★★  96% Match',
+    desc: '콜롬비아 마약왕 파블로 에스코바르의 흥망성쇠를 추적한다.',
+    img: 'https://image.tmdb.org/t/p/w500/rTmal9fDbwh5F0waol2hq35U4ah.jpg',
+  },
+  {
+    title: 'Mindhunter',
+    genre: ['crime','thriller'],
+    rating: '★★★★☆  93% Match',
+    desc: 'FBI 요원들이 연쇄살인범의 심리를 연구해 프로파일링을 개척한다.',
+    img: 'https://image.tmdb.org/t/p/w500/jehWGqQMbNqMmD1p4hDmD5IuCHl.jpg',
+  },
+  {
+    title: 'Money Heist',
+    genre: ['crime','action'],
+    rating: '★★★★★  98% Match',
+    desc: '정교한 계획으로 조폐국을 점거한 강도단의 치밀한 작전.',
+    img: 'https://image.tmdb.org/t/p/w500/reEMJA1uzscCbkpeRJeTT2bjqUp.jpg',
+  },
+  {
+    title: 'Witcher',
+    genre: ['action','scifi'],
+    rating: '★★★★☆  90% Match',
+    desc: '괴물 사냥꾼 게롤트의 운명적인 여정과 대륙의 위기.',
+    img: 'https://image.tmdb.org/t/p/w500/7vjaCdMw15FEbXyLQTVa04URsPm.jpg',
+  },
+  {
+    title: 'Peaky Blinders',
+    genre: ['crime','drama'],
+    rating: '★★★★★  97% Match',
+    desc: '1920년대 버밍엄을 지배한 쉘비 가문의 범죄 왕국.',
+    img: 'https://image.tmdb.org/t/p/w500/vUUqzWa2LnHIVqkaKVn3nyfVHB.jpg',
+  },
+  {
+    title: 'Black Mirror',
+    genre: ['scifi','thriller'],
+    rating: '★★★★☆  92% Match',
+    desc: '기술이 뒤틀어놓은 근미래 사회의 섬뜩한 단편 이야기들.',
+    img: 'https://image.tmdb.org/t/p/w500/7PRddO7z7mcPi21nZjpad70N4zM.jpg',
+  },
+];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let sliderValue = 0;        // 0..1
+let targetSlider = 0;
+let speed = 0;
+let isDragging = false;
+let dragStartY = 0;
+let dragStartVal = 0;
+let decayTimer = null;
+let selectedShow = null;
+let hoveredCard = null;
+let mouseX = 0, mouseY = 0;
+let appWidth = 393, appHeight = 852;
+let detailOpen = false;
+
+// Speed mode
+function getMode(v) {
+  if (v < 0.25) return 'SLOW';
+  if (v < 0.55) return 'NORMAL';
+  if (v < 0.80) return 'FAST';
+  return 'HYPER WARP';
+}
+
+// ─── THREE.JS SETUP ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(appWidth, appHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000000, 0.018);
+
+const camera = new THREE.PerspectiveCamera(70, appWidth / appHeight, 0.1, 300);
+camera.position.set(0, 0, 0);
+
+// Stars background
+const starGeo = new THREE.BufferGeometry();
+const starCount = 1200;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  starPos[i * 3]     = (Math.random() - 0.5) * 300;
+  starPos[i * 3 + 1] = (Math.random() - 0.5) * 300;
+  starPos[i * 3 + 2] = -(Math.random() * 300);
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.4, sizeAttenuation: true });
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// ─── CARD SYSTEM ─────────────────────────────────────────────────────────────
+const CARD_COUNT = 60;
+const TUNNEL_RADIUS = 5.5;
+const CARD_W = 2.0, CARD_H = 1.3;
+const TUNNEL_LENGTH = 80;
+
+const textureLoader = new THREE.TextureLoader();
+const texCache = {};
+
+function loadTex(url) {
+  if (texCache[url]) return texCache[url];
+  const tex = textureLoader.load(url, undefined, undefined, () => {
+    // fallback on error: keep placeholder
+  });
+  tex.crossOrigin = 'anonymous';
+  texCache[url] = tex;
+  return tex;
+}
+
+// Preload all textures
+SHOWS.forEach(s => loadTex(s.img));
+
+// Card vertex shader
+const cardVert = `
+  varying vec2 vUv;
+  varying float vDepth;
+  uniform float uStretch;
+  uniform float uTime;
+  void main() {
+    vUv = uv;
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vDepth = -mvPos.z;
+    vec3 p = position;
+    p.y *= (1.0 + uStretch * 1.8);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  }
+`;
+
+// Card fragment shader
+const cardFrag = `
+  varying vec2 vUv;
+  varying float vDepth;
+  uniform sampler2D uTex;
+  uniform float uBlur;
+  uniform float uChroma;
+  uniform float uGlow;
+  uniform float uGlitch;
+  uniform float uTime;
+  uniform vec3 uGenreColor;
+
+  vec4 sampleBlurred(sampler2D tex, vec2 uv, float blur) {
+    vec4 col = vec4(0.0);
+    float total = 0.0;
+    for(int x=-2; x<=2; x++){
+      for(int y=-2; y<=2; y++){
+        vec2 off = vec2(float(x), float(y)) * blur * 0.004;
+        col += texture2D(tex, uv + off);
+        total += 1.0;
+      }
+    }
+    return col / total;
+  }
+
+  void main() {
+    vec2 uv = vUv;
+
+    // Glitch offset
+    if (uGlitch > 0.0) {
+      float band = floor(uv.y * 12.0);
+      float rnd = fract(sin(band * 127.1 + uTime * 3.0) * 43758.5);
+      if (rnd > 0.7) {
+        uv.x += (rnd - 0.7) * uGlitch * 0.12;
+      }
+    }
+
+    vec4 col;
+    if (uChroma > 0.0) {
+      float ca = uChroma * 0.012;
+      float r = texture2D(uTex, uv + vec2(ca, 0.0)).r;
+      float g = texture2D(uTex, uv).g;
+      float b = texture2D(uTex, uv - vec2(ca, 0.0)).b;
+      col = vec4(r, g, b, 1.0);
+    } else if (uBlur > 0.0) {
+      col = sampleBlurred(uTex, uv, uBlur);
+    } else {
+      col = texture2D(uTex, uv);
+    }
+
+    // Edge glow
+    float edgeDist = min(min(uv.x, 1.0-uv.x), min(uv.y, 1.0-uv.y));
+    float edge = 1.0 - smoothstep(0.0, 0.08, edgeDist);
+    col.rgb = mix(col.rgb, uGenreColor, edge * uGlow * 0.8);
+
+    gl_FragColor = col;
+  }
+`;
+
+// Cards array
+const cards = [];
+const cardGroup = new THREE.Group();
+scene.add(cardGroup);
+
+for (let i = 0; i < CARD_COUNT; i++) {
+  const showIdx = i % SHOWS.length;
+  const show = SHOWS[showIdx];
+  const geo = new THREE.PlaneGeometry(CARD_W, CARD_H, 1, 1);
+  const tex = loadTex(show.img);
+
+  const genreKey = show.genre[0];
+  const genreHex = GENRE_COLORS[genreKey] || '#E50914';
+  const genreColor = new THREE.Color(genreHex);
+
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: cardVert,
+    fragmentShader: cardFrag,
+    uniforms: {
+      uTex:        { value: tex },
+      uBlur:       { value: 0.0 },
+      uChroma:     { value: 0.0 },
+      uGlow:       { value: 0.0 },
+      uGlitch:     { value: 0.0 },
+      uStretch:    { value: 0.0 },
+      uTime:       { value: 0.0 },
+      uGenreColor: { value: genreColor },
+    },
+    side: THREE.DoubleSide,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData = { showIdx, show, baseScale: 1.0, isHovered: false, isNear: false };
+  cardGroup.add(mesh);
+  cards.push(mesh);
+}
+
+function placeCard(mesh, i, cameraZ) {
+  const angleStep = (Math.PI * 2) / (CARD_COUNT / 4);
+  const angle = (i * angleStep * 1.7) + (i * 0.41);
+  const zSpan = TUNNEL_LENGTH;
+  const zPos = ((i * (zSpan / CARD_COUNT)) % zSpan);
+  const z = cameraZ - 2 - zPos;
+
+  const r = TUNNEL_RADIUS + (Math.sin(i * 2.3) * 1.5);
+  const x = Math.cos(angle) * r;
+  const y = Math.sin(angle) * r * 0.6;
+
+  mesh.position.set(x, y, z);
+  mesh.lookAt(x * 0.1, y * 0.1, z + 8);
+  mesh.rotation.z += Math.sin(i * 0.5) * 0.15;
+}
+
+// Initial placement
+cards.forEach((m, i) => placeCard(m, i, 0));
+
+// ─── POST-PROCESS (CSS + canvas overlay) ─────────────────────────────────────
+const vignette = document.getElementById('vignette');
+const speedLabel = document.getElementById('speed-label');
+
+// ─── RAYCASTER ───────────────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse2D = new THREE.Vector2();
+
+function updateMouse(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = clientX - rect.left;
+  mouseY = clientY - rect.top;
+  mouse2D.x = (mouseX / appWidth) * 2 - 1;
+  mouse2D.y = -(mouseY / appHeight) * 2 + 1;
+}
+
+// ─── SLIDER LOGIC ─────────────────────────────────────────────────────────────
+const sliderTrack = document.getElementById('slider-track');
+const sliderFill  = document.getElementById('slider-fill');
+const sliderThumb = document.getElementById('slider-thumb');
+const TRACK_H = 220;
+
+function setSliderVisual(v) {
+  const pct = v * 100;
+  sliderFill.style.height  = pct + '%';
+  sliderThumb.style.bottom = `calc(${pct}% - 12px)`;
+  const glowIntensity = v * 24;
+  sliderFill.style.boxShadow  = `0 0 ${glowIntensity}px #E50914`;
+  sliderThumb.style.boxShadow = `0 0 ${8 + glowIntensity}px #E50914`;
+}
+
+function getTrackY(e) {
+  const rect = sliderTrack.getBoundingClientRect();
+  return e.clientY !== undefined ? e.clientY : e.touches[0].clientY;
+}
+
+function onDragStart(e) {
+  isDragging = true;
+  dragStartY   = getTrackY(e);
+  dragStartVal = sliderValue;
+  clearTimeout(decayTimer);
+  e.preventDefault();
+}
+
+function onDragMove(e) {
+  if (!isDragging) return;
+  const rect = sliderTrack.getBoundingClientRect();
+  const dy = dragStartY - getTrackY(e);
+  const delta = dy / TRACK_H;
+  sliderValue = Math.max(0, Math.min(1, dragStartVal + delta));
+  targetSlider = sliderValue;
+  setSliderVisual(sliderValue);
+  e.preventDefault();
+}
+
+function onDragEnd() {
+  if (!isDragging) return;
+  isDragging = false;
+  startDecay();
+}
+
+function startDecay() {
+  clearTimeout(decayTimer);
+  const decayStep = () => {
+    if (isDragging) return;
+    targetSlider = Math.max(0, targetSlider - 0.008);
+    if (targetSlider <= 0) { targetSlider = 0; return; }
+    decayTimer = setTimeout(decayStep, 30);
+  };
+  decayTimer = setTimeout(decayStep, 100);
+}
+
+sliderThumb.addEventListener('mousedown',  onDragStart);
+sliderThumb.addEventListener('touchstart', onDragStart, { passive: false });
+document.addEventListener('mousemove',  onDragMove);
+document.addEventListener('touchmove',  onDragMove, { passive: false });
+document.addEventListener('mouseup',   onDragEnd);
+document.addEventListener('touchend',  onDragEnd);
+
+// ─── DETAIL OVERLAY ───────────────────────────────────────────────────────────
+const detailOverlay = document.getElementById('detail-overlay');
+const detailBg      = document.getElementById('detail-bg');
+const detailTitle   = document.getElementById('detail-title');
+const detailGenre   = document.getElementById('detail-genre');
+const detailRating  = document.getElementById('detail-rating');
+const detailDesc    = document.getElementById('detail-desc');
+const detailClose   = document.getElementById('detail-close');
+
+function openDetail(show) {
+  if (detailOpen) return;
+  detailOpen = true;
+  detailBg.src = show.img;
+  detailTitle.textContent = show.title;
+  detailRating.textContent = show.rating;
+  detailDesc.textContent = show.desc;
+
+  detailGenre.innerHTML = '';
+  show.genre.forEach(g => {
+    const tag = document.createElement('span');
+    tag.className = 'genre-tag';
+    tag.textContent = g.toUpperCase();
+    tag.style.background = GENRE_COLORS[g] || '#E50914';
+    detailGenre.appendChild(tag);
+  });
+
+  detailOverlay.classList.add('active');
+  gsap.fromTo(detailOverlay,
+    { opacity: 0, scale: 0.92 },
+    { opacity: 1, scale: 1, duration: 0.6, ease: 'power2.inOut' }
+  );
+}
+
+function closeDetail() {
+  if (!detailOpen) return;
+  gsap.to(detailOverlay, {
+    opacity: 0, scale: 0.95, duration: 0.4, ease: 'power2.inOut',
+    onComplete: () => {
+      detailOverlay.classList.remove('active');
+      detailOpen = false;
+    }
+  });
+}
+
+detailClose.addEventListener('click', closeDetail);
+
+// ─── CANVAS CLICK ─────────────────────────────────────────────────────────────
+canvas.addEventListener('click', (e) => {
+  if (detailOpen) return;
+  updateMouse(e.clientX, e.clientY);
+  raycaster.setFromCamera(mouse2D, camera);
+  const hits = raycaster.intersectObjects(cards);
+  if (hits.length > 0) {
+    const show = hits[0].object.userData.show;
+    openDetail(show);
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => { updateMouse(e.clientX, e.clientY); });
+canvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length) updateMouse(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: true });
+
+// ─── GLITCH TEXT ─────────────────────────────────────────────────────────────
+// We use a CSS overlay div for glitch label
+const glitchLabel = document.createElement('div');
+glitchLabel.style.cssText = `
+  position:absolute; pointer-events:none; z-index:9;
+  color:#fff; font-size:13px; font-weight:900; letter-spacing:2px;
+  text-shadow: 1px 0 #E50914, -1px 0 #4a90d9;
+  display:none; white-space:nowrap; text-transform:uppercase;
+  font-family: 'Arial Black', Arial, sans-serif;
+`;
+document.getElementById('app').appendChild(glitchLabel);
+
+// ─── ANIMATION LOOP ──────────────────────────────────────────────────────────
+let cameraZ = 0;
+let clock = new THREE.Clock();
+let frameN = 0;
+
+// Grain animation
+const grain = document.getElementById('grain');
+function animateGrain() {
+  grain.style.transform = `translate(${(Math.random()-0.5)*4}px,${(Math.random()-0.5)*4}px)`;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  frameN++;
+
+  const dt = clock.getDelta();
+  const t  = clock.getElapsedTime();
+
+  // Smooth slider
+  sliderValue += (targetSlider - sliderValue) * 0.12;
+  setSliderVisual(sliderValue);
+
+  // Mode label
+  const mode = getMode(sliderValue);
+  speedLabel.textContent = mode;
+  speedLabel.style.color = sliderValue > 0.55 ? '#E50914' : '#ffffff';
+
+  // Speed
+  const baseSpeed = sliderValue < 0.001 ? 0.3 : 0.3 + sliderValue * 38;
+  speed = baseSpeed * dt;
+  cameraZ += speed;
+  camera.position.z = cameraZ;
+
+  // Vignette
+  const vigOpacity = Math.max(0, (sliderValue - 0.55) / 0.45) * 0.55;
+  vignette.style.opacity = vigOpacity;
+
+  // Stars streak
+  const starStreak = Math.max(0, sliderValue - 0.25) * 1.8;
+  starMat.size = 0.4 + starStreak * 2.5;
+
+  // Raycasting for hover
+  raycaster.setFromCamera(mouse2D, camera);
+  const allHits = raycaster.intersectObjects(cards);
+  const hitSet = new Set(allHits.map(h => h.object.uuid));
+
+  let nearCard = null;
+  let nearDist = Infinity;
+
+  cards.forEach((mesh, i) => {
+    // Recycle card if behind camera
+    if (mesh.position.z > cameraZ + 4) {
+      placeCard(mesh, i, cameraZ);
+    }
+
+    const isHit = hitSet.has(mesh.uuid);
+
+    // Proximity check
+    const dx = mesh.position.x - camera.position.x;
+    const dy = mesh.position.y - camera.position.y;
+    const dz = mesh.position.z - cameraZ;
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    const isNear = dist < 4.5 && dz < -0.5 && dz > -8;
+
+    if (isNear && dist < nearDist) {
+      nearDist = dist;
+      nearCard = mesh;
+    }
+
+    const u = mesh.material.uniforms;
+    u.uTime.value = t;
+
+    // Blur
+    const blurAmt = Math.max(0, sliderValue - 0.25) * 1.8;
+    u.uBlur.value = isHit ? 0 : blurAmt;
+
+    // Chroma aberration
+    u.uChroma.value = sliderValue > 0.80 ? (sliderValue - 0.80) * 5.0 : 0.0;
+
+    // Stretch (HYPER)
+    const stretch = sliderValue > 0.80 ? (sliderValue - 0.80) * 2.5 : 0.0;
+    u.uStretch.value = stretch;
+
+    // Hover glow
+    if (isHit) {
+      u.uGlow.value = gsap.utils.interpolate(u.uGlow.value, 1.0, 0.15);
+      mesh.scale.setScalar(gsap.utils.interpolate(mesh.scale.x, 1.3, 0.12));
+    } else if (isNear) {
+      u.uGlow.value = gsap.utils.interpolate(u.uGlow.value, 0.5, 0.1);
+      mesh.scale.setScalar(gsap.utils.interpolate(mesh.scale.x, 1.12, 0.1));
+    } else {
+      u.uGlow.value = gsap.utils.interpolate(u.uGlow.value, 0.0, 0.1);
+      mesh.scale.setScalar(gsap.utils.interpolate(mesh.scale.x, 1.0, 0.1));
+    }
+
+    // Glitch on near + slow
+    const glitchAmt = (isNear && sliderValue < 0.25) ? (Math.sin(t * 8 + i) * 0.5 + 0.5) : 0.0;
+    u.uGlitch.value = glitchAmt;
+  });
+
+  // Glitch label
+  if (nearCard && sliderValue < 0.35 && !detailOpen) {
+    const pos = nearCard.position.clone().project(camera);
+    const lx = ((pos.x + 1) / 2) * appWidth;
+    const ly = ((1 - pos.y) / 2) * appHeight;
+    glitchLabel.style.display = 'block';
+    glitchLabel.style.left = (lx - 40) + 'px';
+    glitchLabel.style.top  = (ly + 42) + 'px';
+    const show = nearCard.userData.show;
+    // glitch chars
+    const chars = '!@#$%^&*ABCDEF';
+    const glitch = t * 10;
+    let gl = '';
+    for (let c = 0; c < show.title.length; c++) {
+      gl += (Math.sin(glitch + c * 1.3) > 0.7) ?
+        chars[Math.floor(Math.random() * chars.length)] : show.title[c];
+    }
+    glitchLabel.textContent = gl;
+    glitchLabel.style.textShadow = `${Math.sin(t*20)*3}px 0 #E50914, ${-Math.sin(t*20)*3}px 0 #4a90d9`;
+  } else {
+    glitchLabel.style.display = 'none';
+  }
+
+  // Grain animate every 4 frames
+  if (frameN % 4 === 0) animateGrain();
+
+  // Stars rotation slow
+  stars.rotation.z = t * 0.003;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// ─── RESIZE (keep 9:16 ratio) ────────────────────────────────────────────────
+// Fixed size — no resize needed for fixed 393×852 layout
+</script>
+</body>
+</html>
