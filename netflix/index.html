@@ -372,9 +372,9 @@ const starGeo = new THREE.BufferGeometry();
 const starCount = 1200;
 const starPos = new Float32Array(starCount * 3);
 for (let i = 0; i < starCount; i++) {
-  starPos[i * 3]     = (Math.random() - 0.5) * 300;
-  starPos[i * 3 + 1] = (Math.random() - 0.5) * 300;
-  starPos[i * 3 + 2] = -(Math.random() * 300);
+  starPos[i * 3]     = (Math.random() - 0.5) * 80;
+  starPos[i * 3 + 1] = (Math.random() - 0.5) * 80;
+  starPos[i * 3 + 2] = -(Math.random() * 160);
 }
 starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
 const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.4, sizeAttenuation: true });
@@ -515,24 +515,22 @@ for (let i = 0; i < CARD_COUNT; i++) {
   cards.push(mesh);
 }
 
-function placeCard(mesh, i, cameraZ) {
-  const angleStep = (Math.PI * 2) / (CARD_COUNT / 4);
-  const angle = (i * angleStep * 1.7) + (i * 0.41);
-  const zSpan = TUNNEL_LENGTH;
-  const zPos = ((i * (zSpan / CARD_COUNT)) % zSpan);
-  const z = cameraZ - 2 - zPos;
-
+function placeCard(mesh, i, isRecycle = false) {
+  const angle = i * 2.39996; // golden angle — 균등 분포
   const r = TUNNEL_RADIUS + (Math.sin(i * 2.3) * 1.5);
   const x = Math.cos(angle) * r;
   const y = Math.sin(angle) * r * 0.6;
+  const z = isRecycle
+    ? -(TUNNEL_LENGTH + 2 + Math.random() * 10)       // 재활용: 멀리 재소환
+    : -(2 + (i / CARD_COUNT) * TUNNEL_LENGTH);         // 초기: 균등 분포
 
   mesh.position.set(x, y, z);
-  mesh.lookAt(x * 0.1, y * 0.1, z + 8);
+  mesh.lookAt(x * 0.1, y * 0.1, 0); // 카메라(0,0,0) 방향을 향하도록
   mesh.rotation.z += Math.sin(i * 0.5) * 0.15;
 }
 
 // Initial placement
-cards.forEach((m, i) => placeCard(m, i, 0));
+cards.forEach((m, i) => placeCard(m, i, false));
 
 // ─── POST-PROCESS (CSS + canvas overlay) ─────────────────────────────────────
 const vignette = document.getElementById('vignette');
@@ -689,7 +687,6 @@ glitchLabel.style.cssText = `
 document.getElementById('app').appendChild(glitchLabel);
 
 // ─── ANIMATION LOOP ──────────────────────────────────────────────────────────
-let cameraZ = 0;
 let clock = new THREE.Clock();
 let frameN = 0;
 
@@ -715,11 +712,9 @@ function animate() {
   speedLabel.textContent = mode;
   speedLabel.style.color = sliderValue > 0.55 ? '#E50914' : '#ffffff';
 
-  // Speed
+  // Speed — 카메라 고정, 카드 이동
   const baseSpeed = sliderValue < 0.001 ? 0.3 : 0.3 + sliderValue * 38;
   speed = baseSpeed * dt;
-  cameraZ += speed;
-  camera.position.z = cameraZ;
 
   // Vignette
   const vigOpacity = Math.max(0, (sliderValue - 0.55) / 0.45) * 0.55;
@@ -738,19 +733,22 @@ function animate() {
   let nearDist = Infinity;
 
   cards.forEach((mesh, i) => {
-    // Recycle card if behind camera
-    if (mesh.position.z > cameraZ + 4) {
-      placeCard(mesh, i, cameraZ);
+    // 카드를 카메라 방향으로 이동 (+Z = 카메라 쪽)
+    mesh.position.z += speed;
+
+    // 카메라를 지나치면 재활용 (멀리 재소환)
+    if (mesh.position.z > 3) {
+      placeCard(mesh, i, true);
     }
 
     const isHit = hitSet.has(mesh.uuid);
 
-    // Proximity check
-    const dx = mesh.position.x - camera.position.x;
-    const dy = mesh.position.y - camera.position.y;
-    const dz = mesh.position.z - cameraZ;
+    // Proximity check (카메라 z=0 고정)
+    const dx = mesh.position.x;
+    const dy = mesh.position.y;
+    const dz = mesh.position.z; // 음수 = 카메라 앞
     const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-    const isNear = dist < 4.5 && dz < -0.5 && dz > -8;
+    const isNear = dist < 4.5 && dz > -8 && dz < -0.5;
 
     if (isNear && dist < nearDist) {
       nearDist = dist;
