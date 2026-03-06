@@ -367,19 +367,31 @@ scene.fog = new THREE.FogExp2(0x000000, 0.018);
 const camera = new THREE.PerspectiveCamera(70, appWidth / appHeight, 0.1, 300);
 camera.position.set(0, 0, 0);
 
-// Stars background
-const starGeo = new THREE.BufferGeometry();
-const starCount = 1200;
-const starPos = new Float32Array(starCount * 3);
-for (let i = 0; i < starCount; i++) {
-  starPos[i * 3]     = (Math.random() - 0.5) * 80;
-  starPos[i * 3 + 1] = (Math.random() - 0.5) * 80;
-  starPos[i * 3 + 2] = -(Math.random() * 160);
+// Stars background — dots (slow) + radial streaks (fast)
+const STAR_COUNT = 300;
+const starBasePos = new Float32Array(STAR_COUNT * 3);
+for (let i = 0; i < STAR_COUNT; i++) {
+  starBasePos[i * 3]     = (Math.random() - 0.5) * 80;
+  starBasePos[i * 3 + 1] = (Math.random() - 0.5) * 80;
+  starBasePos[i * 3 + 2] = -(Math.random() * 160);
 }
-starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.4, sizeAttenuation: true });
+
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starBasePos.slice(), 3));
+const starMat = new THREE.PointsMaterial({
+  color: 0xffffff, size: 0.4, sizeAttenuation: true,
+  transparent: true, opacity: 1,
+});
 const stars = new THREE.Points(starGeo, starMat);
 scene.add(stars);
+
+// Streak lines: 2 vertices per star (base + radial tip)
+const streakPos = new Float32Array(STAR_COUNT * 6);
+const streakGeo = new THREE.BufferGeometry();
+streakGeo.setAttribute('position', new THREE.BufferAttribute(streakPos, 3));
+const streakMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+const starStreaks = new THREE.LineSegments(streakGeo, streakMat);
+scene.add(starStreaks);
 
 // ─── CARD SYSTEM ─────────────────────────────────────────────────────────────
 const CARD_COUNT = 60;
@@ -720,9 +732,21 @@ function animate() {
   const vigOpacity = Math.max(0, (sliderValue - 0.55) / 0.45) * 0.55;
   vignette.style.opacity = vigOpacity;
 
-  // Stars streak
-  const starStreak = Math.max(0, sliderValue - 0.25) * 1.8;
-  starMat.size = 0.4 + starStreak * 2.5;
+  // Stars: dots fade out → radial streaks fade in with speed
+  const streakFade = Math.min(1, Math.max(0, (sliderValue - 0.3) / 0.3));
+  starMat.size = 0.4 + Math.max(0, sliderValue - 0.5) * 1.0;
+  starMat.opacity = Math.max(0.15, 1 - streakFade);
+  streakMat.opacity = streakFade * 0.85;
+
+  const streakLen = sliderValue * 8;
+  for (let si = 0; si < STAR_COUNT; si++) {
+    const sx = starBasePos[si * 3], sy = starBasePos[si * 3 + 1], sz = starBasePos[si * 3 + 2];
+    const r = Math.sqrt(sx * sx + sy * sy) || 1;
+    const nx = sx / r, ny = sy / r; // radial direction (outward from tunnel axis)
+    streakPos[si * 6]     = sx;             streakPos[si * 6 + 1] = sy;             streakPos[si * 6 + 2] = sz;
+    streakPos[si * 6 + 3] = sx + nx * streakLen; streakPos[si * 6 + 4] = sy + ny * streakLen; streakPos[si * 6 + 5] = sz;
+  }
+  streakGeo.attributes.position.needsUpdate = true;
 
   // Raycasting for hover
   raycaster.setFromCamera(mouse2D, camera);
@@ -765,9 +789,11 @@ function animate() {
     // Chroma aberration
     u.uChroma.value = sliderValue > 0.80 ? (sliderValue - 0.80) * 5.0 : 0.0;
 
-    // Stretch (HYPER)
-    const stretch = sliderValue > 0.80 ? (sliderValue - 0.80) * 2.5 : 0.0;
-    u.uStretch.value = stretch;
+    // Stretch — increases with speed AND proximity (reference warp effect)
+    // depthFactor: 1 when very close (dz≈0), 0 when far (dz≈-12)
+    const depthFactor = Math.max(0, 1 - Math.abs(dz) / 12);
+    const baseStretch = sliderValue > 0.20 ? (sliderValue - 0.20) * 1.2 : 0.0;
+    u.uStretch.value = baseStretch * (1 + depthFactor * 4);
 
     // Hover glow
     if (isHit) {
@@ -814,6 +840,7 @@ function animate() {
 
   // Stars rotation slow
   stars.rotation.z = t * 0.003;
+  starStreaks.rotation.z = t * 0.003;
 
   renderer.render(scene, camera);
 }
