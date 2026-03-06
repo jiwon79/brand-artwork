@@ -60,12 +60,7 @@ body {
   user-select: none;
   -webkit-user-drag: none;
 }
-.card-accent-bar {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  pointer-events: none;
-}
+
 .card-meta {
   position: absolute;
   bottom: 0; left: 0; right: 0;
@@ -479,32 +474,41 @@ const FOCAL_PIX = (appHeight / 2) / Math.tan(FOV_RAD / 2); // ≈ 608 px/unit at
 const CARD_BASE_W = 260; // DOM element natural width (px)
 const CARD_BASE_H = Math.round(CARD_BASE_W * CARD_H / CARD_W); // 169 px
 
+// Extract a random vivid pixel color from a loaded img element via canvas
+function extractRandomColor(img) {
+  try {
+    const cv = document.createElement('canvas');
+    cv.width = 10; cv.height = 10;
+    const ctx = cv.getContext('2d');
+    ctx.drawImage(img, 0, 0, 10, 10);
+    const data = ctx.getImageData(0, 0, 10, 10).data;
+    const vivid = [];
+    for (let i = 0; i < 100; i++) {
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+      if (Math.max(r, g, b) > 50 && Math.max(r, g, b) - Math.min(r, g, b) > 40)
+        vivid.push(`rgb(${r},${g},${b})`);
+    }
+    return vivid.length ? vivid[Math.floor(Math.random() * vivid.length)] : '#E50914';
+  } catch { return '#E50914'; }
+}
+
 function createCardElement(show) {
-  const accentColor = GENRE_COLORS[show.genre[0]] || '#E50914';
   const el = document.createElement('div');
   el.className = 'card-el';
-  // Vertical color bar — always visible beneath the poster; revealed at HYPER speed
-  el.style.background =
-    `linear-gradient(to right, transparent 0%, ${accentColor}bb 18%, ${accentColor} 42%, ${accentColor} 58%, ${accentColor}bb 82%, transparent 100%)`;
 
   const img = document.createElement('img');
   img.src = show.img;
   img.crossOrigin = 'anonymous';
   img.loading = 'eager';
-  img.onerror = () => { img.style.display = 'none'; }; // gradient background already shows
+  img.onerror = () => { img.style.display = 'none'; };
   el.appendChild(img);
-
-  const bar = document.createElement('div');
-  bar.className = 'card-accent-bar';
-  bar.style.background = accentColor;
-  el.appendChild(bar);
 
   const meta = document.createElement('div');
   meta.className = 'card-meta';
   meta.style.opacity = '0';
   meta.innerHTML =
     `<div class="card-title-text">${show.title}</div>` +
-    `<div class="card-genre-text" style="color:${accentColor}">${show.genre[0].toUpperCase()}</div>`;
+    `<div class="card-genre-text">${show.genre[0].toUpperCase()}</div>`;
   el.appendChild(meta);
 
   return el;
@@ -523,13 +527,23 @@ for (let i = 0; i < CARD_COUNT; i++) {
     el,
     img: el.querySelector('img'),
     meta: el.querySelector('.card-meta'),
-    accentColor: GENRE_COLORS[show.genre[0]] || '#E50914',
+    accentColor: '#888888', // placeholder; replaced with image-derived color on load
     x: 0, y: 0, z: 0,
     rotZ: 0,
     glowVal: 0,
     scaleVal: 1,
     isHovered: false,
   };
+
+  // Apply a color sampled randomly from the poster image
+  const applyExtractedColor = () => {
+    const color = extractRandomColor(card.img);
+    card.accentColor = color;
+    card.el.style.background =
+      `linear-gradient(to right, transparent 0%, ${color}bb 18%, ${color} 42%, ${color} 58%, ${color}bb 82%, transparent 100%)`;
+  };
+  if (card.img.complete && card.img.naturalWidth > 0) applyExtractedColor();
+  else card.img.addEventListener('load', applyExtractedColor, { once: true });
 
   el.addEventListener('pointerenter', () => { card.isHovered = true; });
   el.addEventListener('pointerleave', () => { card.isHovered = false; });
