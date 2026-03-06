@@ -474,22 +474,34 @@ const FOCAL_PIX = (appHeight / 2) / Math.tan(FOV_RAD / 2); // ≈ 608 px/unit at
 const CARD_BASE_W = 260; // DOM element natural width (px)
 const CARD_BASE_H = Math.round(CARD_BASE_W * CARD_H / CARD_W); // 169 px
 
-// Extract a random vivid pixel color from a loaded img element via canvas
-function extractRandomColor(img) {
-  try {
-    const cv = document.createElement('canvas');
-    cv.width = 10; cv.height = 10;
-    const ctx = cv.getContext('2d');
-    ctx.drawImage(img, 0, 0, 10, 10);
-    const data = ctx.getImageData(0, 0, 10, 10).data;
-    const vivid = [];
-    for (let i = 0; i < 100; i++) {
-      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
-      if (Math.max(r, g, b) > 50 && Math.max(r, g, b) - Math.min(r, g, b) > 40)
-        vivid.push(`rgb(${r},${g},${b})`);
-    }
-    return vivid.length ? vivid[Math.floor(Math.random() * vivid.length)] : '#E50914';
-  } catch { return '#E50914'; }
+// Color palette sampled from the reference streak images
+const STREAK_PALETTE = [
+  // Reds & crimson
+  '#C42020', '#E03030', '#D43828',
+  // Orange-reds
+  '#D44018', '#E06020', '#C85020',
+  // Oranges & amber
+  '#E08020', '#D09030', '#C8A038',
+  // Gold/yellow
+  '#B89830', '#C8A840',
+  // Pinks & hot pink
+  '#E03070', '#D03880', '#C82878',
+  // Mauve & rose
+  '#D06080', '#C87890', '#B86878',
+  // Browns & copper
+  '#A05830', '#885030', '#6A3820',
+  // Deep blues
+  '#1838B8', '#1850C8', '#2060D0',
+  // Bright blues
+  '#2878E0', '#4090E8', '#1880D0',
+  // Teal & blue-green
+  '#1898A8', '#10A0A8', '#20A8B0',
+  // Greens
+  '#38A848', '#60B030', '#80B840',
+];
+
+function pickStreakColor() {
+  return STREAK_PALETTE[Math.floor(Math.random() * STREAK_PALETTE.length)];
 }
 
 function createCardElement(show) {
@@ -527,7 +539,7 @@ for (let i = 0; i < CARD_COUNT; i++) {
     el,
     img: el.querySelector('img'),
     meta: el.querySelector('.card-meta'),
-    accentColor: '#888888', // placeholder; replaced with image-derived color on load
+    accentColor: '#888888', // replaced immediately below
     x: 0, y: 0, z: 0,
     rotZ: 0,
     glowVal: 0,
@@ -535,15 +547,11 @@ for (let i = 0; i < CARD_COUNT; i++) {
     isHovered: false,
   };
 
-  // Apply a color sampled randomly from the poster image
-  const applyExtractedColor = () => {
-    const color = extractRandomColor(card.img);
-    card.accentColor = color;
-    card.el.style.background =
-      `linear-gradient(to right, transparent 0%, ${color}bb 18%, ${color} 42%, ${color} 58%, ${color}bb 82%, transparent 100%)`;
-  };
-  if (card.img.complete && card.img.naturalWidth > 0) applyExtractedColor();
-  else card.img.addEventListener('load', applyExtractedColor, { once: true });
+  // Assign a random color from the reference streak palette
+  const color = pickStreakColor();
+  card.accentColor = color;
+  card.el.style.background =
+    `linear-gradient(to right, transparent 0%, ${color}bb 18%, ${color} 42%, ${color} 58%, ${color}bb 82%, transparent 100%)`;
 
   el.addEventListener('pointerenter', () => { card.isHovered = true; });
   el.addEventListener('pointerleave', () => { card.isHovered = false; });
