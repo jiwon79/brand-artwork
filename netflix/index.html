@@ -364,7 +364,7 @@ const SHOWS = [
     genre: ['crime','thriller'],
     rating: '★★★★☆  93% Match',
     desc: 'FBI 요원들이 연쇄살인범의 심리를 연구해 프로파일링을 개척한다.',
-    img: 'https://image.tmdb.org/t/p/w500/jehWGqQMbNqMmD1p4hDmD5IuCHl.jpg',
+    img: 'https://image.tmdb.org/t/p/w500/bvYjhsbxOBwpm8xLE5BhdA3a8CZ.jpg',
   },
   {
     title: 'Money Heist',
@@ -385,7 +385,7 @@ const SHOWS = [
     genre: ['crime','drama'],
     rating: '★★★★★  97% Match',
     desc: '1920년대 버밍엄을 지배한 쉘비 가문의 범죄 왕국.',
-    img: 'https://image.tmdb.org/t/p/w500/vUUqzWa2LnHIVqkaKVn3nyfVHB.jpg',
+    img: 'https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg',
   },
   {
     title: 'Black Mirror',
@@ -475,6 +475,10 @@ function createCardElement(show) {
   img.src = show.img;
   img.crossOrigin = 'anonymous';
   img.loading = 'eager';
+  img.onerror = () => {
+    img.style.display = 'none';
+    el.style.background = `linear-gradient(160deg, ${accentColor}55 0%, #111 100%)`;
+  };
   el.appendChild(img);
 
   const bar = document.createElement('div');
@@ -529,7 +533,7 @@ function placeCard(card, i, isRecycle = false) {
   card.z = isRecycle
     ? -(TUNNEL_LENGTH + 2 + Math.random() * 10)
     : -(2 + (i / CARD_COUNT) * TUNNEL_LENGTH);
-  card.rotZ = Math.sin(i * 0.5) * 0.15; // small tilt (radians)
+  card.rotZ = 0; // no tilt — keep thumbnails as clean rectangles
 }
 
 cards.forEach((card, i) => placeCard(card, i, false));
@@ -707,18 +711,18 @@ function animate() {
   const chromaAmt = sliderValue > 0.80 ? (sliderValue - 0.80) * 12 : 0;
   const blurBase  = Math.max(0, sliderValue - 0.25) * 1.5;
 
-  // Layer-level blur: one GPU compositing pass instead of 60 per-image filters
-  // (only when no chroma — chroma needs per-card filter)
-  const layerBlur = (chromaAmt === 0 && blurBase > 0.1)
+  // Layer-level filter: one GPU pass for the entire card layer
+  // chroma moved here too — saves 60 per-card img.style.filter writes at HYPER
+  const layerChroma = chromaAmt > 0
+    ? `drop-shadow(${chromaAmt.toFixed(1)}px 0 0 rgba(229,9,20,0.85)) drop-shadow(-${chromaAmt.toFixed(1)}px 0 0 rgba(74,144,217,0.85))`
+    : '';
+  const layerBlurStr = chromaAmt === 0 && blurBase > 0.1
     ? `blur(${(blurBase * 0.2).toFixed(2)}px)` : '';
-  if (cardsLayer.style.filter !== layerBlur) cardsLayer.style.filter = layerBlur;
+  const newLayerFilter = layerChroma || layerBlurStr;
+  if (cardsLayer.style.filter !== newLayerFilter) cardsLayer.style.filter = newLayerFilter;
 
   let nearCard = null;
   let nearDist = Infinity;
-  // Precompute chroma string once (same for all cards)
-  const chromaFilter = chromaAmt > 0
-    ? `drop-shadow(${chromaAmt.toFixed(1)}px 0 0 rgba(229,9,20,0.85)) drop-shadow(${(-chromaAmt).toFixed(1)}px 0 0 rgba(74,144,217,0.85))`
-    : '';
 
   cards.forEach((card, i) => {
     // Move toward camera (+Z)
@@ -749,35 +753,43 @@ function animate() {
 
     card.el.style.display = 'block';
 
-    // Vertical stretch — speed × proximity
+    // Vertical stretch: proximity-based + global hyperStretch at FAST/HYPER (Netflix tudum effect)
     const depthFactor = Math.max(0, 1 - depth / 12);
     const baseStretch = sliderValue > 0.20 ? (sliderValue - 0.20) * 1.2 : 0.0;
-    const stretchY = 1 + baseStretch * (1 + depthFactor * 4) * 1.8;
+    const hyperStretch = sliderValue > 0.55 ? (sliderValue - 0.55) * 7 : 0;
+    const stretchY = 1 + baseStretch * (1 + depthFactor * 4) * 1.8 + hyperStretch;
 
-    // Nearest card tracking
-    const dist3d = Math.sqrt(card.x * card.x + card.y * card.y + card.z * card.z);
-    const isNear = depth < 8 && depth > 0.5;
-    if (isNear && dist3d < nearDist) { nearDist = dist3d; nearCard = card; }
+    // Nearest card tracking — skip at high speed (pointer events disabled anyway)
+    const isNear = sliderValue < 0.60 && depth < 8 && depth > 0.5;
+    if (isNear) {
+      const dist3d = Math.sqrt(card.x * card.x + card.y * card.y + card.z * card.z);
+      if (dist3d < nearDist) { nearDist = dist3d; nearCard = card; }
+    }
 
-    // Hover / near glow + scale
-    const targetGlow  = card.isHovered ? 1.0 : (isNear && sliderValue < 0.5 ? 0.4 : 0.0);
-    const targetScale = card.isHovered ? 1.3 : 1.0;
-    card.glowVal  += (targetGlow  - card.glowVal)  * 0.12;
-    card.scaleVal += (targetScale - card.scaleVal) * 0.12;
+    // Hover / near glow + scale — skip at high speed
+    if (sliderValue <= 0.60) {
+      const targetGlow  = card.isHovered ? 1.0 : (isNear && sliderValue < 0.5 ? 0.4 : 0.0);
+      const targetScale = card.isHovered ? 1.3 : 1.0;
+      card.glowVal  += (targetGlow  - card.glowVal)  * 0.12;
+      card.scaleVal += (targetScale - card.scaleVal) * 0.12;
+    } else {
+      card.glowVal  = 0;
+      card.scaleVal = 1;
+    }
 
     const finalScale = cssScale * card.scaleVal;
     const alpha = Math.min(1, Math.max(0, (TUNNEL_LENGTH - depth) / 20));
 
-    // Transform — always write (card moves every frame)
+    // Transform — always write (card moves every frame); no rotation
     card.el.style.transform =
       `translate(${screenX.toFixed(1)}px,${screenY.toFixed(1)}px) translate(-50%,-50%) ` +
-      `scale(${finalScale.toFixed(4)},${(finalScale * stretchY).toFixed(4)}) rotateZ(${card.rotZ}rad)`;
+      `scale(${finalScale.toFixed(4)},${(finalScale * stretchY).toFixed(4)})`;
 
-    // Opacity — write only when meaningfully changed (avoids style recalc)
+    // Opacity — write only when meaningfully changed
     const newAlpha = +alpha.toFixed(3);
     if (card._alpha !== newAlpha) { card.el.style.opacity = newAlpha; card._alpha = newAlpha; }
 
-    // zIndex — throttle: update every 3 frames only (recomposition is expensive)
+    // zIndex — throttle every 3 frames
     if (frameN % 3 === 0) {
       card.el.style.zIndex = Math.floor(10000 - depth * 10);
     }
@@ -788,12 +800,11 @@ function animate() {
       : '';
     if (card._shadow !== newShadow) { card.el.style.boxShadow = newShadow; card._shadow = newShadow; }
 
-    // img filter — chroma only (blur handled at layer level); cache to avoid redundant writes
-    const newImgFilter = (chromaAmt > 0 && !card.isHovered) ? chromaFilter : '';
-    if (card._imgFilter !== newImgFilter) { card.img.style.filter = newImgFilter; card._imgFilter = newImgFilter; }
+    // img filter — clear per-card filter (chroma/blur now handled at cardsLayer level)
+    if (card._imgFilter) { card.img.style.filter = ''; card._imgFilter = ''; }
 
-    // Text: show only when slow + close
-    const newMetaOp = (sliderValue < 0.4 && depth < 12) ? +Math.min(1, (12 - depth) / 5).toFixed(3) : 0;
+    // Text: show when slow + close; increased depth threshold for earlier visibility
+    const newMetaOp = (sliderValue < 0.4 && depth < 22) ? +Math.min(1, (22 - depth) / 8).toFixed(3) : 0;
     if (card._metaOp !== newMetaOp) { card.meta.style.opacity = newMetaOp; card._metaOp = newMetaOp; }
   });
 
