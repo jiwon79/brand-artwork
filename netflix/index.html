@@ -483,15 +483,15 @@ function createCardElement(show) {
   const accentColor = GENRE_COLORS[show.genre[0]] || '#E50914';
   const el = document.createElement('div');
   el.className = 'card-el';
+  // Vertical color bar — always visible beneath the poster; revealed at HYPER speed
+  el.style.background =
+    `linear-gradient(to bottom, transparent 0%, ${accentColor}bb 18%, ${accentColor} 42%, ${accentColor} 58%, ${accentColor}bb 82%, transparent 100%)`;
 
   const img = document.createElement('img');
   img.src = show.img;
   img.crossOrigin = 'anonymous';
   img.loading = 'eager';
-  img.onerror = () => {
-    img.style.display = 'none';
-    el.style.background = `linear-gradient(160deg, ${accentColor}55 0%, #111 100%)`;
-  };
+  img.onerror = () => { img.style.display = 'none'; }; // gradient background already shows
   el.appendChild(img);
 
   const bar = document.createElement('div');
@@ -815,6 +815,10 @@ function animate() {
 
     // img filter — clear per-card filter (chroma/blur now handled at cardsLayer level)
     if (card._imgFilter) { card.img.style.filter = ''; card._imgFilter = ''; }
+
+    // Poster → color-bar crossfade: img fades out as speed ramps up
+    const newImgOp = +(Math.max(0, 1 - (sliderValue - 0.35) / 0.45)).toFixed(3);
+    if (card._imgOp !== newImgOp) { card.img.style.opacity = newImgOp; card._imgOp = newImgOp; }
 
     // Text: show when slow + close; increased depth threshold for earlier visibility
     const newMetaOp = (sliderValue < 0.4 && depth < 22) ? +Math.min(1, (22 - depth) / 8).toFixed(3) : 0;
