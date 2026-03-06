@@ -770,7 +770,12 @@ function animate() {
     const depthFactor = Math.max(0, 1 - depth / 12);
     const baseStretch = sliderValue > 0.20 ? (sliderValue - 0.20) * 1.2 : 0.0;
     const hyperStretch = (sliderValue > 0.55 ? (sliderValue - 0.55) * 7 : 0) * hyperMult;
-    const stretchY = 1 + baseStretch * (1 + depthFactor * 4) * 1.8 + hyperStretch;
+    const formulaStretchY = 1 + baseStretch * (1 + depthFactor * 4) * 1.8 + hyperStretch;
+    // At HYPER, blend toward exact 2× screen height per card (screen-space target)
+    const hyperT = Math.max(0, Math.min(1, (sliderValue - 0.75) / 0.25));
+    const stretchY = hyperT > 0
+      ? formulaStretchY + (2 * appHeight / visH - formulaStretchY) * hyperT
+      : formulaStretchY;
 
     // Nearest card tracking — skip at high speed (pointer events disabled anyway)
     const isNear = sliderValue < 0.60 && depth < 8 && depth > 0.5;
@@ -791,7 +796,9 @@ function animate() {
     }
 
     const finalScale = cssScale * card.scaleVal;
-    const alpha = Math.min(1, Math.max(0, (TUNNEL_LENGTH - depth) / 20));
+    const farFade  = Math.min(1, Math.max(0, (TUNNEL_LENGTH - depth) / 20));
+    const nearFade = Math.min(1, Math.max(0, (depth - 0.5) / 2.5)); // fade to 0 when depth < 0.5
+    const alpha = farFade * nearFade;
 
     // Transform — always write (card moves every frame); no rotation
     card.el.style.transform =
