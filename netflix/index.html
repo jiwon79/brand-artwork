@@ -436,11 +436,24 @@ for (let i = 0; i < STAR_COUNT; i++) {
   starBasePos[i * 3 + 2] = -(Math.random() * 160);
 }
 
+// Circular star sprite (soft gaussian disc, not a square)
+const _starCanvas = document.createElement('canvas');
+_starCanvas.width = _starCanvas.height = 32;
+const _starCtx = _starCanvas.getContext('2d');
+const _starGrad = _starCtx.createRadialGradient(16, 16, 0, 16, 16, 15);
+_starGrad.addColorStop(0,   'rgba(255,255,255,1)');
+_starGrad.addColorStop(0.35,'rgba(255,255,255,0.85)');
+_starGrad.addColorStop(1,   'rgba(255,255,255,0)');
+_starCtx.fillStyle = _starGrad;
+_starCtx.fillRect(0, 0, 32, 32);
+const starSpriteTex = new THREE.CanvasTexture(_starCanvas);
+
 const starGeo = new THREE.BufferGeometry();
 starGeo.setAttribute('position', new THREE.BufferAttribute(starBasePos.slice(), 3));
 const starMat = new THREE.PointsMaterial({
-  color: 0xffffff, size: 0.4, sizeAttenuation: true,
+  color: 0xffffff, size: 0.6, sizeAttenuation: true,
   transparent: true, opacity: 1,
+  map: starSpriteTex, alphaTest: 0.01,
 });
 const stars = new THREE.Points(starGeo, starMat);
 scene.add(stars);
@@ -529,7 +542,7 @@ function placeCard(card, i, isRecycle = false) {
   const angle = i * 2.39996; // golden angle
   const r = TUNNEL_RADIUS + Math.sin(i * 2.3) * 1.5;
   card.x = Math.cos(angle) * r;
-  card.y = Math.sin(angle) * r * 0.6;
+  card.y = Math.sin(angle) * r * 1.5; // was 0.6 — fills full screen height in portrait
   card.z = isRecycle
     ? -(TUNNEL_LENGTH + 2 + Math.random() * 10)
     : -(2 + (i / CARD_COUNT) * TUNNEL_LENGTH);
@@ -676,9 +689,10 @@ function animate() {
   speedLabel.textContent = getMode(sliderValue);
   speedLabel.style.color = sliderValue > 0.55 ? '#E50914' : '#ffffff';
 
-  // Speed — floor raised so SLOW mode is visibly moving
+  // Speed: HYPER multiplier ramps 1→2× across the 0.80→1.0 range
+  const hyperMult = sliderValue > 0.80 ? 1 + (sliderValue - 0.80) * 5 : 1;
   const baseSpeed = 3.5 + sliderValue * 34;
-  speed = baseSpeed * dt;
+  speed = baseSpeed * hyperMult * dt;
 
   // Vignette
   vignette.style.opacity = Math.max(0, (sliderValue - 0.55) / 0.45) * 0.55;
@@ -691,13 +705,12 @@ function animate() {
 
   // Only update streak geometry when visible — skips CPU array write + GPU buffer upload
   if (streakMat.opacity > 0.02) {
-    const streakLen = sliderValue * 8;
+    // Vertical elongation — streak extends in Y axis (세로로 길게)
+    const streakLen = sliderValue * 10 * hyperMult;
     for (let si = 0; si < STAR_COUNT; si++) {
       const sx = starBasePos[si * 3], sy = starBasePos[si * 3 + 1], sz = starBasePos[si * 3 + 2];
-      const r  = Math.sqrt(sx * sx + sy * sy) || 1;
-      const nx = sx / r, ny = sy / r;
-      streakPos[si * 6]     = sx;              streakPos[si * 6 + 1] = sy;              streakPos[si * 6 + 2] = sz;
-      streakPos[si * 6 + 3] = sx + nx * streakLen; streakPos[si * 6 + 4] = sy + ny * streakLen; streakPos[si * 6 + 5] = sz;
+      streakPos[si * 6]     = sx; streakPos[si * 6 + 1] = sy - streakLen * 0.5; streakPos[si * 6 + 2] = sz;
+      streakPos[si * 6 + 3] = sx; streakPos[si * 6 + 4] = sy + streakLen * 0.5; streakPos[si * 6 + 5] = sz;
     }
     streakGeo.attributes.position.needsUpdate = true;
   }
@@ -756,7 +769,7 @@ function animate() {
     // Vertical stretch: proximity-based + global hyperStretch at FAST/HYPER (Netflix tudum effect)
     const depthFactor = Math.max(0, 1 - depth / 12);
     const baseStretch = sliderValue > 0.20 ? (sliderValue - 0.20) * 1.2 : 0.0;
-    const hyperStretch = sliderValue > 0.55 ? (sliderValue - 0.55) * 7 : 0;
+    const hyperStretch = (sliderValue > 0.55 ? (sliderValue - 0.55) * 7 : 0) * hyperMult;
     const stretchY = 1 + baseStretch * (1 + depthFactor * 4) * 1.8 + hyperStretch;
 
     // Nearest card tracking — skip at high speed (pointer events disabled anyway)
