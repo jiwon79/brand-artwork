@@ -893,7 +893,7 @@ function animate() {
 
     const finalScale = cssScale * card.scaleVal;
     const farFade  = Math.min(1, Math.max(0, (TUNNEL_LENGTH - depth) / 20));
-    const nearFade = Math.min(1, Math.max(0, (depth - 0.5) / 2.5)); // fade to 0 when depth < 0.5
+    const nearFade = Math.min(1, Math.max(0, (depth - 0.5) / 6.0)); // fade to 0 when depth < 0.5, starts fading from depth 6.5
     const alpha = farFade * nearFade;
 
     // Transform — always write (card moves every frame); no rotation
