@@ -572,9 +572,7 @@ function animate() {
 
   // Layer-level filter: one GPU pass for the entire card layer
   // chroma moved here too — saves 60 per-card img.style.filter writes at HYPER
-  const layerChroma = chromaAmt > 0
-    ? `drop-shadow(${chromaAmt.toFixed(1)}px 0 0 rgba(229,9,20,0.85)) drop-shadow(-${chromaAmt.toFixed(1)}px 0 0 rgba(74,144,217,0.85))`
-    : '';
+  const layerChroma = '';
   const layerBlurStr = chromaAmt === 0 && blurBase > 0.2
     ? `blur(${(blurBase * 0.35).toFixed(2)}px)` : '';
   const newLayerFilter = layerChroma || layerBlurStr;
