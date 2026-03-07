@@ -833,6 +833,7 @@ function animate() {
 
   let nearCard = null;
   let nearDist = Infinity;
+  let hoveredCard = null;
 
   cards.forEach((card, i) => {
     // Move toward camera (+Z)
@@ -880,6 +881,7 @@ function animate() {
       const dist3d = Math.sqrt(card.x * card.x + card.y * card.y + card.z * card.z);
       if (dist3d < nearDist) { nearDist = dist3d; nearCard = card; }
     }
+    if (card.isHovered) hoveredCard = card;
 
     // Hover / near glow + scale — skip at high speed
     if (sliderValue <= 0.60) {
@@ -926,21 +928,22 @@ function animate() {
     const newImgOp = +(Math.max(0, 1 - (sliderValue - 0.35) / 0.45)).toFixed(3);
     if (card._imgOp !== newImgOp) { card.img.style.opacity = newImgOp; card._imgOp = newImgOp; }
 
-    // Text: show when slow + close; increased depth threshold for earlier visibility
-    const newMetaOp = (sliderValue < 0.4 && depth < 22) ? +Math.min(1, (22 - depth) / 8).toFixed(3) : 0;
+    // Text: show when slow + close; depth 44 = 2× previous range (was 22)
+    const newMetaOp = (sliderValue < 0.4 && depth < 44) ? +Math.min(1, (44 - depth) / 16).toFixed(3) : 0;
     if (card._metaOp !== newMetaOp) { card.meta.style.opacity = newMetaOp; card._metaOp = newMetaOp; }
   });
 
-  // Glitch label near closest card
-  if (nearCard && sliderValue < 0.55) {
-    const depth = -nearCard.z;
+  // Glitch label: show on hovered/touched card (falls back to nearest card if none hovered)
+  const glitchTarget = hoveredCard ?? (sliderValue < 0.55 ? nearCard : null);
+  if (glitchTarget) {
+    const depth = -glitchTarget.z;
     const px = FOCAL_PIX / depth;
-    const lx = appWidth  / 2 + nearCard.x * px;
-    const ly = appHeight / 2 - nearCard.y * px;
+    const lx = appWidth  / 2 + glitchTarget.x * px;
+    const ly = appHeight / 2 - glitchTarget.y * px;
     glitchLabel.style.display = 'block';
     glitchLabel.style.left = (lx - 40) + 'px';
     glitchLabel.style.top  = (ly + CARD_H * px / 2 + 6) + 'px';
-    const show  = nearCard.show;
+    const show  = glitchTarget.show;
     const chars = '!@#$%^&*ABCDEF';
     const gt    = t * 10;
     let gl = '';
