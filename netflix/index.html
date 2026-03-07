@@ -235,7 +235,7 @@ body {
   <div id="grain"></div>
   <div id="vignette"></div>
 
-  <div id="logo">NETFLIX</div>
+  <div id="logo" style="display:none">NETFLIX</div>
 
   <div id="slider-container">
     <div class="ticks" id="slider-ticks"></div>
@@ -249,7 +249,7 @@ body {
     </div>
   </div>
 
-  <div id="speed-label">SLOW</div>
+  <div id="speed-label" style="display:none">SLOW</div>
 
 </div>
 
@@ -591,7 +591,7 @@ function animate() {
 
   // ── Stars ──────────────────────────────────────────────────────────────────
   const streakFade = Math.min(1, Math.max(0, (sliderValue - 0.3) / 0.3));
-  starMat.size    = 0.4 + Math.max(0, sliderValue - 0.5) * 1.0;
+  starMat.size    = 0.2 + Math.max(0, sliderValue - 0.5) * 0.5;
   starMat.opacity = Math.max(0.15, 1 - streakFade);
   streakMat.opacity = streakFade * 0.85;
 
