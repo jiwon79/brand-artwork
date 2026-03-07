@@ -651,15 +651,6 @@ function animate() {
       `translate(${screenX.toFixed(1)}px,${screenY.toFixed(1)}px) translate(-50%,-50%) ` +
       `scale(${finalScale.toFixed(4)},${(finalScale * stretchY).toFixed(4)})`;
 
-    // Sharp rendering: remove will-change when close so browser rasterizes at full res
-    // Adjust SHARP_DEPTH to control how far away sharpness kicks in (lower = closer)
-    const SHARP_DEPTH = 60;
-    const shouldBeSharp = depth < SHARP_DEPTH;
-    if (card._sharp !== shouldBeSharp) {
-      card.el.style.willChange = shouldBeSharp ? 'auto' : 'transform, opacity';
-      card._sharp = shouldBeSharp;
-    }
-
     // Opacity — write only when meaningfully changed
     const newAlpha = +alpha.toFixed(3);
     if (card._alpha !== newAlpha) { card.el.style.opacity = newAlpha; card._alpha = newAlpha; }
