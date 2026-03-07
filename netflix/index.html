@@ -78,14 +78,6 @@ body {
   font-family: 'Arial Black', Arial, sans-serif;
   line-height: 1.2;
 }
-.card-genre-text {
-  font-size: 7px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  font-family: Arial, sans-serif;
-  margin-top: 2px;
-}
 /* Slider */
 /* ── Fader slider ── */
 #slider-container {
@@ -279,205 +271,118 @@ const GENRE_COLORS = {
 const SHOWS = [
   {
     title: 'Stranger Things',
-    genre: ['scifi','horror'],
-    rating: '★★★★★  97% Match',
-    desc: '어둠 속 미지의 존재와 초자연적 힘에 맞서는 아이들의 이야기.',
     img: 'https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg',
   },
   {
     title: 'Wednesday',
-    genre: ['mystery','horror'],
-    rating: '★★★★☆  94% Match',
-    desc: '수요일 아담스가 네버모어 아카데미에서 초자연적 미스터리를 파헤친다.',
     img: 'https://image.tmdb.org/t/p/w500/9PFonBhy4cQy7Jz20NpMygczOkv.jpg',
   },
   {
     title: 'Squid Game',
-    genre: ['thriller','drama'],
-    rating: '★★★★★  99% Match',
-    desc: '목숨을 건 서바이벌 게임에 참가한 456명의 이야기.',
     img: 'https://image.tmdb.org/t/p/w500/dDlEmu3EZ0Pgg93K2SVNLCjCSvE.jpg',
   },
   {
     title: 'The Crown',
-    genre: ['drama','romance'],
-    rating: '★★★★☆  91% Match',
-    desc: '영국 왕실의 내부를 파헤치는 장대한 역사 드라마.',
     img: 'https://image.tmdb.org/t/p/w500/1M876KPjulVwppEpldhdc8V4o68.jpg',
   },
   {
     title: 'Dark',
-    genre: ['scifi','mystery'],
-    rating: '★★★★★  98% Match',
-    desc: '시간 여행과 얽힌 네 가족의 비밀이 독일 소도시를 뒤흔든다.',
     img: 'https://image.tmdb.org/t/p/w500/apbrbWs2BsDEKnAlJX05OtFikFO.jpg',
   },
   {
     title: 'Ozark',
-    genre: ['crime','thriller'],
-    rating: '★★★★☆  95% Match',
-    desc: '멕시코 카르텔을 위해 돈세탁을 하게 된 가족의 생존기.',
     img: 'https://image.tmdb.org/t/p/w500/pCGyPVrI9Fzc6Y6PBJbEMONiDqE.jpg',
   },
   {
     title: 'Narcos',
-    genre: ['crime','action'],
-    rating: '★★★★★  96% Match',
-    desc: '콜롬비아 마약왕 파블로 에스코바르의 흥망성쇠를 추적한다.',
     img: 'https://image.tmdb.org/t/p/w500/rTmal9fDbwh5F0waol2hq35U4ah.jpg',
   },
   {
     title: 'Mindhunter',
-    genre: ['crime','thriller'],
-    rating: '★★★★☆  93% Match',
-    desc: 'FBI 요원들이 연쇄살인범의 심리를 연구해 프로파일링을 개척한다.',
     img: 'https://image.tmdb.org/t/p/w500/bvYjhsbxOBwpm8xLE5BhdA3a8CZ.jpg',
   },
   {
     title: 'Money Heist',
-    genre: ['crime','action'],
-    rating: '★★★★★  98% Match',
-    desc: '정교한 계획으로 조폐국을 점거한 강도단의 치밀한 작전.',
     img: 'https://image.tmdb.org/t/p/w500/reEMJA1uzscCbkpeRJeTT2bjqUp.jpg',
   },
   {
     title: 'Witcher',
-    genre: ['action','scifi'],
-    rating: '★★★★☆  90% Match',
-    desc: '괴물 사냥꾼 게롤트의 운명적인 여정과 대륙의 위기.',
     img: 'https://image.tmdb.org/t/p/w500/7vjaCdMw15FEbXyLQTVa04URsPm.jpg',
   },
   {
     title: 'Peaky Blinders',
-    genre: ['crime','drama'],
-    rating: '★★★★★  97% Match',
-    desc: '1920년대 버밍엄을 지배한 쉘비 가문의 범죄 왕국.',
     img: 'https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg',
   },
   {
     title: 'Black Mirror',
-    genre: ['scifi','thriller'],
-    rating: '★★★★☆  92% Match',
-    desc: '기술이 뒤틀어놓은 근미래 사회의 섬뜩한 단편 이야기들.',
     img: 'https://image.tmdb.org/t/p/w500/7PRddO7z7mcPi21nZjpad70N4zM.jpg',
   },
   {
     title: 'The Queen\'s Gambit',
-    genre: ['drama'],
-    rating: '★★★★★  98% Match',
-    desc: '고아 소녀가 체스 천재로 성장하며 세계를 제패하는 이야기.',
     img: 'https://image.tmdb.org/t/p/w500/zU0htwkhNvBQdVSIKB1k18tIwGS.jpg',
   },
   {
     title: 'Bridgerton',
-    genre: ['drama','romance'],
-    rating: '★★★★☆  91% Match',
-    desc: '19세기 런던 사교계를 배경으로 한 화려한 로맨스.',
     img: 'https://image.tmdb.org/t/p/w500/luoKpgVwi1E23GvRPiuo7Q3I60m.jpg',
   },
   {
     title: 'Lupin',
-    genre: ['crime','mystery'],
-    rating: '★★★★★  96% Match',
-    desc: '아르센 뤼팽에서 영감받은 천재 도둑 아사네 디오프의 활약.',
     img: 'https://image.tmdb.org/t/p/w500/sgxdjHMoRzWfZuK2VWZvHBl30XY.jpg',
   },
   {
     title: 'Sex Education',
-    genre: ['drama','romance'],
-    rating: '★★★★☆  94% Match',
-    desc: '성 심리학자 어머니를 둔 내성적인 소년이 학교에서 성 상담소를 운영한다.',
     img: 'https://image.tmdb.org/t/p/w500/6UFh3mNlSRIEOqzNFf1jS6HpS3o.jpg',
   },
   {
     title: 'Emily in Paris',
-    genre: ['drama','romance'],
-    rating: '★★★★☆  89% Match',
-    desc: '시카고 마케터가 파리로 발령받아 일과 사랑을 동시에 쫓는다.',
     img: 'https://image.tmdb.org/t/p/w500/qgGFtgMFG0EIMNDXDpRmVMNO0PZ.jpg',
   },
   {
     title: 'The Umbrella Academy',
-    genre: ['action','scifi'],
-    rating: '★★★★☆  92% Match',
-    desc: '초능력을 가진 형제자매가 아버지의 죽음과 세계 종말을 막으려 한다.',
     img: 'https://image.tmdb.org/t/p/w500/scZlQQqnGEd2k4hK6GdNjLFdFQE.jpg',
   },
   {
     title: 'Shadow and Bone',
-    genre: ['action','scifi'],
-    rating: '★★★★☆  90% Match',
-    desc: '어둠을 가를 힘을 가진 소녀가 마법 세계의 운명을 짊어진다.',
     img: 'https://image.tmdb.org/t/p/w500/ruu2pnHRuvQrRnFJLKhqfJkpq5p.jpg',
   },
   {
     title: 'Cobra Kai',
-    genre: ['action','drama'],
-    rating: '★★★★☆  93% Match',
-    desc: '가라데 키드의 라이벌이 30년 뒤 도장을 차리며 대결이 재점화된다.',
     img: 'https://image.tmdb.org/t/p/w500/obsBZWFkdGgDaGlFYBNeSGSc4CB.jpg',
   },
   {
     title: 'You',
-    genre: ['thriller','mystery'],
-    rating: '★★★★☆  94% Match',
-    desc: '서점 직원이 집착적인 스토킹으로 사랑과 살인을 반복한다.',
     img: 'https://image.tmdb.org/t/p/w500/41yaWnIT8AjIHiULHtFozPyO1dh.jpg',
   },
   {
     title: 'Outer Banks',
-    genre: ['action','mystery'],
-    rating: '★★★★☆  91% Match',
-    desc: '노스캐롤라이나 섬 청소년들이 보물 사냥에 휘말린다.',
     img: 'https://image.tmdb.org/t/p/w500/rrFAiGBqFzUj1l7OPGDGi9AqyPg.jpg',
   },
   {
     title: 'The Haunting of Hill House',
-    genre: ['horror','mystery'],
-    rating: '★★★★★  97% Match',
-    desc: '어린 시절 유령 저택에서의 트라우마가 성인이 된 형제들을 덮친다.',
     img: 'https://image.tmdb.org/t/p/w500/fu0eZeNbgzVbkq6eBRDMYSyifZM.jpg',
   },
   {
     title: 'Altered Carbon',
-    genre: ['scifi','action'],
-    rating: '★★★★☆  90% Match',
-    desc: '의식을 몸에 이식하는 미래, 전직 군인이 살인 사건을 조사한다.',
     img: 'https://image.tmdb.org/t/p/w500/iLikoFmr3Nt0YFcFNWGcyT6GvPC.jpg',
   },
   {
     title: 'The Last Kingdom',
-    genre: ['action','drama'],
-    rating: '★★★★★  95% Match',
-    desc: '9세기 영국, 색슨족과 바이킹 사이에서 정체성을 찾는 전사의 이야기.',
     img: 'https://image.tmdb.org/t/p/w500/ij8wqhYPZYWroT8MqyxRHPlLF4o.jpg',
   },
   {
     title: 'Daredevil',
-    genre: ['action','crime'],
-    rating: '★★★★★  96% Match',
-    desc: '시각 장애인 변호사가 밤마다 뉴욕의 범죄를 막는 히어로가 된다.',
     img: 'https://image.tmdb.org/t/p/w500/QWbPaDxiB6LW2LjASknzYBvjMj.jpg',
   },
   {
     title: 'Inventing Anna',
-    genre: ['crime','drama'],
-    rating: '★★★★☆  88% Match',
-    desc: '러시아 억만장자를 사칭해 뉴욕 상류층을 속인 실화.',
     img: 'https://image.tmdb.org/t/p/w500/4oHqkETcMliSgLCTmNPBoFjFomY.jpg',
   },
   {
     title: 'Arcane',
-    genre: ['action','scifi'],
-    rating: '★★★★★  99% Match',
-    desc: '리그 오브 레전드 세계관, 두 자매의 엇갈린 운명.',
     img: 'https://image.tmdb.org/t/p/w500/fqldf2t8ztc9aiwn3k6mlX3tvRT.jpg',
   },
   {
     title: 'Tiger King',
-    genre: ['crime'],
-    rating: '★★★★☆  90% Match',
-    desc: '이국적 동물 사육사와 암살 음모를 다룬 충격적인 실화 다큐.',
     img: 'https://image.tmdb.org/t/p/w500/8ouHnzUkO9RoHDJjTPNxRdZWOiH.jpg',
   },
 ];
@@ -608,9 +513,7 @@ function createCardElement(show) {
   const meta = document.createElement('div');
   meta.className = 'card-meta';
   meta.style.opacity = '0';
-  meta.innerHTML =
-    `<div class="card-title-text">${show.title}</div>` +
-    `<div class="card-genre-text">${show.genre[0].toUpperCase()}</div>`;
+  meta.innerHTML = `<div class="card-title-text">${show.title}</div>`;
   el.appendChild(meta);
 
   return el;
