@@ -36,6 +36,7 @@ body {
   pointer-events: none;
   overflow: hidden;
   z-index: 2;
+  mix-blend-mode: screen;
 }
 .card-el {
   position: absolute;
@@ -50,6 +51,8 @@ body {
   cursor: pointer;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
 }
 .card-el img {
   width: 100%;
@@ -818,15 +821,15 @@ function animate() {
   cardsLayer.style.pointerEvents = sliderValue > 0.6 ? 'none' : '';
 
   const chromaAmt = sliderValue > 0.80 ? (sliderValue - 0.80) * 12 : 0;
-  const blurBase  = Math.max(0, sliderValue - 0.25) * 1.5;
+  const blurBase  = Math.max(0, sliderValue - 0.25) * 4.0;
 
   // Layer-level filter: one GPU pass for the entire card layer
   // chroma moved here too — saves 60 per-card img.style.filter writes at HYPER
   const layerChroma = chromaAmt > 0
     ? `drop-shadow(${chromaAmt.toFixed(1)}px 0 0 rgba(229,9,20,0.85)) drop-shadow(-${chromaAmt.toFixed(1)}px 0 0 rgba(74,144,217,0.85))`
     : '';
-  const layerBlurStr = chromaAmt === 0 && blurBase > 0.1
-    ? `blur(${(blurBase * 0.2).toFixed(2)}px)` : '';
+  const layerBlurStr = chromaAmt === 0 && blurBase > 0.2
+    ? `blur(${(blurBase * 0.35).toFixed(2)}px)` : '';
   const newLayerFilter = layerChroma || layerBlurStr;
   if (cardsLayer.style.filter !== newLayerFilter) cardsLayer.style.filter = newLayerFilter;
 
@@ -893,7 +896,9 @@ function animate() {
 
     const finalScale = cssScale * card.scaleVal;
     const farFade  = Math.min(1, Math.max(0, (TUNNEL_LENGTH - depth) / 20));
-    const nearFade = Math.min(1, Math.max(0, (depth - 0.5) / 6.0)); // fade to 0 when depth < 0.5, starts fading from depth 6.5
+    // Quadratic ease-in: fades from depth 18 → 0.5. Slow start, accelerates near camera → no hard clip
+    const nearRaw  = Math.min(1, Math.max(0, (depth - 0.5) / 17.5));
+    const nearFade = nearRaw * nearRaw;
     const alpha = farFade * nearFade;
 
     // Transform — always write (card moves every frame); no rotation
@@ -915,6 +920,12 @@ function animate() {
       ? `0 0 ${(card.glowVal * 28).toFixed(0)}px ${card.accentColor}99, inset 0 0 0 1px ${card.accentColor}`
       : '';
     if (card._shadow !== newShadow) { card.el.style.boxShadow = newShadow; card._shadow = newShadow; }
+
+    // Per-card near blur: cards blur as they rush past camera (slow/normal speed only)
+    // At high speed the layer-level chroma filter takes over
+    const nearBlur = (sliderValue < 0.5 && depth < 8)
+      ? `blur(${((8 - depth) * 0.6).toFixed(1)}px)` : '';
+    if (card._nearBlur !== nearBlur) { card.el.style.filter = nearBlur; card._nearBlur = nearBlur; }
 
     // img filter — clear per-card filter (chroma/blur now handled at cardsLayer level)
     if (card._imgFilter) { card.img.style.filter = ''; card._imgFilter = ''; }
