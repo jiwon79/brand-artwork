@@ -171,81 +171,6 @@ body {
   mix-blend-mode: screen;
 }
 /* Detail overlay */
-#detail-overlay {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  z-index: 20;
-  display: none;
-  flex-direction: column;
-  justify-content: flex-end;
-  background: rgba(0,0,0,0.92);
-}
-#detail-overlay.active { display: flex; }
-#detail-bg {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  object-fit: cover;
-  opacity: 0.5;
-  z-index: 0;
-}
-#detail-content {
-  position: relative;
-  z-index: 1;
-  padding: 28px 24px 40px;
-  background: linear-gradient(to top, rgba(0,0,0,0.98) 0%, transparent 100%);
-}
-#detail-close {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  z-index: 2;
-  width: 36px; height: 36px;
-  background: rgba(255,255,255,0.15);
-  border: none;
-  border-radius: 50%;
-  color: #fff;
-  font-size: 18px;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  backdrop-filter: blur(4px);
-}
-#detail-close:hover { background: rgba(255,255,255,0.3); }
-#detail-title {
-  font-size: 28px;
-  font-weight: 900;
-  color: #fff;
-  margin-bottom: 10px;
-  line-height: 1.1;
-}
-#detail-genre {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.genre-tag {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #fff;
-}
-#detail-rating {
-  font-size: 14px;
-  color: #E50914;
-  font-weight: 900;
-  margin-bottom: 10px;
-}
-#detail-desc {
-  font-size: 13px;
-  color: rgba(255,255,255,0.8);
-  line-height: 1.5;
-  font-family: Arial, sans-serif;
-  font-weight: normal;
-}
 /* Grain overlay */
 #grain {
   position: absolute;
@@ -277,16 +202,6 @@ body {
 
   <div id="speed-label">SLOW</div>
 
-  <div id="detail-overlay">
-    <img id="detail-bg" src="" alt="">
-    <button id="detail-close">✕</button>
-    <div id="detail-content">
-      <div id="detail-title"></div>
-      <div id="detail-genre"></div>
-      <div id="detail-rating"></div>
-      <div id="detail-desc"></div>
-    </div>
-  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -400,7 +315,6 @@ let dragStartY = 0;
 let dragStartVal = 0;
 let decayTimer = null;
 let appWidth = 393, appHeight = 852;
-let detailOpen = false;
 
 function getMode(v) {
   if (v < 0.25) return 'SLOW';
@@ -555,7 +469,6 @@ for (let i = 0; i < CARD_COUNT; i++) {
 
   el.addEventListener('pointerenter', () => { card.isHovered = true; });
   el.addEventListener('pointerleave', () => { card.isHovered = false; });
-  el.addEventListener('click', () => { if (!detailOpen && sliderValue < 0.5) openDetail(card.show); });
 
   cards.push(card);
 }
@@ -635,46 +548,7 @@ document.addEventListener('touchmove',  onDragMove, { passive: false });
 document.addEventListener('mouseup',   onDragEnd);
 document.addEventListener('touchend',  onDragEnd);
 
-// ─── DETAIL OVERLAY ───────────────────────────────────────────────────────────
-const detailOverlay = document.getElementById('detail-overlay');
-const detailBg      = document.getElementById('detail-bg');
-const detailTitle   = document.getElementById('detail-title');
-const detailGenre   = document.getElementById('detail-genre');
-const detailRating  = document.getElementById('detail-rating');
-const detailDesc    = document.getElementById('detail-desc');
-const detailClose   = document.getElementById('detail-close');
 
-function openDetail(show) {
-  if (detailOpen) return;
-  detailOpen = true;
-  detailBg.src = show.img;
-  detailTitle.textContent = show.title;
-  detailRating.textContent = show.rating;
-  detailDesc.textContent = show.desc;
-  detailGenre.innerHTML = '';
-  show.genre.forEach(g => {
-    const tag = document.createElement('span');
-    tag.className = 'genre-tag';
-    tag.textContent = g.toUpperCase();
-    tag.style.background = GENRE_COLORS[g] || '#E50914';
-    detailGenre.appendChild(tag);
-  });
-  detailOverlay.classList.add('active');
-  gsap.fromTo(detailOverlay,
-    { opacity: 0, scale: 0.92 },
-    { opacity: 1, scale: 1, duration: 0.6, ease: 'power2.inOut' }
-  );
-}
-
-function closeDetail() {
-  if (!detailOpen) return;
-  gsap.to(detailOverlay, {
-    opacity: 0, scale: 0.95, duration: 0.4, ease: 'power2.inOut',
-    onComplete: () => { detailOverlay.classList.remove('active'); detailOpen = false; }
-  });
-}
-
-detailClose.addEventListener('click', closeDetail);
 
 // ─── GLITCH LABEL ─────────────────────────────────────────────────────────────
 const glitchLabel = document.createElement('div');
@@ -855,7 +729,7 @@ function animate() {
   });
 
   // Glitch label near closest card
-  if (nearCard && sliderValue < 0.35 && !detailOpen) {
+  if (nearCard && sliderValue < 0.35) {
     const depth = -nearCard.z;
     const px = FOCAL_PIX / depth;
     const lx = appWidth  / 2 + nearCard.x * px;
