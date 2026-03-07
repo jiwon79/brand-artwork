@@ -865,16 +865,16 @@ function animate() {
     // Vertical stretch: proximity-based + global hyperStretch at FAST/HYPER (Netflix tudum effect)
     const depthFactor = Math.max(0, 1 - depth / 12);
     const baseStretch = sliderValue > 0.20 ? (sliderValue - 0.20) * 1.2 : 0.0;
-    const hyperStretch = (sliderValue > 0.55 ? (sliderValue - 0.55) * 7 : 0) * hyperMult;
+    const hyperStretch = (sliderValue > 0.55 ? (sliderValue - 0.55) * 4 : 0) * hyperMult;
     const formulaStretchY = 1 + baseStretch * (1 + depthFactor * 4) * 1.8 + hyperStretch;
-    // At HYPER, blend toward exact 2× screen height per card (screen-space target)
-    const hyperT = Math.max(0, Math.min(1, (sliderValue - 0.75) / 0.25));
+    // At HYPER, blend toward exact 2× screen height per card — starts earlier for smoother ramp
+    const hyperT = Math.max(0, Math.min(1, (sliderValue - 0.62) / 0.38));
     const stretchY = hyperT > 0
       ? formulaStretchY + (2 * appHeight / visH - formulaStretchY) * hyperT
       : formulaStretchY;
 
     // Nearest card tracking — skip at high speed (pointer events disabled anyway)
-    const isNear = sliderValue < 0.60 && depth < 8 && depth > 0.5;
+    const isNear = sliderValue < 0.70 && depth < 12 && depth > 0.5;
     if (isNear) {
       const dist3d = Math.sqrt(card.x * card.x + card.y * card.y + card.z * card.z);
       if (dist3d < nearDist) { nearDist = dist3d; nearCard = card; }
@@ -929,7 +929,7 @@ function animate() {
   });
 
   // Glitch label near closest card
-  if (nearCard && sliderValue < 0.35) {
+  if (nearCard && sliderValue < 0.55) {
     const depth = -nearCard.z;
     const px = FOCAL_PIX / depth;
     const lx = appWidth  / 2 + nearCard.x * px;
