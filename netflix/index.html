@@ -874,7 +874,7 @@ function animate() {
       : formulaStretchY;
 
     // Nearest card tracking — skip at high speed (pointer events disabled anyway)
-    const isNear = sliderValue < 0.70 && depth < 12 && depth > 0.5;
+    const isNear = sliderValue < 0.70 && depth < 22 && depth > 0.5;
     if (isNear) {
       const dist3d = Math.sqrt(card.x * card.x + card.y * card.y + card.z * card.z);
       if (dist3d < nearDist) { nearDist = dist3d; nearCard = card; }
