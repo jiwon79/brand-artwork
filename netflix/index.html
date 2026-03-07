@@ -36,7 +36,6 @@ body {
   pointer-events: none;
   overflow: hidden;
   z-index: 2;
-  mix-blend-mode: screen;
 }
 .card-el {
   position: absolute;
@@ -51,8 +50,21 @@ body {
   cursor: pointer;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
+}
+/* Black gradient overlay on top/bottom — same visual as mask-image but zero GPU stencil cost.
+   Works because the app background is #000: overlaying opaque black hides those edges. */
+.card-el::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom,
+    rgba(0,0,0,1) 0%,
+    transparent 18%,
+    transparent 82%,
+    rgba(0,0,0,1) 100%
+  );
+  pointer-events: none;
+  z-index: 3;
 }
 .card-el img {
   width: 100%;
@@ -920,12 +932,6 @@ function animate() {
       ? `0 0 ${(card.glowVal * 28).toFixed(0)}px ${card.accentColor}99, inset 0 0 0 1px ${card.accentColor}`
       : '';
     if (card._shadow !== newShadow) { card.el.style.boxShadow = newShadow; card._shadow = newShadow; }
-
-    // Per-card near blur: cards blur as they rush past camera (slow/normal speed only)
-    // At high speed the layer-level chroma filter takes over
-    const nearBlur = (sliderValue < 0.5 && depth < 8)
-      ? `blur(${((8 - depth) * 0.6).toFixed(1)}px)` : '';
-    if (card._nearBlur !== nearBlur) { card.el.style.filter = nearBlur; card._nearBlur = nearBlur; }
 
     // img filter — clear per-card filter (chroma/blur now handled at cardsLayer level)
     if (card._imgFilter) { card.img.style.filter = ''; card._imgFilter = ''; }
