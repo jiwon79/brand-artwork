@@ -863,13 +863,17 @@ function animate() {
 
     card.el.style.display = 'block';
 
-    // Vertical stretch: single smooth quadratic curve, no threshold kinks
-    // sv²로 가속감, depthFactor로 근접 카드 추가 stretch, hyperT로 HYPER 구간 부스트
+    // Vertical stretch — same max as original (2×appHeight/visH at HYPER),
+    // but all three kink thresholds (0.20/0.55/0.62) replaced with smooth curves
     const depthFactor = Math.max(0, 1 - depth / 12);
-    const strBase  = sliderValue * sliderValue * 2.5 * (1 + depthFactor * 3.5);
-    const hyperT   = Math.max(0, (sliderValue - 0.65) / 0.35);
-    const hyperBoost = hyperT * hyperT * hyperMult * 8;
-    const stretchY = 1 + strBase + hyperBoost;
+    // baseStretch: sv² (no kink at 0.20) — same depthFactor amplification
+    const baseStretch = sliderValue * sliderValue * 1.5;
+    const formulaStretchY = 1 + baseStretch * (1 + depthFactor * 4) * 1.8;
+    // hyperT: smoothstep 0.40→1.0 (was linear 0.62→1.0)
+    const hyperTraw = Math.max(0, Math.min(1, (sliderValue - 0.40) / 0.60));
+    const hyperT    = hyperTraw * hyperTraw * (3 - 2 * hyperTraw);
+    const targetStretch = 2 * appHeight / visH; // same max as original
+    const stretchY = formulaStretchY + (targetStretch - formulaStretchY) * hyperT;
 
     // Nearest card tracking — skip at high speed (pointer events disabled anyway)
     const isNear = sliderValue < 0.70 && depth < 22 && depth > 0.5;
