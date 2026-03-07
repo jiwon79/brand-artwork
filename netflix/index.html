@@ -863,16 +863,13 @@ function animate() {
 
     card.el.style.display = 'block';
 
-    // Vertical stretch: proximity-based + global hyperStretch at FAST/HYPER (Netflix tudum effect)
+    // Vertical stretch: single smooth quadratic curve, no threshold kinks
+    // sv²로 가속감, depthFactor로 근접 카드 추가 stretch, hyperT로 HYPER 구간 부스트
     const depthFactor = Math.max(0, 1 - depth / 12);
-    const baseStretch = sliderValue > 0.20 ? (sliderValue - 0.20) * 1.2 : 0.0;
-    const hyperStretch = (sliderValue > 0.55 ? (sliderValue - 0.55) * 4 : 0) * hyperMult;
-    const formulaStretchY = 1 + baseStretch * (1 + depthFactor * 4) * 1.8 + hyperStretch;
-    // At HYPER, blend toward exact 2× screen height per card — starts earlier for smoother ramp
-    const hyperT = Math.max(0, Math.min(1, (sliderValue - 0.62) / 0.38));
-    const stretchY = hyperT > 0
-      ? formulaStretchY + (2 * appHeight / visH - formulaStretchY) * hyperT
-      : formulaStretchY;
+    const strBase  = sliderValue * sliderValue * 2.5 * (1 + depthFactor * 3.5);
+    const hyperT   = Math.max(0, (sliderValue - 0.65) / 0.35);
+    const hyperBoost = hyperT * hyperT * hyperMult * 8;
+    const stretchY = 1 + strBase + hyperBoost;
 
     // Nearest card tracking — skip at high speed (pointer events disabled anyway)
     const isNear = sliderValue < 0.70 && depth < 22 && depth > 0.5;
