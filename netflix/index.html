@@ -917,7 +917,7 @@ function animate() {
 
     // Box-shadow glow — cache string, write only on change
     const newShadow = card.glowVal > 0.05
-      ? `0 0 ${(card.glowVal * 28).toFixed(0)}px ${card.accentColor}99, inset 0 0 0 1px ${card.accentColor}`
+      ? `0 0 ${(card.glowVal * 28).toFixed(0)}px ${card.accentColor}99`
       : '';
     if (card._shadow !== newShadow) { card.el.style.boxShadow = newShadow; card._shadow = newShadow; }
 
@@ -940,7 +940,9 @@ function animate() {
     const px = FOCAL_PIX / depth;
     const lx = appWidth  / 2 + glitchTarget.x * px;
     const ly = appHeight / 2 - glitchTarget.y * px;
+    const glitchFontSize = Math.max(6, Math.min(20, FOCAL_PIX / depth * 0.25));
     glitchLabel.style.display = 'block';
+    glitchLabel.style.fontSize = glitchFontSize.toFixed(1) + 'px';
     glitchLabel.style.left = (lx - 40) + 'px';
     glitchLabel.style.top  = (ly + CARD_H * px / 2 + 6) + 'px';
     const show  = glitchTarget.show;
