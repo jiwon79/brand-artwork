@@ -933,8 +933,8 @@ function animate() {
     if (card._metaOp !== newMetaOp) { card.meta.style.opacity = newMetaOp; card._metaOp = newMetaOp; }
   });
 
-  // Glitch label: show on hovered/touched card (falls back to nearest card if none hovered)
-  const glitchTarget = hoveredCard ?? (sliderValue < 0.55 ? nearCard : null);
+  // Glitch label: hover/touch only, SLOW mode only (sliderValue < 0.25)
+  const glitchTarget = (hoveredCard && sliderValue < 0.25) ? hoveredCard : null;
   if (glitchTarget) {
     const depth = -glitchTarget.z;
     const px = FOCAL_PIX / depth;
