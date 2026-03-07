@@ -838,8 +838,9 @@ function animate() {
     const glitchFontSize = Math.max(6, Math.min(20, FOCAL_PIX / depth * 0.25));
     glitchLabel.style.display = 'block';
     glitchLabel.style.fontSize = glitchFontSize.toFixed(1) + 'px';
-    glitchLabel.style.left = '16px';
-    glitchLabel.style.top  = (ly + CARD_H * px / 2 + 6) + 'px';
+    const cardW = CARD_W * px;
+    glitchLabel.style.left = (lx - cardW / 2).toFixed(1) + 'px';
+    glitchLabel.style.top  = (ly + CARD_H * px / 2 + 6).toFixed(1) + 'px';
     const show  = glitchTarget.show;
     const chars = '!@#$%^&*ABCDEF';
     const gt    = t * 10;
