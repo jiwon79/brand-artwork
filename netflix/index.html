@@ -86,50 +86,94 @@ body {
   margin-top: 2px;
 }
 /* Slider */
+/* ── Fader slider ── */
 #slider-container {
   position: absolute;
   right: 16px;
   top: 50%;
   transform: translateY(-50%);
-  width: 36px;
-  height: 260px;
+  width: 56px;
+  height: 300px;
   z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-#slider-track {
-  position: relative;
-  width: 8px;
-  height: 220px;
-  background: rgba(255,255,255,0.15);
-  border-radius: 4px;
   cursor: pointer;
-  overflow: visible;
+  user-select: none;
+}
+#slider-container .ticks {
+  position: absolute;
+  left: 50%;
+  top: 0; bottom: 0;
+  transform: translateX(-50%);
+  width: 36px;
+  pointer-events: none;
+}
+#slider-container .tick {
+  position: absolute;
+  left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transform: translateY(-50%);
+}
+#slider-container .tick-line {
+  height: 1px;
+  width: 5px;
+  background: #2a2a2a;
+  border-radius: 1px;
+}
+#slider-container .tick-line.major { width: 9px; background: #3a3a3a; }
+#slider-container .track {
+  position: absolute;
+  left: 50%;
+  top: 0; bottom: 0;
+  transform: translateX(-50%);
+  width: 4px;
+  background: #1c1c1c;
+  border-radius: 2px;
 }
 #slider-fill {
   position: absolute;
-  bottom: 0; left: 0;
-  width: 100%;
-  background: #E50914;
-  border-radius: 4px;
-  transition: box-shadow 0.2s;
+  left: 0; right: 0; bottom: 0;
+  border-radius: 2px;
+  background: linear-gradient(to top, #E50914, rgba(229,9,20,0.4));
+  pointer-events: none;
 }
 #slider-thumb {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
-  width: 24px;
-  height: 24px;
-  background: #E50914;
-  border-radius: 50%;
-  border: 2px solid #fff;
+  transform: translate(-50%, 50%);
+  width: 56px;
+  height: 30px;
+  background: linear-gradient(160deg, #2c2c2c, #181818);
+  border: 1px solid rgba(229,9,20,0.45);
+  border-radius: 8px;
   cursor: grab;
-  box-shadow: 0 0 12px #E50914;
-  transition: box-shadow 0.2s;
+  box-shadow:
+    0 4px 14px rgba(0,0,0,0.6),
+    0 0 0 1px rgba(255,255,255,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  z-index: 10;
+  bottom: 0;
 }
 #slider-thumb:active { cursor: grabbing; }
+#slider-thumb.active {
+  border-color: #E50914;
+  box-shadow:
+    0 4px 22px rgba(229,9,20,0.5),
+    0 0 0 1px rgba(229,9,20,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+#slider-thumb .grip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 2px;
+  background: rgba(255,255,255,0.18);
+  border-radius: 1px;
+}
+#slider-thumb .grip:nth-child(1) { top:  6px; }
+#slider-thumb .grip:nth-child(2) { top: 13px; width: 22px; background: rgba(229,9,20,0.8); }
+#slider-thumb .grip:nth-child(3) { top: 20px; }
 /* Speed label */
 #speed-label {
   position: absolute;
@@ -194,9 +238,14 @@ body {
   <div id="logo">NETFLIX</div>
 
   <div id="slider-container">
-    <div id="slider-track">
+    <div class="ticks" id="slider-ticks"></div>
+    <div class="track">
       <div id="slider-fill"></div>
-      <div id="slider-thumb"></div>
+    </div>
+    <div id="slider-thumb">
+      <div class="grip"></div>
+      <div class="grip"></div>
+      <div class="grip"></div>
     </div>
   </div>
 
@@ -606,20 +655,32 @@ function placeCard(card, i, isRecycle = false) {
 cards.forEach((card, i) => placeCard(card, i, false));
 
 // ─── SLIDER ──────────────────────────────────────────────────────────────────
-const vignette   = document.getElementById('vignette');
-const speedLabel = document.getElementById('speed-label');
-const sliderTrack = document.getElementById('slider-track');
-const sliderFill  = document.getElementById('slider-fill');
-const sliderThumb = document.getElementById('slider-thumb');
-const TRACK_H = 220;
+const vignette        = document.getElementById('vignette');
+const speedLabel      = document.getElementById('speed-label');
+const sliderContainer = document.getElementById('slider-container');
+const sliderFill      = document.getElementById('slider-fill');
+const sliderThumb     = document.getElementById('slider-thumb');
+const TRACK_H = 300;
+
+// Build ticks
+(function buildTicks() {
+  const ticks = document.getElementById('slider-ticks');
+  for (let t = 0; t <= 20; t++) {
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.top = (t / 20 * 100) + '%';
+    const major = t % 4 === 0;
+    tick.innerHTML =
+      `<div class="tick-line ${major ? 'major' : ''}"></div>` +
+      `<div class="tick-line ${major ? 'major' : ''}"></div>`;
+    ticks.appendChild(tick);
+  }
+})();
 
 function setSliderVisual(v) {
-  const pct = v * 100;
-  sliderFill.style.height  = pct + '%';
-  sliderThumb.style.bottom = `calc(${pct}% - 12px)`;
-  const g = v * 24;
-  sliderFill.style.boxShadow  = `0 0 ${g}px #E50914`;
-  sliderThumb.style.boxShadow = `0 0 ${8 + g}px #E50914`;
+  const bottomPx = v * TRACK_H;
+  sliderFill.style.height  = bottomPx + 'px';
+  sliderThumb.style.bottom = bottomPx + 'px';
 }
 
 function getTrackY(e) {
@@ -630,6 +691,7 @@ function onDragStart(e) {
   isDragging = true;
   dragStartY   = getTrackY(e);
   dragStartVal = sliderValue;
+  sliderThumb.classList.add('active');
   clearTimeout(decayTimer);
   e.preventDefault();
 }
@@ -646,6 +708,7 @@ function onDragMove(e) {
 function onDragEnd() {
   if (!isDragging) return;
   isDragging = false;
+  sliderThumb.classList.remove('active');
   startDecay();
 }
 
@@ -659,6 +722,17 @@ function startDecay() {
   };
   decayTimer = setTimeout(step, 100);
 }
+
+// Rail click to jump
+sliderContainer.addEventListener('click', e => {
+  if (sliderThumb.contains(e.target)) return;
+  const rect = sliderContainer.getBoundingClientRect();
+  const fromBottom = rect.bottom - e.clientY;
+  sliderValue = Math.max(0, Math.min(1, fromBottom / TRACK_H));
+  targetSlider = sliderValue;
+  setSliderVisual(sliderValue);
+  startDecay();
+});
 
 sliderThumb.addEventListener('mousedown',  onDragStart);
 sliderThumb.addEventListener('touchstart', onDragStart, { passive: false });
