@@ -51,21 +51,7 @@ body {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
-/* Black gradient overlay on top/bottom — same visual as mask-image but zero GPU stencil cost.
-   Works because the app background is #000: overlaying opaque black hides those edges. */
-.card-el::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom,
-    rgba(0,0,0,1) 0%,
-    transparent 18%,
-    transparent 82%,
-    rgba(0,0,0,1) 100%
-  );
-  pointer-events: none;
-  z-index: 3;
-}
+
 .card-el img {
   width: 100%;
   height: 100%;
