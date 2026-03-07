@@ -40,8 +40,8 @@ body {
 .card-el {
   position: absolute;
   top: 0; left: 0;
-  width: 260px;
-  height: 169px;
+  width: 520px;
+  height: 338px;
   transform-origin: center center;
   pointer-events: auto;
   will-change: transform, opacity;
@@ -310,7 +310,7 @@ const TUNNEL_LENGTH = 80;
 const FOV_RAD   = 70 * Math.PI / 180;
 const FOCAL_PIX = (appHeight / 2) / Math.tan(FOV_RAD / 2); // ≈ 608 px/unit at depth=1
 
-const CARD_BASE_W = 260; // DOM element natural width (px)
+const CARD_BASE_W = 520; // DOM element natural width (px)
 const CARD_BASE_H = Math.round(CARD_BASE_W * CARD_H / CARD_W); // 169 px
 
 // Color palette sampled from the reference streak images
