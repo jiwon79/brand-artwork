@@ -331,11 +331,50 @@ function normalizeToCount(points, N) {
   return out;
 }
 
+// ─── LACK SIDE TABLE GEOMETRY ────────────────────────────────────────────────
+function buildLackPoints() {
+  const allPoints = [];
+
+  function sampleBox(cx, cy, cz, w, h, d, count) {
+    for (let i = 0; i < count; i++) {
+      const face = Math.floor(Math.random() * 6);
+      const u = (Math.random() - 0.5);
+      const v = (Math.random() - 0.5);
+      let x, y, z;
+      if      (face === 0) { x = cx + u*w; y = cy + v*h; z = cz + d/2; }
+      else if (face === 1) { x = cx + u*w; y = cy + v*h; z = cz - d/2; }
+      else if (face === 2) { x = cx + w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 3) { x = cx - w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 4) { x = cx + u*w; y = cy + h/2; z = cz + v*d; }
+      else                 { x = cx + u*w; y = cy - h/2; z = cz + v*d; }
+      allPoints.push(new THREE.Vector3(x, y, z));
+    }
+  }
+
+  // LACK: 55×55cm 상판, 높이 45cm (정규화 스케일)
+  const W = 0.70, D = 0.70, H = 0.60, thick = 0.04;
+  const legSide = 0.05;
+
+  // 상판
+  sampleBox(0, H, 0, W, thick, D, 2200);
+
+  // 다리 4개 (코너)
+  const offX = W / 2 - legSide;
+  const offZ = D / 2 - legSide;
+  const legH = H - thick / 2;
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx, sz]) => {
+    sampleBox(sx * offX, legH / 2, sz * offZ, legSide, legH, legSide, 680);
+  });
+
+  return allPoints;
+}
+
 const PARTICLE_COUNT = 5000;
 
 const FURNITURE = [
   { name: 'POÄNG', year: '1992', targets: normalizeToCount(buildPoangPoints(), PARTICLE_COUNT) },
   { name: 'BILLY',  year: '1979', targets: normalizeToCount(buildBillyPoints(),  PARTICLE_COUNT) },
+  { name: 'LACK',  year: '1979', targets: normalizeToCount(buildLackPoints(),   PARTICLE_COUNT) },
 ];
 let currentFurniture = 0;
 
