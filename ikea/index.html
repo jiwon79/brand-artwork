@@ -30,7 +30,7 @@ color:rgba(255,255,255,0.3);
 transition:color 0.3s;
 }
 .furn-btn:hover { color:rgba(255,255,255,0.6); }
-.furn-btn.active { color:var(--furn-color, #FFDA1A); }
+.furn-btn.active { color:#FFDA1A; }
 .furn-dot {
 width:6px; height:6px; border-radius:50%;
 background:currentColor; flex-shrink:0;
@@ -331,9 +331,9 @@ function buildLackPoints() {
 const PARTICLE_COUNT = 5000;
 
 const FURNITURE = [
-  { name: 'POÄNG', year: '1992', color: '#FFDA1A', targets: normalizeToCount(buildPoangPoints(), PARTICLE_COUNT) },
-  { name: 'BILLY',  year: '1979', color: '#7EC8E3', targets: normalizeToCount(buildBillyPoints(),  PARTICLE_COUNT) },
-  { name: 'LACK',  year: '1979', color: '#F4845F', targets: normalizeToCount(buildLackPoints(),   PARTICLE_COUNT) },
+  { name: 'POÄNG', year: '1992', targets: normalizeToCount(buildPoangPoints(), PARTICLE_COUNT) },
+  { name: 'BILLY',  year: '1979', targets: normalizeToCount(buildBillyPoints(),  PARTICLE_COUNT) },
+  { name: 'LACK',  year: '1979', targets: normalizeToCount(buildLackPoints(),   PARTICLE_COUNT) },
 ];
 let currentFurniture = 0;
 
@@ -621,10 +621,6 @@ gizmoCanvas.addEventListener('click', e => {
 // ─── FURNITURE PICKER UI ─────────────────────────────────────────────────────
 const picker = document.getElementById('furniture-picker');
 
-function applyActiveColor(idx) {
-  picker.style.setProperty('--furn-color', FURNITURE[idx].color);
-}
-
 FURNITURE.forEach((f, idx) => {
   const btn = document.createElement('button');
   btn.className = 'furn-btn' + (idx === 0 ? ' active' : '');
@@ -636,12 +632,9 @@ FURNITURE.forEach((f, idx) => {
     picker.querySelectorAll('.furn-btn').forEach((b, i) =>
       b.classList.toggle('active', i === idx)
     );
-    applyActiveColor(idx);
   });
   picker.appendChild(btn);
 });
-
-applyActiveColor(0);
 
 // ─── PARTICLE BUFFERS ────────────────────────────────────────────────────────
 const velocities = new Float32Array(PARTICLE_COUNT * 3);
