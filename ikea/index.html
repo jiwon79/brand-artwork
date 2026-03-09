@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IKEA POÄNG × Particle Art</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;500&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
+  body { background:#0058A3; overflow:hidden; font-family:'DM Mono', monospace; cursor:grab; }
+  body:active { cursor:grabbing; }
+  canvas { display:block; }
+
+#hud {
+position:fixed; top:0; left:0; width:100%; height:100%;
+pointer-events:none; z-index:10;
+}
+#logo {
+position:absolute; top:32px; left:40px;
+display:flex; align-items:center; gap:14px;
+}
+#logo-badge {
+background:#FFDA1A; color:#0058A3;
+font-size:20px; font-weight:500;
+padding:6px 18px; letter-spacing:0.08em;
+}
+#logo-sub {
+color:rgba(255,255,255,0.35);
+font-size:10px; letter-spacing:0.3em;
+line-height:1.6;
+}
+#label {
+position:absolute; bottom:40px; left:50%;
+transform:translateX(-50%);
+text-align:center;
+}
+#label h1 {
+color:#FFDA1A; font-size:11px; letter-spacing:0.35em;
+font-weight:500; margin-bottom:6px;
+}
+#label p {
+color:rgba(255,255,255,0.3); font-size:10px;
+letter-spacing:0.2em; font-weight:300;
+}
+#hint {
+position:absolute; top:50%; right:36px;
+transform:translateY(-50%);
+color:rgba(255,255,255,0.2); font-size:10px;
+letter-spacing:0.15em; writing-mode:vertical-rl;
+font-weight:300;
+}
+#swap-btn {
+position:absolute; bottom:40px; right:40px;
+pointer-events:all; cursor:pointer;
+background:rgba(255,218,26,0.1);
+border:1px solid rgba(255,218,26,0.3);
+color:#FFDA1A; font-family:‘DM Mono’,monospace;
+font-size:10px; letter-spacing:0.2em;
+padding:8px 16px; transition:all 0.3s;
+}
+#swap-btn:hover { background:rgba(255,218,26,0.2); border-color:#FFDA1A; }
+
+#mode-label {
+position:absolute; top:32px; right:40px;
+color:rgba(255,255,255,0.25); font-size:10px;
+letter-spacing:0.2em;
+}
+
+/* Blender Gizmo */
+#gizmo {
+position: fixed;
+top: 20px;
+left: 50%;
+transform: translateX(-50%);
+z-index: 20;
+cursor: grab;
+opacity: 0.85;
+transition: opacity 0.2s;
+}
+#gizmo:hover { opacity: 1; }
+#gizmo:active { cursor: grabbing; }
+</style>
+
+</head>
+<body>
+<div id="hud">
+  <div id="logo">
+    <div id="logo-badge">IKEA</div>
+    <div id="logo-sub">POÄNG<br>PARTICLE SERIES</div>
+  </div>
+  <div id="mode-label">GEOMETRY: CODE</div>
+  <div id="label">
+    <h1>POÄNG — 1992</h1>
+    <p>HOVER TO DISSOLVE · MOVE AWAY TO REFORM</p>
+  </div>
+  <div id="hint">HOVER THE CHAIR</div>
+</div>
+<!-- Gizmo outside HUD so pointer-events work correctly -->
+<canvas id="gizmo" width="110" height="110"></canvas>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ─── SCENE SETUP ─────────────────────────────────────────────────────────────
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(W, H);
+renderer.setClearColor(0x0058A3, 1);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, W / H, 0.01, 100);
+camera.position.set(0, 0.6, 3.2);
+camera.lookAt(0, 0.4, 0);
+
+// ─── BUILD POÄNG GEOMETRY ────────────────────────────────────────────────────
+function buildPoangPoints() {
+  const allPoints = [];
+
+  // Helper: sample points along a CatmullRom tube
+  function sampleTube(curvePts, radius, samples) {
+    const curve = new THREE.CatmullRomCurve3(curvePts);
+    const N = samples || 200;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const pt = curve.getPoint(t);
+      const tang = curve.getTangent(t);
+      const up = new THREE.Vector3(0, 1, 0);
+      const right = new THREE.Vector3().crossVectors(tang, up).normalize();
+      const realUp = new THREE.Vector3().crossVectors(right, tang).normalize();
+      const ringCount = 16;
+      for (let r = 0; r < ringCount; r++) {
+        const angle = (r / ringCount) * Math.PI * 2;
+        const offset = right.clone().multiplyScalar(Math.cos(angle) * radius)
+          .add(realUp.clone().multiplyScalar(Math.sin(angle) * radius));
+        allPoints.push(pt.clone().add(offset));
+      }
+    }
+  }
+
+  // Helper: sample points on a box
+  function sampleBox(cx, cy, cz, w, h, d, count) {
+    for (let i = 0; i < count; i++) {
+      const face = Math.floor(Math.random() * 6);
+      let x, y, z;
+      const u = (Math.random() - 0.5);
+      const v = (Math.random() - 0.5);
+      if (face === 0) { x = cx + u*w; y = cy + v*h; z = cz + d/2; }
+      else if (face === 1) { x = cx + u*w; y = cy + v*h; z = cz - d/2; }
+      else if (face === 2) { x = cx + w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 3) { x = cx - w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 4) { x = cx + u*w; y = cy + h/2; z = cz + v*d; }
+      else                 { x = cx + u*w; y = cy - h/2; z = cz + v*d; }
+      allPoints.push(new THREE.Vector3(x, y, z));
+    }
+  }
+
+  // ── POÄNG ARCH FRAME ──
+  // The iconic bent-wood arch: starts from front foot,
+  // curves up and back, then sweeps up into the backrest
+
+  const archCurve = [
+    new THREE.Vector3(0, 0.02,  0.50),   // front foot tip
+    new THREE.Vector3(0, 0.08,  0.45),
+    new THREE.Vector3(0, 0.22,  0.35),   // front leg rise
+    new THREE.Vector3(0, 0.40,  0.18),   // under seat
+    new THREE.Vector3(0, 0.48,  0.00),   // seat pivot
+    new THREE.Vector3(0, 0.50, -0.15),   // seat back area
+    new THREE.Vector3(0, 0.58, -0.28),   // armrest zone
+    new THREE.Vector3(0, 0.72, -0.30),   // backrest lower
+    new THREE.Vector3(0, 0.95, -0.22),   // backrest mid
+    new THREE.Vector3(0, 1.10, -0.10),   // backrest upper
+    new THREE.Vector3(0, 1.18,  0.02),   // backrest top
+  ];
+
+  const archL = archCurve.map(p => new THREE.Vector3(p.x - 0.30, p.y, p.z));
+  const archR = archCurve.map(p => new THREE.Vector3(p.x + 0.30, p.y, p.z));
+
+  sampleTube(archL, 0.022, 150);
+  sampleTube(archR, 0.022, 150);
+
+  // ── REAR FOOT ──
+  const rearL = [
+    new THREE.Vector3(-0.30, 0.48, 0.00),
+    new THREE.Vector3(-0.30, 0.30, -0.08),
+    new THREE.Vector3(-0.30, 0.10, -0.22),
+    new THREE.Vector3(-0.30, 0.02, -0.30),
+  ];
+  const rearR = rearL.map(p => new THREE.Vector3(-p.x, p.y, p.z));
+  sampleTube(rearL, 0.020, 60);
+  sampleTube(rearR, 0.020, 60);
+
+  // ── CROSS BARS ──
+  const crossHeights = [
+    { z: 0.38, y: 0.12 },  // front low
+    { z: -0.05, y: 0.50 }, // seat level
+    { z: -0.26, y: 0.70 }, // back mid
+    { z: -0.08, y: 1.15 }, // back top
+  ];
+  crossHeights.forEach(({ y, z }) => {
+    sampleTube([
+      new THREE.Vector3(-0.30, y, z),
+      new THREE.Vector3(-0.10, y, z),
+      new THREE.Vector3( 0.10, y, z),
+      new THREE.Vector3( 0.30, y, z),
+    ], 0.018, 40);
+  });
+
+  // ── ARMRESTS ──
+  const armL = [
+    new THREE.Vector3(-0.30, 0.62, -0.30),
+    new THREE.Vector3(-0.30, 0.64, -0.10),
+    new THREE.Vector3(-0.30, 0.64,  0.10),
+    new THREE.Vector3(-0.30, 0.63,  0.22),
+  ];
+  const armR = armL.map(p => new THREE.Vector3(-p.x, p.y, p.z));
+  sampleTube(armL, 0.025, 50);
+  sampleTube(armR, 0.025, 50);
+
+  // ── SEAT CUSHION ──
+  // Slightly tilted box
+  const seatCount = 1200;
+  for (let i = 0; i < seatCount; i++) {
+    const u = (Math.random() - 0.5) * 0.52;
+    const v = (Math.random() - 0.5) * 0.40;
+    const face = Math.floor(Math.random() * 6);
+    let x = u, y, z;
+    if (face < 2) {
+      y = 0.50 + (face === 0 ? 0.055 : -0.055);
+      z = -0.04 + v;
+    } else if (face < 4) {
+      z = -0.04 + (face === 2 ? 0.20 : -0.20);
+      y = 0.50 + (Math.random() - 0.5) * 0.11;
+    } else {
+      x = (face === 4 ? 1 : -1) * 0.26;
+      y = 0.50 + (Math.random() - 0.5) * 0.11;
+      z = -0.04 + v;
+    }
+    allPoints.push(new THREE.Vector3(x, y, z - u * 0.08));
+  }
+
+  // ── BACK CUSHION ──
+  const backCount = 1400;
+  for (let i = 0; i < backCount; i++) {
+    const u = (Math.random() - 0.5) * 0.48;
+    const v = (Math.random() - 0.5) * 0.52;
+    const face = Math.floor(Math.random() * 6);
+    let x = u, y, z;
+    const cy = 0.88, cz = -0.20;
+    if (face < 2) {
+      y = cy + v * 0.52;
+      z = cz + (face === 0 ? 0.045 : -0.045);
+    } else if (face < 4) {
+      z = cz + (face === 2 ? 0.045 : -0.045);
+      y = cy + v;
+    } else {
+      x = (face === 4 ? 1 : -1) * 0.24;
+      y = cy + v;
+      z = cz + (Math.random() - 0.5) * 0.09;
+    }
+    allPoints.push(new THREE.Vector3(x, y + u * 0.05, z));
+  }
+
+  return allPoints;
+}
+
+// ─── PARTICLE SYSTEM ────────────────────────────────────────────────────────
+const chairPoints = buildPoangPoints();
+const PARTICLE_COUNT = chairPoints.length;
+
+// Center the geometry
+const center = new THREE.Vector3();
+chairPoints.forEach(p => center.add(p));
+center.divideScalar(chairPoints.length);
+const centeredTargets = chairPoints.map(p => p.clone().sub(center));
+
+// Particle buffers
+const positions = new Float32Array(PARTICLE_COUNT * 3);
+const targets   = new Float32Array(PARTICLE_COUNT * 3);
+const randoms   = new Float32Array(PARTICLE_COUNT * 3);
+const colors    = new Float32Array(PARTICLE_COUNT * 3);
+const sizes     = new Float32Array(PARTICLE_COUNT);
+
+// Colors: IKEA blue variants + yellow accents
+const colPalette = [
+  new THREE.Color(0xffffff),
+  new THREE.Color(0xffffff),
+  new THREE.Color(0xffffff),
+  new THREE.Color(0xFFDA1A),
+  new THREE.Color(0xadd8ff),
+];
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const t = centeredTargets[i];
+  targets[i*3]   = t.x;
+  targets[i*3+1] = t.y;
+  targets[i*3+2] = t.z;
+
+  // Start scattered
+  randoms[i*3]   = (Math.random() - 0.5) * 5;
+  randoms[i*3+1] = (Math.random() - 0.5) * 5;
+  randoms[i*3+2] = (Math.random() - 0.5) * 5;
+
+  positions[i*3]   = randoms[i*3];
+  positions[i*3+1] = randoms[i*3+1];
+  positions[i*3+2] = randoms[i*3+2];
+
+  const col = colPalette[Math.floor(Math.random() * colPalette.length)];
+  colors[i*3]   = col.r;
+  colors[i*3+1] = col.g;
+  colors[i*3+2] = col.b;
+
+  sizes[i] = Math.random() * 0.06 + 0.02;
+}
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('aColor',   new THREE.BufferAttribute(colors, 3));
+geo.setAttribute('aSize',    new THREE.BufferAttribute(sizes, 1));
+
+const mat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    attribute float aSize;
+    attribute vec3 aColor;
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main() {
+      vColor = aColor;
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = aSize * (320.0 / -mvPos.z);
+      gl_Position = projectionMatrix * mvPos;
+      vAlpha = 0.8 + 0.2 * (aSize / 0.08);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main() {
+      float d = length(gl_PointCoord - 0.5);
+      if (d > 0.5) discard;
+      float alpha = smoothstep(0.5, 0.1, d) * vAlpha;
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const particles = new THREE.Points(geo, mat);
+scene.add(particles);
+
+// ─── ROTATION STATE ──────────────────────────────────────────────────────────
+let rotY = 0.3, rotX = 0.15;
+let autoRotate = true; // 인터랙션 없으면 자동 회전
+
+// ─── GIZMO ───────────────────────────────────────────────────────────────────
+const gizmoCanvas = document.getElementById('gizmo');
+const gc = gizmoCanvas.getContext('2d');
+const GZ = 55; // 기즈모 중심
+
+const AXES = [
+  { label: 'X',  dir: new THREE.Vector3( 1, 0, 0), color: '#ff4d4d', negColor: '#7a1a1a' },
+  { label: 'Y',  dir: new THREE.Vector3( 0, 1, 0), color: '#7aff4d', negColor: '#2a6010' },
+  { label: 'Z',  dir: new THREE.Vector3( 0, 0, 1), color: '#4da8ff', negColor: '#1a3e7a' },
+];
+
+function drawGizmo() {
+  gc.clearRect(0, 0, 110, 110);
+
+  // 현재 모델 회전 매트릭스
+  const mat4 = new THREE.Matrix4().makeRotationFromEuler(
+    new THREE.Euler(rotX, rotY, 0, 'XYZ')
+  );
+
+  // 각 축 방향을 현재 회전에 맞게 변환
+  const projected = [];
+  [...AXES, ...AXES.map(a => ({
+    label: '-' + a.label,
+    dir: a.dir.clone().negate(),
+    color: a.negColor,
+    negColor: a.negColor,
+    isNeg: true,
+  }))].forEach(axis => {
+    const v = axis.dir.clone().applyMatrix4(mat4);
+    projected.push({
+      ...axis,
+      sx: GZ + v.x * 38,
+      sy: GZ - v.y * 38,
+      depth: v.z,
+    });
+  });
+
+  // 깊이 정렬 (뒤에서 앞으로)
+  projected.sort((a, b) => a.depth - b.depth);
+
+  // 원형 배경
+  gc.save();
+  gc.beginPath();
+  gc.arc(GZ, GZ, 50, 0, Math.PI * 2);
+  gc.fillStyle = 'rgba(0, 20, 50, 0.45)';
+  gc.fill();
+  gc.strokeStyle = 'rgba(255,255,255,0.06)';
+  gc.lineWidth = 1;
+  gc.stroke();
+  gc.restore();
+
+  // 십자 가이드선 (희미하게)
+  gc.save();
+  gc.strokeStyle = 'rgba(255,255,255,0.06)';
+  gc.lineWidth = 1;
+  gc.setLineDash([2, 4]);
+  gc.beginPath(); gc.moveTo(GZ - 44, GZ); gc.lineTo(GZ + 44, GZ); gc.stroke();
+  gc.beginPath(); gc.moveTo(GZ, GZ - 44); gc.lineTo(GZ, GZ + 44); gc.stroke();
+  gc.setLineDash([]);
+  gc.restore();
+
+  // 축 라인 + 점 그리기
+  projected.forEach(axis => {
+    const isNeg = axis.isNeg;
+    const alpha = THREE.MathUtils.mapLinear(axis.depth, -1, 1, 0.35, 1.0);
+
+    // 라인
+    gc.save();
+    gc.globalAlpha = alpha * (isNeg ? 0.4 : 0.9);
+    gc.strokeStyle = axis.color;
+    gc.lineWidth = isNeg ? 1 : 1.5;
+    gc.setLineDash(isNeg ? [3, 3] : []);
+    gc.beginPath();
+    gc.moveTo(GZ, GZ);
+    gc.lineTo(axis.sx, axis.sy);
+    gc.stroke();
+    gc.setLineDash([]);
+    gc.restore();
+
+    // 끝점 원
+    const r = isNeg ? 5 : 8;
+    gc.save();
+    gc.globalAlpha = alpha * (isNeg ? 0.5 : 1.0);
+
+    // 그림자 느낌
+    if (!isNeg) {
+      gc.shadowColor = axis.color;
+      gc.shadowBlur = 8;
+    }
+
+    gc.beginPath();
+    gc.arc(axis.sx, axis.sy, r, 0, Math.PI * 2);
+    gc.fillStyle = isNeg
+      ? axis.color
+      : axis.color;
+    gc.fill();
+
+    // 안쪽 하이라이트
+    if (!isNeg) {
+      gc.beginPath();
+      gc.arc(axis.sx - r * 0.25, axis.sy - r * 0.25, r * 0.4, 0, Math.PI * 2);
+      gc.fillStyle = 'rgba(255,255,255,0.35)';
+      gc.fill();
+    }
+
+    gc.restore();
+
+    // 라벨
+    if (!isNeg) {
+      gc.save();
+      gc.globalAlpha = alpha;
+      gc.fillStyle = '#ffffff';
+      gc.font = 'bold 9px "DM Mono", monospace';
+      gc.textAlign = 'center';
+      gc.textBaseline = 'middle';
+      gc.fillText(axis.label, axis.sx, axis.sy);
+      gc.restore();
+    }
+  });
+
+  // 중심점
+  gc.save();
+  gc.beginPath();
+  gc.arc(GZ, GZ, 3, 0, Math.PI * 2);
+  gc.fillStyle = 'rgba(255,255,255,0.6)';
+  gc.fill();
+  gc.restore();
+}
+
+// 기즈모 드래그로 회전 — pointerCapture로 안정적 드래그
+let gizmoDragging = false;
+let gizmoPrev = { x: 0, y: 0 };
+
+gizmoCanvas.addEventListener('pointerdown', e => {
+  gizmoDragging = true;
+  autoRotate = false;
+  gizmoPrev = { x: e.clientX, y: e.clientY };
+  gizmoCanvas.setPointerCapture(e.pointerId);
+  e.stopPropagation();
+  e.preventDefault();
+});
+
+gizmoCanvas.addEventListener('pointermove', e => {
+  if (!gizmoDragging) return;
+  const dx = (e.clientX - gizmoPrev.x) * 0.012;
+  const dy = (e.clientY - gizmoPrev.y) * 0.012;
+  rotY += dx;
+  rotX += dy;
+  rotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotX));
+  gizmoPrev = { x: e.clientX, y: e.clientY };
+  e.stopPropagation();
+});
+
+gizmoCanvas.addEventListener('pointerup', e => {
+  gizmoDragging = false;
+  gizmoCanvas.releasePointerCapture(e.pointerId);
+});
+
+gizmoCanvas.addEventListener('pointercancel', e => {
+  gizmoDragging = false;
+});
+
+// 축 클릭 → 스냅 회전
+gizmoCanvas.addEventListener('click', e => {
+  const rect = gizmoCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const mat4 = new THREE.Matrix4().makeRotationFromEuler(
+    new THREE.Euler(rotX, rotY, 0, 'XYZ')
+  );
+  const snapTargets = [
+    { label:'X',  rot: [0,  -Math.PI/2, 0] },
+    { label:'-X', rot: [0,   Math.PI/2, 0] },
+    { label:'Y',  rot: [-Math.PI/2, 0, 0]  },
+    { label:'-Y', rot: [ Math.PI/2, 0, 0]  },
+    { label:'Z',  rot: [0, 0, 0]           },
+    { label:'-Z', rot: [0, Math.PI, 0]     },
+  ];
+
+  // 각 축 dot 위치 계산해서 클릭 감지
+  [...AXES, ...AXES.map(a => ({
+    label: '-' + a.label, dir: a.dir.clone().negate(), isNeg: true,
+  }))].forEach((axis, idx) => {
+    const v = axis.dir.clone().applyMatrix4(mat4);
+    const sx = GZ + v.x * 38;
+    const sy = GZ - v.y * 38;
+    const r = axis.isNeg ? 6 : 9;
+    if (Math.hypot(mx - sx, my - sy) < r) {
+      const snap = snapTargets[idx];
+      rotX = snap.rot[0];
+      rotY = snap.rot[1];
+      autoRotate = false;
+    }
+  });
+  e.stopPropagation();
+});
+
+
+// ─── PARTICLE BUFFERS ────────────────────────────────────────────────────────
+const velocities = new Float32Array(PARTICLE_COUNT * 3);
+const currentPos = new Float32Array(positions);
+
+// 각 파티클의 개별 form 진행도 (1=뭉침, 0=흩어짐) — 시작은 모두 뭉쳐있음
+const particleForm = new Float32Array(PARTICLE_COUNT).fill(1);
+
+let isHovering = false;
+let hoverPos3D = new THREE.Vector3(9999, 9999, 9999);
+const SCATTER_RADIUS = 0.5; // 흩어지는 반경
+
+// ─── MOUSE / TOUCH ───────────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const plane     = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+function screenTo3D(clientX, clientY) {
+  const ndc = new THREE.Vector2(
+    (clientX / window.innerWidth)  * 2 - 1,
+   -(clientY / window.innerHeight) * 2 + 1
+  );
+  raycaster.setFromCamera(ndc, camera);
+  const hit = new THREE.Vector3();
+  raycaster.ray.intersectPlane(plane, hit);
+  return hit;
+}
+
+renderer.domElement.addEventListener('mousemove', e => {
+  if (gizmoDragging) return; // 기즈모 드래그 중엔 hover 무시
+  isHovering = true;
+  hoverPos3D = screenTo3D(e.clientX, e.clientY);
+});
+renderer.domElement.addEventListener('mouseleave', () => {
+  isHovering = false;
+  hoverPos3D.set(9999, 9999, 9999);
+});
+
+renderer.domElement.addEventListener('touchmove', e => {
+  isHovering = true;
+  hoverPos3D = screenTo3D(e.touches[0].clientX, e.touches[0].clientY);
+  e.preventDefault();
+}, { passive: false });
+window.addEventListener('touchend', () => {
+  isHovering = false;
+  hoverPos3D.set(9999, 9999, 9999);
+});
+
+// ─── RENDER LOOP ─────────────────────────────────────────────────────────────
+let time = 0;
+const SPEED_SCATTER = 0.07;  // 흩어지는 속도
+const SPEED_REFORM  = 0.025; // 돌아오는 속도 (천천히)
+const DAMP          = 0.82;
+
+function animate() {
+  requestAnimationFrame(animate);
+  time += 0.016;
+  mat.uniforms.uTime.value = time;
+
+  // 자동 회전 또는 수동 회전
+  if (autoRotate) rotY = time * 0.08;
+  particles.rotation.x = rotX;
+  particles.rotation.y = rotY;
+
+  // 기즈모 업데이트
+  drawGizmo();
+
+  const pos = geo.attributes.position.array;
+
+  // hoverPos3D(world) → particles local space로 변환 (회전 보정)
+  const localHover = hoverPos3D.clone();
+  if (isHovering) particles.worldToLocal(localHover);
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const i3 = i * 3;
+
+    // 타겟(의자 local) 위치와 local hover 포인트 사이 거리
+    const dx3 = targets[i3]   - localHover.x;
+    const dy3 = targets[i3+1] - localHover.y;
+    const dz3 = targets[i3+2] - localHover.z;
+    const dist = Math.sqrt(dx3*dx3 + dy3*dy3 + dz3*dz3);
+
+    // 반경 안 → 흩어짐, 반경 밖 → 다시 뭉침
+    const inRange = isHovering && dist < SCATTER_RADIUS;
+    if (inRange) {
+      const strength = SPEED_SCATTER * (1 - dist / SCATTER_RADIUS);
+      particleForm[i] = Math.max(0, particleForm[i] - strength);
+    } else {
+      particleForm[i] = Math.min(1, particleForm[i] + SPEED_REFORM);
+    }
+
+    const f = particleForm[i];
+
+    // 목표 위치 (form↔random 보간)
+    const tx = targets[i3]   * f + randoms[i3]   * (1 - f);
+    const ty = targets[i3+1] * f + randoms[i3+1] * (1 - f);
+    const tz = targets[i3+2] * f + randoms[i3+2] * (1 - f);
+
+    const ddx = tx - currentPos[i3];
+    const ddy = ty - currentPos[i3+1];
+    const ddz = tz - currentPos[i3+2];
+
+    const spring = 0.04 + f * 0.04;
+    velocities[i3]   = velocities[i3]   * DAMP + ddx * spring;
+    velocities[i3+1] = velocities[i3+1] * DAMP + ddy * spring;
+    velocities[i3+2] = velocities[i3+2] * DAMP + ddz * spring;
+
+    currentPos[i3]   += velocities[i3];
+    currentPos[i3+1] += velocities[i3+1];
+    currentPos[i3+2] += velocities[i3+2];
+
+    pos[i3]   = currentPos[i3];
+    pos[i3+1] = currentPos[i3+1];
+    pos[i3+2] = currentPos[i3+2];
+  }
+
+  geo.attributes.position.needsUpdate = true;
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// ─── RESIZE ──────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+});
+</script>
+
+</body>
+</html>
