@@ -43,16 +43,28 @@ font-weight:500; margin-bottom:6px;
 color:rgba(255,255,255,0.3); font-size:10px;
 letter-spacing:0.2em; font-weight:300;
 }
-#swap-btn {
-position:absolute; bottom:40px; right:40px;
-pointer-events:all; cursor:pointer;
-background:rgba(255,218,26,0.1);
-border:1px solid rgba(255,218,26,0.3);
-color:#FFDA1A; font-family:‘DM Mono’,monospace;
-font-size:10px; letter-spacing:0.2em;
-padding:8px 16px; transition:all 0.3s;
+#furniture-picker {
+position:absolute; top:50%; right:36px;
+transform:translateY(-50%);
+display:flex; flex-direction:column; gap:14px;
+pointer-events:all;
 }
-#swap-btn:hover { background:rgba(255,218,26,0.2); border-color:#FFDA1A; }
+.furn-btn {
+background:none; border:none; cursor:pointer;
+display:flex; align-items:center; gap:10px;
+padding:0; font-family:’DM Mono’,monospace;
+font-size:10px; letter-spacing:0.2em; font-weight:300;
+color:rgba(255,255,255,0.3);
+transition:color 0.3s;
+}
+.furn-btn:hover { color:rgba(255,255,255,0.6); }
+.furn-btn.active { color:#FFDA1A; }
+.furn-dot {
+width:6px; height:6px; border-radius:50%;
+background:currentColor; flex-shrink:0;
+transition:transform 0.3s;
+}
+.furn-btn.active .furn-dot { transform:scale(1.5); }
 
 #mode-label {
 position:absolute; top:32px; right:40px;
@@ -85,6 +97,7 @@ transition: opacity 0.2s;
   <div id="label">
     <h1>POÄNG — 1992</h1>
   </div>
+  <div id="furniture-picker"></div>
 </div>
 <!-- Gizmo outside HUD so pointer-events work correctly -->
 <canvas id="gizmo" width="74" height="74"></canvas>
@@ -257,19 +270,78 @@ function buildPoangPoints() {
   return allPoints;
 }
 
-// ─── PARTICLE SYSTEM ────────────────────────────────────────────────────────
-const chairPoints = buildPoangPoints();
-const PARTICLE_COUNT = chairPoints.length;
+// ─── BILLY BOOKCASE GEOMETRY ─────────────────────────────────────────────────
+function buildBillyPoints() {
+  const allPoints = [];
 
-// Center the geometry
-const center = new THREE.Vector3();
-chairPoints.forEach(p => center.add(p));
-center.divideScalar(chairPoints.length);
-const centeredTargets = chairPoints.map(p => p.clone().sub(center));
+  function sampleBox(cx, cy, cz, w, h, d, count) {
+    for (let i = 0; i < count; i++) {
+      const face = Math.floor(Math.random() * 6);
+      const u = (Math.random() - 0.5);
+      const v = (Math.random() - 0.5);
+      let x, y, z;
+      if      (face === 0) { x = cx + u*w; y = cy + v*h; z = cz + d/2; }
+      else if (face === 1) { x = cx + u*w; y = cy + v*h; z = cz - d/2; }
+      else if (face === 2) { x = cx + w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 3) { x = cx - w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 4) { x = cx + u*w; y = cy + h/2; z = cz + v*d; }
+      else                 { x = cx + u*w; y = cy - h/2; z = cz + v*d; }
+      allPoints.push(new THREE.Vector3(x, y, z));
+    }
+  }
+
+  const W = 0.80, H = 2.00, D = 0.28;
+  const thick = 0.022;
+
+  // 양쪽 사이드 패널
+  sampleBox(-W/2, H/2, 0, thick, H, D, 900);
+  sampleBox( W/2, H/2, 0, thick, H, D, 900);
+
+  // 상단 & 하단 수평 패널
+  sampleBox(0, H,    0, W, thick, D, 420);
+  sampleBox(0, 0,    0, W, thick, D, 420);
+
+  // 중간 선반 4개 (균등 간격)
+  const shelfYs = [H * 0.2, H * 0.4, H * 0.6, H * 0.8];
+  shelfYs.forEach(sy => sampleBox(0, sy, 0, W - thick*2, thick, D, 320));
+
+  // 뒷판
+  sampleBox(0, H/2, -D/2 + thick/2, W, H, thick * 0.5, 700);
+
+  return allPoints;
+}
+
+// ─── PARTICLE SYSTEM ─────────────────────────────────────────────────────────
+
+// 점 배열을 origin 중심으로 center하고 N개로 정규화 → Float32Array 반환
+function normalizeToCount(points, N) {
+  // center
+  const c = new THREE.Vector3();
+  points.forEach(p => c.add(p));
+  c.divideScalar(points.length);
+  const pts = points.map(p => p.clone().sub(c));
+
+  const out = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const src = pts[Math.floor(i / N * pts.length)];
+    out[i*3]   = src.x;
+    out[i*3+1] = src.y;
+    out[i*3+2] = src.z;
+  }
+  return out;
+}
+
+const PARTICLE_COUNT = 5000;
+
+const FURNITURE = [
+  { name: 'POÄNG', year: '1992', targets: normalizeToCount(buildPoangPoints(), PARTICLE_COUNT) },
+  { name: 'BILLY',  year: '1979', targets: normalizeToCount(buildBillyPoints(),  PARTICLE_COUNT) },
+];
+let currentFurniture = 0;
 
 // Particle buffers
 const positions = new Float32Array(PARTICLE_COUNT * 3);
-const targets   = new Float32Array(PARTICLE_COUNT * 3);
+const targets   = new Float32Array(FURNITURE[0].targets);
 const randoms   = new Float32Array(PARTICLE_COUNT * 3);
 const colors    = new Float32Array(PARTICLE_COUNT * 3);
 const sizes     = new Float32Array(PARTICLE_COUNT);
@@ -284,11 +356,6 @@ const colPalette = [
 ];
 
 for (let i = 0; i < PARTICLE_COUNT; i++) {
-  const t = centeredTargets[i];
-  targets[i*3]   = t.x;
-  targets[i*3+1] = t.y;
-  targets[i*3+2] = t.z;
-
   // Start scattered
   randoms[i*3]   = (Math.random() - 0.5) * 5;
   randoms[i*3+1] = (Math.random() - 0.5) * 5;
@@ -554,6 +621,26 @@ gizmoCanvas.addEventListener('click', e => {
   e.stopPropagation();
 });
 
+
+// ─── FURNITURE PICKER UI ─────────────────────────────────────────────────────
+const picker = document.getElementById('furniture-picker');
+const labelH1 = document.querySelector('#label h1');
+
+FURNITURE.forEach((f, idx) => {
+  const btn = document.createElement('button');
+  btn.className = 'furn-btn' + (idx === 0 ? ' active' : '');
+  btn.innerHTML = `<span class="furn-dot"></span>${f.name}`;
+  btn.addEventListener('click', () => {
+    if (idx === currentFurniture) return;
+    currentFurniture = idx;
+    targets.set(FURNITURE[idx].targets);
+    labelH1.textContent = `${f.name} — ${f.year}`;
+    picker.querySelectorAll('.furn-btn').forEach((b, i) =>
+      b.classList.toggle('active', i === idx)
+    );
+  });
+  picker.appendChild(btn);
+});
 
 // ─── PARTICLE BUFFERS ────────────────────────────────────────────────────────
 const velocities = new Float32Array(PARTICLE_COUNT * 3);
