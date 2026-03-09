@@ -454,13 +454,9 @@ scene.add(particles);
 // ─── ROTATION STATE ──────────────────────────────────────────────────────────
 let rotY = 0.3, rotX = 0.15;
 let autoRotate = true;
-let autoRotateTimer = null;
 
-function stopAutoRotate() {
-  autoRotate = false;
-  if (autoRotateTimer) clearTimeout(autoRotateTimer);
-  autoRotateTimer = setTimeout(() => { autoRotate = true; }, 2500);
-}
+function stopAutoRotate() { autoRotate = false; }
+function resumeAutoRotate() { autoRotate = true; }
 
 // ─── GIZMO ───────────────────────────────────────────────────────────────────
 const gizmoCanvas = document.getElementById('gizmo');
@@ -618,10 +614,12 @@ gizmoCanvas.addEventListener('pointermove', e => {
 gizmoCanvas.addEventListener('pointerup', e => {
   gizmoDragging = false;
   gizmoCanvas.releasePointerCapture(e.pointerId);
+  resumeAutoRotate();
 });
 
 gizmoCanvas.addEventListener('pointercancel', e => {
   gizmoDragging = false;
+  resumeAutoRotate();
 });
 
 // 축 클릭 → 스냅 회전
