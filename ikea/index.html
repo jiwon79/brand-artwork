@@ -63,8 +63,8 @@ letter-spacing:0.2em;
 /* Blender Gizmo */
 #gizmo {
 position: fixed;
-bottom: 36px;
-left: 36px;
+bottom: 18px;
+left: 18px;
 z-index: 20;
 cursor: grab;
 opacity: 0.85;
@@ -87,7 +87,7 @@ transition: opacity 0.2s;
   </div>
 </div>
 <!-- Gizmo outside HUD so pointer-events work correctly -->
-<canvas id="gizmo" width="110" height="110"></canvas>
+<canvas id="gizmo" width="74" height="74"></canvas>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -359,7 +359,7 @@ function stopAutoRotate() {
 // ─── GIZMO ───────────────────────────────────────────────────────────────────
 const gizmoCanvas = document.getElementById('gizmo');
 const gc = gizmoCanvas.getContext('2d');
-const GZ = 55; // 기즈모 중심
+const GZ = 37; // 기즈모 중심
 
 const AXES = [
   { label: 'X',  dir: new THREE.Vector3( 1, 0, 0), color: '#ff4d4d', negColor: '#7a1a1a' },
@@ -368,7 +368,7 @@ const AXES = [
 ];
 
 function drawGizmo() {
-  gc.clearRect(0, 0, 110, 110);
+  gc.clearRect(0, 0, 74, 74);
 
   // 현재 모델 회전 매트릭스
   const mat4 = new THREE.Matrix4().makeRotationFromEuler(
@@ -387,8 +387,8 @@ function drawGizmo() {
     const v = axis.dir.clone().applyMatrix4(mat4);
     projected.push({
       ...axis,
-      sx: GZ + v.x * 38,
-      sy: GZ - v.y * 38,
+      sx: GZ + v.x * 26,
+      sy: GZ - v.y * 26,
       depth: v.z,
     });
   });
@@ -399,7 +399,7 @@ function drawGizmo() {
   // 원형 배경
   gc.save();
   gc.beginPath();
-  gc.arc(GZ, GZ, 50, 0, Math.PI * 2);
+  gc.arc(GZ, GZ, 34, 0, Math.PI * 2);
   gc.fillStyle = 'rgba(0, 20, 50, 0.45)';
   gc.fill();
   gc.strokeStyle = 'rgba(255,255,255,0.06)';
@@ -412,8 +412,8 @@ function drawGizmo() {
   gc.strokeStyle = 'rgba(255,255,255,0.06)';
   gc.lineWidth = 1;
   gc.setLineDash([2, 4]);
-  gc.beginPath(); gc.moveTo(GZ - 44, GZ); gc.lineTo(GZ + 44, GZ); gc.stroke();
-  gc.beginPath(); gc.moveTo(GZ, GZ - 44); gc.lineTo(GZ, GZ + 44); gc.stroke();
+  gc.beginPath(); gc.moveTo(GZ - 30, GZ); gc.lineTo(GZ + 30, GZ); gc.stroke();
+  gc.beginPath(); gc.moveTo(GZ, GZ - 30); gc.lineTo(GZ, GZ + 30); gc.stroke();
   gc.setLineDash([]);
   gc.restore();
 
@@ -436,7 +436,7 @@ function drawGizmo() {
     gc.restore();
 
     // 끝점 원
-    const r = isNeg ? 5 : 8;
+    const r = isNeg ? 3 : 5;
     gc.save();
     gc.globalAlpha = alpha * (isNeg ? 0.5 : 1.0);
 
@@ -468,7 +468,7 @@ function drawGizmo() {
       gc.save();
       gc.globalAlpha = alpha;
       gc.fillStyle = '#ffffff';
-      gc.font = 'bold 9px "DM Mono", monospace';
+      gc.font = 'bold 6px "DM Mono", monospace';
       gc.textAlign = 'center';
       gc.textBaseline = 'middle';
       gc.fillText(axis.label, axis.sx, axis.sy);
@@ -479,7 +479,7 @@ function drawGizmo() {
   // 중심점
   gc.save();
   gc.beginPath();
-  gc.arc(GZ, GZ, 3, 0, Math.PI * 2);
+  gc.arc(GZ, GZ, 2, 0, Math.PI * 2);
   gc.fillStyle = 'rgba(255,255,255,0.6)';
   gc.fill();
   gc.restore();
@@ -541,9 +541,9 @@ gizmoCanvas.addEventListener('click', e => {
     label: '-' + a.label, dir: a.dir.clone().negate(), isNeg: true,
   }))].forEach((axis, idx) => {
     const v = axis.dir.clone().applyMatrix4(mat4);
-    const sx = GZ + v.x * 38;
-    const sy = GZ - v.y * 38;
-    const r = axis.isNeg ? 6 : 9;
+    const sx = GZ + v.x * 26;
+    const sy = GZ - v.y * 26;
+    const r = axis.isNeg ? 5 : 7;
     if (Math.hypot(mx - sx, my - sy) < r) {
       const snap = snapTargets[idx];
       rotX = snap.rot[0];
