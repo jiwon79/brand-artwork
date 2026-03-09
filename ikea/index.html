@@ -561,6 +561,10 @@ gizmoCanvas.addEventListener('click', e => {
 const velocities = new Float32Array(PARTICLE_COUNT * 3);
 const currentPos = new Float32Array(positions);
 
+// 파티클별 고유 위상 (황금비 분산)
+const phases = new Float32Array(PARTICLE_COUNT);
+for (let i = 0; i < PARTICLE_COUNT; i++) phases[i] = i * 2.399;
+
 // 각 파티클의 개별 form 진행도 (1=뭉침, 0=흩어짐) — 시작은 모두 뭉쳐있음
 const particleForm = new Float32Array(PARTICLE_COUNT).fill(1);
 
@@ -648,10 +652,17 @@ function animate() {
 
     const f = particleForm[i];
 
-    // 목표 위치 (form↔random 보간)
-    const tx = targets[i3]   * f + randoms[i3]   * (1 - f);
-    const ty = targets[i3+1] * f + randoms[i3+1] * (1 - f);
-    const tz = targets[i3+2] * f + randoms[i3+2] * (1 - f);
+    // 부유 효과: 뭉침 상태일수록 사인파로 타겟 위치를 진동
+    const ph = phases[i];
+    const floatAmp = 0.018 * f;
+    const floatX = Math.sin(time * 0.9 + ph) * floatAmp;
+    const floatY = Math.sin(time * 0.7 + ph * 1.3) * floatAmp;
+    const floatZ = Math.sin(time * 0.8 + ph * 0.7) * floatAmp;
+
+    // 목표 위치 (form↔random 보간 + 부유 오프셋)
+    const tx = (targets[i3]   + floatX) * f + randoms[i3]   * (1 - f);
+    const ty = (targets[i3+1] + floatY) * f + randoms[i3+1] * (1 - f);
+    const tz = (targets[i3+2] + floatZ) * f + randoms[i3+2] * (1 - f);
 
     const ddx = tx - currentPos[i3];
     const ddy = ty - currentPos[i3+1];
