@@ -16,36 +16,8 @@
 position:fixed; top:0; left:0; width:100%; height:100%;
 pointer-events:none; z-index:10;
 }
-#logo {
-position:absolute; top:32px; left:40px;
-display:flex; align-items:center; gap:14px;
-}
-#logo-badge {
-background:#FFDA1A; color:#0058A3;
-font-size:20px; font-weight:500;
-padding:6px 18px; letter-spacing:0.08em;
-}
-#logo-sub {
-color:rgba(255,255,255,0.35);
-font-size:10px; letter-spacing:0.3em;
-line-height:1.6;
-}
-#label {
-position:absolute; bottom:40px; left:50%;
-transform:translateX(-50%);
-text-align:center;
-}
-#label h1 {
-color:#FFDA1A; font-size:11px; letter-spacing:0.35em;
-font-weight:500; margin-bottom:6px;
-}
-#label p {
-color:rgba(255,255,255,0.3); font-size:10px;
-letter-spacing:0.2em; font-weight:300;
-}
 #furniture-picker {
-position:absolute; top:50%; right:36px;
-transform:translateY(-50%);
+position:absolute; top:28px; left:36px;
 display:flex; flex-direction:column; gap:14px;
 pointer-events:all;
 }
@@ -66,17 +38,11 @@ transition:transform 0.3s;
 }
 .furn-btn.active .furn-dot { transform:scale(1.5); }
 
-#mode-label {
-position:absolute; top:32px; right:40px;
-color:rgba(255,255,255,0.25); font-size:10px;
-letter-spacing:0.2em;
-}
-
 /* Blender Gizmo */
 #gizmo {
 position: fixed;
-bottom: 18px;
-left: 18px;
+top: 18px;
+right: 18px;
 z-index: 20;
 cursor: grab;
 opacity: 0.85;
@@ -89,14 +55,7 @@ transition: opacity 0.2s;
 </head>
 <body>
 <div id="hud">
-  <div id="logo">
-    <div id="logo-badge">IKEA</div>
-    <div id="logo-sub">POÄNG<br>PARTICLE SERIES</div>
-  </div>
-  <div id="mode-label">GEOMETRY: CODE</div>
-  <div id="label">
-    <h1>POÄNG — 1992</h1>
-  </div>
+
   <div id="furniture-picker"></div>
 </div>
 <!-- Gizmo outside HUD so pointer-events work correctly -->
