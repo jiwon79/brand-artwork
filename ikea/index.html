@@ -6,9 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>IKEA POÄNG × Particle Art</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
-  body { background:#0058A3; overflow:hidden; font-family:'DM Mono', monospace; cursor:grab; }
+  body { background:#0058A3; overflow:hidden; font-family:'Inter', -apple-system, BlinkMacSystemFont, sans-serif; cursor:grab; }
   body:active { cursor:grabbing; }
   canvas { display:block; }
 
@@ -24,7 +24,7 @@ pointer-events:all;
 .furn-btn {
 background:none; border:none; cursor:pointer;
 display:flex; align-items:center; gap:10px;
-padding:0; font-family:’DM Mono’,monospace;
+padding:0; font-family:’Inter’, -apple-system, BlinkMacSystemFont, sans-serif;
 font-size:10px; letter-spacing:0.2em; font-weight:300;
 color:rgba(255,255,255,0.3);
 transition:color 0.3s;
@@ -529,7 +529,7 @@ function drawGizmo() {
       gc.save();
       gc.globalAlpha = alpha;
       gc.fillStyle = '#ffffff';
-      gc.font = 'bold 6px "DM Mono", monospace';
+      gc.font = 'bold 6px "Inter", -apple-system, BlinkMacSystemFont, sans-serif';
       gc.textAlign = 'center';
       gc.textBaseline = 'middle';
       gc.fillText(axis.label, axis.sx, axis.sy);
