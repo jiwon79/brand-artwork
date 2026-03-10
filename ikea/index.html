@@ -6,9 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>IKEA POÄNG × Particle Art</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
-  body { background:#0058A3; overflow:hidden; font-family:'DM Mono', monospace; cursor:grab; }
+  body { background:#0058A3; overflow:hidden; font-family:'Inter', -apple-system, BlinkMacSystemFont, sans-serif; cursor:grab; }
   body:active { cursor:grabbing; }
   canvas { display:block; }
 
@@ -16,63 +16,33 @@
 position:fixed; top:0; left:0; width:100%; height:100%;
 pointer-events:none; z-index:10;
 }
-#logo {
-position:absolute; top:32px; left:40px;
-display:flex; align-items:center; gap:14px;
+#furniture-picker {
+position:absolute; top:28px; left:36px;
+display:flex; flex-direction:column; gap:14px;
+pointer-events:all;
 }
-#logo-badge {
-background:#FFDA1A; color:#0058A3;
-font-size:20px; font-weight:500;
-padding:6px 18px; letter-spacing:0.08em;
+.furn-btn {
+background:none; border:none; cursor:pointer;
+display:flex; align-items:center; gap:10px;
+padding:0; font-family:’Inter’, -apple-system, BlinkMacSystemFont, sans-serif;
+font-size:10px; letter-spacing:0.2em; font-weight:300;
+color:rgba(255,255,255,0.3);
+transition:color 0.3s;
 }
-#logo-sub {
-color:rgba(255,255,255,0.35);
-font-size:10px; letter-spacing:0.3em;
-line-height:1.6;
+.furn-btn:hover { color:rgba(255,255,255,0.6); }
+.furn-btn.active { color:#FFDA1A; }
+.furn-dot {
+width:6px; height:6px; border-radius:50%;
+background:currentColor; flex-shrink:0;
+transition:transform 0.3s;
 }
-#label {
-position:absolute; bottom:40px; left:50%;
-transform:translateX(-50%);
-text-align:center;
-}
-#label h1 {
-color:#FFDA1A; font-size:11px; letter-spacing:0.35em;
-font-weight:500; margin-bottom:6px;
-}
-#label p {
-color:rgba(255,255,255,0.3); font-size:10px;
-letter-spacing:0.2em; font-weight:300;
-}
-#hint {
-position:absolute; top:50%; right:36px;
-transform:translateY(-50%);
-color:rgba(255,255,255,0.2); font-size:10px;
-letter-spacing:0.15em; writing-mode:vertical-rl;
-font-weight:300;
-}
-#swap-btn {
-position:absolute; bottom:40px; right:40px;
-pointer-events:all; cursor:pointer;
-background:rgba(255,218,26,0.1);
-border:1px solid rgba(255,218,26,0.3);
-color:#FFDA1A; font-family:‘DM Mono’,monospace;
-font-size:10px; letter-spacing:0.2em;
-padding:8px 16px; transition:all 0.3s;
-}
-#swap-btn:hover { background:rgba(255,218,26,0.2); border-color:#FFDA1A; }
-
-#mode-label {
-position:absolute; top:32px; right:40px;
-color:rgba(255,255,255,0.25); font-size:10px;
-letter-spacing:0.2em;
-}
+.furn-btn.active .furn-dot { transform:scale(1.5); }
 
 /* Blender Gizmo */
 #gizmo {
 position: fixed;
-top: 20px;
-left: 50%;
-transform: translateX(-50%);
+top: 18px;
+right: 18px;
 z-index: 20;
 cursor: grab;
 opacity: 0.85;
@@ -85,19 +55,11 @@ transition: opacity 0.2s;
 </head>
 <body>
 <div id="hud">
-  <div id="logo">
-    <div id="logo-badge">IKEA</div>
-    <div id="logo-sub">POÄNG<br>PARTICLE SERIES</div>
-  </div>
-  <div id="mode-label">GEOMETRY: CODE</div>
-  <div id="label">
-    <h1>POÄNG — 1992</h1>
-    <p>HOVER TO DISSOLVE · MOVE AWAY TO REFORM</p>
-  </div>
-  <div id="hint">HOVER THE CHAIR</div>
+
+  <div id="furniture-picker"></div>
 </div>
 <!-- Gizmo outside HUD so pointer-events work correctly -->
-<canvas id="gizmo" width="110" height="110"></canvas>
+<canvas id="gizmo" width="74" height="74"></canvas>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -267,19 +229,117 @@ function buildPoangPoints() {
   return allPoints;
 }
 
-// ─── PARTICLE SYSTEM ────────────────────────────────────────────────────────
-const chairPoints = buildPoangPoints();
-const PARTICLE_COUNT = chairPoints.length;
+// ─── BILLY BOOKCASE GEOMETRY ─────────────────────────────────────────────────
+function buildBillyPoints() {
+  const allPoints = [];
 
-// Center the geometry
-const center = new THREE.Vector3();
-chairPoints.forEach(p => center.add(p));
-center.divideScalar(chairPoints.length);
-const centeredTargets = chairPoints.map(p => p.clone().sub(center));
+  function sampleBox(cx, cy, cz, w, h, d, count) {
+    for (let i = 0; i < count; i++) {
+      const face = Math.floor(Math.random() * 6);
+      const u = (Math.random() - 0.5);
+      const v = (Math.random() - 0.5);
+      let x, y, z;
+      if      (face === 0) { x = cx + u*w; y = cy + v*h; z = cz + d/2; }
+      else if (face === 1) { x = cx + u*w; y = cy + v*h; z = cz - d/2; }
+      else if (face === 2) { x = cx + w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 3) { x = cx - w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 4) { x = cx + u*w; y = cy + h/2; z = cz + v*d; }
+      else                 { x = cx + u*w; y = cy - h/2; z = cz + v*d; }
+      allPoints.push(new THREE.Vector3(x, y, z));
+    }
+  }
+
+  const W = 0.80, H = 2.00, D = 0.28;
+  const thick = 0.022;
+
+  // 양쪽 사이드 패널
+  sampleBox(-W/2, H/2, 0, thick, H, D, 900);
+  sampleBox( W/2, H/2, 0, thick, H, D, 900);
+
+  // 상단 & 하단 수평 패널
+  sampleBox(0, H,    0, W, thick, D, 420);
+  sampleBox(0, 0,    0, W, thick, D, 420);
+
+  // 중간 선반 4개 (균등 간격)
+  const shelfYs = [H * 0.2, H * 0.4, H * 0.6, H * 0.8];
+  shelfYs.forEach(sy => sampleBox(0, sy, 0, W - thick*2, thick, D, 320));
+
+  // 뒷판
+  sampleBox(0, H/2, -D/2 + thick/2, W, H, thick * 0.5, 700);
+
+  return allPoints;
+}
+
+// ─── PARTICLE SYSTEM ─────────────────────────────────────────────────────────
+
+// 점 배열을 origin 중심으로 center하고 N개로 정규화 → Float32Array 반환
+function normalizeToCount(points, N) {
+  // center
+  const c = new THREE.Vector3();
+  points.forEach(p => c.add(p));
+  c.divideScalar(points.length);
+  const pts = points.map(p => p.clone().sub(c));
+
+  const out = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const src = pts[Math.floor(i / N * pts.length)];
+    out[i*3]   = src.x;
+    out[i*3+1] = src.y;
+    out[i*3+2] = src.z;
+  }
+  return out;
+}
+
+// ─── LACK SIDE TABLE GEOMETRY ────────────────────────────────────────────────
+function buildLackPoints() {
+  const allPoints = [];
+
+  function sampleBox(cx, cy, cz, w, h, d, count) {
+    for (let i = 0; i < count; i++) {
+      const face = Math.floor(Math.random() * 6);
+      const u = (Math.random() - 0.5);
+      const v = (Math.random() - 0.5);
+      let x, y, z;
+      if      (face === 0) { x = cx + u*w; y = cy + v*h; z = cz + d/2; }
+      else if (face === 1) { x = cx + u*w; y = cy + v*h; z = cz - d/2; }
+      else if (face === 2) { x = cx + w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 3) { x = cx - w/2; y = cy + v*h; z = cz + u*d; }
+      else if (face === 4) { x = cx + u*w; y = cy + h/2; z = cz + v*d; }
+      else                 { x = cx + u*w; y = cy - h/2; z = cz + v*d; }
+      allPoints.push(new THREE.Vector3(x, y, z));
+    }
+  }
+
+  // LACK: 55×55cm 상판, 높이 45cm (정규화 스케일)
+  const W = 0.70, D = 0.70, H = 0.60, thick = 0.04;
+  const legSide = 0.05;
+
+  // 상판
+  sampleBox(0, H, 0, W, thick, D, 2200);
+
+  // 다리 4개 (코너)
+  const offX = W / 2 - legSide;
+  const offZ = D / 2 - legSide;
+  const legH = H - thick / 2;
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx, sz]) => {
+    sampleBox(sx * offX, legH / 2, sz * offZ, legSide, legH, legSide, 680);
+  });
+
+  return allPoints;
+}
+
+const PARTICLE_COUNT = 5000;
+
+const FURNITURE = [
+  { name: 'POÄNG', year: '1992', targets: normalizeToCount(buildPoangPoints(), PARTICLE_COUNT) },
+  { name: 'BILLY',  year: '1979', targets: normalizeToCount(buildBillyPoints(),  PARTICLE_COUNT) },
+  { name: 'LACK',  year: '1979', targets: normalizeToCount(buildLackPoints(),   PARTICLE_COUNT) },
+];
+let currentFurniture = 0;
 
 // Particle buffers
 const positions = new Float32Array(PARTICLE_COUNT * 3);
-const targets   = new Float32Array(PARTICLE_COUNT * 3);
+const targets   = new Float32Array(FURNITURE[0].targets);
 const randoms   = new Float32Array(PARTICLE_COUNT * 3);
 const colors    = new Float32Array(PARTICLE_COUNT * 3);
 const sizes     = new Float32Array(PARTICLE_COUNT);
@@ -294,11 +354,6 @@ const colPalette = [
 ];
 
 for (let i = 0; i < PARTICLE_COUNT; i++) {
-  const t = centeredTargets[i];
-  targets[i*3]   = t.x;
-  targets[i*3+1] = t.y;
-  targets[i*3+2] = t.z;
-
   // Start scattered
   randoms[i*3]   = (Math.random() - 0.5) * 5;
   randoms[i*3+1] = (Math.random() - 0.5) * 5;
@@ -352,16 +407,20 @@ const mat = new THREE.ShaderMaterial({
 });
 
 const particles = new THREE.Points(geo, mat);
+particles.position.y = 0.14; // 제품명 레이블과 겹치지 않도록 위로 이동
 scene.add(particles);
 
 // ─── ROTATION STATE ──────────────────────────────────────────────────────────
 let rotY = 0.3, rotX = 0.15;
-let autoRotate = true; // 인터랙션 없으면 자동 회전
+let autoRotate = true;
+
+function stopAutoRotate() { autoRotate = false; }
+function resumeAutoRotate() { autoRotate = true; }
 
 // ─── GIZMO ───────────────────────────────────────────────────────────────────
 const gizmoCanvas = document.getElementById('gizmo');
 const gc = gizmoCanvas.getContext('2d');
-const GZ = 55; // 기즈모 중심
+const GZ = 37; // 기즈모 중심
 
 const AXES = [
   { label: 'X',  dir: new THREE.Vector3( 1, 0, 0), color: '#ff4d4d', negColor: '#7a1a1a' },
@@ -370,7 +429,7 @@ const AXES = [
 ];
 
 function drawGizmo() {
-  gc.clearRect(0, 0, 110, 110);
+  gc.clearRect(0, 0, 74, 74);
 
   // 현재 모델 회전 매트릭스
   const mat4 = new THREE.Matrix4().makeRotationFromEuler(
@@ -389,8 +448,8 @@ function drawGizmo() {
     const v = axis.dir.clone().applyMatrix4(mat4);
     projected.push({
       ...axis,
-      sx: GZ + v.x * 38,
-      sy: GZ - v.y * 38,
+      sx: GZ + v.x * 26,
+      sy: GZ - v.y * 26,
       depth: v.z,
     });
   });
@@ -401,7 +460,7 @@ function drawGizmo() {
   // 원형 배경
   gc.save();
   gc.beginPath();
-  gc.arc(GZ, GZ, 50, 0, Math.PI * 2);
+  gc.arc(GZ, GZ, 34, 0, Math.PI * 2);
   gc.fillStyle = 'rgba(0, 20, 50, 0.45)';
   gc.fill();
   gc.strokeStyle = 'rgba(255,255,255,0.06)';
@@ -414,8 +473,8 @@ function drawGizmo() {
   gc.strokeStyle = 'rgba(255,255,255,0.06)';
   gc.lineWidth = 1;
   gc.setLineDash([2, 4]);
-  gc.beginPath(); gc.moveTo(GZ - 44, GZ); gc.lineTo(GZ + 44, GZ); gc.stroke();
-  gc.beginPath(); gc.moveTo(GZ, GZ - 44); gc.lineTo(GZ, GZ + 44); gc.stroke();
+  gc.beginPath(); gc.moveTo(GZ - 30, GZ); gc.lineTo(GZ + 30, GZ); gc.stroke();
+  gc.beginPath(); gc.moveTo(GZ, GZ - 30); gc.lineTo(GZ, GZ + 30); gc.stroke();
   gc.setLineDash([]);
   gc.restore();
 
@@ -438,7 +497,7 @@ function drawGizmo() {
     gc.restore();
 
     // 끝점 원
-    const r = isNeg ? 5 : 8;
+    const r = isNeg ? 3 : 5;
     gc.save();
     gc.globalAlpha = alpha * (isNeg ? 0.5 : 1.0);
 
@@ -470,7 +529,7 @@ function drawGizmo() {
       gc.save();
       gc.globalAlpha = alpha;
       gc.fillStyle = '#ffffff';
-      gc.font = 'bold 9px "DM Mono", monospace';
+      gc.font = 'bold 6px "Inter", -apple-system, BlinkMacSystemFont, sans-serif';
       gc.textAlign = 'center';
       gc.textBaseline = 'middle';
       gc.fillText(axis.label, axis.sx, axis.sy);
@@ -481,7 +540,7 @@ function drawGizmo() {
   // 중심점
   gc.save();
   gc.beginPath();
-  gc.arc(GZ, GZ, 3, 0, Math.PI * 2);
+  gc.arc(GZ, GZ, 2, 0, Math.PI * 2);
   gc.fillStyle = 'rgba(255,255,255,0.6)';
   gc.fill();
   gc.restore();
@@ -493,7 +552,7 @@ let gizmoPrev = { x: 0, y: 0 };
 
 gizmoCanvas.addEventListener('pointerdown', e => {
   gizmoDragging = true;
-  autoRotate = false;
+  stopAutoRotate();
   gizmoPrev = { x: e.clientX, y: e.clientY };
   gizmoCanvas.setPointerCapture(e.pointerId);
   e.stopPropagation();
@@ -514,10 +573,12 @@ gizmoCanvas.addEventListener('pointermove', e => {
 gizmoCanvas.addEventListener('pointerup', e => {
   gizmoDragging = false;
   gizmoCanvas.releasePointerCapture(e.pointerId);
+  resumeAutoRotate();
 });
 
 gizmoCanvas.addEventListener('pointercancel', e => {
   gizmoDragging = false;
+  resumeAutoRotate();
 });
 
 // 축 클릭 → 스냅 회전
@@ -543,23 +604,45 @@ gizmoCanvas.addEventListener('click', e => {
     label: '-' + a.label, dir: a.dir.clone().negate(), isNeg: true,
   }))].forEach((axis, idx) => {
     const v = axis.dir.clone().applyMatrix4(mat4);
-    const sx = GZ + v.x * 38;
-    const sy = GZ - v.y * 38;
-    const r = axis.isNeg ? 6 : 9;
+    const sx = GZ + v.x * 26;
+    const sy = GZ - v.y * 26;
+    const r = axis.isNeg ? 5 : 7;
     if (Math.hypot(mx - sx, my - sy) < r) {
       const snap = snapTargets[idx];
       rotX = snap.rot[0];
       rotY = snap.rot[1];
-      autoRotate = false;
+      stopAutoRotate();
     }
   });
   e.stopPropagation();
 });
 
 
+// ─── FURNITURE PICKER UI ─────────────────────────────────────────────────────
+const picker = document.getElementById('furniture-picker');
+
+FURNITURE.forEach((f, idx) => {
+  const btn = document.createElement('button');
+  btn.className = 'furn-btn' + (idx === 0 ? ' active' : '');
+  btn.innerHTML = `<span class="furn-dot"></span>${f.name}`;
+  btn.addEventListener('click', () => {
+    if (idx === currentFurniture) return;
+    currentFurniture = idx;
+    targets.set(FURNITURE[idx].targets);
+    picker.querySelectorAll('.furn-btn').forEach((b, i) =>
+      b.classList.toggle('active', i === idx)
+    );
+  });
+  picker.appendChild(btn);
+});
+
 // ─── PARTICLE BUFFERS ────────────────────────────────────────────────────────
 const velocities = new Float32Array(PARTICLE_COUNT * 3);
 const currentPos = new Float32Array(positions);
+
+// 파티클별 고유 위상 (황금비 분산)
+const phases = new Float32Array(PARTICLE_COUNT);
+for (let i = 0; i < PARTICLE_COUNT; i++) phases[i] = i * 2.399;
 
 // 각 파티클의 개별 form 진행도 (1=뭉침, 0=흩어짐) — 시작은 모두 뭉쳐있음
 const particleForm = new Float32Array(PARTICLE_COUNT).fill(1);
@@ -615,7 +698,7 @@ function animate() {
   mat.uniforms.uTime.value = time;
 
   // 자동 회전 또는 수동 회전
-  if (autoRotate) rotY = time * 0.08;
+  if (autoRotate) rotY += 0.005;
   particles.rotation.x = rotX;
   particles.rotation.y = rotY;
 
@@ -648,10 +731,17 @@ function animate() {
 
     const f = particleForm[i];
 
-    // 목표 위치 (form↔random 보간)
-    const tx = targets[i3]   * f + randoms[i3]   * (1 - f);
-    const ty = targets[i3+1] * f + randoms[i3+1] * (1 - f);
-    const tz = targets[i3+2] * f + randoms[i3+2] * (1 - f);
+    // 부유 효과: 뭉침 상태일수록 사인파로 타겟 위치를 진동
+    const ph = phases[i];
+    const floatAmp = 0.018 * f;
+    const floatX = Math.sin(time * 0.9 + ph) * floatAmp;
+    const floatY = Math.sin(time * 0.7 + ph * 1.3) * floatAmp;
+    const floatZ = Math.sin(time * 0.8 + ph * 0.7) * floatAmp;
+
+    // 목표 위치 (form↔random 보간 + 부유 오프셋)
+    const tx = (targets[i3]   + floatX) * f + randoms[i3]   * (1 - f);
+    const ty = (targets[i3+1] + floatY) * f + randoms[i3+1] * (1 - f);
+    const tz = (targets[i3+2] + floatZ) * f + randoms[i3+2] * (1 - f);
 
     const ddx = tx - currentPos[i3];
     const ddy = ty - currentPos[i3+1];
