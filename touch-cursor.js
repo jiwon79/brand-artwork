@@ -11,11 +11,10 @@
       width: 12px;
       height: 12px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.95);
+      background: rgba(255, 255, 255, 0.45);
       pointer-events: none;
       transform: translate(-50%, -50%);
       z-index: 99999;
-      mix-blend-mode: difference;
       will-change: left, top;
     }
     .tc-ring {
