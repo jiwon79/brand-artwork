@@ -449,6 +449,8 @@ function init() {
 
 init();
 
+document.getElementById('boom-btn').addEventListener('click', triggerBoom);
+
 window.addEventListener('resize', () => {
   getSize();
   canvas.width  = W;
