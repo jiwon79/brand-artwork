@@ -63,11 +63,11 @@ function buildMask() {
   mctx.font = `900 ${fontSize}px Arial Black, Arial, sans-serif`;
 
   const totalW = mctx.measureText('Google').width;
-  let cx = (W - totalW) / 2;
+  const startX = (W - totalW) / 2;
   letters.forEach((ch, i) => {
+    const x = startX + mctx.measureText('Google'.slice(0, i)).width;
     mctx.fillStyle = `rgb(${(i + 1) * 40},0,0)`;
-    mctx.fillText(ch, cx, H / 2);
-    cx += mctx.measureText(ch).width;
+    mctx.fillText(ch, x, H / 2);
   });
 
   const raw  = mctx.getImageData(0, 0, W, H).data;
