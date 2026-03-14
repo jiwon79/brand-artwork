@@ -36,7 +36,7 @@ const DOT_COLORS  = G_RGB.map(([r, g, b]) => `rgb(${r},${g},${b})`);
 
 let W, H;
 let px, py, vx, vy, baseSpd, homeIdx;
-let mask, letterPx, letterCx, letterCy, letterMinX, letterMaxX;
+let mask, letterPx, letterCx, letterCy;
 let lox, loy;
 let gridW, gridH, grid, gridCount;
 
@@ -76,10 +76,8 @@ function buildMask() {
   const raw  = mctx.getImageData(0, 0, W, H).data;
   mask       = new Uint8Array(W * H);
   letterPx   = Array.from({ length: N_LETTERS }, () => ({ xs: [], ys: [] }));
-  letterCx   = new Float32Array(N_LETTERS);
-  letterCy   = new Float32Array(N_LETTERS);
-  letterMinX = new Float32Array(N_LETTERS).fill(W);
-  letterMaxX = new Float32Array(N_LETTERS);
+  letterCx = new Float32Array(N_LETTERS);
+  letterCy = new Float32Array(N_LETTERS);
 
   for (let idx = 0; idx < W * H; idx++) {
     const r = raw[idx * 4];
@@ -91,8 +89,6 @@ function buildMask() {
     letterPx[li].ys.push(yi);
     letterCx[li] += xi;
     letterCy[li] += yi;
-    if (xi < letterMinX[li]) letterMinX[li] = xi;
-    if (xi > letterMaxX[li]) letterMaxX[li] = xi;
   }
 
   for (let li = 0; li < N_LETTERS; li++) {
@@ -232,8 +228,7 @@ function bounce(i) {
 
 // ── UPDATE LETTER OFFSETS ──
 function updateOffsets() {
-  const mx  = mouse.x, my = mouse.y;
-  const GAP = 4;
+  const mx = mouse.x, my = mouse.y;
 
   for (let li = 0; li < N_LETTERS; li++) {
     if (mouse.down || mouse.touching) {
@@ -249,15 +244,6 @@ function updateOffsets() {
     }
   }
 
-  for (let li = 1; li < N_LETTERS; li++) {
-    const rightEdge = letterMaxX[li - 1] + lox[li - 1];
-    const leftEdge  = letterMinX[li]     + lox[li];
-    if (leftEdge < rightEdge + GAP) {
-      const overlap = (rightEdge + GAP - leftEdge) / 2;
-      lox[li]     = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, lox[li]     + overlap));
-      lox[li - 1] = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, lox[li - 1] - overlap));
-    }
-  }
 }
 
 // ── UPDATE PARTICLES ──
