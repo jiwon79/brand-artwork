@@ -42,8 +42,11 @@ let gridW, gridH, grid, gridCount;
 
 // ── SIZE ──
 function getSize() {
-  W = window.innerWidth;
-  H = window.innerHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  W = Math.min(vw, Math.floor(vh * 4 / 5));
+  H = Math.round(W * 5 / 4);
+  if (H > vh) { H = vh; W = Math.round(H * 4 / 5); }
 }
 
 // ── BUILD MASK ──
@@ -149,7 +152,9 @@ function initParticles() {
 
 // ── COORDINATE CONVERSION ──
 function toCanvas(sx, sy) {
-  return { x: sx, y: sy };
+  const offX = (window.innerWidth  - W) / 2;
+  const offY = (window.innerHeight - H) / 2;
+  return { x: sx - offX, y: sy - offY };
 }
 
 // ── MOUSE / TOUCH ──
