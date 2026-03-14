@@ -21,8 +21,8 @@ const REPEL_F    = 1.8;
 const MAX_OFFSET_X = 10;
 const MAX_OFFSET_Y = 10;
 const ATTRACT_LER  = 0.06;
-const SPRING_K     = 0.22;
 const SPRING_D     = 0.25;
+const EASE_OUT     = 0.1;
 const SNAP_R       = 150;
 
 // Google brand colors per letter: G, o, o, g, l, e
@@ -244,14 +244,16 @@ function updateOffsets() {
         vlox[li] += dx * strength;
         vloy[li] += dy * strength;
       }
+      vlox[li] *= (1 - SPRING_D);
+      vloy[li] *= (1 - SPRING_D);
+      lox[li] += vlox[li];
+      loy[li] += vloy[li];
     } else {
-      vlox[li] += -SPRING_K * lox[li];
-      vloy[li] += -SPRING_K * loy[li];
+      vlox[li] = 0;
+      vloy[li] = 0;
+      lox[li] += (0 - lox[li]) * EASE_OUT;
+      loy[li] += (0 - loy[li]) * EASE_OUT;
     }
-    vlox[li] *= (1 - SPRING_D);
-    vloy[li] *= (1 - SPRING_D);
-    lox[li] += vlox[li];
-    loy[li] += vloy[li];
     lox[li] = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, lox[li]));
     loy[li] = Math.max(-MAX_OFFSET_Y, Math.min(MAX_OFFSET_Y, loy[li]));
   }
