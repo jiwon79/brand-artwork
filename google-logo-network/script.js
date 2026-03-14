@@ -18,10 +18,10 @@ const CELL       = SEARCH_R;
 const REPEL_R    = 100;
 const REPEL_F    = 1.8;
 
-const MAX_OFFSET_X = 10;
-const MAX_OFFSET_Y = 10;
-const ATTRACT_LER  = 0.06;
-const SPRING_D     = 0.25;
+const MAX_OFFSET_X = 60;
+const MAX_OFFSET_Y = 60;
+const ATTRACT_LER  = 0.04;
+const SPRING_D     = 0.06;
 const EASE_OUT     = 0.1;
 const SNAP_R       = 150;
 
