@@ -242,8 +242,52 @@ function updateOffsets() {
 
 }
 
+// ── BOOM ──
+let booming    = false;
+let boomFrames = 0;
+const BOOM_DURATION = 110;
+
+function triggerBoom() {
+  if (booming) return;
+  booming    = true;
+  boomFrames = 0;
+  for (let i = 0; i < N; i++) {
+    const li = homeIdx[i] - 1;
+    const dx = px[i] - letterCx[li];
+    const dy = py[i] - letterCy[li];
+    const d  = Math.hypot(dx, dy) || 1;
+    const spd = 7 + Math.random() * 9;
+    vx[i] = (dx / d) * spd + (Math.random() - 0.5) * 3;
+    vy[i] = (dy / d) * spd + (Math.random() - 0.5) * 3;
+  }
+}
+
 // ── UPDATE PARTICLES ──
 function update() {
+  if (booming) {
+    boomFrames++;
+    for (let i = 0; i < N; i++) {
+      vx[i] *= 0.97;
+      vy[i] *= 0.97;
+      px[i] += vx[i];
+      py[i] += vy[i];
+    }
+    if (boomFrames >= BOOM_DURATION) {
+      for (let i = 0; i < N; i++) {
+        const li        = homeIdx[i] - 1;
+        const { xs, ys } = letterPx[li];
+        const ri        = (Math.random() * xs.length) | 0;
+        px[i]           = xs[ri] + (Math.random() - 0.5);
+        py[i]           = ys[ri] + (Math.random() - 0.5);
+        const angle     = Math.random() * Math.PI * 2;
+        vx[i]           = Math.cos(angle) * baseSpd[i];
+        vy[i]           = Math.sin(angle) * baseSpd[i];
+      }
+      booming = false;
+    }
+    return;
+  }
+
   for (let i = 0; i < N; i++) {
     const spd = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i]);
     if (spd > 0.001) {

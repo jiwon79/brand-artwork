@@ -10,6 +10,27 @@ body {
   touch-action: none;
 }
 
+#boom-btn {
+  position: fixed;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 10px 32px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+#boom-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
 canvas {
   display: block;
   position: fixed;
