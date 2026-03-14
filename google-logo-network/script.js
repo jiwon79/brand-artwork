@@ -22,6 +22,7 @@ const MAX_OFFSET_X = 10;
 const MAX_OFFSET_Y = 10;
 const ATTRACT_LER  = 0.06;
 const SPRING_LER   = 0.08;
+const SNAP_R       = 150;
 
 // Google brand colors per letter: G, o, o, g, l, e
 const G_RGB = [
@@ -232,12 +233,19 @@ function updateOffsets() {
 
   for (let li = 0; li < N_LETTERS; li++) {
     if (mouse.down || mouse.touching) {
-      const dx = mx - (letterCx[li] + lox[li]);
-      const dy = my - (letterCy[li] + loy[li]);
-      lox[li] += (dx > 0 ? 1 : -1) * Math.min(Math.abs(dx), MAX_OFFSET_X) * ATTRACT_LER;
-      loy[li] += (dy > 0 ? 1 : -1) * Math.min(Math.abs(dy), MAX_OFFSET_Y) * ATTRACT_LER;
-      lox[li] = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, lox[li]));
-      loy[li] = Math.max(-MAX_OFFSET_Y, Math.min(MAX_OFFSET_Y, loy[li]));
+      const dx   = mx - (letterCx[li] + lox[li]);
+      const dy   = my - (letterCy[li] + loy[li]);
+      const dist = Math.hypot(dx, dy);
+      if (dist < SNAP_R) {
+        const strength = (1 - dist / SNAP_R) * ATTRACT_LER;
+        lox[li] += dx * strength;
+        loy[li] += dy * strength;
+        lox[li] = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, lox[li]));
+        loy[li] = Math.max(-MAX_OFFSET_Y, Math.min(MAX_OFFSET_Y, loy[li]));
+      } else {
+        lox[li] += (0 - lox[li]) * SPRING_LER;
+        loy[li] += (0 - loy[li]) * SPRING_LER;
+      }
     } else {
       lox[li] += (0 - lox[li]) * SPRING_LER;
       loy[li] += (0 - loy[li]) * SPRING_LER;
