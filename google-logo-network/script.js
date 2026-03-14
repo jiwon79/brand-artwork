@@ -2,7 +2,6 @@
 
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
-const curEl  = document.getElementById('cursor');
 
 // ── CONSTANTS ──
 const PER_LETTER = 40;
@@ -160,8 +159,6 @@ const mouse = { x: -9999, y: -9999, down: false, touching: false };
 window.addEventListener('mousemove', e => {
   const c = toCanvas(e.clientX, e.clientY);
   mouse.x = c.x; mouse.y = c.y;
-  curEl.style.left = e.clientX + 'px';
-  curEl.style.top  = e.clientY + 'px';
 });
 window.addEventListener('mousedown', () => { mouse.down = true; });
 window.addEventListener('mouseup',   () => { mouse.down = false; });
@@ -171,16 +168,12 @@ window.addEventListener('touchstart', e => {
   const c = toCanvas(t.clientX, t.clientY);
   mouse.x = c.x; mouse.y = c.y;
   mouse.touching = true;
-  curEl.style.left = t.clientX + 'px';
-  curEl.style.top  = t.clientY + 'px';
 }, { passive: false });
 window.addEventListener('touchmove', e => {
   e.preventDefault();
   const t = e.touches[0];
   const c = toCanvas(t.clientX, t.clientY);
   mouse.x = c.x; mouse.y = c.y;
-  curEl.style.left = t.clientX + 'px';
-  curEl.style.top  = t.clientY + 'px';
 }, { passive: false });
 window.addEventListener('touchend', e => {
   e.preventDefault();
