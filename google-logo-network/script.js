@@ -20,9 +20,7 @@ const REPEL_F    = 1.8;
 
 const MAX_OFFSET_X = 60;
 const MAX_OFFSET_Y = 60;
-const ATTRACT_LER  = 0.04;
-const SPRING_D     = 0.06;
-const EASE_OUT     = 0.1;
+const EASE         = 0.1;
 const SNAP_R       = 150;
 
 // Google brand colors per letter: G, o, o, g, l, e
@@ -39,7 +37,7 @@ const DOT_COLORS  = G_RGB.map(([r, g, b]) => `rgb(${r},${g},${b})`);
 let W, H;
 let px, py, vx, vy, baseSpd, homeIdx;
 let mask, letterPx, letterCx, letterCy;
-let lox, loy, vlox, vloy;
+let lox, loy;
 let gridW, gridH, grid, gridCount;
 
 // ── SIZE ──
@@ -129,8 +127,7 @@ function initParticles() {
   homeIdx = new Uint8Array(N);
   lox  = new Float32Array(N_LETTERS);
   loy  = new Float32Array(N_LETTERS);
-  vlox = new Float32Array(N_LETTERS);
-  vloy = new Float32Array(N_LETTERS);
+
 
   for (let li = 0; li < N_LETTERS; li++) {
     const { xs, ys } = letterPx[li];
@@ -235,27 +232,19 @@ function updateOffsets() {
   const mx = mouse.x, my = mouse.y;
 
   for (let li = 0; li < N_LETTERS; li++) {
+    let targetX = 0, targetY = 0;
     if (mouse.down || mouse.touching) {
-      const dx   = mx - (letterCx[li] + lox[li]);
-      const dy   = my - (letterCy[li] + loy[li]);
+      const dx   = mx - letterCx[li];
+      const dy   = my - letterCy[li];
       const dist = Math.hypot(dx, dy);
       if (dist < SNAP_R) {
-        const strength = (1 - dist / SNAP_R) * ATTRACT_LER;
-        vlox[li] += dx * strength;
-        vloy[li] += dy * strength;
+        const t = 1 - dist / SNAP_R;
+        targetX = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, dx * t));
+        targetY = Math.max(-MAX_OFFSET_Y, Math.min(MAX_OFFSET_Y, dy * t));
       }
-      vlox[li] *= (1 - SPRING_D);
-      vloy[li] *= (1 - SPRING_D);
-      lox[li] += vlox[li];
-      loy[li] += vloy[li];
-    } else {
-      vlox[li] = 0;
-      vloy[li] = 0;
-      lox[li] += (0 - lox[li]) * EASE_OUT;
-      loy[li] += (0 - loy[li]) * EASE_OUT;
     }
-    lox[li] = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, lox[li]));
-    loy[li] = Math.max(-MAX_OFFSET_Y, Math.min(MAX_OFFSET_Y, loy[li]));
+    lox[li] += (targetX - lox[li]) * EASE;
+    loy[li] += (targetY - loy[li]) * EASE;
   }
 
 }
