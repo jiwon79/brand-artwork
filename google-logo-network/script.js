@@ -21,7 +21,8 @@ const REPEL_F    = 1.8;
 const MAX_OFFSET_X = 10;
 const MAX_OFFSET_Y = 10;
 const ATTRACT_LER  = 0.06;
-const SPRING_LER   = 0.08;
+const SPRING_K     = 0.22;
+const SPRING_D     = 0.25;
 const SNAP_R       = 150;
 
 // Google brand colors per letter: G, o, o, g, l, e
@@ -38,7 +39,7 @@ const DOT_COLORS  = G_RGB.map(([r, g, b]) => `rgb(${r},${g},${b})`);
 let W, H;
 let px, py, vx, vy, baseSpd, homeIdx;
 let mask, letterPx, letterCx, letterCy;
-let lox, loy;
+let lox, loy, vlox, vloy;
 let gridW, gridH, grid, gridCount;
 
 // ── SIZE ──
@@ -126,8 +127,10 @@ function initParticles() {
   vy      = new Float32Array(N);
   baseSpd = new Float32Array(N);
   homeIdx = new Uint8Array(N);
-  lox     = new Float32Array(N_LETTERS);
-  loy     = new Float32Array(N_LETTERS);
+  lox  = new Float32Array(N_LETTERS);
+  loy  = new Float32Array(N_LETTERS);
+  vlox = new Float32Array(N_LETTERS);
+  vloy = new Float32Array(N_LETTERS);
 
   for (let li = 0; li < N_LETTERS; li++) {
     const { xs, ys } = letterPx[li];
@@ -238,18 +241,19 @@ function updateOffsets() {
       const dist = Math.hypot(dx, dy);
       if (dist < SNAP_R) {
         const strength = (1 - dist / SNAP_R) * ATTRACT_LER;
-        lox[li] += dx * strength;
-        loy[li] += dy * strength;
-        lox[li] = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, lox[li]));
-        loy[li] = Math.max(-MAX_OFFSET_Y, Math.min(MAX_OFFSET_Y, loy[li]));
-      } else {
-        lox[li] += (0 - lox[li]) * SPRING_LER;
-        loy[li] += (0 - loy[li]) * SPRING_LER;
+        vlox[li] += dx * strength;
+        vloy[li] += dy * strength;
       }
     } else {
-      lox[li] += (0 - lox[li]) * SPRING_LER;
-      loy[li] += (0 - loy[li]) * SPRING_LER;
+      vlox[li] += -SPRING_K * lox[li];
+      vloy[li] += -SPRING_K * loy[li];
     }
+    vlox[li] *= (1 - SPRING_D);
+    vloy[li] *= (1 - SPRING_D);
+    lox[li] += vlox[li];
+    loy[li] += vloy[li];
+    lox[li] = Math.max(-MAX_OFFSET_X, Math.min(MAX_OFFSET_X, lox[li]));
+    loy[li] = Math.max(-MAX_OFFSET_Y, Math.min(MAX_OFFSET_Y, loy[li]));
   }
 
 }
