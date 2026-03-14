@@ -39,10 +39,12 @@ let mask, letterPx, letterCx, letterCy;
 let lox, loy;
 let gridW, gridH, grid, gridCount;
 
+const BTN_H = 72; // reserved height for bottom button bar
+
 // ── SIZE ──
 function getSize() {
   const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vh = window.innerHeight - BTN_H;
   W = Math.min(vw, Math.floor(vh * 4 / 5));
   H = Math.round(W * 5 / 4);
   if (H > vh) { H = vh; W = Math.round(H * 4 / 5); }
