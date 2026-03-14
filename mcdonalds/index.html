@@ -672,13 +672,14 @@ canvas.addEventListener('mouseup', endPress);
 canvas.addEventListener('touchstart', e => { e.preventDefault(); startPress(); }, { passive: false });
 canvas.addEventListener('touchend', e => { e.preventDefault(); endPress(); }, { passive: false });
 
-// Init — load images then start animation
+
 loadImages().then(() => {
   buildAlphaMaps();
   initPieces();
   requestAnimationFrame(loop);
 });
 </script>
+<script src="/touch-cursor.js"></script>
 
 </body>
 </html>
