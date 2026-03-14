@@ -42,8 +42,8 @@ let gridW, gridH, grid, gridCount;
 
 // ── SIZE ──
 function getSize() {
-  const s = Math.min(window.innerWidth, window.innerHeight);
-  W = s; H = s;
+  W = window.innerWidth;
+  H = window.innerHeight;
 }
 
 // ── BUILD MASK ──
@@ -53,7 +53,7 @@ function buildMask() {
   const mctx = mc.getContext('2d');
   const letters = ['G', 'o', 'o', 'g', 'l', 'e'];
 
-  const targetW = W - 40;
+  const targetW = Math.min(W, H) - 40;
   let fontSize  = W * 0.2;
   mctx.textBaseline = 'middle';
   for (let i = 0; i < 14; i++) {
@@ -149,9 +149,7 @@ function initParticles() {
 
 // ── COORDINATE CONVERSION ──
 function toCanvas(sx, sy) {
-  const offX = (window.innerWidth  - W) / 2;
-  const offY = (window.innerHeight - H) / 2;
-  return { x: sx - offX, y: sy - offY };
+  return { x: sx, y: sy };
 }
 
 // ── MOUSE / TOUCH ──
