@@ -461,6 +461,38 @@ function drawDots() {
   for (let li = 0; li < N_LETTERS; li++) {
     const [r, g, b] = G_RGB[li];
 
+    // radial gradient glow (Boom 중 spread에 따라 반지름 확장)
+    if (guiParams.glowRadial && !booming) {
+      let cx = 0, cy = 0;
+      for (let k = 0; k < PER_LETTER; k++) {
+        const i = li * PER_LETTER + k;
+        cx += px[i] + lox[li];
+        cy += py[i] + loy[li];
+      }
+      cx /= PER_LETTER;
+      cy /= PER_LETTER;
+
+      let spread = 0;
+      for (let k = 0; k < PER_LETTER; k++) {
+        const i  = li * PER_LETTER + k;
+        const dx = (px[i] + lox[li]) - cx;
+        const dy = (py[i] + loy[li]) - cy;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        if (d > spread) spread = d;
+      }
+      const baseR = SEARCH_R * 1.4;
+      const glowR = Math.max(baseR, spread * 1.1);
+      const alpha = 0.07 * Math.min(1, (baseR / glowR) ** 2);
+
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.beginPath();
+      ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
     ctx.beginPath();
     for (let k = 0; k < PER_LETTER; k++) {
       const i  = li * PER_LETTER + k;
@@ -469,7 +501,7 @@ function drawDots() {
       ctx.moveTo(rx + 2.6, ry);
       ctx.arc(rx, ry, 2.6, 0, Math.PI * 2);
     }
-    ctx.shadowBlur  = guiParams.glow ? 14 : 0;
+    ctx.shadowBlur  = guiParams.glowDot ? 6 : 0;
     ctx.shadowColor = `rgb(${r},${g},${b})`;
     ctx.fillStyle   = DOT_COLORS[li];
     ctx.fill();
@@ -502,13 +534,15 @@ function init() {
 }
 
 // ── GUI ──
-const guiParams = { brand: 'Google', glow: true };
+const guiParams = { brand: 'Google', glowRadial: true, glowDot: true };
 applyBrand('Google');
 
 init();
 
 const gui = new lil.GUI({ title: 'Brand' });
-gui.add(guiParams, 'glow').name('Glow');
+const glowFolder = gui.addFolder('Glow');
+glowFolder.add(guiParams, 'glowRadial').name('Radial');
+glowFolder.add(guiParams, 'glowDot').name('Particle');
 gui.add(guiParams, 'brand', ['Google', 'YouTube', 'Gmail', 'Gemini'])
   .name('Brand')
   .onChange(name => {
