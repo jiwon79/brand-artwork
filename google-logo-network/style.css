@@ -14,7 +14,7 @@ body {
 
 #boom-btn {
   position: fixed;
-  top: 25px;
+  bottom: 25px;
   left: 50%;
   transform: translateX(-50%);
   width: 76px;
@@ -40,7 +40,7 @@ body {
 canvas {
   display: block;
   position: fixed;
-  bottom: 0;
+  bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1;
