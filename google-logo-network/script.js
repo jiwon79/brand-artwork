@@ -461,40 +461,6 @@ function drawDots() {
   for (let li = 0; li < N_LETTERS; li++) {
     const [r, g, b] = G_RGB[li];
 
-    // centroid of actual particle positions (follows boom scatter)
-    let cx = 0, cy = 0;
-    for (let k = 0; k < PER_LETTER; k++) {
-      const i = li * PER_LETTER + k;
-      cx += px[i] + lox[li];
-      cy += py[i] + loy[li];
-    }
-    cx /= PER_LETTER;
-    cy /= PER_LETTER;
-
-    // spread = max distance from centroid → glow radius expands during boom
-    let spread = 0;
-    for (let k = 0; k < PER_LETTER; k++) {
-      const i  = li * PER_LETTER + k;
-      const dx = (px[i] + lox[li]) - cx;
-      const dy = (py[i] + loy[li]) - cy;
-      const d  = Math.sqrt(dx * dx + dy * dy);
-      if (d > spread) spread = d;
-    }
-    const baseR  = SEARCH_R * 1.4;
-    const glowR  = Math.max(baseR, spread * 1.1);
-    // fade alpha as spread grows so overlapping glows don't flood the screen
-    const alpha  = 0.07 * Math.min(1, (baseR / glowR) ** 2);
-
-    if (guiParams.glow && !booming) {
-      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-      glow.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
-      glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
-      ctx.beginPath();
-      ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
-      ctx.fillStyle = glow;
-      ctx.fill();
-    }
-
     ctx.beginPath();
     for (let k = 0; k < PER_LETTER; k++) {
       const i  = li * PER_LETTER + k;
@@ -503,7 +469,7 @@ function drawDots() {
       ctx.moveTo(rx + 2.6, ry);
       ctx.arc(rx, ry, 2.6, 0, Math.PI * 2);
     }
-    ctx.shadowBlur  = (guiParams.glow && !booming) ? 14 : 0;
+    ctx.shadowBlur  = guiParams.glow ? 14 : 0;
     ctx.shadowColor = `rgb(${r},${g},${b})`;
     ctx.fillStyle   = DOT_COLORS[li];
     ctx.fill();
