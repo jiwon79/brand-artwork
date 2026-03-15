@@ -2,6 +2,15 @@
 
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
+const DPR    = window.devicePixelRatio || 1;
+
+function setCanvasSize() {
+  canvas.width        = W * DPR;
+  canvas.height       = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(DPR, DPR);
+}
 
 // ── CONSTANTS ──
 const PER_LETTER  = 40;
@@ -515,8 +524,7 @@ function animate() {
 // ── INIT ──
 function init() {
   getSize();
-  canvas.width  = W;
-  canvas.height = H;
+  setCanvasSize();
   buildMask();
   initGrid();
   initParticles();
@@ -547,8 +555,7 @@ document.getElementById('boom-btn').addEventListener('click', triggerBoom);
 
 window.addEventListener('resize', () => {
   getSize();
-  canvas.width  = W;
-  canvas.height = H;
+  setCanvasSize();
   buildMask();
   initGrid();
   initParticles();
