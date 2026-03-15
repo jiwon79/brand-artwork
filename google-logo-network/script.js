@@ -86,7 +86,7 @@ let mask, letterPx, letterCx, letterCy;
 let lox, loy;
 let gridW, gridH, grid, gridCount;
 
-const BTN_H = 72; // reserved height for bottom button bar
+const BTN_H = 56; // reserved height for top button bar
 
 // ── SIZE ──
 function getSize() {
