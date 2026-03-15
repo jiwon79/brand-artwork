@@ -380,9 +380,13 @@ function lineInStroke(x1, y1, x2, y2, letterIdx) {
 }
 
 // ── DRAW LINES ──
+const _candBuf = new Int32Array(150);
+const _distBuf = new Float32Array(150);
+
 function drawLines() {
-  const candBuf = new Int32Array(150);
-  const distBuf = new Float32Array(150);
+  if (booming) return;
+  const candBuf = _candBuf;
+  const distBuf = _distBuf;
 
   for (let i = 0; i < N; i++) {
     const li  = homeIdx[i] - 1;
@@ -481,7 +485,7 @@ function drawDots() {
     // fade alpha as spread grows so overlapping glows don't flood the screen
     const alpha  = 0.07 * Math.min(1, (baseR / glowR) ** 2);
 
-    if (guiParams.glow) {
+    if (guiParams.glow && !booming) {
       const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
       glow.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
       glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
@@ -499,7 +503,7 @@ function drawDots() {
       ctx.moveTo(rx + 2.6, ry);
       ctx.arc(rx, ry, 2.6, 0, Math.PI * 2);
     }
-    ctx.shadowBlur  = guiParams.glow ? 14 : 0;
+    ctx.shadowBlur  = (guiParams.glow && !booming) ? 14 : 0;
     ctx.shadowColor = `rgb(${r},${g},${b})`;
     ctx.fillStyle   = DOT_COLORS[li];
     ctx.fill();
@@ -544,8 +548,7 @@ gui.add(guiParams, 'brand', ['Google', 'YouTube', 'Gmail', 'Gemini'])
   .onChange(name => {
     applyBrand(name);
     getSize();
-    canvas.width  = W;
-    canvas.height = H;
+    setCanvasSize();
     buildMask();
     initGrid();
     initParticles();
