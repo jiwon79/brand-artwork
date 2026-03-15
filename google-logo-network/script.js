@@ -466,10 +466,13 @@ function drawDots() {
       const d  = Math.sqrt(dx * dx + dy * dy);
       if (d > spread) spread = d;
     }
-    const glowR = Math.max(SEARCH_R * 1.4, spread * 1.1);
+    const baseR  = SEARCH_R * 1.4;
+    const glowR  = Math.max(baseR, spread * 1.1);
+    // fade alpha as spread grows so overlapping glows don't flood the screen
+    const alpha  = 0.07 * Math.min(1, (baseR / glowR) ** 2);
 
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-    glow.addColorStop(0, `rgba(${r},${g},${b},0.07)`);
+    glow.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
     glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
     ctx.beginPath();
     ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
