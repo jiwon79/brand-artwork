@@ -4,34 +4,81 @@ const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 
 // ── CONSTANTS ──
-const PER_LETTER = 40;
-const N_LETTERS  = 6;
-const N          = PER_LETTER * N_LETTERS;
-const NEAREST_K  = 3;
-const BASE_SPEED = 0.6;
-const SPEED_LERP = 0.018;
-const MAX_SPD    = 2.5;
-const SEARCH_R   = 90;
-const SEARCH_R2  = SEARCH_R * SEARCH_R;
-const CELL       = SEARCH_R;
-const REPEL_R    = 100;
-const REPEL_F    = 1.8;
+const PER_LETTER  = 40;
+const COLOR_STEP  = 30;   // mask encoding step (max 8 letters: 8*30=240 < 255)
+const NEAREST_K   = 3;
+const BASE_SPEED  = 0.6;
+const SPEED_LERP  = 0.018;
+const MAX_SPD     = 2.5;
+const SEARCH_R    = 90;
+const SEARCH_R2   = SEARCH_R * SEARCH_R;
+const CELL        = SEARCH_R;
+const REPEL_R     = 100;
+const REPEL_F     = 1.8;
 
 const MAX_OFFSET_X = 60;
 const MAX_OFFSET_Y = 60;
 const EASE         = 0.1;
 const SNAP_R       = 150;
 
-// Google brand colors per letter: G, o, o, g, l, e
-const G_RGB = [
-  [66,  133, 244],  // G  blue
-  [234,  67,  53],  // o  red
-  [251, 188,   5],  // o  yellow
-  [66,  133, 244],  // g  blue
-  [52,  168,  83],  // l  green
-  [234,  67,  53],  // e  red
-];
-const DOT_COLORS  = G_RGB.map(([r, g, b]) => `rgb(${r},${g},${b})`);
+// ── BRAND CONFIGS ──
+const BRANDS = {
+  Google: {
+    text: 'Google',
+    rgb: [
+      [66,  133, 244],  // G  blue
+      [234,  67,  53],  // o  red
+      [251, 188,   5],  // o  yellow
+      [66,  133, 244],  // g  blue
+      [52,  168,  83],  // l  green
+      [234,  67,  53],  // e  red
+    ],
+  },
+  YouTube: {
+    text: 'YouTube',
+    rgb: [
+      [255,  70,  50],  // Y
+      [220,   0,   0],  // o
+      [255,  50,  30],  // u
+      [255,  70,  50],  // T
+      [220,   0,   0],  // u
+      [255,  50,  30],  // b
+      [220,   0,   0],  // e
+    ],
+  },
+  Gmail: {
+    text: 'Gmail',
+    rgb: [
+      [234,  67,  53],  // G  red
+      [66,  133, 244],  // m  blue
+      [52,  168,  83],  // a  green
+      [251, 188,   5],  // i  yellow
+      [234,  67,  53],  // l  red
+    ],
+  },
+  Gemini: {
+    text: 'Gemini',
+    rgb: [
+      [66,  133, 244],  // G  blue
+      [89,   87, 255],  // e  indigo
+      [135,  80, 255],  // m  purple
+      [89,   87, 255],  // i  indigo
+      [66,  133, 244],  // n  blue
+      [135,  80, 255],  // i  purple
+    ],
+  },
+};
+
+// ── DYNAMIC BRAND STATE ──
+let N_LETTERS, N, G_RGB, DOT_COLORS;
+
+function applyBrand(name) {
+  const b  = BRANDS[name];
+  N_LETTERS = b.text.length;
+  N         = PER_LETTER * N_LETTERS;
+  G_RGB     = b.rgb;
+  DOT_COLORS = G_RGB.map(([r, g, b]) => `rgb(${r},${g},${b})`);
+}
 
 let W, H;
 let px, py, vx, vy, baseSpd, homeIdx;
@@ -52,38 +99,41 @@ function getSize() {
 
 // ── BUILD MASK ──
 function buildMask() {
-  const mc   = document.createElement('canvas');
-  mc.width   = W; mc.height = H;
-  const mctx = mc.getContext('2d');
-  const letters = ['G', 'o', 'o', 'g', 'l', 'e'];
+  const mc      = document.createElement('canvas');
+  mc.width      = W; mc.height = H;
+  const mctx    = mc.getContext('2d');
+  const brand   = BRANDS[guiParams.brand];
+  const word    = brand.text;
+  const letters = word.split('');
 
   const targetW = Math.min(W, H) - 40;
   let fontSize  = W * 0.2;
   mctx.textBaseline = 'middle';
   for (let i = 0; i < 14; i++) {
     mctx.font = `900 ${fontSize}px Arial Black, Arial, sans-serif`;
-    fontSize  *= targetW / mctx.measureText('Google').width;
+    fontSize  *= targetW / mctx.measureText(word).width;
   }
   mctx.font = `900 ${fontSize}px Arial Black, Arial, sans-serif`;
 
-  const totalW = mctx.measureText('Google').width;
+  const totalW = mctx.measureText(word).width;
   const startX = (W - totalW) / 2;
   letters.forEach((ch, i) => {
-    const x = startX + mctx.measureText('Google'.slice(0, i)).width;
-    mctx.fillStyle = `rgb(${(i + 1) * 40},0,0)`;
+    const x = startX + mctx.measureText(word.slice(0, i)).width;
+    mctx.fillStyle = `rgb(${(i + 1) * COLOR_STEP},0,0)`;
     mctx.fillText(ch, x, H / 2);
   });
 
   const raw  = mctx.getImageData(0, 0, W, H).data;
   mask       = new Uint8Array(W * H);
   letterPx   = Array.from({ length: N_LETTERS }, () => ({ xs: [], ys: [] }));
-  letterCx = new Float32Array(N_LETTERS);
-  letterCy = new Float32Array(N_LETTERS);
+  letterCx   = new Float32Array(N_LETTERS);
+  letterCy   = new Float32Array(N_LETTERS);
 
   for (let idx = 0; idx < W * H; idx++) {
     const r = raw[idx * 4];
     if (r === 0) continue;
-    const li = Math.round(r / 40) - 1;
+    const li = Math.round(r / COLOR_STEP) - 1;
+    if (li < 0 || li >= N_LETTERS) continue;
     mask[idx] = li + 1;
     const xi = idx % W, yi = (idx / W) | 0;
     letterPx[li].xs.push(xi);
@@ -467,7 +517,24 @@ function init() {
   animate();
 }
 
+// ── GUI ──
+const guiParams = { brand: 'Google' };
+applyBrand('Google');
+
 init();
+
+const gui = new lil.GUI({ title: 'Brand' });
+gui.add(guiParams, 'brand', ['Google', 'YouTube', 'Gmail', 'Gemini'])
+  .name('Brand')
+  .onChange(name => {
+    applyBrand(name);
+    getSize();
+    canvas.width  = W;
+    canvas.height = H;
+    buildMask();
+    initGrid();
+    initParticles();
+  });
 
 document.getElementById('boom-btn').addEventListener('click', triggerBoom);
 
