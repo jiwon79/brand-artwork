@@ -501,12 +501,9 @@ function drawDots() {
       ctx.moveTo(rx + 2.6, ry);
       ctx.arc(rx, ry, 2.6, 0, Math.PI * 2);
     }
-    ctx.shadowBlur  = guiParams.glowDot ? 6 : 0;
-    ctx.shadowColor = `rgb(${r},${g},${b})`;
-    ctx.fillStyle   = DOT_COLORS[li];
+    ctx.fillStyle = DOT_COLORS[li];
     ctx.fill();
   }
-  ctx.shadowBlur = 0;
 }
 
 // ── LOOP ──
@@ -534,15 +531,13 @@ function init() {
 }
 
 // ── GUI ──
-const guiParams = { brand: 'Google', glowRadial: true, glowDot: true };
+const guiParams = { brand: 'Google', glowRadial: true };
 applyBrand('Google');
 
 init();
 
 const gui = new lil.GUI({ title: 'Brand' });
-const glowFolder = gui.addFolder('Glow');
-glowFolder.add(guiParams, 'glowRadial').name('Radial');
-glowFolder.add(guiParams, 'glowDot').name('Particle');
+gui.add(guiParams, 'glowRadial').name('Radial Glow');
 gui.add(guiParams, 'brand', ['Google', 'YouTube', 'Gmail', 'Gemini'])
   .name('Brand')
   .onChange(name => {
