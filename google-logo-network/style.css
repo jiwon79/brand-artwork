@@ -12,23 +12,25 @@ body {
 
 #boom-btn {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 72px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.75);
-  border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 14px;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 44px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  font-size: 13px;
   letter-spacing: 0.12em;
   cursor: pointer;
-  transition: color 0.2s, background 0.2s;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
   z-index: 10;
 }
 #boom-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.55);
   color: #fff;
-  background: rgba(255, 255, 255, 0.05);
 }
 
 canvas {
@@ -37,6 +39,5 @@ canvas {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  pointer-events: none;
 }
 

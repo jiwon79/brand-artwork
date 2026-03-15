@@ -149,10 +149,9 @@ function initParticles() {
 }
 
 // ── COORDINATE CONVERSION ──
-function toCanvas(sx, sy) {
-  const offX = (window.innerWidth  - W) / 2;
-  const offY = (window.innerHeight - H) / 2;
-  return { x: sx - offX, y: sy - offY };
+function toCanvas(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: clientX - rect.left, y: clientY - rect.top };
 }
 
 // ── MOUSE / TOUCH ──
@@ -164,22 +163,21 @@ window.addEventListener('mousemove', e => {
 });
 window.addEventListener('mousedown', () => { mouse.down = true; });
 window.addEventListener('mouseup',   () => { mouse.down = false; });
-window.addEventListener('touchstart', e => {
-  if (e.target.closest('#boom-btn')) return;
+
+canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   const t = e.touches[0];
   const c = toCanvas(t.clientX, t.clientY);
   mouse.x = c.x; mouse.y = c.y;
   mouse.touching = true;
 }, { passive: false });
-window.addEventListener('touchmove', e => {
+canvas.addEventListener('touchmove', e => {
   e.preventDefault();
   const t = e.touches[0];
   const c = toCanvas(t.clientX, t.clientY);
   mouse.x = c.x; mouse.y = c.y;
 }, { passive: false });
-window.addEventListener('touchend', e => {
-  if (e.target.closest('#boom-btn')) return;
+canvas.addEventListener('touchend', e => {
   e.preventDefault();
   mouse.touching = false;
   mouse.x = -9999; mouse.y = -9999;
@@ -397,16 +395,34 @@ function drawLines() {
 // ── DRAW DOTS ──
 function drawDots() {
   for (let li = 0; li < N_LETTERS; li++) {
-    const hi        = li + 1;
     const [r, g, b] = G_RGB[li];
-    const ocx       = letterCx[li] + lox[li];
-    const ocy       = letterCy[li] + loy[li];
 
-    const glow = ctx.createRadialGradient(ocx, ocy, 0, ocx, ocy, SEARCH_R * 1.4);
+    // centroid of actual particle positions (follows boom scatter)
+    let cx = 0, cy = 0;
+    for (let k = 0; k < PER_LETTER; k++) {
+      const i = li * PER_LETTER + k;
+      cx += px[i] + lox[li];
+      cy += py[i] + loy[li];
+    }
+    cx /= PER_LETTER;
+    cy /= PER_LETTER;
+
+    // spread = max distance from centroid → glow radius expands during boom
+    let spread = 0;
+    for (let k = 0; k < PER_LETTER; k++) {
+      const i  = li * PER_LETTER + k;
+      const dx = (px[i] + lox[li]) - cx;
+      const dy = (py[i] + loy[li]) - cy;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d > spread) spread = d;
+    }
+    const glowR = Math.max(SEARCH_R * 1.4, spread * 1.1);
+
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
     glow.addColorStop(0, `rgba(${r},${g},${b},0.07)`);
     glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
     ctx.beginPath();
-    ctx.arc(ocx, ocy, SEARCH_R * 1.4, 0, Math.PI * 2);
+    ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
     ctx.fillStyle = glow;
     ctx.fill();
 
