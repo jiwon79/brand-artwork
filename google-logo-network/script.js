@@ -165,6 +165,7 @@ window.addEventListener('mousemove', e => {
 window.addEventListener('mousedown', () => { mouse.down = true; });
 window.addEventListener('mouseup',   () => { mouse.down = false; });
 window.addEventListener('touchstart', e => {
+  if (e.target.closest('#boom-btn')) return;
   e.preventDefault();
   const t = e.touches[0];
   const c = toCanvas(t.clientX, t.clientY);
@@ -178,6 +179,7 @@ window.addEventListener('touchmove', e => {
   mouse.x = c.x; mouse.y = c.y;
 }, { passive: false });
 window.addEventListener('touchend', e => {
+  if (e.target.closest('#boom-btn')) return;
   e.preventDefault();
   mouse.touching = false;
   mouse.x = -9999; mouse.y = -9999;
