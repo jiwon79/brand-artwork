@@ -131,10 +131,9 @@ function buildMask() {
 
   for (let idx = 0; idx < W * H; idx++) {
     const a = raw[idx * 4 + 3];
-    if (a < 128) continue;                          // 반투명 엣지 픽셀 제거
+    if (a < 240) continue;                          // 반투명 엣지 픽셀 제거 (불투명 픽셀만 사용)
     const r = raw[idx * 4];
-    const actualR = Math.round(r * 255 / a);        // premultiplied alpha 보정
-    const li = Math.round(actualR / COLOR_STEP) - 1;
+    const li = Math.round(r / COLOR_STEP) - 1;
     if (li < 0 || li >= N_LETTERS) continue;
     mask[idx] = li + 1;
     const xi = idx % W, yi = (idx / W) | 0;
