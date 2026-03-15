@@ -472,13 +472,15 @@ function drawDots() {
     // fade alpha as spread grows so overlapping glows don't flood the screen
     const alpha  = 0.07 * Math.min(1, (baseR / glowR) ** 2);
 
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-    glow.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
-    glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
-    ctx.beginPath();
-    ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
-    ctx.fillStyle = glow;
-    ctx.fill();
+    if (guiParams.glow) {
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+      glow.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+      glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.beginPath();
+      ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
+      ctx.fillStyle = glow;
+      ctx.fill();
+    }
 
     ctx.beginPath();
     for (let k = 0; k < PER_LETTER; k++) {
@@ -488,7 +490,7 @@ function drawDots() {
       ctx.moveTo(rx + 2.6, ry);
       ctx.arc(rx, ry, 2.6, 0, Math.PI * 2);
     }
-    ctx.shadowBlur  = 14;
+    ctx.shadowBlur  = guiParams.glow ? 14 : 0;
     ctx.shadowColor = `rgb(${r},${g},${b})`;
     ctx.fillStyle   = DOT_COLORS[li];
     ctx.fill();
@@ -522,12 +524,13 @@ function init() {
 }
 
 // ── GUI ──
-const guiParams = { brand: 'Google' };
+const guiParams = { brand: 'Google', glow: true };
 applyBrand('Google');
 
 init();
 
 const gui = new lil.GUI({ title: 'Brand' });
+gui.add(guiParams, 'glow').name('Glow');
 gui.add(guiParams, 'brand', ['Google', 'YouTube', 'Gmail', 'Gemini'])
   .name('Brand')
   .onChange(name => {
