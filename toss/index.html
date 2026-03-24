@@ -62,7 +62,6 @@ const alpha  = i / N;
 const tStart = alpha * 0.5;        // 0 → 0.5
 const tEnd   = 1.0 - alpha * 0.5;  // 1 → 0.5
 
-```
 const P1  = outerFn(tStart);   // 시작점 (외곽 위를 슬라이드)
 const P2  = outerFn(tEnd);     // 끝점   (외곽 위를 슬라이드)
 const Mid = outerFn(0.5);      // 외곽 극단점 (곡률 제어)
@@ -87,7 +86,6 @@ const opacity  = 0.9 - alpha * 0.4;
 ctx.strokeStyle = `rgba(255,255,255,${opacity.toFixed(2)})`;
 ctx.lineWidth   = 1.5;
 ctx.stroke();
-```
 
 }
 }
@@ -108,8 +106,8 @@ ctx.stroke();
 
 // ── AC, BD 직선 ───────────────────────────────────────────
 function drawStraightLine(p1, p2, lw = 1.5) {
-const [x1,y1] = sc(…p1);
-const [x2,y2] = sc(…p2);
+const [x1,y1] = sc(...p1);
+const [x2,y2] = sc(...p2);
 ctx.beginPath();
 ctx.moveTo(x1, y1);
 ctx.lineTo(x2, y2);
@@ -134,10 +132,10 @@ drawOuter(outerR);
 
 // 3. AB, CD — 원본 SVG 곡선 그대로
 function drawBezier(p0, cp1, cp2, p1, lw = 1.5) {
-const [x0,y0]   = sc(…p0);
-const [cx1,cy1] = sc(…cp1);
-const [cx2,cy2] = sc(…cp2);
-const [x1,y1]   = sc(…p1);
+const [x0,y0]   = sc(...p0);
+const [cx1,cy1] = sc(...cp1);
+const [cx2,cy2] = sc(...cp2);
+const [x1,y1]   = sc(...p1);
 ctx.beginPath();
 ctx.moveTo(x0, y0);
 ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x1, y1);
