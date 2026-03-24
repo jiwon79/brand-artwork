@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Check the tool input in $ARGUMENTS. If the modified file path contains '/toss/' and does NOT end with 'spec.md', read the modified file and the current toss/spec.md, then update toss/spec.md to accurately reflect the current implementation. If the file is outside toss/ or is spec.md itself, do nothing.",
+            "statusMessage": "Syncing toss/spec.md..."
+          }
+        ]
+      }
+    ]
+  }
+}
