@@ -4,7 +4,6 @@ const W = canvas.width  = window.innerWidth;
 const H = canvas.height = window.innerHeight;
 
 // ── 좌표 변환 ─────────────────────────────────────────────
-// SVG viewBox: x=-65~505, y=-10~425
 const VX = -65, VY = -10, VW = 570, VH = 435;
 const scl = Math.min(W / VW, H / VH) * 0.92;
 const OX  = (W - VW * scl) / 2 - VX * scl;
@@ -24,46 +23,118 @@ function cbez(p, t) {
 }
 
 // ── 외곽 곡선 ─────────────────────────────────────────────
-// 왼쪽: C(t=0) → A(t=1), 원본 패스 첫 두 세그먼트
 const segL1 = [[177.784,313.236],[103.789,323.675],[41.638,299.053],[21.147,270.736]];
 const segL2 = [[21.147,270.736],[-54.353,166.402],[107.797,18.790],[256.784,2.236]];
-
 function outerL(t) {
   return t <= 0.5 ? cbez(segL1, t * 2) : cbez(segL2, (t - 0.5) * 2);
 }
 
-// 오른쪽: B(t=0) → D(t=1), 회전 패스 첫 두 세그먼트
 const segR1 = [[248.784,91.236],[322.779,80.797],[384.930,105.419],[405.421,133.736]];
 const segR2 = [[405.421,133.736],[480.921,238.070],[318.771,385.682],[169.784,402.236]];
-
 function outerR(t) {
   return t <= 0.5 ? cbez(segR1, t * 2) : cbez(segR2, (t - 0.5) * 2);
 }
 
-// ── 그리기 함수 ───────────────────────────────────────────
-// 보간 채우기 선: 끝점이 외곽을 따라 슬라이드하며 수렴
-// alpha=0 → AC 직선, alpha=1 → 외곽 극단점으로 수렴
-function drawFillLines(outerFn, N) {
-  for (let i = 0; i <= N; i++) {
-    const alpha  = i / N;
-    const tStart = alpha * 0.5;       // 0 → 0.5
-    const tEnd   = 1.0 - alpha * 0.5; // 1 → 0.5
+// ── 경로 샘플링 ───────────────────────────────────────────
+const STEPS = 100;
 
-    const P1  = outerFn(tStart); // 시작점
-    const P2  = outerFn(tEnd);   // 끝점
-    const Mid = outerFn(0.5);    // 외곽 극단점 (곡률 제어)
+function sampleFn(fn) {
+  const pts = [];
+  for (let i = 0; i <= STEPS; i++) pts.push(fn(i / STEPS));
+  return pts;
+}
 
-    const midLine = [(P1[0] + P2[0]) / 2, (P1[1] + P2[1]) / 2];
-    const cp = [
+function sampleQuadBez(P1, cp, P2) {
+  const pts = [];
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS, u = 1 - t;
+    pts.push([
+      u*u*P1[0] + 2*u*t*cp[0] + t*t*P2[0],
+      u*u*P1[1] + 2*u*t*cp[1] + t*t*P2[1],
+    ]);
+  }
+  return pts;
+}
+
+function sampleCubicBez(p0, cp1, cp2, p1) {
+  const pts = [];
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS, u = 1 - t;
+    pts.push([
+      u**3*p0[0] + 3*u**2*t*cp1[0] + 3*u*t**2*cp2[0] + t**3*p1[0],
+      u**3*p0[1] + 3*u**2*t*cp1[1] + 3*u*t**2*cp2[1] + t**3*p1[1],
+    ]);
+  }
+  return pts;
+}
+
+// 경로가 위→아래 방향(y 오름차순)이 되도록 보장
+function ensureDownward(pts) {
+  return pts[0][1] <= pts[pts.length - 1][1] ? pts : [...pts].reverse();
+}
+
+// 경로 위의 t(0~1) 위치 선형 보간
+function ptAt(pts, t) {
+  const idx = t * (pts.length - 1);
+  const i   = Math.min(Math.floor(idx), pts.length - 2);
+  const f   = idx - i;
+  return [
+    pts[i][0] + f * (pts[i + 1][0] - pts[i][0]),
+    pts[i][1] + f * (pts[i + 1][1] - pts[i][1]),
+  ];
+}
+
+// ── 모든 경로 수집 ────────────────────────────────────────
+const N = 40;
+const paths = [];
+
+// 외곽선
+paths.push(ensureDownward(sampleFn(outerL)));
+paths.push(ensureDownward(sampleFn(outerR)));
+
+// 보간 채우기 선 (왼쪽, 오른쪽)
+for (const outerFn of [outerL, outerR]) {
+  for (let i = 0; i < N; i++) { // i=N은 길이 0인 퇴화 경로이므로 제외
+    const alpha    = i / N;
+    const tStart   = alpha * 0.5;
+    const tEnd     = 1.0 - alpha * 0.5;
+    const P1       = outerFn(tStart);
+    const P2       = outerFn(tEnd);
+    const Mid      = outerFn(0.5);
+    const midLine  = [(P1[0] + P2[0]) / 2, (P1[1] + P2[1]) / 2];
+    const cp       = [
       midLine[0] + alpha * (Mid[0] - midLine[0]),
       midLine[1] + alpha * (Mid[1] - midLine[1]),
     ];
+    paths.push(ensureDownward(sampleQuadBez(P1, cp, P2)));
+  }
+}
 
-    const [x1, y1]     = sc(...P1);
-    const [cpx, cpy]   = sc(...cp);
-    const [x2, y2]     = sc(...P2);
-    const opacity      = 0.9 - alpha * 0.4;
+// 블레이드 곡선 AB, CD
+paths.push(sampleCubicBez([256.784,2.236], [256.56,38.471], [254.264,57.873], [248.784,91.236]));
+paths.push(sampleCubicBez([177.784,313.236], [170.008,366.001], [172.304,346.599], [169.784,402.236]));
 
+// AD 세로선
+paths.push([[256.784, 2.236], [169.784, 402.236]]);
+
+// ── 정적 그리기 함수 ──────────────────────────────────────
+function drawFillLines(outerFn) {
+  for (let i = 0; i <= N; i++) {
+    const alpha    = i / N;
+    const tStart   = alpha * 0.5;
+    const tEnd     = 1.0 - alpha * 0.5;
+    const P1       = outerFn(tStart);
+    const P2       = outerFn(tEnd);
+    const Mid      = outerFn(0.5);
+    const midLine  = [(P1[0] + P2[0]) / 2, (P1[1] + P2[1]) / 2];
+    const cp       = [
+      midLine[0] + alpha * (Mid[0] - midLine[0]),
+      midLine[1] + alpha * (Mid[1] - midLine[1]),
+    ];
+    const [x1, y1]   = sc(...P1);
+    const [cpx, cpy] = sc(...cp);
+    const [x2, y2]   = sc(...P2);
+    const opacity    = 0.9 - alpha * 0.4;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.quadraticCurveTo(cpx, cpy, x2, y2);
@@ -74,10 +145,9 @@ function drawFillLines(outerFn, N) {
 }
 
 function drawOuter(outerFn) {
-  const STEPS = 200;
   ctx.beginPath();
-  for (let i = 0; i <= STEPS; i++) {
-    const [px, py] = outerFn(i / STEPS);
+  for (let i = 0; i <= 200; i++) {
+    const [px, py] = outerFn(i / 200);
     const [sx, sy] = sc(px, py);
     i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
   }
@@ -110,25 +180,54 @@ function drawStraightLine(p1, p2, lw = 1.5) {
   ctx.stroke();
 }
 
-// ── 렌더 ──────────────────────────────────────────────────
-const N = 40;
+function drawAll() {
+  // 1. 보간 채우기 선 (가장 아래 레이어)
+  drawFillLines(outerL);
+  drawFillLines(outerR);
+  // 2. 외곽선
+  drawOuter(outerL);
+  drawOuter(outerR);
+  // 3. 블레이드 곡선 AB, CD
+  drawBezier([256.784,2.236], [256.56,38.471], [254.264,57.873], [248.784,91.236]);
+  drawBezier([177.784,313.236], [170.008,366.001], [172.304,346.599], [169.784,402.236]);
+  // 4. AD 세로선 (가장 위 레이어)
+  drawStraightLine([256.784,2.236], [169.784,402.236]);
+}
 
-ctx.fillStyle = '#000';
-ctx.fillRect(0, 0, W, H);
+// ── 점 애니메이션 ─────────────────────────────────────────
+const DOT_SPEED     = 0.25; // 경로 단위/초 (4초에 1 순회)
+const DOT_RADIUS    = 2;
+const DOTS_PER_PATH = 2;    // 경로당 점 수 (위상 균등 분배)
 
-// 1. 보간 채우기 선 (가장 아래 레이어)
-drawFillLines(outerL, N);
-drawFillLines(outerR, N);
+const dots = paths.flatMap((_, pi) =>
+  Array.from({ length: DOTS_PER_PATH }, (_, d) => ({
+    pathIdx: pi,
+    phase: d / DOTS_PER_PATH,
+  }))
+);
 
-// 2. 외곽선
-drawOuter(outerL);
-drawOuter(outerR);
+let lastTime = null;
 
-// 3. 블레이드 곡선 AB, CD
-// AB: A(256.784,2.236) → B(248.784,91.236)
-drawBezier([256.784,2.236], [256.56,38.471], [254.264,57.873], [248.784,91.236]);
-// CD: C(177.784,313.236) → D(169.784,402.236), CP 순서 반전 (180도 회전)
-drawBezier([177.784,313.236], [170.008,366.001], [172.304,346.599], [169.784,402.236]);
+function animate(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
 
-// 4. AD 세로선 (가장 위 레이어)
-drawStraightLine([256.784,2.236], [169.784,402.236]);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawAll();
+
+  for (const dot of dots) {
+    dot.phase = (dot.phase + DOT_SPEED * dt) % 1;
+    const [svgX, svgY] = ptAt(paths[dot.pathIdx], dot.phase);
+    const [cx, cy]     = sc(svgX, svgY);
+    ctx.beginPath();
+    ctx.arc(cx, cy, DOT_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fill();
+  }
+
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
