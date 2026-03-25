@@ -224,8 +224,8 @@ const dots = paths.flatMap(({ pts, weight }, pi) => {
 // ── 터치/마우스 입력 ──────────────────────────────────────
 const REPULSE_RADIUS = 110; // 고무줄 효과 반경 (canvas px)
 const MAX_DEFLECT    = 90;  // 최대 측면 변위 (canvas px)
-const SPRING_K       = 14;  // 복원 스프링 강도
-const DAMP_RATE      = 9;   // 속도 감쇠율 (1/초)
+const SPRING_K       = 28;  // 복원 스프링 강도 (높을수록 빠른 반응)
+const DAMP_RATE      = 5;   // 속도 감쇠율 (1/초)
 
 const pointer = { x: 0, y: 0, active: false };
 
@@ -276,7 +276,7 @@ function animate(timestamp) {
         // touch→dot 벡터의 측면 성분만 추출 (고무줄 특성)
         const latNorm = (ex * perpX + ey * perpY) / dist; // -1 ~ +1
         const t = 1 - dist / REPULSE_RADIUS;
-        const mag = latNorm * t * t * MAX_DEFLECT;
+        const mag = latNorm * t * MAX_DEFLECT; // 선형 감쇠 (t² → t 로 반응 빠르게)
         tgtRx = perpX * mag;
         tgtRy = perpY * mag;
       }
