@@ -216,8 +216,29 @@ const dots = paths.flatMap(({ pts, weight }, pi) => {
     radius:  0.8 + Math.random() * 1.4,
     alpha:   0.5 + Math.random() * 0.5,
     jitter:  (Math.random() - 0.5) * 4,
+    rx: 0, ry: 0, // 반발 변위 (canvas px)
+    vx: 0, vy: 0, // 반발 속도 (canvas px/s)
   }));
 });
+
+// ── 터치/마우스 입력 ──────────────────────────────────────
+const REPULSE_RADIUS = 120; // 반발 작동 반경 (canvas px)
+const REPULSE_FORCE  = 1800; // 반발력 세기
+const SPRING_K       = 12;   // 복원 스프링 강도
+const DAMPING        = 0.92; // 속도 감쇠 계수 (프레임당)
+
+const pointer = { x: 0, y: 0, active: false };
+
+function updatePointer(e) {
+  const r = canvas.getBoundingClientRect();
+  pointer.x = (e.clientX ?? e.touches[0].clientX) - r.left;
+  pointer.y = (e.clientY ?? e.touches[0].clientY) - r.top;
+}
+
+canvas.addEventListener('pointerdown',   e => { pointer.active = true;  updatePointer(e); });
+canvas.addEventListener('pointermove',   e => { if (pointer.active) updatePointer(e); });
+canvas.addEventListener('pointerup',     () => { pointer.active = false; });
+canvas.addEventListener('pointercancel', () => { pointer.active = false; });
 
 let lastTime = null;
 
@@ -243,14 +264,36 @@ function animate(timestamp) {
     const jx  = cx + (dx / len) * dot.jitter;
     const jy  = cy + (dy / len) * dot.jitter;
 
+    // 반발 물리 연산
+    if (pointer.active) {
+      const ex = jx + dot.rx - pointer.x;
+      const ey = jy + dot.ry - pointer.y;
+      const dist = Math.sqrt(ex * ex + ey * ey) || 1;
+      if (dist < REPULSE_RADIUS) {
+        const strength = (1 - dist / REPULSE_RADIUS) * REPULSE_FORCE;
+        dot.vx += (ex / dist) * strength * dt;
+        dot.vy += (ey / dist) * strength * dt;
+      }
+    }
+    // 스프링 복원 + 감쇠
+    dot.vx += -dot.rx * SPRING_K * dt;
+    dot.vy += -dot.ry * SPRING_K * dt;
+    dot.vx *= DAMPING;
+    dot.vy *= DAMPING;
+    dot.rx += dot.vx * dt;
+    dot.ry += dot.vy * dt;
+
+    const fx = jx + dot.rx;
+    const fy = jy + dot.ry;
+
     // 시작/끝 구간에서 페이드 인/아웃 (각 10%)
     const FADE = 0.1;
     let fade = 1;
-    if (dot.phase < FADE)        fade = dot.phase / FADE;
+    if (dot.phase < FADE)          fade = dot.phase / FADE;
     else if (dot.phase > 1 - FADE) fade = (1 - dot.phase) / FADE;
 
     ctx.beginPath();
-    ctx.arc(jx, jy, dot.radius, 0, Math.PI * 2);
+    ctx.arc(fx, fy, dot.radius, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(255,255,255,${(dot.alpha * fade).toFixed(2)})`;
     ctx.fill();
   }
