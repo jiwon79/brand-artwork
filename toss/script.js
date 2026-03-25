@@ -241,9 +241,15 @@ function animate(timestamp) {
     const jx  = cx + (dx / len) * dot.jitter;
     const jy  = cy + (dy / len) * dot.jitter;
 
+    // 시작/끝 구간에서 페이드 인/아웃 (각 10%)
+    const FADE = 0.1;
+    let fade = 1;
+    if (dot.phase < FADE)        fade = dot.phase / FADE;
+    else if (dot.phase > 1 - FADE) fade = (1 - dot.phase) / FADE;
+
     ctx.beginPath();
     ctx.arc(jx, jy, dot.radius, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,255,255,${dot.alpha.toFixed(2)})`;
+    ctx.fillStyle = `rgba(255,255,255,${(dot.alpha * fade).toFixed(2)})`;
     ctx.fill();
   }
 
