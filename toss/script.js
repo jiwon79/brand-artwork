@@ -195,19 +195,31 @@ function drawAll() {
 }
 
 // ── 점 애니메이션 ─────────────────────────────────────────
-const BASE_SPEED    = 0.2;  // 기본 속도 (경로 단위/초)
-const DOTS_PER_PATH = 15;   // 경로당 점 수 (무작위 위상)
+const BASE_SPEED       = 0.2;  // 기본 속도 (경로 단위/초)
+const DOTS_PER_SVG_UNIT = 0.15; // SVG 길이 단위당 점 수
 
-const dots = paths.flatMap((_, pi) =>
-  Array.from({ length: DOTS_PER_PATH }, () => ({
+// 샘플링된 경로의 SVG 좌표 기준 호 길이 계산
+function pathLength(pts) {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i][0] - pts[i - 1][0];
+    const dy = pts[i][1] - pts[i - 1][1];
+    len += Math.sqrt(dx * dx + dy * dy);
+  }
+  return len;
+}
+
+const dots = paths.flatMap((pts, pi) => {
+  const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT));
+  return Array.from({ length: count }, () => ({
     pathIdx: pi,
-    phase:   Math.random(),                        // 무작위 초기 위치
-    speed:   BASE_SPEED * (0.5 + Math.random()),   // 속도 편차 ±50%
-    radius:  0.8 + Math.random() * 1.4,            // 0.8~2.2px 무작위 크기
-    alpha:   0.5 + Math.random() * 0.5,            // 0.5~1.0 무작위 불투명도
-    jitter:  (Math.random() - 0.5) * 4,            // 경로에서 ±2px 흔들림
-  }))
-);
+    phase:   Math.random(),
+    speed:   BASE_SPEED * (0.5 + Math.random()),
+    radius:  0.8 + Math.random() * 1.4,
+    alpha:   0.5 + Math.random() * 0.5,
+    jitter:  (Math.random() - 0.5) * 4,
+  }));
+});
 
 let lastTime = null;
 
