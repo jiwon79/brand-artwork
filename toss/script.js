@@ -88,10 +88,6 @@ function ptAt(pts, t) {
 const N = 40;
 const paths = [];
 
-// 외곽선
-paths.push(ensureDownward(sampleFn(outerL)));
-paths.push(ensureDownward(sampleFn(outerR)));
-
 // 보간 채우기 선 (왼쪽, 오른쪽)
 for (const outerFn of [outerL, outerR]) {
   for (let i = 0; i < N; i++) { // i=N은 길이 0인 퇴화 경로이므로 제외
@@ -230,7 +226,6 @@ function animate(timestamp) {
 
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  drawAll();
 
   for (const dot of dots) {
     dot.phase = (dot.phase + dot.speed * dt) % 1;
