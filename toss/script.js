@@ -222,10 +222,10 @@ const dots = paths.flatMap(({ pts, weight }, pi) => {
 });
 
 // ── 터치/마우스 입력 ──────────────────────────────────────
-const REPULSE_RADIUS = 120; // 반발 작동 반경 (canvas px)
-const REPULSE_FORCE  = 1800; // 반발력 세기
-const SPRING_K       = 12;   // 복원 스프링 강도
-const DAMPING        = 0.92; // 속도 감쇠 계수 (프레임당)
+const REPULSE_RADIUS = 110; // 고무줄 효과 반경 (canvas px)
+const MAX_DEFLECT    = 90;  // 최대 측면 변위 (canvas px)
+const SPRING_K       = 14;  // 복원 스프링 강도
+const DAMP_RATE      = 9;   // 속도 감쇠율 (1/초)
 
 const pointer = { x: 0, y: 0, active: false };
 
@@ -255,31 +255,38 @@ function animate(timestamp) {
     const [svgX, svgY] = ptAt(paths[dot.pathIdx].pts, dot.phase);
     const [cx, cy]     = sc(svgX, svgY);
 
-    // 경로 접선에 수직 방향으로 jitter 적용
+    // 경로 접선 및 수직(측면) 단위벡터 계산
     const t2  = Math.min(dot.phase + 0.01, 1);
     const [nx, ny] = ptAt(paths[dot.pathIdx].pts, t2);
     const [sx2, sy2] = sc(nx, ny);
-    const dx = sy2 - cy, dy = -(sx2 - cx); // 수직 벡터
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    const jx  = cx + (dx / len) * dot.jitter;
-    const jy  = cy + (dy / len) * dot.jitter;
+    const tdx = sx2 - cx, tdy = sy2 - cy;
+    const tlen = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
+    const perpX = -tdy / tlen, perpY = tdx / tlen; // 측면 단위벡터
 
-    // 반발 물리 연산
+    // jitter 적용
+    const jx = cx + perpX * dot.jitter;
+    const jy = cy + perpY * dot.jitter;
+
+    // 고무줄 효과: 측면(수직) 방향으로만 힘 적용
+    let tgtRx = 0, tgtRy = 0;
     if (pointer.active) {
-      const ex = jx + dot.rx - pointer.x;
-      const ey = jy + dot.ry - pointer.y;
+      const ex = cx - pointer.x, ey = cy - pointer.y;
       const dist = Math.sqrt(ex * ex + ey * ey) || 1;
       if (dist < REPULSE_RADIUS) {
-        const strength = (1 - dist / REPULSE_RADIUS) * REPULSE_FORCE;
-        dot.vx += (ex / dist) * strength * dt;
-        dot.vy += (ey / dist) * strength * dt;
+        // touch→dot 벡터의 측면 성분만 추출 (고무줄 특성)
+        const latNorm = (ex * perpX + ey * perpY) / dist; // -1 ~ +1
+        const t = 1 - dist / REPULSE_RADIUS;
+        const mag = latNorm * t * t * MAX_DEFLECT;
+        tgtRx = perpX * mag;
+        tgtRy = perpY * mag;
       }
     }
-    // 스프링 복원 + 감쇠
-    dot.vx += -dot.rx * SPRING_K * dt;
-    dot.vy += -dot.ry * SPRING_K * dt;
-    dot.vx *= DAMPING;
-    dot.vy *= DAMPING;
+    // 스프링 복원 + 프레임레이트 독립 감쇠
+    dot.vx += (tgtRx - dot.rx) * SPRING_K * dt;
+    dot.vy += (tgtRy - dot.ry) * SPRING_K * dt;
+    const damp = Math.max(0, 1 - DAMP_RATE * dt);
+    dot.vx *= damp;
+    dot.vy *= damp;
     dot.rx += dot.vx * dt;
     dot.ry += dot.vy * dt;
 
