@@ -195,14 +195,17 @@ function drawAll() {
 }
 
 // ── 점 애니메이션 ─────────────────────────────────────────
-const DOT_SPEED     = 0.25; // 경로 단위/초 (4초에 1 순회)
-const DOT_RADIUS    = 2;
-const DOTS_PER_PATH = 2;    // 경로당 점 수 (위상 균등 분배)
+const BASE_SPEED    = 0.2;  // 기본 속도 (경로 단위/초)
+const DOTS_PER_PATH = 15;   // 경로당 점 수 (무작위 위상)
 
 const dots = paths.flatMap((_, pi) =>
-  Array.from({ length: DOTS_PER_PATH }, (_, d) => ({
+  Array.from({ length: DOTS_PER_PATH }, () => ({
     pathIdx: pi,
-    phase: d / DOTS_PER_PATH,
+    phase:   Math.random(),                        // 무작위 초기 위치
+    speed:   BASE_SPEED * (0.5 + Math.random()),   // 속도 편차 ±50%
+    radius:  0.8 + Math.random() * 1.4,            // 0.8~2.2px 무작위 크기
+    alpha:   0.5 + Math.random() * 0.5,            // 0.5~1.0 무작위 불투명도
+    jitter:  (Math.random() - 0.5) * 4,            // 경로에서 ±2px 흔들림
   }))
 );
 
@@ -218,12 +221,22 @@ function animate(timestamp) {
   drawAll();
 
   for (const dot of dots) {
-    dot.phase = (dot.phase + DOT_SPEED * dt) % 1;
+    dot.phase = (dot.phase + dot.speed * dt) % 1;
     const [svgX, svgY] = ptAt(paths[dot.pathIdx], dot.phase);
     const [cx, cy]     = sc(svgX, svgY);
+
+    // 경로 접선에 수직 방향으로 jitter 적용
+    const t2  = Math.min(dot.phase + 0.01, 1);
+    const [nx, ny] = ptAt(paths[dot.pathIdx], t2);
+    const [sx2, sy2] = sc(nx, ny);
+    const dx = sy2 - cy, dy = -(sx2 - cx); // 수직 벡터
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const jx  = cx + (dx / len) * dot.jitter;
+    const jy  = cy + (dy / len) * dot.jitter;
+
     ctx.beginPath();
-    ctx.arc(cx, cy, DOT_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.arc(jx, jy, dot.radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${dot.alpha.toFixed(2)})`;
     ctx.fill();
   }
 
