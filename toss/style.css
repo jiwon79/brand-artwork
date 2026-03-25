@@ -3,6 +3,11 @@
   padding: 0;
 }
 
+html, body {
+  overflow: hidden;
+  touch-action: none;
+}
+
 body {
   background: #000;
   display: flex;
