@@ -1,7 +1,13 @@
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
-const W = canvas.width  = window.innerWidth;
-const H = canvas.height = window.innerHeight;
+const DPR = window.devicePixelRatio || 1;
+const W = window.innerWidth;
+const H = window.innerHeight;
+canvas.width  = W * DPR;
+canvas.height = H * DPR;
+canvas.style.width  = W + 'px';
+canvas.style.height = H + 'px';
+ctx.scale(DPR, DPR);
 
 // ── 좌표 변환 ─────────────────────────────────────────────
 const VX = -65, VY = -10, VW = 570, VH = 435;
