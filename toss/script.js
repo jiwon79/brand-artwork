@@ -103,7 +103,7 @@ for (const outerFn of [outerL, outerR]) {
       midLine[0] + alpha * (Mid[0] - midLine[0]),
       midLine[1] + alpha * (Mid[1] - midLine[1]),
     ];
-    const weight = 0.1 + 0.9 * alpha; // 외곽 10% ~ 중심 100% 밀도
+    const weight = alpha < 0.1 ? alpha / 0.1 : 1; // 외곽 10% 선만 점 감소, 나머지 균일
     paths.push({ pts: ensureDownward(sampleQuadBez(P1, cp, P2)), weight });
   }
 }
