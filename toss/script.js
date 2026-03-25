@@ -89,6 +89,7 @@ const N = 40;
 const paths = [];
 
 // 보간 채우기 선 (왼쪽, 오른쪽)
+// weight: 외곽(alpha=0) → 0.1, 중간(alpha=1) → 1.0 (중심일수록 점 밀도 증가)
 for (const outerFn of [outerL, outerR]) {
   for (let i = 0; i < N; i++) { // i=N은 길이 0인 퇴화 경로이므로 제외
     const alpha    = i / N;
@@ -102,16 +103,17 @@ for (const outerFn of [outerL, outerR]) {
       midLine[0] + alpha * (Mid[0] - midLine[0]),
       midLine[1] + alpha * (Mid[1] - midLine[1]),
     ];
-    paths.push(ensureDownward(sampleQuadBez(P1, cp, P2)));
+    const weight = 0.1 + 0.9 * alpha; // 외곽 10% ~ 중심 100% 밀도
+    paths.push({ pts: ensureDownward(sampleQuadBez(P1, cp, P2)), weight });
   }
 }
 
 // 블레이드 곡선 AB, CD
-paths.push(sampleCubicBez([256.784,2.236], [256.56,38.471], [254.264,57.873], [248.784,91.236]));
-paths.push(sampleCubicBez([177.784,313.236], [170.008,366.001], [172.304,346.599], [169.784,402.236]));
+paths.push({ pts: sampleCubicBez([256.784,2.236], [256.56,38.471], [254.264,57.873], [248.784,91.236]), weight: 1 });
+paths.push({ pts: sampleCubicBez([177.784,313.236], [170.008,366.001], [172.304,346.599], [169.784,402.236]), weight: 1 });
 
 // AD 세로선
-paths.push([[256.784, 2.236], [169.784, 402.236]]);
+paths.push({ pts: [[256.784, 2.236], [169.784, 402.236]], weight: 1 });
 
 // ── 정적 그리기 함수 ──────────────────────────────────────
 function drawFillLines(outerFn) {
@@ -205,8 +207,8 @@ function pathLength(pts) {
   return len;
 }
 
-const dots = paths.flatMap((pts, pi) => {
-  const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT));
+const dots = paths.flatMap(({ pts, weight }, pi) => {
+  const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT * weight));
   return Array.from({ length: count }, () => ({
     pathIdx: pi,
     phase:   Math.random(),
@@ -229,12 +231,12 @@ function animate(timestamp) {
 
   for (const dot of dots) {
     dot.phase = (dot.phase + dot.speed * dt) % 1;
-    const [svgX, svgY] = ptAt(paths[dot.pathIdx], dot.phase);
+    const [svgX, svgY] = ptAt(paths[dot.pathIdx].pts, dot.phase);
     const [cx, cy]     = sc(svgX, svgY);
 
     // 경로 접선에 수직 방향으로 jitter 적용
     const t2  = Math.min(dot.phase + 0.01, 1);
-    const [nx, ny] = ptAt(paths[dot.pathIdx], t2);
+    const [nx, ny] = ptAt(paths[dot.pathIdx].pts, t2);
     const [sx2, sy2] = sc(nx, ny);
     const dx = sy2 - cy, dy = -(sx2 - cx); // 수직 벡터
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
