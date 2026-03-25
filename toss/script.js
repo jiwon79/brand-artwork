@@ -165,7 +165,7 @@ const textPaths = [];
   off.height = offH;
   const offCtx = off.getContext('2d');
 
-  const fontSize = Math.round(Math.min(H * DPR * 0.22, W * DPR * 0.18));
+  const fontSize = Math.round(Math.min(H * DPR * 0.66, W * DPR * 0.54));
   offCtx.font          = `700 ${fontSize}px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
   offCtx.textAlign     = 'center';
   offCtx.textBaseline  = 'middle';
@@ -226,8 +226,13 @@ function triggerMorph() {
   for (let i = 0; i < dots.length; i++) {
     const s = srcDots[i];
     const [cx, cy] = sc(...ptAt(srcPaths[s.pathIdx].pts, s.phase));
-    dots[i].snapX = cx + s.rx;
-    dots[i].snapY = cy + s.ry;
+    // jitter 포함: 실제 표시 위치를 스냅
+    const t2s = Math.min(s.phase + 0.01, 1);
+    const [snx, sny] = sc(...ptAt(srcPaths[s.pathIdx].pts, t2s));
+    const stlen = Math.sqrt((snx-cx)**2 + (sny-cy)**2) || 1;
+    const sperpX = -(sny-cy)/stlen, sperpY = (snx-cx)/stlen;
+    dots[i].snapX = cx + sperpX * s.jitter + s.rx;
+    dots[i].snapY = cy + sperpY * s.jitter + s.ry;
 
     const d = dstDots[i];
     const [tx, ty] = sc(...ptAt(dstPaths[d.pathIdx].pts, d.phase));
@@ -287,13 +292,15 @@ function animate(timestamp) {
   const morphing = morphState.mode.startsWith('morphing');
   const inText   = morphState.mode === 'text';
 
-  // 모프 진행도 계산
+  // 모프 진행도 계산 (morphToText를 모드 변경 전에 확정)
   let morphProg = 0;
+  let morphToText = false;
   if (morphing) {
+    morphToText = morphState.mode === 'morphing-to-text'; // 모드 변경 전 캡처
     const raw = (timestamp - morphState.startTime) / MORPH_DURATION;
     morphProg = easeInOut(Math.min(raw, 1));
     if (raw >= 1) {
-      morphState.mode = morphState.mode === 'morphing-to-text' ? 'text' : 'logo';
+      morphState.mode = morphToText ? 'text' : 'logo';
     }
   }
 
@@ -309,10 +316,9 @@ function animate(timestamp) {
     dot.phase = (dot.phase + dot.speed * dt) % 1;
 
     if (morphing) {
-      // 목표 위치를 현재 textDots[i] 의 흐르는 위치로 실시간 갱신
-      const toText = morphState.mode === 'morphing-to-text';
-      const dstDot   = toText ? textDots[i] : dots[i];
-      const dstPaths = toText ? textPaths   : paths;
+      // morphToText는 모드 변경 전에 캡처된 값 사용 (로고 반짝임 버그 방지)
+      const dstDot   = morphToText ? textDots[i] : dots[i];
+      const dstPaths = morphToText ? textPaths   : paths;
       const [tx, ty] = sc(...ptAt(dstPaths[dstDot.pathIdx].pts, dstDot.phase));
       dot.tgtX = tx;
       dot.tgtY = ty;
@@ -320,9 +326,16 @@ function animate(timestamp) {
       const fx = dot.snapX + (dot.tgtX - dot.snapX) * morphProg;
       const fy = dot.snapY + (dot.tgtY - dot.snapY) * morphProg;
 
+      // 목적지 phase 기준으로 페이드 적용 (모프 완료 시 연속성 확보)
+      const fadePhase = morphToText ? textDots[i].phase : dot.phase;
+      const FADE = 0.1;
+      let fade = 1;
+      if (fadePhase < FADE)          fade = fadePhase / FADE;
+      else if (fadePhase > 1 - FADE) fade = (1 - fadePhase) / FADE;
+
       ctx.beginPath();
       ctx.arc(fx, fy, dot.radius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${dot.alpha.toFixed(2)})`;
+      ctx.fillStyle = `rgba(255,255,255,${(dot.alpha * fade).toFixed(2)})`;
       ctx.fill();
       continue;
     }
