@@ -90,14 +90,12 @@ function ptAt(pts, t) {
   ];
 }
 
-// ── 모든 경로 수집 ────────────────────────────────────────
+// ── 로고 경로 수집 ────────────────────────────────────────
 const N = 40;
 const paths = [];
 
-// 보간 채우기 선 (왼쪽, 오른쪽)
-// weight: 외곽(alpha=0) → 0.1, 중간(alpha=1) → 1.0 (중심일수록 점 밀도 증가)
 for (const outerFn of [outerL, outerR]) {
-  for (let i = 0; i < N; i++) { // i=N은 길이 0인 퇴화 경로이므로 제외
+  for (let i = 0; i < N; i++) {
     const alpha    = i / N;
     const tStart   = alpha * 0.5;
     const tEnd     = 1.0 - alpha * 0.5;
@@ -109,100 +107,19 @@ for (const outerFn of [outerL, outerR]) {
       midLine[0] + alpha * (Mid[0] - midLine[0]),
       midLine[1] + alpha * (Mid[1] - midLine[1]),
     ];
-    const weight = alpha < 0.1 ? alpha / 0.1 : 0.5 + 1.5 * alpha; // 외곽 감소, 중심으로 갈수록 최대 2배 밀도
+    const weight = alpha < 0.1 ? alpha / 0.1 : 0.5 + 1.5 * alpha;
     paths.push({ pts: ensureDownward(sampleQuadBez(P1, cp, P2)), weight });
   }
 }
 
-// 블레이드 곡선 AB, CD
 paths.push({ pts: sampleCubicBez([256.784,2.236], [256.56,38.471], [254.264,57.873], [248.784,91.236]), weight: 1 });
 paths.push({ pts: sampleCubicBez([177.784,313.236], [170.008,366.001], [172.304,346.599], [169.784,402.236]), weight: 1 });
-
-// AD 세로선
 paths.push({ pts: [[256.784, 2.236], [169.784, 402.236]], weight: 1 });
 
-// ── 정적 그리기 함수 ──────────────────────────────────────
-function drawFillLines(outerFn) {
-  for (let i = 0; i <= N; i++) {
-    const alpha    = i / N;
-    const tStart   = alpha * 0.5;
-    const tEnd     = 1.0 - alpha * 0.5;
-    const P1       = outerFn(tStart);
-    const P2       = outerFn(tEnd);
-    const Mid      = outerFn(0.5);
-    const midLine  = [(P1[0] + P2[0]) / 2, (P1[1] + P2[1]) / 2];
-    const cp       = [
-      midLine[0] + alpha * (Mid[0] - midLine[0]),
-      midLine[1] + alpha * (Mid[1] - midLine[1]),
-    ];
-    const [x1, y1]   = sc(...P1);
-    const [cpx, cpy] = sc(...cp);
-    const [x2, y2]   = sc(...P2);
-    const opacity    = 0.9 - alpha * 0.4;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.quadraticCurveTo(cpx, cpy, x2, y2);
-    ctx.strokeStyle = `rgba(255,255,255,${opacity.toFixed(2)})`;
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
-  }
-}
+// ── 유틸 ──────────────────────────────────────────────────
+const BASE_SPEED        = 0.2;
+const DOTS_PER_SVG_UNIT = 0.15;
 
-function drawOuter(outerFn) {
-  ctx.beginPath();
-  for (let i = 0; i <= 200; i++) {
-    const [px, py] = outerFn(i / 200);
-    const [sx, sy] = sc(px, py);
-    i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,1)';
-  ctx.lineWidth   = 1.5;
-  ctx.stroke();
-}
-
-function drawBezier(p0, cp1, cp2, p1, lw = 1.5) {
-  const [x0, y0]   = sc(...p0);
-  const [cx1, cy1] = sc(...cp1);
-  const [cx2, cy2] = sc(...cp2);
-  const [x1, y1]   = sc(...p1);
-  ctx.beginPath();
-  ctx.moveTo(x0, y0);
-  ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x1, y1);
-  ctx.strokeStyle = 'rgba(255,255,255,1)';
-  ctx.lineWidth   = lw;
-  ctx.stroke();
-}
-
-function drawStraightLine(p1, p2, lw = 1.5) {
-  const [x1, y1] = sc(...p1);
-  const [x2, y2] = sc(...p2);
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.strokeStyle = 'rgba(255,255,255,1)';
-  ctx.lineWidth   = lw;
-  ctx.stroke();
-}
-
-function drawAll() {
-  // 1. 보간 채우기 선 (가장 아래 레이어)
-  drawFillLines(outerL);
-  drawFillLines(outerR);
-  // 2. 외곽선
-  drawOuter(outerL);
-  drawOuter(outerR);
-  // 3. 블레이드 곡선 AB, CD
-  drawBezier([256.784,2.236], [256.56,38.471], [254.264,57.873], [248.784,91.236]);
-  drawBezier([177.784,313.236], [170.008,366.001], [172.304,346.599], [169.784,402.236]);
-  // 4. AD 세로선 (가장 위 레이어)
-  drawStraightLine([256.784,2.236], [169.784,402.236]);
-}
-
-// ── 점 애니메이션 ─────────────────────────────────────────
-const BASE_SPEED       = 0.2;  // 기본 속도 (경로 단위/초)
-const DOTS_PER_SVG_UNIT = 0.15; // SVG 길이 단위당 점 수
-
-// 샘플링된 경로의 SVG 좌표 기준 호 길이 계산
 function pathLength(pts) {
   let len = 0;
   for (let i = 1; i < pts.length; i++) {
@@ -213,25 +130,126 @@ function pathLength(pts) {
   return len;
 }
 
+function makeDot(pathIdx) {
+  return {
+    pathIdx,
+    phase:  Math.random(),
+    speed:  BASE_SPEED * (0.5 + Math.random()),
+    radius: 0.8 + Math.random() * 1.4,
+    alpha:  0.5 + Math.random() * 0.5,
+    jitter: (Math.random() - 0.5) * 4,
+    rx: 0, ry: 0, vx: 0, vy: 0,
+    snapX: 0, snapY: 0,
+    tgtX: 0,  tgtY: 0,
+  };
+}
+
+// ── 로고 점 생성 ──────────────────────────────────────────
 const dots = paths.flatMap(({ pts, weight }, pi) => {
   const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT * weight));
-  return Array.from({ length: count }, () => ({
-    pathIdx: pi,
-    phase:   Math.random(),
-    speed:   BASE_SPEED * (0.5 + Math.random()),
-    radius:  0.8 + Math.random() * 1.4,
-    alpha:   0.5 + Math.random() * 0.5,
-    jitter:  (Math.random() - 0.5) * 4,
-    rx: 0, ry: 0, // 반발 변위 (canvas px)
-    vx: 0, vy: 0, // 반발 속도 (canvas px/s)
-  }));
+  return Array.from({ length: count }, () => makeDot(pi));
 });
 
+// ── "toss" 텍스트 경로 생성 ───────────────────────────────
+const TEXT_SCAN_STEP      = 4;   // 물리 픽셀 단위 열 간격
+const TEXT_MIN_HEIGHT_PX  = 10;  // 최소 텍스트 높이 (물리 px)
+const TEXT_ALPHA_THRESHOLD = 128;
+
+const textPaths = [];
+
+(function generateTextPaths() {
+  const offW = W * DPR;
+  const offH = H * DPR;
+  const off  = document.createElement('canvas');
+  off.width  = offW;
+  off.height = offH;
+  const offCtx = off.getContext('2d');
+
+  const fontSize = Math.round(Math.min(H * DPR * 0.22, W * DPR * 0.18));
+  offCtx.font          = `700 ${fontSize}px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
+  offCtx.textAlign     = 'center';
+  offCtx.textBaseline  = 'middle';
+  offCtx.fillStyle     = '#fff';
+  offCtx.fillText('toss', offW / 2, offH / 2);
+
+  const { data } = offCtx.getImageData(0, 0, offW, offH);
+
+  for (let x = 0; x < offW; x += TEXT_SCAN_STEP) {
+    let topY = -1, botY = -1;
+    for (let y = 0; y < offH; y++) {
+      if (data[(y * offW + x) * 4 + 3] > TEXT_ALPHA_THRESHOLD) {
+        if (topY === -1) topY = y;
+        botY = y;
+      }
+    }
+    if (topY === -1 || (botY - topY) < TEXT_MIN_HEIGHT_PX) continue;
+
+    // 물리px → CSS px → SVG 좌표 (sc() 역변환)
+    const svgX   = (x   / DPR - OX) / scl;
+    const svgTop = (topY / DPR - OY) / scl;
+    const svgBot = (botY / DPR - OY) / scl;
+
+    textPaths.push({ pts: [[svgX, svgTop], [svgX, svgBot]], weight: 1 });
+  }
+})();
+
+// ── 텍스트 점 생성 (dots.length에 맞춤) ──────────────────
+const textDots = [];
+textPaths.forEach(({ pts }, pi) => {
+  const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT));
+  for (let d = 0; d < count; d++) textDots.push(makeDot(pi));
+});
+// dots.length에 정확히 맞춤
+while (textDots.length < dots.length) {
+  const src = textDots[Math.floor(Math.random() * textDots.length)];
+  textDots.push({ ...src, phase: Math.random() });
+}
+textDots.length = dots.length;
+
+// ── 모프 상태 머신 ────────────────────────────────────────
+const MORPH_DURATION = 700; // ms
+const morphState = { mode: 'logo', startTime: 0 };
+
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
+}
+
+function triggerMorph() {
+  if (morphState.mode.startsWith('morphing')) return;
+
+  const toText    = morphState.mode === 'logo';
+  const srcDots   = toText ? dots : textDots;
+  const srcPaths  = toText ? paths : textPaths;
+  const dstDots   = toText ? textDots : dots;
+  const dstPaths  = toText ? textPaths : paths;
+
+  for (let i = 0; i < dots.length; i++) {
+    const s = srcDots[i];
+    const [cx, cy] = sc(...ptAt(srcPaths[s.pathIdx].pts, s.phase));
+    dots[i].snapX = cx + s.rx;
+    dots[i].snapY = cy + s.ry;
+
+    const d = dstDots[i];
+    const [tx, ty] = sc(...ptAt(dstPaths[d.pathIdx].pts, d.phase));
+    dots[i].tgtX = tx;
+    dots[i].tgtY = ty;
+
+    // 러버밴드 리셋
+    dots[i].rx = dots[i].ry = dots[i].vx = dots[i].vy = 0;
+  }
+
+  morphState.mode      = toText ? 'morphing-to-text' : 'morphing-to-logo';
+  morphState.startTime = performance.now();
+
+  const btn = document.getElementById('morph-btn');
+  if (btn) btn.textContent = toText ? 'logo' : 'toss';
+}
+
 // ── 터치/마우스 입력 ──────────────────────────────────────
-const REPULSE_RADIUS = 110; // 고무줄 효과 반경 (canvas px)
-const MAX_DEFLECT    = 90;  // 최대 측면 변위 (canvas px)
-const SPRING_K       = 28;  // 복원 스프링 강도 (높을수록 빠른 반응)
-const DAMP_RATE      = 5;   // 속도 감쇠율 (1/초)
+const REPULSE_RADIUS = 110;
+const MAX_DEFLECT    = 90;
+const SPRING_K       = 28;
+const DAMP_RATE      = 5;
 
 const pointer = { x: 0, y: 0, active: false };
 
@@ -246,6 +264,16 @@ canvas.addEventListener('pointermove',   e => { if (pointer.active) updatePointe
 canvas.addEventListener('pointerup',     () => { pointer.active = false; });
 canvas.addEventListener('pointercancel', () => { pointer.active = false; });
 
+// 버튼
+const btn = document.getElementById('morph-btn');
+if (btn) {
+  btn.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    triggerMorph();
+  });
+}
+
+// ── 애니메이션 루프 ───────────────────────────────────────
 let lastTime = null;
 
 function animate(timestamp) {
@@ -256,58 +284,96 @@ function animate(timestamp) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  for (const dot of dots) {
+  const morphing = morphState.mode.startsWith('morphing');
+  const inText   = morphState.mode === 'text';
+
+  // 모프 진행도 계산
+  let morphProg = 0;
+  if (morphing) {
+    const raw = (timestamp - morphState.startTime) / MORPH_DURATION;
+    morphProg = easeInOut(Math.min(raw, 1));
+    if (raw >= 1) {
+      morphState.mode = morphState.mode === 'morphing-to-text' ? 'text' : 'logo';
+    }
+  }
+
+  // 두 세트 모두 phase 진행 (목표 위치가 흐르도록)
+  for (const d of textDots) d.phase = (d.phase + d.speed * dt) % 1;
+
+  // 렌더링할 활성 점 세트 결정
+  const activeDots  = inText ? textDots : dots;
+  const activePaths = inText ? textPaths : paths;
+
+  for (let i = 0; i < dots.length; i++) {
+    const dot = dots[i];
     dot.phase = (dot.phase + dot.speed * dt) % 1;
-    const [svgX, svgY] = ptAt(paths[dot.pathIdx].pts, dot.phase);
+
+    if (morphing) {
+      // 목표 위치를 현재 textDots[i] 의 흐르는 위치로 실시간 갱신
+      const toText = morphState.mode === 'morphing-to-text';
+      const dstDot   = toText ? textDots[i] : dots[i];
+      const dstPaths = toText ? textPaths   : paths;
+      const [tx, ty] = sc(...ptAt(dstPaths[dstDot.pathIdx].pts, dstDot.phase));
+      dot.tgtX = tx;
+      dot.tgtY = ty;
+
+      const fx = dot.snapX + (dot.tgtX - dot.snapX) * morphProg;
+      const fy = dot.snapY + (dot.tgtY - dot.snapY) * morphProg;
+
+      ctx.beginPath();
+      ctx.arc(fx, fy, dot.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${dot.alpha.toFixed(2)})`;
+      ctx.fill();
+      continue;
+    }
+
+    // 일반 플로우 모드
+    const activeDot  = inText ? textDots[i] : dot;
+    const [svgX, svgY] = ptAt(activePaths[activeDot.pathIdx].pts, activeDot.phase);
     const [cx, cy]     = sc(svgX, svgY);
 
-    // 경로 접선 및 수직(측면) 단위벡터 계산
-    const t2  = Math.min(dot.phase + 0.01, 1);
-    const [nx, ny] = ptAt(paths[dot.pathIdx].pts, t2);
-    const [sx2, sy2] = sc(nx, ny);
+    const t2 = Math.min(activeDot.phase + 0.01, 1);
+    const [nx2, ny2] = ptAt(activePaths[activeDot.pathIdx].pts, t2);
+    const [sx2, sy2] = sc(nx2, ny2);
     const tdx = sx2 - cx, tdy = sy2 - cy;
     const tlen = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
-    const perpX = -tdy / tlen, perpY = tdx / tlen; // 측면 단위벡터
+    const perpX = -tdy / tlen, perpY = tdx / tlen;
 
-    // jitter 적용
-    const jx = cx + perpX * dot.jitter;
-    const jy = cy + perpY * dot.jitter;
+    const jx = cx + perpX * activeDot.jitter;
+    const jy = cy + perpY * activeDot.jitter;
 
-    // 고무줄 효과: 측면(수직) 방향으로만 힘 적용
+    // 러버밴드 (activeDot의 rx/ry 사용)
     let tgtRx = 0, tgtRy = 0;
     if (pointer.active) {
       const ex = cx - pointer.x, ey = cy - pointer.y;
       const dist = Math.sqrt(ex * ex + ey * ey) || 1;
       if (dist < REPULSE_RADIUS) {
-        // touch→dot 벡터의 측면 성분만 추출 (고무줄 특성)
-        const latNorm = (ex * perpX + ey * perpY) / dist; // -1 ~ +1
+        const latNorm = (ex * perpX + ey * perpY) / dist;
         const t = 1 - dist / REPULSE_RADIUS;
-        const mag = latNorm * t * MAX_DEFLECT; // 선형 감쇠 (t² → t 로 반응 빠르게)
+        const mag = latNorm * t * MAX_DEFLECT;
         tgtRx = perpX * mag;
         tgtRy = perpY * mag;
       }
     }
-    // 스프링 복원 + 프레임레이트 독립 감쇠
-    dot.vx += (tgtRx - dot.rx) * SPRING_K * dt;
-    dot.vy += (tgtRy - dot.ry) * SPRING_K * dt;
+    activeDot.vx += (tgtRx - activeDot.rx) * SPRING_K * dt;
+    activeDot.vy += (tgtRy - activeDot.ry) * SPRING_K * dt;
     const damp = Math.max(0, 1 - DAMP_RATE * dt);
-    dot.vx *= damp;
-    dot.vy *= damp;
-    dot.rx += dot.vx * dt;
-    dot.ry += dot.vy * dt;
+    activeDot.vx *= damp;
+    activeDot.vy *= damp;
+    activeDot.rx += activeDot.vx * dt;
+    activeDot.ry += activeDot.vy * dt;
 
-    const fx = jx + dot.rx;
-    const fy = jy + dot.ry;
+    const fx = jx + activeDot.rx;
+    const fy = jy + activeDot.ry;
 
-    // 시작/끝 구간에서 페이드 인/아웃 (각 10%)
     const FADE = 0.1;
     let fade = 1;
-    if (dot.phase < FADE)          fade = dot.phase / FADE;
-    else if (dot.phase > 1 - FADE) fade = (1 - dot.phase) / FADE;
+    if (activeDot.phase < FADE)          fade = activeDot.phase / FADE;
+    else if (activeDot.phase > 1 - FADE) fade = (1 - activeDot.phase) / FADE;
 
     ctx.beginPath();
-    ctx.arc(fx, fy, dot.radius, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,255,255,${(dot.alpha * fade).toFixed(2)})`;
+    ctx.arc(fx, fy, activeDot.radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${(activeDot.alpha * fade).toFixed(2)})`;
     ctx.fill();
   }
 
