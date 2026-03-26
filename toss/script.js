@@ -164,14 +164,22 @@ function buildTextPaths(cssFontSize) {
   textPaths.length = 0;
 
   const fontSize = Math.round(cssFontSize * DPR); // 물리 픽셀로 변환
-  const offW = W * DPR;
+  const fontStr  = `700 ${fontSize}px ${FONT_FAMILY}`;
+
+  // 실제 텍스트 폭 측정 → 오프스크린 캔버스를 충분히 크게
+  const tempCtx = document.createElement('canvas').getContext('2d');
+  tempCtx.font  = fontStr;
+  const measuredW = tempCtx.measureText('toss').width;
+  const offW = Math.max(W * DPR, Math.ceil(measuredW * 1.1));
   const offH = H * DPR;
+
   const off  = document.createElement('canvas');
   off.width  = offW;
   off.height = offH;
   const offCtx = off.getContext('2d');
 
-  offCtx.font         = `700 ${fontSize}px ${FONT_FAMILY}`;
+  // 오프스크린 캔버스 중앙에 그림
+  offCtx.font         = fontStr;
   offCtx.textAlign    = 'center';
   offCtx.textBaseline = 'middle';
   offCtx.fillStyle    = '#fff';
@@ -179,7 +187,13 @@ function buildTextPaths(cssFontSize) {
 
   const { data } = offCtx.getImageData(0, 0, offW, offH);
 
+  // 오프스크린 중앙(offW/2) → viewport 중앙(W/2) 보정값
+  const xCSSOffset = W / 2 - offW / (2 * DPR);
+
   for (let x = 0; x < offW; x += TEXT_SCAN_STEP) {
+    const cssX = x / DPR + xCSSOffset;
+    if (cssX < 0 || cssX > W) continue; // viewport 밖은 스킵
+
     let segStart = -1;
     for (let y = 0; y <= offH; y++) {
       const inPixel = y < offH && data[(y * offW + x) * 4 + 3] > TEXT_ALPHA_THRESHOLD;
@@ -189,9 +203,9 @@ function buildTextPaths(cssFontSize) {
         const topY = segStart, botY = y - 1;
         segStart = -1;
         if ((botY - topY) < TEXT_MIN_HEIGHT_PX) continue;
-        const svgX   = (x    / DPR - OX) / scl;
-        const svgTop = (topY / DPR - OY) / scl;
-        const svgBot = (botY / DPR - OY) / scl;
+        const svgX   = (cssX          - OX) / scl;
+        const svgTop = (topY / DPR    - OY) / scl;
+        const svgBot = (botY / DPR    - OY) / scl;
         textPaths.push({ pts: [[svgX, svgTop], [svgX, svgBot]], weight: 1 });
       }
     }
