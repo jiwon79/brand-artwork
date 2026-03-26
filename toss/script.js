@@ -174,17 +174,18 @@ const textPaths = [];
   off.height = offH;
   const offCtx = off.getContext('2d');
 
-  // 텍스트를 viewport 중앙 물리픽셀에 그림 (좌표 변환 기준 유지)
-  const drawX = W / 2 * DPR;
-  const drawY = H / 2 * DPR;
-
+  // 텍스트를 오프스크린 캔버스 정중앙에 그림
   offCtx.font          = fontStr;
   offCtx.textAlign     = 'center';
   offCtx.textBaseline  = 'middle';
   offCtx.fillStyle     = '#fff';
-  offCtx.fillText('toss', drawX, drawY);
+  offCtx.fillText('toss', offW / 2, offH / 2);
 
   const { data } = offCtx.getImageData(0, 0, offW, offH);
+
+  // 오프스크린 중앙(offW/2)이 viewport 중앙(W/2)에 대응하도록 x 좌표 보정
+  // cssX = x/DPR + (W/2 - offW/(2*DPR))
+  const xCSSOffset = W / 2 - offW / (2 * DPR);
 
   for (let x = 0; x < offW; x += TEXT_SCAN_STEP) {
     // 각 열에서 연속된 픽셀 세그먼트를 개별 경로로 생성 (o, s 내부 빈 공간 처리)
@@ -197,8 +198,8 @@ const textPaths = [];
         const topY = segStart, botY = y - 1;
         segStart = -1;
         if ((botY - topY) < TEXT_MIN_HEIGHT_PX) continue;
-        // 물리px → CSS px → SVG 좌표 (sc() 역변환)
-        const svgX   = (x    / DPR - OX) / scl;
+        // 물리px → CSS px (오프셋 포함) → SVG 좌표 (sc() 역변환)
+        const svgX   = (x / DPR + xCSSOffset - OX) / scl;
         const svgTop = (topY / DPR - OY) / scl;
         const svgBot = (botY / DPR - OY) / scl;
         textPaths.push({ pts: [[svgX, svgTop], [svgX, svgBot]], weight: 1 });
