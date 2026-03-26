@@ -405,9 +405,13 @@ function animate(timestamp) {
 requestAnimationFrame(animate);
 
 // ── Font size GUI ──────────────────────────────────────────
-(function setupGUI() {
-  const gui = new lil.GUI({ title: 'font size' });
-  gui.add(guiParams, 'fontSize', 10, Math.round(Math.min(W, H) * 0.8), 1)
-    .name('CSS px')
-    .onChange(v => buildTextPaths(v));
-})();
+if (typeof lil !== 'undefined') {
+  try {
+    const gui = new lil.GUI({ title: 'font size' });
+    gui.add(guiParams, 'fontSize', 10, Math.round(Math.min(W, H) * 0.8), 1)
+      .name('CSS px')
+      .onChange(v => buildTextPaths(v));
+  } catch (e) {
+    console.warn('GUI init failed', e);
+  }
+}
