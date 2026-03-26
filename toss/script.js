@@ -158,34 +158,34 @@ const TEXT_ALPHA_THRESHOLD = 128;
 const textPaths = [];
 
 (function generateTextPaths() {
-  // 폰트 크기 결정 후 실제 텍스트 폭을 측정해 캔버스 크기 결정
-  const fontSize = Math.round(Math.min(H * DPR * 0.66, W * DPR * 0.54));
-  const fontStr  = `700 ${fontSize}px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
+  const FONT_FAMILY = `system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
 
+  // 초기 폰트 크기 후보
+  let fontSize = Math.round(Math.min(H * DPR * 0.66, W * DPR * 0.54));
+
+  // measureText로 실제 텍스트 폭 측정 후 viewport에 맞게 축소
   const measure = document.createElement('canvas').getContext('2d');
-  measure.font  = fontStr;
-  const textW   = measure.measureText('toss').width;
+  measure.font  = `700 ${fontSize}px ${FONT_FAMILY}`;
+  const rawW    = measure.measureText('toss').width;
+  const maxW    = W * DPR * 0.92;
+  if (rawW > maxW) fontSize = Math.round(fontSize * maxW / rawW);
 
-  // 텍스트가 잘리지 않도록 캔버스를 충분히 크게 (최소 viewport 크기)
-  const offW = Math.max(W * DPR, Math.ceil(textW * 1.1));
+  const fontStr = `700 ${fontSize}px ${FONT_FAMILY}`;
+
+  const offW = W * DPR;
   const offH = H * DPR;
   const off  = document.createElement('canvas');
   off.width  = offW;
   off.height = offH;
   const offCtx = off.getContext('2d');
 
-  // 텍스트를 오프스크린 캔버스 정중앙에 그림
-  offCtx.font          = fontStr;
-  offCtx.textAlign     = 'center';
-  offCtx.textBaseline  = 'middle';
-  offCtx.fillStyle     = '#fff';
+  offCtx.font         = fontStr;
+  offCtx.textAlign    = 'center';
+  offCtx.textBaseline = 'middle';
+  offCtx.fillStyle    = '#fff';
   offCtx.fillText('toss', offW / 2, offH / 2);
 
   const { data } = offCtx.getImageData(0, 0, offW, offH);
-
-  // 오프스크린 중앙(offW/2)이 viewport 중앙(W/2)에 대응하도록 x 좌표 보정
-  // cssX = x/DPR + (W/2 - offW/(2*DPR))
-  const xCSSOffset = W / 2 - offW / (2 * DPR);
 
   for (let x = 0; x < offW; x += TEXT_SCAN_STEP) {
     // 각 열에서 연속된 픽셀 세그먼트를 개별 경로로 생성 (o, s 내부 빈 공간 처리)
@@ -198,8 +198,8 @@ const textPaths = [];
         const topY = segStart, botY = y - 1;
         segStart = -1;
         if ((botY - topY) < TEXT_MIN_HEIGHT_PX) continue;
-        // 물리px → CSS px (오프셋 포함) → SVG 좌표 (sc() 역변환)
-        const svgX   = (x / DPR + xCSSOffset - OX) / scl;
+        // 물리px → CSS px → SVG 좌표 (sc() 역변환)
+        const svgX   = (x    / DPR - OX) / scl;
         const svgTop = (topY / DPR - OY) / scl;
         const svgBot = (botY / DPR - OY) / scl;
         textPaths.push({ pts: [[svgX, svgTop], [svgX, svgBot]], weight: 1 });
