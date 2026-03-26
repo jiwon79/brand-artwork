@@ -158,19 +158,31 @@ const TEXT_ALPHA_THRESHOLD = 128;
 const textPaths = [];
 
 (function generateTextPaths() {
-  const offW = W * DPR;
+  // 폰트 크기 결정 후 실제 텍스트 폭을 측정해 캔버스 크기 결정
+  const fontSize = Math.round(Math.min(H * DPR * 0.66, W * DPR * 0.54));
+  const fontStr  = `700 ${fontSize}px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
+
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font  = fontStr;
+  const textW   = measure.measureText('toss').width;
+
+  // 텍스트가 잘리지 않도록 캔버스를 충분히 크게 (최소 viewport 크기)
+  const offW = Math.max(W * DPR, Math.ceil(textW * 1.1));
   const offH = H * DPR;
   const off  = document.createElement('canvas');
   off.width  = offW;
   off.height = offH;
   const offCtx = off.getContext('2d');
 
-  const fontSize = Math.round(Math.min(H * DPR * 0.66, W * DPR * 0.54));
-  offCtx.font          = `700 ${fontSize}px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
+  // 텍스트를 viewport 중앙 물리픽셀에 그림 (좌표 변환 기준 유지)
+  const drawX = W / 2 * DPR;
+  const drawY = H / 2 * DPR;
+
+  offCtx.font          = fontStr;
   offCtx.textAlign     = 'center';
   offCtx.textBaseline  = 'middle';
   offCtx.fillStyle     = '#fff';
-  offCtx.fillText('toss', offW / 2, offH / 2);
+  offCtx.fillText('toss', drawX, drawY);
 
   const { data } = offCtx.getImageData(0, 0, offW, offH);
 
