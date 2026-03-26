@@ -168,7 +168,7 @@ const textPaths = [];
   tempCtx.font  = `700 ${fontSize}px ${FONT_FAMILY}`;
   const m       = tempCtx.measureText('toss');
   const inkW    = (m.actualBoundingBoxLeft ?? 0) + (m.actualBoundingBoxRight ?? m.width);
-  const maxW    = W * DPR * 0.88;
+  const maxW    = W * DPR * 0.60;
   if (inkW > maxW) fontSize = Math.round(fontSize * maxW / inkW);
 
   const fontStr = `700 ${fontSize}px ${FONT_FAMILY}`;
