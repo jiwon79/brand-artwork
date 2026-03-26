@@ -151,28 +151,19 @@ const dots = paths.flatMap(({ pts, weight }, pi) => {
 });
 
 // ── "toss" 텍스트 경로 생성 ───────────────────────────────
-const TEXT_SCAN_STEP      = 4;   // 물리 픽셀 단위 열 간격
-const TEXT_MIN_HEIGHT_PX  = 10;  // 최소 텍스트 높이 (물리 px)
+const TEXT_SCAN_STEP       = 4;
+const TEXT_MIN_HEIGHT_PX   = 10;
 const TEXT_ALPHA_THRESHOLD = 128;
+const FONT_FAMILY = `system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
 
 const textPaths = [];
+const textDots  = [];
 
-(function generateTextPaths() {
-  const FONT_FAMILY = `system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
+// cssFontSize: CSS 픽셀 단위 폰트 크기
+function buildTextPaths(cssFontSize) {
+  textPaths.length = 0;
 
-  // 초기 폰트 크기 후보
-  let fontSize = Math.round(Math.min(H * DPR * 0.66, W * DPR * 0.54));
-
-  // actualBoundingBox로 실제 잉크 폭 측정 (advance width보다 정확)
-  const tempCtx = document.createElement('canvas').getContext('2d');
-  tempCtx.font  = `700 ${fontSize}px ${FONT_FAMILY}`;
-  const m       = tempCtx.measureText('toss');
-  const inkW    = (m.actualBoundingBoxLeft ?? 0) + (m.actualBoundingBoxRight ?? m.width);
-  const maxW    = W * DPR * 0.60;
-  if (inkW > maxW) fontSize = Math.round(fontSize * maxW / inkW);
-
-  const fontStr = `700 ${fontSize}px ${FONT_FAMILY}`;
-
+  const fontSize = Math.round(cssFontSize * DPR); // 물리 픽셀로 변환
   const offW = W * DPR;
   const offH = H * DPR;
   const off  = document.createElement('canvas');
@@ -180,7 +171,7 @@ const textPaths = [];
   off.height = offH;
   const offCtx = off.getContext('2d');
 
-  offCtx.font         = fontStr;
+  offCtx.font         = `700 ${fontSize}px ${FONT_FAMILY}`;
   offCtx.textAlign    = 'center';
   offCtx.textBaseline = 'middle';
   offCtx.fillStyle    = '#fff';
@@ -189,7 +180,6 @@ const textPaths = [];
   const { data } = offCtx.getImageData(0, 0, offW, offH);
 
   for (let x = 0; x < offW; x += TEXT_SCAN_STEP) {
-    // 각 열에서 연속된 픽셀 세그먼트를 개별 경로로 생성 (o, s 내부 빈 공간 처리)
     let segStart = -1;
     for (let y = 0; y <= offH; y++) {
       const inPixel = y < offH && data[(y * offW + x) * 4 + 3] > TEXT_ALPHA_THRESHOLD;
@@ -199,7 +189,6 @@ const textPaths = [];
         const topY = segStart, botY = y - 1;
         segStart = -1;
         if ((botY - topY) < TEXT_MIN_HEIGHT_PX) continue;
-        // 물리px → CSS px → SVG 좌표 (sc() 역변환)
         const svgX   = (x    / DPR - OX) / scl;
         const svgTop = (topY / DPR - OY) / scl;
         const svgBot = (botY / DPR - OY) / scl;
@@ -207,20 +196,24 @@ const textPaths = [];
       }
     }
   }
-})();
 
-// ── 텍스트 점 생성 (dots.length에 맞춤) ──────────────────
-const textDots = [];
-textPaths.forEach(({ pts }, pi) => {
-  const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT));
-  for (let d = 0; d < count; d++) textDots.push(makeDot(pi));
-});
-// dots.length에 정확히 맞춤
-while (textDots.length < dots.length) {
-  const src = textDots[Math.floor(Math.random() * textDots.length)];
-  textDots.push({ ...src, phase: Math.random() });
+  // textDots 재생성 (dots.length에 맞춤)
+  textDots.length = 0;
+  if (textPaths.length === 0) return;
+  textPaths.forEach(({ pts }, pi) => {
+    const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT));
+    for (let d = 0; d < count; d++) textDots.push(makeDot(pi));
+  });
+  while (textDots.length < dots.length) {
+    const src = textDots[Math.floor(Math.random() * textDots.length)];
+    textDots.push({ ...src, phase: Math.random() });
+  }
+  textDots.length = dots.length;
 }
-textDots.length = dots.length;
+
+// 초기 빌드 (CSS px 기준, 화면 너비의 25% 정도)
+const guiParams = { fontSize: Math.round(W * 0.25) };
+buildTextPaths(guiParams.fontSize);
 
 // ── 모프 상태 머신 ────────────────────────────────────────
 const MORPH_DURATION = 700; // ms
@@ -410,3 +403,11 @@ function animate(timestamp) {
 }
 
 requestAnimationFrame(animate);
+
+// ── Font size GUI ──────────────────────────────────────────
+(function setupGUI() {
+  const gui = new lil.GUI({ title: 'font size' });
+  gui.add(guiParams, 'fontSize', 10, Math.round(Math.min(W, H) * 0.8), 1)
+    .name('CSS px')
+    .onChange(v => buildTextPaths(v));
+})();
