@@ -175,21 +175,23 @@ const textPaths = [];
   const { data } = offCtx.getImageData(0, 0, offW, offH);
 
   for (let x = 0; x < offW; x += TEXT_SCAN_STEP) {
-    let topY = -1, botY = -1;
-    for (let y = 0; y < offH; y++) {
-      if (data[(y * offW + x) * 4 + 3] > TEXT_ALPHA_THRESHOLD) {
-        if (topY === -1) topY = y;
-        botY = y;
+    // 각 열에서 연속된 픽셀 세그먼트를 개별 경로로 생성 (o, s 내부 빈 공간 처리)
+    let segStart = -1;
+    for (let y = 0; y <= offH; y++) {
+      const inPixel = y < offH && data[(y * offW + x) * 4 + 3] > TEXT_ALPHA_THRESHOLD;
+      if (inPixel && segStart === -1) {
+        segStart = y;
+      } else if (!inPixel && segStart !== -1) {
+        const topY = segStart, botY = y - 1;
+        segStart = -1;
+        if ((botY - topY) < TEXT_MIN_HEIGHT_PX) continue;
+        // 물리px → CSS px → SVG 좌표 (sc() 역변환)
+        const svgX   = (x    / DPR - OX) / scl;
+        const svgTop = (topY / DPR - OY) / scl;
+        const svgBot = (botY / DPR - OY) / scl;
+        textPaths.push({ pts: [[svgX, svgTop], [svgX, svgBot]], weight: 1 });
       }
     }
-    if (topY === -1 || (botY - topY) < TEXT_MIN_HEIGHT_PX) continue;
-
-    // 물리px → CSS px → SVG 좌표 (sc() 역변환)
-    const svgX   = (x   / DPR - OX) / scl;
-    const svgTop = (topY / DPR - OY) / scl;
-    const svgBot = (botY / DPR - OY) / scl;
-
-    textPaths.push({ pts: [[svgX, svgTop], [svgX, svgBot]], weight: 1 });
   }
 })();
 
