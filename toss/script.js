@@ -163,12 +163,13 @@ const textPaths = [];
   // 초기 폰트 크기 후보
   let fontSize = Math.round(Math.min(H * DPR * 0.66, W * DPR * 0.54));
 
-  // measureText로 실제 텍스트 폭 측정 후 viewport에 맞게 축소
-  const measure = document.createElement('canvas').getContext('2d');
-  measure.font  = `700 ${fontSize}px ${FONT_FAMILY}`;
-  const rawW    = measure.measureText('toss').width;
-  const maxW    = W * DPR * 0.92;
-  if (rawW > maxW) fontSize = Math.round(fontSize * maxW / rawW);
+  // actualBoundingBox로 실제 잉크 폭 측정 (advance width보다 정확)
+  const tempCtx = document.createElement('canvas').getContext('2d');
+  tempCtx.font  = `700 ${fontSize}px ${FONT_FAMILY}`;
+  const m       = tempCtx.measureText('toss');
+  const inkW    = (m.actualBoundingBoxLeft ?? 0) + (m.actualBoundingBoxRight ?? m.width);
+  const maxW    = W * DPR * 0.88;
+  if (inkW > maxW) fontSize = Math.round(fontSize * maxW / inkW);
 
   const fontStr = `700 ${fontSize}px ${FONT_FAMILY}`;
 
