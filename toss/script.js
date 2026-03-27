@@ -117,7 +117,7 @@ paths.push({ pts: sampleCubicBez([177.784,313.236], [170.008,366.001], [172.304,
 paths.push({ pts: [[256.784, 2.236], [169.784, 402.236]], weight: 1 });
 
 // ── 유틸 ──────────────────────────────────────────────────
-let BASE_SPEED        = 0.2;
+let BASE_SPEED        = 0.12;
 const DOTS_PER_SVG_UNIT = 0.15;
 
 function pathLength(pts) {
@@ -246,7 +246,7 @@ function buildTextPaths(cssFontSize) {
 }
 
 // 초기 빌드 (CSS px 기준, 화면 너비의 25% 정도)
-const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED, showOutline: false };
+const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED };
 buildTextPaths(guiParams.fontSize);
 
 // ── 모프 상태 머신 ────────────────────────────────────────
@@ -335,31 +335,7 @@ function animate(timestamp) {
   const morphing = morphState.mode.startsWith('morphing');
   const inText   = morphState.mode === 'text';
 
-  // 디버그 외곽선: 텍스트/모프 상태에서 실제 폰트 렌더링 위치를 빨간 strokeText로 표시
-  if (guiParams.showOutline && (inText || morphing)) {
-    const fs = guiParams.fontSize;
-    ctx.save();
-    ctx.font         = `700 ${fs}px ${FONT_FAMILY}`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.strokeStyle  = 'rgba(255,0,0,0.7)';
-    ctx.lineWidth    = 1;
-    ctx.strokeText('toss', W / 2, H / 2);
-    // 스캔된 세그먼트도 파란 선으로 표시
-    ctx.strokeStyle = 'rgba(0,150,255,0.4)';
-    ctx.lineWidth   = 1;
-    for (const { pts } of textPaths) {
-      const [x1, y1] = sc(pts[0][0], pts[0][1]);
-      const [x2, y2] = sc(pts[1][0], pts[1][1]);
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  // 모프 진행도 계산 (morphToText를 모드 변경 전에 확정)
+// 모프 진행도 계산 (morphToText를 모드 변경 전에 확정)
   let morphProg = 0;
   let morphToText = false;
   if (morphing) {
@@ -472,7 +448,6 @@ if (typeof lil !== 'undefined') {
     gui.add(guiParams, 'speed', 0.02, 1.0, 0.01)
       .name('speed')
       .onChange(v => { BASE_SPEED = v; buildTextPaths(guiParams.fontSize); });
-    gui.add(guiParams, 'showOutline').name('outline');
   } catch (e) {
     console.warn('GUI init failed', e);
   }
