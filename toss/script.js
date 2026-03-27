@@ -139,7 +139,7 @@ for (let i = 1; i < INNER_N; i++) {
 
 // ── 유틸 ──────────────────────────────────────────────────
 let BASE_SPEED        = 0.12;
-const DOTS_PER_SVG_UNIT = 0.075;
+const DOTS_PER_SVG_UNIT = 0.15;
 
 function pathLength(pts) {
   let len = 0;
