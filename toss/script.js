@@ -229,7 +229,7 @@ function buildTextPaths(cssFontSize) {
 }
 
 // 초기 빌드 (CSS px 기준, 화면 너비의 25% 정도)
-const guiParams = { fontSize: Math.round(W * 0.25) };
+const guiParams = { fontSize: Math.round(W * 0.25), showOutline: false };
 buildTextPaths(guiParams.fontSize);
 
 // ── 모프 상태 머신 ────────────────────────────────────────
@@ -317,6 +317,30 @@ function animate(timestamp) {
 
   const morphing = morphState.mode.startsWith('morphing');
   const inText   = morphState.mode === 'text';
+
+  // 디버그 외곽선: 텍스트/모프 상태에서 실제 폰트 렌더링 위치를 빨간 strokeText로 표시
+  if (guiParams.showOutline && (inText || morphing)) {
+    const fs = guiParams.fontSize;
+    ctx.save();
+    ctx.font         = `700 ${fs}px ${FONT_FAMILY}`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle  = 'rgba(255,0,0,0.7)';
+    ctx.lineWidth    = 1;
+    ctx.strokeText('toss', W / 2, H / 2);
+    // 스캔된 세그먼트도 파란 선으로 표시
+    ctx.strokeStyle = 'rgba(0,150,255,0.4)';
+    ctx.lineWidth   = 1;
+    for (const { pts } of textPaths) {
+      const [x1, y1] = sc(pts[0][0], pts[0][1]);
+      const [x2, y2] = sc(pts[1][0], pts[1][1]);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   // 모프 진행도 계산 (morphToText를 모드 변경 전에 확정)
   let morphProg = 0;
@@ -424,10 +448,11 @@ requestAnimationFrame(animate);
 // ── Font size GUI ──────────────────────────────────────────
 if (typeof lil !== 'undefined') {
   try {
-    const gui = new lil.GUI({ title: 'font size' });
+    const gui = new lil.GUI({ title: 'debug' });
     gui.add(guiParams, 'fontSize', 10, Math.round(Math.min(W, H) * 0.8), 1)
-      .name('CSS px')
+      .name('font size (CSS px)')
       .onChange(v => buildTextPaths(v));
+    gui.add(guiParams, 'showOutline').name('outline');
   } catch (e) {
     console.warn('GUI init failed', e);
   }
