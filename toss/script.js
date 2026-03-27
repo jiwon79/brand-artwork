@@ -116,6 +116,27 @@ paths.push({ pts: sampleCubicBez([256.784,2.236], [256.56,38.471], [254.264,57.8
 paths.push({ pts: sampleCubicBez([177.784,313.236], [170.008,366.001], [172.304,346.599], [169.784,402.236]), weight: 1 });
 paths.push({ pts: [[256.784, 2.236], [169.784, 402.236]], weight: 1 });
 
+// ── 내부 세로 선 ──────────────────────────────────────────
+const pA = [256.784,   2.236];
+const pB = [248.784,  91.236];
+const pC = [177.784, 313.236];
+const pD = [169.784, 402.236];
+const INNER_N = 9;
+
+// A → lerp(C, D) : A에서 시작해 CD 구간으로 부채꼴
+for (let i = 1; i < INNER_N; i++) {
+  const t   = i / INNER_N;
+  const end = [pC[0] + t * (pD[0] - pC[0]), pC[1] + t * (pD[1] - pC[1])];
+  paths.push({ pts: ensureDownward([pA, end]), weight: 0.9 });
+}
+
+// lerp(A, B) → D : AB 구간에서 시작해 D로 부채꼴
+for (let i = 1; i < INNER_N; i++) {
+  const t     = i / INNER_N;
+  const start = [pA[0] + t * (pB[0] - pA[0]), pA[1] + t * (pB[1] - pA[1])];
+  paths.push({ pts: ensureDownward([start, pD]), weight: 0.9 });
+}
+
 // ── 유틸 ──────────────────────────────────────────────────
 let BASE_SPEED        = 0.12;
 const DOTS_PER_SVG_UNIT = 0.15;
