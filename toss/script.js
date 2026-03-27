@@ -140,7 +140,7 @@ function makeDot(pathIdx) {
     jitter: (Math.random() - 0.5) * 4,
     rx: 0, ry: 0, vx: 0, vy: 0,
     snapX: 0, snapY: 0,
-    tgtX: 0,  tgtY: 0,
+    tgtX: 0,  tgtY: 0, tgtVx: 0, tgtVy: 0,
   };
 }
 
@@ -282,6 +282,12 @@ function triggerMorph() {
     dots[i].tgtX = tx;
     dots[i].tgtY = ty;
 
+    // 목적지 경로 접선 방향으로 속도 스냅샷 — phase 랩어라운드 없이 선형 추적
+    const t2v = Math.min(d.phase + 0.001, 1);
+    const [tx2, ty2] = sc(...ptAt(dstPaths[d.pathIdx].pts, t2v));
+    dots[i].tgtVx = (tx2 - tx) / 0.001 * d.speed;
+    dots[i].tgtVy = (ty2 - ty) / 0.001 * d.speed;
+
     // 러버밴드 리셋
     dots[i].rx = dots[i].ry = dots[i].vx = dots[i].vy = 0;
   }
@@ -359,27 +365,28 @@ function animate(timestamp) {
     dot.phase = (dot.phase + dot.speed * dt) % 1;
 
     if (morphing) {
-      // morphToText는 모드 변경 전에 캡처된 값 사용 (로고 반짝임 버그 방지)
-      const dstDot   = morphToText ? textDots[i] : dots[i];
-      const dstPaths = morphToText ? textPaths   : paths;
-      const [tx, ty] = sc(...ptAt(dstPaths[dstDot.pathIdx].pts, dstDot.phase));
-      dot.tgtX = tx;
-      dot.tgtY = ty;
+      const dstDot = morphToText ? textDots[i] : dots[i];
 
-      // 목적지 dot의 jitter를 morphProg에 비례해 블렌딩 (모프 끝 순간이동 방지)
-      const dstDotJ = morphToText ? textDots[i] : dots[i];
-      const t2j = Math.min(dstDotJ.phase + 0.01, 1);
-      const [njx, njy] = sc(...ptAt(dstPaths[dstDotJ.pathIdx].pts, t2j));
+      // phase 재계산 대신 속도로 tgtX/Y 추적 → 랩어라운드 점프 방지
+      dot.tgtX += dot.tgtVx * dt;
+      dot.tgtY += dot.tgtVy * dt;
+
+      // jitter 블렌딩 (목적지 perp 방향으로 morphProg에 비례)
+      const t2j = Math.min(dstDot.phase + 0.01, 1);
+      const dstPathsJ = morphToText ? textPaths : paths;
+      const [njx, njy] = sc(...ptAt(dstPathsJ[dstDot.pathIdx].pts, t2j));
       const tjlen = Math.sqrt((njx - dot.tgtX) ** 2 + (njy - dot.tgtY) ** 2) || 1;
       const jperpX = -(njy - dot.tgtY) / tjlen;
       const jperpY =  (njx - dot.tgtX) / tjlen;
-      const jBlend = jperpX * dstDotJ.jitter * morphProg;
-      const jBlendY = jperpY * dstDotJ.jitter * morphProg;
 
-      const fx = dot.snapX + (dot.tgtX - dot.snapX) * morphProg + jBlend;
-      const fy = dot.snapY + (dot.tgtY - dot.snapY) * morphProg + jBlendY;
+      const fx = dot.snapX + (dot.tgtX - dot.snapX) * morphProg + jperpX * dstDot.jitter * morphProg;
+      const fy = dot.snapY + (dot.tgtY - dot.snapY) * morphProg + jperpY * dstDot.jitter * morphProg;
 
-      // 목적지 phase 기준으로 페이드 적용 (모프 완료 시 연속성 확보)
+      // radius / alpha 블렌딩 → 크기·밝기 갑작스런 변화 방지
+      const morphRadius = dot.radius + (dstDot.radius - dot.radius) * morphProg;
+      const morphAlpha  = dot.alpha  + (dstDot.alpha  - dot.alpha)  * morphProg;
+
+      // 목적지 phase 기준으로 페이드 적용
       const fadePhase = morphToText ? textDots[i].phase : dot.phase;
       const FADE = 0.1;
       let fade = 1;
@@ -387,8 +394,8 @@ function animate(timestamp) {
       else if (fadePhase > 1 - FADE) fade = (1 - fadePhase) / FADE;
 
       ctx.beginPath();
-      ctx.arc(fx, fy, dot.radius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${(dot.alpha * fade).toFixed(2)})`;
+      ctx.arc(fx, fy, morphRadius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${(morphAlpha * fade).toFixed(2)})`;
       ctx.fill();
       continue;
     }
