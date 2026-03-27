@@ -214,16 +214,24 @@ function buildTextPaths(cssFontSize) {
     }
   }
 
-  // textDots 재생성 (dots.length에 맞춤)
+  // textDots 재생성 — dots.length개를 textPaths에 길이 비례로 균등 배분
   textDots.length = 0;
   if (textPaths.length === 0) return;
+
+  // 각 path의 길이 비율 계산
+  const lens    = textPaths.map(({ pts }) => pathLength(pts));
+  const totalLen = lens.reduce((a, b) => a + b, 0);
+
   textPaths.forEach(({ pts }, pi) => {
-    const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT));
+    const count = Math.max(1, Math.round(dots.length * lens[pi] / totalLen));
     for (let d = 0; d < count; d++) textDots.push(makeDot(pi));
   });
+
+  // 길이 맞춤 (±반올림 오차)
   while (textDots.length < dots.length) {
-    const src = textDots[Math.floor(Math.random() * textDots.length)];
-    textDots.push({ ...src, phase: Math.random() });
+    // 부족한 만큼은 가장 긴 path에서 추가
+    const pi = lens.indexOf(Math.max(...lens));
+    textDots.push({ ...makeDot(pi), phase: Math.random() });
   }
   textDots.length = dots.length;
 }
