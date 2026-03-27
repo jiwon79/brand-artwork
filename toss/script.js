@@ -139,7 +139,7 @@ for (let i = 1; i < INNER_N; i++) {
 
 // ── 유틸 ──────────────────────────────────────────────────
 let BASE_SPEED        = 0.12;
-const DOTS_PER_SVG_UNIT = 0.2;
+let DOTS_PER_SVG_UNIT = 0.2;
 
 function pathLength(pts) {
   let len = 0;
@@ -164,10 +164,13 @@ function makeDot(pathIdx) {
 }
 
 // ── 로고 점 생성 ──────────────────────────────────────────
-const dots = paths.flatMap(({ pts, weight }, pi) => {
-  const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT * weight));
-  return Array.from({ length: count }, () => makeDot(pi));
-});
+function buildLogoDots() {
+  return paths.flatMap(({ pts, weight }, pi) => {
+    const count = Math.max(1, Math.round(pathLength(pts) * DOTS_PER_SVG_UNIT * weight));
+    return Array.from({ length: count }, () => makeDot(pi));
+  });
+}
+const dots = buildLogoDots();
 
 const avgLogoLen = paths.reduce((s, { pts }) => s + pathLength(pts), 0) / paths.length;
 
@@ -275,8 +278,13 @@ function buildTextPaths(cssFontSize) {
   }
 }
 
+// ── 버튼 위치: 로고 하단 바로 아래 ───────────────────────
+const logoBottomY = H / 2 + (VH * scl) / 2; // CSS px
+const morphBtn = document.getElementById('morph-btn');
+if (morphBtn) morphBtn.style.top = (logoBottomY + 24) + 'px';
+
 // 초기 빌드 (CSS px 기준, 화면 너비의 25% 정도)
-const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED, tossBlue: false };
+const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED, density: DOTS_PER_SVG_UNIT, tossBlue: false };
 let dotColor = '255,255,255';
 buildTextPaths(guiParams.fontSize);
 
@@ -470,6 +478,16 @@ if (typeof lil !== 'undefined') {
         const scale = v / BASE_SPEED;
         BASE_SPEED = v;
         for (const dot of activeDots) dot.speed *= scale;
+      });
+    gui.add(guiParams, 'density', 0.05, 0.6, 0.01)
+      .name('density')
+      .onChange(v => {
+        DOTS_PER_SVG_UNIT = v;
+        if (activePaths === paths) {
+          activeDots = buildLogoDots();
+        } else if (textPaths.length > 0) {
+          activeDots = generateDots(textPaths, buildLogoDots().length);
+        }
       });
     gui.add(guiParams, 'tossBlue')
       .name('toss blue')
