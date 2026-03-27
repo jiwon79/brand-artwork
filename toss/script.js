@@ -107,7 +107,7 @@ for (const outerFn of [outerL, outerR]) {
       midLine[0] + alpha * (Mid[0] - midLine[0]),
       midLine[1] + alpha * (Mid[1] - midLine[1]),
     ];
-    const weight = alpha < 0.1 ? alpha / 0.1 : 0.5 + 1.5 * alpha;
+    const weight = alpha < 0.1 ? alpha / 0.1 : 0.2 + 1.8 * alpha * alpha;
     paths.push({ pts: ensureDownward(sampleQuadBez(P1, cp, P2)), weight });
   }
 }
@@ -139,7 +139,7 @@ for (let i = 1; i < INNER_N; i++) {
 
 // ── 유틸 ──────────────────────────────────────────────────
 let BASE_SPEED        = 0.12;
-const DOTS_PER_SVG_UNIT = 0.15;
+const DOTS_PER_SVG_UNIT = 0.075;
 
 function pathLength(pts) {
   let len = 0;
