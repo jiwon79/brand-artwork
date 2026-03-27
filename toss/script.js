@@ -429,7 +429,12 @@ if (typeof lil !== 'undefined') {
     const gui = new lil.GUI({ title: 'debug' });
     gui.add(guiParams, 'fontSize', 10, Math.round(Math.min(W, H) * 0.8), 1)
       .name('font size (CSS px)')
-      .onChange(v => buildTextPaths(v));
+      .onChange(v => {
+        buildTextPaths(v);
+        if (activePaths === textPaths && textPaths.length > 0) {
+          activeDots = generateDots(textPaths, dots.length);
+        }
+      });
     gui.add(guiParams, 'speed', 0.02, 1.0, 0.01)
       .name('speed')
       .onChange(v => { BASE_SPEED = v; buildTextPaths(guiParams.fontSize); });
