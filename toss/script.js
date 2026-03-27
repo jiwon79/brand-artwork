@@ -173,6 +173,13 @@ function generateDots(pathSet, count) {
   return result;
 }
 
+function fadeForPhase(phase) {
+  const FADE = 0.1;
+  if (phase < FADE)          return phase / FADE;
+  if (phase > 1 - FADE)      return (1 - phase) / FADE;
+  return 1;
+}
+
 function computeDotPos(dot, pathSet) {
   const [cx, cy] = sc(...ptAt(pathSet[dot.pathIdx].pts, dot.phase));
   const t2 = Math.min(dot.phase + 0.01, 1);
@@ -277,7 +284,7 @@ function triggerMorph() {
   // snapshot current rendered positions
   morphFrom = activeDots.map(dot => {
     const [jx, jy] = computeDotPos(dot, activePaths);
-    return { x: jx + dot.rx, y: jy + dot.ry, radius: dot.radius, alpha: dot.alpha };
+    return { x: jx + dot.rx, y: jy + dot.ry, radius: dot.radius, alpha: dot.alpha * fadeForPhase(dot.phase) };
   });
 
   // fresh destination dots
@@ -287,7 +294,7 @@ function triggerMorph() {
   // fixed destination positions
   morphTo = pendingDots.map(dot => {
     const [jx, jy] = computeDotPos(dot, dstPaths);
-    return { x: jx, y: jy, radius: dot.radius, alpha: dot.alpha };
+    return { x: jx, y: jy, radius: dot.radius, alpha: dot.alpha * fadeForPhase(dot.phase) };
   });
 
   morphState.mode      = toText ? 'morphing-to-text' : 'morphing-to-logo';
