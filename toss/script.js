@@ -445,7 +445,11 @@ if (typeof lil !== 'undefined') {
       });
     gui.add(guiParams, 'speed', 0.02, 1.0, 0.01)
       .name('speed')
-      .onChange(v => { BASE_SPEED = v; buildTextPaths(guiParams.fontSize); });
+      .onChange(v => {
+        const scale = v / BASE_SPEED;
+        BASE_SPEED = v;
+        for (const dot of activeDots) dot.speed *= scale;
+      });
     gui.add(guiParams, 'tossBlue')
       .name('toss blue')
       .onChange(v => {
