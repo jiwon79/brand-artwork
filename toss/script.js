@@ -139,8 +139,6 @@ function makeDot(pathIdx) {
     alpha:  0.5 + Math.random() * 0.5,
     jitter: (Math.random() - 0.5) * 4,
     rx: 0, ry: 0, vx: 0, vy: 0,
-    snapX: 0, snapY: 0,
-    tgtX: 0,  tgtY: 0, tgtVx: 0, tgtVy: 0,
   };
 }
 
@@ -150,6 +148,41 @@ const dots = paths.flatMap(({ pts, weight }, pi) => {
   return Array.from({ length: count }, () => makeDot(pi));
 });
 
+const avgLogoLen = paths.reduce((s, { pts }) => s + pathLength(pts), 0) / paths.length;
+
+function generateDots(pathSet, count) {
+  const isText = pathSet !== paths;
+  const lens = pathSet.map(({ pts }) => pathLength(pts));
+  const totalLen = lens.reduce((a, b) => a + b, 0);
+  const result = [];
+  pathSet.forEach(({ pts }, pi) => {
+    const n = Math.max(1, Math.round(count * lens[pi] / totalLen));
+    for (let d = 0; d < n; d++) {
+      const dot = makeDot(pi);
+      if (isText) dot.speed = dot.speed * avgLogoLen / Math.max(lens[pi], 1);
+      result.push(dot);
+    }
+  });
+  while (result.length < count) {
+    const maxPi = lens.indexOf(Math.max(...lens));
+    const dot = makeDot(maxPi);
+    if (isText) dot.speed = dot.speed * avgLogoLen / Math.max(lens[maxPi], 1);
+    result.push(dot);
+  }
+  result.length = count;
+  return result;
+}
+
+function computeDotPos(dot, pathSet) {
+  const [cx, cy] = sc(...ptAt(pathSet[dot.pathIdx].pts, dot.phase));
+  const t2 = Math.min(dot.phase + 0.01, 1);
+  const [nx, ny] = sc(...ptAt(pathSet[dot.pathIdx].pts, t2));
+  const dx = nx - cx, dy = ny - cy;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const px = -dy / len, py = dx / len;
+  return [cx + px * dot.jitter, cy + py * dot.jitter];
+}
+
 // ── "toss" 텍스트 경로 생성 ───────────────────────────────
 const TEXT_SCAN_STEP       = 4;
 const TEXT_MIN_HEIGHT_PX   = 10;
@@ -157,7 +190,6 @@ const TEXT_ALPHA_THRESHOLD = 128;
 const FONT_FAMILY = `system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
 
 const textPaths = [];
-const textDots  = [];
 
 // cssFontSize: CSS 픽셀 단위 폰트 크기
 function buildTextPaths(cssFontSize) {
@@ -213,41 +245,19 @@ function buildTextPaths(cssFontSize) {
       }
     }
   }
-
-  // textDots 재생성 — dots.length개를 textPaths에 길이 비례로 균등 배분
-  textDots.length = 0;
-  if (textPaths.length === 0) return;
-
-  // 각 path의 길이
-  const lens     = textPaths.map(({ pts }) => pathLength(pts));
-  const totalLen = lens.reduce((a, b) => a + b, 0);
-
-  // 로고 경로 평균 길이 기준으로 시각적 이동 속도 정규화
-  // visual_speed(SVG/s) = speed * pathLen → pathLen에 반비례하게 speed 조정
-  const avgLogoLen = paths.reduce((s, { pts }) => s + pathLength(pts), 0) / paths.length;
-
-  textPaths.forEach(({ pts }, pi) => {
-    const count = Math.max(1, Math.round(dots.length * lens[pi] / totalLen));
-    for (let d = 0; d < count; d++) {
-      const dot = makeDot(pi);
-      dot.speed = dot.speed * avgLogoLen / Math.max(lens[pi], 1); // 속도 정규화
-      textDots.push(dot);
-    }
-  });
-
-  // 길이 맞춤 (±반올림 오차)
-  while (textDots.length < dots.length) {
-    const pi  = lens.indexOf(Math.max(...lens));
-    const dot = makeDot(pi);
-    dot.speed = dot.speed * avgLogoLen / Math.max(lens[pi], 1);
-    textDots.push(dot);
-  }
-  textDots.length = dots.length;
 }
 
 // 초기 빌드 (CSS px 기준, 화면 너비의 25% 정도)
 const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED };
 buildTextPaths(guiParams.fontSize);
+
+let activeDots  = dots;
+let activePaths = paths;
+
+let morphFrom   = [];
+let morphTo     = [];
+let pendingDots  = null;
+let pendingPaths = null;
 
 // ── 모프 상태 머신 ────────────────────────────────────────
 const MORPH_DURATION = 700; // ms
@@ -260,37 +270,25 @@ function easeInOut(t) {
 function triggerMorph() {
   if (morphState.mode.startsWith('morphing')) return;
 
-  const toText    = morphState.mode === 'logo';
-  const srcDots   = toText ? dots : textDots;
-  const srcPaths  = toText ? paths : textPaths;
-  const dstDots   = toText ? textDots : dots;
-  const dstPaths  = toText ? textPaths : paths;
+  const toText   = morphState.mode === 'logo';
+  const dstPaths = toText ? textPaths : paths;
+  if (dstPaths.length === 0) return;
 
-  for (let i = 0; i < dots.length; i++) {
-    const s = srcDots[i];
-    const [cx, cy] = sc(...ptAt(srcPaths[s.pathIdx].pts, s.phase));
-    // jitter 포함: 실제 표시 위치를 스냅
-    const t2s = Math.min(s.phase + 0.01, 1);
-    const [snx, sny] = sc(...ptAt(srcPaths[s.pathIdx].pts, t2s));
-    const stlen = Math.sqrt((snx-cx)**2 + (sny-cy)**2) || 1;
-    const sperpX = -(sny-cy)/stlen, sperpY = (snx-cx)/stlen;
-    dots[i].snapX = cx + sperpX * s.jitter + s.rx;
-    dots[i].snapY = cy + sperpY * s.jitter + s.ry;
+  // snapshot current rendered positions
+  morphFrom = activeDots.map(dot => {
+    const [jx, jy] = computeDotPos(dot, activePaths);
+    return { x: jx + dot.rx, y: jy + dot.ry, radius: dot.radius, alpha: dot.alpha };
+  });
 
-    const d = dstDots[i];
-    const [tx, ty] = sc(...ptAt(dstPaths[d.pathIdx].pts, d.phase));
-    dots[i].tgtX = tx;
-    dots[i].tgtY = ty;
+  // fresh destination dots
+  pendingDots  = generateDots(dstPaths, activeDots.length);
+  pendingPaths = dstPaths;
 
-    // 목적지 경로 접선 방향으로 속도 스냅샷 — phase 랩어라운드 없이 선형 추적
-    const t2v = Math.min(d.phase + 0.001, 1);
-    const [tx2, ty2] = sc(...ptAt(dstPaths[d.pathIdx].pts, t2v));
-    dots[i].tgtVx = (tx2 - tx) / 0.001 * d.speed;
-    dots[i].tgtVy = (ty2 - ty) / 0.001 * d.speed;
-
-    // 러버밴드 리셋
-    dots[i].rx = dots[i].ry = dots[i].vx = dots[i].vy = 0;
-  }
+  // fixed destination positions
+  morphTo = pendingDots.map(dot => {
+    const [jx, jy] = computeDotPos(dot, dstPaths);
+    return { x: jx, y: jy, radius: dot.radius, alpha: dot.alpha };
+  });
 
   morphState.mode      = toText ? 'morphing-to-text' : 'morphing-to-logo';
   morphState.startTime = performance.now();
@@ -339,83 +337,53 @@ function animate(timestamp) {
   ctx.fillRect(0, 0, W, H);
 
   const morphing = morphState.mode.startsWith('morphing');
-  const inText   = morphState.mode === 'text';
 
-// 모프 진행도 계산 (morphToText를 모드 변경 전에 확정)
   let morphProg = 0;
-  let morphToText = false;
   if (morphing) {
-    morphToText = morphState.mode === 'morphing-to-text'; // 모드 변경 전 캡처
     const raw = (timestamp - morphState.startTime) / MORPH_DURATION;
     morphProg = easeInOut(Math.min(raw, 1));
     if (raw >= 1) {
-      morphState.mode = morphToText ? 'text' : 'logo';
+      activeDots   = pendingDots;
+      activePaths  = pendingPaths;
+      pendingDots  = null;
+      pendingPaths = null;
+      morphState.mode = morphState.mode === 'morphing-to-text' ? 'text' : 'logo';
     }
   }
 
-  // 두 세트 모두 phase 진행 (목표 위치가 흐르도록)
-  for (const d of textDots) d.phase = (d.phase + d.speed * dt) % 1;
+  if (morphing) {
+    for (let i = 0; i < morphFrom.length; i++) {
+      const fr = morphFrom[i];
+      const to = morphTo[i];
+      const fx = fr.x + (to.x - fr.x) * morphProg;
+      const fy = fr.y + (to.y - fr.y) * morphProg;
+      const r  = fr.radius + (to.radius - fr.radius) * morphProg;
+      const a  = fr.alpha  + (to.alpha  - fr.alpha)  * morphProg;
+      ctx.beginPath();
+      ctx.arc(fx, fy, r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+      ctx.fill();
+    }
+    requestAnimationFrame(animate);
+    return;
+  }
 
-  // 렌더링할 활성 점 세트 결정
-  const activeDots  = inText ? textDots : dots;
-  const activePaths = inText ? textPaths : paths;
-
-  for (let i = 0; i < dots.length; i++) {
-    const dot = dots[i];
+  // normal flow
+  for (let i = 0; i < activeDots.length; i++) {
+    const dot = activeDots[i];
     dot.phase = (dot.phase + dot.speed * dt) % 1;
 
-    if (morphing) {
-      const dstDot = morphToText ? textDots[i] : dots[i];
-
-      // phase 재계산 대신 속도로 tgtX/Y 추적 → 랩어라운드 점프 방지
-      dot.tgtX += dot.tgtVx * dt;
-      dot.tgtY += dot.tgtVy * dt;
-
-      // jitter 블렌딩 (목적지 perp 방향으로 morphProg에 비례)
-      const t2j = Math.min(dstDot.phase + 0.01, 1);
-      const dstPathsJ = morphToText ? textPaths : paths;
-      const [njx, njy] = sc(...ptAt(dstPathsJ[dstDot.pathIdx].pts, t2j));
-      const tjlen = Math.sqrt((njx - dot.tgtX) ** 2 + (njy - dot.tgtY) ** 2) || 1;
-      const jperpX = -(njy - dot.tgtY) / tjlen;
-      const jperpY =  (njx - dot.tgtX) / tjlen;
-
-      const fx = dot.snapX + (dot.tgtX - dot.snapX) * morphProg + jperpX * dstDot.jitter * morphProg;
-      const fy = dot.snapY + (dot.tgtY - dot.snapY) * morphProg + jperpY * dstDot.jitter * morphProg;
-
-      // radius / alpha 블렌딩 → 크기·밝기 갑작스런 변화 방지
-      const morphRadius = dot.radius + (dstDot.radius - dot.radius) * morphProg;
-      const morphAlpha  = dot.alpha  + (dstDot.alpha  - dot.alpha)  * morphProg;
-
-      // 목적지 phase 기준으로 페이드 적용
-      const fadePhase = morphToText ? textDots[i].phase : dot.phase;
-      const FADE = 0.1;
-      let fade = 1;
-      if (fadePhase < FADE)          fade = fadePhase / FADE;
-      else if (fadePhase > 1 - FADE) fade = (1 - fadePhase) / FADE;
-
-      ctx.beginPath();
-      ctx.arc(fx, fy, morphRadius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${(morphAlpha * fade).toFixed(2)})`;
-      ctx.fill();
-      continue;
-    }
-
-    // 일반 플로우 모드
-    const activeDot  = inText ? textDots[i] : dot;
-    const [svgX, svgY] = ptAt(activePaths[activeDot.pathIdx].pts, activeDot.phase);
-    const [cx, cy]     = sc(svgX, svgY);
-
-    const t2 = Math.min(activeDot.phase + 0.01, 1);
-    const [nx2, ny2] = ptAt(activePaths[activeDot.pathIdx].pts, t2);
+    const [cx, cy] = sc(...ptAt(activePaths[dot.pathIdx].pts, dot.phase));
+    const t2 = Math.min(dot.phase + 0.01, 1);
+    const [nx2, ny2] = ptAt(activePaths[dot.pathIdx].pts, t2);
     const [sx2, sy2] = sc(nx2, ny2);
     const tdx = sx2 - cx, tdy = sy2 - cy;
     const tlen = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
     const perpX = -tdy / tlen, perpY = tdx / tlen;
 
-    const jx = cx + perpX * activeDot.jitter;
-    const jy = cy + perpY * activeDot.jitter;
+    const jx = cx + perpX * dot.jitter;
+    const jy = cy + perpY * dot.jitter;
 
-    // 러버밴드 (activeDot의 rx/ry 사용)
     let tgtRx = 0, tgtRy = 0;
     if (pointer.active) {
       const ex = cx - pointer.x, ey = cy - pointer.y;
@@ -428,25 +396,25 @@ function animate(timestamp) {
         tgtRy = perpY * mag;
       }
     }
-    activeDot.vx += (tgtRx - activeDot.rx) * SPRING_K * dt;
-    activeDot.vy += (tgtRy - activeDot.ry) * SPRING_K * dt;
+    dot.vx += (tgtRx - dot.rx) * SPRING_K * dt;
+    dot.vy += (tgtRy - dot.ry) * SPRING_K * dt;
     const damp = Math.max(0, 1 - DAMP_RATE * dt);
-    activeDot.vx *= damp;
-    activeDot.vy *= damp;
-    activeDot.rx += activeDot.vx * dt;
-    activeDot.ry += activeDot.vy * dt;
+    dot.vx *= damp;
+    dot.vy *= damp;
+    dot.rx += dot.vx * dt;
+    dot.ry += dot.vy * dt;
 
-    const fx = jx + activeDot.rx;
-    const fy = jy + activeDot.ry;
+    const fx = jx + dot.rx;
+    const fy = jy + dot.ry;
 
     const FADE = 0.1;
     let fade = 1;
-    if (activeDot.phase < FADE)          fade = activeDot.phase / FADE;
-    else if (activeDot.phase > 1 - FADE) fade = (1 - activeDot.phase) / FADE;
+    if (dot.phase < FADE)          fade = dot.phase / FADE;
+    else if (dot.phase > 1 - FADE) fade = (1 - dot.phase) / FADE;
 
     ctx.beginPath();
-    ctx.arc(fx, fy, activeDot.radius, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,255,255,${(activeDot.alpha * fade).toFixed(2)})`;
+    ctx.arc(fx, fy, dot.radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${(dot.alpha * fade).toFixed(2)})`;
     ctx.fill();
   }
 
