@@ -218,20 +218,29 @@ function buildTextPaths(cssFontSize) {
   textDots.length = 0;
   if (textPaths.length === 0) return;
 
-  // 각 path의 길이 비율 계산
-  const lens    = textPaths.map(({ pts }) => pathLength(pts));
+  // 각 path의 길이
+  const lens     = textPaths.map(({ pts }) => pathLength(pts));
   const totalLen = lens.reduce((a, b) => a + b, 0);
+
+  // 로고 경로 평균 길이 기준으로 시각적 이동 속도 정규화
+  // visual_speed(SVG/s) = speed * pathLen → pathLen에 반비례하게 speed 조정
+  const avgLogoLen = paths.reduce((s, { pts }) => s + pathLength(pts), 0) / paths.length;
 
   textPaths.forEach(({ pts }, pi) => {
     const count = Math.max(1, Math.round(dots.length * lens[pi] / totalLen));
-    for (let d = 0; d < count; d++) textDots.push(makeDot(pi));
+    for (let d = 0; d < count; d++) {
+      const dot = makeDot(pi);
+      dot.speed = dot.speed * avgLogoLen / Math.max(lens[pi], 1); // 속도 정규화
+      textDots.push(dot);
+    }
   });
 
   // 길이 맞춤 (±반올림 오차)
   while (textDots.length < dots.length) {
-    // 부족한 만큼은 가장 긴 path에서 추가
-    const pi = lens.indexOf(Math.max(...lens));
-    textDots.push({ ...makeDot(pi), phase: Math.random() });
+    const pi  = lens.indexOf(Math.max(...lens));
+    const dot = makeDot(pi);
+    dot.speed = dot.speed * avgLogoLen / Math.max(lens[pi], 1);
+    textDots.push(dot);
   }
   textDots.length = dots.length;
 }
