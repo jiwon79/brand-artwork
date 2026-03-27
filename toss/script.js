@@ -255,7 +255,9 @@ function buildTextPaths(cssFontSize) {
 }
 
 // 초기 빌드 (CSS px 기준, 화면 너비의 25% 정도)
-const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED };
+const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED, tossBlue: false };
+let dotColor = '255,255,255';
+let bgColor  = '#000';
 buildTextPaths(guiParams.fontSize);
 
 let activeDots  = dots;
@@ -340,7 +342,7 @@ function animate(timestamp) {
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
   lastTime = timestamp;
 
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = bgColor;
   ctx.fillRect(0, 0, W, H);
 
   const morphing = morphState.mode.startsWith('morphing');
@@ -368,7 +370,7 @@ function animate(timestamp) {
       const a  = fr.alpha  + (to.alpha  - fr.alpha)  * morphProg;
       ctx.beginPath();
       ctx.arc(fx, fy, r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+      ctx.fillStyle = `rgba(${dotColor},${a.toFixed(2)})`;
       ctx.fill();
     }
     requestAnimationFrame(animate);
@@ -445,6 +447,12 @@ if (typeof lil !== 'undefined') {
     gui.add(guiParams, 'speed', 0.02, 1.0, 0.01)
       .name('speed')
       .onChange(v => { BASE_SPEED = v; buildTextPaths(guiParams.fontSize); });
+    gui.add(guiParams, 'tossBlue')
+      .name('toss blue')
+      .onChange(v => {
+        dotColor = v ? '0,100,255' : '255,255,255';
+        bgColor  = v ? '#001a40'   : '#000';
+      });
   } catch (e) {
     console.warn('GUI init failed', e);
   }
