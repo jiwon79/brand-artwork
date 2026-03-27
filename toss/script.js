@@ -127,14 +127,14 @@ const INNER_N = 9;
 for (let i = 1; i < INNER_N; i++) {
   const t   = i / INNER_N;
   const end = [pC[0] + t * (pD[0] - pC[0]), pC[1] + t * (pD[1] - pC[1])];
-  paths.push({ pts: ensureDownward([pA, end]), weight: 0.9 });
+  paths.push({ pts: ensureDownward([pA, end]), weight: 0.45 });
 }
 
 // lerp(A, B) → D : AB 구간에서 시작해 D로 부채꼴
 for (let i = 1; i < INNER_N; i++) {
   const t     = i / INNER_N;
   const start = [pA[0] + t * (pB[0] - pA[0]), pA[1] + t * (pB[1] - pA[1])];
-  paths.push({ pts: ensureDownward([start, pD]), weight: 0.9 });
+  paths.push({ pts: ensureDownward([start, pD]), weight: 0.45 });
 }
 
 // ── 유틸 ──────────────────────────────────────────────────
