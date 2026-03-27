@@ -307,8 +307,8 @@ function triggerMorph() {
 // ── 터치/마우스 입력 ──────────────────────────────────────
 const REPULSE_RADIUS = 110;
 const MAX_DEFLECT    = 90;
-const SPRING_K       = 28;
-const DAMP_RATE      = 5;
+const SPRING_K       = 56;
+const DAMP_RATE      = 10;
 
 const pointer = { x: 0, y: 0, active: false };
 
