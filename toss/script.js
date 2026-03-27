@@ -281,7 +281,7 @@ function buildTextPaths(cssFontSize) {
 // ── 버튼 위치: 로고 하단 바로 아래 ───────────────────────
 const logoBottomY = H / 2 + (VH * scl) / 2; // CSS px
 const morphBtn = document.getElementById('morph-btn');
-if (morphBtn) morphBtn.style.top = (logoBottomY + 24) + 'px';
+if (morphBtn) morphBtn.style.top = (logoBottomY + 48) + 'px';
 
 // 초기 빌드 (CSS px 기준, 화면 너비의 25% 정도)
 const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED, density: DOTS_PER_SVG_UNIT, tossBlue: false };
