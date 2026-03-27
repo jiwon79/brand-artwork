@@ -366,8 +366,18 @@ function animate(timestamp) {
       dot.tgtX = tx;
       dot.tgtY = ty;
 
-      const fx = dot.snapX + (dot.tgtX - dot.snapX) * morphProg;
-      const fy = dot.snapY + (dot.tgtY - dot.snapY) * morphProg;
+      // 목적지 dot의 jitter를 morphProg에 비례해 블렌딩 (모프 끝 순간이동 방지)
+      const dstDotJ = morphToText ? textDots[i] : dots[i];
+      const t2j = Math.min(dstDotJ.phase + 0.01, 1);
+      const [njx, njy] = sc(...ptAt(dstPaths[dstDotJ.pathIdx].pts, t2j));
+      const tjlen = Math.sqrt((njx - dot.tgtX) ** 2 + (njy - dot.tgtY) ** 2) || 1;
+      const jperpX = -(njy - dot.tgtY) / tjlen;
+      const jperpY =  (njx - dot.tgtX) / tjlen;
+      const jBlend = jperpX * dstDotJ.jitter * morphProg;
+      const jBlendY = jperpY * dstDotJ.jitter * morphProg;
+
+      const fx = dot.snapX + (dot.tgtX - dot.snapX) * morphProg + jBlend;
+      const fy = dot.snapY + (dot.tgtY - dot.snapY) * morphProg + jBlendY;
 
       // 목적지 phase 기준으로 페이드 적용 (모프 완료 시 연속성 확보)
       const fadePhase = morphToText ? textDots[i].phase : dot.phase;
