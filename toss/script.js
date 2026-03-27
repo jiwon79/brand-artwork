@@ -341,7 +341,7 @@ function animate(timestamp) {
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
   lastTime = timestamp;
 
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = '#202632';
   ctx.fillRect(0, 0, W, H);
 
   const morphing = morphState.mode.startsWith('morphing');
