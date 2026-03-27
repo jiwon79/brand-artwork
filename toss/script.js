@@ -117,7 +117,7 @@ paths.push({ pts: sampleCubicBez([177.784,313.236], [170.008,366.001], [172.304,
 paths.push({ pts: [[256.784, 2.236], [169.784, 402.236]], weight: 1 });
 
 // ── 유틸 ──────────────────────────────────────────────────
-const BASE_SPEED        = 0.2;
+let BASE_SPEED        = 0.2;
 const DOTS_PER_SVG_UNIT = 0.15;
 
 function pathLength(pts) {
@@ -246,7 +246,7 @@ function buildTextPaths(cssFontSize) {
 }
 
 // 초기 빌드 (CSS px 기준, 화면 너비의 25% 정도)
-const guiParams = { fontSize: Math.round(W * 0.25), showOutline: false };
+const guiParams = { fontSize: Math.round(W * 0.25), speed: BASE_SPEED, showOutline: false };
 buildTextPaths(guiParams.fontSize);
 
 // ── 모프 상태 머신 ────────────────────────────────────────
@@ -469,6 +469,9 @@ if (typeof lil !== 'undefined') {
     gui.add(guiParams, 'fontSize', 10, Math.round(Math.min(W, H) * 0.8), 1)
       .name('font size (CSS px)')
       .onChange(v => buildTextPaths(v));
+    gui.add(guiParams, 'speed', 0.02, 1.0, 0.01)
+      .name('speed')
+      .onChange(v => { BASE_SPEED = v; buildTextPaths(guiParams.fontSize); });
     gui.add(guiParams, 'showOutline').name('outline');
   } catch (e) {
     console.warn('GUI init failed', e);
