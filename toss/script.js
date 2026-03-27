@@ -166,11 +166,14 @@ function buildTextPaths(cssFontSize) {
   const fontSize = Math.round(cssFontSize * DPR); // 물리 픽셀로 변환
   const fontStr  = `700 ${fontSize}px ${FONT_FAMILY}`;
 
-  // 실제 텍스트 폭 측정 → 오프스크린 캔버스를 충분히 크게
+  // 실제 잉크 폭 측정 (actualBoundingBox > advance width로 더 정확)
   const tempCtx = document.createElement('canvas').getContext('2d');
   tempCtx.font  = fontStr;
-  const measuredW = tempCtx.measureText('toss').width;
-  const offW = Math.max(W * DPR, Math.ceil(measuredW * 1.1));
+  const m       = tempCtx.measureText('toss');
+  const inkW    = (m.actualBoundingBoxLeft ?? 0) + (m.actualBoundingBoxRight ?? m.width);
+  // 캔버스 중앙 기준으로 좌우 각각 inkW/2 + 50% 여유
+  const halfOff = Math.ceil(Math.max(inkW * 0.75, W * DPR / 2));
+  const offW    = halfOff * 2;
   const offH = H * DPR;
 
   const off  = document.createElement('canvas');
