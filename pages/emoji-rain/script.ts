@@ -5,8 +5,9 @@ const flashEl = document.getElementById('swipe-flash') as HTMLDivElement;
 const introEl = document.getElementById('intro') as HTMLDivElement;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const GRAVITY         = 0.55;
-const GRAVITY_SIDE    = 1.8;
+const GRAVITY         = 0.27;  // halved from 0.55
+const GRAVITY_SIDE    = 1.2;
+const GRAVITY_SIDE_Y  = 0.05;
 const REPULSION_DIST  = 130;
 const REPULSION_FORCE = 0.6;
 const WALL_REP_DIST   = 80;
@@ -36,6 +37,11 @@ const REG_EMOJIS = [
 let W = 0, H = 0;
 let gx = 0, gy = GRAVITY;
 let repulse = false;
+
+// 3 gravity modes: down | side | repulsion
+type GravityMode = 'down' | 'side' | 'repulsion';
+let gravMode: GravityMode = 'down';
+
 const particles: EmojiParticle[] = [];
 
 // ─── EmojiParticle ────────────────────────────────────────────────────────────
@@ -81,10 +87,7 @@ class EmojiParticle {
   }
 
   update(): void {
-    // Fade in
     this.opacity = Math.min(1, this.opacity + 0.05);
-
-    // Angle
     this.angle += this.angVel;
     this.angVel *= 0.98;
 
@@ -98,7 +101,6 @@ class EmojiParticle {
         this.vy += WALL_REP_FORCE * (1 - this.y / WALL_REP_DIST);
       if (this.y > H - WALL_REP_DIST)
         this.vy -= WALL_REP_FORCE * (1 - (H - this.y) / WALL_REP_DIST);
-      // Dampen
       this.vx *= 0.94;
       this.vy *= 0.94;
       this.x += this.vx;
@@ -116,32 +118,32 @@ class EmojiParticle {
     if (this.x - r < 0) {
       this.x = r;
       const abs = Math.abs(this.vx);
-      this.vx = abs < 1 ? 0 : abs * this.bounce;
+      this.vx = abs < 1.2 ? 0 : abs * this.bounce;
       this.vy *= this.friction;
     } else if (this.x + r > W) {
       this.x = W - r;
       const abs = Math.abs(this.vx);
-      this.vx = abs < 1 ? 0 : -abs * this.bounce;
+      this.vx = abs < 1.2 ? 0 : -abs * this.bounce;
       this.vy *= this.friction;
     }
 
     if (this.y - r < 0) {
       this.y = r;
       const abs = Math.abs(this.vy);
-      this.vy = abs < 1 ? 0 : abs * this.bounce;
+      this.vy = abs < 1.2 ? 0 : abs * this.bounce;
       this.vx *= this.friction;
     } else if (this.y + r > H) {
       this.y = H - r;
       const abs = Math.abs(this.vy);
-      this.vy = abs < 1 ? 0 : -abs * this.bounce;
+      this.vy = abs < 1.2 ? 0 : -abs * this.bounce;
       this.vx *= this.friction;
     }
 
-    // Settle detection
+    // Settle detection (not in repulsion mode)
     if (!repulse) {
-      if (Math.abs(this.vx) < 0.15 && Math.abs(this.vy) < 0.15) {
+      if (Math.abs(this.vx) < 0.2 && Math.abs(this.vy) < 0.2) {
         this.settleTimer++;
-        if (this.settleTimer > 45) {
+        if (this.settleTimer > 40) {
           this.settled = true;
           this.vx = 0;
           this.vy = 0;
@@ -193,42 +195,42 @@ function resolveCollisions(): void {
         const minD = a.r + b.r;
         if (distSq >= minD * minD) continue;
 
+        // Skip everything for two settled particles — prevents trembling
+        if (a.settled && b.settled) continue;
+
         const dist = Math.sqrt(distSq) || 0.0001;
         const overlap = minD - dist;
         const nx = dx / dist;
         const ny = dy / dist;
         const tm = a.mass + b.mass;
 
-        // Position correction (always)
+        // Position correction
         a.x -= nx * overlap * (b.mass / tm);
         a.y -= ny * overlap * (b.mass / tm);
         b.x += nx * overlap * (a.mass / tm);
         b.y += ny * overlap * (a.mass / tm);
 
-        // Velocity impulse: skip if both settled
-        if (a.settled && b.settled) continue;
-
+        // Velocity impulse
         const dvx = b.vx - a.vx;
         const dvy = b.vy - a.vy;
         const approach = dvx * nx + dvy * ny;
         if (approach >= 0) continue;
 
-        const imp = -(1 + 0.3) * approach / tm;
+        const imp = -(1 + 0.2) * approach / tm;
         a.vx -= imp * b.mass * nx;
         a.vy -= imp * b.mass * ny;
         b.vx += imp * a.mass * nx;
         b.vy += imp * a.mass * ny;
 
-        a.settled = false;
-        a.settleTimer = 0;
-        b.settled = false;
-        b.settleTimer = 0;
+        // Wake up settled particles hit by a moving one
+        if (a.settled) { a.settled = false; a.settleTimer = 0; }
+        if (b.settled) { b.settled = false; b.settleTimer = 0; }
       }
     }
   }
 }
 
-// ─── Repulsion ────────────────────────────────────────────────────────────────
+// ─── Repulsion between particles ─────────────────────────────────────────────
 function applyRepulsion(): void {
   for (let i = 0; i < particles.length; i++) {
     for (let j = i + 1; j < particles.length; j++) {
@@ -249,10 +251,30 @@ function applyRepulsion(): void {
   }
 }
 
-// ─── Gravity shift ────────────────────────────────────────────────────────────
+// ─── Mode management ─────────────────────────────────────────────────────────
+function setMode(mode: GravityMode, sideDir?: 'left' | 'right'): void {
+  gravMode = mode;
+  repulse = mode === 'repulsion';
+
+  switch (mode) {
+    case 'down':
+      gx = 0;
+      gy = GRAVITY;
+      break;
+    case 'side':
+      gx = sideDir === 'left' ? -GRAVITY_SIDE : GRAVITY_SIDE;
+      gy = GRAVITY_SIDE_Y;
+      break;
+    case 'repulsion':
+      gx = 0;
+      gy = 0;
+      break;
+  }
+}
+
+// ─── Gravity shift (swipe) ────────────────────────────────────────────────────
 function shiftGravity(dir: 'left' | 'right'): void {
-  gy = 0.1;
-  gx = dir === 'left' ? -GRAVITY_SIDE : GRAVITY_SIDE;
+  setMode('side', dir);
   const kick = 4 + Math.random() * 3;
   for (const p of particles) {
     p.vx += dir === 'left' ? -kick : kick;
@@ -262,12 +284,13 @@ function shiftGravity(dir: 'left' | 'right'): void {
   showFlash(dir === 'left' ? 'rgba(79,195,247,0.35)' : 'rgba(255,167,38,0.35)');
 }
 
-// ─── Repulsion toggle ─────────────────────────────────────────────────────────
+// ─── Repulsion toggle (double-tap) ────────────────────────────────────────────
 function toggleRepulsion(): void {
-  repulse = !repulse;
-  if (repulse) {
-    gx = 0;
-    gy = 0;
+  if (gravMode === 'repulsion') {
+    // Exit repulsion → back to down gravity
+    setMode('down');
+  } else {
+    setMode('repulsion');
     for (const p of particles) {
       p.settled = false;
       p.settleTimer = 0;
@@ -275,9 +298,6 @@ function toggleRepulsion(): void {
       p.vy += (Math.random() - 0.5) * 10;
     }
     showFlash('rgba(186,104,200,0.35)');
-  } else {
-    gx = 0;
-    gy = GRAVITY;
   }
 }
 
@@ -378,10 +398,22 @@ function loop(): void {
   requestAnimationFrame(loop);
 }
 
-// ─── Resize ───────────────────────────────────────────────────────────────────
+// ─── Resize (4:5 aspect ratio) ───────────────────────────────────────────────
 function resize(): void {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // Fit 4:5 portrait ratio within viewport
+  if (vw / vh > 4 / 5) {
+    H = vh;
+    W = Math.floor(H * 4 / 5);
+  } else {
+    W = vw;
+    H = Math.floor(W * 5 / 4);
+  }
+
+  canvas.width = W;
+  canvas.height = H;
 }
 window.addEventListener('resize', resize);
 resize();
@@ -422,7 +454,7 @@ function onPointerUp(x: number, y: number, isTouch: boolean): void {
     return;
   }
 
-  // Tap / click → double-click detection
+  // Tap/click → double-tap detection
   if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
     const now = Date.now();
     if (now - lastTapTime < 350) {
