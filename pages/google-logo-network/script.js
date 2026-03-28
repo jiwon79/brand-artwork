@@ -1,5 +1,7 @@
 'use strict';
 
+import GUI from 'lil-gui';
+
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 const DPR    = window.devicePixelRatio || 1;

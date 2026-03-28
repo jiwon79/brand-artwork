@@ -1,70 +1,4 @@
-<!DOCTYPE html>
-
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IKEA POÄNG × Particle Art</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500&display=swap');
-  * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
-  body { background:#0058A3; overflow:hidden; font-family:'Inter', -apple-system, BlinkMacSystemFont, sans-serif; cursor:grab; }
-  body:active { cursor:grabbing; }
-  canvas { display:block; }
-
-#hud {
-position:fixed; top:0; left:0; width:100%; height:100%;
-pointer-events:none; z-index:10;
-}
-#furniture-picker {
-position:absolute; top:28px; left:36px;
-display:flex; flex-direction:column; gap:14px;
-pointer-events:all;
-}
-.furn-btn {
-background:none; border:none; cursor:pointer;
-display:flex; align-items:center; gap:10px;
-padding:0; font-family:’Inter’, -apple-system, BlinkMacSystemFont, sans-serif;
-font-size:10px; letter-spacing:0.2em; font-weight:300;
-color:rgba(255,255,255,0.3);
-transition:color 0.3s;
-}
-.furn-btn:hover { color:rgba(255,255,255,0.6); }
-.furn-btn.active { color:#FFDA1A; }
-.furn-dot {
-width:6px; height:6px; border-radius:50%;
-background:currentColor; flex-shrink:0;
-transition:transform 0.3s;
-}
-.furn-btn.active .furn-dot { transform:scale(1.5); }
-
-/* Blender Gizmo */
-#gizmo {
-position: fixed;
-top: 18px;
-right: 18px;
-z-index: 20;
-cursor: grab;
-opacity: 0.85;
-transition: opacity 0.2s;
-}
-#gizmo:hover { opacity: 1; }
-#gizmo:active { cursor: grabbing; }
-</style>
-
-</head>
-<body>
-<div id="hud">
-
-  <div id="furniture-picker"></div>
-</div>
-<!-- Gizmo outside HUD so pointer-events work correctly -->
-<canvas id="gizmo" width="74" height="74"></canvas>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
-<script>
+import * as THREE from 'three';
 // ─── SCENE SETUP ─────────────────────────────────────────────────────────────
 const W = window.innerWidth, H = window.innerHeight;
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -774,8 +708,3 @@ window.addEventListener('resize', () => {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 });
-</script>
-<script src="/touch-cursor.js"></script>
-
-</body>
-</html>

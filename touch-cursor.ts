@@ -1,8 +1,13 @@
-(function () {
+(() => {
   'use strict';
 
   // Touch-only: skip on non-touch devices
   if (!('ontouchstart' in window)) return;
+
+  interface CursorElements {
+    dot: HTMLElement;
+    ring: HTMLElement;
+  }
 
   const style = document.createElement('style');
   style.textContent = `
@@ -52,14 +57,14 @@
   `;
   document.head.appendChild(style);
 
-  const cursors = new Map();
+  const cursors = new Map<number, CursorElements>();
 
-  function placeCursor(el, x, y) {
+  function placeCursor(el: HTMLElement, x: number, y: number): void {
     el.style.left = x + 'px';
     el.style.top  = y + 'px';
   }
 
-  function spawnRipple(x, y) {
+  function spawnRipple(x: number, y: number): void {
     const ripple = document.createElement('div');
     ripple.className = 'tc-ripple';
     placeCursor(ripple, x, y);
@@ -67,7 +72,7 @@
     ripple.addEventListener('animationend', () => ripple.remove());
   }
 
-  function createCursor(touch) {
+  function createCursor(touch: Touch): void {
     const dot  = document.createElement('div');
     dot.className = 'tc-dot';
     const ring = document.createElement('div');
@@ -82,14 +87,14 @@
     cursors.set(touch.identifier, { dot, ring });
   }
 
-  function moveCursor(touch) {
+  function moveCursor(touch: Touch): void {
     const c = cursors.get(touch.identifier);
     if (!c) return;
     placeCursor(c.dot,  touch.clientX, touch.clientY);
     placeCursor(c.ring, touch.clientX, touch.clientY);
   }
 
-  function removeCursor(touch) {
+  function removeCursor(touch: Touch): void {
     const c = cursors.get(touch.identifier);
     if (!c) return;
     spawnRipple(touch.clientX, touch.clientY);
@@ -98,19 +103,19 @@
     cursors.delete(touch.identifier);
   }
 
-  document.addEventListener('touchstart', e => {
+  document.addEventListener('touchstart', (e: TouchEvent) => {
     for (const t of e.changedTouches) createCursor(t);
   }, { passive: true });
 
-  document.addEventListener('touchmove', e => {
+  document.addEventListener('touchmove', (e: TouchEvent) => {
     for (const t of e.changedTouches) moveCursor(t);
   }, { passive: true });
 
-  document.addEventListener('touchend', e => {
+  document.addEventListener('touchend', (e: TouchEvent) => {
     for (const t of e.changedTouches) removeCursor(t);
   }, { passive: true });
 
-  document.addEventListener('touchcancel', e => {
+  document.addEventListener('touchcancel', (e: TouchEvent) => {
     for (const t of e.changedTouches) {
       const c = cursors.get(t.identifier);
       if (c) { c.dot.remove(); c.ring.remove(); cursors.delete(t.identifier); }

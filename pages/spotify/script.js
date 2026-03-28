@@ -3,6 +3,8 @@
    Physics: Matter.js rigid body simulation
    ========================================================= */
 
+import Matter from 'matter-js';
+
 const { Engine, Bodies, Body, World, Events, Composite } = Matter;
 
 // ── Config ──────────────────────────────────────────────

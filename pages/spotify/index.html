@@ -2,11 +2,10 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <base href="/spotify/">
+  <base href="/pages/spotify/">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Lyrics Rain</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://unpkg.com/matter-js@0.19.0/build/matter.min.js"></script>
 </head>
 <body>
   <audio id="audio-player" preload="auto" crossorigin="anonymous"></audio>
@@ -138,7 +137,7 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
-  <script src="/touch-cursor.js"></script>
+  <script type="module" src="script.js"></script>
+  <script type="module" src="/touch-cursor.ts"></script>
 </body>
 </html>
