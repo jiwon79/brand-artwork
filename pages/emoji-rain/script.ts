@@ -9,6 +9,7 @@ const GRAVITY         = 0.27;  // halved from 0.55
 const GRAVITY_SIDE    = 1.2;
 const GRAVITY_SIDE_Y  = 0.05;
 const GRAVITY_UP      = 1.2;
+const COLLISION_GAP   = 6; // breathing room added on top of r_a + r_b
 const REPULSION_DIST  = 130;
 const REPULSION_FORCE = 0.6;
 const WALL_REP_DIST   = 80;
@@ -176,18 +177,18 @@ class EmojiParticle {
 }
 
 // ─── Collision resolution (10 substeps) ──────────────────────────────────────
-// Before each pass, particles are sorted by their projection onto the gravity
-// vector (wall-closest first). This ensures the correction wave propagates
-// from the wall outward in a single pass instead of needing many passes.
-// Baumgarte correction: 80% of overlap per pass to avoid overshooting jitter.
+// Sort is done inside the pass loop so each pass uses up-to-date positions.
+// Particles closest to the active wall are sorted first so the correction wave
+// propagates wall → free-space within a single pass.
+// Baumgarte 80%: avoids overshooting jitter on dense piles.
+// COLLISION_GAP: minimum separation is r_a + r_b + gap, giving visual breathing room.
 function resolveCollisions(): void {
-  // Sort: highest projection along gravity direction first (closest to "wall" first)
-  // repulsion mode has no gravity wall, so skip sort.
-  if (!repulse && (gx !== 0 || gy !== 0)) {
-    particles.sort((a, b) => (b.x * gx + b.y * gy) - (a.x * gx + a.y * gy));
-  }
-
   for (let pass = 0; pass < 10; pass++) {
+    // Re-sort every pass so the order stays optimal as positions change.
+    if (!repulse && (gx !== 0 || gy !== 0)) {
+      particles.sort((a, b) => (b.x * gx + b.y * gy) - (a.x * gx + a.y * gy));
+    }
+
     for (let i = 0; i < particles.length; i++) {
       for (let j = i + 1; j < particles.length; j++) {
         const a = particles[i];
@@ -196,7 +197,7 @@ function resolveCollisions(): void {
 
         const dx = b.x - a.x, dy = b.y - a.y;
         const distSq = dx * dx + dy * dy;
-        const minD = a.r + b.r;
+        const minD = a.r + b.r + COLLISION_GAP;
         if (distSq >= minD * minD) continue;
 
         const dist = Math.sqrt(distSq) || 0.0001;
