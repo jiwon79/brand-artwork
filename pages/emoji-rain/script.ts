@@ -109,6 +109,11 @@ class EmojiParticle {
     } else if (!this.settled) {
       this.vx += gx;
       this.vy += gy;
+      // Velocity damping — dissipates micro-oscillations each frame.
+      // 3% loss per frame kills slow oscillations without noticeably
+      // affecting fast-moving particles (they re-accelerate via gravity).
+      this.vx *= 0.97;
+      this.vy *= 0.97;
       this.x += this.vx;
       this.y += this.vy;
     }
@@ -170,12 +175,12 @@ class EmojiParticle {
   }
 }
 
-// ─── Collision resolution (3 substeps) ───────────────────────────────────────
+// ─── Collision resolution (10 substeps) ──────────────────────────────────────
+// 10 passes so the correction wave propagates deep enough into dense wall piles.
 // Settled particles are treated as immovable walls.
-// Low-energy approach is absorbed (so resting particles can settle);
-// high-energy approach bounces. Settled particles are never woken up.
+// Low-energy approach is absorbed; high-energy bounces. Settled never woken up.
 function resolveCollisions(): void {
-  for (let pass = 0; pass < 3; pass++) {
+  for (let pass = 0; pass < 10; pass++) {
     for (let i = 0; i < particles.length; i++) {
       for (let j = i + 1; j < particles.length; j++) {
         const a = particles[i];
@@ -225,7 +230,7 @@ function resolveCollisions(): void {
             }
           }
         } else {
-          // Both moving — standard symmetric collision
+          // Both moving — symmetric collision
           const tm = a.mass + b.mass;
           a.x -= nx * overlap * (b.mass / tm);
           a.y -= ny * overlap * (b.mass / tm);
@@ -236,7 +241,10 @@ function resolveCollisions(): void {
           const approach = dvx * nx + dvy * ny;
           if (approach >= 0) continue;
 
-          const imp = -(1 + 0.2) * approach / tm;
+          // Speed-dependent restitution: slow collisions are fully absorbed
+          // (no energy injection), fast ones bounce. Threshold 1.5 px/frame.
+          const restitution = Math.abs(approach) > 1.5 ? 0.2 : 0;
+          const imp = -(1 + restitution) * approach / tm;
           a.vx -= imp * b.mass * nx;
           a.vy -= imp * b.mass * ny;
           b.vx += imp * a.mass * nx;
