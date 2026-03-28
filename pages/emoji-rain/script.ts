@@ -176,10 +176,17 @@ class EmojiParticle {
 }
 
 // ─── Collision resolution (10 substeps) ──────────────────────────────────────
-// 10 passes so the correction wave propagates deep enough into dense wall piles.
-// Settled particles are treated as immovable walls.
-// Low-energy approach is absorbed; high-energy bounces. Settled never woken up.
+// Before each pass, particles are sorted by their projection onto the gravity
+// vector (wall-closest first). This ensures the correction wave propagates
+// from the wall outward in a single pass instead of needing many passes.
+// Baumgarte correction: 80% of overlap per pass to avoid overshooting jitter.
 function resolveCollisions(): void {
+  // Sort: highest projection along gravity direction first (closest to "wall" first)
+  // repulsion mode has no gravity wall, so skip sort.
+  if (!repulse && (gx !== 0 || gy !== 0)) {
+    particles.sort((a, b) => (b.x * gx + b.y * gy) - (a.x * gx + a.y * gy));
+  }
+
   for (let pass = 0; pass < 10; pass++) {
     for (let i = 0; i < particles.length; i++) {
       for (let j = i + 1; j < particles.length; j++) {
@@ -193,38 +200,36 @@ function resolveCollisions(): void {
         if (distSq >= minD * minD) continue;
 
         const dist = Math.sqrt(distSq) || 0.0001;
-        const overlap = minD - dist;
+        // Baumgarte: correct 80% of overlap per pass — avoids overshooting
+        const correction = (minD - dist) * 0.8;
         const nx = dx / dist, ny = dy / dist;
-        // nx,ny: unit vector from A → B
 
         if (a.settled) {
           // A is an immovable wall — only push B
-          b.x += nx * overlap;
-          b.y += ny * overlap;
-          // B's velocity component toward A is negative (B moving in -n direction)
+          b.x += nx * correction;
+          b.y += ny * correction;
           const approach = b.vx * nx + b.vy * ny;
           if (approach < 0) {
             if (Math.abs(approach) < 1.5) {
-              b.vx -= approach * nx; // absorb: zero out approach component
+              b.vx -= approach * nx;
               b.vy -= approach * ny;
             } else {
-              b.vx -= (1 + 0.2) * approach * nx; // bounce
+              b.vx -= (1 + 0.2) * approach * nx;
               b.vy -= (1 + 0.2) * approach * ny;
               b.settleTimer = 0;
             }
           }
         } else if (b.settled) {
           // B is an immovable wall — only push A
-          a.x -= nx * overlap;
-          a.y -= ny * overlap;
-          // A's velocity component toward B is positive (A moving in +n direction)
+          a.x -= nx * correction;
+          a.y -= ny * correction;
           const approach = a.vx * nx + a.vy * ny;
           if (approach > 0) {
             if (Math.abs(approach) < 1.5) {
-              a.vx -= approach * nx; // absorb
+              a.vx -= approach * nx;
               a.vy -= approach * ny;
             } else {
-              a.vx -= (1 + 0.2) * approach * nx; // bounce
+              a.vx -= (1 + 0.2) * approach * nx;
               a.vy -= (1 + 0.2) * approach * ny;
               a.settleTimer = 0;
             }
@@ -232,17 +237,15 @@ function resolveCollisions(): void {
         } else {
           // Both moving — symmetric collision
           const tm = a.mass + b.mass;
-          a.x -= nx * overlap * (b.mass / tm);
-          a.y -= ny * overlap * (b.mass / tm);
-          b.x += nx * overlap * (a.mass / tm);
-          b.y += ny * overlap * (a.mass / tm);
+          a.x -= nx * correction * (b.mass / tm);
+          a.y -= ny * correction * (b.mass / tm);
+          b.x += nx * correction * (a.mass / tm);
+          b.y += ny * correction * (a.mass / tm);
 
           const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
           const approach = dvx * nx + dvy * ny;
           if (approach >= 0) continue;
 
-          // Speed-dependent restitution: slow collisions are fully absorbed
-          // (no energy injection), fast ones bounce. Threshold 1.5 px/frame.
           const restitution = Math.abs(approach) > 1.5 ? 0.2 : 0;
           const imp = -(1 + restitution) * approach / tm;
           a.vx -= imp * b.mass * nx;
