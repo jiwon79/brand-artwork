@@ -8,6 +8,7 @@ const introEl = document.getElementById('intro') as HTMLDivElement;
 const GRAVITY         = 0.27;  // halved from 0.55
 const GRAVITY_SIDE    = 1.2;
 const GRAVITY_SIDE_Y  = 0.05;
+const GRAVITY_UP      = 1.2;
 const REPULSION_DIST  = 130;
 const REPULSION_FORCE = 0.6;
 const WALL_REP_DIST   = 80;
@@ -38,8 +39,8 @@ let W = 0, H = 0;
 let gx = 0, gy = GRAVITY;
 let repulse = false;
 
-// 3 gravity modes: down | side | repulsion
-type GravityMode = 'down' | 'side' | 'repulsion';
+// 5 gravity modes
+type GravityMode = 'down' | 'up' | 'side' | 'repulsion';
 let gravMode: GravityMode = 'down';
 
 const particles: EmojiParticle[] = [];
@@ -248,6 +249,19 @@ function resolveCollisions(): void {
   }
 }
 
+// ─── Boundary clamp (runs after collision resolution) ────────────────────────
+// resolveCollisions() can push particles outside the canvas edges.
+// This second pass clamps them back in so nothing gets visually clipped.
+function clampBoundaries(): void {
+  for (const p of particles) {
+    const r = p.r;
+    if (p.x - r < 0)   { p.x = r;     if (p.vx < 0) p.vx = 0; }
+    else if (p.x + r > W) { p.x = W - r; if (p.vx > 0) p.vx = 0; }
+    if (p.y - r < 0)   { p.y = r;     if (p.vy < 0) p.vy = 0; }
+    else if (p.y + r > H) { p.y = H - r; if (p.vy > 0) p.vy = 0; }
+  }
+}
+
 // ─── Settle detection (runs after all collisions resolved) ───────────────────
 // Must run AFTER resolveCollisions so that absorbed velocities are visible here.
 // If settle ran inside update(), gravity-induced vy (0.27) would reset the timer
@@ -300,6 +314,10 @@ function setMode(mode: GravityMode, sideDir?: 'left' | 'right'): void {
       gx = 0;
       gy = GRAVITY;
       break;
+    case 'up':
+      gx = 0;
+      gy = -GRAVITY_UP;
+      break;
     case 'side':
       gx = sideDir === 'left' ? -GRAVITY_SIDE : GRAVITY_SIDE;
       gy = GRAVITY_SIDE_Y;
@@ -312,15 +330,26 @@ function setMode(mode: GravityMode, sideDir?: 'left' | 'right'): void {
 }
 
 // ─── Gravity shift (swipe) ────────────────────────────────────────────────────
-function shiftGravity(dir: 'left' | 'right'): void {
-  setMode('side', dir);
+function shiftGravity(dir: 'left' | 'right' | 'up' | 'down'): void {
   const kick = 4 + Math.random() * 3;
-  for (const p of particles) {
-    p.vx += dir === 'left' ? -kick : kick;
-    p.settled = false;
-    p.settleTimer = 0;
+
+  if (dir === 'left' || dir === 'right') {
+    setMode('side', dir);
+    for (const p of particles) {
+      p.vx += dir === 'left' ? -kick : kick;
+      p.settled = false;
+      p.settleTimer = 0;
+    }
+    showFlash(dir === 'left' ? 'rgba(79,195,247,0.35)' : 'rgba(255,167,38,0.35)');
+  } else {
+    setMode(dir === 'up' ? 'up' : 'down');
+    for (const p of particles) {
+      p.vy += dir === 'up' ? -kick : kick;
+      p.settled = false;
+      p.settleTimer = 0;
+    }
+    showFlash(dir === 'up' ? 'rgba(77,182,172,0.35)' : 'rgba(255,213,79,0.35)');
   }
-  showFlash(dir === 'left' ? 'rgba(79,195,247,0.35)' : 'rgba(255,167,38,0.35)');
 }
 
 // ─── Repulsion toggle (double-tap) ────────────────────────────────────────────
@@ -431,6 +460,7 @@ function loop(): void {
 
   for (const p of particles) p.update();
   resolveCollisions();
+  clampBoundaries();
   if (repulse) applyRepulsion();
   settleParticles();
   for (const p of particles) p.draw(ctx);
@@ -440,16 +470,19 @@ function loop(): void {
 
 // ─── Resize (4:5 aspect ratio) ───────────────────────────────────────────────
 function resize(): void {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  // Use clientWidth/Height (excludes scrollbars, avoids iOS 100vh chrome issue)
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
 
-  // Fit 4:5 portrait ratio within viewport
+  // Fit 4:5 portrait ratio strictly within viewport (floor both to stay inside)
   if (vw / vh > 4 / 5) {
     H = vh;
     W = Math.floor(H * 4 / 5);
   } else {
     W = vw;
     H = Math.floor(W * 5 / 4);
+    // Safety: if computed H somehow exceeds vh (sub-pixel rounding), clamp it
+    if (H > vh) { H = vh; W = Math.floor(H * 4 / 5); }
   }
 
   canvas.width = W;
@@ -488,14 +521,19 @@ function onPointerUp(x: number, y: number, isTouch: boolean): void {
 
   const swipeThreshold = isTouch ? 40 : 50;
   const timeLimit = isTouch ? 500 : 1000;
+  const dist = Math.sqrt(dx * dx + dy * dy);
 
-  if (Math.abs(dx) >= swipeThreshold && Math.abs(dx) > Math.abs(dy) && dt < timeLimit) {
-    shiftGravity(dx < 0 ? 'left' : 'right');
+  if (dist >= swipeThreshold && dt < timeLimit) {
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      shiftGravity(dx < 0 ? 'left' : 'right');
+    } else {
+      shiftGravity(dy < 0 ? 'up' : 'down');
+    }
     return;
   }
 
   // Tap/click → double-tap detection
-  if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+  if (dist < 10) {
     const now = Date.now();
     if (now - lastTapTime < 350) {
       toggleRepulsion();
