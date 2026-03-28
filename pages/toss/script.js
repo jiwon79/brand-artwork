@@ -463,9 +463,8 @@ function animate(timestamp) {
 requestAnimationFrame(animate);
 
 // ── Font size GUI ──────────────────────────────────────────
-if (typeof lil !== 'undefined') {
-  try {
-    const gui = new lil.GUI({ title: 'debug' });
+try {
+  const gui = new GUI({ title: 'debug' });
     gui.add(guiParams, 'fontSize', 10, Math.round(Math.min(W, H) * 0.8), 1)
       .name('font size (CSS px)')
       .onChange(v => {
@@ -496,7 +495,6 @@ if (typeof lil !== 'undefined') {
       .onChange(v => {
         dotColor = v ? '0,100,255' : '255,255,255';
       });
-  } catch (e) {
-    console.warn('GUI init failed', e);
-  }
+} catch (e) {
+  console.warn('GUI init failed', e);
 }

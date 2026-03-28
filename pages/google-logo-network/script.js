@@ -538,7 +538,7 @@ applyBrand('Google');
 
 init();
 
-const gui = new lil.GUI({ title: 'Brand' });
+const gui = new GUI({ title: 'Brand' });
 gui.add(guiParams, 'glowRadial').name('Radial Glow');
 gui.add(guiParams, 'brand', ['Google', 'YouTube', 'Gmail', 'Gemini'])
   .name('Brand')
