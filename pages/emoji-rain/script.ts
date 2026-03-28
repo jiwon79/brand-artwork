@@ -139,19 +139,6 @@ class EmojiParticle {
       this.vx *= this.friction;
     }
 
-    // Settle detection (not in repulsion mode)
-    if (!repulse) {
-      if (Math.abs(this.vx) < 0.2 && Math.abs(this.vy) < 0.2) {
-        this.settleTimer++;
-        if (this.settleTimer > 40) {
-          this.settled = true;
-          this.vx = 0;
-          this.vy = 0;
-        }
-      } else if (!this.settled) {
-        this.settleTimer = 0;
-      }
-    }
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
@@ -183,49 +170,101 @@ class EmojiParticle {
 }
 
 // ─── Collision resolution (3 substeps) ───────────────────────────────────────
+// Settled particles are treated as immovable walls.
+// Low-energy approach is absorbed (so resting particles can settle);
+// high-energy approach bounces. Settled particles are never woken up.
 function resolveCollisions(): void {
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < particles.length; i++) {
       for (let j = i + 1; j < particles.length; j++) {
         const a = particles[i];
         const b = particles[j];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
+        if (a.settled && b.settled) continue;
+
+        const dx = b.x - a.x, dy = b.y - a.y;
         const distSq = dx * dx + dy * dy;
         const minD = a.r + b.r;
         if (distSq >= minD * minD) continue;
 
-        // Skip everything for two settled particles — prevents trembling
-        if (a.settled && b.settled) continue;
-
         const dist = Math.sqrt(distSq) || 0.0001;
         const overlap = minD - dist;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        const tm = a.mass + b.mass;
+        const nx = dx / dist, ny = dy / dist;
+        // nx,ny: unit vector from A → B
 
-        // Position correction
-        a.x -= nx * overlap * (b.mass / tm);
-        a.y -= ny * overlap * (b.mass / tm);
-        b.x += nx * overlap * (a.mass / tm);
-        b.y += ny * overlap * (a.mass / tm);
+        if (a.settled) {
+          // A is an immovable wall — only push B
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+          // B's velocity component toward A is negative (B moving in -n direction)
+          const approach = b.vx * nx + b.vy * ny;
+          if (approach < 0) {
+            if (Math.abs(approach) < 1.5) {
+              b.vx -= approach * nx; // absorb: zero out approach component
+              b.vy -= approach * ny;
+            } else {
+              b.vx -= (1 + 0.2) * approach * nx; // bounce
+              b.vy -= (1 + 0.2) * approach * ny;
+              b.settleTimer = 0;
+            }
+          }
+        } else if (b.settled) {
+          // B is an immovable wall — only push A
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+          // A's velocity component toward B is positive (A moving in +n direction)
+          const approach = a.vx * nx + a.vy * ny;
+          if (approach > 0) {
+            if (Math.abs(approach) < 1.5) {
+              a.vx -= approach * nx; // absorb
+              a.vy -= approach * ny;
+            } else {
+              a.vx -= (1 + 0.2) * approach * nx; // bounce
+              a.vy -= (1 + 0.2) * approach * ny;
+              a.settleTimer = 0;
+            }
+          }
+        } else {
+          // Both moving — standard symmetric collision
+          const tm = a.mass + b.mass;
+          a.x -= nx * overlap * (b.mass / tm);
+          a.y -= ny * overlap * (b.mass / tm);
+          b.x += nx * overlap * (a.mass / tm);
+          b.y += ny * overlap * (a.mass / tm);
 
-        // Velocity impulse
-        const dvx = b.vx - a.vx;
-        const dvy = b.vy - a.vy;
-        const approach = dvx * nx + dvy * ny;
-        if (approach >= 0) continue;
+          const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
+          const approach = dvx * nx + dvy * ny;
+          if (approach >= 0) continue;
 
-        const imp = -(1 + 0.2) * approach / tm;
-        a.vx -= imp * b.mass * nx;
-        a.vy -= imp * b.mass * ny;
-        b.vx += imp * a.mass * nx;
-        b.vy += imp * a.mass * ny;
-
-        // Wake up settled particles hit by a moving one
-        if (a.settled) { a.settled = false; a.settleTimer = 0; }
-        if (b.settled) { b.settled = false; b.settleTimer = 0; }
+          const imp = -(1 + 0.2) * approach / tm;
+          a.vx -= imp * b.mass * nx;
+          a.vy -= imp * b.mass * ny;
+          b.vx += imp * a.mass * nx;
+          b.vy += imp * a.mass * ny;
+          a.settleTimer = 0;
+          b.settleTimer = 0;
+        }
       }
+    }
+  }
+}
+
+// ─── Settle detection (runs after all collisions resolved) ───────────────────
+// Must run AFTER resolveCollisions so that absorbed velocities are visible here.
+// If settle ran inside update(), gravity-induced vy (0.27) would reset the timer
+// before collision absorption could zero it out.
+function settleParticles(): void {
+  if (repulse) return;
+  for (const p of particles) {
+    if (p.settled) continue;
+    if (Math.abs(p.vx) < 0.2 && Math.abs(p.vy) < 0.2) {
+      p.settleTimer++;
+      if (p.settleTimer > 40) {
+        p.settled = true;
+        p.vx = 0;
+        p.vy = 0;
+      }
+    } else {
+      p.settleTimer = 0;
     }
   }
 }
@@ -393,6 +432,7 @@ function loop(): void {
   for (const p of particles) p.update();
   resolveCollisions();
   if (repulse) applyRepulsion();
+  settleParticles();
   for (const p of particles) p.draw(ctx);
 
   requestAnimationFrame(loop);
