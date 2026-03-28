@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Check the tool input in $ARGUMENTS. Extract the modified file path. If the file is named 'spec.md', do nothing. Otherwise, check if a spec.md exists in the same directory as the modified file. If it does, read the modified file and that spec.md, then update spec.md to accurately reflect the current implementation.",
+            "statusMessage": "Syncing spec.md..."
+          }
+        ]
+      }
+    ]
+  }
+}
