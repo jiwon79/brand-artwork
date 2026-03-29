@@ -1,3 +1,5 @@
+import GUI from 'lil-gui';
+
 // ── Config ───────────────────────────────────────────────
 const CELL    = 35;
 const GAP     = 0.5;
@@ -7,6 +9,24 @@ const MAX_R   = CELL / 2;
 const BRUSH_R = 80;
 const HOLD_MS = 2000;
 const DECAY   = 0.9601;
+
+type FalloffKey = 'quadratic' | 'linear' | 'cubic' | 'sqrt' | 'gaussian' | 'cosine' | 'smoothstep';
+
+const falloffFns: Record<FalloffKey, (t: number, dist: number) => number> = {
+  linear:     (t)       => MAX_N * t,
+  quadratic:  (t)       => MAX_N * t * t,
+  cubic:      (t)       => MAX_N * t * t * t,
+  sqrt:       (t)       => MAX_N * Math.sqrt(t),
+  gaussian:   (_, dist) => MAX_N * Math.exp(-(dist * dist) / (2 * (BRUSH_R * 0.4) ** 2)),
+  cosine:     (t)       => MAX_N * (Math.cos((1 - t) * Math.PI) + 1) / 2,
+  smoothstep: (t)       => MAX_N * t * t * (3 - 2 * t),
+};
+
+const params = {
+  falloff: 'quadratic' as FalloffKey,
+  bgColor: '#ffffff',
+  cellColor: '#1c1c1e',
+};
 
 // ── DOM ───────────────────────────────────────────────────
 const canvas   = document.getElementById('c') as HTMLCanvasElement;
@@ -69,7 +89,7 @@ function applyBrush(bx: number, by: number): void {
       if (dist >= BRUSH_R) continue;
 
       const t = 1 - dist / BRUSH_R;
-      const target = MAX_N * t * t;
+      const target = falloffFns[params.falloff](t, dist);
       const idx = ci(cx, cy);
 
       if (target > cornerN[idx]) {
@@ -129,7 +149,9 @@ function render(now: number): void {
   decayCorners(now);
 
   ctx.clearRect(0, 0, logicalW(), logicalH());
-  ctx.fillStyle = '#1c1c1e';
+  ctx.fillStyle = params.bgColor;
+  ctx.fillRect(0, 0, logicalW(), logicalH());
+  ctx.fillStyle = params.cellColor;
 
   const cols = cW - 1;
   const rows = cH - 1;
@@ -213,6 +235,12 @@ window.addEventListener('resize', () => {
   setupCanvas();
   initGrid();
 });
+
+// ── GUI ───────────────────────────────────────────────────
+const gui = new GUI({ title: 'options' });
+gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
+gui.addColor(params, 'bgColor').name('background');
+gui.addColor(params, 'cellColor').name('cell color');
 
 // ── Boot ─────────────────────────────────────────────────
 setupCanvas();
