@@ -115,12 +115,13 @@ const baseR = () => W * params.faceEmojiSize * 0.62;
 function applyRepulsion(scale = 1) {
   for (let i = 0; i < particles.length; i++) {
     const a = particles[i];
-    const distL = a.x - OX,        distR = (OX + W) - a.x;
-    const distT = a.y - OY,        distB = (OY + H) - a.y;
-    if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * scale * (1 - distL / WALL_REPULSION_DIST);
-    if (distR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * scale * (1 - distR / WALL_REPULSION_DIST);
-    if (distT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * scale * (1 - distT / WALL_REPULSION_DIST);
-    if (distB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * scale * (1 - distB / WALL_REPULSION_DIST);
+    // 이모지 표면과 벽 사이의 거리 기준 → 크기에 무관하게 동일한 힘
+    const surfL = (a.x - a.r) - OX,        surfR = (OX + W) - (a.x + a.r);
+    const surfT = (a.y - a.r) - OY,        surfB = (OY + H) - (a.y + a.r);
+    if (surfL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfL) / WALL_REPULSION_DIST);
+    if (surfR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfR) / WALL_REPULSION_DIST);
+    if (surfT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfT) / WALL_REPULSION_DIST);
+    if (surfB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfB) / WALL_REPULSION_DIST);
 
     for (let j = i + 1; j < particles.length; j++) {
       const b  = particles[j];
