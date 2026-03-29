@@ -1,5 +1,3 @@
-import GUI from 'lil-gui';
-
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const cursorEl = document.getElementById('cursor') as HTMLDivElement;
@@ -40,7 +38,7 @@ const REG_EMOJIS = [
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let W = 0, H = 0;
-let gravStrength = 0.5;
+let gravStrength = 0.8;
 let gx = 0, gy = gravStrength;
 let repulse = false;
 
@@ -75,7 +73,9 @@ class EmojiParticle {
     this.emoji = emoji;
     this.isNew = isNew;
     this.color = color;
-    this.size = isNew ? 70 + Math.random() * 20 : 28 + Math.random() * 14;
+    this.size = isNew
+      ? W * (0.175 + Math.random() * 0.05)   // 17.5–22.5% of W
+      : W * (0.07  + Math.random() * 0.035);  // 7–10.5% of W
     this.mass = isNew ? 2.5 : 1.0;
     this.bounce = 0.35 + Math.random() * 0.20;
     this.friction = 0.80 + Math.random() * 0.10;
@@ -402,7 +402,7 @@ function buildQueue(): QueueItem[] {
 }
 
 function launchParticle(item: QueueItem): void {
-  const approxSize = item.isNew ? 80 : 35;
+  const approxSize = item.isNew ? W * 0.2 : W * 0.085;
   const approxR = approxSize * 0.58;
   const px = approxR + Math.random() * (W - 2 * approxR);
   particles.push(new EmojiParticle(px, -approxR * 2, item.e, item.isNew, item.c));
@@ -459,18 +459,16 @@ function loop(): void {
 
 // ─── Resize (4:5 aspect ratio) ───────────────────────────────────────────────
 function resize(): void {
-  // Use clientWidth/Height (excludes scrollbars, avoids iOS 100vh chrome issue)
-  const vw = document.documentElement.clientWidth;
-  const vh = document.documentElement.clientHeight;
+  const PAD = 30;
+  const vw = document.documentElement.clientWidth  - PAD * 2;
+  const vh = document.documentElement.clientHeight - PAD * 2;
 
-  // Fit 4:5 portrait ratio strictly within viewport (floor both to stay inside)
   if (vw / vh > 4 / 5) {
     H = vh;
     W = Math.floor(H * 4 / 5);
   } else {
     W = vw;
     H = Math.floor(W * 5 / 4);
-    // Safety: if computed H somehow exceeds vh (sub-pixel rounding), clamp it
     if (H > vh) { H = vh; W = Math.floor(H * 4 / 5); }
   }
 
@@ -559,14 +557,6 @@ document.addEventListener('mousemove', (e) => {
     cursorVisible = true;
     cursorEl.style.opacity = '1';
   }
-});
-
-// ─── GUI ─────────────────────────────────────────────────────────────────────
-const guiParams = { gravStrength };
-const gui = new GUI({ title: '설정' });
-gui.add(guiParams, 'gravStrength', 0.1, 2.0, 0.05).name('중력').onChange((v: number) => {
-  gravStrength = v;
-  setMode(gravMode);
 });
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
