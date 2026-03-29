@@ -1,20 +1,12 @@
-const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const ctx = canvas.getContext('2d')!;
-const cursorEl = document.getElementById('cursor') as HTMLDivElement;
-const flashEl = document.getElementById('swipe-flash') as HTMLDivElement;
-const introEl = document.getElementById('intro') as HTMLDivElement;
+import RAPIER from '@dimforge/rapier2d-compat';
+import GUI from 'lil-gui';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const COLLISION_GAP   = 6;
-const SLOP            = 2;
-const BOUNCE_THRESHOLD = 1.5;
-const BOUNCE_COEFF    = 0.2;
-const SLEEP_SPEED_SQ  = 0.09;
-const WAKE_SPEED      = 2.5;
-const REPULSION_DIST  = 130;
-const REPULSION_FORCE = 0.6;
-const WALL_REP_DIST   = 80;
-const WALL_REP_FORCE  = 0.8;
+// ─── DOM ──────────────────────────────────────────────────────────────────────
+const canvas  = document.getElementById('canvas')      as HTMLCanvasElement;
+const ctx     = canvas.getContext('2d')!;
+const cursorEl = document.getElementById('cursor')     as HTMLDivElement;
+const flashEl  = document.getElementById('swipe-flash') as HTMLDivElement;
+const introEl  = document.getElementById('intro')       as HTMLDivElement;
 
 // ─── Emoji data ───────────────────────────────────────────────────────────────
 const NEW_DEFS = [
@@ -36,323 +28,194 @@ const REG_EMOJIS = [
   '😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯',
 ];
 
+// ─── Physics constants ────────────────────────────────────────────────────────
+// GRAV_SCALE converts "pixels per frame" to "pixels per second²" at 60 fps.
+// Rapier integrates with dt = 1/60 s, so: accel_per_frame = accel_px_s2 / 3600.
+const GRAV_SCALE     = 60 * 60;
+const GRAV_STRENGTH  = 0.8;
+const LINEAR_DAMPING = 1.83;  // exp(-1.83/60) ≈ 0.97 per frame
+const ANG_DAMPING    = 3.0;
+const RESTITUTION    = 0.1;
+const FRICTION       = 0.5;
+const WALL_T         = 50;    // wall slab thickness (px)
+
+const REPULSION_DIST  = 130;
+const REPULSION_ACCEL = 0.6 * GRAV_SCALE;
+const WALL_REP_DIST   = 80;
+const WALL_REP_ACCEL  = 0.8 * GRAV_SCALE;
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let W = 0, H = 0;
-let gravStrength = 0.8;
-let gx = 0, gy = gravStrength;
-let repulse = false;
 
 type GravityMode = 'down' | 'up' | 'side' | 'repulsion';
 let gravMode: GravityMode = 'down';
 let gravSideDir: 'left' | 'right' = 'right';
+let repulse = false;
 
-const particles: EmojiParticle[] = [];
+// ─── GUI ──────────────────────────────────────────────────────────────────────
+const params = { emojiSizeRatio: 1.0 };
 
-// ─── EmojiParticle ────────────────────────────────────────────────────────────
-class EmojiParticle {
-  x: number;
-  y: number;
-  emoji: string;
-  isNew: boolean;
-  color: string;
-  size: number;
-  mass: number;
-  bounce: number;
-  friction: number;
-  vx: number;
-  vy: number;
-  angle: number;
-  angVel: number;
+// ─── Rapier ───────────────────────────────────────────────────────────────────
+let world: RAPIER.World;
+let wallHandles: RAPIER.RigidBodyHandle[] = [];
+
+interface EmojiBody {
+  emoji:   string;
+  isNew:   boolean;
+  color:   string;
+  size:    number;                    // visual font size (px)
+  handle:  RAPIER.RigidBodyHandle;
   opacity: number;
-  settled: boolean;
-  settleTimer: number;
+}
+const emojiBodies: EmojiBody[] = [];
 
-  constructor(x: number, y: number, emoji: string, isNew: boolean, color = '') {
-    this.x = x;
-    this.y = y;
-    this.emoji = emoji;
-    this.isNew = isNew;
-    this.color = color;
-    this.size = isNew
-      ? W * (0.175 + Math.random() * 0.05)   // 17.5–22.5% of W
-      : W * (0.07  + Math.random() * 0.035);  // 7–10.5% of W
-    this.mass = isNew ? 2.5 : 1.0;
-    this.bounce = 0.35 + Math.random() * 0.20;
-    this.friction = 0.80 + Math.random() * 0.10;
-    this.vx = (Math.random() - 0.5) * 4;
-    this.vy = 1 + Math.random() * 2;
-    this.angle = Math.random() * Math.PI * 2;
-    this.angVel = (Math.random() - 0.5) * 0.15;
-    this.opacity = 0;
-    this.settled = false;
-    this.settleTimer = 0;
+// px/frame → px/s
+const toVel = (pxf: number) => pxf * 60;
+
+// ─── Walls ────────────────────────────────────────────────────────────────────
+function createWalls(): void {
+  for (const h of wallHandles) {
+    const b = world.getRigidBody(h);
+    if (b) world.removeRigidBody(b);
   }
+  wallHandles = [];
 
-  get r(): number {
-    return this.size * 0.58;
-  }
+  const add = (cx: number, cy: number, hw: number, hh: number) => {
+    const body = world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(cx, cy)
+    );
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(hw, hh).setFriction(FRICTION).setRestitution(RESTITUTION),
+      body
+    );
+    wallHandles.push(body.handle);
+  };
 
-  update(): void {
-    this.opacity = Math.min(1, this.opacity + 0.05);
-    this.angle += this.angVel;
-    this.angVel *= 0.98;
-
-    if (repulse) {
-      // Wall repulsion forces
-      if (this.x < WALL_REP_DIST)
-        this.vx += WALL_REP_FORCE * (1 - this.x / WALL_REP_DIST);
-      if (this.x > W - WALL_REP_DIST)
-        this.vx -= WALL_REP_FORCE * (1 - (W - this.x) / WALL_REP_DIST);
-      if (this.y < WALL_REP_DIST)
-        this.vy += WALL_REP_FORCE * (1 - this.y / WALL_REP_DIST);
-      if (this.y > H - WALL_REP_DIST)
-        this.vy -= WALL_REP_FORCE * (1 - (H - this.y) / WALL_REP_DIST);
-      this.vx *= 0.94;
-      this.vy *= 0.94;
-      this.x += this.vx;
-      this.y += this.vy;
-    } else if (!this.settled) {
-      this.vx += gx;
-      this.vy += gy;
-      // Velocity damping — dissipates micro-oscillations each frame.
-      // 3% loss per frame kills slow oscillations without noticeably
-      // affecting fast-moving particles (they re-accelerate via gravity).
-      this.vx *= 0.97;
-      this.vy *= 0.97;
-      this.x += this.vx;
-      this.y += this.vy;
-    }
-
-    // Boundary collisions — all 4 walls
-    const r = this.r;
-
-    if (this.x - r < 0) {
-      this.x = r;
-      const abs = Math.abs(this.vx);
-      this.vx = abs < BOUNCE_THRESHOLD ? 0 : abs * this.bounce;
-      this.vy *= this.friction;
-    } else if (this.x + r > W) {
-      this.x = W - r;
-      const abs = Math.abs(this.vx);
-      this.vx = abs < BOUNCE_THRESHOLD ? 0 : -abs * this.bounce;
-      this.vy *= this.friction;
-    }
-
-    if (this.y - r < 0) {
-      this.y = r;
-      const abs = Math.abs(this.vy);
-      this.vy = abs < BOUNCE_THRESHOLD ? 0 : abs * this.bounce;
-      this.vx *= this.friction;
-    } else if (this.y + r > H) {
-      this.y = H - r;
-      const abs = Math.abs(this.vy);
-      this.vy = abs < BOUNCE_THRESHOLD ? 0 : -abs * this.bounce;
-      this.vx *= this.friction;
-    }
-
-  }
-
-  draw(ctx: CanvasRenderingContext2D): void {
-    ctx.save();
-    ctx.globalAlpha = this.opacity;
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.angle);
-
-    if (this.isNew) {
-      const r = this.size / 2;
-      const grd = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.05, 0, 0, r);
-      grd.addColorStop(0, 'rgba(255,255,255,0.75)');
-      grd.addColorStop(0.45, this.color + 'cc');
-      grd.addColorStop(1.0, this.color);
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
-      ctx.fillStyle = grd;
-      ctx.fill();
-      ctx.font = `${Math.floor(this.size * 0.52)}px serif`;
-    } else {
-      ctx.font = `${Math.floor(this.size)}px serif`;
-    }
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.emoji, 0, 2);
-    ctx.restore();
-  }
+  add(W / 2,       H + WALL_T / 2, W / 2 + WALL_T, WALL_T / 2); // bottom
+  add(W / 2,          -WALL_T / 2, W / 2 + WALL_T, WALL_T / 2); // top
+  add(   -WALL_T / 2, H / 2,       WALL_T / 2, H / 2 + WALL_T); // left
+  add(W + WALL_T / 2, H / 2,       WALL_T / 2, H / 2 + WALL_T); // right
 }
 
-// ─── Collision resolution ─────────────────────────────────────────────────────
-function resolveCollisions(): void {
-  for (let pass = 0; pass < 5; pass++) {
-    // Sort: wall-side particles first so pressure propagates wall → free space
-    if (!repulse && (gx !== 0 || gy !== 0)) {
-      particles.sort((a, b) => (b.x * gx + b.y * gy) - (a.x * gx + a.y * gy));
-    }
-    for (let i = 0; i < particles.length; i++) {
-      for (let j = i + 1; j < particles.length; j++) {
-        const a = particles[i];
-        const b = particles[j];
-        if (a.settled && b.settled) continue;
+// ─── Spawn emoji ──────────────────────────────────────────────────────────────
+function addEmoji(x: number, y: number, emoji: string, isNew: boolean, color: string): void {
+  const base = isNew
+    ? W * (0.175 + Math.random() * 0.05)
+    : W * (0.07  + Math.random() * 0.035);
+  const size = base * params.emojiSizeRatio;
+  const r    = size * 0.58;
 
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
-        const minD = a.r + b.r + COLLISION_GAP;
-        if (dist >= minD) continue;
+  const body = world.createRigidBody(
+    RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(x, y)
+      .setRotation(Math.random() * Math.PI * 2)
+      .setLinearDamping(LINEAR_DAMPING)
+      .setAngularDamping(ANG_DAMPING)
+  );
 
-        const overlap = minD - dist;
-        // Slop: ignore tiny overlaps to prevent micro-jitter on resting contacts
-        const correction = Math.max(overlap - SLOP, 0);
-        if (correction === 0) continue;
-        const nx = dx / dist, ny = dy / dist;
+  body.enableCcd(true);
+  body.setLinvel({ x: toVel((Math.random() - 0.5) * 4), y: toVel(1 + Math.random() * 2) }, false);
+  body.setAngvel((Math.random() - 0.5) * 9, false);
 
-        if (a.settled) {
-          b.x += nx * correction;
-          b.y += ny * correction;
-          const dot = b.vx * nx + b.vy * ny;
-          if (dot < 0) {
-            const e = -dot > BOUNCE_THRESHOLD ? BOUNCE_COEFF : 0;
-            b.vx -= (1 + e) * dot * nx;
-            b.vy -= (1 + e) * dot * ny;
-            // Wake sleeping particle on strong impact
-            if (-dot > WAKE_SPEED) { a.settled = false; a.settleTimer = 0; }
-          }
-        } else if (b.settled) {
-          a.x -= nx * correction;
-          a.y -= ny * correction;
-          const dot = a.vx * nx + a.vy * ny;
-          if (dot > 0) {
-            const e = dot > BOUNCE_THRESHOLD ? BOUNCE_COEFF : 0;
-            a.vx -= (1 + e) * dot * nx;
-            a.vy -= (1 + e) * dot * ny;
-            if (dot > WAKE_SPEED) { b.settled = false; b.settleTimer = 0; }
-          }
-        } else {
-          a.x -= nx * correction * 0.5;
-          a.y -= ny * correction * 0.5;
-          b.x += nx * correction * 0.5;
-          b.y += ny * correction * 0.5;
+  const density = (isNew ? 2.5 : 1.0) / (Math.PI * r * r);
+  world.createCollider(
+    RAPIER.ColliderDesc.ball(r).setRestitution(RESTITUTION).setFriction(FRICTION).setDensity(density),
+    body
+  );
 
-          const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
-          const dot = dvx * nx + dvy * ny;
-          if (dot < 0) {
-            const e = -dot > BOUNCE_THRESHOLD ? BOUNCE_COEFF : 0;
-            const impulse = (1 + e) * dot * 0.5;
-            a.vx += impulse * nx;
-            a.vy += impulse * ny;
-            b.vx -= impulse * nx;
-            b.vy -= impulse * ny;
-          }
-        }
-      }
-    }
-  }
+  emojiBodies.push({ emoji, isNew, color, size, handle: body.handle, opacity: 0 });
 }
 
-// ─── Boundary clamp (runs after collision resolution) ────────────────────────
-// resolveCollisions() can push particles outside the canvas edges.
-// This second pass clamps them back in so nothing gets visually clipped.
-function clampBoundaries(): void {
-  for (const p of particles) {
-    const r = p.r;
-    if (p.x - r < 0)   { p.x = r;     if (p.vx < 0) p.vx = 0; }
-    else if (p.x + r > W) { p.x = W - r; if (p.vx > 0) p.vx = 0; }
-    if (p.y - r < 0)   { p.y = r;     if (p.vy < 0) p.vy = 0; }
-    else if (p.y + r > H) { p.y = H - r; if (p.vy > 0) p.vy = 0; }
-  }
-}
-
-// ─── Settle detection (runs after all collisions resolved) ───────────────────
-// Must run AFTER resolveCollisions so that absorbed velocities are visible here.
-// If settle ran inside update(), gravity-induced vy (0.27) would reset the timer
-// before collision absorption could zero it out.
-function settleParticles(): void {
-  if (repulse) return;
-  for (const p of particles) {
-    if (p.settled) continue;
-    const speedSq = p.vx * p.vx + p.vy * p.vy;
-    if (speedSq < SLEEP_SPEED_SQ) {
-      p.settleTimer++;
-      if (p.settleTimer > 30) {
-        p.settled = true;
-        p.vx = 0;
-        p.vy = 0;
-        p.angVel = 0;
-      }
-    } else {
-      p.settleTimer = 0;
-    }
-  }
-}
-
-// ─── Repulsion between particles ─────────────────────────────────────────────
-function applyRepulsion(): void {
-  for (let i = 0; i < particles.length; i++) {
-    for (let j = i + 1; j < particles.length; j++) {
-      const a = particles[i];
-      const b = particles[j];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
-      if (dist >= REPULSION_DIST) continue;
-      const f = REPULSION_FORCE * (1 - dist / REPULSION_DIST);
-      const nx = dx / dist;
-      const ny = dy / dist;
-      a.vx -= nx * f / a.mass;
-      a.vy -= ny * f / a.mass;
-      b.vx += nx * f / b.mass;
-      b.vy += ny * f / b.mass;
-    }
-  }
-}
-
-// ─── Mode management ─────────────────────────────────────────────────────────
+// ─── Mode / gravity ───────────────────────────────────────────────────────────
 function setMode(mode: GravityMode, dir?: 'left' | 'right'): void {
   gravMode = mode;
-  repulse = mode === 'repulsion';
+  repulse  = mode === 'repulsion';
   if (dir) gravSideDir = dir;
 
+  let gx = 0, gy = 0;
   switch (mode) {
-    case 'down':      gx = 0;                                                    gy = gravStrength;  break;
-    case 'up':        gx = 0;                                                    gy = -gravStrength; break;
-    case 'side':      gx = gravSideDir === 'left' ? -gravStrength : gravStrength; gy = 0;            break;
-    case 'repulsion': gx = 0;                                                    gy = 0;             break;
+    case 'down': gy =  GRAV_STRENGTH; break;
+    case 'up':   gy = -GRAV_STRENGTH; break;
+    case 'side': gx = gravSideDir === 'left' ? -GRAV_STRENGTH : GRAV_STRENGTH; break;
+  }
+  world.gravity = { x: gx * GRAV_SCALE, y: gy * GRAV_SCALE };
+
+  for (const e of emojiBodies) world.getRigidBody(e.handle)?.wakeUp();
+}
+
+// ─── Repulsion forces (applied before each step) ──────────────────────────────
+function applyRepulsionForces(): void {
+  for (let i = 0; i < emojiBodies.length; i++) {
+    const bA = world.getRigidBody(emojiBodies[i].handle);
+    if (!bA) continue;
+    const pA = bA.translation();
+    const mA = bA.mass();
+
+    // Wall repulsion
+    let fx = 0, fy = 0;
+    if (pA.x < WALL_REP_DIST)     fx += WALL_REP_ACCEL * (1 - pA.x / WALL_REP_DIST);
+    if (pA.x > W - WALL_REP_DIST) fx -= WALL_REP_ACCEL * (1 - (W - pA.x) / WALL_REP_DIST);
+    if (pA.y < WALL_REP_DIST)     fy += WALL_REP_ACCEL * (1 - pA.y / WALL_REP_DIST);
+    if (pA.y > H - WALL_REP_DIST) fy -= WALL_REP_ACCEL * (1 - (H - pA.y) / WALL_REP_DIST);
+    if (fx || fy) bA.addForce({ x: fx * mA, y: fy * mA }, true);
+
+    // Inter-particle repulsion
+    for (let j = i + 1; j < emojiBodies.length; j++) {
+      const bB = world.getRigidBody(emojiBodies[j].handle);
+      if (!bB) continue;
+      const pB = bB.translation();
+      const dx = pB.x - pA.x, dy = pB.y - pA.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+      if (dist >= REPULSION_DIST) continue;
+      const f  = REPULSION_ACCEL * (1 - dist / REPULSION_DIST);
+      const nx = dx / dist, ny = dy / dist;
+      const mB = bB.mass();
+      bA.addForce({ x: -nx * f * mA, y: -ny * f * mA }, true);
+      bB.addForce({ x:  nx * f * mB, y:  ny * f * mB }, true);
+    }
   }
 }
 
-// ─── Gravity shift (swipe) ────────────────────────────────────────────────────
+// ─── Swipe / gestures ─────────────────────────────────────────────────────────
 function shiftGravity(dir: 'left' | 'right' | 'up' | 'down'): void {
-  const kick = 4 + Math.random() * 3;
+  const kick = toVel(4 + Math.random() * 3);
 
   if (dir === 'left' || dir === 'right') {
     setMode('side', dir);
-    for (const p of particles) {
-      p.vx += dir === 'left' ? -kick : kick;
-      p.settled = false;
-      p.settleTimer = 0;
+    const kx = dir === 'left' ? -kick : kick;
+    for (const e of emojiBodies) {
+      const b = world.getRigidBody(e.handle);
+      if (!b) continue;
+      const v = b.linvel();
+      b.setLinvel({ x: v.x + kx, y: v.y }, true);
     }
     showFlash(dir === 'left' ? 'rgba(79,195,247,0.35)' : 'rgba(255,167,38,0.35)');
   } else {
     setMode(dir === 'up' ? 'up' : 'down');
-    for (const p of particles) {
-      p.vy += dir === 'up' ? -kick : kick;
-      p.settled = false;
-      p.settleTimer = 0;
+    const ky = dir === 'up' ? -kick : kick;
+    for (const e of emojiBodies) {
+      const b = world.getRigidBody(e.handle);
+      if (!b) continue;
+      const v = b.linvel();
+      b.setLinvel({ x: v.x, y: v.y + ky }, true);
     }
     showFlash(dir === 'up' ? 'rgba(77,182,172,0.35)' : 'rgba(255,213,79,0.35)');
   }
 }
 
-// ─── Repulsion toggle (double-tap) ────────────────────────────────────────────
 function toggleRepulsion(): void {
   if (gravMode === 'repulsion') {
-    // Exit repulsion → back to down gravity
     setMode('down');
   } else {
     setMode('repulsion');
-    for (const p of particles) {
-      p.settled = false;
-      p.settleTimer = 0;
-      p.vx += (Math.random() - 0.5) * 10;
-      p.vy += (Math.random() - 0.5) * 10;
+    for (const e of emojiBodies) {
+      const b = world.getRigidBody(e.handle);
+      if (!b) continue;
+      const v = b.linvel();
+      b.setLinvel({
+        x: v.x + toVel((Math.random() - 0.5) * 10),
+        y: v.y + toVel((Math.random() - 0.5) * 10),
+      }, true);
     }
     showFlash('rgba(186,104,200,0.35)');
   }
@@ -369,58 +232,7 @@ function showFlash(color: string): void {
   });
 }
 
-// ─── Launch queue ─────────────────────────────────────────────────────────────
-interface QueueItem {
-  e: string;
-  isNew: boolean;
-  c: string;
-}
-
-function buildQueue(): QueueItem[] {
-  const reg = [...REG_EMOJIS]
-    .sort(() => Math.random() - 0.5)
-    .map(e => ({ e, isNew: false, c: '' }));
-  const newOnes = [...NEW_DEFS]
-    .sort(() => Math.random() - 0.5)
-    .map(d => ({ e: d.e, isNew: true, c: d.c }));
-
-  const queue: QueueItem[] = [];
-  const insertEvery = Math.ceil(reg.length / newOnes.length); // ~7
-  let ri = 0;
-  let ni = 0;
-
-  while (ri < reg.length || ni < newOnes.length) {
-    for (let k = 0; k < insertEvery && ri < reg.length; k++) {
-      queue.push(reg[ri++]);
-    }
-    if (ni < newOnes.length) {
-      queue.push(newOnes[ni++]);
-    }
-  }
-
-  return queue;
-}
-
-function launchParticle(item: QueueItem): void {
-  const approxSize = item.isNew ? W * 0.2 : W * 0.085;
-  const approxR = approxSize * 0.58;
-  const px = approxR + Math.random() * (W - 2 * approxR);
-  particles.push(new EmojiParticle(px, -approxR * 2, item.e, item.isNew, item.c));
-}
-
-function startLaunch(): void {
-  const queue = buildQueue();
-  let idx = 0;
-  const timer = setInterval(() => {
-    if (idx >= queue.length) {
-      clearInterval(timer);
-      return;
-    }
-    launchParticle(queue[idx++]);
-  }, 60);
-}
-
-// ─── Background ───────────────────────────────────────────────────────────────
+// ─── Draw ─────────────────────────────────────────────────────────────────────
 function drawBackground(): void {
   ctx.fillStyle = '#FFF8F0';
   ctx.fillRect(0, 0, W, H);
@@ -428,137 +240,163 @@ function drawBackground(): void {
   ctx.save();
   ctx.strokeStyle = 'rgba(255, 140, 50, 0.07)';
   ctx.lineWidth = 1;
-  for (let x = 0; x <= W; x += 40) {
+  for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawEmoji(e: EmojiBody, x: number, y: number, angle: number): void {
+  ctx.save();
+  ctx.globalAlpha = e.opacity;
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+
+  if (e.isNew) {
+    const r = e.size / 2;
+    const grd = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.05, 0, 0, r);
+    grd.addColorStop(0,   'rgba(255,255,255,0.75)');
+    grd.addColorStop(0.45, e.color + 'cc');
+    grd.addColorStop(1.0,  e.color);
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+    ctx.font = `${Math.floor(e.size * 0.52)}px serif`;
+  } else {
+    ctx.font = `${Math.floor(e.size)}px serif`;
   }
-  for (let y = 0; y <= H; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(e.emoji, 0, 2);
   ctx.restore();
 }
 
 // ─── Main loop ────────────────────────────────────────────────────────────────
 function loop(): void {
+  if (repulse) applyRepulsionForces();
+  world.step();
+
   drawBackground();
 
-  for (const p of particles) p.update();
-  resolveCollisions();
-  clampBoundaries();
-  if (repulse) applyRepulsion();
-  settleParticles();
-  for (const p of particles) p.draw(ctx);
+  for (const e of emojiBodies) {
+    e.opacity = Math.min(1, e.opacity + 0.05);
+    const body = world.getRigidBody(e.handle);
+    if (!body) continue;
+    const pos = body.translation();
+    const rot = body.rotation();
+    drawEmoji(e, pos.x, pos.y, rot);
+  }
 
   requestAnimationFrame(loop);
 }
 
-// ─── Resize (4:5 aspect ratio) ───────────────────────────────────────────────
+// ─── Resize ───────────────────────────────────────────────────────────────────
 function resize(): void {
   const PAD = 30;
-  const vw = document.documentElement.clientWidth  - PAD * 2;
-  const vh = document.documentElement.clientHeight - PAD * 2;
+  const vw  = document.documentElement.clientWidth  - PAD * 2;
+  const vh  = document.documentElement.clientHeight - PAD * 2;
 
-  if (vw / vh > 4 / 5) {
-    H = vh;
-    W = Math.floor(H * 4 / 5);
-  } else {
-    W = vw;
-    H = Math.floor(W * 5 / 4);
-    if (H > vh) { H = vh; W = Math.floor(H * 4 / 5); }
-  }
+  if (vw / vh > 4 / 5) { H = vh; W = Math.floor(H * 4 / 5); }
+  else { W = vw; H = Math.floor(W * 5 / 4); if (H > vh) { H = vh; W = Math.floor(H * 4 / 5); } }
 
-  canvas.width = W;
+  canvas.width  = W;
   canvas.height = H;
+
+  if (world) createWalls();
 }
 window.addEventListener('resize', resize);
-resize();
 
-// ─── Intro sequence ───────────────────────────────────────────────────────────
+// ─── Launch queue ─────────────────────────────────────────────────────────────
+interface QueueItem { e: string; isNew: boolean; c: string; }
+
+function buildQueue(): QueueItem[] {
+  const reg     = [...REG_EMOJIS].sort(() => Math.random() - 0.5).map(e => ({ e, isNew: false, c: '' }));
+  const newOnes = [...NEW_DEFS].sort(() => Math.random() - 0.5).map(d => ({ e: d.e, isNew: true, c: d.c }));
+  const queue: QueueItem[] = [];
+  const step = Math.ceil(reg.length / newOnes.length);
+  let ri = 0, ni = 0;
+  while (ri < reg.length || ni < newOnes.length) {
+    for (let k = 0; k < step && ri < reg.length; k++) queue.push(reg[ri++]);
+    if (ni < newOnes.length) queue.push(newOnes[ni++]);
+  }
+  return queue;
+}
+
+function launchParticle(item: QueueItem): void {
+  const approxSize = item.isNew ? W * 0.2 : W * 0.085;
+  const approxR    = approxSize * 0.58 * params.emojiSizeRatio;
+  const px = approxR + Math.random() * (W - 2 * approxR);
+  addEmoji(px, -approxR * 2, item.e, item.isNew, item.c);
+}
+
+function startLaunch(): void {
+  const queue = buildQueue();
+  let idx = 0;
+  const timer = setInterval(() => {
+    if (idx >= queue.length) { clearInterval(timer); return; }
+    launchParticle(queue[idx++]);
+  }, 60);
+}
+
+// ─── Intro ────────────────────────────────────────────────────────────────────
 function startIntro(): void {
   setTimeout(() => {
     introEl.classList.add('fade-out');
-    setTimeout(() => {
-      introEl.style.display = 'none';
-      startLaunch();
-    }, 400);
+    setTimeout(() => { introEl.style.display = 'none'; startLaunch(); }, 400);
   }, 1800);
 }
 
 // ─── Interaction ──────────────────────────────────────────────────────────────
-let pointerStartX = 0;
-let pointerStartY = 0;
-let pointerStartTime = 0;
-let lastTapTime = 0;
+let pointerStartX = 0, pointerStartY = 0, pointerStartTime = 0, lastTapTime = 0;
 
 function onPointerDown(x: number, y: number): void {
-  pointerStartX = x;
-  pointerStartY = y;
-  pointerStartTime = Date.now();
+  pointerStartX = x; pointerStartY = y; pointerStartTime = Date.now();
 }
 
 function onPointerUp(x: number, y: number, isTouch: boolean): void {
-  const dx = x - pointerStartX;
-  const dy = y - pointerStartY;
+  const dx = x - pointerStartX, dy = y - pointerStartY;
   const dt = Date.now() - pointerStartTime;
-
-  const swipeThreshold = isTouch ? 40 : 50;
-  const timeLimit = isTouch ? 500 : 1000;
   const dist = Math.sqrt(dx * dx + dy * dy);
 
-  if (dist >= swipeThreshold && dt < timeLimit) {
-    if (Math.abs(dx) >= Math.abs(dy)) {
-      shiftGravity(dx < 0 ? 'left' : 'right');
-    } else {
-      shiftGravity(dy < 0 ? 'up' : 'down');
-    }
+  if (dist >= (isTouch ? 40 : 50) && dt < (isTouch ? 500 : 1000)) {
+    if (Math.abs(dx) >= Math.abs(dy)) shiftGravity(dx < 0 ? 'left' : 'right');
+    else shiftGravity(dy < 0 ? 'up' : 'down');
     return;
   }
 
-  // Tap/click → double-tap detection
   if (dist < 10) {
     const now = Date.now();
-    if (now - lastTapTime < 350) {
-      toggleRepulsion();
-      lastTapTime = 0;
-    } else {
-      lastTapTime = now;
-    }
+    if (now - lastTapTime < 350) { toggleRepulsion(); lastTapTime = 0; }
+    else lastTapTime = now;
   }
 }
 
-// Desktop
-canvas.addEventListener('mousedown', (e) => onPointerDown(e.clientX, e.clientY));
-canvas.addEventListener('mouseup', (e) => onPointerUp(e.clientX, e.clientY, false));
+canvas.addEventListener('mousedown',  (e) => onPointerDown(e.clientX, e.clientY));
+canvas.addEventListener('mouseup',    (e) => onPointerUp(e.clientX, e.clientY, false));
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.touches[0]; onPointerDown(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchend',   (e) => { e.preventDefault(); const t = e.changedTouches[0]; onPointerUp(t.clientX, t.clientY, true); }, { passive: false });
 
-// Mobile
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  const t = e.touches[0];
-  onPointerDown(t.clientX, t.clientY);
-}, { passive: false });
-
-canvas.addEventListener('touchend', (e) => {
-  e.preventDefault();
-  const t = e.changedTouches[0];
-  onPointerUp(t.clientX, t.clientY, true);
-}, { passive: false });
-
-// Custom cursor (desktop only)
 let cursorVisible = false;
 document.addEventListener('mousemove', (e) => {
   cursorEl.style.left = e.clientX + 'px';
-  cursorEl.style.top = e.clientY + 'px';
-  if (!cursorVisible) {
-    cursorVisible = true;
-    cursorEl.style.opacity = '1';
-  }
+  cursorEl.style.top  = e.clientY + 'px';
+  if (!cursorVisible) { cursorVisible = true; cursorEl.style.opacity = '1'; }
 });
 
-// ─── Boot ────────────────────────────────────────────────────────────────────
-loop();
-startIntro();
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+async function boot(): Promise<void> {
+  resize();
+
+  await RAPIER.init();
+  world = new RAPIER.World({ x: 0, y: GRAV_STRENGTH * GRAV_SCALE });
+  createWalls();
+
+  const gui = new GUI({ title: '설정' });
+  gui.add(params, 'emojiSizeRatio', 0.5, 2.0, 0.1).name('이모지 크기');
+
+  loop();
+  startIntro();
+}
+
+boot();
