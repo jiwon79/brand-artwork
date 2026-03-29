@@ -11,9 +11,9 @@ const EMOJI_FONT = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans
 
 // ─── GUI 파라미터 ──────────────────────────────────────────────────────────────
 const params = {
-  gravity:       0.9,
-  newEmojiSize:  0.19 * 2 / 3 * 4 / 3,   // W 비율
-  faceEmojiSize: 0.082 * 2 / 3 * 4 / 3,  // W 비율
+  gravity:       0.5,
+  newEmojiSize:  0.12,
+  faceEmojiSize: 0.05,
 };
 
 const NEW_DEFS: { e: string; c: string }[] = [
@@ -55,7 +55,7 @@ resize();
 window.addEventListener('resize', resize);
 
 // ─── 중력 / 반발 모드 ─────────────────────────────────────────────────────────
-let gx = 0, gy = params.gravity;
+let gx = 0, gy = 0.5;
 let repulseMode = false;
 
 const REPULSION_DIST       = 130;
