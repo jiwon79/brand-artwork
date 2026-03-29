@@ -92,7 +92,7 @@ interface Particle {
 const particles: Particle[] = [];
 
 function spawnEmoji(emoji: string, isNew: boolean, color: string) {
-  const rand = 0.5 + Math.random() * 1.0; // 0.5 ~ 1.5
+  const rand = 0.75 + Math.random() * 0.75; // 0.75 ~ 1.5
   const size = isNew
     ? Math.floor(W * params.newEmojiSize  * rand)
     : Math.floor(W * params.faceEmojiSize * rand);
