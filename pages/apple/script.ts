@@ -32,7 +32,6 @@ const params = {
 const canvas   = document.getElementById('c') as HTMLCanvasElement;
 const ctx      = canvas.getContext('2d') as CanvasRenderingContext2D;
 const hint     = document.getElementById('hint') as HTMLElement;
-const ring     = document.getElementById('cursor-ring') as HTMLElement;
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
 
 // ── DPR setup ────────────────────────────────────────────
@@ -173,27 +172,16 @@ function render(now: number): void {
   requestAnimationFrame(render);
 }
 
-// ── Cursor ring ───────────────────────────────────────────
-function moveCursor(x: number, y: number): void {
-  const d = params.brushSize * 2;
-  ring.style.left   = x + 'px';
-  ring.style.top    = y + 'px';
-  ring.style.width  = d + 'px';
-  ring.style.height = d + 'px';
-}
-
 // ── Events ────────────────────────────────────────────────
 let isDown = false;
 
 function onDown(x: number, y: number): void {
   isDown = true;
-  moveCursor(x, y);
   applyBrush(x, y);
   hint.classList.add('hidden');
 }
 
 function onMove(x: number, y: number): void {
-  moveCursor(x, y);
   if (isDown) applyBrush(x, y);
 }
 
