@@ -81,10 +81,10 @@ interface Particle {
 const particles: Particle[] = [];
 
 function spawnEmoji(emoji: string, isNew: boolean, color: string) {
-  // 전체 크기 2/3
+  const rand = 0.75 + Math.random() * 0.5; // 0.75 ~ 1.25
   const size = isNew
-    ? Math.floor(W * 0.19 * 2 / 3)
-    : Math.floor(W * 0.082 * 2 / 3);
+    ? Math.floor(W * 0.19 * 2 / 3 * rand)
+    : Math.floor(W * 0.082 * 2 / 3 * rand);
   const r = size * (isNew ? 0.62 : 0.52);
   const x = OX + r + Math.random() * (W - r * 2);
   const y = OY - r;
@@ -214,7 +214,7 @@ function draw() {
 
   // 방향 이모지 오버레이
   if (dirOverlay) {
-    const sz = Math.floor(W * 0.28);
+    const sz = Math.floor(W * 0.28 / 4);
     ctx.save();
     ctx.globalAlpha = Math.min(dirOverlay.alpha, 1);
     ctx.font         = `${sz}px ${EMOJI_FONT}`;
