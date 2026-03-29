@@ -41,14 +41,14 @@ resize();
 window.addEventListener('resize', resize);
 
 // ─── 중력 / 반발 모드 ─────────────────────────────────────────────────────────
-let gx = 0, gy = 0.9;   // 현재 중력 벡터
+let gx = 0, gy = 0.9;
 let repulseMode = false;
 
-const REPULSE_DIST  = 120;
-const REPULSE_FORCE = 0.55;
-const WALL_REP_DIST = 80;
-const WALL_REP_FORCE = 0.45;
-const DAMP = 0.995;      // 반발 모드 속도 감쇠
+const REPULSION_DIST       = 130;
+const REPULSION_FORCE      = 0.6;
+const WALL_REPULSION_DIST  = 80;
+const WALL_REPULSION_FORCE = 0.8;
+const REPULSE_DAMP         = 0.94;
 
 // ─── 파티클 ───────────────────────────────────────────────────────────────────
 interface Particle {
@@ -77,34 +77,51 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
 }
 
 // ─── 충돌 & 물리 ──────────────────────────────────────────────────────────────
+function applyRepulsion() {
+  // 파티클 간 척력 — 1회/프레임, 충돌 패스 밖에서
+  for (let i = 0; i < particles.length; i++) {
+    const a = particles[i];
+    // 벽 척력
+    const distL = a.x - OX,  distR = (OX + W) - a.x;
+    const distT = a.y - OY,  distB = (OY + H) - a.y;
+    if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * (1 - distL / WALL_REPULSION_DIST);
+    if (distR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * (1 - distR / WALL_REPULSION_DIST);
+    if (distT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * (1 - distT / WALL_REPULSION_DIST);
+    if (distB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * (1 - distB / WALL_REPULSION_DIST);
+
+    // 파티클 간 척력
+    for (let j = i + 1; j < particles.length; j++) {
+      const b  = particles[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d  = Math.sqrt(dx * dx + dy * dy) || 0.001;
+      if (d >= REPULSION_DIST) continue;
+      const nx = dx / d, ny = dy / d;
+      const f  = REPULSION_FORCE * (1 - d / REPULSION_DIST);
+      a.vx -= nx * f;  a.vy -= ny * f;
+      b.vx += nx * f;  b.vy += ny * f;
+    }
+  }
+}
+
 function step() {
   for (const p of particles) {
-    if (repulseMode) {
-      // 벽 척력
-      let fx = 0, fy = 0;
-      const distL = p.x - OX,       distR = OX + W - p.x;
-      const distT = p.y - OY,       distB = OY + H - p.y;
-      if (distL < WALL_REP_DIST) fx += WALL_REP_FORCE * (1 - distL / WALL_REP_DIST);
-      if (distR < WALL_REP_DIST) fx -= WALL_REP_FORCE * (1 - distR / WALL_REP_DIST);
-      if (distT < WALL_REP_DIST) fy += WALL_REP_FORCE * (1 - distT / WALL_REP_DIST);
-      if (distB < WALL_REP_DIST) fy -= WALL_REP_FORCE * (1 - distB / WALL_REP_DIST);
-      p.vx = (p.vx + fx) * DAMP;
-      p.vy = (p.vy + fy) * DAMP;
-    } else {
-      p.vx += gx;
-      p.vy += gy;
-    }
-    p.x += p.vx;
-    p.y += p.vy;
+    p.vx += gx;
+    p.vy += gy;
+    p.x  += p.vx;
+    p.y  += p.vy;
     p.opacity = Math.min(1, p.opacity + 0.08);
   }
 
-  // 파티클 간 척력 (repulse 모드) + 충돌 해소
+  if (repulseMode) {
+    applyRepulsion();
+    for (const p of particles) { p.vx *= REPULSE_DAMP; p.vy *= REPULSE_DAMP; }
+  }
+
+  // 위치 보정 + 충돌
   for (let pass = 0; pass < COLLISION_PASSES; pass++) {
     for (let i = 0; i < particles.length; i++) {
       const a = particles[i];
 
-      // 벽 충돌
       if (a.x - a.r < OX)     { a.x = OX + a.r;     a.vx =  Math.abs(a.vx) * RESTITUTION; }
       if (a.x + a.r > OX + W) { a.x = OX + W - a.r; a.vx = -Math.abs(a.vx) * RESTITUTION; }
       if (a.y - a.r < OY)     { a.y = OY + a.r;      a.vy =  Math.abs(a.vy) * RESTITUTION; }
@@ -119,28 +136,19 @@ function step() {
         const dx = b.x - a.x, dy = b.y - a.y;
         const d2 = dx * dx + dy * dy;
         const minD = a.r + b.r;
+        if (d2 >= minD * minD) continue;
 
-        if (repulseMode && d2 < REPULSE_DIST * REPULSE_DIST) {
-          const d  = Math.sqrt(d2) || 0.001;
-          const nx = dx / d, ny = dy / d;
-          const f  = REPULSE_FORCE * (1 - d / REPULSE_DIST);
-          a.vx -= nx * f;  a.vy -= ny * f;
-          b.vx += nx * f;  b.vy += ny * f;
-        }
+        const d  = Math.sqrt(d2) || 0.001;
+        const nx = dx / d, ny = dy / d;
+        const overlap = (minD - d) * 0.5;
+        a.x -= nx * overlap;  a.y -= ny * overlap;
+        b.x += nx * overlap;  b.y += ny * overlap;
 
-        if (d2 < minD * minD) {
-          const d  = Math.sqrt(d2) || 0.001;
-          const nx = dx / d, ny = dy / d;
-          const overlap = (minD - d) * 0.5;
-          a.x -= nx * overlap;  a.y -= ny * overlap;
-          b.x += nx * overlap;  b.y += ny * overlap;
-
-          const dvDot = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
-          if (dvDot < 0) {
-            const imp = dvDot * (1 + RESTITUTION) * 0.5;
-            a.vx += imp * nx;  a.vy += imp * ny;
-            b.vx -= imp * nx;  b.vy -= imp * ny;
-          }
+        const dvDot = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+        if (dvDot < 0) {
+          const imp = dvDot * (1 + RESTITUTION) * 0.5;
+          a.vx += imp * nx;  a.vy += imp * ny;
+          b.vx -= imp * nx;  b.vy -= imp * ny;
         }
       }
     }
@@ -244,42 +252,48 @@ canvas.addEventListener('mouseup',    e => swipeEnd(e.clientX, e.clientY, false)
 canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; swipeStart(t.clientX, t.clientY); }, { passive: false });
 canvas.addEventListener('touchend',   e => { e.preventDefault(); const t = e.changedTouches[0]; swipeEnd(t.clientX, t.clientY, true); }, { passive: false });
 
-// ─── 더블클릭 → 척력 토글 ────────────────────────────────────────────────────
-let lastClick = 0;
-canvas.addEventListener('mouseup', () => {
-  const now = Date.now();
-  if (now - lastClick < 350) {
-    repulseMode = !repulseMode;
-    if (!repulseMode) { gx = 0; gy = 0.9; }
-    else {
-      // 정지 상태에서 살짝 흩어지게
-      for (const p of particles) {
-        p.vx += (Math.random() - 0.5) * 4;
-        p.vy += (Math.random() - 0.5) * 4;
-      }
+// ─── 더블클릭 / 더블탭 → 척력 토글 ─────────────────────────────────────────
+const flashEl = document.getElementById('flash')!;
+
+function showFlash(color: string) {
+  flashEl.style.transition = 'none';
+  flashEl.style.background = color;
+  flashEl.style.opacity    = '0.35';
+  requestAnimationFrame(() => {
+    flashEl.style.transition = 'opacity 0.5s ease-out';
+    flashEl.style.opacity    = '0';
+  });
+}
+
+function toggleRepulse() {
+  repulseMode = !repulseMode;
+  if (repulseMode) {
+    gx = 0; gy = 0;
+    for (const p of particles) {
+      p.vx += (Math.random() - 0.5) * 6;
+      p.vy += (Math.random() - 0.5) * 6;
     }
-    lastClick = 0;
+    showFlash('rgba(186,104,200,1)');
   } else {
-    lastClick = now;
+    gx = 0; gy = 0.9;
   }
+}
+
+let lastClick = 0;
+function onTap(isTap: boolean) {
+  if (!isTap) return;
+  const now = Date.now();
+  if (now - lastClick < 350) { toggleRepulse(); lastClick = 0; }
+  else                        { lastClick = now; }
+}
+
+canvas.addEventListener('mouseup', e => {
+  const dx = e.clientX - ptX, dy = e.clientY - ptY;
+  onTap(Math.sqrt(dx*dx+dy*dy) < 10);
 });
 canvas.addEventListener('touchend', e => {
   if (e.changedTouches.length !== 1) return;
-  const now = Date.now();
   const dx = e.changedTouches[0].clientX - ptX;
   const dy = e.changedTouches[0].clientY - ptY;
-  if (Math.sqrt(dx*dx+dy*dy) > 20) return; // 스와이프면 무시
-  if (now - lastClick < 350) {
-    repulseMode = !repulseMode;
-    if (!repulseMode) { gx = 0; gy = 0.9; }
-    else {
-      for (const p of particles) {
-        p.vx += (Math.random() - 0.5) * 4;
-        p.vy += (Math.random() - 0.5) * 4;
-      }
-    }
-    lastClick = 0;
-  } else {
-    lastClick = now;
-  }
+  onTap(Math.sqrt(dx*dx+dy*dy) < 20);
 }, { passive: true });
