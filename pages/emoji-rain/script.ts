@@ -1,3 +1,5 @@
+import GUI from 'lil-gui';
+
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 
@@ -6,6 +8,13 @@ const RESTITUTION      = 0.25;
 const FRICTION         = 0.80;
 const COLLISION_PASSES = 8;
 const EMOJI_FONT = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+
+// ─── GUI 파라미터 ──────────────────────────────────────────────────────────────
+const params = {
+  gravity:       0.9,
+  newEmojiSize:  0.19 * 2 / 3 * 4 / 3,   // W 비율
+  faceEmojiSize: 0.082 * 2 / 3 * 4 / 3,  // W 비율
+};
 
 const NEW_DEFS: { e: string; c: string }[] = [
   { e: '🫪', c: '#FF6B6B' },
@@ -47,7 +56,7 @@ resize();
 window.addEventListener('resize', resize);
 
 // ─── 중력 / 반발 모드 ─────────────────────────────────────────────────────────
-let gx = 0, gy = 0.9;
+let gx = 0, gy = params.gravity;
 let repulseMode = false;
 
 const REPULSION_DIST       = 130;
@@ -82,10 +91,9 @@ const particles: Particle[] = [];
 
 function spawnEmoji(emoji: string, isNew: boolean, color: string) {
   const rand = 0.75 + Math.random() * 0.5; // 0.75 ~ 1.25
-  // 기존 2/3 에서 1/3 더 키움 → × 4/3
   const size = isNew
-    ? Math.floor(W * 0.19 * 2 / 3 * 4 / 3 * rand)
-    : Math.floor(W * 0.082 * 2 / 3 * 4 / 3 * rand);
+    ? Math.floor(W * params.newEmojiSize  * rand)
+    : Math.floor(W * params.faceEmojiSize * rand);
   // 충돌 반지름을 시각 크기보다 약간 크게
   const r = size * (isNew ? 0.70 : 0.62);
   const x = OX + r + Math.random() * (W - r * 2);
@@ -99,13 +107,13 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
 }
 
 // ─── 물리 ────────────────────────────────────────────────────────────────────
-// 기준 반지름 (척력 크기 스케일 기준)
-const BASE_R = W * 0.082 * 2 / 3 * 4 / 3 * 0.62; // 작은 이모지 평균 r
+// 기준 반지름 (척력 크기 스케일 기준) — face 이모지 평균 r
+const baseR = () => W * params.faceEmojiSize * 0.62;
 
 function applyRepulsion() {
   for (let i = 0; i < particles.length; i++) {
     const a = particles[i];
-    const wallScale = a.r / BASE_R;
+    const wallScale = a.r / baseR();
     const distL = a.x - OX,        distR = (OX + W) - a.x;
     const distT = a.y - OY,        distB = (OY + H) - a.y;
     if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * wallScale * (1 - distL / WALL_REPULSION_DIST);
@@ -120,7 +128,7 @@ function applyRepulsion() {
       if (d >= REPULSION_DIST) continue;
       const nx = dx / d, ny = dy / d;
       // 두 파티클 크기의 평균으로 스케일
-      const sizeScale = (a.r + b.r) / (BASE_R * 2);
+      const sizeScale = (a.r + b.r) / (baseR() * 2);
       const f = REPULSION_FORCE * sizeScale * (1 - d / REPULSION_DIST);
       a.vx -= nx * f;  a.vy -= ny * f;
       b.vx += nx * f;  b.vy += ny * f;
@@ -242,6 +250,17 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+// ─── GUI ──────────────────────────────────────────────────────────────────────
+const gui = new GUI({ title: '설정' });
+gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) => {
+  // 현재 중력 방향 유지하면서 크기만 교체
+  const mag = Math.sqrt(gx * gx + gy * gy) || 1;
+  gx = gx / mag * v;
+  gy = gy / mag * v;
+});
+gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기');
+gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기');
+
 // ─── 스폰 큐 ─────────────────────────────────────────────────────────────────
 function buildQueue() {
   const reg  = [...FACE_EMOJIS].sort(() => Math.random() - 0.5).map(e => ({ e, isNew: false, c: '' }));
@@ -287,7 +306,7 @@ function swipeEnd(x: number, y: number, isTouch: boolean) {
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist < (isTouch ? 40 : 50) || dt > (isTouch ? 500 : 800)) return;
 
-  const G = 0.9;
+  const G = params.gravity;
   let dir: string;
   if (Math.abs(dx) >= Math.abs(dy)) {
     dir = dx < 0 ? 'left' : 'right';
@@ -322,7 +341,7 @@ function toggleRepulse() {
     }
     showFlash('rgba(186,104,200,0.5)');
   } else {
-    gx = 0; gy = 0.9;
+    gx = 0; gy = params.gravity;
   }
 }
 
