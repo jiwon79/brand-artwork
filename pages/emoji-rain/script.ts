@@ -254,6 +254,8 @@ function drawEmoji(e: EmojiBody, x: number, y: number, angle: number): void {
   ctx.translate(x, y);
   ctx.rotate(angle);
 
+  const EMOJI_FONTS = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+
   if (e.isNew) {
     const r = e.size / 2;
     const grd = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.05, 0, 0, r);
@@ -264,13 +266,14 @@ function drawEmoji(e: EmojiBody, x: number, y: number, angle: number): void {
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fillStyle = grd;
     ctx.fill();
-    ctx.font = `${Math.floor(e.size * 0.52)}px serif`;
+    ctx.font = `${Math.floor(e.size * 0.52)}px ${EMOJI_FONTS}`;
   } else {
-    ctx.font = `${Math.floor(e.size)}px serif`;
+    ctx.font = `${Math.floor(e.size)}px ${EMOJI_FONTS}`;
   }
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#1a1a1a';
   ctx.fillText(e.emoji, 0, 2);
   ctx.restore();
 }
