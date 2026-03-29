@@ -10,6 +10,7 @@ const GRAVITY_SIDE    = 1.2;
 const GRAVITY_SIDE_Y  = 0.05;
 const GRAVITY_UP      = 1.2;
 const COLLISION_GAP   = 6; // breathing room added on top of r_a + r_b
+const SLOP            = 2; // positional correction tolerance — overlaps smaller than this are ignored
 const REPULSION_DIST  = 130;
 const REPULSION_FORCE = 0.6;
 const WALL_REP_DIST   = 80;
@@ -191,23 +192,26 @@ function resolveCollisions(): void {
         if (dist >= minD) continue;
 
         const overlap = minD - dist;
+        // Slop: ignore tiny overlaps to prevent micro-jitter on resting contacts
+        const correction = Math.max(overlap - SLOP, 0);
+        if (correction === 0) continue;
         const nx = dx / dist, ny = dy / dist;
 
         if (a.settled) {
-          b.x += nx * overlap;
-          b.y += ny * overlap;
+          b.x += nx * correction;
+          b.y += ny * correction;
           const dot = b.vx * nx + b.vy * ny;
           if (dot < 0) { b.vx -= dot * nx; b.vy -= dot * ny; }
         } else if (b.settled) {
-          a.x -= nx * overlap;
-          a.y -= ny * overlap;
+          a.x -= nx * correction;
+          a.y -= ny * correction;
           const dot = a.vx * nx + a.vy * ny;
           if (dot > 0) { a.vx -= dot * nx; a.vy -= dot * ny; }
         } else {
-          a.x -= nx * overlap * 0.5;
-          a.y -= ny * overlap * 0.5;
-          b.x += nx * overlap * 0.5;
-          b.y += ny * overlap * 0.5;
+          a.x -= nx * correction * 0.5;
+          a.y -= ny * correction * 0.5;
+          b.x += nx * correction * 0.5;
+          b.y += ny * correction * 0.5;
 
           const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
           const dot = dvx * nx + dvy * ny;
