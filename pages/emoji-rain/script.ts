@@ -50,6 +50,17 @@ const WALL_REPULSION_DIST  = 80;
 const WALL_REPULSION_FORCE = 0.8;
 const REPULSE_DAMP         = 0.94;
 
+// ─── 방향 표시 오버레이 ───────────────────────────────────────────────────────
+interface DirOverlay { emoji: string; alpha: number; }
+let dirOverlay: DirOverlay | null = null;
+
+const DIR_INFO: Record<string, { emoji: string; flashColor: string; kick: [number, number] }> = {
+  down:  { emoji: '⬇️', flashColor: 'rgba(255,213,79,0.5)',  kick: [ 0,  5] },
+  up:    { emoji: '⬆️', flashColor: 'rgba(77,182,172,0.5)',  kick: [ 0, -5] },
+  right: { emoji: '➡️', flashColor: 'rgba(255,167,38,0.5)',  kick: [ 5,  0] },
+  left:  { emoji: '⬅️', flashColor: 'rgba(79,195,247,0.5)', kick: [-5,  0] },
+};
+
 // ─── 파티클 ───────────────────────────────────────────────────────────────────
 interface Particle {
   emoji: string;
@@ -64,10 +75,13 @@ interface Particle {
 const particles: Particle[] = [];
 
 function spawnEmoji(emoji: string, isNew: boolean, color: string) {
-  const size = isNew ? Math.floor(W * 0.19) : Math.floor(W * 0.082);
-  const r    = size * (isNew ? 0.62 : 0.52);
-  const x    = OX + r + Math.random() * (W - r * 2);
-  const y    = OY - r;
+  // 전체 크기 2/3
+  const size = isNew
+    ? Math.floor(W * 0.19 * 2 / 3)
+    : Math.floor(W * 0.082 * 2 / 3);
+  const r = size * (isNew ? 0.62 : 0.52);
+  const x = OX + r + Math.random() * (W - r * 2);
+  const y = OY - r;
   particles.push({
     emoji, isNew, color, x, y,
     vx: (Math.random() - 0.5) * 2,
@@ -76,20 +90,17 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
   });
 }
 
-// ─── 충돌 & 물리 ──────────────────────────────────────────────────────────────
+// ─── 물리 ────────────────────────────────────────────────────────────────────
 function applyRepulsion() {
-  // 파티클 간 척력 — 1회/프레임, 충돌 패스 밖에서
   for (let i = 0; i < particles.length; i++) {
     const a = particles[i];
-    // 벽 척력
-    const distL = a.x - OX,  distR = (OX + W) - a.x;
-    const distT = a.y - OY,  distB = (OY + H) - a.y;
+    const distL = a.x - OX,        distR = (OX + W) - a.x;
+    const distT = a.y - OY,        distB = (OY + H) - a.y;
     if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * (1 - distL / WALL_REPULSION_DIST);
     if (distR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * (1 - distR / WALL_REPULSION_DIST);
     if (distT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * (1 - distT / WALL_REPULSION_DIST);
     if (distB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * (1 - distB / WALL_REPULSION_DIST);
 
-    // 파티클 간 척력
     for (let j = i + 1; j < particles.length; j++) {
       const b  = particles[j];
       const dx = b.x - a.x, dy = b.y - a.y;
@@ -117,11 +128,9 @@ function step() {
     for (const p of particles) { p.vx *= REPULSE_DAMP; p.vy *= REPULSE_DAMP; }
   }
 
-  // 위치 보정 + 충돌
   for (let pass = 0; pass < COLLISION_PASSES; pass++) {
     for (let i = 0; i < particles.length; i++) {
       const a = particles[i];
-
       if (a.x - a.r < OX)     { a.x = OX + a.r;     a.vx =  Math.abs(a.vx) * RESTITUTION; }
       if (a.x + a.r > OX + W) { a.x = OX + W - a.r; a.vx = -Math.abs(a.vx) * RESTITUTION; }
       if (a.y - a.r < OY)     { a.y = OY + a.r;      a.vy =  Math.abs(a.vy) * RESTITUTION; }
@@ -153,6 +162,12 @@ function step() {
       }
     }
   }
+
+  // 방향 오버레이 페이드아웃
+  if (dirOverlay) {
+    dirOverlay.alpha -= 0.025;
+    if (dirOverlay.alpha <= 0) dirOverlay = null;
+  }
 }
 
 // ─── 그리기 ───────────────────────────────────────────────────────────────────
@@ -176,7 +191,6 @@ function draw() {
     ctx.translate(p.x, p.y);
 
     if (p.isNew) {
-      // 컬러 원형 테두리
       ctx.beginPath();
       ctx.arc(0, 0, p.r, 0, Math.PI * 2);
       ctx.strokeStyle = p.color;
@@ -189,6 +203,19 @@ function draw() {
     ctx.textBaseline = 'middle';
     ctx.fillStyle    = '#000';
     ctx.fillText(p.emoji, 0, 0);
+    ctx.restore();
+  }
+
+  // 방향 이모지 오버레이
+  if (dirOverlay) {
+    const sz = Math.floor(W * 0.28);
+    ctx.save();
+    ctx.globalAlpha = Math.min(dirOverlay.alpha, 1);
+    ctx.font         = `${sz}px ${EMOJI_FONT}`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle    = '#000';
+    ctx.fillText(dirOverlay.emoji, OX + W / 2, OY + H / 2);
     ctx.restore();
   }
 
@@ -206,10 +233,10 @@ function buildQueue() {
   const reg  = [...FACE_EMOJIS].sort(() => Math.random() - 0.5).map(e => ({ e, isNew: false, c: '' }));
   const newE = [...NEW_DEFS   ].sort(() => Math.random() - 0.5).map(d => ({ e: d.e, isNew: true, c: d.c }));
   const q: { e: string; isNew: boolean; c: string }[] = [];
-  const step = Math.ceil(reg.length / newE.length);
+  const stepN = Math.ceil(reg.length / newE.length);
   let ri = 0, ni = 0;
   while (ri < reg.length || ni < newE.length) {
-    for (let k = 0; k < step && ri < reg.length; k++) q.push(reg[ri++]);
+    for (let k = 0; k < stepN && ri < reg.length; k++) q.push(reg[ri++]);
     if (ni < newE.length) q.push(newE[ni++]);
   }
   return q;
@@ -223,10 +250,23 @@ setInterval(() => {
 
 loop();
 
+// ─── flash 유틸 ───────────────────────────────────────────────────────────────
+const flashEl = document.getElementById('flash')!;
+function showFlash(color: string) {
+  flashEl.style.transition = 'none';
+  flashEl.style.background = color;
+  flashEl.style.opacity    = '1';
+  requestAnimationFrame(() => {
+    flashEl.style.transition = 'opacity 0.5s ease-out';
+    flashEl.style.opacity    = '0';
+  });
+}
+
 // ─── 스와이프 ─────────────────────────────────────────────────────────────────
 let ptX = 0, ptY = 0, ptT = 0;
 
 function swipeStart(x: number, y: number) { ptX = x; ptY = y; ptT = Date.now(); }
+
 function swipeEnd(x: number, y: number, isTouch: boolean) {
   const dx = x - ptX, dy = y - ptY;
   const dt = Date.now() - ptT;
@@ -234,17 +274,22 @@ function swipeEnd(x: number, y: number, isTouch: boolean) {
   if (dist < (isTouch ? 40 : 50) || dt > (isTouch ? 500 : 800)) return;
 
   const G = 0.9;
+  let dir: string;
   if (Math.abs(dx) >= Math.abs(dy)) {
+    dir = dx < 0 ? 'left' : 'right';
     gx = dx < 0 ? -G : G;  gy = 0;
   } else {
+    dir = dy < 0 ? 'up' : 'down';
     gx = 0;  gy = dy < 0 ? -G : G;
   }
   repulseMode = false;
 
-  // 기존 파티클에 킥
-  const kick = 5;
-  const kx = gx * kick, ky = gy * kick;
+  const info = DIR_INFO[dir];
+  const [kx, ky] = info.kick;
   for (const p of particles) { p.vx += kx; p.vy += ky; }
+
+  showFlash(info.flashColor);
+  dirOverlay = { emoji: info.emoji, alpha: 2.0 }; // 1.0 표시 후 페이드
 }
 
 canvas.addEventListener('mousedown',  e => swipeStart(e.clientX, e.clientY));
@@ -253,18 +298,6 @@ canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.tou
 canvas.addEventListener('touchend',   e => { e.preventDefault(); const t = e.changedTouches[0]; swipeEnd(t.clientX, t.clientY, true); }, { passive: false });
 
 // ─── 더블클릭 / 더블탭 → 척력 토글 ─────────────────────────────────────────
-const flashEl = document.getElementById('flash')!;
-
-function showFlash(color: string) {
-  flashEl.style.transition = 'none';
-  flashEl.style.background = color;
-  flashEl.style.opacity    = '0.35';
-  requestAnimationFrame(() => {
-    flashEl.style.transition = 'opacity 0.5s ease-out';
-    flashEl.style.opacity    = '0';
-  });
-}
-
 function toggleRepulse() {
   repulseMode = !repulseMode;
   if (repulseMode) {
@@ -273,7 +306,7 @@ function toggleRepulse() {
       p.vx += (Math.random() - 0.5) * 6;
       p.vy += (Math.random() - 0.5) * 6;
     }
-    showFlash('rgba(186,104,200,1)');
+    showFlash('rgba(186,104,200,0.5)');
   } else {
     gx = 0; gy = 0.9;
   }
@@ -289,11 +322,11 @@ function onTap(isTap: boolean) {
 
 canvas.addEventListener('mouseup', e => {
   const dx = e.clientX - ptX, dy = e.clientY - ptY;
-  onTap(Math.sqrt(dx*dx+dy*dy) < 10);
+  onTap(Math.sqrt(dx * dx + dy * dy) < 10);
 });
 canvas.addEventListener('touchend', e => {
   if (e.changedTouches.length !== 1) return;
   const dx = e.changedTouches[0].clientX - ptX;
   const dy = e.changedTouches[0].clientY - ptY;
-  onTap(Math.sqrt(dx*dx+dy*dy) < 20);
+  onTap(Math.sqrt(dx * dx + dy * dy) < 20);
 }, { passive: true });
