@@ -82,10 +82,12 @@ const particles: Particle[] = [];
 
 function spawnEmoji(emoji: string, isNew: boolean, color: string) {
   const rand = 0.75 + Math.random() * 0.5; // 0.75 ~ 1.25
+  // 기존 2/3 에서 1/3 더 키움 → × 4/3
   const size = isNew
-    ? Math.floor(W * 0.19 * 2 / 3 * rand)
-    : Math.floor(W * 0.082 * 2 / 3 * rand);
-  const r = size * (isNew ? 0.62 : 0.52);
+    ? Math.floor(W * 0.19 * 2 / 3 * 4 / 3 * rand)
+    : Math.floor(W * 0.082 * 2 / 3 * 4 / 3 * rand);
+  // 충돌 반지름을 시각 크기보다 약간 크게
+  const r = size * (isNew ? 0.70 : 0.62);
   const x = OX + r + Math.random() * (W - r * 2);
   const y = OY - r;
   particles.push({
@@ -97,15 +99,19 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
 }
 
 // ─── 물리 ────────────────────────────────────────────────────────────────────
+// 기준 반지름 (척력 크기 스케일 기준)
+const BASE_R = W * 0.082 * 2 / 3 * 4 / 3 * 0.62; // 작은 이모지 평균 r
+
 function applyRepulsion() {
   for (let i = 0; i < particles.length; i++) {
     const a = particles[i];
+    const wallScale = a.r / BASE_R;
     const distL = a.x - OX,        distR = (OX + W) - a.x;
     const distT = a.y - OY,        distB = (OY + H) - a.y;
-    if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * (1 - distL / WALL_REPULSION_DIST);
-    if (distR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * (1 - distR / WALL_REPULSION_DIST);
-    if (distT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * (1 - distT / WALL_REPULSION_DIST);
-    if (distB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * (1 - distB / WALL_REPULSION_DIST);
+    if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * wallScale * (1 - distL / WALL_REPULSION_DIST);
+    if (distR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * wallScale * (1 - distR / WALL_REPULSION_DIST);
+    if (distT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * wallScale * (1 - distT / WALL_REPULSION_DIST);
+    if (distB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * wallScale * (1 - distB / WALL_REPULSION_DIST);
 
     for (let j = i + 1; j < particles.length; j++) {
       const b  = particles[j];
@@ -113,7 +119,9 @@ function applyRepulsion() {
       const d  = Math.sqrt(dx * dx + dy * dy) || 0.001;
       if (d >= REPULSION_DIST) continue;
       const nx = dx / d, ny = dy / d;
-      const f  = REPULSION_FORCE * (1 - d / REPULSION_DIST);
+      // 두 파티클 크기의 평균으로 스케일
+      const sizeScale = (a.r + b.r) / (BASE_R * 2);
+      const f = REPULSION_FORCE * sizeScale * (1 - d / REPULSION_DIST);
       a.vx -= nx * f;  a.vy -= ny * f;
       b.vx += nx * f;  b.vy += ny * f;
     }
