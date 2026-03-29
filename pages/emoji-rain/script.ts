@@ -11,10 +11,10 @@ const EMOJI_FONT = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans
 
 // ─── GUI 파라미터 ──────────────────────────────────────────────────────────────
 const params = {
-  gravity:       0.5,
+  gravity:       0.4,
   newEmojiSize:  0.12,
   faceEmojiSize: 0.05,
-  repulseEase:   0.03,   // 척력 전환속도 (클수록 빠름)
+  repulseEase:   0.01,
 };
 
 const NEW_DEFS: { e: string; c: string }[] = [
@@ -56,7 +56,7 @@ resize();
 window.addEventListener('resize', resize);
 
 // ─── 중력 / 반발 모드 ─────────────────────────────────────────────────────────
-let gx = 0, gy = 0.5;
+let gx = 0, gy = 0.4;
 let repulseMode = false;
 let repulseT = 0;  // 0→1 전환 진행도
 
@@ -92,7 +92,7 @@ interface Particle {
 const particles: Particle[] = [];
 
 function spawnEmoji(emoji: string, isNew: boolean, color: string) {
-  const rand = 0.75 + Math.random() * 0.5; // 0.75 ~ 1.25
+  const rand = 0.5 + Math.random() * 1.0; // 0.5 ~ 1.5
   const size = isNew
     ? Math.floor(W * params.newEmojiSize  * rand)
     : Math.floor(W * params.faceEmojiSize * rand);
