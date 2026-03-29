@@ -57,6 +57,8 @@ window.addEventListener('resize', resize);
 // ─── 중력 / 반발 모드 ─────────────────────────────────────────────────────────
 let gx = 0, gy = 0.5;
 let repulseMode = false;
+let repulseT = 0;          // 0→1 전환 진행도
+const REPULSE_EASE = 0.03; // 매 프레임 += 이 값 (1/0.03 ≈ 33프레임 ≈ 0.5초)
 
 const REPULSION_DIST       = 130;
 const REPULSION_FORCE      = 0.6;
@@ -110,10 +112,10 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
 // 기준 반지름 (척력 크기 스케일 기준) — face 이모지 평균 r
 const baseR = () => W * params.faceEmojiSize * 0.62;
 
-function applyRepulsion() {
+function applyRepulsion(scale = 1) {
   for (let i = 0; i < particles.length; i++) {
     const a = particles[i];
-    const wallScale = a.r / baseR();
+    const wallScale = a.r / baseR() * scale;
     const distL = a.x - OX,        distR = (OX + W) - a.x;
     const distT = a.y - OY,        distB = (OY + H) - a.y;
     if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * wallScale * (1 - distL / WALL_REPULSION_DIST);
@@ -129,7 +131,7 @@ function applyRepulsion() {
       const nx = dx / d, ny = dy / d;
       // 두 파티클 크기의 평균으로 스케일
       const sizeScale = (a.r + b.r) / (baseR() * 2);
-      const f = REPULSION_FORCE * sizeScale * (1 - d / REPULSION_DIST);
+      const f = REPULSION_FORCE * sizeScale * scale * (1 - d / REPULSION_DIST);
       a.vx -= nx * f;  a.vy -= ny * f;
       b.vx += nx * f;  b.vy += ny * f;
     }
@@ -146,7 +148,8 @@ function step() {
   }
 
   if (repulseMode) {
-    applyRepulsion();
+    repulseT = Math.min(1, repulseT + REPULSE_EASE);
+    applyRepulsion(repulseT);
     for (const p of particles) { p.vx *= REPULSE_DAMP; p.vy *= REPULSE_DAMP; }
   }
 
@@ -349,12 +352,14 @@ function toggleRepulse() {
   repulseMode = !repulseMode;
   if (repulseMode) {
     gx = 0; gy = 0;
+    repulseT = 0;  // 전환 처음부터
     for (const p of particles) {
-      p.vx += (Math.random() - 0.5) * 6;
-      p.vy += (Math.random() - 0.5) * 6;
+      p.vx += (Math.random() - 0.5) * 2;
+      p.vy += (Math.random() - 0.5) * 2;
     }
     showFlash('rgba(186,104,200,0.5)');
   } else {
+    repulseT = 0;
     gx = 0; gy = params.gravity;
   }
 }
