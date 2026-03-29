@@ -145,6 +145,9 @@ function setMode(mode: GravityMode, dir?: 'left' | 'right'): void {
 
 // ─── Repulsion forces (applied before each step) ──────────────────────────────
 function applyRepulsionForces(): void {
+  // addForce accumulates — must reset each step before re-applying.
+  for (const e of emojiBodies) world.getRigidBody(e.handle)?.resetForces(false);
+
   for (let i = 0; i < emojiBodies.length; i++) {
     const bA = world.getRigidBody(emojiBodies[i].handle);
     if (!bA) continue;
@@ -390,6 +393,10 @@ async function boot(): Promise<void> {
 
   await RAPIER.init();
   world = new RAPIER.World({ x: 0, y: GRAV_STRENGTH * GRAV_SCALE });
+  // Tell Rapier that 1 "meter" = ~50 pixels (avg body size).
+  // This scales internal tolerances (contact error, sleep thresholds, CCD prediction)
+  // proportionally so they make sense in pixel-space instead of meter-space.
+  world.lengthUnit = 50;
   createWalls();
 
   const gui = new GUI({ title: '설정' });
