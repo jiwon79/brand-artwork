@@ -1,3 +1,5 @@
+import GUI from 'lil-gui';
+
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const cursorEl = document.getElementById('cursor') as HTMLDivElement;
@@ -559,17 +561,12 @@ document.addEventListener('mousemove', (e) => {
   }
 });
 
-// ─── Gravity GUI ─────────────────────────────────────────────────────────────
-const gravitySlider  = document.getElementById('gravity-slider')  as HTMLInputElement;
-const gravityValueEl = document.getElementById('gravity-value')   as HTMLSpanElement;
-
-gravitySlider.value = String(gravStrength);
-gravityValueEl.textContent = gravStrength.toFixed(2);
-
-gravitySlider.addEventListener('input', () => {
-  gravStrength = parseFloat(gravitySlider.value);
-  gravityValueEl.textContent = gravStrength.toFixed(2);
-  setMode(gravMode);  // re-apply current mode with new strength
+// ─── GUI ─────────────────────────────────────────────────────────────────────
+const guiParams = { gravStrength };
+const gui = new GUI({ title: '설정' });
+gui.add(guiParams, 'gravStrength', 0.1, 2.0, 0.05).name('중력').onChange((v: number) => {
+  gravStrength = v;
+  setMode(gravMode);
 });
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
