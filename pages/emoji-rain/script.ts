@@ -85,6 +85,7 @@ interface Particle {
   vx: number; vy: number;
   r: number;
   size: number;
+  rand: number;   // 스폰 시 랜덤 배율 (0.75 ~ 1.25)
   opacity: number;
 }
 const particles: Particle[] = [];
@@ -102,7 +103,7 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
     emoji, isNew, color, x, y,
     vx: (Math.random() - 0.5) * 2,
     vy: Math.random() + 0.5,
-    r, size, opacity: 0,
+    r, size, rand, opacity: 0,
   });
 }
 
@@ -251,15 +252,21 @@ function loop() {
 }
 
 // ─── GUI ──────────────────────────────────────────────────────────────────────
+function refreshParticleSizes() {
+  for (const p of particles) {
+    p.size = Math.floor(W * (p.isNew ? params.newEmojiSize : params.faceEmojiSize) * p.rand);
+    p.r    = p.size * (p.isNew ? 0.70 : 0.62);
+  }
+}
+
 const gui = new GUI({ title: '설정' });
 gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) => {
-  // 현재 중력 방향 유지하면서 크기만 교체
   const mag = Math.sqrt(gx * gx + gy * gy) || 1;
   gx = gx / mag * v;
   gy = gy / mag * v;
 });
-gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기');
-gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기');
+gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기').onChange(refreshParticleSizes);
+gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
 
 // ─── 스폰 큐 ─────────────────────────────────────────────────────────────────
 function buildQueue() {
