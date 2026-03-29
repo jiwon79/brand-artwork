@@ -11,6 +11,10 @@ const GRAVITY_SIDE_Y  = 0.05;
 const GRAVITY_UP      = 1.2;
 const COLLISION_GAP   = 6; // breathing room added on top of r_a + r_b
 const SLOP            = 2; // positional correction tolerance — overlaps smaller than this are ignored
+const BOUNCE_THRESHOLD = 1.5; // approach speed below this → restitution 0 (no bounce)
+const BOUNCE_COEFF    = 0.2;  // restitution above threshold
+const SLEEP_SPEED_SQ  = 0.09; // 0.3² — speed² threshold for sleep timer
+const WAKE_SPEED      = 2.5;  // collision speed that wakes a sleeping neighbour
 const REPULSION_DIST  = 130;
 const REPULSION_FORCE = 0.6;
 const WALL_REP_DIST   = 80;
@@ -126,24 +130,24 @@ class EmojiParticle {
     if (this.x - r < 0) {
       this.x = r;
       const abs = Math.abs(this.vx);
-      this.vx = abs < 1.2 ? 0 : abs * this.bounce;
+      this.vx = abs < BOUNCE_THRESHOLD ? 0 : abs * this.bounce;
       this.vy *= this.friction;
     } else if (this.x + r > W) {
       this.x = W - r;
       const abs = Math.abs(this.vx);
-      this.vx = abs < 1.2 ? 0 : -abs * this.bounce;
+      this.vx = abs < BOUNCE_THRESHOLD ? 0 : -abs * this.bounce;
       this.vy *= this.friction;
     }
 
     if (this.y - r < 0) {
       this.y = r;
       const abs = Math.abs(this.vy);
-      this.vy = abs < 1.2 ? 0 : abs * this.bounce;
+      this.vy = abs < BOUNCE_THRESHOLD ? 0 : abs * this.bounce;
       this.vx *= this.friction;
     } else if (this.y + r > H) {
       this.y = H - r;
       const abs = Math.abs(this.vy);
-      this.vy = abs < 1.2 ? 0 : -abs * this.bounce;
+      this.vy = abs < BOUNCE_THRESHOLD ? 0 : -abs * this.bounce;
       this.vx *= this.friction;
     }
 
@@ -201,12 +205,23 @@ function resolveCollisions(): void {
           b.x += nx * correction;
           b.y += ny * correction;
           const dot = b.vx * nx + b.vy * ny;
-          if (dot < 0) { b.vx -= dot * nx; b.vy -= dot * ny; }
+          if (dot < 0) {
+            const e = -dot > BOUNCE_THRESHOLD ? BOUNCE_COEFF : 0;
+            b.vx -= (1 + e) * dot * nx;
+            b.vy -= (1 + e) * dot * ny;
+            // Wake sleeping particle on strong impact
+            if (-dot > WAKE_SPEED) { a.settled = false; a.settleTimer = 0; }
+          }
         } else if (b.settled) {
           a.x -= nx * correction;
           a.y -= ny * correction;
           const dot = a.vx * nx + a.vy * ny;
-          if (dot > 0) { a.vx -= dot * nx; a.vy -= dot * ny; }
+          if (dot > 0) {
+            const e = dot > BOUNCE_THRESHOLD ? BOUNCE_COEFF : 0;
+            a.vx -= (1 + e) * dot * nx;
+            a.vy -= (1 + e) * dot * ny;
+            if (dot > WAKE_SPEED) { b.settled = false; b.settleTimer = 0; }
+          }
         } else {
           a.x -= nx * correction * 0.5;
           a.y -= ny * correction * 0.5;
@@ -216,10 +231,12 @@ function resolveCollisions(): void {
           const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
           const dot = dvx * nx + dvy * ny;
           if (dot < 0) {
-            a.vx += dot * nx * 0.5;
-            a.vy += dot * ny * 0.5;
-            b.vx -= dot * nx * 0.5;
-            b.vy -= dot * ny * 0.5;
+            const e = -dot > BOUNCE_THRESHOLD ? BOUNCE_COEFF : 0;
+            const impulse = (1 + e) * dot * 0.5;
+            a.vx += impulse * nx;
+            a.vy += impulse * ny;
+            b.vx -= impulse * nx;
+            b.vy -= impulse * ny;
           }
         }
       }
@@ -248,12 +265,14 @@ function settleParticles(): void {
   if (repulse) return;
   for (const p of particles) {
     if (p.settled) continue;
-    if (Math.abs(p.vx) < 0.2 && Math.abs(p.vy) < 0.2) {
+    const speedSq = p.vx * p.vx + p.vy * p.vy;
+    if (speedSq < SLEEP_SPEED_SQ) {
       p.settleTimer++;
       if (p.settleTimer > 30) {
         p.settled = true;
         p.vx = 0;
         p.vy = 0;
+        p.angVel = 0;
       }
     } else {
       p.settleTimer = 0;
