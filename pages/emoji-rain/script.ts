@@ -187,6 +187,15 @@ function step() {
     repulseT = Math.min(1, repulseT + params.repulseEase);
     applyRepulsion(repulseT);
     for (const p of particles) { p.vx *= REPULSE_DAMP; p.vy *= REPULSE_DAMP; }
+
+    // 위치 직접 보정: 벽에 붙은 파티클을 강제로 떼어냄
+    const MIN_VEL = 1.5;
+    for (const p of particles) {
+      if (p.x - p.r < OX)     { p.x = OX + p.r + 1;     p.vx =  Math.max(p.vx, MIN_VEL); }
+      if (p.x + p.r > OX + W) { p.x = OX + W - p.r - 1; p.vx =  Math.min(p.vx, -MIN_VEL); }
+      if (p.y - p.r < OY)     { p.y = OY + p.r + 1;      p.vy =  Math.max(p.vy, MIN_VEL); }
+      if (p.y + p.r > OY + H) { p.y = OY + H - p.r - 1;  p.vy =  Math.min(p.vy, -MIN_VEL); }
+    }
   }
 
   // 방향 오버레이 페이드아웃
@@ -368,6 +377,7 @@ function toggleRepulse() {
   } else {
     repulseT = 0;
     gx = 0; gy = params.gravity;
+    showFlash('rgba(186,104,200,0.5)');
   }
 }
 
