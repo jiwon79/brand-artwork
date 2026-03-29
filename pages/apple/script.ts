@@ -6,24 +6,24 @@ const GAP     = 0.5;
 const STEP    = CELL + GAP;
 const MAX_N   = 4;
 const MAX_R   = CELL / 2;
-const BRUSH_R = 80;
 const HOLD_MS = 2000;
 const DECAY   = 0.9601;
 
 type FalloffKey = 'quadratic' | 'linear' | 'cubic' | 'sqrt' | 'gaussian' | 'cosine' | 'smoothstep';
 
-const falloffFns: Record<FalloffKey, (t: number, dist: number) => number> = {
-  linear:     (t)       => MAX_N * t,
-  quadratic:  (t)       => MAX_N * t * t,
-  cubic:      (t)       => MAX_N * t * t * t,
-  sqrt:       (t)       => MAX_N * Math.sqrt(t),
-  gaussian:   (_, dist) => MAX_N * Math.exp(-(dist * dist) / (2 * (BRUSH_R * 0.4) ** 2)),
-  cosine:     (t)       => MAX_N * (Math.cos((1 - t) * Math.PI) + 1) / 2,
-  smoothstep: (t)       => MAX_N * t * t * (3 - 2 * t),
+const falloffFns: Record<FalloffKey, (t: number, dist: number, brushR: number) => number> = {
+  linear:     (t)              => MAX_N * t,
+  quadratic:  (t)              => MAX_N * t * t,
+  cubic:      (t)              => MAX_N * t * t * t,
+  sqrt:       (t)              => MAX_N * Math.sqrt(t),
+  gaussian:   (_, dist, brushR) => MAX_N * Math.exp(-(dist * dist) / (2 * (brushR * 0.4) ** 2)),
+  cosine:     (t)              => MAX_N * (Math.cos((1 - t) * Math.PI) + 1) / 2,
+  smoothstep: (t)              => MAX_N * t * t * (3 - 2 * t),
 };
 
 const params = {
   falloff: 'quadratic' as FalloffKey,
+  brushSize: 80,
   bgColor: '#ffffff',
   cellColor: '#1c1c1e',
 };
@@ -74,10 +74,11 @@ function ci(x: number, y: number): number {
 function applyBrush(bx: number, by: number): void {
   const now = performance.now();
 
-  const minCx = Math.max(0, Math.floor((bx - BRUSH_R) / STEP));
-  const maxCx = Math.min(cW - 1, Math.ceil((bx + BRUSH_R) / STEP));
-  const minCy = Math.max(0, Math.floor((by - BRUSH_R) / STEP));
-  const maxCy = Math.min(cH - 1, Math.ceil((by + BRUSH_R) / STEP));
+  const brushR = params.brushSize;
+  const minCx = Math.max(0, Math.floor((bx - brushR) / STEP));
+  const maxCx = Math.min(cW - 1, Math.ceil((bx + brushR) / STEP));
+  const minCy = Math.max(0, Math.floor((by - brushR) / STEP));
+  const maxCy = Math.min(cH - 1, Math.ceil((by + brushR) / STEP));
 
   for (let cy = minCy; cy <= maxCy; cy++) {
     for (let cx = minCx; cx <= maxCx; cx++) {
@@ -86,10 +87,10 @@ function applyBrush(bx: number, by: number): void {
       const dx = px - bx;
       const dy = py - by;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist >= BRUSH_R) continue;
+      if (dist >= brushR) continue;
 
-      const t = 1 - dist / BRUSH_R;
-      const target = falloffFns[params.falloff](t, dist);
+      const t = 1 - dist / brushR;
+      const target = falloffFns[params.falloff](t, dist, brushR);
       const idx = ci(cx, cy);
 
       if (target > cornerN[idx]) {
@@ -174,7 +175,7 @@ function render(now: number): void {
 
 // ── Cursor ring ───────────────────────────────────────────
 function moveCursor(x: number, y: number): void {
-  const d = BRUSH_R * 2;
+  const d = params.brushSize * 2;
   ring.style.left   = x + 'px';
   ring.style.top    = y + 'px';
   ring.style.width  = d + 'px';
@@ -239,6 +240,7 @@ window.addEventListener('resize', () => {
 // ── GUI ───────────────────────────────────────────────────
 const gui = new GUI({ title: 'options' });
 gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
+gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
 
