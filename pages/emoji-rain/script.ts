@@ -62,8 +62,8 @@ let repulseT = 0;  // 0→1 전환 진행도
 
 const REPULSION_DIST       = 130;
 const REPULSION_FORCE      = 0.6;
-const WALL_REPULSION_DIST  = 80;
-const WALL_REPULSION_FORCE = 0.8;
+const WALL_REPULSION_DIST  = 120;
+const WALL_REPULSION_FORCE = 2.5;
 const REPULSE_DAMP         = 0.94;
 
 // ─── 방향 표시 오버레이 ───────────────────────────────────────────────────────
@@ -115,13 +115,12 @@ const baseR = () => W * params.faceEmojiSize * 0.62;
 function applyRepulsion(scale = 1) {
   for (let i = 0; i < particles.length; i++) {
     const a = particles[i];
-    const wallScale = a.r / baseR() * scale;
     const distL = a.x - OX,        distR = (OX + W) - a.x;
     const distT = a.y - OY,        distB = (OY + H) - a.y;
-    if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * wallScale * (1 - distL / WALL_REPULSION_DIST);
-    if (distR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * wallScale * (1 - distR / WALL_REPULSION_DIST);
-    if (distT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * wallScale * (1 - distT / WALL_REPULSION_DIST);
-    if (distB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * wallScale * (1 - distB / WALL_REPULSION_DIST);
+    if (distL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * scale * (1 - distL / WALL_REPULSION_DIST);
+    if (distR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * scale * (1 - distR / WALL_REPULSION_DIST);
+    if (distT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * scale * (1 - distT / WALL_REPULSION_DIST);
+    if (distB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * scale * (1 - distB / WALL_REPULSION_DIST);
 
     for (let j = i + 1; j < particles.length; j++) {
       const b  = particles[j];
@@ -354,10 +353,15 @@ function toggleRepulse() {
   repulseMode = !repulseMode;
   if (repulseMode) {
     gx = 0; gy = 0;
-    repulseT = 0;  // 전환 처음부터
+    repulseT = 0;
+    const cx = OX + W / 2, cy = OY + H / 2;
     for (const p of particles) {
-      p.vx += (Math.random() - 0.5) * 2;
-      p.vy += (Math.random() - 0.5) * 2;
+      // 벽에서 멀어지는 방향으로 즉각 킥
+      const dx = p.x - cx, dy = p.y - cy;
+      const d  = Math.sqrt(dx * dx + dy * dy) || 1;
+      const kickMag = 6 + Math.random() * 4;
+      p.vx = (dx / d) * kickMag;
+      p.vy = (dy / d) * kickMag;
     }
     showFlash('rgba(186,104,200,0.5)');
   } else {
