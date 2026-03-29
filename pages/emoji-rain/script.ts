@@ -116,12 +116,13 @@ function applyRepulsion(scale = 1) {
   for (let i = 0; i < particles.length; i++) {
     const a = particles[i];
     // 이모지 표면과 벽 사이의 거리 기준 → 크기에 무관하게 동일한 힘
+    const sizeScale = a.r / baseR();
     const surfL = (a.x - a.r) - OX,        surfR = (OX + W) - (a.x + a.r);
     const surfT = (a.y - a.r) - OY,        surfB = (OY + H) - (a.y + a.r);
-    if (surfL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfL) / WALL_REPULSION_DIST);
-    if (surfR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfR) / WALL_REPULSION_DIST);
-    if (surfT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfT) / WALL_REPULSION_DIST);
-    if (surfB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfB) / WALL_REPULSION_DIST);
+    if (surfL < WALL_REPULSION_DIST) a.vx += WALL_REPULSION_FORCE * sizeScale * scale * (1 - Math.max(0, surfL) / WALL_REPULSION_DIST);
+    if (surfR < WALL_REPULSION_DIST) a.vx -= WALL_REPULSION_FORCE * sizeScale * scale * (1 - Math.max(0, surfR) / WALL_REPULSION_DIST);
+    if (surfT < WALL_REPULSION_DIST) a.vy += WALL_REPULSION_FORCE * sizeScale * scale * (1 - Math.max(0, surfT) / WALL_REPULSION_DIST);
+    if (surfB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * sizeScale * scale * (1 - Math.max(0, surfB) / WALL_REPULSION_DIST);
 
     for (let j = i + 1; j < particles.length; j++) {
       const b    = particles[j];
@@ -131,7 +132,8 @@ function applyRepulsion(scale = 1) {
       // 표면-표면 거리 기준: 크기에 무관하게 동일한 척력 범위
       const surfDist = d - a.r - b.r;
       if (surfDist >= REPULSION_DIST) continue;
-      const f = REPULSION_FORCE * scale * (1 - Math.max(0, surfDist) / REPULSION_DIST);
+      const pairScale = (a.r + b.r) / (baseR() * 2);
+      const f = REPULSION_FORCE * pairScale * scale * (1 - Math.max(0, surfDist) / REPULSION_DIST);
       a.vx -= nx * f;  a.vy -= ny * f;
       b.vx += nx * f;  b.vy += ny * f;
     }
