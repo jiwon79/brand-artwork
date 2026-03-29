@@ -26,7 +26,9 @@ const FACE_EMOJIS = [
 ];
 
 // ─── 박스 ─────────────────────────────────────────────────────────────────────
+const DPR = window.devicePixelRatio || 1;
 let W = 0, H = 0, OX = 0, OY = 0;
+
 function resize() {
   const vw = window.innerWidth  - PAD * 2;
   const vh = window.innerHeight - PAD * 2;
@@ -34,8 +36,12 @@ function resize() {
   else                  { W = vw; H = Math.floor(W * 5 / 4); }
   OX = Math.floor((window.innerWidth  - W) / 2);
   OY = Math.floor((window.innerHeight - H) / 2);
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
+
+  canvas.width        = window.innerWidth  * DPR;
+  canvas.height       = window.innerHeight * DPR;
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  ctx.scale(DPR, DPR);
 }
 resize();
 window.addEventListener('resize', resize);
