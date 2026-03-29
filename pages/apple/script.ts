@@ -24,6 +24,7 @@ const falloffFns: Record<FalloffKey, (t: number, dist: number, brushR: number) =
 const params = {
   falloff: 'quadratic' as FalloffKey,
   brushSize: 80,
+  superN: 5,
   bgColor: '#ffffff',
   cellColor: '#1c1c1e',
 };
@@ -120,6 +121,24 @@ function nToRadius(n: number): number {
   return (n / MAX_N) * MAX_R;
 }
 
+// Parametric superellipse corner: |x|^n + |y|^n = r^n
+// cx,cy = corner vertex; d1 = direction corner→start; d2 = direction corner→end
+const SQUIRCLE_STEPS = 10;
+function squircleCorner(
+  cx: number, cy: number,
+  d1x: number, d1y: number,
+  d2x: number, d2y: number,
+  r: number
+): void {
+  const exp = 2 / params.superN;
+  for (let i = 1; i <= SQUIRCLE_STEPS; i++) {
+    const t = (i / SQUIRCLE_STEPS) * (Math.PI / 2);
+    const u = Math.cos(t) ** exp;
+    const v = Math.sin(t) ** exp;
+    ctx.lineTo(cx + r * (u * d1x + v * d2x), cy + r * (u * d1y + v * d2y));
+  }
+}
+
 function drawCell(
   x: number, y: number,
   nTL: number, nTR: number, nBR: number, nBL: number
@@ -128,19 +147,24 @@ function drawCell(
   const rTR = nToRadius(nTR);
   const rBR = nToRadius(nBR);
   const rBL = nToRadius(nBL);
-  const r = x + CELL;
-  const b = y + CELL;
+  const R = x + CELL;
+  const B = y + CELL;
 
   ctx.beginPath();
   ctx.moveTo(x + rTL, y);
-  ctx.lineTo(r - rTR, y);
-  rTR > 0 ? ctx.arcTo(r, y, r, y + rTR, rTR) : ctx.lineTo(r, y);
-  ctx.lineTo(r, b - rBR);
-  rBR > 0 ? ctx.arcTo(r, b, r - rBR, b, rBR) : ctx.lineTo(r, b);
-  ctx.lineTo(x + rBL, b);
-  rBL > 0 ? ctx.arcTo(x, b, x, b - rBL, rBL) : ctx.lineTo(x, b);
+
+  ctx.lineTo(R - rTR, y);
+  rTR > 0 ? squircleCorner(R, y,  -1,  0,  0,  1, rTR) : ctx.lineTo(R, y);
+
+  ctx.lineTo(R, B - rBR);
+  rBR > 0 ? squircleCorner(R, B,   0, -1, -1,  0, rBR) : ctx.lineTo(R, B);
+
+  ctx.lineTo(x + rBL, B);
+  rBL > 0 ? squircleCorner(x, B,   1,  0,  0, -1, rBL) : ctx.lineTo(x, B);
+
   ctx.lineTo(x, y + rTL);
-  rTL > 0 ? ctx.arcTo(x, y, x + rTL, y, rTL) : ctx.lineTo(x, y);
+  rTL > 0 ? squircleCorner(x, y,   0,  1,  1,  0, rTL) : ctx.lineTo(x, y);
+
   ctx.closePath();
 }
 
@@ -229,6 +253,7 @@ window.addEventListener('resize', () => {
 const gui = new GUI({ title: 'options' });
 gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
 gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
+gui.add(params, 'superN', 2, 12, 0.1).name('corner n  (2=circle)');
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
 
