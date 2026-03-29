@@ -14,6 +14,7 @@ const params = {
   gravity:       0.5,
   newEmojiSize:  0.12,
   faceEmojiSize: 0.05,
+  repulseEase:   0.03,   // 척력 전환속도 (클수록 빠름)
 };
 
 const NEW_DEFS: { e: string; c: string }[] = [
@@ -57,8 +58,7 @@ window.addEventListener('resize', resize);
 // ─── 중력 / 반발 모드 ─────────────────────────────────────────────────────────
 let gx = 0, gy = 0.5;
 let repulseMode = false;
-let repulseT = 0;          // 0→1 전환 진행도
-const REPULSE_EASE = 0.03; // 매 프레임 += 이 값 (1/0.03 ≈ 33프레임 ≈ 0.5초)
+let repulseT = 0;  // 0→1 전환 진행도
 
 const REPULSION_DIST       = 130;
 const REPULSION_FORCE      = 0.6;
@@ -147,12 +147,6 @@ function step() {
     p.opacity = Math.min(1, p.opacity + 0.08);
   }
 
-  if (repulseMode) {
-    repulseT = Math.min(1, repulseT + REPULSE_EASE);
-    applyRepulsion(repulseT);
-    for (const p of particles) { p.vx *= REPULSE_DAMP; p.vy *= REPULSE_DAMP; }
-  }
-
   for (let pass = 0; pass < COLLISION_PASSES; pass++) {
     for (let i = 0; i < particles.length; i++) {
       const a = particles[i];
@@ -186,6 +180,13 @@ function step() {
         }
       }
     }
+  }
+
+  // 척력: 충돌 패스 이후에 적용해야 벽 충돌이 velocity를 죽이지 않음
+  if (repulseMode) {
+    repulseT = Math.min(1, repulseT + params.repulseEase);
+    applyRepulsion(repulseT);
+    for (const p of particles) { p.vx *= REPULSE_DAMP; p.vy *= REPULSE_DAMP; }
   }
 
   // 방향 오버레이 페이드아웃
@@ -277,6 +278,7 @@ gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) =
 });
 gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기').onChange(refreshParticleSizes);
 gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
+gui.add(params, 'repulseEase', 0.005, 0.2, 0.005).name('척력 전환속도');
 
 // ─── 스폰 큐 ─────────────────────────────────────────────────────────────────
 function buildQueue() {
