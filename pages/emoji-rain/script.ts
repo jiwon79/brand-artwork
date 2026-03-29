@@ -124,14 +124,14 @@ function applyRepulsion(scale = 1) {
     if (surfB < WALL_REPULSION_DIST) a.vy -= WALL_REPULSION_FORCE * scale * (1 - Math.max(0, surfB) / WALL_REPULSION_DIST);
 
     for (let j = i + 1; j < particles.length; j++) {
-      const b  = particles[j];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const d  = Math.sqrt(dx * dx + dy * dy) || 0.001;
-      if (d >= REPULSION_DIST) continue;
-      const nx = dx / d, ny = dy / d;
-      // 두 파티클 크기의 평균으로 스케일
-      const sizeScale = (a.r + b.r) / (baseR() * 2);
-      const f = REPULSION_FORCE * sizeScale * scale * (1 - d / REPULSION_DIST);
+      const b    = particles[j];
+      const dx   = b.x - a.x, dy = b.y - a.y;
+      const d    = Math.sqrt(dx * dx + dy * dy) || 0.001;
+      const nx   = dx / d, ny = dy / d;
+      // 표면-표면 거리 기준: 크기에 무관하게 동일한 척력 범위
+      const surfDist = d - a.r - b.r;
+      if (surfDist >= REPULSION_DIST) continue;
+      const f = REPULSION_FORCE * scale * (1 - Math.max(0, surfDist) / REPULSION_DIST);
       a.vx -= nx * f;  a.vy -= ny * f;
       b.vx += nx * f;  b.vy += ny * f;
     }
