@@ -5,16 +5,12 @@ const flashEl = document.getElementById('swipe-flash') as HTMLDivElement;
 const introEl = document.getElementById('intro') as HTMLDivElement;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const GRAVITY         = 0.27;  // halved from 0.55
-const GRAVITY_SIDE    = 1.2;
-const GRAVITY_SIDE_Y  = 0.05;
-const GRAVITY_UP      = 1.2;
-const COLLISION_GAP   = 6; // breathing room added on top of r_a + r_b
-const SLOP            = 2; // positional correction tolerance — overlaps smaller than this are ignored
-const BOUNCE_THRESHOLD = 1.5; // approach speed below this → restitution 0 (no bounce)
-const BOUNCE_COEFF    = 0.2;  // restitution above threshold
-const SLEEP_SPEED_SQ  = 0.09; // 0.3² — speed² threshold for sleep timer
-const WAKE_SPEED      = 2.5;  // collision speed that wakes a sleeping neighbour
+const COLLISION_GAP   = 6;
+const SLOP            = 2;
+const BOUNCE_THRESHOLD = 1.5;
+const BOUNCE_COEFF    = 0.2;
+const SLEEP_SPEED_SQ  = 0.09;
+const WAKE_SPEED      = 2.5;
 const REPULSION_DIST  = 130;
 const REPULSION_FORCE = 0.6;
 const WALL_REP_DIST   = 80;
@@ -42,12 +38,13 @@ const REG_EMOJIS = [
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let W = 0, H = 0;
-let gx = 0, gy = GRAVITY;
+let gravStrength = 0.5;
+let gx = 0, gy = gravStrength;
 let repulse = false;
 
-// 5 gravity modes
 type GravityMode = 'down' | 'up' | 'side' | 'repulsion';
 let gravMode: GravityMode = 'down';
+let gravSideDir: 'left' | 'right' = 'right';
 
 const particles: EmojiParticle[] = [];
 
@@ -306,27 +303,16 @@ function applyRepulsion(): void {
 }
 
 // ─── Mode management ─────────────────────────────────────────────────────────
-function setMode(mode: GravityMode, sideDir?: 'left' | 'right'): void {
+function setMode(mode: GravityMode, dir?: 'left' | 'right'): void {
   gravMode = mode;
   repulse = mode === 'repulsion';
+  if (dir) gravSideDir = dir;
 
   switch (mode) {
-    case 'down':
-      gx = 0;
-      gy = GRAVITY;
-      break;
-    case 'up':
-      gx = 0;
-      gy = -GRAVITY_UP;
-      break;
-    case 'side':
-      gx = sideDir === 'left' ? -GRAVITY_SIDE : GRAVITY_SIDE;
-      gy = GRAVITY_SIDE_Y;
-      break;
-    case 'repulsion':
-      gx = 0;
-      gy = 0;
-      break;
+    case 'down':      gx = 0;                                                    gy = gravStrength;  break;
+    case 'up':        gx = 0;                                                    gy = -gravStrength; break;
+    case 'side':      gx = gravSideDir === 'left' ? -gravStrength : gravStrength; gy = 0;            break;
+    case 'repulsion': gx = 0;                                                    gy = 0;             break;
   }
 }
 
@@ -571,6 +557,19 @@ document.addEventListener('mousemove', (e) => {
     cursorVisible = true;
     cursorEl.style.opacity = '1';
   }
+});
+
+// ─── Gravity GUI ─────────────────────────────────────────────────────────────
+const gravitySlider  = document.getElementById('gravity-slider')  as HTMLInputElement;
+const gravityValueEl = document.getElementById('gravity-value')   as HTMLSpanElement;
+
+gravitySlider.value = String(gravStrength);
+gravityValueEl.textContent = gravStrength.toFixed(2);
+
+gravitySlider.addEventListener('input', () => {
+  gravStrength = parseFloat(gravitySlider.value);
+  gravityValueEl.textContent = gravStrength.toFixed(2);
+  setMode(gravMode);  // re-apply current mode with new strength
 });
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
