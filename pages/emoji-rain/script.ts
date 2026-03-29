@@ -176,21 +176,9 @@ class EmojiParticle {
   }
 }
 
-// ─── Collision resolution (20 substeps) ──────────────────────────────────────
-// Sort is done inside the pass loop so each pass uses up-to-date positions.
-// Particles closest to the active wall are sorted first so the correction wave
-// propagates wall → free-space within a single pass.
-// Baumgarte 95%: nearly full overlap correction per pass.
-// 20 passes: enough to propagate through deep piles (~20 rows).
-// settleTimer only resets on high-velocity impact (dvN > 2) so gentle stacking
-// doesn't block the settle timer from accumulating.
+// ─── Collision resolution ─────────────────────────────────────────────────────
 function resolveCollisions(): void {
-  for (let pass = 0; pass < 20; pass++) {
-    // Re-sort every pass so the order stays optimal as positions change.
-    if (!repulse && (gx !== 0 || gy !== 0)) {
-      particles.sort((a, b) => (b.x * gx + b.y * gy) - (a.x * gx + a.y * gy));
-    }
-
+  for (let pass = 0; pass < 5; pass++) {
     for (let i = 0; i < particles.length; i++) {
       for (let j = i + 1; j < particles.length; j++) {
         const a = particles[i];
@@ -198,60 +186,36 @@ function resolveCollisions(): void {
         if (a.settled && b.settled) continue;
 
         const dx = b.x - a.x, dy = b.y - a.y;
-        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
         const minD = a.r + b.r + COLLISION_GAP;
-        if (distSq >= minD * minD) continue;
+        if (dist >= minD) continue;
 
-        const dist = Math.sqrt(distSq) || 0.0001;
-        // Baumgarte: correct 95% of overlap per pass — near-full resolution
-        const correction = (minD - dist) * 0.95;
+        const overlap = minD - dist;
         const nx = dx / dist, ny = dy / dist;
 
         if (a.settled) {
-          // A is an immovable wall — only push B
-          b.x += nx * correction;
-          b.y += ny * correction;
-          // Zero the approaching velocity component (no bounce for slow contact)
-          const approach = b.vx * nx + b.vy * ny;
-          if (approach < 0) {
-            const restitution = Math.abs(approach) > 2.0 ? 0.15 : 0;
-            b.vx -= (1 + restitution) * approach * nx;
-            b.vy -= (1 + restitution) * approach * ny;
-            if (Math.abs(approach) > 2.0) b.settleTimer = 0;
-          }
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+          const dot = b.vx * nx + b.vy * ny;
+          if (dot < 0) { b.vx -= dot * nx; b.vy -= dot * ny; }
         } else if (b.settled) {
-          // B is an immovable wall — only push A
-          a.x -= nx * correction;
-          a.y -= ny * correction;
-          const approach = a.vx * nx + a.vy * ny;
-          if (approach > 0) {
-            const restitution = Math.abs(approach) > 2.0 ? 0.15 : 0;
-            a.vx -= (1 + restitution) * approach * nx;
-            a.vy -= (1 + restitution) * approach * ny;
-            if (Math.abs(approach) > 2.0) a.settleTimer = 0;
-          }
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+          const dot = a.vx * nx + a.vy * ny;
+          if (dot > 0) { a.vx -= dot * nx; a.vy -= dot * ny; }
         } else {
-          // Both moving — symmetric collision
-          const tm = a.mass + b.mass;
-          a.x -= nx * correction * (b.mass / tm);
-          a.y -= ny * correction * (b.mass / tm);
-          b.x += nx * correction * (a.mass / tm);
-          b.y += ny * correction * (a.mass / tm);
+          a.x -= nx * overlap * 0.5;
+          a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+          b.y += ny * overlap * 0.5;
 
           const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
-          const approach = dvx * nx + dvy * ny;
-          if (approach >= 0) continue;
-
-          const restitution = Math.abs(approach) > 2.0 ? 0.15 : 0;
-          const imp = -(1 + restitution) * approach / tm;
-          a.vx -= imp * b.mass * nx;
-          a.vy -= imp * b.mass * ny;
-          b.vx += imp * a.mass * nx;
-          b.vy += imp * a.mass * ny;
-          // Only disturb settle timer on significant impacts
-          if (Math.abs(approach) > 2.0) {
-            a.settleTimer = 0;
-            b.settleTimer = 0;
+          const dot = dvx * nx + dvy * ny;
+          if (dot < 0) {
+            a.vx += dot * nx * 0.5;
+            a.vy += dot * ny * 0.5;
+            b.vx -= dot * nx * 0.5;
+            b.vy -= dot * ny * 0.5;
           }
         }
       }
@@ -280,11 +244,9 @@ function settleParticles(): void {
   if (repulse) return;
   for (const p of particles) {
     if (p.settled) continue;
-    // Higher threshold (0.35 vs 0.2) — easier to qualify as "at rest"
-    // after collision resolution absorbs approach velocities.
-    if (Math.abs(p.vx) < 0.35 && Math.abs(p.vy) < 0.35) {
+    if (Math.abs(p.vx) < 0.2 && Math.abs(p.vy) < 0.2) {
       p.settleTimer++;
-      if (p.settleTimer > 25) {
+      if (p.settleTimer > 30) {
         p.settled = true;
         p.vx = 0;
         p.vy = 0;
