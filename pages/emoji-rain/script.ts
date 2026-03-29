@@ -184,6 +184,10 @@ class EmojiParticle {
 // ─── Collision resolution ─────────────────────────────────────────────────────
 function resolveCollisions(): void {
   for (let pass = 0; pass < 5; pass++) {
+    // Sort: wall-side particles first so pressure propagates wall → free space
+    if (!repulse && (gx !== 0 || gy !== 0)) {
+      particles.sort((a, b) => (b.x * gx + b.y * gy) - (a.x * gx + a.y * gy));
+    }
     for (let i = 0; i < particles.length; i++) {
       for (let j = i + 1; j < particles.length; j++) {
         const a = particles[i];
