@@ -12,7 +12,7 @@ const EMOJI_FONT = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans
 // ─── GUI 파라미터 ──────────────────────────────────────────────────────────────
 const params = {
   gravity:       0.4,
-  newEmojiSize:  0.12,
+  newEmojiSize:  0.1,
   faceEmojiSize: 0.05,
   repulseEase:   0.01,
 };
