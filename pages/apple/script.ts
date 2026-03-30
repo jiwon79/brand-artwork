@@ -52,18 +52,18 @@ function setupCanvas(): void {
 function logicalW(): number { return canvas.width  / dpr; }
 function logicalH(): number { return canvas.height / dpr; }
 
-// ── Corner grid ──────────────────────────────────────────
+// ── Cell grid ────────────────────────────────────────────
 let cW: number;
 let cH: number;
-let cornerN: Float32Array;
-let cornerTime: Float64Array;
+let cellN: Float32Array;
+let cellTime: Float64Array;
 
 function initGrid(): void {
-  cW = Math.ceil(logicalW() / STEP) + 3;
-  cH = Math.ceil(logicalH() / STEP) + 3;
-  cornerN    = new Float32Array(cW * cH);
-  cornerTime = new Float64Array(cW * cH);
-  cornerTime.fill(-Infinity);
+  cW = Math.ceil(logicalW() / STEP) + 2;
+  cH = Math.ceil(logicalH() / STEP) + 2;
+  cellN    = new Float32Array(cW * cH);
+  cellTime = new Float64Array(cW * cH);
+  cellTime.fill(-Infinity);
 }
 
 function ci(x: number, y: number): number {
@@ -82,8 +82,9 @@ function applyBrush(bx: number, by: number): void {
 
   for (let cy = minCy; cy <= maxCy; cy++) {
     for (let cx = minCx; cx <= maxCx; cx++) {
-      const px = cx * STEP;
-      const py = cy * STEP;
+      // Distance from brush to cell center
+      const px = cx * STEP + STEP / 2;
+      const py = cy * STEP + STEP / 2;
       const dx = px - bx;
       const dy = py - by;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -93,25 +94,25 @@ function applyBrush(bx: number, by: number): void {
       const target = falloffFns[params.falloff](t, dist, brushR);
       const idx = ci(cx, cy);
 
-      if (target > cornerN[idx]) {
-        cornerN[idx]    = target;
-        cornerTime[idx] = now;
+      if (target > cellN[idx]) {
+        cellN[idx]    = target;
+        cellTime[idx] = now;
       } else if (target > 0) {
-        cornerTime[idx] = now;
+        cellTime[idx] = now;
       }
     }
   }
 }
 
 // ── Decay ─────────────────────────────────────────────────
-function decayCorners(now: number): void {
-  for (let i = 0; i < cornerN.length; i++) {
-    if (cornerN[i] <= 0.005) { cornerN[i] = 0; continue; }
+function decayCells(now: number): void {
+  for (let i = 0; i < cellN.length; i++) {
+    if (cellN[i] <= 0.005) { cellN[i] = 0; continue; }
 
-    const elapsed = now - cornerTime[i];
+    const elapsed = now - cellTime[i];
     if (elapsed > HOLD_MS) {
-      cornerN[i] *= DECAY;
-      if (cornerN[i] < 0.005) cornerN[i] = 0;
+      cellN[i] *= DECAY;
+      if (cellN[i] < 0.005) cellN[i] = 0;
     }
   }
 }
@@ -139,56 +140,41 @@ function squircleCorner(
   }
 }
 
-function drawCell(
-  x: number, y: number,
-  nTL: number, nTR: number, nBR: number, nBL: number
-): void {
-  const rTL = nToRadius(nTL);
-  const rTR = nToRadius(nTR);
-  const rBR = nToRadius(nBR);
-  const rBL = nToRadius(nBL);
+function drawCell(x: number, y: number, n: number): void {
+  const r = nToRadius(n);
   const R = x + CELL;
   const B = y + CELL;
 
   ctx.beginPath();
-  ctx.moveTo(x + rTL, y);
+  ctx.moveTo(x + r, y);
 
-  ctx.lineTo(R - rTR, y);
-  rTR > 0 ? squircleCorner(R, y,  -1,  0,  0,  1, rTR) : ctx.lineTo(R, y);
+  ctx.lineTo(R - r, y);
+  r > 0 ? squircleCorner(R, y,  -1,  0,  0,  1, r) : ctx.lineTo(R, y);
 
-  ctx.lineTo(R, B - rBR);
-  rBR > 0 ? squircleCorner(R, B,   0, -1, -1,  0, rBR) : ctx.lineTo(R, B);
+  ctx.lineTo(R, B - r);
+  r > 0 ? squircleCorner(R, B,   0, -1, -1,  0, r) : ctx.lineTo(R, B);
 
-  ctx.lineTo(x + rBL, B);
-  rBL > 0 ? squircleCorner(x, B,   1,  0,  0, -1, rBL) : ctx.lineTo(x, B);
+  ctx.lineTo(x + r, B);
+  r > 0 ? squircleCorner(x, B,   1,  0,  0, -1, r) : ctx.lineTo(x, B);
 
-  ctx.lineTo(x, y + rTL);
-  rTL > 0 ? squircleCorner(x, y,   0,  1,  1,  0, rTL) : ctx.lineTo(x, y);
+  ctx.lineTo(x, y + r);
+  r > 0 ? squircleCorner(x, y,   0,  1,  1,  0, r) : ctx.lineTo(x, y);
 
   ctx.closePath();
 }
 
 // ── Render loop ───────────────────────────────────────────
 function render(now: number): void {
-  decayCorners(now);
+  decayCells(now);
 
   ctx.clearRect(0, 0, logicalW(), logicalH());
   ctx.fillStyle = params.bgColor;
   ctx.fillRect(0, 0, logicalW(), logicalH());
   ctx.fillStyle = params.cellColor;
 
-  const cols = cW - 1;
-  const rows = cH - 1;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      drawCell(
-        c * STEP, r * STEP,
-        cornerN[ci(c,   r  )],
-        cornerN[ci(c+1, r  )],
-        cornerN[ci(c+1, r+1)],
-        cornerN[ci(c,   r+1)]
-      );
+  for (let r = 0; r < cH; r++) {
+    for (let c = 0; c < cW; c++) {
+      drawCell(c * STEP, r * STEP, cellN[ci(c, r)]);
       ctx.fill();
     }
   }
@@ -239,8 +225,8 @@ canvas.addEventListener('touchcancel', (e: TouchEvent) => {
 }, { passive: false });
 
 clearBtn.addEventListener('click', () => {
-  cornerN.fill(0);
-  cornerTime.fill(-Infinity);
+  cellN.fill(0);
+  cellTime.fill(-Infinity);
   hint.classList.remove('hidden');
 });
 
