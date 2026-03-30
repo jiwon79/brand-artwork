@@ -15,6 +15,7 @@ const params = {
   newEmojiSize:  0.1,
   faceEmojiSize: 0.05,
   repulseEase:   0.01,
+  mode:          'all' as 'all' | 'new' | 'face',
 };
 
 const NEW_DEFS: { e: string; c: string }[] = [
@@ -298,11 +299,18 @@ gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) =
 gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기').onChange(refreshParticleSizes);
 gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
 gui.add(params, 'repulseEase', 0.005, 0.2, 0.005).name('척력 전환속도');
+gui.add(params, 'mode', { '새 이모지만': 'new', '얼굴 이모지만': 'face', '전체': 'all' })
+  .name('이모지 종류').onChange(restartQueue);
 
 // ─── 스폰 큐 ─────────────────────────────────────────────────────────────────
 function buildQueue() {
   const reg  = [...FACE_EMOJIS].sort(() => Math.random() - 0.5).map(e => ({ e, isNew: false, c: '' }));
   const newE = [...NEW_DEFS   ].sort(() => Math.random() - 0.5).map(d => ({ e: d.e, isNew: true, c: d.c }));
+
+  if (params.mode === 'new')  return newE;
+  if (params.mode === 'face') return reg;
+
+  // 'all': 새 이모지를 얼굴 이모지 사이에 고르게 배치
   const q: { e: string; isNew: boolean; c: string }[] = [];
   const stepN = Math.ceil(reg.length / newE.length);
   let ri = 0, ni = 0;
@@ -313,10 +321,17 @@ function buildQueue() {
   return q;
 }
 
-const queue = buildQueue();
 let qi = 0;
+let activeQueue = buildQueue();
+
+function restartQueue() {
+  particles.length = 0;
+  activeQueue = buildQueue();
+  qi = 0;
+}
+
 setInterval(() => {
-  if (qi < queue.length) { const item = queue[qi++]; spawnEmoji(item.e, item.isNew, item.c); }
+  if (qi < activeQueue.length) { const item = activeQueue[qi++]; spawnEmoji(item.e, item.isNew, item.c); }
 }, 80);
 
 loop();
