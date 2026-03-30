@@ -152,13 +152,21 @@ function step() {
   for (let pass = 0; pass < COLLISION_PASSES; pass++) {
     for (let i = 0; i < particles.length; i++) {
       const a = particles[i];
-      if (a.x - a.r < OX)     { a.x = OX + a.r;     a.vx =  Math.abs(a.vx) * RESTITUTION; }
-      if (a.x + a.r > OX + W) { a.x = OX + W - a.r; a.vx = -Math.abs(a.vx) * RESTITUTION; }
-      if (a.y - a.r < OY)     { a.y = OY + a.r;      a.vy =  Math.abs(a.vy) * RESTITUTION; }
-      if (a.y + a.r > OY + H) {
-        a.y  = OY + H - a.r;
-        a.vy = -Math.abs(a.vy) * RESTITUTION;
-        a.vx *= FRICTION;
+      if (repulseMode) {
+        // 척력 모드: 위치 보정만, velocity는 유지 (척력이 알아서 밀어냄)
+        if (a.x - a.r < OX)     a.x = OX + a.r;
+        if (a.x + a.r > OX + W) a.x = OX + W - a.r;
+        if (a.y - a.r < OY)     a.y = OY + a.r;
+        if (a.y + a.r > OY + H) a.y = OY + H - a.r;
+      } else {
+        if (a.x - a.r < OX)     { a.x = OX + a.r;     a.vx =  Math.abs(a.vx) * RESTITUTION; }
+        if (a.x + a.r > OX + W) { a.x = OX + W - a.r; a.vx = -Math.abs(a.vx) * RESTITUTION; }
+        if (a.y - a.r < OY)     { a.y = OY + a.r;      a.vy =  Math.abs(a.vy) * RESTITUTION; }
+        if (a.y + a.r > OY + H) {
+          a.y  = OY + H - a.r;
+          a.vy = -Math.abs(a.vy) * RESTITUTION;
+          a.vx *= FRICTION;
+        }
       }
 
       for (let j = i + 1; j < particles.length; j++) {
