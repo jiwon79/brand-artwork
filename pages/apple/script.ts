@@ -1,33 +1,37 @@
 import GUI from 'lil-gui';
 
 // ── Config ───────────────────────────────────────────────
-const CELL      = 35;
-const GAP       = 0.5;
-const STEP      = CELL + GAP;
-const SUPER_N   = 5;          // fixed Apple squircle exponent
-const HOLD_MS   = 2000;
-const DECAY     = 0.9601;
-
-type FalloffKey = 'quadratic' | 'linear' | 'cubic' | 'sqrt' | 'gaussian' | 'cosine' | 'smoothstep';
-
-const falloffFns: Record<FalloffKey, (t: number, dist: number, brushR: number) => number> = {
-  linear:     (t)               => params.maxR * t,
-  quadratic:  (t)               => params.maxR * t * t,
-  cubic:      (t)               => params.maxR * t * t * t,
-  sqrt:       (t)               => params.maxR * Math.sqrt(t),
-  gaussian:   (_, dist, brushR) => params.maxR * Math.exp(-(dist * dist) / (2 * (brushR * 0.4) ** 2)),
-  cosine:     (t)               => params.maxR * (Math.cos((1 - t) * Math.PI) + 1) / 2,
-  smoothstep: (t)               => params.maxR * t * t * (3 - 2 * t),
-};
+const GAP     = 0.5;          // gap between cells (CSS px)
+const SUPER_N = 5;            // fixed Apple squircle exponent
+const HOLD_MS = 2000;
+const DECAY   = 0.9601;
 
 const params = {
   falloff: 'quadratic' as FalloffKey,
   brushSize: 80,
-  maxR: CELL / 2,
-  radiusCurve: 0.4,
+  cell: 35,                   // physical px — divided by dpr for CSS px
   bgColor: '#ffffff',
   cellColor: '#1c1c1e',
 };
+
+// cell size in CSS px (DPR-aware)
+function cellCSS(): number { return params.cell / dpr; }
+function stepCSS(): number { return cellCSS() + GAP; }
+
+type FalloffKey = 'quadratic' | 'linear' | 'cubic' | 'sqrt' | 'gaussian' | 'cosine' | 'smoothstep';
+
+const falloffFns: Record<FalloffKey, (t: number, dist: number, brushR: number) => number> = {
+  linear:     (t)               => cellCSS() * t,
+  quadratic:  (t)               => cellCSS() * t * t,
+  cubic:      (t)               => cellCSS() * t * t * t,
+  sqrt:       (t)               => cellCSS() * Math.sqrt(t),
+  gaussian:   (_, dist, brushR) => cellCSS() * Math.exp(-(dist * dist) / (2 * (brushR * 0.4) ** 2)),
+  cosine:     (t)               => cellCSS() * (Math.cos((1 - t) * Math.PI) + 1) / 2,
+  smoothstep: (t)               => cellCSS() * t * t * (3 - 2 * t),
+};
+
+// ── DPR ──────────────────────────────────────────────────
+let dpr = window.devicePixelRatio || 1;
 
 // ── DOM ───────────────────────────────────────────────────
 const canvas   = document.getElementById('c') as HTMLCanvasElement;
@@ -35,11 +39,9 @@ const ctx      = canvas.getContext('2d') as CanvasRenderingContext2D;
 const hint     = document.getElementById('hint') as HTMLElement;
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
 
-// ── DPR setup ────────────────────────────────────────────
-let dpr = 1;
-
 function setupCanvas(): void {
   dpr = window.devicePixelRatio || 1;
+  ctx.resetTransform();
   const w = window.innerWidth;
   const h = window.innerHeight;
   canvas.width  = w * dpr;
@@ -59,8 +61,8 @@ let cornerN: Float32Array;
 let cornerTime: Float64Array;
 
 function initGrid(): void {
-  cW = Math.ceil(logicalW() / STEP) + 3;
-  cH = Math.ceil(logicalH() / STEP) + 3;
+  cW = Math.ceil(logicalW() / stepCSS()) + 3;
+  cH = Math.ceil(logicalH() / stepCSS()) + 3;
   cornerN    = new Float32Array(cW * cH);
   cornerTime = new Float64Array(cW * cH);
   cornerTime.fill(-Infinity);
@@ -75,15 +77,16 @@ function applyBrush(bx: number, by: number): void {
   const now = performance.now();
 
   const brushR = params.brushSize;
-  const minCx = Math.max(0, Math.floor((bx - brushR) / STEP));
-  const maxCx = Math.min(cW - 1, Math.ceil((bx + brushR) / STEP));
-  const minCy = Math.max(0, Math.floor((by - brushR) / STEP));
-  const maxCy = Math.min(cH - 1, Math.ceil((by + brushR) / STEP));
+  const step   = stepCSS();
+  const minCx = Math.max(0, Math.floor((bx - brushR) / step));
+  const maxCx = Math.min(cW - 1, Math.ceil((bx + brushR) / step));
+  const minCy = Math.max(0, Math.floor((by - brushR) / step));
+  const maxCy = Math.min(cH - 1, Math.ceil((by + brushR) / step));
 
   for (let cy = minCy; cy <= maxCy; cy++) {
     for (let cx = minCx; cx <= maxCx; cx++) {
-      const px = cx * STEP;
-      const py = cy * STEP;
+      const px = cx * step;
+      const py = cy * step;
       const dx = px - bx;
       const dy = py - by;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -119,7 +122,7 @@ function decayCells(now: number): void {
 // ── Draw one cell ─────────────────────────────────────────
 // cornerN already stores radius in px — apply power curve for contrast
 function cornerRadius(r: number): number {
-  return Math.pow(r / params.maxR, params.radiusCurve) * params.maxR;
+  return Math.pow(r / cellCSS(), 0.5) * cellCSS();
 }
 
 // Parametric superellipse corner: |x|^SUPER_N + |y|^SUPER_N = r^SUPER_N
@@ -151,8 +154,8 @@ function drawCell(
   const rTR = cornerRadius(nTR);
   const rBR = cornerRadius(nBR);
   const rBL = cornerRadius(nBL);
-  const R = x + CELL;
-  const B = y + CELL;
+  const R = x + cellCSS();
+  const B = y + cellCSS();
 
   ctx.beginPath();
   ctx.moveTo(x + rTL, y);
@@ -183,10 +186,11 @@ function render(now: number): void {
 
   const cols = cW - 1;
   const rows = cH - 1;
+  const step = stepCSS();
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       drawCell(
-        c * STEP, r * STEP,
+        c * step, r * step,
         cornerN[ci(c,   r  )],
         cornerN[ci(c+1, r  )],
         cornerN[ci(c+1, r+1)],
@@ -256,8 +260,7 @@ window.addEventListener('resize', () => {
 const gui = new GUI({ title: 'options' });
 gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
 gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
-gui.add(params, 'maxR', 1, 100, 0.5).name('max radius');
-gui.add(params, 'radiusCurve', 0.1, 2.0, 0.05).name('radius curve');
+gui.add(params, 'cell', 5, 200, 1).name('cell size (px)').onChange(() => initGrid());
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
 
