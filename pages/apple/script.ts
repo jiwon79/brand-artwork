@@ -25,6 +25,7 @@ const params = {
   falloff: 'quadratic' as FalloffKey,
   brushSize: 80,
   superN: 5,
+  radiusCurve: 0.4,
   bgColor: '#ffffff',
   cellColor: '#1c1c1e',
 };
@@ -118,7 +119,7 @@ function decayCells(now: number): void {
 
 // ── Draw one cell ─────────────────────────────────────────
 function nToRadius(n: number): number {
-  return (n / MAX_N) * MAX_R;
+  return Math.pow(n / MAX_N, params.radiusCurve) * MAX_R;
 }
 
 // Parametric superellipse corner: |x|^n + |y|^n = r^n
@@ -258,6 +259,7 @@ const gui = new GUI({ title: 'options' });
 gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
 gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
 gui.add(params, 'superN', 2, 12, 0.1).name('corner n  (2=circle)');
+gui.add(params, 'radiusCurve', 0.1, 2.0, 0.05).name('radius curve  (↓=더 동그랗게)');
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
 
