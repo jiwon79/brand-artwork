@@ -237,19 +237,26 @@ function draw() {
     ctx.translate(p.x, p.y);
 
     if (p.isNew) {
-      const grd = ctx.createRadialGradient(
-        -p.r * 0.3, -p.r * 0.3, p.r * 0.05,
-         0,          0,          p.r
-      );
-      grd.addColorStop(0,    'rgba(255,255,255,0.85)');
-      grd.addColorStop(0.45, p.color + 'cc');
-      grd.addColorStop(1.0,  p.color);
+      // 그림자
+      ctx.shadowColor   = 'rgba(0,0,0,0.28)';
+      ctx.shadowBlur    = p.r * 0.5;
+      ctx.shadowOffsetX = p.r * 0.08;
+      ctx.shadowOffsetY = p.r * 0.12;
+
+      // 단색 원
       ctx.beginPath();
       ctx.arc(0, 0, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = grd;
+      ctx.fillStyle = p.color;
       ctx.fill();
+
+      // 흰색 외곽선
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth   = Math.max(1.5, p.r * 0.07);
+      ctx.stroke();
     }
 
+    ctx.shadowColor = 'transparent';
     // 신규 이모지는 원 안에 들어오도록 폰트 크기 조정
     const fontSize = p.isNew ? Math.floor(p.r * 1.1) : p.size;
     ctx.font         = `${fontSize}px ${EMOJI_FONT}`;
