@@ -1,30 +1,29 @@
 import GUI from 'lil-gui';
 
 // ── Config ───────────────────────────────────────────────
-const CELL    = 35;
-const GAP     = 0.5;
-const STEP    = CELL + GAP;
-const MAX_N   = 4;
-const MAX_R   = CELL / 2;
-const HOLD_MS = 2000;
-const DECAY   = 0.9601;
+const CELL      = 35;
+const GAP       = 0.5;
+const STEP      = CELL + GAP;
+const MAX_R     = CELL / 2;   // max corner radius (px)
+const SUPER_N   = 5;          // fixed Apple squircle exponent
+const HOLD_MS   = 2000;
+const DECAY     = 0.9601;
 
 type FalloffKey = 'quadratic' | 'linear' | 'cubic' | 'sqrt' | 'gaussian' | 'cosine' | 'smoothstep';
 
 const falloffFns: Record<FalloffKey, (t: number, dist: number, brushR: number) => number> = {
-  linear:     (t)              => MAX_N * t,
-  quadratic:  (t)              => MAX_N * t * t,
-  cubic:      (t)              => MAX_N * t * t * t,
-  sqrt:       (t)              => MAX_N * Math.sqrt(t),
-  gaussian:   (_, dist, brushR) => MAX_N * Math.exp(-(dist * dist) / (2 * (brushR * 0.4) ** 2)),
-  cosine:     (t)              => MAX_N * (Math.cos((1 - t) * Math.PI) + 1) / 2,
-  smoothstep: (t)              => MAX_N * t * t * (3 - 2 * t),
+  linear:     (t)               => MAX_R * t,
+  quadratic:  (t)               => MAX_R * t * t,
+  cubic:      (t)               => MAX_R * t * t * t,
+  sqrt:       (t)               => MAX_R * Math.sqrt(t),
+  gaussian:   (_, dist, brushR) => MAX_R * Math.exp(-(dist * dist) / (2 * (brushR * 0.4) ** 2)),
+  cosine:     (t)               => MAX_R * (Math.cos((1 - t) * Math.PI) + 1) / 2,
+  smoothstep: (t)               => MAX_R * t * t * (3 - 2 * t),
 };
 
 const params = {
   falloff: 'quadratic' as FalloffKey,
   brushSize: 80,
-  superN: 5,
   radiusCurve: 0.4,
   bgColor: '#ffffff',
   cellColor: '#1c1c1e',
@@ -118,24 +117,23 @@ function decayCells(now: number): void {
 }
 
 // ── Draw one cell ─────────────────────────────────────────
-function nToRadius(n: number): number {
-  return Math.pow(n / MAX_N, params.radiusCurve) * MAX_R;
+// cornerN already stores radius in px — apply power curve for contrast
+function cornerRadius(r: number): number {
+  return Math.pow(r / MAX_R, params.radiusCurve) * MAX_R;
 }
 
-// Parametric superellipse corner: |x|^n + |y|^n = r^n
+// Parametric superellipse corner: |x|^SUPER_N + |y|^SUPER_N = r^SUPER_N
 // cx,cy = corner vertex; d1 = direction corner→start; d2 = direction corner→end
 const SQUIRCLE_STEPS = 10;
 function squircleCorner(
-  cx: number, cy: number,  // corner vertex
-  d1x: number, d1y: number, // direction: corner → start point
-  d2x: number, d2y: number, // direction: corner → end point
+  cx: number, cy: number,
+  d1x: number, d1y: number,
+  d2x: number, d2y: number,
   r: number
 ): void {
-  // Arc center is inside the cell: corner + (d1 + d2) * r
-  // Same as arcTo's circle center for n=2
   const acx = cx + (d1x + d2x) * r;
   const acy = cy + (d1y + d2y) * r;
-  const exp = 2 / params.superN;
+  const exp = 2 / SUPER_N;
   for (let i = 1; i <= SQUIRCLE_STEPS; i++) {
     const t = (i / SQUIRCLE_STEPS) * (Math.PI / 2);
     const u = Math.cos(t) ** exp;
@@ -149,10 +147,10 @@ function drawCell(
   x: number, y: number,
   nTL: number, nTR: number, nBR: number, nBL: number
 ): void {
-  const rTL = nToRadius(nTL);
-  const rTR = nToRadius(nTR);
-  const rBR = nToRadius(nBR);
-  const rBL = nToRadius(nBL);
+  const rTL = cornerRadius(nTL);
+  const rTR = cornerRadius(nTR);
+  const rBR = cornerRadius(nBR);
+  const rBL = cornerRadius(nBL);
   const R = x + CELL;
   const B = y + CELL;
 
@@ -258,8 +256,7 @@ window.addEventListener('resize', () => {
 const gui = new GUI({ title: 'options' });
 gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
 gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
-gui.add(params, 'superN', 2, 12, 0.1).name('corner n  (2=circle)');
-gui.add(params, 'radiusCurve', 0.1, 2.0, 0.05).name('radius curve  (↓=더 동그랗게)');
+gui.add(params, 'radiusCurve', 0.1, 2.0, 0.05).name('radius curve');
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
 
