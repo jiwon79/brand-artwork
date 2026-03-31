@@ -7,16 +7,15 @@ const HOLD_MS = 2000;
 const DECAY   = 0.9601;
 
 const params = {
-  falloff: 'quadratic' as FalloffKey,
-  brushSize: 80,
-  cell: 35,                   // physical px — divided by dpr for CSS px
-  bgColor: '#ffffff',
+  falloff: 'gaussian' as FalloffKey,
+  brushSize: 35,
+  cell: 35,
+  bgColor: '#f0f0f0',
   cellColor: '#1c1c1e',
 };
 
-// cell size in CSS px (DPR-aware)
-function cellCSS(): number { return params.cell / dpr; }
-function stepCSS(): number { return cellCSS() + GAP; }
+function cellCSS(): number { return params.cell; }
+function stepCSS(): number { return params.cell + GAP; }
 
 type FalloffKey = 'quadratic' | 'linear' | 'cubic' | 'sqrt' | 'gaussian' | 'cosine' | 'smoothstep';
 
@@ -122,7 +121,8 @@ function decayCells(now: number): void {
 // ── Draw one cell ─────────────────────────────────────────
 // cornerN already stores radius in px — apply power curve for contrast
 function cornerRadius(r: number): number {
-  return Math.pow(r / cellCSS(), 0.5) * cellCSS();
+  const maxR = cellCSS() - 1;
+  return Math.pow(r / maxR, 0.5) * maxR;
 }
 
 // Parametric superellipse corner: |x|^SUPER_N + |y|^SUPER_N = r^SUPER_N
