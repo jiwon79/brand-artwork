@@ -4,7 +4,6 @@ import GUI from 'lil-gui';
 const CELL      = 35;
 const GAP       = 0.5;
 const STEP      = CELL + GAP;
-const MAX_R     = CELL / 2;   // max corner radius (px)
 const SUPER_N   = 5;          // fixed Apple squircle exponent
 const HOLD_MS   = 2000;
 const DECAY     = 0.9601;
@@ -12,18 +11,19 @@ const DECAY     = 0.9601;
 type FalloffKey = 'quadratic' | 'linear' | 'cubic' | 'sqrt' | 'gaussian' | 'cosine' | 'smoothstep';
 
 const falloffFns: Record<FalloffKey, (t: number, dist: number, brushR: number) => number> = {
-  linear:     (t)               => MAX_R * t,
-  quadratic:  (t)               => MAX_R * t * t,
-  cubic:      (t)               => MAX_R * t * t * t,
-  sqrt:       (t)               => MAX_R * Math.sqrt(t),
-  gaussian:   (_, dist, brushR) => MAX_R * Math.exp(-(dist * dist) / (2 * (brushR * 0.4) ** 2)),
-  cosine:     (t)               => MAX_R * (Math.cos((1 - t) * Math.PI) + 1) / 2,
-  smoothstep: (t)               => MAX_R * t * t * (3 - 2 * t),
+  linear:     (t)               => params.maxR * t,
+  quadratic:  (t)               => params.maxR * t * t,
+  cubic:      (t)               => params.maxR * t * t * t,
+  sqrt:       (t)               => params.maxR * Math.sqrt(t),
+  gaussian:   (_, dist, brushR) => params.maxR * Math.exp(-(dist * dist) / (2 * (brushR * 0.4) ** 2)),
+  cosine:     (t)               => params.maxR * (Math.cos((1 - t) * Math.PI) + 1) / 2,
+  smoothstep: (t)               => params.maxR * t * t * (3 - 2 * t),
 };
 
 const params = {
   falloff: 'quadratic' as FalloffKey,
   brushSize: 80,
+  maxR: CELL / 2,
   radiusCurve: 0.4,
   bgColor: '#ffffff',
   cellColor: '#1c1c1e',
@@ -119,7 +119,7 @@ function decayCells(now: number): void {
 // ── Draw one cell ─────────────────────────────────────────
 // cornerN already stores radius in px — apply power curve for contrast
 function cornerRadius(r: number): number {
-  return Math.pow(r / MAX_R, params.radiusCurve) * MAX_R;
+  return Math.pow(r / params.maxR, params.radiusCurve) * params.maxR;
 }
 
 // Parametric superellipse corner: |x|^SUPER_N + |y|^SUPER_N = r^SUPER_N
@@ -256,6 +256,7 @@ window.addEventListener('resize', () => {
 const gui = new GUI({ title: 'options' });
 gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
 gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
+gui.add(params, 'maxR', 1, CELL / 2, 0.5).name('max radius');
 gui.add(params, 'radiusCurve', 0.1, 2.0, 0.05).name('radius curve');
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
