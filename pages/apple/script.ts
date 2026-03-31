@@ -4,7 +4,7 @@ import GUI from 'lil-gui';
 const GAP     = 0.5;          // gap between cells (CSS px)
 const SUPER_N = 5;            // fixed Apple squircle exponent
 const HOLD_MS = 2000;
-const DECAY   = 0.9601;
+const DECAY   = 0.9601 * 0.9601;  // 2× faster decay
 
 const params = {
   falloff: 'gaussian' as FalloffKey,
