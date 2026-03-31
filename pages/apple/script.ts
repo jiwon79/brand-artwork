@@ -256,7 +256,7 @@ window.addEventListener('resize', () => {
 const gui = new GUI({ title: 'options' });
 gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
 gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
-gui.add(params, 'maxR', 1, CELL / 2, 0.5).name('max radius');
+gui.add(params, 'maxR', 1, 100, 0.5).name('max radius');
 gui.add(params, 'radiusCurve', 0.1, 2.0, 0.05).name('radius curve');
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
