@@ -14,8 +14,8 @@ const params = {
   cellColor: '#1c1c1e',
 };
 
-function cellCSS(): number { return params.cell; }
-function stepCSS(): number { return params.cell + GAP; }
+function cellCSS(): number { return params.cell / dpr; }
+function stepCSS(): number { return params.cell / dpr + GAP; }
 
 type FalloffKey = 'quadratic' | 'linear' | 'cubic' | 'sqrt' | 'gaussian' | 'cosine' | 'smoothstep';
 
