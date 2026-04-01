@@ -1,15 +1,27 @@
 import GUI from 'lil-gui';
 
 // ── Config ───────────────────────────────────────────────
-const GAP     = 0.5;          // gap between cells (CSS px)
-const SUPER_N = 5;            // fixed Apple squircle exponent
+const GAP     = 0.5;
+const SUPER_N = 5;
 const HOLD_MS = 2000;
-const DECAY   = 0.9601 * 0.9601;  // 2× faster decay
+
+type EaseCurveKey = 'easeOut' | 'easeOutCubic' | 'easeOutQuart' | 'easeIn' | 'easeInOut' | 'linear';
+
+const easeCurveFns: Record<EaseCurveKey, (t: number) => number> = {
+  linear:       (t) => 1 - t,
+  easeIn:       (t) => 1 - t * t,
+  easeOut:      (t) => (1 - t) ** 2,
+  easeOutCubic: (t) => (1 - t) ** 3,
+  easeOutQuart: (t) => (1 - t) ** 4,
+  easeInOut:    (t) => t < 0.5 ? 1 - 2 * t * t : 2 * (1 - t) ** 2,
+};
 
 const params = {
   falloff: 'gaussian' as FalloffKey,
   brushSize: 35,
   cell: 35,
+  easeCurve: 'easeOut' as EaseCurveKey,
+  decayDuration: 1000,
   bgColor: '#f0f0f0',
   cellColor: '#1c1c1e',
 };
@@ -58,13 +70,18 @@ let cW: number;
 let cH: number;
 let cornerN: Float32Array;
 let cornerTime: Float64Array;
+let cornerPeak: Float32Array;
+let cornerDecayStart: Float64Array;
 
 function initGrid(): void {
   cW = Math.ceil(logicalW() / stepCSS()) + 3;
   cH = Math.ceil(logicalH() / stepCSS()) + 3;
-  cornerN    = new Float32Array(cW * cH);
-  cornerTime = new Float64Array(cW * cH);
+  cornerN          = new Float32Array(cW * cH);
+  cornerTime       = new Float64Array(cW * cH);
+  cornerPeak       = new Float32Array(cW * cH);
+  cornerDecayStart = new Float64Array(cW * cH);
   cornerTime.fill(-Infinity);
+  cornerDecayStart.fill(-Infinity);
 }
 
 function ci(x: number, y: number): number {
@@ -108,13 +125,20 @@ function applyBrush(bx: number, by: number): void {
 // ── Decay ─────────────────────────────────────────────────
 function decayCells(now: number): void {
   for (let i = 0; i < cornerN.length; i++) {
-    if (cornerN[i] <= 0.005) { cornerN[i] = 0; continue; }
+    if (cornerN[i] <= 0) continue;
 
-    const elapsed = now - cornerTime[i];
-    if (elapsed > HOLD_MS) {
-      cornerN[i] *= DECAY;
-      if (cornerN[i] < 0.005) cornerN[i] = 0;
+    const holdEnd = cornerTime[i] + HOLD_MS;
+    if (now < holdEnd) continue;
+
+    // First frame after hold: capture peak and decay start time
+    if (cornerDecayStart[i] < holdEnd) {
+      cornerPeak[i]       = cornerN[i];
+      cornerDecayStart[i] = holdEnd;
     }
+
+    const progress = Math.min((now - cornerDecayStart[i]) / params.decayDuration, 1);
+    cornerN[i] = cornerPeak[i] * easeCurveFns[params.easeCurve](progress);
+    if (cornerN[i] < 0.005) cornerN[i] = 0;
   }
 }
 
@@ -248,6 +272,8 @@ canvas.addEventListener('touchcancel', (e: TouchEvent) => {
 clearBtn.addEventListener('click', () => {
   cornerN.fill(0);
   cornerTime.fill(-Infinity);
+  cornerPeak.fill(0);
+  cornerDecayStart.fill(-Infinity);
   hint.classList.remove('hidden');
 });
 
@@ -263,6 +289,8 @@ gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
 gui.add(params, 'cell', 5, 200, 1).name('cell size (px)').onChange(() => initGrid());
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
+gui.add(params, 'easeCurve', Object.keys(easeCurveFns) as EaseCurveKey[]).name('ease curve');
+gui.add(params, 'decayDuration', 100, 5000, 100).name('decay duration (ms)');
 
 // ── Boot ─────────────────────────────────────────────────
 setupCanvas();
