@@ -17,6 +17,7 @@ const params = {
   repulseEase:   0.01,
   faceShadow:    false,
   shadowOpacity: 0.6,
+  paperOpacity:  0.3,
   mode:          'all' as 'all' | 'new' | 'face',
 };
 
@@ -309,7 +310,7 @@ function draw() {
   // 종이 텍스처 overlay
   if (paperPattern) {
     ctx.save();
-    ctx.globalAlpha = 0.08;
+    ctx.globalAlpha = params.paperOpacity;
     ctx.fillStyle = paperPattern;
     ctx.beginPath();
     ctx.rect(OX, OY, W, H);
@@ -398,6 +399,7 @@ gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기
 gui.add(params, 'repulseEase', 0.0001, 0.2, 0.0001).name('척력 전환속도');
 gui.add(params, 'faceShadow').name('기본 이모지 쉐도우');
 gui.add(params, 'shadowOpacity', 0.0, 1.0, 0.05).name('쉐도우 강도').onChange(() => clearShadowCache());
+gui.add(params, 'paperOpacity', 0.0, 1.0, 0.01).name('종이 질감');
 gui.add(params, 'mode', { '새 이모지만': 'new', '얼굴 이모지만': 'face', '전체': 'all' })
   .name('이모지 종류').onChange(restartQueue);
 
