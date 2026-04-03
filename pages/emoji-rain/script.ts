@@ -15,9 +15,9 @@ const params = {
   newEmojiSize:  0.1,
   faceEmojiSize: 0.05,
   repulseEase:   0.01,
-  faceShadow:    false,
-  shadowOpacity: 0.6,
-  paperOpacity:  0.3,
+  shadow:        false,
+  shadowOpacity: 0.2,
+  paperOpacity:  0.7,
   mode:          'all' as 'all' | 'new' | 'face',
 };
 
@@ -330,8 +330,10 @@ function draw() {
 
     if (p.isNew) {
       // 그림자
-      const sh = getShadowSprite(p.r);
-      ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half, sh.cssSize, sh.cssSize);
+      if (params.shadow) {
+        const sh = getShadowSprite(p.r);
+        ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half, sh.cssSize, sh.cssSize);
+      }
 
       // 단색 원 + 흰색 외곽선
       ctx.save();
@@ -344,7 +346,7 @@ function draw() {
       ctx.lineWidth   = Math.max(1.5, p.r * 0.07);
       ctx.stroke();
       ctx.restore();
-    } else if (params.faceShadow) {
+    } else if (params.shadow) {
       // 기본 이모지 그림자
       const sh = getShadowSprite(p.size * 0.5);
       ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half, sh.cssSize, sh.cssSize);
@@ -397,7 +399,7 @@ gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) =
 gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기').onChange(refreshParticleSizes);
 gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
 gui.add(params, 'repulseEase', 0.0001, 0.2, 0.0001).name('척력 전환속도');
-gui.add(params, 'faceShadow').name('기본 이모지 쉐도우');
+gui.add(params, 'shadow').name('쉐도우');
 gui.add(params, 'shadowOpacity', 0.0, 1.0, 0.05).name('쉐도우 강도').onChange(() => clearShadowCache());
 gui.add(params, 'paperOpacity', 0.0, 1.0, 0.01).name('종이 질감');
 gui.add(params, 'mode', { '새 이모지만': 'new', '얼굴 이모지만': 'face', '전체': 'all' })
