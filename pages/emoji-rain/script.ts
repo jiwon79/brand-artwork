@@ -238,11 +238,14 @@ function draw() {
     ctx.translate(p.x, p.y);
 
     if (p.isNew) {
-      // 그림자
-      ctx.shadowColor   = 'rgba(0,0,0,0.28)';
-      ctx.shadowBlur    = p.r * 0.5;
-      ctx.shadowOffsetX = p.r * 0.08;
-      ctx.shadowOffsetY = p.r * 0.12;
+      // 가짜 그림자 타원 (shadowBlur 없이)
+      ctx.save();
+      ctx.globalAlpha *= 0.3;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(p.r * 0.1, p.r * 0.15, p.r * 0.85, p.r * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
 
       // 단색 원
       ctx.beginPath();
@@ -251,28 +254,30 @@ function draw() {
       ctx.fill();
 
       // 흰색 외곽선
-      ctx.shadowColor = 'transparent';
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       ctx.lineWidth   = Math.max(1.5, p.r * 0.07);
       ctx.stroke();
     }
 
     ctx.shadowColor = 'transparent';
-    // 기본 이모지 쉐도우
+    // 기본 이모지 가짜 그림자: shadowBlur 대신 반투명 타원으로 표현 (블러 연산 없음)
     if (!p.isNew && params.faceShadow) {
-      ctx.shadowColor   = 'rgba(0,0,0,0.22)';
-      ctx.shadowBlur    = p.size * 0.3;
-      ctx.shadowOffsetX = p.size * 0.05;
-      ctx.shadowOffsetY = p.size * 0.08;
+      const sr = p.size * 0.38;
+      ctx.save();
+      ctx.globalAlpha *= 0.28;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(p.size * 0.06, p.size * 0.1, sr, sr * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
     // 신규 이모지는 원 안에 들어오도록 폰트 크기 조정
     const fontSize = p.isNew ? Math.floor(p.r * 1.1) : p.size;
     ctx.font         = `${fontSize}px ${EMOJI_FONT}`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle    = '#000';
+    ctx.fillStyle = '#000';
     ctx.fillText(p.emoji, 0, 0);
-    ctx.shadowColor = 'transparent';
     ctx.restore();
   }
 
