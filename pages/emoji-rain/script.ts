@@ -111,11 +111,12 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
 }
 
 // ─── 그림자 스프라이트 캐시 ───────────────────────────────────────────────────
-// 크기별로 오프스크린에 shadowBlur를 한 번만 렌더링 → drawImage로 재사용
-const shadowCache = new Map<number, { canvas: HTMLCanvasElement; half: number }>();
+// OffscreenCanvas + transferToImageBitmap() → GPU 상주 텍스처
+// destination-out 없이 rgba(0,0,0,0.01) trick → GPU 가속 유지
+const shadowCache = new Map<number, { bitmap: ImageBitmap; half: number }>();
 
 function getShadowSprite(r: number) {
-  const key = Math.round(r / 3) * 3;   // 3px 단위로 버킷화
+  const key = Math.round(r / 3) * 3;
   if (shadowCache.has(key)) return shadowCache.get(key)!;
 
   const blur  = r * 0.75;
@@ -123,37 +124,34 @@ function getShadowSprite(r: number) {
   const offY  = r * 0.13;
   const pad   = blur + Math.max(offX, offY) + 4;
   const size  = Math.ceil((r + pad) * 2);
-  const cx    = size / 2 - offX;  // 원 중심 (오프셋 역방향)
+  const cx    = size / 2 - offX;
   const cy    = size / 2 - offY;
 
-  const off   = document.createElement('canvas');
-  off.width   = off.height = size;
-  const c     = off.getContext('2d')!;
+  const off = new OffscreenCanvas(size, size);
+  const c   = off.getContext('2d')!;
 
-  // 1) 원 + 그림자를 오프스크린에 그림
+  // rgba(0,0,0,0.01): 원 자체는 거의 투명 → 그림자만 남음
+  // destination-out 없이 GPU 가속 유지
   c.shadowBlur    = blur;
   c.shadowColor   = 'rgba(0,0,0,0.6)';
   c.shadowOffsetX = offX;
   c.shadowOffsetY = offY;
-  c.fillStyle     = '#000';
+  c.fillStyle     = 'rgba(0,0,0,0.01)';
   c.beginPath();
   c.arc(cx, cy, r, 0, Math.PI * 2);
   c.fill();
 
-  // 2) destination-out 으로 원 자체를 지움 → 블러 후광만 남음
-  c.globalCompositeOperation = 'destination-out';
-  c.shadowBlur  = 0;
-  c.shadowColor = 'transparent';
-  c.beginPath();
-  c.arc(cx, cy, r, 0, Math.PI * 2);
-  c.fill();
-
-  const entry = { canvas: off, half: size / 2 };
+  // GPU 상주 텍스처로 변환 (동기) → 이후 drawImage는 CPU 개입 없음
+  const bitmap = off.transferToImageBitmap();
+  const entry  = { bitmap, half: size / 2 };
   shadowCache.set(key, entry);
   return entry;
 }
 
-function clearShadowCache() { shadowCache.clear(); }
+function clearShadowCache() {
+  for (const { bitmap } of shadowCache.values()) bitmap.close();
+  shadowCache.clear();
+}
 
 // ─── 물리 ────────────────────────────────────────────────────────────────────
 // 기준 반지름 (척력 크기 스케일 기준) — face 이모지 평균 r
@@ -285,7 +283,7 @@ function draw() {
     if (p.isNew) {
       // 캐시된 블러 그림자 스프라이트
       const sh = getShadowSprite(p.r);
-      ctx.drawImage(sh.canvas, -sh.half, -sh.half);
+      ctx.drawImage(sh.bitmap, -sh.half, -sh.half);
 
       // 단색 원
       ctx.beginPath();
@@ -303,7 +301,7 @@ function draw() {
     // 기본 이모지: 캐시된 블러 그림자 스프라이트
     if (!p.isNew && params.faceShadow) {
       const sh = getShadowSprite(p.size * 0.5);
-      ctx.drawImage(sh.canvas, -sh.half, -sh.half);
+      ctx.drawImage(sh.bitmap, -sh.half, -sh.half);
     }
     // 신규 이모지는 원 안에 들어오도록 폰트 크기 조정
     const fontSize = p.isNew ? Math.floor(p.r * 1.1) : p.size;
