@@ -155,6 +155,35 @@ function clearShadowCache() {
   shadowCache.clear();
 }
 
+// ─── 이모지 텍스트 스프라이트 캐시 ──────────────────────────────────────────
+// fillText 대신 ImageBitmap으로 캐싱 → drawImage (GPU 복사)
+const emojiCache = new Map<string, { bitmap: ImageBitmap; half: number }>();
+
+function getEmojiSprite(emoji: string, fontSize: number) {
+  const key = `${emoji}_${Math.round(fontSize / 3) * 3}`;
+  if (emojiCache.has(key)) return emojiCache.get(key)!;
+
+  const size = Math.ceil(fontSize * 1.6);
+  const half = size / 2;
+  const off  = new OffscreenCanvas(size, size);
+  const c    = off.getContext('2d')!;
+  c.font         = `${fontSize}px ${EMOJI_FONT}`;
+  c.textAlign    = 'center';
+  c.textBaseline = 'middle';
+  c.fillStyle    = '#000';
+  c.fillText(emoji, half, half + fontSize * 0.04);
+
+  const bitmap = off.transferToImageBitmap();
+  const entry  = { bitmap, half };
+  emojiCache.set(key, entry);
+  return entry;
+}
+
+function clearEmojiCache() {
+  for (const { bitmap } of emojiCache.values()) bitmap.close();
+  emojiCache.clear();
+}
+
 // ─── 물리 ────────────────────────────────────────────────────────────────────
 // 기준 반지름 (척력 크기 스케일 기준) — face 이모지 평균 r
 const baseR = () => W * params.faceEmojiSize * 0.62;
@@ -278,41 +307,36 @@ function draw() {
   ctx.clip();
 
   for (const p of particles) {
-    ctx.save();
+    const px = Math.round(p.x);
+    const py = Math.round(p.y);
     ctx.globalAlpha = p.opacity;
-    ctx.translate(p.x, p.y);
 
     if (p.isNew) {
-      // 캐시된 블러 그림자 스프라이트
+      // 그림자
       const sh = getShadowSprite(p.r);
-      ctx.drawImage(sh.bitmap, -sh.half, -sh.half);
+      ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half);
 
-      // 단색 원
+      // 단색 원 + 흰색 외곽선
+      ctx.save();
+      ctx.translate(px, py);
       ctx.beginPath();
       ctx.arc(0, 0, p.r, 0, Math.PI * 2);
       ctx.fillStyle = p.color;
       ctx.fill();
-
-      // 흰색 외곽선
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       ctx.lineWidth   = Math.max(1.5, p.r * 0.07);
       ctx.stroke();
+      ctx.restore();
+    } else if (params.faceShadow) {
+      // 기본 이모지 그림자
+      const sh = getShadowSprite(p.size * 0.5);
+      ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half);
     }
 
-    ctx.shadowColor = 'transparent';
-    // 기본 이모지: 캐시된 블러 그림자 스프라이트
-    if (!p.isNew && params.faceShadow) {
-      const sh = getShadowSprite(p.size * 0.5);
-      ctx.drawImage(sh.bitmap, -sh.half, -sh.half);
-    }
-    // 신규 이모지는 원 안에 들어오도록 폰트 크기 조정
+    // 이모지 텍스트: fillText 대신 캐시된 ImageBitmap
     const fontSize = p.isNew ? Math.floor(p.r * 1.1) : p.size;
-    ctx.font         = `${fontSize}px ${EMOJI_FONT}`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#000';
-    ctx.fillText(p.emoji, 0, 0);
-    ctx.restore();
+    const es = getEmojiSprite(p.emoji, fontSize);
+    ctx.drawImage(es.bitmap, px - es.half, py - es.half);
   }
 
   // 방향 이모지 오버레이
@@ -340,6 +364,7 @@ function loop() {
 // ─── GUI ──────────────────────────────────────────────────────────────────────
 function refreshParticleSizes() {
   clearShadowCache();
+  clearEmojiCache();
   for (const p of particles) {
     p.size = Math.floor(W * (p.isNew ? params.newEmojiSize : params.faceEmojiSize) * p.rand);
     p.r    = p.size * (p.isNew ? 0.70 : 0.62);
