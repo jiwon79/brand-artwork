@@ -240,10 +240,10 @@ function draw() {
     if (p.isNew) {
       // 가짜 그림자 타원 (shadowBlur 없이)
       ctx.save();
-      ctx.globalAlpha *= 0.3;
+      ctx.globalAlpha = p.opacity * 0.45;
       ctx.fillStyle = '#000';
       ctx.beginPath();
-      ctx.ellipse(p.r * 0.1, p.r * 0.15, p.r * 0.85, p.r * 0.4, 0, 0, Math.PI * 2);
+      ctx.ellipse(p.r * 0.18, p.r * 0.22, p.r * 0.9, p.r * 0.38, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
@@ -260,14 +260,14 @@ function draw() {
     }
 
     ctx.shadowColor = 'transparent';
-    // 기본 이모지 가짜 그림자: shadowBlur 대신 반투명 타원으로 표현 (블러 연산 없음)
+    // 기본 이모지 가짜 그림자
     if (!p.isNew && params.faceShadow) {
-      const sr = p.size * 0.38;
+      const sr = p.size * 0.52;
       ctx.save();
-      ctx.globalAlpha *= 0.28;
+      ctx.globalAlpha = p.opacity * 0.45;
       ctx.fillStyle = '#000';
       ctx.beginPath();
-      ctx.ellipse(p.size * 0.06, p.size * 0.1, sr, sr * 0.45, 0, 0, Math.PI * 2);
+      ctx.ellipse(p.size * 0.12, p.size * 0.18, sr, sr * 0.4, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
