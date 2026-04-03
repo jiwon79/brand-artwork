@@ -234,14 +234,10 @@ function step() {
         if (a.y - a.r < OY)     a.y = OY + a.r;
         if (a.y + a.r > OY + H) a.y = OY + H - a.r;
       } else {
-        if (a.x - a.r < OX)     { a.x = OX + a.r;     a.vx =  Math.abs(a.vx) * RESTITUTION; }
-        if (a.x + a.r > OX + W) { a.x = OX + W - a.r; a.vx = -Math.abs(a.vx) * RESTITUTION; }
-        if (a.y - a.r < OY)     { a.y = OY + a.r;      a.vy =  Math.abs(a.vy) * RESTITUTION; }
-        if (a.y + a.r > OY + H) {
-          a.y  = OY + H - a.r;
-          a.vy = -Math.abs(a.vy) * RESTITUTION;
-          a.vx *= FRICTION;
-        }
+        if (a.x - a.r < OX)     { a.x = OX + a.r;     a.vx =  Math.abs(a.vx) * RESTITUTION; if (gx < 0) a.vy *= FRICTION; }
+        if (a.x + a.r > OX + W) { a.x = OX + W - a.r; a.vx = -Math.abs(a.vx) * RESTITUTION; if (gx > 0) a.vy *= FRICTION; }
+        if (a.y - a.r < OY)     { a.y = OY + a.r;      a.vy =  Math.abs(a.vy) * RESTITUTION; if (gy < 0) a.vx *= FRICTION; }
+        if (a.y + a.r > OY + H) { a.y = OY + H - a.r;  a.vy = -Math.abs(a.vy) * RESTITUTION; if (gy > 0) a.vx *= FRICTION; }
       }
 
       for (let j = i + 1; j < particles.length; j++) {
