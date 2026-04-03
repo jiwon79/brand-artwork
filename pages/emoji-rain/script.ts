@@ -142,8 +142,8 @@ function getShadowSprite(r: number) {
   c.fill();
 
   const bitmap = off.transferToImageBitmap();
-  // half: CSS 픽셀 기준 (메인 ctx에 DPR scale 적용 중)
-  const entry  = { bitmap, half: size / (2 * DPR) };
+  const half   = size / (2 * DPR);   // CSS 픽셀 기준
+  const entry  = { bitmap, half, cssSize: half * 2 };
   shadowCache.set(key, entry);
   return entry;
 }
@@ -171,9 +171,8 @@ function getEmojiSprite(emoji: string, fontSize: number) {
   c.fillText(emoji, physSize / 2, physSize / 2 + fontSize * DPR * 0.04);
 
   const bitmap = off.transferToImageBitmap();
-  // half: CSS 픽셀 기준 (메인 ctx가 DPR scale 적용 중이므로)
-  const half = physSize / (2 * DPR);
-  const entry = { bitmap, half };
+  const half   = physSize / (2 * DPR);  // CSS 픽셀 기준
+  const entry  = { bitmap, half, cssSize: half * 2 };
   emojiCache.set(key, entry);
   return entry;
 }
@@ -313,7 +312,7 @@ function draw() {
     if (p.isNew) {
       // 그림자
       const sh = getShadowSprite(p.r);
-      ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half);
+      ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half, sh.cssSize, sh.cssSize);
 
       // 단색 원 + 흰색 외곽선
       ctx.save();
@@ -329,13 +328,13 @@ function draw() {
     } else if (params.faceShadow) {
       // 기본 이모지 그림자
       const sh = getShadowSprite(p.size * 0.5);
-      ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half);
+      ctx.drawImage(sh.bitmap, px - sh.half, py - sh.half, sh.cssSize, sh.cssSize);
     }
 
     // 이모지 텍스트: fillText 대신 캐시된 ImageBitmap
     const fontSize = p.isNew ? Math.floor(p.r * 1.1) : p.size;
     const es = getEmojiSprite(p.emoji, fontSize);
-    ctx.drawImage(es.bitmap, px - es.half, py - es.half);
+    ctx.drawImage(es.bitmap, px - es.half, py - es.half, es.cssSize, es.cssSize);
   }
 
   // 방향 이모지 오버레이
