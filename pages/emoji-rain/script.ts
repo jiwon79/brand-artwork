@@ -119,20 +119,18 @@ function getShadowSprite(r: number) {
   const key = Math.round(r / 3) * 3;
   if (shadowCache.has(key)) return shadowCache.get(key)!;
 
-  const blur  = r * 0.75;
-  const offX  = r * 0.08;
-  const offY  = r * 0.13;
+  const rP    = r * DPR;
+  const blur  = rP * 0.75;
+  const offX  = rP * 0.08;
+  const offY  = rP * 0.13;
   const pad   = blur + Math.max(offX, offY) + 4;
-  const size  = Math.ceil((r + pad) * 2);
+  const size  = Math.ceil((rP + pad) * 2);
   const cx    = size / 2 - offX;
   const cy    = size / 2 - offY;
 
   const off = new OffscreenCanvas(size, size);
   const c   = off.getContext('2d')!;
 
-  // 원을 캔버스 밖(위)에 그리고 shadowOffset으로 그림자를 안으로 끌어들임
-  // → shape 자체는 안 보이고, 그림자만 캔버스 안에 렌더링
-  // → destination-out 불필요, GPU 가속 유지, 알파 감쇠 없음
   const hideY = size * 2;
   c.shadowBlur    = blur;
   c.shadowColor   = 'rgba(0,0,0,0.6)';
@@ -140,12 +138,12 @@ function getShadowSprite(r: number) {
   c.shadowOffsetY = offY + hideY;
   c.fillStyle     = '#000';
   c.beginPath();
-  c.arc(cx, cy - hideY, r, 0, Math.PI * 2);
+  c.arc(cx, cy - hideY, rP, 0, Math.PI * 2);
   c.fill();
 
-  // GPU 상주 텍스처로 변환 (동기) → 이후 drawImage는 CPU 개입 없음
   const bitmap = off.transferToImageBitmap();
-  const entry  = { bitmap, half: size / 2 };
+  // half: CSS 픽셀 기준 (메인 ctx에 DPR scale 적용 중)
+  const entry  = { bitmap, half: size / (2 * DPR) };
   shadowCache.set(key, entry);
   return entry;
 }
@@ -163,18 +161,19 @@ function getEmojiSprite(emoji: string, fontSize: number) {
   const key = `${emoji}_${Math.round(fontSize / 3) * 3}`;
   if (emojiCache.has(key)) return emojiCache.get(key)!;
 
-  const size = Math.ceil(fontSize * 1.6);
-  const half = size / 2;
-  const off  = new OffscreenCanvas(size, size);
+  const physSize = Math.ceil(fontSize * 1.6 * DPR);
+  const off  = new OffscreenCanvas(physSize, physSize);
   const c    = off.getContext('2d')!;
-  c.font         = `${fontSize}px ${EMOJI_FONT}`;
+  c.font         = `${fontSize * DPR}px ${EMOJI_FONT}`;
   c.textAlign    = 'center';
   c.textBaseline = 'middle';
   c.fillStyle    = '#000';
-  c.fillText(emoji, half, half + fontSize * 0.04);
+  c.fillText(emoji, physSize / 2, physSize / 2 + fontSize * DPR * 0.04);
 
   const bitmap = off.transferToImageBitmap();
-  const entry  = { bitmap, half };
+  // half: CSS 픽셀 기준 (메인 ctx가 DPR scale 적용 중이므로)
+  const half = physSize / (2 * DPR);
+  const entry = { bitmap, half };
   emojiCache.set(key, entry);
   return entry;
 }
