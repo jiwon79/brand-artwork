@@ -17,10 +17,10 @@ const easeCurveFns: Record<EaseCurveKey, (t: number) => number> = {
 
 const params = {
   falloff: 'gaussian' as FalloffKey,
-  brushSize: 35,
-  cell: 35,
+  brushSize: 50,
+  cell: 105,
   easeCurve: 'easeOut' as EaseCurveKey,
-  holdDuration: 2000,
+  holdDuration: 1200,
   decayDuration: 350,
   bgColor: '#f0f0f0',
   cellColor: '#1c1c1e',
