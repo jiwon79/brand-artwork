@@ -130,15 +130,17 @@ function getShadowSprite(r: number) {
   const off = new OffscreenCanvas(size, size);
   const c   = off.getContext('2d')!;
 
-  // rgba(0,0,0,0.01): 원 자체는 거의 투명 → 그림자만 남음
-  // destination-out 없이 GPU 가속 유지
+  // 원을 캔버스 밖(위)에 그리고 shadowOffset으로 그림자를 안으로 끌어들임
+  // → shape 자체는 안 보이고, 그림자만 캔버스 안에 렌더링
+  // → destination-out 불필요, GPU 가속 유지, 알파 감쇠 없음
+  const hideY = size * 2;
   c.shadowBlur    = blur;
   c.shadowColor   = 'rgba(0,0,0,0.6)';
   c.shadowOffsetX = offX;
-  c.shadowOffsetY = offY;
-  c.fillStyle     = 'rgba(0,0,0,0.01)';
+  c.shadowOffsetY = offY + hideY;
+  c.fillStyle     = '#000';
   c.beginPath();
-  c.arc(cx, cy, r, 0, Math.PI * 2);
+  c.arc(cx, cy - hideY, r, 0, Math.PI * 2);
   c.fill();
 
   // GPU 상주 텍스처로 변환 (동기) → 이후 drawImage는 CPU 개입 없음
