@@ -14,8 +14,9 @@ const params = {
   gravity:       0.4,
   newEmojiSize:  0.1,
   faceEmojiSize: 0.05,
-  repulseEase:   0.0005,
+  repulseEase:   0.01,
   faceShadow:    false,
+  shadowOpacity: 0.6,
   mode:          'all' as 'all' | 'new' | 'face',
 };
 
@@ -133,7 +134,7 @@ function getShadowSprite(r: number) {
 
   const hideY = size * 2;
   c.shadowBlur    = blur;
-  c.shadowColor   = 'rgba(0,0,0,0.6)';
+  c.shadowColor   = `rgba(0,0,0,${params.shadowOpacity})`;
   c.shadowOffsetX = offX;
   c.shadowOffsetY = offY + hideY;
   c.fillStyle     = '#000';
@@ -305,8 +306,8 @@ function draw() {
   ctx.clip();
 
   for (const p of particles) {
-    const px = Math.round(p.x);
-    const py = Math.round(p.y);
+    const px = p.x;
+    const py = p.y;
     ctx.globalAlpha = p.opacity;
 
     if (p.isNew) {
@@ -379,6 +380,7 @@ gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기').
 gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
 gui.add(params, 'repulseEase', 0.0001, 0.2, 0.0001).name('척력 전환속도');
 gui.add(params, 'faceShadow').name('기본 이모지 쉐도우');
+gui.add(params, 'shadowOpacity', 0.0, 1.0, 0.05).name('쉐도우 강도').onChange(() => clearShadowCache());
 gui.add(params, 'mode', { '새 이모지만': 'new', '얼굴 이모지만': 'face', '전체': 'all' })
   .name('이모지 종류').onChange(restartQueue);
 
