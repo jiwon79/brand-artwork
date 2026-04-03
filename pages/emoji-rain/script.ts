@@ -110,6 +110,51 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
   });
 }
 
+// ─── 그림자 스프라이트 캐시 ───────────────────────────────────────────────────
+// 크기별로 오프스크린에 shadowBlur를 한 번만 렌더링 → drawImage로 재사용
+const shadowCache = new Map<number, { canvas: HTMLCanvasElement; half: number }>();
+
+function getShadowSprite(r: number) {
+  const key = Math.round(r / 3) * 3;   // 3px 단위로 버킷화
+  if (shadowCache.has(key)) return shadowCache.get(key)!;
+
+  const blur  = r * 0.75;
+  const offX  = r * 0.08;
+  const offY  = r * 0.13;
+  const pad   = blur + Math.max(offX, offY) + 4;
+  const size  = Math.ceil((r + pad) * 2);
+  const cx    = size / 2 - offX;  // 원 중심 (오프셋 역방향)
+  const cy    = size / 2 - offY;
+
+  const off   = document.createElement('canvas');
+  off.width   = off.height = size;
+  const c     = off.getContext('2d')!;
+
+  // 1) 원 + 그림자를 오프스크린에 그림
+  c.shadowBlur    = blur;
+  c.shadowColor   = 'rgba(0,0,0,0.6)';
+  c.shadowOffsetX = offX;
+  c.shadowOffsetY = offY;
+  c.fillStyle     = '#000';
+  c.beginPath();
+  c.arc(cx, cy, r, 0, Math.PI * 2);
+  c.fill();
+
+  // 2) destination-out 으로 원 자체를 지움 → 블러 후광만 남음
+  c.globalCompositeOperation = 'destination-out';
+  c.shadowBlur  = 0;
+  c.shadowColor = 'transparent';
+  c.beginPath();
+  c.arc(cx, cy, r, 0, Math.PI * 2);
+  c.fill();
+
+  const entry = { canvas: off, half: size / 2 };
+  shadowCache.set(key, entry);
+  return entry;
+}
+
+function clearShadowCache() { shadowCache.clear(); }
+
 // ─── 물리 ────────────────────────────────────────────────────────────────────
 // 기준 반지름 (척력 크기 스케일 기준) — face 이모지 평균 r
 const baseR = () => W * params.faceEmojiSize * 0.62;
@@ -238,14 +283,9 @@ function draw() {
     ctx.translate(p.x, p.y);
 
     if (p.isNew) {
-      // 가짜 그림자 타원 (shadowBlur 없이)
-      ctx.save();
-      ctx.globalAlpha = p.opacity * 0.45;
-      ctx.fillStyle = '#000';
-      ctx.beginPath();
-      ctx.ellipse(p.r * 0.18, p.r * 0.22, p.r * 0.9, p.r * 0.38, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+      // 캐시된 블러 그림자 스프라이트
+      const sh = getShadowSprite(p.r);
+      ctx.drawImage(sh.canvas, -sh.half, -sh.half);
 
       // 단색 원
       ctx.beginPath();
@@ -260,16 +300,10 @@ function draw() {
     }
 
     ctx.shadowColor = 'transparent';
-    // 기본 이모지 가짜 그림자
+    // 기본 이모지: 캐시된 블러 그림자 스프라이트
     if (!p.isNew && params.faceShadow) {
-      const sr = p.size * 0.52;
-      ctx.save();
-      ctx.globalAlpha = p.opacity * 0.45;
-      ctx.fillStyle = '#000';
-      ctx.beginPath();
-      ctx.ellipse(p.size * 0.12, p.size * 0.18, sr, sr * 0.4, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+      const sh = getShadowSprite(p.size * 0.5);
+      ctx.drawImage(sh.canvas, -sh.half, -sh.half);
     }
     // 신규 이모지는 원 안에 들어오도록 폰트 크기 조정
     const fontSize = p.isNew ? Math.floor(p.r * 1.1) : p.size;
@@ -305,6 +339,7 @@ function loop() {
 
 // ─── GUI ──────────────────────────────────────────────────────────────────────
 function refreshParticleSizes() {
+  clearShadowCache();
   for (const p of particles) {
     p.size = Math.floor(W * (p.isNew ? params.newEmojiSize : params.faceEmojiSize) * p.rand);
     p.r    = p.size * (p.isNew ? 0.70 : 0.62);
