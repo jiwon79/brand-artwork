@@ -3,7 +3,6 @@ import GUI from 'lil-gui';
 // ── Config ───────────────────────────────────────────────
 const GAP     = 0.5;
 const SUPER_N = 5;
-const HOLD_MS = 2000;
 
 type EaseCurveKey = 'easeOut' | 'easeOutCubic' | 'easeOutQuart' | 'easeIn' | 'easeInOut' | 'linear';
 
@@ -21,7 +20,8 @@ const params = {
   brushSize: 35,
   cell: 35,
   easeCurve: 'easeOut' as EaseCurveKey,
-  decayDuration: 1000,
+  holdDuration: 2000,
+  decayDuration: 350,
   bgColor: '#f0f0f0',
   cellColor: '#1c1c1e',
 };
@@ -127,7 +127,7 @@ function decayCells(now: number): void {
   for (let i = 0; i < cornerN.length; i++) {
     if (cornerN[i] <= 0) continue;
 
-    const holdEnd = cornerTime[i] + HOLD_MS;
+    const holdEnd = cornerTime[i] + params.holdDuration;
     if (now < holdEnd) continue;
 
     // First frame after hold: capture peak and decay start time
@@ -290,7 +290,8 @@ gui.add(params, 'cell', 5, 200, 1).name('cell size (px)').onChange(() => initGri
 gui.addColor(params, 'bgColor').name('background');
 gui.addColor(params, 'cellColor').name('cell color');
 gui.add(params, 'easeCurve', Object.keys(easeCurveFns) as EaseCurveKey[]).name('ease curve');
-gui.add(params, 'decayDuration', 100, 5000, 100).name('decay duration (ms)');
+gui.add(params, 'holdDuration', 0, 5000, 50).name('hold duration (ms)');
+gui.add(params, 'decayDuration', 50, 5000, 50).name('decay duration (ms)');
 
 // ── Boot ─────────────────────────────────────────────────
 setupCanvas();
