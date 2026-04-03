@@ -293,12 +293,12 @@ function draw() {
 
   ctx.fillStyle = '#FFFFFF';
   ctx.beginPath();
-  ctx.roundRect(OX, OY, W, H, 16);
+  ctx.rect(OX, OY, W, H);
   ctx.fill();
 
   ctx.save();
   ctx.beginPath();
-  ctx.roundRect(OX, OY, W, H, 16);
+  ctx.rect(OX, OY, W, H);
   ctx.clip();
 
   for (const p of particles) {
