@@ -286,15 +286,36 @@ function step() {
   }
 }
 
+// ─── 종이 텍스처 ──────────────────────────────────────────────────────────────
+let paperPattern: CanvasPattern | null = null;
+
+const paperImg = new Image();
+paperImg.onload = () => {
+  paperPattern = ctx.createPattern(paperImg, 'repeat') ?? null;
+};
+paperImg.src = './assets/paper.jpeg';
+
 // ─── 그리기 ───────────────────────────────────────────────────────────────────
 function draw() {
   ctx.fillStyle = '#E8DDD0';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // 흰색 배경
   ctx.fillStyle = '#FFFFFF';
   ctx.beginPath();
   ctx.rect(OX, OY, W, H);
   ctx.fill();
+
+  // 종이 텍스처 overlay
+  if (paperPattern) {
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = paperPattern;
+    ctx.beginPath();
+    ctx.rect(OX, OY, W, H);
+    ctx.fill();
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.beginPath();
