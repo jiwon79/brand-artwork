@@ -14,7 +14,8 @@ const params = {
   gravity:       0.4,
   newEmojiSize:  0.1,
   faceEmojiSize: 0.05,
-  repulseEase:   0.01,
+  repulseEase:   0.0005,
+  faceShadow:    false,
   mode:          'all' as 'all' | 'new' | 'face',
 };
 
@@ -257,6 +258,13 @@ function draw() {
     }
 
     ctx.shadowColor = 'transparent';
+    // 기본 이모지 쉐도우
+    if (!p.isNew && params.faceShadow) {
+      ctx.shadowColor   = 'rgba(0,0,0,0.22)';
+      ctx.shadowBlur    = p.size * 0.3;
+      ctx.shadowOffsetX = p.size * 0.05;
+      ctx.shadowOffsetY = p.size * 0.08;
+    }
     // 신규 이모지는 원 안에 들어오도록 폰트 크기 조정
     const fontSize = p.isNew ? Math.floor(p.r * 1.1) : p.size;
     ctx.font         = `${fontSize}px ${EMOJI_FONT}`;
@@ -264,6 +272,7 @@ function draw() {
     ctx.textBaseline = 'middle';
     ctx.fillStyle    = '#000';
     ctx.fillText(p.emoji, 0, 0);
+    ctx.shadowColor = 'transparent';
     ctx.restore();
   }
 
@@ -305,7 +314,8 @@ gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) =
 });
 gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기').onChange(refreshParticleSizes);
 gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
-gui.add(params, 'repulseEase', 0.005, 0.2, 0.005).name('척력 전환속도');
+gui.add(params, 'repulseEase', 0.0001, 0.2, 0.0001).name('척력 전환속도');
+gui.add(params, 'faceShadow').name('기본 이모지 쉐도우');
 gui.add(params, 'mode', { '새 이모지만': 'new', '얼굴 이모지만': 'face', '전체': 'all' })
   .name('이모지 종류').onChange(restartQueue);
 
