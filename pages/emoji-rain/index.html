@@ -8,10 +8,31 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { overflow: hidden; }
     canvas { display: block; }
+    #reset-btn {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 28px;
+      border: none;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.12);
+      color: rgba(0,0,0,0.55);
+      font-size: 14px;
+      font-family: system-ui, sans-serif;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      transition: background 0.15s, color 0.15s;
+      z-index: 20;
+    }
+    #reset-btn:hover { background: rgba(0,0,0,0.22); color: rgba(0,0,0,0.8); }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
+  <button id="reset-btn">↺ 다시 시작</button>
   <div id="flash" style="position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity 0.5s ease-out;z-index:10;"></div>
   <script type="module" src="./script.ts"></script>
 </body>

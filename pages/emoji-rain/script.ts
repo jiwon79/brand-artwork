@@ -439,6 +439,13 @@ setInterval(() => {
   if (qi < activeQueue.length) { const item = activeQueue[qi++]; spawnEmoji(item.e, item.isNew, item.c); }
 }, 80);
 
+document.getElementById('reset-btn')!.addEventListener('click', () => {
+  repulseMode = false;
+  repulseT    = 0;
+  gx = 0; gy = params.gravity;
+  restartQueue();
+});
+
 loop();
 
 // ─── flash 유틸 ───────────────────────────────────────────────────────────────
