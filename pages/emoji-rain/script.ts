@@ -120,7 +120,7 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
 const shadowCache = new Map<number, { bitmap: ImageBitmap; half: number }>();
 
 function getShadowSprite(r: number) {
-  const key = Math.round(r / 3) * 3;
+  const key = Math.round(r);
   if (shadowCache.has(key)) return shadowCache.get(key)!;
 
   const rP    = r * DPR;
