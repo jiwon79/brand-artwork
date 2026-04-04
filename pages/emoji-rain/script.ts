@@ -12,12 +12,12 @@ const EMOJI_FONT = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans
 // ─── GUI 파라미터 ──────────────────────────────────────────────────────────────
 const params = {
   gravity:       0.4,
-  newEmojiSize:  0.1,
-  faceEmojiSize: 0.05,
+  newEmojiSize:  0.125,
+  faceEmojiSize: 0.06,
   repulseEase:   0.01,
   shadow:        true,
   shadowOpacity: 0.2,
-  spawnInterval: 80,
+  spawnInterval: 40,
   paperOpacity:  0.7,
   mode:          'all' as 'all' | 'new' | 'face',
 };
@@ -400,9 +400,9 @@ gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) =
   gx = gx / mag * v;
   gy = gy / mag * v;
 });
-gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기').onChange(refreshParticleSizes);
-gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
-gui.add(params, 'spawnInterval', 20, 500, 10).name('스폰 간격 (ms)');
+gui.add(params, 'newEmojiSize',  0.05, 0.25, 0.005).name('큰 이모지 크기').onChange(refreshParticleSizes);
+gui.add(params, 'faceEmojiSize', 0.02, 0.12, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
+gui.add(params, 'spawnInterval', 20, 200, 10).name('스폰 간격 (ms)');
 gui.add(params, 'repulseEase', 0.0001, 0.2, 0.0001).name('척력 전환속도');
 gui.add(params, 'shadow').name('쉐도우');
 gui.add(params, 'shadowOpacity', 0.0, 1.0, 0.05).name('쉐도우 강도').onChange(() => clearShadowCache());
