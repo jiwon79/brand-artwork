@@ -15,8 +15,9 @@ const params = {
   newEmojiSize:  0.1,
   faceEmojiSize: 0.05,
   repulseEase:   0.01,
-  shadow:        false,
+  shadow:        true,
   shadowOpacity: 0.2,
+  spawnSpeed:    1.0,
   paperOpacity:  0.7,
   mode:          'all' as 'all' | 'new' | 'face',
 };
@@ -108,8 +109,8 @@ function spawnEmoji(emoji: string, isNew: boolean, color: string) {
   const y = OY - r;
   particles.push({
     emoji, isNew, color, x, y,
-    vx: (Math.random() - 0.5) * 2,
-    vy: Math.random() + 0.5,
+    vx: (Math.random() - 0.5) * 2 * params.spawnSpeed,
+    vy: (Math.random() + 0.5) * params.spawnSpeed,
     r, size, rand, opacity: 0,
   });
 }
@@ -400,6 +401,7 @@ gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) =
 });
 gui.add(params, 'newEmojiSize',  0.05, 0.4, 0.005).name('큰 이모지 크기').onChange(refreshParticleSizes);
 gui.add(params, 'faceEmojiSize', 0.02, 0.2, 0.005).name('작은 이모지 크기').onChange(refreshParticleSizes);
+gui.add(params, 'spawnSpeed', 0.1, 5.0, 0.1).name('초기 속도');
 gui.add(params, 'repulseEase', 0.0001, 0.2, 0.0001).name('척력 전환속도');
 gui.add(params, 'shadow').name('쉐도우');
 gui.add(params, 'shadowOpacity', 0.0, 1.0, 0.05).name('쉐도우 강도').onChange(() => clearShadowCache());
