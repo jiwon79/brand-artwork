@@ -468,46 +468,6 @@ function showFlash(color: string) {
   });
 }
 
-// ─── 터치 인디케이터 ──────────────────────────────────────────────────────────
-const touchDots = new Map<number, HTMLElement>();
-
-function createDot(id: number, x: number, y: number) {
-  const el = document.createElement('div');
-  el.className = 'touch-dot';
-  el.style.left = x + 'px';
-  el.style.top  = y + 'px';
-  document.body.appendChild(el);
-  touchDots.set(id, el);
-}
-
-function moveDot(id: number, x: number, y: number) {
-  const el = touchDots.get(id);
-  if (!el) return;
-  el.style.left = x + 'px';
-  el.style.top  = y + 'px';
-}
-
-function removeDot(id: number) {
-  const el = touchDots.get(id);
-  if (!el) return;
-  el.classList.add('releasing');
-  el.addEventListener('transitionend', () => el.remove(), { once: true });
-  touchDots.delete(id);
-}
-
-canvas.addEventListener('touchstart', e => {
-  for (const t of Array.from(e.changedTouches)) createDot(t.identifier, t.clientX, t.clientY);
-}, { passive: true });
-canvas.addEventListener('touchmove', e => {
-  for (const t of Array.from(e.changedTouches)) moveDot(t.identifier, t.clientX, t.clientY);
-}, { passive: true });
-canvas.addEventListener('touchend', e => {
-  for (const t of Array.from(e.changedTouches)) removeDot(t.identifier);
-}, { passive: true });
-canvas.addEventListener('touchcancel', e => {
-  for (const t of Array.from(e.changedTouches)) removeDot(t.identifier);
-}, { passive: true });
-
 // ─── 스와이프 ─────────────────────────────────────────────────────────────────
 let ptX = 0, ptY = 0, ptT = 0;
 
