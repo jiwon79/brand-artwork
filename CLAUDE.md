@@ -5,6 +5,7 @@
 ## 기술 스택
 
 - TypeScript + Vite
+- lil-gui (디버그/파라미터 조정 UI)
 
 ## 프로젝트 구조
 
