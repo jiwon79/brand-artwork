@@ -8,4 +8,5 @@
 
 ## 프로젝트 구조
 
-각 브랜드 아트워크는 `pages/<brand>/` 하위에 `index.html`, `script.ts(js)`, `style.css` 등으로 구성된다.
+- `common/` — 공통 모듈 (터치 커서 등)
+- `pages/<brand>/` — 브랜드별 아트워크 (`index.html`, `script.ts(js)`, `style.css` 등)
