@@ -11,7 +11,7 @@
   },
   "include": [
     "vite.config.ts",
-    "touch-cursor.ts"
+    "common/touch-cursor.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
