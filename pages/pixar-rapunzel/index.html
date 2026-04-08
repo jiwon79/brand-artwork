@@ -1,14 +1,267 @@
 <!DOCTYPE html>
-<html lang="ko">
+
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Pixar Rapunzel</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rapunzel — Rope v7</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #ui {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,220,100,0.35); font-size: 11px; letter-spacing: 0.25em;
+    text-transform: uppercase; pointer-events: none; font-family: Georgia, serif;
+  }
+  #title {
+    position: fixed; top: 28px; left: 36px;
+    color: rgba(255,220,100,0.2); font-size: 11px; letter-spacing: 0.3em;
+    text-transform: uppercase; pointer-events: none; font-family: Georgia, serif;
+  }
+</style>
 </head>
 <body>
-  <canvas id="c"></canvas>
-  <script type="module" src="script.ts"></script>
-  <script type="module" src="/common/touch-cursor.ts"></script>
+<canvas id="c"></canvas>
+<div id="title">애니메이션 역사상 가장 비싼 머리카락</div>
+<div id="ui">sweep to push</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', () => { resize(); initRopes(); });
+
+const GRAVITY = 1.2;
+const DAMPING = 0.978;
+const ITERATIONS = 25;
+const SWEEP_RADIUS = 90;
+const SWEEP_STRENGTH = 1.4;
+
+class Point {
+constructor(x, y, pinned=false) {
+this.x=x; this.y=y; this.ox=x; this.oy=y; this.pinned=pinned;
+}
+update(halfW) {
+if (this.pinned) return;
+let vx=(this.x-this.ox)*DAMPING, vy=(this.y-this.oy)*DAMPING;
+this.ox=this.x; this.oy=this.y;
+this.x+=vx; this.y+=vy+GRAVITY;
+const m = halfW;
+if(this.x < m)     { this.x = m;     this.ox = this.x + (this.x-this.ox)*0.3; }
+if(this.x > W - m) { this.x = W - m; this.ox = this.x + (this.x-this.ox)*0.3; }
+if(this.y > H - m) { this.y = H - m; this.oy = this.y + (this.y-this.oy)*0.3; }
+}
+
+// Apply sweep impulse: mouse velocity vector transferred to point
+sweep(mx, my, dvx, dvy) {
+if(this.pinned) return;
+const dx = this.x - mx;
+const dy = this.y - my;
+const dist = Math.sqrt(dx*dx + dy*dy);
+if(dist > SWEEP_RADIUS) return;
+
+```
+// Falloff: closer = stronger
+const falloff = 1 - (dist / SWEEP_RADIUS);
+const smooth = falloff * falloff; // quadratic falloff
+
+// Transfer mouse delta velocity directly to point
+// ox/oy trick: shifting ox opposite direction = adds velocity next frame
+this.ox -= dvx * smooth * SWEEP_STRENGTH;
+this.oy -= dvy * smooth * SWEEP_STRENGTH;
+```
+
+}
+}
+
+class Stick {
+constructor(a,b) {
+this.a=a; this.b=b;
+this.len=Math.hypot(b.x-a.x,b.y-a.y);
+}
+resolve() {
+let dx=this.b.x-this.a.x, dy=this.b.y-this.a.y;
+let dist=Math.sqrt(dx*dx+dy*dy)||0.001;
+let diff=(dist-this.len)/dist*0.5;
+let ox=dx*diff, oy=dy*diff;
+if(!this.a.pinned){this.a.x+=ox;this.a.y+=oy;}
+if(!this.b.pinned){this.b.x-=ox;this.b.y-=oy;}
+}
+}
+
+class Rope {
+constructor(pinX, pinY, length, segments, lineWidth) {
+this.points=[]; this.sticks=[];
+this.lineWidth = lineWidth;
+this.halfW = lineWidth / 2;
+const segLen = length/segments;
+for(let i=0;i<=segments;i++){
+this.points.push(new Point(pinX, pinY+i*segLen, i===0));
+}
+for(let i=0;i<this.points.length-1;i++){
+this.sticks.push(new Stick(this.points[i],this.points[i+1]));
+}
+}
+
+applySweep(mx, my, dvx, dvy) {
+this.points.forEach(p => p.sweep(mx, my, dvx, dvy));
+}
+
+update() {
+this.points.forEach(p=>p.update(this.halfW));
+for(let iter=0;iter<ITERATIONS;iter++){
+this.sticks.forEach(s=>s.resolve());
+this.points.forEach(p=>{
+if(p.pinned) return;
+const m = this.halfW;
+if(p.x < m)     p.x = m;
+if(p.x > W - m) p.x = W - m;
+if(p.y > H - m) p.y = H - m;
+});
+this.points[0].x=this.points[0].ox;
+this.points[0].y=this.points[0].oy;
+}
+}
+
+draw(ctx) {
+const pts = this.points;
+if(pts.length < 2) return;
+
+```
+const topY = Math.min(...pts.map(p=>p.y));
+const botY = Math.max(...pts.map(p=>p.y));
+const pinX = pts[0].x;
+const endX = pts[pts.length-1].x;
+
+const grad = ctx.createLinearGradient(pinX, topY, endX, botY);
+grad.addColorStop(0.0,  '#1a0800');
+grad.addColorStop(0.25, '#7a2800');
+grad.addColorStop(0.55, '#d06010');
+grad.addColorStop(0.80, '#f0a030');
+grad.addColorStop(1.0,  '#ffe8a0');
+
+ctx.save();
+ctx.strokeStyle = grad;
+ctx.lineWidth = this.lineWidth;
+ctx.lineCap = 'round';
+ctx.lineJoin = 'round';
+
+ctx.beginPath();
+ctx.moveTo(pts[0].x, pts[0].y);
+
+for(let i=0; i<pts.length-1; i++) {
+  const p0 = pts[Math.max(0, i-1)];
+  const p1 = pts[i];
+  const p2 = pts[i+1];
+  const p3 = pts[Math.min(pts.length-1, i+2)];
+  const cp1x = p1.x + (p2.x - p0.x) / 6;
+  const cp1y = p1.y + (p2.y - p0.y) / 6;
+  const cp2x = p2.x - (p3.x - p1.x) / 6;
+  const cp2y = p2.y - (p3.y - p1.y) / 6;
+  ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+}
+
+ctx.stroke();
+ctx.restore();
+```
+
+}
+}
+
+let ropes = [];
+
+function initRopes(){
+ropes = [];
+const cols = 22;   // 가로 개수
+const rows = 6;    // 세로 줄 개수 (핀 높이 레이어)
+for(let row = 0; row < rows; row++) {
+for(let col = 0; col < cols; col++) {
+const t = col / (cols - 1);
+const x = W * 0.03 + t * W * 0.94;
+const pinY = row * H * 0.14 - 30;        // 각 row마다 핀 높이 다르게
+const lw = 7 + Math.random() * 5;
+const len = H * (0.18 + Math.random() * 0.12);
+const segs = 16 + Math.floor(Math.random() * 8);
+ropes.push(new Rope(x, pinY, len, segs, lw));
+}
+}
+}
+
+// Mouse state
+let mouse = { x:-999, y:-999, px:-999, py:-999, down: false };
+
+function getSweepDelta() {
+return {
+dvx: mouse.x - mouse.px,
+dvy: mouse.y - mouse.py
+};
+}
+
+canvas.addEventListener(‘mousemove’, e => {
+mouse.px = mouse.x; mouse.py = mouse.y;
+mouse.x = e.clientX; mouse.y = e.clientY;
+if(mouse.down) {
+const {dvx, dvy} = getSweepDelta();
+ropes.forEach(r => r.applySweep(mouse.x, mouse.y, dvx, dvy));
+}
+});
+canvas.addEventListener(‘mousedown’, e => {
+mouse.down = true;
+mouse.px = e.clientX; mouse.py = e.clientY;
+mouse.x = e.clientX; mouse.y = e.clientY;
+});
+canvas.addEventListener(‘mouseup’, () => { mouse.down = false; });
+
+canvas.addEventListener(‘touchmove’, e => {
+e.preventDefault();
+const t = e.touches[0];
+mouse.px = mouse.x; mouse.py = mouse.y;
+mouse.x = t.clientX; mouse.y = t.clientY;
+if(mouse.down) {
+const {dvx, dvy} = getSweepDelta();
+ropes.forEach(r => r.applySweep(mouse.x, mouse.y, dvx, dvy));
+}
+}, { passive: false });
+canvas.addEventListener(‘touchstart’, e => {
+mouse.down = true;
+const t = e.touches[0];
+mouse.px = t.clientX; mouse.py = t.clientY;
+mouse.x = t.clientX; mouse.y = t.clientY;
+});
+canvas.addEventListener(‘touchend’, () => { mouse.down = false; });
+
+function drawCursor() {
+ctx.save();
+// Show sweep radius when pressing
+if(mouse.down) {
+ctx.beginPath();
+ctx.arc(mouse.x, mouse.y, SWEEP_RADIUS, 0, Math.PI*2);
+ctx.strokeStyle = ‘rgba(255,220,100,0.12)’;
+ctx.lineWidth = 1;
+ctx.stroke();
+}
+ctx.beginPath();
+ctx.arc(mouse.x, mouse.y, 5, 0, Math.PI*2);
+ctx.strokeStyle = ‘rgba(255,220,100,0.7)’;
+ctx.lineWidth = 1.5;
+ctx.stroke();
+ctx.restore();
+}
+
+function loop(){
+ctx.fillStyle = ‘rgba(10,10,10,0.88)’;
+ctx.fillRect(0,0,W,H);
+ropes.forEach(r => r.update());
+[…ropes].reverse().forEach(r => r.draw(ctx));
+drawCursor();
+requestAnimationFrame(loop);
+}
+
+initRopes();
+loop();
+</script>
+
 </body>
 </html>
