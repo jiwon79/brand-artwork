@@ -1,4 +1,4 @@
-import { Rope, SWEEP_RADIUS, type Bounds } from './rope';
+import { Rope, type Bounds } from './rope';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -82,23 +82,6 @@ canvas.addEventListener('touchstart', (e) => {
 canvas.addEventListener('touchend', endPointer);
 
 // ── Render ────────────────────────────────────────────────
-function drawCursor() {
-  ctx.save();
-  if (mouse.down) {
-    ctx.beginPath();
-    ctx.arc(mouse.x, mouse.y, SWEEP_RADIUS, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,220,100,0.12)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
-  ctx.beginPath();
-  ctx.arc(mouse.x, mouse.y, 5, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(255,220,100,0.7)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
-}
-
 function loop() {
   ctx.fillStyle = 'rgba(10,10,10,0.88)';
   ctx.fillRect(0, 0, bounds.width, bounds.height);
@@ -106,7 +89,6 @@ function loop() {
   for (const r of ropes) r.update(bounds);
   for (let i = ropes.length - 1; i >= 0; i--) ropes[i].draw(ctx);
 
-  drawCursor();
   requestAnimationFrame(loop);
 }
 
