@@ -1,0 +1,10 @@
+const canvas = document.getElementById('c') as HTMLCanvasElement;
+const ctx = canvas.getContext('2d')!;
+const DPR = window.devicePixelRatio || 1;
+const W = window.innerWidth;
+const H = window.innerHeight;
+canvas.width = W * DPR;
+canvas.height = H * DPR;
+canvas.style.width = W + 'px';
+canvas.style.height = H + 'px';
+ctx.scale(DPR, DPR);
