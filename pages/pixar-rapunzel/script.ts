@@ -33,7 +33,8 @@ function initRopes() {
     for (let col = 0; col < cols; col++) {
       const t = cols > 1 ? col / (cols - 1) : 0.5;
       const x = bounds.width * 0.03 + t * bounds.width * 0.94;
-      const pinY = row * bounds.height * 0.14 - 30;
+      const rt = rows > 1 ? row / (rows - 1) : 0;
+      const pinY = rt * bounds.height * 0.7;
       const lw = config.uniform ? 9.5 : 7 + Math.random() * 5;
       const len = config.uniform ? bounds.height * 0.24 : bounds.height * (0.18 + Math.random() * 0.12);
       const segs = config.uniform ? 20 : 16 + Math.floor(Math.random() * 8);
