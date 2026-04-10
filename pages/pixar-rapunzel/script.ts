@@ -1,4 +1,5 @@
-import { Rope, type Bounds } from './rope';
+import GUI from 'lil-gui';
+import { Rope, config, type Bounds } from './rope';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -92,6 +93,18 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+// ── GUI ───────────────────────────────────────────────────
+const gui = new GUI({ title: 'debug' });
+
+gui.add(config, 'gravity', 0.0, 5.0, 0.1).name('gravity');
+gui.add(config, 'damping', 0.9, 1.0, 0.001).name('damping');
+gui.add(config, 'stiffness', 0.1, 1.0, 0.05).name('stiffness');
+gui.add(config, 'iterations', 1, 80, 1).name('iterations');
+gui.add(config, 'sweepRadius', 10, 300, 5).name('sweep radius');
+gui.add(config, 'sweepStrength', 0.1, 5.0, 0.1).name('sweep strength');
+gui.add(config, 'lockLength').name('lock length');
+
+// ── Start ─────────────────────────────────────────────────
 window.addEventListener('resize', () => {
   resize();
   initRopes();

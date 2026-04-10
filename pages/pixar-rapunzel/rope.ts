@@ -1,8 +1,12 @@
-export const GRAVITY = 1.2;
-export const DAMPING = 0.978;
-export const ITERATIONS = 25;
-export const SWEEP_RADIUS = 90;
-export const SWEEP_STRENGTH = 1.4;
+export const config = {
+  gravity: 1.2,
+  damping: 0.978,
+  iterations: 25,
+  sweepRadius: 90,
+  sweepStrength: 1.4,
+  stiffness: 0.5,
+  lockLength: false,
+};
 
 export interface Bounds {
   width: number;
@@ -27,12 +31,12 @@ export class Point {
   update(halfW: number, bounds: Bounds) {
     if (this.pinned) return;
 
-    const vx = (this.x - this.ox) * DAMPING;
-    const vy = (this.y - this.oy) * DAMPING;
+    const vx = (this.x - this.ox) * config.damping;
+    const vy = (this.y - this.oy) * config.damping;
     this.ox = this.x;
     this.oy = this.y;
     this.x += vx;
-    this.y += vy + GRAVITY;
+    this.y += vy + config.gravity;
 
     if (this.x < halfW) {
       this.x = halfW;
@@ -48,19 +52,17 @@ export class Point {
     }
   }
 
-  // Apply sweep impulse: mouse velocity vector transferred to point.
-  // Shifting ox/oy opposite to dv adds velocity on the next Verlet step.
   sweep(mx: number, my: number, dvx: number, dvy: number) {
     if (this.pinned) return;
     const dx = this.x - mx;
     const dy = this.y - my;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > SWEEP_RADIUS) return;
+    if (dist > config.sweepRadius) return;
 
-    const falloff = 1 - dist / SWEEP_RADIUS;
+    const falloff = 1 - dist / config.sweepRadius;
     const smooth = falloff * falloff;
-    this.ox -= dvx * smooth * SWEEP_STRENGTH;
-    this.oy -= dvy * smooth * SWEEP_STRENGTH;
+    this.ox -= dvx * smooth * config.sweepStrength;
+    this.oy -= dvy * smooth * config.sweepStrength;
   }
 }
 
@@ -79,7 +81,7 @@ export class Stick {
     const dx = this.b.x - this.a.x;
     const dy = this.b.y - this.a.y;
     const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
-    const diff = ((dist - this.len) / dist) * 0.5;
+    const diff = ((dist - this.len) / dist) * config.stiffness;
     const ox = dx * diff;
     const oy = dy * diff;
     if (!this.a.pinned) {
@@ -119,7 +121,7 @@ export class Rope {
   update(bounds: Bounds) {
     for (const p of this.points) p.update(this.halfW, bounds);
 
-    for (let iter = 0; iter < ITERATIONS; iter++) {
+    for (let iter = 0; iter < config.iterations; iter++) {
       for (const s of this.sticks) s.resolve();
       for (const p of this.points) {
         if (p.pinned) continue;
@@ -129,6 +131,18 @@ export class Rope {
       }
       this.points[0].x = this.points[0].ox;
       this.points[0].y = this.points[0].oy;
+    }
+
+    if (config.lockLength) {
+      for (const s of this.sticks) {
+        const dx = s.b.x - s.a.x;
+        const dy = s.b.y - s.a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        s.b.x = s.a.x + nx * s.len;
+        s.b.y = s.a.y + ny * s.len;
+      }
     }
   }
 
