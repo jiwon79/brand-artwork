@@ -161,17 +161,10 @@ export class Rope {
 
   private drawDefault(ctx: CanvasRenderingContext2D) {
     const pts = this.points;
+    const pin = pts[0];
+    const end = pts[pts.length - 1];
 
-    let topY = pts[0].y;
-    let botY = pts[0].y;
-    for (const p of pts) {
-      if (p.y < topY) topY = p.y;
-      if (p.y > botY) botY = p.y;
-    }
-    const pinX = pts[0].x;
-    const endX = pts[pts.length - 1].x;
-
-    const grad = ctx.createLinearGradient(pinX, topY, endX, botY);
+    const grad = ctx.createLinearGradient(pin.x, pin.y, end.x, end.y);
     grad.addColorStop(0.0, '#1a0800');
     grad.addColorStop(0.25, '#7a2800');
     grad.addColorStop(0.55, '#d06010');
