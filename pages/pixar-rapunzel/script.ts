@@ -83,11 +83,8 @@ canvas.addEventListener('touchstart', (e) => {
 canvas.addEventListener('touchend', endPointer);
 
 // ── Render ────────────────────────────────────────────────
-const BG_DEFAULT   = 'rgba(10,10,10,0.88)';
-const BG_BLUEPRINT = 'rgba(20,40,80,0.88)';
-
 function loop() {
-  ctx.fillStyle = config.blueprint ? BG_BLUEPRINT : BG_DEFAULT;
+  ctx.fillStyle = 'rgba(10,10,10,0.88)';
   ctx.fillRect(0, 0, bounds.width, bounds.height);
 
   for (const r of ropes) r.update(bounds);

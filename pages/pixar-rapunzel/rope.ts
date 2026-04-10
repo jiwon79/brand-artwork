@@ -219,7 +219,7 @@ export class Rope {
     // points
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
-      const r = p.pinned ? 4 : 2.5;
+      const r = p.pinned ? 2 : 1.25;
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       if (p.pinned) {
