@@ -9,6 +9,7 @@ export const config = {
   blueprint: false,
   cols: 22,
   rows: 6,
+  ropeLength: 0.24,
 };
 
 export interface Bounds {

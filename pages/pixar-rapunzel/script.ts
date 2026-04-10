@@ -36,7 +36,7 @@ function initRopes() {
       const rt = rows > 1 ? row / (rows - 1) : 0;
       const pinY = rt * bounds.height * 0.7;
       const lw = config.uniform ? 9.5 : 7 + Math.random() * 5;
-      const len = config.uniform ? bounds.height * 0.24 : bounds.height * (0.18 + Math.random() * 0.12);
+      const len = config.uniform ? bounds.height * config.ropeLength : bounds.height * (config.ropeLength - 0.06 + Math.random() * 0.12);
       const segs = config.uniform ? 20 : 16 + Math.floor(Math.random() * 8);
       ropes.push(new Rope(x, pinY, len, segs, lw));
     }
@@ -119,16 +119,13 @@ gui.close();
 const gridFolder = gui.addFolder('grid');
 gridFolder.add(config, 'cols', 1, 40, 1).name('columns').onChange(() => initRopes());
 gridFolder.add(config, 'rows', 1, 12, 1).name('rows').onChange(() => initRopes());
+gridFolder.add(config, 'ropeLength', 0.05, 0.8, 0.01).name('rope length').onChange(() => initRopes());
 
 const ropeFolder = gui.addFolder('rope');
 ropeFolder.add(config, 'gravity', 0.0, 5.0, 0.1).name('gravity');
 ropeFolder.add(config, 'damping', 0.9, 1.0, 0.001).name('damping');
 ropeFolder.add(config, 'stiffness', 0.1, 1.0, 0.05).name('stiffness');
 ropeFolder.add(config, 'iterations', 1, 80, 1).name('iterations');
-
-const sweepFolder = gui.addFolder('sweep');
-sweepFolder.add(config, 'sweepRadius', 10, 300, 5).name('radius');
-sweepFolder.add(config, 'sweepStrength', 0.1, 5.0, 0.1).name('strength');
 
 gui.add(config, 'uniform').name('uniform').onChange(() => initRopes());
 gui.add(config, 'blueprint').name('blueprint');
