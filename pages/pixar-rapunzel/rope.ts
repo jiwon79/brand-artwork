@@ -7,6 +7,7 @@ export const config = {
   stiffness: 0.5,
   lockLength: false,
   uniform: false,
+  blueprint: false,
 };
 
 export interface Bounds {
@@ -151,6 +152,16 @@ export class Rope {
     const pts = this.points;
     if (pts.length < 2) return;
 
+    if (config.blueprint) {
+      this.drawBlueprint(ctx);
+    } else {
+      this.drawDefault(ctx);
+    }
+  }
+
+  private drawDefault(ctx: CanvasRenderingContext2D) {
+    const pts = this.points;
+
     let topY = pts[0].y;
     let botY = pts[0].y;
     for (const p of pts) {
@@ -187,6 +198,38 @@ export class Rope {
       ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
     }
     ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawBlueprint(ctx: CanvasRenderingContext2D) {
+    const pts = this.points;
+
+    ctx.save();
+
+    // sticks
+    ctx.strokeStyle = 'rgba(80,160,255,0.35)';
+    ctx.lineWidth = 1;
+    for (const s of this.sticks) {
+      ctx.beginPath();
+      ctx.moveTo(s.a.x, s.a.y);
+      ctx.lineTo(s.b.x, s.b.y);
+      ctx.stroke();
+    }
+
+    // points
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const r = p.pinned ? 4 : 2.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      if (p.pinned) {
+        ctx.fillStyle = 'rgba(255,100,80,0.9)';
+      } else {
+        ctx.fillStyle = 'rgba(120,200,255,0.8)';
+      }
+      ctx.fill();
+    }
+
     ctx.restore();
   }
 }

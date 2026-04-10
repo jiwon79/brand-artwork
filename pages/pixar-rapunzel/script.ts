@@ -83,8 +83,11 @@ canvas.addEventListener('touchstart', (e) => {
 canvas.addEventListener('touchend', endPointer);
 
 // ── Render ────────────────────────────────────────────────
+const BG_DEFAULT   = 'rgba(10,10,10,0.88)';
+const BG_BLUEPRINT = 'rgba(20,40,80,0.88)';
+
 function loop() {
-  ctx.fillStyle = 'rgba(10,10,10,0.88)';
+  ctx.fillStyle = config.blueprint ? BG_BLUEPRINT : BG_DEFAULT;
   ctx.fillRect(0, 0, bounds.width, bounds.height);
 
   for (const r of ropes) r.update(bounds);
@@ -104,6 +107,7 @@ gui.add(config, 'sweepRadius', 10, 300, 5).name('sweep radius');
 gui.add(config, 'sweepStrength', 0.1, 5.0, 0.1).name('sweep strength');
 gui.add(config, 'lockLength').name('lock length');
 gui.add(config, 'uniform').name('uniform').onChange(() => initRopes());
+gui.add(config, 'blueprint').name('blueprint');
 
 // ── Start ─────────────────────────────────────────────────
 window.addEventListener('resize', () => {
