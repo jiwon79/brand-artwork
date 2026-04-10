@@ -8,6 +8,7 @@ export const config = {
   lockLength: false,
   uniform: false,
   blueprint: false,
+  cols: 22,
 };
 
 export interface Bounds {

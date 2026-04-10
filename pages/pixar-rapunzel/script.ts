@@ -7,19 +7,33 @@ const ctx = canvas.getContext('2d')!;
 const bounds: Bounds = { width: 0, height: 0 };
 
 function resize() {
-  bounds.width = canvas.width = window.innerWidth;
-  bounds.height = canvas.height = window.innerHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // 9:16 box, as large as possible
+  if (vh * 9 / 16 <= vw) {
+    bounds.height = vh;
+    bounds.width = Math.floor(vh * 9 / 16);
+  } else {
+    bounds.width = vw;
+    bounds.height = Math.floor(vw * 16 / 9);
+  }
+
+  canvas.width = bounds.width;
+  canvas.height = bounds.height;
+  canvas.style.width = bounds.width + 'px';
+  canvas.style.height = bounds.height + 'px';
 }
 
 let ropes: Rope[] = [];
 
 function initRopes() {
   ropes = [];
-  const cols = 22;
+  const cols = config.cols;
   const rows = 6;
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      const t = col / (cols - 1);
+      const t = cols > 1 ? col / (cols - 1) : 0.5;
       const x = bounds.width * 0.03 + t * bounds.width * 0.94;
       const pinY = row * bounds.height * 0.14 - 30;
       const lw = config.uniform ? 9.5 : 7 + Math.random() * 5;
@@ -33,15 +47,20 @@ function initRopes() {
 // ── Pointer state ─────────────────────────────────────────
 const mouse = { x: -999, y: -999, px: -999, py: -999, down: false };
 
-function setPointer(x: number, y: number) {
-  mouse.px = mouse.x;
-  mouse.py = mouse.y;
-  mouse.x = x;
-  mouse.y = y;
+function canvasCoords(clientX: number, clientY: number): [number, number] {
+  const rect = canvas.getBoundingClientRect();
+  return [clientX - rect.left, clientY - rect.top];
 }
 
-function beginPointer(x: number, y: number) {
+function setPointer(clientX: number, clientY: number) {
+  mouse.px = mouse.x;
+  mouse.py = mouse.y;
+  [mouse.x, mouse.y] = canvasCoords(clientX, clientY);
+}
+
+function beginPointer(clientX: number, clientY: number) {
   mouse.down = true;
+  const [x, y] = canvasCoords(clientX, clientY);
   mouse.px = x;
   mouse.py = y;
   mouse.x = x;
@@ -96,6 +115,7 @@ function loop() {
 // ── GUI ───────────────────────────────────────────────────
 const gui = new GUI({ title: 'debug' });
 
+gui.add(config, 'cols', 1, 40, 1).name('columns').onChange(() => initRopes());
 gui.add(config, 'gravity', 0.0, 5.0, 0.1).name('gravity');
 gui.add(config, 'damping', 0.9, 1.0, 0.001).name('damping');
 gui.add(config, 'stiffness', 0.1, 1.0, 0.05).name('stiffness');
