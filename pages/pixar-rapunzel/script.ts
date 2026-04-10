@@ -22,9 +22,9 @@ function initRopes() {
       const t = col / (cols - 1);
       const x = bounds.width * 0.03 + t * bounds.width * 0.94;
       const pinY = row * bounds.height * 0.14 - 30;
-      const lw = 7 + Math.random() * 5;
-      const len = bounds.height * (0.18 + Math.random() * 0.12);
-      const segs = 16 + Math.floor(Math.random() * 8);
+      const lw = config.uniform ? 9.5 : 7 + Math.random() * 5;
+      const len = config.uniform ? bounds.height * 0.24 : bounds.height * (0.18 + Math.random() * 0.12);
+      const segs = config.uniform ? 20 : 16 + Math.floor(Math.random() * 8);
       ropes.push(new Rope(x, pinY, len, segs, lw));
     }
   }
@@ -103,6 +103,7 @@ gui.add(config, 'iterations', 1, 80, 1).name('iterations');
 gui.add(config, 'sweepRadius', 10, 300, 5).name('sweep radius');
 gui.add(config, 'sweepStrength', 0.1, 5.0, 0.1).name('sweep strength');
 gui.add(config, 'lockLength').name('lock length');
+gui.add(config, 'uniform').name('uniform').onChange(() => initRopes());
 
 // ── Start ─────────────────────────────────────────────────
 window.addEventListener('resize', () => {

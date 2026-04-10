@@ -6,6 +6,7 @@ export const config = {
   sweepStrength: 1.4,
   stiffness: 0.5,
   lockLength: false,
+  uniform: false,
 };
 
 export interface Bounds {
