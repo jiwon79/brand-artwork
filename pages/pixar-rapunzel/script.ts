@@ -10,7 +10,6 @@ function resize() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  // 9:16 box, as large as possible while fitting in viewport
   const scale = Math.min(vw / 9, vh / 16);
   bounds.width = Math.floor(9 * scale);
   bounds.height = Math.floor(16 * scale);
@@ -19,6 +18,8 @@ function resize() {
   canvas.height = bounds.height;
   canvas.style.width = bounds.width + 'px';
   canvas.style.height = bounds.height + 'px';
+  canvas.style.left = Math.floor((vw - bounds.width) / 2) + 'px';
+  canvas.style.top = Math.floor((vh - bounds.height) / 2) + 'px';
 }
 
 let ropes: Rope[] = [];
@@ -26,7 +27,7 @@ let ropes: Rope[] = [];
 function initRopes() {
   ropes = [];
   const cols = config.cols;
-  const rows = 6;
+  const rows = config.rows;
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const t = cols > 1 ? col / (cols - 1) : 0.5;
@@ -111,14 +112,20 @@ function loop() {
 // ── GUI ───────────────────────────────────────────────────
 const gui = new GUI({ title: 'debug' });
 
-gui.add(config, 'cols', 1, 40, 1).name('columns').onChange(() => initRopes());
-gui.add(config, 'gravity', 0.0, 5.0, 0.1).name('gravity');
-gui.add(config, 'damping', 0.9, 1.0, 0.001).name('damping');
-gui.add(config, 'stiffness', 0.1, 1.0, 0.05).name('stiffness');
-gui.add(config, 'iterations', 1, 80, 1).name('iterations');
-gui.add(config, 'sweepRadius', 10, 300, 5).name('sweep radius');
-gui.add(config, 'sweepStrength', 0.1, 5.0, 0.1).name('sweep strength');
-gui.add(config, 'lockLength').name('lock length');
+const gridFolder = gui.addFolder('grid');
+gridFolder.add(config, 'cols', 1, 40, 1).name('columns').onChange(() => initRopes());
+gridFolder.add(config, 'rows', 1, 12, 1).name('rows').onChange(() => initRopes());
+
+const ropeFolder = gui.addFolder('rope');
+ropeFolder.add(config, 'gravity', 0.0, 5.0, 0.1).name('gravity');
+ropeFolder.add(config, 'damping', 0.9, 1.0, 0.001).name('damping');
+ropeFolder.add(config, 'stiffness', 0.1, 1.0, 0.05).name('stiffness');
+ropeFolder.add(config, 'iterations', 1, 80, 1).name('iterations');
+
+const sweepFolder = gui.addFolder('sweep');
+sweepFolder.add(config, 'sweepRadius', 10, 300, 5).name('radius');
+sweepFolder.add(config, 'sweepStrength', 0.1, 5.0, 0.1).name('strength');
+
 gui.add(config, 'uniform').name('uniform').onChange(() => initRopes());
 gui.add(config, 'blueprint').name('blueprint');
 

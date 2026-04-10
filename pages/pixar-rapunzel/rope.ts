@@ -1,14 +1,14 @@
 export const config = {
   gravity: 1.2,
-  damping: 0.978,
+  damping: 0.93,
   iterations: 25,
   sweepRadius: 90,
   sweepStrength: 1.4,
-  stiffness: 0.5,
-  lockLength: false,
+  stiffness: 0.3,
   uniform: false,
   blueprint: false,
   cols: 22,
+  rows: 6,
 };
 
 export interface Bounds {
@@ -48,6 +48,10 @@ export class Point {
     if (this.x > bounds.width - halfW) {
       this.x = bounds.width - halfW;
       this.ox = this.x + (this.x - this.ox) * 0.3;
+    }
+    if (this.y < halfW) {
+      this.y = halfW;
+      this.oy = this.y + (this.y - this.oy) * 0.3;
     }
     if (this.y > bounds.height - halfW) {
       this.y = bounds.height - halfW;
@@ -130,22 +134,11 @@ export class Rope {
         if (p.pinned) continue;
         if (p.x < this.halfW) p.x = this.halfW;
         if (p.x > bounds.width - this.halfW) p.x = bounds.width - this.halfW;
+        if (p.y < this.halfW) p.y = this.halfW;
         if (p.y > bounds.height - this.halfW) p.y = bounds.height - this.halfW;
       }
       this.points[0].x = this.points[0].ox;
       this.points[0].y = this.points[0].oy;
-    }
-
-    if (config.lockLength) {
-      for (const s of this.sticks) {
-        const dx = s.b.x - s.a.x;
-        const dy = s.b.y - s.a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        s.b.x = s.a.x + nx * s.len;
-        s.b.y = s.a.y + ny * s.len;
-      }
     }
   }
 
