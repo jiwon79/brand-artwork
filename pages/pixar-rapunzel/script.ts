@@ -10,14 +10,10 @@ function resize() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  // 9:16 box, as large as possible
-  if (vh * 9 / 16 <= vw) {
-    bounds.height = vh;
-    bounds.width = Math.floor(vh * 9 / 16);
-  } else {
-    bounds.width = vw;
-    bounds.height = Math.floor(vw * 16 / 9);
-  }
+  // 9:16 box, as large as possible while fitting in viewport
+  const scale = Math.min(vw / 9, vh / 16);
+  bounds.width = Math.floor(9 * scale);
+  bounds.height = Math.floor(16 * scale);
 
   canvas.width = bounds.width;
   canvas.height = bounds.height;
