@@ -5,14 +5,13 @@ const canvas = document.getElementById('c') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 
 const bounds: Bounds = { width: 0, height: 0 };
-
-const GUI_HEIGHT = 20;
+let guiHeight = 0;
 
 function resize() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  const scale = Math.min(vw / 9, (vh - GUI_HEIGHT) / 16);
+  const scale = Math.min(vw / 9, (vh - guiHeight) / 16);
   bounds.width = Math.floor(9 * scale);
   bounds.height = Math.floor(16 * scale);
 
@@ -21,7 +20,7 @@ function resize() {
   canvas.style.width = bounds.width + 'px';
   canvas.style.height = bounds.height + 'px';
   canvas.style.left = Math.floor((vw - bounds.width) / 2) + 'px';
-  canvas.style.top = Math.floor(GUI_HEIGHT + (vh - GUI_HEIGHT - bounds.height) / 2) + 'px';
+  canvas.style.top = Math.floor(guiHeight + (vh - guiHeight - bounds.height) / 2) + 'px';
 }
 
 let ropes: Rope[] = [];
@@ -114,6 +113,7 @@ function loop() {
 // ── GUI ───────────────────────────────────────────────────
 const gui = new GUI({ title: 'debug' });
 gui.domElement.style.setProperty('--widget-height', '20px');
+gui.close();
 
 const gridFolder = gui.addFolder('grid');
 gridFolder.add(config, 'cols', 1, 40, 1).name('columns').onChange(() => initRopes());
@@ -131,6 +131,9 @@ sweepFolder.add(config, 'sweepStrength', 0.1, 5.0, 0.1).name('strength');
 
 gui.add(config, 'uniform').name('uniform').onChange(() => initRopes());
 gui.add(config, 'blueprint').name('blueprint');
+
+// Measure collapsed GUI height and use as top padding
+guiHeight = gui.domElement.offsetHeight;
 
 // ── Start ─────────────────────────────────────────────────
 window.addEventListener('resize', () => {
