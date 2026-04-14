@@ -7,15 +7,15 @@ const FLOWER_IMAGES: string[] = Array.from(
 );
 
 const params = {
-  clusterCount: 4,
-  clusterSpread: 32,
-  spawnDistance: 10,
+  clusterCount: 3,
+  clusterSpread: 12,
+  spawnDistance: 32,
 };
 
 const gui = new GUI({ title: '설정' });
 gui.add(params, 'clusterCount', 1, 7, 1).name('꽃 개수');
 gui.add(params, 'clusterSpread', 0, 67, 1).name('퍼짐 범위 (px)');
-gui.add(params, 'spawnDistance', 1, 33, 1).name('꽃 간격 (px)');
+gui.add(params, 'spawnDistance', 1, 64, 1).name('꽃 간격 (px)');
 
 const canvas = document.getElementById('canvas') as HTMLDivElement;
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
