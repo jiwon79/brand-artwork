@@ -6,25 +6,37 @@ body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  cursor: crosshair;
+  background: linear-gradient(135deg, #2a3628 0%, #151d14 100%);
   font-family: 'Cormorant Garamond', serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#canvas-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: min(calc(100vw - 80px), calc((100vh - 80px) * 16 / 9));
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  cursor: crosshair;
 }
 
 #bg {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: center;
   z-index: 0;
+  pointer-events: none;
 }
 
 #canvas {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
   z-index: 1;
 }
 

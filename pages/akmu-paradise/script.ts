@@ -117,18 +117,24 @@ function clearFlowers(): void {
 
 clearBtn.addEventListener('click', clearFlowers);
 
+function toCanvasCoords(clientX: number, clientY: number): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect();
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
 canvas.addEventListener('mousedown', (e) => {
   isDragging = true;
-  lastSpawnPos = { x: e.clientX, y: e.clientY };
-  spawnFlower(e.clientX, e.clientY);
+  const p = toCanvasCoords(e.clientX, e.clientY);
+  lastSpawnPos = p;
+  spawnFlower(p.x, p.y);
 });
 
 canvas.addEventListener('mousemove', (e) => {
   if (!isDragging) return;
-  const pos = { x: e.clientX, y: e.clientY };
-  if (!lastSpawnPos || getDistance(lastSpawnPos, pos) >= params.spawnDistance) {
-    spawnFlower(e.clientX, e.clientY);
-    lastSpawnPos = pos;
+  const p = toCanvasCoords(e.clientX, e.clientY);
+  if (!lastSpawnPos || getDistance(lastSpawnPos, p) >= params.spawnDistance) {
+    spawnFlower(p.x, p.y);
+    lastSpawnPos = p;
   }
 });
 
@@ -139,18 +145,19 @@ canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   isDragging = true;
   const t = e.touches[0];
-  lastSpawnPos = { x: t.clientX, y: t.clientY };
-  spawnFlower(t.clientX, t.clientY);
+  const p = toCanvasCoords(t.clientX, t.clientY);
+  lastSpawnPos = p;
+  spawnFlower(p.x, p.y);
 }, { passive: false });
 
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
   if (!isDragging) return;
   const t = e.touches[0];
-  const pos = { x: t.clientX, y: t.clientY };
-  if (!lastSpawnPos || getDistance(lastSpawnPos, pos) >= params.spawnDistance) {
-    spawnFlower(t.clientX, t.clientY);
-    lastSpawnPos = pos;
+  const p = toCanvasCoords(t.clientX, t.clientY);
+  if (!lastSpawnPos || getDistance(lastSpawnPos, p) >= params.spawnDistance) {
+    spawnFlower(p.x, p.y);
+    lastSpawnPos = p;
   }
 }, { passive: false });
 
