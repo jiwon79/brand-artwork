@@ -4,13 +4,13 @@
 
 body {
   width: 100vw;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
   background: linear-gradient(135deg, #2a3628 0%, #151d14 100%);
   font-family: 'Cormorant Garamond', serif;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 40px 0;
 }
 
 #canvas-frame {
@@ -21,6 +21,7 @@ body {
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   cursor: crosshair;
+  touch-action: none;
 }
 
 #bg {
