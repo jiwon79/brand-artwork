@@ -7,9 +7,9 @@ const FLOWER_IMAGES: string[] = Array.from(
 );
 
 const params = {
-  clusterCount: 3,
+  clusterCount: 2,
   clusterSpread: 12,
-  spawnDistance: 32,
+  spawnDistance: 24,
 };
 
 const gui = new GUI({ title: '설정' });
