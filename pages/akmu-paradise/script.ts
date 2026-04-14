@@ -6,16 +6,16 @@ const FLOWER_IMAGES: string[] = Array.from(
   (_, i) => `assets/flowers/flower-${String(i + 1).padStart(2, '0')}.png`,
 );
 
-const SPAWN_DISTANCE = 10;
-
 const params = {
   clusterCount: 4,
   clusterSpread: 32,
+  spawnDistance: 10,
 };
 
 const gui = new GUI({ title: '설정' });
-gui.add(params, 'clusterCount', 1, 20, 1).name('꽃 개수');
-gui.add(params, 'clusterSpread', 0, 200, 1).name('퍼짐 범위 (px)');
+gui.add(params, 'clusterCount', 1, 7, 1).name('꽃 개수');
+gui.add(params, 'clusterSpread', 0, 67, 1).name('퍼짐 범위 (px)');
+gui.add(params, 'spawnDistance', 1, 33, 1).name('꽃 간격 (px)');
 
 const canvas = document.getElementById('canvas') as HTMLDivElement;
 const hint = document.getElementById('hint') as HTMLDivElement;
@@ -129,7 +129,7 @@ canvas.addEventListener('mousedown', (e) => {
 canvas.addEventListener('mousemove', (e) => {
   if (!isDragging) return;
   const pos = { x: e.clientX, y: e.clientY };
-  if (!lastSpawnPos || getDistance(lastSpawnPos, pos) >= SPAWN_DISTANCE) {
+  if (!lastSpawnPos || getDistance(lastSpawnPos, pos) >= params.spawnDistance) {
     spawnFlower(e.clientX, e.clientY);
     lastSpawnPos = pos;
   }
@@ -152,7 +152,7 @@ canvas.addEventListener('touchmove', (e) => {
   if (!isDragging) return;
   const t = e.touches[0];
   const pos = { x: t.clientX, y: t.clientY };
-  if (!lastSpawnPos || getDistance(lastSpawnPos, pos) >= SPAWN_DISTANCE) {
+  if (!lastSpawnPos || getDistance(lastSpawnPos, pos) >= params.spawnDistance) {
     spawnFlower(t.clientX, t.clientY);
     lastSpawnPos = pos;
   }
