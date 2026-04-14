@@ -2,6 +2,10 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html {
+  background: #151d14;
+}
+
 body {
   width: 100vw;
   min-height: 100vh;
@@ -43,8 +47,8 @@ body {
 
 #clear-btn {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  left: 16px;
+  top: 16px;
   z-index: 100;
   padding: 6px 12px;
   font-family: 'Cormorant Garamond', serif;
