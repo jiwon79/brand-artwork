@@ -1,3 +1,5 @@
+import GUI from 'lil-gui';
+
 const FLOWER_COUNT = 49;
 const FLOWER_IMAGES: string[] = Array.from(
   { length: FLOWER_COUNT },
@@ -5,8 +7,15 @@ const FLOWER_IMAGES: string[] = Array.from(
 );
 
 const SPAWN_DISTANCE = 10;
-const CLUSTER_COUNT = 4;
-const CLUSTER_SPREAD = 32;
+
+const params = {
+  clusterCount: 4,
+  clusterSpread: 32,
+};
+
+const gui = new GUI({ title: '설정' });
+gui.add(params, 'clusterCount', 1, 20, 1).name('꽃 개수');
+gui.add(params, 'clusterSpread', 0, 200, 1).name('퍼짐 범위 (px)');
 
 const canvas = document.getElementById('canvas') as HTMLDivElement;
 const hint = document.getElementById('hint') as HTMLDivElement;
@@ -21,8 +30,8 @@ function randomBetween(a: number, b: number): number {
 
 function spawnOne(x: number, y: number): void {
   const size = randomBetween(22, 52);
-  const ox = randomBetween(-CLUSTER_SPREAD, CLUSTER_SPREAD);
-  const oy = randomBetween(-CLUSTER_SPREAD, CLUSTER_SPREAD);
+  const ox = randomBetween(-params.clusterSpread, params.clusterSpread);
+  const oy = randomBetween(-params.clusterSpread, params.clusterSpread);
   const rotStart = randomBetween(-180, 180);
   const rotEnd = randomBetween(-15, 15);
   const delay = randomBetween(0, 0.12);
@@ -96,7 +105,7 @@ function spawnOne(x: number, y: number): void {
 }
 
 function spawnFlower(x: number, y: number): void {
-  for (let i = 0; i < CLUSTER_COUNT; i++) spawnOne(x, y);
+  for (let i = 0; i < params.clusterCount; i++) spawnOne(x, y);
 }
 
 function getDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
