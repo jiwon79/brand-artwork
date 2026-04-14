@@ -10,12 +10,16 @@ const params = {
   clusterCount: 2,
   clusterSpread: 12,
   spawnDistance: 24,
+  minSize: 22,
+  maxSize: 52,
 };
 
 const gui = new GUI({ title: '설정' });
 gui.add(params, 'clusterCount', 1, 7, 1).name('꽃 개수');
 gui.add(params, 'clusterSpread', 0, 67, 1).name('퍼짐 범위 (px)');
 gui.add(params, 'spawnDistance', 1, 64, 1).name('꽃 간격 (px)');
+gui.add(params, 'minSize', 4, 80, 1).name('최소 크기 (px)');
+gui.add(params, 'maxSize', 8, 120, 1).name('최대 크기 (px)');
 
 const canvas = document.getElementById('canvas') as HTMLDivElement;
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
@@ -28,7 +32,9 @@ function randomBetween(a: number, b: number): number {
 }
 
 function spawnOne(x: number, y: number): void {
-  const size = randomBetween(22, 52);
+  const lo = Math.min(params.minSize, params.maxSize);
+  const hi = Math.max(params.minSize, params.maxSize);
+  const size = randomBetween(lo, hi);
   const ox = randomBetween(-params.clusterSpread, params.clusterSpread);
   const oy = randomBetween(-params.clusterSpread, params.clusterSpread);
   const rotStart = randomBetween(-180, 180);
