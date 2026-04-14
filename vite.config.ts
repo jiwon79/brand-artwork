@@ -20,11 +20,14 @@ for (const name of pageEntries) {
 }
 
 // pages/*/assets/ 디렉토리를 dist/pages/*/assets/ 로 복사
+// 참고: vite-plugin-static-copy는 매칭된 파일의 프로젝트 루트 기준 상대 경로를
+// dest에 그대로 덧붙이므로 (src가 pages/<name>/assets 이면 이미 해당 경로가
+// 결과에 포함됨) dest는 '.' 로 두어 중복 중첩을 방지한다.
 const staticCopyTargets = pageEntries
   .filter(name => existsSync(resolve(pagesDir, name, 'assets')))
   .map(name => ({
     src: resolve(pagesDir, name, 'assets'),
-    dest: `pages/${name}`,
+    dest: '.',
   }));
 
 export default defineConfig({

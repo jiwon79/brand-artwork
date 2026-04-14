@@ -1,11 +1,8 @@
-const flowerModules = import.meta.glob<string>('./assets/flowers/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
-const FLOWER_IMAGES: string[] = Object.keys(flowerModules)
-  .sort()
-  .map((key) => flowerModules[key]);
+const FLOWER_COUNT = 49;
+const FLOWER_IMAGES: string[] = Array.from(
+  { length: FLOWER_COUNT },
+  (_, i) => `assets/flowers/flower-${String(i + 1).padStart(2, '0')}.png`,
+);
 
 const SPAWN_DISTANCE = 10;
 const CLUSTER_COUNT = 4;
