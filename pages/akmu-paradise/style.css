@@ -28,22 +28,30 @@ body {
   z-index: 1;
 }
 
-.hint {
+#clear-btn {
   position: fixed;
-  bottom: 32px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 100;
+  padding: 6px 12px;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 12px;
   font-style: italic;
   font-weight: 300;
-  letter-spacing: 0.12em;
-  pointer-events: none;
-  z-index: 100;
-  transition: opacity 0.8s ease;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
-.hint.hidden { opacity: 0; }
+#clear-btn:hover {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.6);
+}
 
 .flower-img {
   position: absolute;

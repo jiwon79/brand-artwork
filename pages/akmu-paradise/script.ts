@@ -18,11 +18,10 @@ gui.add(params, 'clusterSpread', 0, 67, 1).name('퍼짐 범위 (px)');
 gui.add(params, 'spawnDistance', 1, 33, 1).name('꽃 간격 (px)');
 
 const canvas = document.getElementById('canvas') as HTMLDivElement;
-const hint = document.getElementById('hint') as HTMLDivElement;
+const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
 
 let isDragging = false;
 let lastSpawnPos: { x: number; y: number } | null = null;
-let hintHidden = false;
 
 function randomBetween(a: number, b: number): number {
   return a + Math.random() * (b - a);
@@ -112,18 +111,16 @@ function getDistance(a: { x: number; y: number }, b: { x: number; y: number }): 
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function hideHint(): void {
-  if (!hintHidden) {
-    hint.classList.add('hidden');
-    hintHidden = true;
-  }
+function clearFlowers(): void {
+  canvas.replaceChildren();
 }
+
+clearBtn.addEventListener('click', clearFlowers);
 
 canvas.addEventListener('mousedown', (e) => {
   isDragging = true;
   lastSpawnPos = { x: e.clientX, y: e.clientY };
   spawnFlower(e.clientX, e.clientY);
-  hideHint();
 });
 
 canvas.addEventListener('mousemove', (e) => {
@@ -144,7 +141,6 @@ canvas.addEventListener('touchstart', (e) => {
   const t = e.touches[0];
   lastSpawnPos = { x: t.clientX, y: t.clientY };
   spawnFlower(t.clientX, t.clientY);
-  hideHint();
 }, { passive: false });
 
 canvas.addEventListener('touchmove', (e) => {
