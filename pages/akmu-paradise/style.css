@@ -15,8 +15,8 @@ body {
 
 #canvas-frame {
   position: relative;
-  aspect-ratio: 16 / 9;
-  width: min(calc(100vw - 80px), calc((100vh - 80px) * 16 / 9));
+  aspect-ratio: 9 / 16;
+  height: min(calc(100vh - 80px), calc((100vw - 80px) * 16 / 9));
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
