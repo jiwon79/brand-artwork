@@ -1,35 +1,33 @@
 const handDotEl = document.getElementById('hand-dot')!;
-const statAngleEl = document.getElementById('stat-angle')!;
-const statRotationEl = document.getElementById('stat-rotation')!;
+const statDistanceEl = document.getElementById('stat-distance')!;
+const statSpeedEl = document.getElementById('stat-speed')!;
 const statTimeEl = document.getElementById('stat-time')!;
 const progressFillEl = document.getElementById('progress-fill')!;
-const rotRingEl = document.getElementById('rotation-ring')!;
 
 export function updateUI({
-  angle,
-  accumulated,
+  distance,
+  rate,
   currentTime,
   duration,
-  handDetected,
+  handsDetected,
 }: {
-  angle: number | null;
-  accumulated: number;
+  distance: number;
+  rate: number;
   currentTime: number;
   duration: number;
-  handDetected: boolean;
+  handsDetected: boolean;
 }) {
-  handDotEl.classList.toggle('active', handDetected);
+  handDotEl.classList.toggle('active', handsDetected);
 
-  statAngleEl.textContent =
-    angle !== null ? Math.round(angle) + '°' : '—';
+  statDistanceEl.textContent = handsDetected
+    ? distance.toFixed(2)
+    : '—';
 
-  statRotationEl.textContent = Math.round(accumulated) + '°';
+  statSpeedEl.textContent = rate.toFixed(1) + 'x';
 
   statTimeEl.textContent = currentTime.toFixed(1) + 's';
 
   const pct =
     duration > 0 ? ((currentTime / duration) * 100).toFixed(1) : '0';
   progressFillEl.style.width = pct + '%';
-
-  rotRingEl.style.transform = `rotate(${accumulated}deg)`;
 }

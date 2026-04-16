@@ -39,7 +39,7 @@ export function initHandTracker(onResults: (results: HandResults) => void) {
   });
 
   hands.setOptions({
-    maxNumHands: 1,
+    maxNumHands: 2,
     modelComplexity: isMobile ? 0 : 1,
     minDetectionConfidence: 0.7,
     minTrackingConfidence: 0.5,

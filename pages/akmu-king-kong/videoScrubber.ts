@@ -1,18 +1,21 @@
-const TURNS_FOR_FULL_PLAYBACK = 3;
+const PAUSE_THRESHOLD = 0.05;
+const MAX_DISTANCE = 0.5;
+const MAX_RATE = 2.0;
 
-function accumulatedToTime(accumulated: number, duration: number): number {
-  const t = (accumulated / (360 * TURNS_FOR_FULL_PLAYBACK)) * duration;
-  return Math.max(0, Math.min(duration, t));
-}
-
-export function scrubVideo(
+export function updatePlaybackRate(
   videoEl: HTMLVideoElement,
-  accumulatedDeg: number,
-): number | null {
-  const duration = videoEl.duration;
-  if (!duration || isNaN(duration)) return null;
+  distance: number,
+  handsDetected: boolean,
+): number {
+  if (!handsDetected || distance < PAUSE_THRESHOLD) {
+    if (!videoEl.paused) videoEl.pause();
+    return 0;
+  }
 
-  const targetTime = accumulatedToTime(accumulatedDeg, duration);
-  videoEl.currentTime = targetTime;
-  return targetTime;
+  const rate = Math.min((distance / MAX_DISTANCE) * MAX_RATE, MAX_RATE);
+
+  videoEl.playbackRate = Math.max(0.0625, rate);
+  if (videoEl.paused) videoEl.play();
+
+  return rate;
 }

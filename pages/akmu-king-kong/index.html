@@ -8,18 +8,6 @@
 </head>
 <body>
 
-  <!-- Upload Zone -->
-  <div id="upload-zone">
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="17 8 12 3 7 8"/>
-      <line x1="12" y1="3" x2="12" y2="15"/>
-    </svg>
-    <p class="upload-title">영상 파일을 업로드하세요</p>
-    <p class="upload-sub">MP4 · MOV · WebM</p>
-  </div>
-
-  <!-- Main Area (hidden until video loaded) -->
   <div id="main-area">
 
     <div id="panels">
@@ -28,12 +16,15 @@
         <video id="webcam-video" muted autoplay playsinline></video>
         <canvas id="overlay-canvas"></canvas>
         <span class="panel-label">WEBCAM</span>
+        <div id="start-overlay">
+          <button id="start-btn">카메라 시작</button>
+        </div>
         <div id="error-msg"></div>
       </div>
 
       <!-- Video Panel -->
       <div id="video-panel" class="panel">
-        <video id="playback-video" muted playsinline></video>
+        <video id="playback-video" src="assets/king-kong.mov" muted playsinline loop preload="auto"></video>
         <span class="panel-label">VIDEO</span>
       </div>
     </div>
@@ -47,27 +38,22 @@
     <div id="status-bar">
       <div id="hand-dot"></div>
       <div class="stat">
-        <span class="stat-val" id="stat-angle">—</span>
-        <span class="stat-lbl">ANGLE</span>
+        <span class="stat-val" id="stat-distance">—</span>
+        <span class="stat-lbl">DISTANCE</span>
       </div>
       <div class="divider"></div>
       <div class="stat">
-        <span class="stat-val" id="stat-rotation">0°</span>
-        <span class="stat-lbl">ROTATION</span>
+        <span class="stat-val" id="stat-speed">0.0x</span>
+        <span class="stat-lbl">SPEED</span>
       </div>
       <div class="divider"></div>
       <div class="stat">
         <span class="stat-val" id="stat-time">0.0s</span>
         <span class="stat-lbl">TIME</span>
       </div>
-      <div id="rotation-ring">
-        <div id="ring-tick"></div>
-      </div>
     </div>
 
   </div>
-
-  <input type="file" id="file-input" accept="video/*" hidden>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>

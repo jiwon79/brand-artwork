@@ -1,89 +1,35 @@
 import { initCamera } from './camera';
 import { initHandTracker, drawHandLandmarks } from './handTracker';
-import type { HandResults } from './handTracker';
-import { createRotationDetector } from './rotationDetector';
-import { scrubVideo } from './videoScrubber';
+import type { HandResults, Landmark } from './handTracker';
+import { computeHandDistance } from './distanceDetector';
+import { updatePlaybackRate } from './videoScrubber';
 import { updateUI } from './ui';
 
-// DOM elements
-const uploadZone = document.getElementById('upload-zone')!;
-const mainArea = document.getElementById('main-area')!;
-const fileInput = document.getElementById('file-input') as HTMLInputElement;
+// DOM
+const startOverlay = document.getElementById('start-overlay')!;
+const startBtn = document.getElementById('start-btn')!;
 const webcamVideo = document.getElementById('webcam-video') as HTMLVideoElement;
 const overlayCanvas = document.getElementById('overlay-canvas') as HTMLCanvasElement;
 const playbackVideo = document.getElementById('playback-video') as HTMLVideoElement;
 const errorMsg = document.getElementById('error-msg')!;
 
-const overlayCtx = overlayCanvas.getContext('2d')!;
-const rotationDetector = createRotationDetector();
+const ctx = overlayCanvas.getContext('2d')!;
 
-// ── Upload handling ──
+// ── Start button (user gesture required for camera on mobile) ──
 
-uploadZone.addEventListener('click', () => fileInput.click());
-
-uploadZone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  uploadZone.classList.add('dragover');
-});
-
-uploadZone.addEventListener('dragleave', () => {
-  uploadZone.classList.remove('dragover');
-});
-
-uploadZone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  uploadZone.classList.remove('dragover');
-  const file = e.dataTransfer?.files[0];
-  if (file && file.type.startsWith('video/')) {
-    loadVideo(file);
-  }
-});
-
-fileInput.addEventListener('change', () => {
-  const file = fileInput.files?.[0];
-  if (file) loadVideo(file);
-});
-
-// ── Video loading ──
-
-function loadVideo(file: File) {
-  const url = URL.createObjectURL(file);
-  playbackVideo.src = url;
-
-  playbackVideo.addEventListener(
-    'loadeddata',
-    () => {
-      // Force first frame to render
-      playbackVideo.currentTime = 0;
-      startApp();
-    },
-    { once: true },
-  );
-
-  playbackVideo.addEventListener(
-    'error',
-    () => showError('지원하지 않는 영상 형식입니다'),
-    { once: true },
-  );
-}
-
-function showError(msg: string) {
-  errorMsg.textContent = msg;
-  errorMsg.style.display = 'block';
-}
-
-// ── App start ──
+startBtn.addEventListener('click', startApp);
 
 async function startApp() {
-  uploadZone.style.display = 'none';
-  mainArea.style.display = 'flex';
+  startOverlay.style.display = 'none';
 
   const { sendFrame } = initHandTracker(onResults);
 
   try {
     await initCamera(webcamVideo);
   } catch (err: any) {
-    showError(err.message);
+    errorMsg.textContent = err.message;
+    errorMsg.style.display = 'block';
+    return;
   }
 
   async function loop() {
@@ -98,35 +44,84 @@ async function startApp() {
   requestAnimationFrame(loop);
 }
 
+// ── Rendering helpers ──
+
+function computeContainFit(
+  canvasW: number,
+  canvasH: number,
+  videoW: number,
+  videoH: number,
+) {
+  const vAspect = videoW / videoH;
+  const cAspect = canvasW / canvasH;
+
+  if (vAspect > cAspect) {
+    const dw = canvasW;
+    const dh = canvasW / vAspect;
+    return { dx: 0, dy: (canvasH - dh) / 2, dw, dh };
+  }
+  const dh = canvasH;
+  const dw = canvasH * vAspect;
+  return { dx: (canvasW - dw) / 2, dy: 0, dw, dh };
+}
+
+function transformLandmarks(
+  landmarks: Landmark[],
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+  cw: number,
+  ch: number,
+): Landmark[] {
+  return landmarks.map((l) => ({
+    x: (dx + l.x * dw) / cw,
+    y: (dy + l.y * dh) / ch,
+    z: l.z,
+  }));
+}
+
 // ── Hand tracking results ──
 
 function onResults(results: HandResults) {
-  const landmarks = results.multiHandLandmarks?.[0] ?? null;
-  const handDetected = !!landmarks;
+  const multiLandmarks = results.multiHandLandmarks;
 
-  // Sync canvas size to webcam resolution
-  overlayCanvas.width = webcamVideo.videoWidth || 640;
-  overlayCanvas.height = webcamVideo.videoHeight || 480;
+  // Sync canvas to its CSS pixel size
+  const cw = overlayCanvas.clientWidth;
+  const ch = overlayCanvas.clientHeight;
+  overlayCanvas.width = cw;
+  overlayCanvas.height = ch;
 
-  // Draw webcam frame directly on canvas for pixel-perfect landmark alignment
-  overlayCtx.drawImage(webcamVideo, 0, 0, overlayCanvas.width, overlayCanvas.height);
+  const vw = webcamVideo.videoWidth || 640;
+  const vh = webcamVideo.videoHeight || 480;
 
-  if (landmarks) {
-    drawHandLandmarks(overlayCtx, landmarks);
+  // Draw webcam with original aspect ratio (contain fit)
+  const { dx, dy, dw, dh } = computeContainFit(cw, ch, vw, vh);
+
+  ctx.fillStyle = '#191919';
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.drawImage(webcamVideo, dx, dy, dw, dh);
+
+  // Draw landmarks for each detected hand
+  if (multiLandmarks) {
+    for (const landmarks of multiLandmarks) {
+      const transformed = transformLandmarks(landmarks, dx, dy, dw, dh, cw, ch);
+      drawHandLandmarks(ctx, transformed);
+    }
   }
 
-  // Rotation
-  const { accumulated, angle } = rotationDetector.update(landmarks);
+  // Distance between two hands
+  const { distance, handsDetected } = computeHandDistance(multiLandmarks);
 
-  // Scrub
-  const currentTime = scrubVideo(playbackVideo, accumulated) ?? 0;
+  // Playback rate
+  const rate = updatePlaybackRate(playbackVideo, distance, handsDetected);
 
   // UI
   updateUI({
-    angle,
-    accumulated,
-    currentTime,
+    distance,
+    rate,
+    currentTime: playbackVideo.currentTime,
     duration: playbackVideo.duration || 0,
-    handDetected,
+    handsDetected,
   });
 }
