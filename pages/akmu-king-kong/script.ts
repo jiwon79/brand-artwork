@@ -1,7 +1,7 @@
 import { initCamera } from './camera';
 import { initHandTracker, drawHandLandmarks } from './handTracker';
 import type { HandResults, Landmark } from './handTracker';
-import { computeHandDistance } from './distanceDetector';
+import { computePinchDistance } from './distanceDetector';
 import { updatePlaybackRate } from './videoScrubber';
 import { updateUI } from './ui';
 
@@ -102,19 +102,18 @@ function onResults(results: HandResults) {
   ctx.fillRect(0, 0, cw, ch);
   ctx.drawImage(webcamVideo, dx, dy, dw, dh);
 
-  // Draw landmarks for each detected hand
-  if (multiLandmarks) {
-    for (const landmarks of multiLandmarks) {
-      const transformed = transformLandmarks(landmarks, dx, dy, dw, dh, cw, ch);
-      drawHandLandmarks(ctx, transformed);
-    }
+  // Draw landmarks
+  const landmarks = multiLandmarks?.[0] ?? null;
+  if (landmarks) {
+    const transformed = transformLandmarks(landmarks, dx, dy, dw, dh, cw, ch);
+    drawHandLandmarks(ctx, transformed);
   }
 
-  // Distance between two hands
-  const { distance, handsDetected } = computeHandDistance(multiLandmarks);
+  // Thumb-index pinch distance
+  const { distance, handDetected } = computePinchDistance(landmarks);
 
   // Playback rate
-  const rate = updatePlaybackRate(playbackVideo, distance, handsDetected);
+  const rate = updatePlaybackRate(playbackVideo, distance, handDetected);
 
   // UI
   updateUI({
@@ -122,6 +121,6 @@ function onResults(results: HandResults) {
     rate,
     currentTime: playbackVideo.currentTime,
     duration: playbackVideo.duration || 0,
-    handsDetected,
+    handDetected,
   });
 }

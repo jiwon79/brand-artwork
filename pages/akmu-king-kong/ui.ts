@@ -9,17 +9,17 @@ export function updateUI({
   rate,
   currentTime,
   duration,
-  handsDetected,
+  handDetected,
 }: {
   distance: number;
   rate: number;
   currentTime: number;
   duration: number;
-  handsDetected: boolean;
+  handDetected: boolean;
 }) {
-  handDotEl.classList.toggle('active', handsDetected);
+  handDotEl.classList.toggle('active', handDetected);
 
-  statDistanceEl.textContent = handsDetected
+  statDistanceEl.textContent = handDetected
     ? distance.toFixed(2)
     : '—';
 

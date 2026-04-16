@@ -2,23 +2,23 @@ import type { Landmark } from './handTracker';
 
 export interface DistanceResult {
   distance: number;
-  handsDetected: boolean;
+  handDetected: boolean;
 }
 
-export function computeHandDistance(
-  multiHandLandmarks: Landmark[][] | undefined,
+export function computePinchDistance(
+  landmarks: Landmark[] | null,
 ): DistanceResult {
-  if (!multiHandLandmarks || multiHandLandmarks.length < 2) {
-    return { distance: 0, handsDetected: false };
+  if (!landmarks) {
+    return { distance: 0, handDetected: false };
   }
 
-  // Use middle finger MCP (landmark 9) as palm center
-  const palm1 = multiHandLandmarks[0][9];
-  const palm2 = multiHandLandmarks[1][9];
+  // Thumb tip (4) ↔ Index finger tip (8)
+  const thumb = landmarks[4];
+  const index = landmarks[8];
 
-  const dx = palm1.x - palm2.x;
-  const dy = palm1.y - palm2.y;
+  const dx = thumb.x - index.x;
+  const dy = thumb.y - index.y;
   const distance = Math.sqrt(dx * dx + dy * dy);
 
-  return { distance, handsDetected: true };
+  return { distance, handDetected: true };
 }

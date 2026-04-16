@@ -5,9 +5,9 @@ const MAX_RATE = 2.0;
 export function updatePlaybackRate(
   videoEl: HTMLVideoElement,
   distance: number,
-  handsDetected: boolean,
+  handDetected: boolean,
 ): number {
-  if (!handsDetected || distance < PAUSE_THRESHOLD) {
+  if (!handDetected || distance < PAUSE_THRESHOLD) {
     if (!videoEl.paused) videoEl.pause();
     return 0;
   }
