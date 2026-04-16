@@ -60,13 +60,30 @@ export function drawHandLandmarks(
   if (typeof drawConnectors === 'undefined') return;
 
   drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
-    color: 'rgba(200,200,200,0.50)',
-    lineWidth: 1.5,
+    color: 'rgba(200,200,200,0.40)',
+    lineWidth: 1,
   });
 
   drawLandmarks(ctx, landmarks, {
-    color: 'rgba(255,255,255,0.85)',
-    fillColor: 'rgba(160,160,160,0.65)',
-    radius: 3,
+    color: 'rgba(255,255,255,0.75)',
+    fillColor: 'rgba(160,160,160,0.55)',
+    radius: 1.5,
   });
+}
+
+export function drawPinchLine(
+  ctx: CanvasRenderingContext2D,
+  landmarks: Landmark[],
+) {
+  const thumb = landmarks[4];
+  const index = landmarks[8];
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+
+  ctx.beginPath();
+  ctx.moveTo(thumb.x * w, thumb.y * h);
+  ctx.lineTo(index.x * w, index.y * h);
+  ctx.strokeStyle = 'rgba(100,220,100,0.7)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 }

@@ -16,10 +16,11 @@ body {
   background: #111;
   color: #e0e0e0;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 8px;
 }
 
 /* ── Main Area ── */
@@ -29,7 +30,7 @@ body {
   width: 100%;
   max-width: 960px;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 /* ── Panels Grid ── */
@@ -43,6 +44,15 @@ body {
 @media (max-width: 520px) {
   #panels {
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  #status-bar {
+    padding: 10px 14px;
+  }
+
+  .stat-val {
+    font-size: 16px;
   }
 }
 

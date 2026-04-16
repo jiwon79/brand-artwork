@@ -1,5 +1,5 @@
 import { initCamera } from './camera';
-import { initHandTracker, drawHandLandmarks } from './handTracker';
+import { initHandTracker, drawHandLandmarks, drawPinchLine } from './handTracker';
 import type { HandResults, Landmark } from './handTracker';
 import { computePinchDistance } from './distanceDetector';
 import { updatePlaybackRate } from './videoScrubber';
@@ -107,6 +107,7 @@ function onResults(results: HandResults) {
   if (landmarks) {
     const transformed = transformLandmarks(landmarks, dx, dy, dw, dh, cw, ch);
     drawHandLandmarks(ctx, transformed);
+    drawPinchLine(ctx, transformed);
   }
 
   // Thumb-index pinch distance
