@@ -15,6 +15,7 @@ export function updatePlaybackRate(
   const rate = Math.min((distance / MAX_DISTANCE) * MAX_RATE, MAX_RATE);
 
   videoEl.playbackRate = Math.max(0.0625, rate);
+  videoEl.volume = Math.min(rate / 1.0, 1.0);
   if (videoEl.paused) videoEl.play();
 
   return rate;

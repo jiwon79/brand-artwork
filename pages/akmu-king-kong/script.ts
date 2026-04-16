@@ -1,3 +1,4 @@
+import GUI from 'lil-gui';
 import { initCamera } from './camera';
 import { initHandTracker, drawHandLandmarks, drawPinchLine } from './handTracker';
 import type { HandResults, Landmark } from './handTracker';
@@ -16,12 +17,27 @@ const errorMsg = document.getElementById('error-msg')!;
 
 const ctx = overlayCanvas.getContext('2d')!;
 
+// ── Filter params + GUI ──
+
+const params = { minCutoff: 1.5, beta: 0.05 };
+
+const gui = new GUI({ title: 'Filter' });
+gui.add(params, 'minCutoff', 0.5, 10.0, 0.1).name('Min Cutoff').onChange(applyFilterParams);
+gui.add(params, 'beta', 0.001, 0.2, 0.001).name('Beta').onChange(applyFilterParams);
+
+function applyFilterParams() {
+  for (const f of landmarkFilters) {
+    f.x.setMinCutoff(params.minCutoff);
+    f.y.setMinCutoff(params.minCutoff);
+  }
+}
+
 // ── Landmark smoothing (One Euro Filter per landmark × x,y) ──
 
 const LANDMARK_COUNT = 21;
 const landmarkFilters = Array.from({ length: LANDMARK_COUNT }, () => ({
-  x: new OneEuroFilter(1.5, 0.05, 1.0),
-  y: new OneEuroFilter(1.5, 0.05, 1.0),
+  x: new OneEuroFilter(params.minCutoff, params.beta, 1.0),
+  y: new OneEuroFilter(params.minCutoff, params.beta, 1.0),
 }));
 
 function smoothLandmarks(raw: Landmark[], ts: number): Landmark[] {
@@ -45,6 +61,9 @@ startBtn.addEventListener('click', startApp);
 
 async function startApp() {
   startOverlay.style.display = 'none';
+
+  // Unmute video (user gesture context)
+  playbackVideo.muted = false;
 
   const { sendFrame } = initHandTracker(onResults);
 

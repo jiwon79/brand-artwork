@@ -58,6 +58,10 @@ export class OneEuroFilter {
     return filtered;
   }
 
+  setMinCutoff(value: number) {
+    this.minCutoff = value;
+  }
+
   reset() {
     this.firstTime = true;
   }
