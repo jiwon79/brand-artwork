@@ -20,8 +20,8 @@ const ctx = overlayCanvas.getContext('2d')!;
 
 const LANDMARK_COUNT = 21;
 const landmarkFilters = Array.from({ length: LANDMARK_COUNT }, () => ({
-  x: new OneEuroFilter(0.7, 0.01, 1.0),
-  y: new OneEuroFilter(0.7, 0.01, 1.0),
+  x: new OneEuroFilter(1.5, 0.05, 1.0),
+  y: new OneEuroFilter(1.5, 0.05, 1.0),
 }));
 
 function smoothLandmarks(raw: Landmark[], ts: number): Landmark[] {
