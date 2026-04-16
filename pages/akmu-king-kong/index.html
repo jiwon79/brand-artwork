@@ -8,51 +8,43 @@
 </head>
 <body>
 
-  <div id="main-area">
+  <div id="app">
+    <!-- Video -->
+    <div id="video-section">
+      <div class="strip-label">VIDEO</div>
+      <video id="playback-video" src="assets/king-kong.mov" muted playsinline loop preload="auto"></video>
+      <div id="progress-bar"><div id="progress-fill"></div></div>
+    </div>
 
-    <div id="panels">
-      <!-- Webcam Panel -->
-      <div id="webcam-panel" class="panel">
-        <video id="webcam-video" muted autoplay playsinline></video>
-        <canvas id="overlay-canvas"></canvas>
-        <span class="panel-label">WEBCAM</span>
-        <div id="start-overlay">
-          <button id="start-btn">카메라 시작</button>
+    <!-- Bottom: stats + cam -->
+    <div id="bottom-section">
+      <div id="stats">
+        <div class="stat-row">
+          <span class="stat-lbl">DISTANCE</span>
+          <span class="stat-val" id="stat-distance">—</span>
         </div>
-        <div id="error-msg"></div>
+        <div class="stat-row">
+          <span class="stat-lbl">SPEED</span>
+          <span class="stat-val" id="stat-speed">0.0x</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-lbl">TIME</span>
+          <span class="stat-val" id="stat-time">0.0s</span>
+        </div>
       </div>
 
-      <!-- Video Panel -->
-      <div id="video-panel" class="panel">
-        <video id="playback-video" src="assets/king-kong.mov" muted playsinline loop preload="auto"></video>
-        <span class="panel-label">VIDEO</span>
+      <div id="cam-section">
+        <div class="strip-label">CAM</div>
+        <div id="cam-view">
+          <video id="webcam-video" muted autoplay playsinline></video>
+          <canvas id="overlay-canvas"></canvas>
+          <div id="start-overlay">
+            <button id="start-btn">시작</button>
+          </div>
+          <div id="error-msg"></div>
+        </div>
       </div>
     </div>
-
-    <!-- Progress Bar -->
-    <div id="progress-bar">
-      <div id="progress-fill"></div>
-    </div>
-
-    <!-- Status Bar -->
-    <div id="status-bar">
-      <div id="hand-dot"></div>
-      <div class="stat">
-        <span class="stat-val" id="stat-distance">—</span>
-        <span class="stat-lbl">DISTANCE</span>
-      </div>
-      <div class="divider"></div>
-      <div class="stat">
-        <span class="stat-val" id="stat-speed">0.0x</span>
-        <span class="stat-lbl">SPEED</span>
-      </div>
-      <div class="divider"></div>
-      <div class="stat">
-        <span class="stat-val" id="stat-time">0.0s</span>
-        <span class="stat-lbl">TIME</span>
-      </div>
-    </div>
-
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>

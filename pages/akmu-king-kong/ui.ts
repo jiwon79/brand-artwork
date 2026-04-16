@@ -1,4 +1,3 @@
-const handDotEl = document.getElementById('hand-dot')!;
 const statDistanceEl = document.getElementById('stat-distance')!;
 const statSpeedEl = document.getElementById('stat-speed')!;
 const statTimeEl = document.getElementById('stat-time')!;
@@ -17,8 +16,6 @@ export function updateUI({
   duration: number;
   handDetected: boolean;
 }) {
-  handDotEl.classList.toggle('active', handDetected);
-
   statDistanceEl.textContent = handDetected
     ? distance.toFixed(2)
     : '—';

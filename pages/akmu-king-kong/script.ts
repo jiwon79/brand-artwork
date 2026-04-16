@@ -15,7 +15,7 @@ const errorMsg = document.getElementById('error-msg')!;
 
 const ctx = overlayCanvas.getContext('2d')!;
 
-// ── Start button (user gesture required for camera on mobile) ──
+// ── Start button ──
 
 startBtn.addEventListener('click', startApp);
 
@@ -36,7 +36,7 @@ async function startApp() {
     try {
       await sendFrame(webcamVideo);
     } catch {
-      // silent fail — frame drop allowed
+      // silent fail
     }
     requestAnimationFrame(loop);
   }
@@ -86,7 +86,6 @@ function transformLandmarks(
 function onResults(results: HandResults) {
   const multiLandmarks = results.multiHandLandmarks;
 
-  // Sync canvas to its CSS pixel size
   const cw = overlayCanvas.clientWidth;
   const ch = overlayCanvas.clientHeight;
   overlayCanvas.width = cw;
@@ -95,14 +94,12 @@ function onResults(results: HandResults) {
   const vw = webcamVideo.videoWidth || 640;
   const vh = webcamVideo.videoHeight || 480;
 
-  // Draw webcam with original aspect ratio (contain fit)
   const { dx, dy, dw, dh } = computeContainFit(cw, ch, vw, vh);
 
-  ctx.fillStyle = '#191919';
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, cw, ch);
   ctx.drawImage(webcamVideo, dx, dy, dw, dh);
 
-  // Draw landmarks
   const landmarks = multiLandmarks?.[0] ?? null;
   if (landmarks) {
     const transformed = transformLandmarks(landmarks, dx, dy, dw, dh, cw, ch);
@@ -110,13 +107,9 @@ function onResults(results: HandResults) {
     drawPinchLine(ctx, transformed);
   }
 
-  // Thumb-index pinch distance
   const { distance, handDetected } = computePinchDistance(landmarks);
-
-  // Playback rate
   const rate = updatePlaybackRate(playbackVideo, distance, handDetected);
 
-  // UI
   updateUI({
     distance,
     rate,
