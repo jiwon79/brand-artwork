@@ -67,7 +67,7 @@ export function drawHandLandmarks(
   drawLandmarks(ctx, landmarks, {
     color: 'rgba(255,255,255,0.75)',
     fillColor: 'rgba(160,160,160,0.55)',
-    radius: 1.5,
+    radius: 0.5,
   });
 }
 

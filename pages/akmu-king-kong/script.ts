@@ -19,7 +19,7 @@ const ctx = overlayCanvas.getContext('2d')!;
 
 // ── Filter params + GUI ──
 
-const params = { minCutoff: 1.5, beta: 0.05 };
+const params = { minCutoff: 3.0, beta: 0.05 };
 
 const gui = new GUI({ title: 'Filter' });
 gui.add(params, 'minCutoff', 0.5, 10.0, 0.1).name('Min Cutoff').onChange(applyFilterParams);
