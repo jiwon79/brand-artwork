@@ -1,6 +1,7 @@
 import { initCamera } from './camera';
 import { initHandTracker, drawHandLandmarks, drawPinchLine } from './handTracker';
 import type { HandResults, Landmark } from './handTracker';
+import { OneEuroFilter } from './oneEuroFilter';
 import { computePinchDistance } from './distanceDetector';
 import { updatePlaybackRate } from './videoScrubber';
 import { updateUI } from './ui';
@@ -14,6 +15,29 @@ const playbackVideo = document.getElementById('playback-video') as HTMLVideoElem
 const errorMsg = document.getElementById('error-msg')!;
 
 const ctx = overlayCanvas.getContext('2d')!;
+
+// ── Landmark smoothing (One Euro Filter per landmark × x,y) ──
+
+const LANDMARK_COUNT = 21;
+const landmarkFilters = Array.from({ length: LANDMARK_COUNT }, () => ({
+  x: new OneEuroFilter(0.7, 0.01, 1.0),
+  y: new OneEuroFilter(0.7, 0.01, 1.0),
+}));
+
+function smoothLandmarks(raw: Landmark[], ts: number): Landmark[] {
+  return raw.map((l, i) => ({
+    x: landmarkFilters[i].x.filter(l.x, ts),
+    y: landmarkFilters[i].y.filter(l.y, ts),
+    z: l.z,
+  }));
+}
+
+function resetFilters() {
+  for (const f of landmarkFilters) {
+    f.x.reset();
+    f.y.reset();
+  }
+}
 
 // ── Start button ──
 
@@ -100,7 +124,17 @@ function onResults(results: HandResults) {
   ctx.fillRect(0, 0, cw, ch);
   ctx.drawImage(webcamVideo, dx, dy, dw, dh);
 
-  const landmarks = multiLandmarks?.[0] ?? null;
+  const rawLandmarks = multiLandmarks?.[0] ?? null;
+
+  // Smooth landmarks (reset filters when hand lost)
+  let landmarks: Landmark[] | null = null;
+  if (rawLandmarks) {
+    const ts = performance.now() / 1000;
+    landmarks = smoothLandmarks(rawLandmarks, ts);
+  } else {
+    resetFilters();
+  }
+
   if (landmarks) {
     const transformed = transformLandmarks(landmarks, dx, dy, dw, dh, cw, ch);
     drawHandLandmarks(ctx, transformed);

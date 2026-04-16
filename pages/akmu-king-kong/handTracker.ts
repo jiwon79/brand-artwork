@@ -42,7 +42,7 @@ export function initHandTracker(onResults: (results: HandResults) => void) {
     maxNumHands: 1,
     modelComplexity: isMobile ? 0 : 1,
     minDetectionConfidence: 0.7,
-    minTrackingConfidence: 0.5,
+    minTrackingConfidence: 0.7,
   });
 
   hands.onResults(onResults);
