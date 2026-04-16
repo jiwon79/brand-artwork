@@ -109,6 +109,11 @@ body {
   height: 100%;
 }
 
+#webcam-panel video {
+  opacity: 0;
+  pointer-events: none;
+}
+
 #video-panel video {
   object-fit: contain;
 }

@@ -51,8 +51,12 @@ function loadVideo(file: File) {
   playbackVideo.src = url;
 
   playbackVideo.addEventListener(
-    'loadedmetadata',
-    () => startApp(),
+    'loadeddata',
+    () => {
+      // Force first frame to render
+      playbackVideo.currentTime = 0;
+      startApp();
+    },
     { once: true },
   );
 
@@ -100,10 +104,12 @@ function onResults(results: HandResults) {
   const landmarks = results.multiHandLandmarks?.[0] ?? null;
   const handDetected = !!landmarks;
 
-  // Sync canvas size and clear
+  // Sync canvas size to webcam resolution
   overlayCanvas.width = webcamVideo.videoWidth || 640;
   overlayCanvas.height = webcamVideo.videoHeight || 480;
-  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+  // Draw webcam frame directly on canvas for pixel-perfect landmark alignment
+  overlayCtx.drawImage(webcamVideo, 0, 0, overlayCanvas.width, overlayCanvas.height);
 
   if (landmarks) {
     drawHandLandmarks(overlayCtx, landmarks);
