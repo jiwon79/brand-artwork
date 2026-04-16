@@ -23,7 +23,10 @@ body {
   width: 100%;
   height: 100%;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 10px;
 }
 
 /* ── Strip Label ── */
@@ -39,20 +42,24 @@ body {
   border-bottom: 1px solid #222;
 }
 
+/* ── Centered Content ── */
+
+#content {
+  width: 100%;
+}
+
 /* ── Video Section ── */
 
 #video-section {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
   background: #000;
 }
 
 #video-section video {
-  flex: 1;
-  min-height: 0;
   width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
   object-fit: contain;
 }
 
@@ -61,7 +68,6 @@ body {
 #progress-bar {
   height: 2px;
   background: #222;
-  flex-shrink: 0;
 }
 
 #progress-fill {
@@ -71,30 +77,18 @@ body {
   transition: width 0.05s;
 }
 
-/* ── Bottom Section ── */
-
-#bottom-section {
-  display: flex;
-  align-items: stretch;
-  padding: 10px;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
 /* ── Stats ── */
 
 #stats {
-  flex: 1;
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 5px;
+  gap: 16px;
+  padding: 8px 4px;
 }
 
 .stat-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 5px;
 }
 
 .stat-lbl {
@@ -102,37 +96,32 @@ body {
   font-weight: 500;
   color: rgba(255, 255, 255, 0.25);
   letter-spacing: 0.08em;
-  width: 62px;
-  flex-shrink: 0;
 }
 
 .stat-val {
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.75);
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Cam Section ── */
+/* ── Cam Section (absolute bottom-right) ── */
 
 #cam-section {
-  width: 40%;
-  max-width: 200px;
-  flex-shrink: 0;
-  border-radius: 8px;
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 25%;
+  min-width: 80px;
+  max-width: 120px;
+  border-radius: 6px;
   overflow: hidden;
   background: #000;
-  display: flex;
-  flex-direction: column;
-}
-
-#cam-section .strip-label {
-  border-bottom: 1px solid #1a1a1a;
 }
 
 #cam-view {
   position: relative;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 9 / 16;
 }
 
 #cam-view video,
@@ -166,12 +155,12 @@ body {
 }
 
 #start-btn {
-  padding: 6px 16px;
+  padding: 5px 14px;
   background: #2a2a2a;
   border: 1px solid #444;
   border-radius: 6px;
   color: #bbb;
-  font-size: 12px;
+  font-size: 11px;
   font-family: inherit;
   cursor: pointer;
   transition: background 0.15s;
