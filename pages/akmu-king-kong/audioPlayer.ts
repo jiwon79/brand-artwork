@@ -52,4 +52,6 @@ export class AudioPlayer {
   }
 
   get playing() { return this._playing; }
+
+  get loaded() { return this.buffer !== null; }
 }

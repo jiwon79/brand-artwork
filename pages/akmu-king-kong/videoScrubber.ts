@@ -16,6 +16,10 @@ export function setAudioPlayer(player: AudioPlayer) {
   audioPlayer = player;
 }
 
+function useWebAudio() {
+  return audioPlayer?.loaded ?? false;
+}
+
 export function updatePlaybackRate(
   videoEl: HTMLVideoElement,
   distance: number,
@@ -33,17 +37,21 @@ export function updatePlaybackRate(
   if (wantPlay) {
     const rate = Math.max(0.25, Math.min((smoothDist / MAX_DISTANCE) * MAX_RATE, MAX_RATE));
 
-    // Video is muted — rate change is cheap (no audio resampling)
     videoEl.playbackRate = rate;
 
-    // Audio via Web Audio — AudioParam is sample-accurate, no glitch
-    audioPlayer?.setRate(rate);
-    audioPlayer?.setVolume(Math.min(rate, 1.0));
+    if (useWebAudio()) {
+      audioPlayer!.setRate(rate);
+      audioPlayer!.setVolume(Math.min(rate, 1.0));
+    } else {
+      videoEl.volume = Math.min(rate, 1.0);
+    }
 
     if (!playing) {
       playing = true;
       videoEl.play().catch(() => {});
-      audioPlayer?.play(videoEl.currentTime, rate);
+      if (useWebAudio()) {
+        audioPlayer!.play(videoEl.currentTime, rate);
+      }
     }
 
     return rate;
@@ -53,7 +61,9 @@ export function updatePlaybackRate(
     playing = false;
     smoothDist = 0;
     videoEl.pause();
-    audioPlayer?.stop();
+    if (useWebAudio()) {
+      audioPlayer!.stop();
+    }
   }
 
   return 0;

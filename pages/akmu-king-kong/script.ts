@@ -80,7 +80,7 @@ async function startApp() {
   });
 
   // Load audio + init camera in parallel
-  const audioReady = audio.load(playbackVideo.src).catch(() => {});
+  const audioReady = audio.load(playbackVideo.src);
 
   const { sendFrame } = initHandTracker(onResults);
 
@@ -92,7 +92,13 @@ async function startApp() {
     return;
   }
 
-  await audioReady;
+  try {
+    await audioReady;
+  } catch {
+    // Web Audio decode failed — fall back to video element audio
+    playbackVideo.muted = false;
+    playbackVideo.preservesPitch = false;
+  }
 
   async function loop() {
     try {
