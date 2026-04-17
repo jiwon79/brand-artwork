@@ -2,6 +2,7 @@ export class AudioPlayer {
   private el: HTMLAudioElement;
   private lastRateUpdate = 0;
   private _playing = false;
+  private playPromise: Promise<void> | null = null;
 
   constructor(src: string) {
     this.el = new Audio();
@@ -11,18 +12,32 @@ export class AudioPlayer {
     (this.el as any).preservesPitch = false;
   }
 
+  // Must be called inside user gesture (e.g. button click) to unlock on iOS
+  async unlock() {
+    try {
+      await this.el.play();
+      this.el.pause();
+      this.el.currentTime = 0;
+    } catch {}
+  }
+
   play(offset: number, rate: number) {
     this.el.currentTime = offset;
     this.el.playbackRate = rate;
-    this.el.play().catch(() => {});
     this._playing = true;
+    this.playPromise = this.el.play().catch(() => {});
     this.lastRateUpdate = performance.now();
   }
 
   stop() {
-    if (this._playing) {
+    if (!this._playing) return;
+    this._playing = false;
+    const p = this.playPromise;
+    this.playPromise = null;
+    if (p) {
+      p.then(() => { if (!this._playing) this.el.pause(); });
+    } else {
       this.el.pause();
-      this._playing = false;
     }
   }
 

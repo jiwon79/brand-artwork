@@ -66,6 +66,7 @@ async function startApp() {
 
   // Separate <audio> element for sound (video stays muted)
   const audio = new AudioPlayer(playbackVideo.src);
+  await audio.unlock();
   setAudioPlayer(audio);
   playbackVideo.muted = true;
 
