@@ -94,10 +94,9 @@ async function startApp() {
 
   try {
     await audioReady;
-  } catch {
-    // Web Audio decode failed — fall back to video element audio
-    playbackVideo.muted = false;
-    playbackVideo.preservesPitch = false;
+  } catch (e: any) {
+    const statsEl = document.getElementById('stats')!;
+    statsEl.innerHTML = `<div style="color:#f88;font-size:11px;word-break:break-all;">Audio error: ${e.name || ''} ${e.message || e}</div>`;
   }
 
   async function loop() {
