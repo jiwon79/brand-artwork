@@ -6,18 +6,16 @@ const MAX_DISTANCE = 0.5;
 const MAX_RATE = 2.0;
 const HAND_LOST_GRACE_MS = 300;
 const DISTANCE_SMOOTH = 0.15;
+const SYNC_INTERVAL_MS = 2000;
 
 let playing = false;
 let lastHandTime = 0;
+let lastSyncTime = 0;
 let smoothDist = 0;
 let audioPlayer: AudioPlayer | null = null;
 
 export function setAudioPlayer(player: AudioPlayer) {
   audioPlayer = player;
-}
-
-function useWebAudio() {
-  return audioPlayer?.loaded ?? false;
 }
 
 export function updatePlaybackRate(
@@ -37,21 +35,23 @@ export function updatePlaybackRate(
   if (wantPlay) {
     const rate = Math.max(0.25, Math.min((smoothDist / MAX_DISTANCE) * MAX_RATE, MAX_RATE));
 
+    // Video is muted — rate changes every frame (cheap)
     videoEl.playbackRate = rate;
 
-    if (useWebAudio()) {
-      audioPlayer!.setRate(rate);
-      audioPlayer!.setVolume(Math.min(rate, 1.0));
-    } else {
-      videoEl.volume = Math.min(rate, 1.0);
-    }
+    // Audio rate updates are throttled inside AudioPlayer (200ms)
+    audioPlayer?.setRate(rate);
+    audioPlayer?.setVolume(Math.min(rate, 1.0));
 
     if (!playing) {
       playing = true;
       videoEl.play().catch(() => {});
-      if (useWebAudio()) {
-        audioPlayer!.play(videoEl.currentTime, rate);
-      }
+      audioPlayer?.play(videoEl.currentTime, rate);
+    }
+
+    // Periodic drift correction
+    if (now - lastSyncTime > SYNC_INTERVAL_MS) {
+      lastSyncTime = now;
+      audioPlayer?.sync(videoEl.currentTime);
     }
 
     return rate;
@@ -61,9 +61,7 @@ export function updatePlaybackRate(
     playing = false;
     smoothDist = 0;
     videoEl.pause();
-    if (useWebAudio()) {
-      audioPlayer!.stop();
-    }
+    audioPlayer?.stop();
   }
 
   return 0;

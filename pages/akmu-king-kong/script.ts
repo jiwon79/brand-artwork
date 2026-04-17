@@ -4,6 +4,7 @@ import { initHandTracker, drawHandLandmarks, drawPinchLine } from './handTracker
 import type { HandResults, Landmark } from './handTracker';
 import { OneEuroFilter } from './oneEuroFilter';
 import { AudioPlayer } from './audioPlayer';
+
 import { computePinchDistance } from './distanceDetector';
 import { updatePlaybackRate, setAudioPlayer } from './videoScrubber';
 import { updateUI } from './ui';
@@ -63,27 +64,10 @@ startBtn.addEventListener('click', startApp);
 async function startApp() {
   startOverlay.style.display = 'none';
 
-  // Init Web Audio (must happen in user gesture context)
-  const audioCtx = new AudioContext();
-  await audioCtx.resume();
-  const audio = new AudioPlayer(audioCtx);
+  // Separate <audio> element for sound (video stays muted)
+  const audio = new AudioPlayer(playbackVideo.src);
   setAudioPlayer(audio);
-
-  // Video stays muted — audio is handled by Web Audio
   playbackVideo.muted = true;
-
-  // Resync audio when video loops
-  playbackVideo.addEventListener('seeked', () => {
-    if (audio.playing) {
-      audio.play(playbackVideo.currentTime, playbackVideo.playbackRate);
-    }
-  });
-
-  // Load audio in background (don't block rAF loop)
-  audio.load(playbackVideo.src).catch((e: any) => {
-    const statsEl = document.getElementById('stats')!;
-    statsEl.innerHTML = `<div style="color:#f88;font-size:11px;word-break:break-all;">Audio error: ${e.name || ''} ${e.message || e}</div>`;
-  });
 
   const { sendFrame } = initHandTracker(onResults);
 

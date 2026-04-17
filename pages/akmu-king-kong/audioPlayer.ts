@@ -1,57 +1,49 @@
 export class AudioPlayer {
-  private ctx: AudioContext;
-  private buffer: AudioBuffer | null = null;
-  private source: AudioBufferSourceNode | null = null;
-  private gain: GainNode;
+  private el: HTMLAudioElement;
+  private lastRateUpdate = 0;
   private _playing = false;
 
-  constructor(ctx: AudioContext) {
-    this.ctx = ctx;
-    this.gain = ctx.createGain();
-    this.gain.connect(ctx.destination);
-  }
-
-  async load(url: string) {
-    const res = await fetch(url);
-    const buf = await res.arrayBuffer();
-    this.buffer = await this.ctx.decodeAudioData(buf);
+  constructor(src: string) {
+    this.el = new Audio();
+    this.el.src = src;
+    this.el.loop = true;
+    this.el.preload = 'auto';
+    (this.el as any).preservesPitch = false;
   }
 
   play(offset: number, rate: number) {
-    this.stop();
-    if (!this.buffer) return;
-
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.buffer;
-    src.loop = true;
-    src.playbackRate.value = rate;
-    src.connect(this.gain);
-    src.start(0, offset % this.buffer.duration);
-
-    this.source = src;
+    this.el.currentTime = offset;
+    this.el.playbackRate = rate;
+    this.el.play().catch(() => {});
     this._playing = true;
+    this.lastRateUpdate = performance.now();
   }
 
   stop() {
-    if (this.source) {
-      try { this.source.stop(); } catch {}
-      this.source.disconnect();
-      this.source = null;
+    if (this._playing) {
+      this.el.pause();
+      this._playing = false;
     }
-    this._playing = false;
   }
 
   setRate(rate: number) {
-    if (this.source) {
-      this.source.playbackRate.value = rate;
-    }
+    const now = performance.now();
+    if (now - this.lastRateUpdate < 200) return;
+    this.lastRateUpdate = now;
+    this.el.playbackRate = rate;
   }
 
   setVolume(vol: number) {
-    this.gain.gain.value = vol;
+    this.el.volume = vol;
+  }
+
+  sync(videoTime: number) {
+    const drift = Math.abs(this.el.currentTime - videoTime);
+    if (drift > 0.3) {
+      this.el.currentTime = videoTime;
+    }
   }
 
   get playing() { return this._playing; }
-
-  get loaded() { return this.buffer !== null; }
+  get loaded() { return true; }
 }
