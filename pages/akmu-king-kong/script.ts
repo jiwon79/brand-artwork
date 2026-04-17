@@ -127,13 +127,21 @@ function transformLandmarks(
 
 // ── Hand tracking results ──
 
+let lastCw = 0;
+let lastCh = 0;
+
 function onResults(results: HandResults) {
   const multiLandmarks = results.multiHandLandmarks;
 
   const cw = overlayCanvas.clientWidth;
   const ch = overlayCanvas.clientHeight;
-  overlayCanvas.width = cw;
-  overlayCanvas.height = ch;
+
+  if (cw !== lastCw || ch !== lastCh) {
+    overlayCanvas.width = cw;
+    overlayCanvas.height = ch;
+    lastCw = cw;
+    lastCh = ch;
+  }
 
   const vw = webcamVideo.videoWidth || 640;
   const vh = webcamVideo.videoHeight || 480;
