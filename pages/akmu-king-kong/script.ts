@@ -69,9 +69,6 @@ async function startApp() {
   const audio = new AudioPlayer(audioCtx);
   setAudioPlayer(audio);
 
-  // Load audio from video file in background
-  audio.load(playbackVideo.src).catch(() => {});
-
   // Video stays muted — audio is handled by Web Audio
   playbackVideo.muted = true;
 
@@ -82,6 +79,9 @@ async function startApp() {
     }
   });
 
+  // Load audio + init camera in parallel
+  const audioReady = audio.load(playbackVideo.src).catch(() => {});
+
   const { sendFrame } = initHandTracker(onResults);
 
   try {
@@ -91,6 +91,8 @@ async function startApp() {
     errorMsg.style.display = 'block';
     return;
   }
+
+  await audioReady;
 
   async function loop() {
     try {
