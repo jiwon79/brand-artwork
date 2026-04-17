@@ -79,8 +79,11 @@ async function startApp() {
     }
   });
 
-  // Load audio + init camera in parallel
-  const audioReady = audio.load(playbackVideo.src);
+  // Load audio in background (don't block rAF loop)
+  audio.load(playbackVideo.src).catch((e: any) => {
+    const statsEl = document.getElementById('stats')!;
+    statsEl.innerHTML = `<div style="color:#f88;font-size:11px;word-break:break-all;">Audio error: ${e.name || ''} ${e.message || e}</div>`;
+  });
 
   const { sendFrame } = initHandTracker(onResults);
 
@@ -90,13 +93,6 @@ async function startApp() {
     errorMsg.textContent = err.message;
     errorMsg.style.display = 'block';
     return;
-  }
-
-  try {
-    await audioReady;
-  } catch (e: any) {
-    const statsEl = document.getElementById('stats')!;
-    statsEl.innerHTML = `<div style="color:#f88;font-size:11px;word-break:break-all;">Audio error: ${e.name || ''} ${e.message || e}</div>`;
   }
 
   async function loop() {
