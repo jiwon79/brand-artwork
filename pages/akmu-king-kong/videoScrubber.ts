@@ -3,8 +3,8 @@ const RESUME_THRESHOLD = 0.08;
 const MAX_DISTANCE = 0.5;
 const MAX_RATE = 2.0;
 const HAND_LOST_GRACE_MS = 300;
-const RATE_CHANGE_THRESHOLD = 0.05;
-const DISTANCE_SMOOTH = 0.3;
+const RATE_CHANGE_THRESHOLD = 0.1;
+const DISTANCE_SMOOTH = 0.15;
 
 let playing = false;
 let playPromise: Promise<void> | null = null;

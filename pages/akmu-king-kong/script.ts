@@ -64,6 +64,7 @@ async function startApp() {
 
   // Unmute video (user gesture context)
   playbackVideo.muted = false;
+  playbackVideo.preservesPitch = false;
 
   const { sendFrame } = initHandTracker(onResults);
 
