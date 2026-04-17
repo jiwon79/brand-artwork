@@ -3,8 +3,9 @@ import { initCamera } from './camera';
 import { initHandTracker, drawHandLandmarks, drawPinchLine } from './handTracker';
 import type { HandResults, Landmark } from './handTracker';
 import { OneEuroFilter } from './oneEuroFilter';
+import { AudioPlayer } from './audioPlayer';
 import { computePinchDistance } from './distanceDetector';
-import { updatePlaybackRate } from './videoScrubber';
+import { updatePlaybackRate, setAudioPlayer } from './videoScrubber';
 import { updateUI } from './ui';
 
 // DOM
@@ -62,9 +63,24 @@ startBtn.addEventListener('click', startApp);
 async function startApp() {
   startOverlay.style.display = 'none';
 
-  // Unmute video (user gesture context)
-  playbackVideo.muted = false;
-  playbackVideo.preservesPitch = false;
+  // Init Web Audio (must happen in user gesture context)
+  const audioCtx = new AudioContext();
+  await audioCtx.resume();
+  const audio = new AudioPlayer(audioCtx);
+  setAudioPlayer(audio);
+
+  // Load audio from video file in background
+  audio.load(playbackVideo.src).catch(() => {});
+
+  // Video stays muted — audio is handled by Web Audio
+  playbackVideo.muted = true;
+
+  // Resync audio when video loops
+  playbackVideo.addEventListener('seeked', () => {
+    if (audio.playing) {
+      audio.play(playbackVideo.currentTime, playbackVideo.playbackRate);
+    }
+  });
 
   const { sendFrame } = initHandTracker(onResults);
 
@@ -154,7 +170,6 @@ function onResults(results: HandResults) {
 
   const rawLandmarks = multiLandmarks?.[0] ?? null;
 
-  // Smooth landmarks (reset filters when hand lost)
   let landmarks: Landmark[] | null = null;
   if (rawLandmarks) {
     const ts = performance.now() / 1000;
