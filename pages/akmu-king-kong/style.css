@@ -23,11 +23,10 @@ body {
   width: 100%;
   height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
   position: relative;
   padding: 10px;
-  padding-top: 40px;
 }
 
 /* ── Strip Label ── */
@@ -62,6 +61,7 @@ body {
   aspect-ratio: 16 / 9;
   display: block;
   object-fit: contain;
+  max-height: 45dvh;
 }
 
 /* ── Progress Bar ── */
