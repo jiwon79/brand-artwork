@@ -84,7 +84,7 @@ body {
   bottom: 10px;
   left: 10px;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 10px;
 }
 
@@ -125,7 +125,7 @@ body {
   border-radius: 6px;
   overflow: hidden;
   background: #000;
-  width: 90px;
+  width: 180px;
   flex-shrink: 0;
 }
 
