@@ -1,6 +1,6 @@
-const PAUSE_THRESHOLD = 0.25;
-const RESUME_THRESHOLD = 0.35;
-const MAX_DISTANCE = 0.8;
+const PAUSE_THRESHOLD = 0.2;
+const RESUME_THRESHOLD = 0.25;
+const MAX_DISTANCE = 1.0;
 const MAX_RATE = 2.0;
 const HAND_LOST_GRACE_MS = 300;
 const DISTANCE_SMOOTH = 0.15;
@@ -27,7 +27,9 @@ export function updatePlaybackRate(
   const wantPlay = smoothDist >= (playing ? PAUSE_THRESHOLD : RESUME_THRESHOLD);
 
   if (wantPlay) {
-    const rate = Math.max(0.25, Math.min((smoothDist / MAX_DISTANCE) * MAX_RATE, MAX_RATE));
+    // Map [RESUME_THRESHOLD .. MAX_DISTANCE] → [0 .. MAX_RATE]
+    const t = (smoothDist - RESUME_THRESHOLD) / (MAX_DISTANCE - RESUME_THRESHOLD);
+    const rate = Math.max(0.25, Math.min(t * MAX_RATE, MAX_RATE));
 
     if (!playing) {
       playing = true;
