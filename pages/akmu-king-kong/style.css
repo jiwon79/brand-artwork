@@ -77,12 +77,23 @@ body {
   transition: width 0.05s;
 }
 
+/* ── Bottom Bar (cam left + stats right) ── */
+
+#bottom-bar {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
 /* ── Stats ── */
 
 #stats {
   display: flex;
-  gap: 16px;
-  padding: 8px 4px;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .stat-row {
@@ -108,18 +119,14 @@ body {
   text-align: right;
 }
 
-/* ── Cam Section (absolute bottom-right) ── */
+/* ── Cam Section ── */
 
 #cam-section {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  width: 25%;
-  min-width: 80px;
-  max-width: 120px;
   border-radius: 6px;
   overflow: hidden;
   background: #000;
+  width: 90px;
+  flex-shrink: 0;
 }
 
 #cam-view {

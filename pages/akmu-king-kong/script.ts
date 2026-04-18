@@ -3,10 +3,8 @@ import { initCamera } from './camera';
 import { initHandTracker, drawHandLandmarks, drawPinchLine } from './handTracker';
 import type { HandResults, Landmark } from './handTracker';
 import { OneEuroFilter } from './oneEuroFilter';
-import { AudioPlayer } from './audioPlayer';
-
 import { computePinchDistance } from './distanceDetector';
-import { updatePlaybackRate, setAudioPlayer } from './videoScrubber';
+import { updatePlaybackRate } from './videoScrubber';
 import { updateUI } from './ui';
 
 // DOM
@@ -34,7 +32,7 @@ function applyFilterParams() {
   }
 }
 
-// ── Landmark smoothing (One Euro Filter per landmark × x,y) ──
+// ── Landmark smoothing ──
 
 const LANDMARK_COUNT = 21;
 const landmarkFilters = Array.from({ length: LANDMARK_COUNT }, () => ({
@@ -63,12 +61,6 @@ startBtn.addEventListener('click', startApp);
 
 async function startApp() {
   startOverlay.style.display = 'none';
-
-  // Separate <audio> element for sound (video stays muted)
-  const audio = new AudioPlayer(playbackVideo.src);
-  await audio.unlock();
-  setAudioPlayer(audio);
-  playbackVideo.muted = true;
 
   const { sendFrame } = initHandTracker(onResults);
 

@@ -12,13 +12,24 @@ export function computePinchDistance(
     return { distance: 0, handDetected: false };
   }
 
-  // Thumb tip (4) ↔ Index finger tip (8)
   const thumb = landmarks[4];
   const index = landmarks[8];
 
+  // 3D distance (x, y, z)
   const dx = thumb.x - index.x;
   const dy = thumb.y - index.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
+  const dz = thumb.z - index.z;
+  const rawDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+  // Normalize by hand size (wrist→middle MCP) to cancel camera distance effect
+  const wrist = landmarks[0];
+  const mid = landmarks[9];
+  const hx = wrist.x - mid.x;
+  const hy = wrist.y - mid.y;
+  const hz = wrist.z - mid.z;
+  const handSize = Math.sqrt(hx * hx + hy * hy + hz * hz);
+
+  const distance = handSize > 0.01 ? rawDist / handSize : 0;
 
   return { distance, handDetected: true };
 }

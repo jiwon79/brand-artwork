@@ -9,12 +9,26 @@
 <body>
 
   <div id="app">
-    <!-- Centered content -->
     <div id="content">
       <div id="video-section">
         <div class="strip-label">VIDEO</div>
         <video id="playback-video" src="assets/king-kong.mov" muted playsinline loop preload="auto"></video>
         <div id="progress-bar"><div id="progress-fill"></div></div>
+      </div>
+    </div>
+
+    <!-- Bottom-left: cam + stats -->
+    <div id="bottom-bar">
+      <div id="cam-section">
+        <div class="strip-label">CAM</div>
+        <div id="cam-view">
+          <video id="webcam-video" muted autoplay playsinline></video>
+          <canvas id="overlay-canvas"></canvas>
+          <div id="start-overlay">
+            <button id="start-btn">시작</button>
+          </div>
+          <div id="error-msg"></div>
+        </div>
       </div>
       <div id="stats">
         <div class="stat-row">
@@ -29,19 +43,6 @@
           <span class="stat-lbl">TIME</span>
           <span class="stat-val" id="stat-time">0.0s</span>
         </div>
-      </div>
-    </div>
-
-    <!-- Cam: absolute bottom-right -->
-    <div id="cam-section">
-      <div class="strip-label">CAM</div>
-      <div id="cam-view">
-        <video id="webcam-video" muted autoplay playsinline></video>
-        <canvas id="overlay-canvas"></canvas>
-        <div id="start-overlay">
-          <button id="start-btn">시작</button>
-        </div>
-        <div id="error-msg"></div>
       </div>
     </div>
   </div>

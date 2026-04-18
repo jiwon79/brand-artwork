@@ -1,18 +1,13 @@
-import type { AudioPlayer } from './audioPlayer';
-
-const PAUSE_THRESHOLD = 0.05;
-const RESUME_THRESHOLD = 0.08;
+const PAUSE_THRESHOLD = 0.1;
+const RESUME_THRESHOLD = 0.15;
+const MAX_DISTANCE = 0.8;
+const MAX_RATE = 2.0;
 const HAND_LOST_GRACE_MS = 300;
 const DISTANCE_SMOOTH = 0.15;
 
 let playing = false;
 let lastHandTime = 0;
 let smoothDist = 0;
-let audioPlayer: AudioPlayer | null = null;
-
-export function setAudioPlayer(player: AudioPlayer) {
-  audioPlayer = player;
-}
 
 export function updatePlaybackRate(
   videoEl: HTMLVideoElement,
@@ -29,20 +24,22 @@ export function updatePlaybackRate(
   const wantPlay = smoothDist >= (playing ? PAUSE_THRESHOLD : RESUME_THRESHOLD);
 
   if (wantPlay) {
+    const rate = Math.max(0.25, Math.min((smoothDist / MAX_DISTANCE) * MAX_RATE, MAX_RATE));
+
+    videoEl.playbackRate = rate;
+
     if (!playing) {
       playing = true;
-      videoEl.playbackRate = 1;
       videoEl.play().catch(() => {});
-      audioPlayer?.play(videoEl.currentTime, 1);
     }
-    return 1;
+
+    return rate;
   }
 
   if (playing) {
     playing = false;
     smoothDist = 0;
     videoEl.pause();
-    audioPlayer?.stop();
   }
 
   return 0;
