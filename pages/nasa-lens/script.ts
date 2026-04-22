@@ -17,22 +17,31 @@ const state = {
   bg: 'text' as BackgroundMode,
   text: 'HOT',
   shape: 'grid' as ShapePattern,
-  radius: 0.22,
-  strength: 0.6,
-  thickness: 1.0,
+  radius: 0.4,
+  strength: 1.5,
+  thickness: 2.0,
   mouse: { x: 0.5, y: 0.5 },
   mouseTarget: { x: 0.5, y: 0.5 },
   interacting: false,
   isTouch: false,
 };
 
+// Cache the canvas's on-screen rect. Touch/mouse clientX/Y are in visual-
+// viewport CSS pixels, so driving the lens and canvas sizing from this rect
+// (rather than window.innerWidth/Height) keeps the lens centered on the
+// touch point even when mobile Safari's URL bar shifts the viewport.
+let stageRect = stage.getBoundingClientRect();
+function refreshStageRect(): void {
+  stageRect = stage.getBoundingClientRect();
+}
+
 // ── Background canvas (offscreen) ────────────────────────
 const bgCanvas = document.createElement('canvas');
 const bgCtx = bgCanvas.getContext('2d')!;
 
 function drawBackground(): void {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const w = stageRect.width;
+  const h = stageRect.height;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   bgCanvas.width = w * dpr;
   bgCanvas.height = h * dpr;
@@ -140,7 +149,7 @@ try {
 }
 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-renderer.setSize(window.innerWidth, window.innerHeight, false);
+renderer.setSize(stageRect.width, stageRect.height, false);
 
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -158,7 +167,7 @@ const uniforms = {
   uStrength: { value: state.strength },
   uThickness: { value: state.thickness },
   uActive: { value: 0.0 },
-  uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+  uResolution: { value: new THREE.Vector2(stageRect.width, stageRect.height) },
 };
 
 const vertexShader = `
@@ -268,8 +277,10 @@ if (window.innerWidth <= 700) gui.close();
 
 // ── Input ────────────────────────────────────────────────
 function setPointer(x: number, y: number): void {
-  state.mouseTarget.x = x / window.innerWidth;
-  state.mouseTarget.y = 1.0 - y / window.innerHeight;
+  const localX = x - stageRect.left;
+  const localY = y - stageRect.top;
+  state.mouseTarget.x = localX / stageRect.width;
+  state.mouseTarget.y = 1.0 - localY / stageRect.height;
   cursor.style.transform =
     'translate(' + x + 'px, ' + y + 'px) translate(-50%, -50%)';
 }
@@ -305,13 +316,19 @@ let resizeTimer: number | undefined;
 function handleResize(): void {
   window.clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(() => {
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
-    uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    refreshStageRect();
+    renderer.setSize(stageRect.width, stageRect.height, false);
+    uniforms.uResolution.value.set(stageRect.width, stageRect.height);
     drawBackground();
   }, 100);
 }
 window.addEventListener('resize', handleResize);
 window.addEventListener('orientationchange', handleResize);
+window.addEventListener('scroll', refreshStageRect, { passive: true });
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', handleResize);
+  window.visualViewport.addEventListener('scroll', refreshStageRect);
+}
 
 // On non-touch, lens is visible in the middle at start
 if (!('ontouchstart' in window)) state.interacting = true;
