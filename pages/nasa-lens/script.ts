@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import GUI from 'lil-gui';
 
-type BackgroundMode = 'text' | 'shape';
-type ShapePattern = 'grid' | 'circles';
-
 const errorEl = document.getElementById('error') as HTMLDivElement;
 const stage = document.getElementById('stage') as HTMLCanvasElement;
 const cursor = document.getElementById('cursor') as HTMLDivElement;
@@ -14,9 +11,6 @@ window.addEventListener('error', (e) => {
 });
 
 const state = {
-  bg: 'text' as BackgroundMode,
-  text: 'HOT',
-  shape: 'grid' as ShapePattern,
   radius: 0.4,
   strength: 1.5,
   thickness: 2.0,
@@ -25,6 +19,8 @@ const state = {
   interacting: false,
   isTouch: false,
 };
+
+const WORDS = ['SPACE', 'STAR', 'PLANET'];
 
 // Cache the canvas's on-screen rect. Touch/mouse clientX/Y are in visual-
 // viewport CSS pixels, so driving the lens and canvas sizing from this rect
@@ -51,18 +47,27 @@ function drawBackground(): void {
   bgCtx.fillStyle = '#000';
   bgCtx.fillRect(0, 0, w, h);
 
-  if (state.bg === 'text') drawText(w, h);
-  else drawShape(w, h);
+  drawWordsAndStars(w, h);
 
   bgTexture.needsUpdate = true;
 }
 
-function drawText(w: number, h: number): void {
-  const txt = (state.text || 'HOT').toUpperCase().slice(0, 8);
-  const aspect = h / w;
-  const cols = aspect > 1.5 ? 2 : 3;
-  const fontSize = (w / cols) * 0.95;
-  const rowSpacing = fontSize * 0.88;
+// Draws rows of cycling words (SPACE / STAR / PLANET) with a yellow star
+// bookending each word. Font size is chosen by measuring the longest word
+// so the whole row — word plus both stars — fits within the viewport.
+function drawWordsAndStars(w: number, h: number): void {
+  const longest = WORDS.reduce((a, b) => (a.length >= b.length ? a : b));
+  const REF_SIZE = 200;
+  bgCtx.font = '900 ' + REF_SIZE + 'px "Arial Black", "Helvetica Neue", sans-serif';
+  const longestWidthAtRef = bgCtx.measureText(longest).width;
+
+  // Target: word + 2 stars + gaps = ~86% of viewport width. Star + gap
+  // together measure ~0.6 × fontSize, so the word itself gets (w * 0.86) − 1.2 × fontSize.
+  // Solve for fontSize: word_width = longestWidthAtRef / REF_SIZE × fontSize.
+  const wordPerFont = longestWidthAtRef / REF_SIZE;
+  const fontSize = (w * 0.86) / (wordPerFont + 1.2);
+
+  const rowSpacing = fontSize * 1.05;
   const rows = Math.ceil(h / rowSpacing) + 2;
 
   bgCtx.font = '900 ' + fontSize + 'px "Arial Black", "Helvetica Neue", sans-serif';
@@ -71,71 +76,50 @@ function drawText(w: number, h: number): void {
 
   const totalH = rowSpacing * rows;
   const startY = (h - totalH) / 2 + rowSpacing / 2;
-  const offsets = [0, w * 0.14, -w * 0.1, w * 0.18, -w * 0.06, w * 0.1, -w * 0.14];
+  const offsets = [0, w * 0.08, -w * 0.06, w * 0.1, -w * 0.08, w * 0.04, -w * 0.1];
+
+  const starSize = fontSize * 0.22;
+  const starGap = fontSize * 0.38;
 
   for (let i = 0; i < rows; i++) {
+    const word = WORDS[i % WORDS.length];
     const y = startY + i * rowSpacing;
     const x = w / 2 + offsets[i % offsets.length];
 
     bgCtx.strokeStyle = 'rgba(255, 20, 20, 0.55)';
     bgCtx.lineWidth = Math.max(2, fontSize * 0.035);
-    bgCtx.strokeText(txt, x, y);
+    bgCtx.strokeText(word, x, y);
 
     bgCtx.strokeStyle = 'rgba(255, 45, 45, 0.95)';
     bgCtx.lineWidth = Math.max(1, fontSize * 0.012);
-    bgCtx.strokeText(txt, x, y);
+    bgCtx.strokeText(word, x, y);
+
+    const wordWidth = bgCtx.measureText(word).width;
+    drawStar(x - wordWidth / 2 - starGap, y, starSize);
+    drawStar(x + wordWidth / 2 + starGap, y, starSize);
   }
 }
 
-function drawShape(w: number, h: number): void {
-  if (state.shape === 'grid') {
-    const cols = w < 500 ? 4 : 6;
-    const cellW = w / cols;
-    const rows = Math.ceil(h / cellW);
-    const cellH = h / rows;
-    const pad = Math.min(cellW, cellH) * 0.15;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const x = c * cellW + pad;
-        const y = r * cellH + pad;
-        const ww = cellW - pad * 2;
-        const hh = cellH - pad * 2;
-
-        bgCtx.strokeStyle = 'rgba(255, 20, 20, 0.5)';
-        bgCtx.lineWidth = 3;
-        bgCtx.strokeRect(x, y, ww, hh);
-        bgCtx.strokeStyle = 'rgba(255, 55, 55, 0.95)';
-        bgCtx.lineWidth = 1;
-        bgCtx.strokeRect(x + 5, y + 5, ww - 10, hh - 10);
-      }
-    }
-  } else {
-    const cols = w < 500 ? 3 : 5;
-    const cellW = w / cols;
-    const rows = Math.ceil(h / cellW);
-    const cellH = h / rows;
-    const radius = Math.min(cellW, cellH) * 0.4;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const cx = c * cellW + cellW / 2;
-        const cy = r * cellH + cellH / 2;
-
-        bgCtx.strokeStyle = 'rgba(255, 20, 20, 0.5)';
-        bgCtx.lineWidth = 3;
-        bgCtx.beginPath();
-        bgCtx.arc(cx, cy, radius, 0, Math.PI * 2);
-        bgCtx.stroke();
-
-        bgCtx.strokeStyle = 'rgba(255, 55, 55, 0.95)';
-        bgCtx.lineWidth = 1;
-        bgCtx.beginPath();
-        bgCtx.arc(cx, cy, radius - 7, 0, Math.PI * 2);
-        bgCtx.stroke();
-      }
-    }
+function drawStar(cx: number, cy: number, r: number): void {
+  const inner = r * 0.4;
+  bgCtx.save();
+  bgCtx.fillStyle = 'rgba(255, 214, 64, 1)';
+  bgCtx.strokeStyle = 'rgba(255, 236, 140, 0.9)';
+  bgCtx.lineWidth = Math.max(1, r * 0.08);
+  bgCtx.lineJoin = 'round';
+  bgCtx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+    const rr = i % 2 === 0 ? r : inner;
+    const px = cx + Math.cos(ang) * rr;
+    const py = cy + Math.sin(ang) * rr;
+    if (i === 0) bgCtx.moveTo(px, py);
+    else bgCtx.lineTo(px, py);
   }
+  bgCtx.closePath();
+  bgCtx.fill();
+  bgCtx.stroke();
+  bgCtx.restore();
 }
 
 // ── Three.js setup ───────────────────────────────────────
@@ -248,30 +232,9 @@ scene.add(quad);
 // ── lil-gui controls ─────────────────────────────────────
 const gui = new GUI({ title: 'Controls' });
 
-const bgCtrl = gui
-  .add(state, 'bg', { Text: 'text', Shape: 'shape' })
-  .name('Background');
-
-const textCtrl = gui
-  .add(state, 'text')
-  .name('Content')
-  .onChange(drawBackground);
-
-const shapeCtrl = gui
-  .add(state, 'shape', { Grid: 'grid', Circles: 'circles' })
-  .name('Pattern')
-  .onChange(drawBackground);
-
-gui.add(state, 'radius', 0.05, 0.6, 0.005).name('Radius');
-gui.add(state, 'strength', 0, 1.5, 0.01).name('Strength');
-gui.add(state, 'thickness', 0.5, 3.0, 0.01).name('Thickness');
-
-function syncRows(): void {
-  textCtrl.show(state.bg === 'text');
-  shapeCtrl.show(state.bg === 'shape');
-}
-syncRows();
-bgCtrl.onChange(() => { syncRows(); drawBackground(); });
+gui.add(state, 'radius', 0.1, 0.8, 0.005).name('Radius');
+gui.add(state, 'strength', 0, 3.0, 0.01).name('Strength');
+gui.add(state, 'thickness', 0.5, 4.0, 0.01).name('Thickness');
 
 if (window.innerWidth <= 700) gui.close();
 
