@@ -183,14 +183,15 @@ const fragmentShader = `
   uniform float uActive;
 
   void main() {
-    vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
-    vec2 p = vUv * aspect;
-    vec2 m = uMouse * aspect;
-    vec2 delta = p - m;
-    float dist = length(delta);
-    float R = uRadius * aspect.y;
+    // Compute lens geometry in pixel space so the lens is perfectly circular
+    // regardless of viewport aspect ratio.
+    vec2 pxPos = vUv * uResolution;
+    vec2 pxMouse = uMouse * uResolution;
+    vec2 pxDelta = pxPos - pxMouse;
+    float pxDist = length(pxDelta);
+    float pxR = uRadius * min(uResolution.x, uResolution.y);
 
-    float t = dist / R;
+    float t = pxDist / pxR;
 
     float lensMask = 1.0 - smoothstep(0.0, 1.0, t);
     lensMask *= uActive;
@@ -201,8 +202,8 @@ const fragmentShader = `
     float extra = uStrength * pow(z, 0.6) * lensMask * 1.8;
     float mag = 1.0 + extra;
 
-    vec2 sampleP = m + delta / mag;
-    vec2 sampleUv = sampleP / aspect;
+    vec2 samplePx = pxMouse + pxDelta / mag;
+    vec2 sampleUv = samplePx / uResolution;
     sampleUv = clamp(sampleUv, vec2(0.0), vec2(1.0));
 
     vec4 col = texture2D(uTex, sampleUv);
@@ -222,13 +223,6 @@ const fragmentShader = `
       maxC = max(maxC, texture2D(uTex, sampleUv + vec2(-0.707, -0.707) * px));
       col = mix(col, maxC, clamp(dilate, 0.0, 1.0));
     }
-
-    col.r += coreStrength * 0.3 * col.r;
-
-    float rimT = abs(t - 1.0);
-    float rimWidth = 0.06;
-    float rim = exp(-rimT * rimT / (rimWidth * rimWidth)) * uActive;
-    col.rgb += vec3(0.35, 0.05, 0.05) * rim * 0.5;
 
     float innerShade = smoothstep(0.75, 1.0, tc) * lensMask;
     col.rgb *= mix(1.0, 0.88, innerShade);

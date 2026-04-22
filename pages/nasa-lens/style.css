@@ -58,23 +58,6 @@ body {
   #cursor { opacity: 1; }
 }
 
-.brand {
-  position: fixed;
-  top: 16px;
-  left: 16px;
-  z-index: 10;
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  line-height: 1.7;
-  mix-blend-mode: difference;
-  color: var(--ink);
-  pointer-events: none;
-}
-
-.brand .k { opacity: 0.5; }
-.brand b { font-weight: 500; color: var(--accent); mix-blend-mode: normal; }
-
 .hint {
   position: fixed;
   bottom: 28px;
