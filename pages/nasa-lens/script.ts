@@ -20,8 +20,6 @@ const state = {
   isTouch: false,
 };
 
-const WORDS = ['SPACE', 'STAR', 'PLANET'];
-
 // Cache the canvas's on-screen rect. Touch/mouse clientX/Y are in visual-
 // viewport CSS pixels, so driving the lens and canvas sizing from this rect
 // (rather than window.innerWidth/Height) keeps the lens centered on the
@@ -52,51 +50,61 @@ function drawBackground(): void {
   bgTexture.needsUpdate = true;
 }
 
-// Draws rows of cycling words (SPACE / STAR / PLANET) with a yellow star
-// bookending each word. Font size is chosen by measuring the longest word
-// so the whole row — word plus both stars — fits within the viewport.
+// Fills every row with a repeating SPACESPACESPACE... flow. Each row uses a
+// different horizontal phase shift so consecutive rows look like different
+// slices of the same continuous stream. A tiny yellow star sits between
+// every pair of adjacent letters.
 function drawWordsAndStars(w: number, h: number): void {
-  const longest = WORDS.reduce((a, b) => (a.length >= b.length ? a : b));
-  const REF_SIZE = 200;
+  // Calibrate fontSize so ~6 letters span the viewport width
+  // (user asked for 5–7 visible chars).
+  const REF_SIZE = 100;
+  const TARGET_CHARS = 6;
   bgCtx.font = '900 ' + REF_SIZE + 'px "Arial Black", "Helvetica Neue", sans-serif';
-  const longestWidthAtRef = bgCtx.measureText(longest).width;
+  const refCharAvg = bgCtx.measureText('SPACES').width / 6;
+  const fontSize = (w / TARGET_CHARS) * (REF_SIZE / refCharAvg);
 
-  // Target: word + 2 stars + gaps = ~86% of viewport width. Star + gap
-  // together measure ~0.6 × fontSize, so the word itself gets (w * 0.86) − 1.2 × fontSize.
-  // Solve for fontSize: word_width = longestWidthAtRef / REF_SIZE × fontSize.
-  const wordPerFont = longestWidthAtRef / REF_SIZE;
-  const fontSize = (w * 0.86) / (wordPerFont + 1.2);
-
-  const rowSpacing = fontSize * 1.05;
+  const rowSpacing = fontSize * 1.0;
   const rows = Math.ceil(h / rowSpacing) + 2;
-
-  bgCtx.font = '900 ' + fontSize + 'px "Arial Black", "Helvetica Neue", sans-serif';
-  bgCtx.textAlign = 'center';
-  bgCtx.textBaseline = 'middle';
-
   const totalH = rowSpacing * rows;
   const startY = (h - totalH) / 2 + rowSpacing / 2;
-  const offsets = [0, w * 0.08, -w * 0.06, w * 0.1, -w * 0.08, w * 0.04, -w * 0.1];
 
-  const starSize = fontSize * 0.22;
-  const starGap = fontSize * 0.38;
+  bgCtx.font = '900 ' + fontSize + 'px "Arial Black", "Helvetica Neue", sans-serif';
+  bgCtx.textAlign = 'left';
+  bgCtx.textBaseline = 'middle';
+
+  // Long enough that even the largest phase shift still fills the viewport.
+  const BASE = 'SPACE'.repeat(15);
+
+  // Cumulative x after each character. Using measureText on prefixes keeps
+  // star positions aligned with the kerning applied by strokeText below.
+  const cumX: number[] = [0];
+  for (let j = 1; j <= BASE.length; j++) {
+    cumX.push(bgCtx.measureText(BASE.substring(0, j)).width);
+  }
+
+  const starSize = fontSize * 0.06;
+  // Phase shift per row, in fontSize units — gives the flowing look.
+  const shifts = [0, 0.35, 1.1, 1.7, 0.6, 2.2, 0.2, 1.4];
+
+  const textOutline = 'rgba(255, 200, 40, 0.55)';
+  const textCore = 'rgba(255, 230, 90, 0.95)';
 
   for (let i = 0; i < rows; i++) {
-    const word = WORDS[i % WORDS.length];
     const y = startY + i * rowSpacing;
-    const x = w / 2 + offsets[i % offsets.length];
+    const offX = -shifts[i % shifts.length] * fontSize;
 
-    bgCtx.strokeStyle = 'rgba(255, 20, 20, 0.55)';
+    bgCtx.strokeStyle = textOutline;
     bgCtx.lineWidth = Math.max(2, fontSize * 0.035);
-    bgCtx.strokeText(word, x, y);
-
-    bgCtx.strokeStyle = 'rgba(255, 45, 45, 0.95)';
+    bgCtx.strokeText(BASE, offX, y);
+    bgCtx.strokeStyle = textCore;
     bgCtx.lineWidth = Math.max(1, fontSize * 0.012);
-    bgCtx.strokeText(word, x, y);
+    bgCtx.strokeText(BASE, offX, y);
 
-    const wordWidth = bgCtx.measureText(word).width;
-    drawStar(x - wordWidth / 2 - starGap, y, starSize);
-    drawStar(x + wordWidth / 2 + starGap, y, starSize);
+    for (let j = 1; j < BASE.length; j++) {
+      const starX = offX + cumX[j];
+      if (starX < 0 || starX > w) continue;
+      drawStar(starX, y, starSize);
+    }
   }
 }
 
