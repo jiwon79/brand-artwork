@@ -39,13 +39,15 @@ function refreshStageRect(): void {
 }
 
 // ── Background canvases (offscreen) ──────────────────────
-// bgCanvas is the final texture that the shader samples. textCanvas holds
-// the static SPACE text rendered once per resize; each frame we copy it
-// into bgCanvas and draw the animated stars on top.
+// bgCanvas holds only the static SPACE text (baked once per resize) and
+// is sampled with the lens's "thickness" dilation. starsCanvas is a
+// separate texture holding only the stars (redrawn each frame) so the
+// dilation — tuned for thick text strokes — doesn't fragment the tiny
+// star shapes into separate arms.
 const bgCanvas = document.createElement('canvas');
 const bgCtx = bgCanvas.getContext('2d')!;
-const textCanvas = document.createElement('canvas');
-const textCtx = textCanvas.getContext('2d')!;
+const starsCanvas = document.createElement('canvas');
+const starsCtx = starsCanvas.getContext('2d')!;
 
 function bakeBackground(): void {
   const w = stageRect.width;
@@ -54,18 +56,19 @@ function bakeBackground(): void {
 
   bgCanvas.width = w * dpr;
   bgCanvas.height = h * dpr;
-  textCanvas.width = w * dpr;
-  textCanvas.height = h * dpr;
-  textCtx.setTransform(1, 0, 0, 1, 0, 0);
-  textCtx.scale(dpr, dpr);
-  textCtx.clearRect(0, 0, w, h);
+  starsCanvas.width = w * dpr;
+  starsCanvas.height = h * dpr;
+  bgCtx.setTransform(1, 0, 0, 1, 0, 0);
+  bgCtx.scale(dpr, dpr);
+  bgCtx.fillStyle = '#000';
+  bgCtx.fillRect(0, 0, w, h);
 
   // Calibrate fontSize so ~6 letters span the viewport width
   // (user asked for 5–7 visible chars).
   const REF_SIZE = 100;
   const TARGET_CHARS = 6;
-  textCtx.font = '900 ' + REF_SIZE + 'px "Arial Black", "Helvetica Neue", sans-serif';
-  const refCharAvg = textCtx.measureText('SPACES').width / 6;
+  bgCtx.font = '900 ' + REF_SIZE + 'px "Arial Black", "Helvetica Neue", sans-serif';
+  const refCharAvg = bgCtx.measureText('SPACES').width / 6;
   const fontSize = (w / TARGET_CHARS) * (REF_SIZE / refCharAvg);
 
   const rowSpacing = fontSize * 1.35;
@@ -73,9 +76,9 @@ function bakeBackground(): void {
   const totalH = rowSpacing * rows;
   const startY = (h - totalH) / 2 + rowSpacing / 2;
 
-  textCtx.font = '900 ' + fontSize + 'px "Arial Black", "Helvetica Neue", sans-serif';
-  textCtx.textAlign = 'left';
-  textCtx.textBaseline = 'middle';
+  bgCtx.font = '900 ' + fontSize + 'px "Arial Black", "Helvetica Neue", sans-serif';
+  bgCtx.textAlign = 'left';
+  bgCtx.textBaseline = 'middle';
 
   const BASE = 'SPACE '.repeat(12);
   const shifts = [0, 0.4, 1.2, 1.9, 0.7, 2.4, 0.2, 1.5];
@@ -84,12 +87,12 @@ function bakeBackground(): void {
     const y = startY + i * rowSpacing;
     const offX = -shifts[i % shifts.length] * fontSize;
 
-    textCtx.strokeStyle = 'rgba(255, 200, 40, 0.55)';
-    textCtx.lineWidth = Math.max(2, fontSize * 0.035);
-    textCtx.strokeText(BASE, offX, y);
-    textCtx.strokeStyle = 'rgba(255, 230, 90, 0.95)';
-    textCtx.lineWidth = Math.max(1, fontSize * 0.012);
-    textCtx.strokeText(BASE, offX, y);
+    bgCtx.strokeStyle = 'rgba(255, 200, 40, 0.55)';
+    bgCtx.lineWidth = Math.max(2, fontSize * 0.035);
+    bgCtx.strokeText(BASE, offX, y);
+    bgCtx.strokeStyle = 'rgba(255, 230, 90, 0.95)';
+    bgCtx.lineWidth = Math.max(1, fontSize * 0.012);
+    bgCtx.strokeText(BASE, offX, y);
   }
 
   // Rebuild the star field — 1 or 2 stars per row gap with a random
@@ -111,26 +114,25 @@ function bakeBackground(): void {
   fieldHeight = h;
   fontSizeCache = fontSize;
 
-  composeBackground();
+  bgTexture.needsUpdate = true;
+  renderStars();
 }
 
-// Per-frame compositor: copy the pre-rendered text layer onto bgCanvas and
-// draw the current star positions on top. Runs inside tick().
-function composeBackground(): void {
+// Per-frame: redraw the current star positions onto starsCanvas (transparent
+// background) and flag the separate stars texture for upload.
+function renderStars(): void {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-  bgCtx.setTransform(1, 0, 0, 1, 0, 0);
-  bgCtx.fillStyle = '#000';
-  bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
-  bgCtx.drawImage(textCanvas, 0, 0);
-  bgCtx.scale(dpr, dpr);
+  starsCtx.setTransform(1, 0, 0, 1, 0, 0);
+  starsCtx.clearRect(0, 0, starsCanvas.width, starsCanvas.height);
+  starsCtx.scale(dpr, dpr);
 
   const r = fontSizeCache * state.starSize;
   for (const s of stars) {
-    drawStar(s.x, s.y, r, state.starThickness);
+    drawStar(starsCtx, s.x, s.y, r, state.starThickness);
   }
 
-  bgTexture.needsUpdate = true;
+  starsTexture.needsUpdate = true;
 }
 
 function updateStars(dt: number): void {
@@ -156,26 +158,26 @@ function hashRand(a: number, b: number): number {
   return s - Math.floor(s);
 }
 
-function drawStar(cx: number, cy: number, r: number, innerRatio: number): void {
+function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, innerRatio: number): void {
   const inner = r * innerRatio;
-  bgCtx.save();
-  bgCtx.fillStyle = 'rgba(255, 214, 64, 1)';
-  bgCtx.strokeStyle = 'rgba(255, 236, 140, 0.9)';
-  bgCtx.lineWidth = Math.max(1, r * 0.08);
-  bgCtx.lineJoin = 'round';
-  bgCtx.beginPath();
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 214, 64, 1)';
+  ctx.strokeStyle = 'rgba(255, 236, 140, 0.9)';
+  ctx.lineWidth = Math.max(1, r * 0.08);
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
   for (let i = 0; i < 10; i++) {
     const ang = -Math.PI / 2 + (i * Math.PI) / 5;
     const rr = i % 2 === 0 ? r : inner;
     const px = cx + Math.cos(ang) * rr;
     const py = cy + Math.sin(ang) * rr;
-    if (i === 0) bgCtx.moveTo(px, py);
-    else bgCtx.lineTo(px, py);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
   }
-  bgCtx.closePath();
-  bgCtx.fill();
-  bgCtx.stroke();
-  bgCtx.restore();
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ── Three.js setup ───────────────────────────────────────
@@ -200,8 +202,15 @@ bgTexture.magFilter = THREE.LinearFilter;
 bgTexture.wrapS = THREE.ClampToEdgeWrapping;
 bgTexture.wrapT = THREE.ClampToEdgeWrapping;
 
+const starsTexture = new THREE.CanvasTexture(starsCanvas);
+starsTexture.minFilter = THREE.LinearFilter;
+starsTexture.magFilter = THREE.LinearFilter;
+starsTexture.wrapS = THREE.ClampToEdgeWrapping;
+starsTexture.wrapT = THREE.ClampToEdgeWrapping;
+
 const uniforms = {
   uTex: { value: bgTexture },
+  uStars: { value: starsTexture },
   uMouse: { value: new THREE.Vector2(0.5, 0.5) },
   uRadius: { value: state.radius },
   uStrength: { value: state.strength },
@@ -224,6 +233,7 @@ const fragmentShader = `
   precision highp float;
   varying vec2 vUv;
   uniform sampler2D uTex;
+  uniform sampler2D uStars;
   uniform vec2 uMouse;
   uniform vec2 uResolution;
   uniform float uRadius;
@@ -272,6 +282,11 @@ const fragmentShader = `
       maxC = max(maxC, texture2D(uTex, sampleUv + vec2(-0.707, -0.707) * px));
       col = mix(col, maxC, clamp(dilate, 0.0, 1.0));
     }
+
+    // Stars live on their own texture and are composited on top of the
+    // dilated text so the thickness pass doesn't shatter their small shapes.
+    vec4 starsCol = texture2D(uStars, sampleUv);
+    col.rgb = mix(col.rgb, starsCol.rgb, starsCol.a);
 
     float innerShade = smoothstep(0.75, 1.0, tc) * lensMask;
     col.rgb *= mix(1.0, 0.88, innerShade);
@@ -366,7 +381,7 @@ function tick(): void {
   lastFrameTime = now;
 
   updateStars(dt);
-  composeBackground();
+  renderStars();
 
   state.mouse.x += (state.mouseTarget.x - state.mouse.x) * 0.18;
   state.mouse.y += (state.mouseTarget.y - state.mouse.y) * 0.18;
