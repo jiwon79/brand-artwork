@@ -17,7 +17,6 @@ const state = {
   starSize: 0.035,      // star radius as a fraction of fontSize (halved from 0.07)
   starThickness: 0.4,   // inner/outer radius ratio — lower = thinner/spikier
   starSpeed: 15,        // pixels per second of random drift
-  gravity: 0.2,         // gravitational-lens deflection strength — Einstein radius as a fraction of the lens radius
   mouse: { x: 0.5, y: 0.5 },
   mouseTarget: { x: 0.5, y: 0.5 },
   interacting: false,
@@ -216,7 +215,6 @@ const uniforms = {
   uRadius: { value: state.radius },
   uStrength: { value: state.strength },
   uThickness: { value: state.thickness },
-  uGravity: { value: state.gravity },
   uActive: { value: 0.0 },
   uResolution: { value: new THREE.Vector2(stageRect.width, stageRect.height) },
 };
@@ -241,7 +239,6 @@ const fragmentShader = `
   uniform float uRadius;
   uniform float uStrength;
   uniform float uThickness;
-  uniform float uGravity;
   uniform float uActive;
 
   void main() {
@@ -265,19 +262,6 @@ const fragmentShader = `
     float mag = 1.0 + extra;
 
     vec2 samplePx = pxMouse + pxDelta / mag;
-
-    // Gravitational-lens deflection. Treat the cursor as a point mass with
-    // Einstein radius einR = uGravity * pxR. Light rays get bent inward by
-    // einR^2 / r, which fades with 1/r — so the warp extends beyond the
-    // lens rim but quickly becomes subtle away from the touch point.
-    float einR = uGravity * pxR;
-    if (einR > 0.01) {
-      float distSafe = max(pxDist, einR * 0.3);
-      float defl = (einR * einR) / distSafe * uActive;
-      vec2 dir = pxDelta / max(pxDist, 0.001);
-      samplePx -= dir * defl;
-    }
-
     vec2 sampleUv = samplePx / uResolution;
     sampleUv = clamp(sampleUv, vec2(0.0), vec2(1.0));
 
@@ -323,7 +307,6 @@ const lensFolder = gui.addFolder('Lens');
 lensFolder.add(state, 'radius', 0.1, 0.8, 0.005).name('Radius');
 lensFolder.add(state, 'strength', 0, 3.0, 0.01).name('Strength');
 lensFolder.add(state, 'thickness', 0.5, 4.0, 0.01).name('Thickness');
-lensFolder.add(state, 'gravity', 0, 1.0, 0.005).name('Gravity');
 
 const starFolder = gui.addFolder('Stars');
 starFolder.add(state, 'starSize', 0.005, 0.12, 0.001).name('Size');
@@ -411,7 +394,6 @@ function tick(): void {
   uniforms.uRadius.value = state.radius;
   uniforms.uStrength.value = state.strength;
   uniforms.uThickness.value = state.thickness;
-  uniforms.uGravity.value = state.gravity;
 
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
