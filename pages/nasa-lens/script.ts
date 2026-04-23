@@ -50,10 +50,10 @@ function drawBackground(): void {
   bgTexture.needsUpdate = true;
 }
 
-// Fills every row with a repeating SPACESPACESPACE... flow. Each row uses a
-// different horizontal phase shift so consecutive rows look like different
-// slices of the same continuous stream. A tiny yellow star sits between
-// every pair of adjacent letters.
+// Fills every row with a repeating "SPACE SPACE SPACE ..." flow. Each row
+// uses a different horizontal phase shift so consecutive rows look like
+// different slices of the same stream. Tiny yellow stars are sprinkled in
+// the gap between rows (not between letters) — one or two per row gap.
 function drawWordsAndStars(w: number, h: number): void {
   // Calibrate fontSize so ~6 letters span the viewport width
   // (user asked for 5–7 visible chars).
@@ -63,7 +63,8 @@ function drawWordsAndStars(w: number, h: number): void {
   const refCharAvg = bgCtx.measureText('SPACES').width / 6;
   const fontSize = (w / TARGET_CHARS) * (REF_SIZE / refCharAvg);
 
-  const rowSpacing = fontSize * 1.0;
+  // Extra row spacing leaves room for stars in the vertical gap.
+  const rowSpacing = fontSize * 1.35;
   const rows = Math.ceil(h / rowSpacing) + 2;
   const totalH = rowSpacing * rows;
   const startY = (h - totalH) / 2 + rowSpacing / 2;
@@ -73,18 +74,8 @@ function drawWordsAndStars(w: number, h: number): void {
   bgCtx.textBaseline = 'middle';
 
   // Long enough that even the largest phase shift still fills the viewport.
-  const BASE = 'SPACE'.repeat(15);
-
-  // Cumulative x after each character. Using measureText on prefixes keeps
-  // star positions aligned with the kerning applied by strokeText below.
-  const cumX: number[] = [0];
-  for (let j = 1; j <= BASE.length; j++) {
-    cumX.push(bgCtx.measureText(BASE.substring(0, j)).width);
-  }
-
-  const starSize = fontSize * 0.06;
-  // Phase shift per row, in fontSize units — gives the flowing look.
-  const shifts = [0, 0.35, 1.1, 1.7, 0.6, 2.2, 0.2, 1.4];
+  const BASE = 'SPACE '.repeat(12);
+  const shifts = [0, 0.4, 1.2, 1.9, 0.7, 2.4, 0.2, 1.5];
 
   const textOutline = 'rgba(255, 200, 40, 0.55)';
   const textCore = 'rgba(255, 230, 90, 0.95)';
@@ -99,13 +90,26 @@ function drawWordsAndStars(w: number, h: number): void {
     bgCtx.strokeStyle = textCore;
     bgCtx.lineWidth = Math.max(1, fontSize * 0.012);
     bgCtx.strokeText(BASE, offX, y);
+  }
 
-    for (let j = 1; j < BASE.length; j++) {
-      const starX = offX + cumX[j];
-      if (starX < 0 || starX > w) continue;
-      drawStar(starX, y, starSize);
+  // Stars in the gaps between rows — 1 or 2 per gap, positioned by a
+  // deterministic PRNG so the layout is stable across re-renders.
+  const starSize = fontSize * 0.07;
+  for (let i = 0; i < rows - 1; i++) {
+    const gapY = startY + (i + 0.5) * rowSpacing;
+    const count = hashRand(i, 0) > 0.45 ? 2 : 1;
+    for (let k = 0; k < count; k++) {
+      const sx = hashRand(i, k * 2 + 1) * w;
+      const sy = gapY + (hashRand(i, k * 2 + 2) - 0.5) * fontSize * 0.25;
+      drawStar(sx, sy, starSize);
     }
   }
+}
+
+// Deterministic pseudo-random in [0, 1) from two integer seeds.
+function hashRand(a: number, b: number): number {
+  const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return s - Math.floor(s);
 }
 
 function drawStar(cx: number, cy: number, r: number): void {
