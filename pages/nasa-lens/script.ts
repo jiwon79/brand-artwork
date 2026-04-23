@@ -17,6 +17,7 @@ const state = {
   starSize: 0.035,      // star radius as a fraction of fontSize (halved from 0.07)
   starThickness: 0.4,   // inner/outer radius ratio — lower = thinner/spikier
   starSpeed: 15,        // pixels per second of random drift
+  gravity: 50,          // px/s pull toward the lens center; negative pushes stars away
   mouse: { x: 0.5, y: 0.5 },
   mouseTarget: { x: 0.5, y: 0.5 },
   interacting: false,
@@ -136,15 +137,47 @@ function renderStars(): void {
 }
 
 function updateStars(dt: number): void {
+  if (stars.length === 0) return;
   const speed = state.starSpeed;
-  if (speed <= 0 || stars.length === 0) return;
-  // Wrap around the viewport so stars never disappear.
+  const gravity = state.gravity;
+  // Tie gravity to the same smoothed "active" value that fades the lens in,
+  // so pulling/pushing feels continuous with the lens appearing/disappearing.
+  const active = uniforms.uActive.value;
+
+  // Lens center in canvas pixel coords. state.mouse is in UV with y flipped,
+  // so convert back to top-origin CSS pixels to match star positions.
+  const lensX = state.mouse.x * fieldWidth;
+  const lensY = (1 - state.mouse.y) * fieldHeight;
+  const lensR = state.radius * Math.min(fieldWidth, fieldHeight);
+  const reach = lensR * 2.5;
+  const useGravity = active > 0.01 && gravity !== 0 && reach > 0;
+
   const margin = fontSizeCache * 0.5;
   const wSpan = fieldWidth + margin * 2;
   const hSpan = fieldHeight + margin * 2;
+
   for (const s of stars) {
-    s.x += s.vx * speed * dt;
-    s.y += s.vy * speed * dt;
+    // Baseline random drift
+    if (speed > 0) {
+      s.x += s.vx * speed * dt;
+      s.y += s.vy * speed * dt;
+    }
+
+    // Gravity well at the lens centre — linear falloff out to `reach`.
+    if (useGravity) {
+      const dx = lensX - s.x;
+      const dy = lensY - s.y;
+      const dist2 = dx * dx + dy * dy;
+      if (dist2 < reach * reach) {
+        const dist = Math.sqrt(dist2) + 0.001;
+        const falloff = 1 - dist / reach;
+        const pull = gravity * falloff * active * dt;
+        s.x += (dx / dist) * pull;
+        s.y += (dy / dist) * pull;
+      }
+    }
+
+    // Wrap around the viewport so stars never disappear.
     if (s.x < -margin) s.x += wSpan;
     else if (s.x > fieldWidth + margin) s.x -= wSpan;
     if (s.y < -margin) s.y += hSpan;
@@ -312,6 +345,7 @@ const starFolder = gui.addFolder('Stars');
 starFolder.add(state, 'starSize', 0.005, 0.12, 0.001).name('Size');
 starFolder.add(state, 'starThickness', 0.15, 0.7, 0.01).name('Thickness');
 starFolder.add(state, 'starSpeed', 0, 80, 1).name('Speed');
+starFolder.add(state, 'gravity', -300, 300, 1).name('Gravity');
 
 if (window.innerWidth <= 700) gui.close();
 
