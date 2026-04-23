@@ -14,11 +14,20 @@ const state = {
   radius: 0.4,
   strength: 1.5,
   thickness: 2.0,
+  starSize: 0.035,      // star radius as a fraction of fontSize (halved from 0.07)
+  starThickness: 0.4,   // inner/outer radius ratio — lower = thinner/spikier
+  starSpeed: 15,        // pixels per second of random drift
   mouse: { x: 0.5, y: 0.5 },
   mouseTarget: { x: 0.5, y: 0.5 },
   interacting: false,
   isTouch: false,
 };
+
+type Star = { x: number; y: number; vx: number; vy: number };
+let stars: Star[] = [];
+let fieldWidth = 0;
+let fieldHeight = 0;
+let fontSizeCache = 0;
 
 // Cache the canvas's on-screen rect. Touch/mouse clientX/Y are in visual-
 // viewport CSS pixels, so driving the lens and canvas sizing from this rect
@@ -29,80 +38,115 @@ function refreshStageRect(): void {
   stageRect = stage.getBoundingClientRect();
 }
 
-// ── Background canvas (offscreen) ────────────────────────
+// ── Background canvases (offscreen) ──────────────────────
+// bgCanvas is the final texture that the shader samples. textCanvas holds
+// the static SPACE text rendered once per resize; each frame we copy it
+// into bgCanvas and draw the animated stars on top.
 const bgCanvas = document.createElement('canvas');
 const bgCtx = bgCanvas.getContext('2d')!;
+const textCanvas = document.createElement('canvas');
+const textCtx = textCanvas.getContext('2d')!;
 
-function drawBackground(): void {
+function bakeBackground(): void {
   const w = stageRect.width;
   const h = stageRect.height;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
   bgCanvas.width = w * dpr;
   bgCanvas.height = h * dpr;
-  bgCtx.setTransform(1, 0, 0, 1, 0, 0);
-  bgCtx.scale(dpr, dpr);
+  textCanvas.width = w * dpr;
+  textCanvas.height = h * dpr;
+  textCtx.setTransform(1, 0, 0, 1, 0, 0);
+  textCtx.scale(dpr, dpr);
+  textCtx.clearRect(0, 0, w, h);
 
-  bgCtx.fillStyle = '#000';
-  bgCtx.fillRect(0, 0, w, h);
-
-  drawWordsAndStars(w, h);
-
-  bgTexture.needsUpdate = true;
-}
-
-// Fills every row with a repeating "SPACE SPACE SPACE ..." flow. Each row
-// uses a different horizontal phase shift so consecutive rows look like
-// different slices of the same stream. Tiny yellow stars are sprinkled in
-// the gap between rows (not between letters) — one or two per row gap.
-function drawWordsAndStars(w: number, h: number): void {
   // Calibrate fontSize so ~6 letters span the viewport width
   // (user asked for 5–7 visible chars).
   const REF_SIZE = 100;
   const TARGET_CHARS = 6;
-  bgCtx.font = '900 ' + REF_SIZE + 'px "Arial Black", "Helvetica Neue", sans-serif';
-  const refCharAvg = bgCtx.measureText('SPACES').width / 6;
+  textCtx.font = '900 ' + REF_SIZE + 'px "Arial Black", "Helvetica Neue", sans-serif';
+  const refCharAvg = textCtx.measureText('SPACES').width / 6;
   const fontSize = (w / TARGET_CHARS) * (REF_SIZE / refCharAvg);
 
-  // Extra row spacing leaves room for stars in the vertical gap.
   const rowSpacing = fontSize * 1.35;
   const rows = Math.ceil(h / rowSpacing) + 2;
   const totalH = rowSpacing * rows;
   const startY = (h - totalH) / 2 + rowSpacing / 2;
 
-  bgCtx.font = '900 ' + fontSize + 'px "Arial Black", "Helvetica Neue", sans-serif';
-  bgCtx.textAlign = 'left';
-  bgCtx.textBaseline = 'middle';
+  textCtx.font = '900 ' + fontSize + 'px "Arial Black", "Helvetica Neue", sans-serif';
+  textCtx.textAlign = 'left';
+  textCtx.textBaseline = 'middle';
 
-  // Long enough that even the largest phase shift still fills the viewport.
   const BASE = 'SPACE '.repeat(12);
   const shifts = [0, 0.4, 1.2, 1.9, 0.7, 2.4, 0.2, 1.5];
-
-  const textOutline = 'rgba(255, 200, 40, 0.55)';
-  const textCore = 'rgba(255, 230, 90, 0.95)';
 
   for (let i = 0; i < rows; i++) {
     const y = startY + i * rowSpacing;
     const offX = -shifts[i % shifts.length] * fontSize;
 
-    bgCtx.strokeStyle = textOutline;
-    bgCtx.lineWidth = Math.max(2, fontSize * 0.035);
-    bgCtx.strokeText(BASE, offX, y);
-    bgCtx.strokeStyle = textCore;
-    bgCtx.lineWidth = Math.max(1, fontSize * 0.012);
-    bgCtx.strokeText(BASE, offX, y);
+    textCtx.strokeStyle = 'rgba(255, 200, 40, 0.55)';
+    textCtx.lineWidth = Math.max(2, fontSize * 0.035);
+    textCtx.strokeText(BASE, offX, y);
+    textCtx.strokeStyle = 'rgba(255, 230, 90, 0.95)';
+    textCtx.lineWidth = Math.max(1, fontSize * 0.012);
+    textCtx.strokeText(BASE, offX, y);
   }
 
-  // Stars in the gaps between rows — 1 or 2 per gap, positioned by a
-  // deterministic PRNG so the layout is stable across re-renders.
-  const starSize = fontSize * 0.07;
+  // Rebuild the star field — 1 or 2 stars per row gap with a random
+  // drift direction. Positions and directions are seeded by row index so
+  // the starting layout is stable on resize.
+  stars = [];
   for (let i = 0; i < rows - 1; i++) {
     const gapY = startY + (i + 0.5) * rowSpacing;
     const count = hashRand(i, 0) > 0.45 ? 2 : 1;
     for (let k = 0; k < count; k++) {
       const sx = hashRand(i, k * 2 + 1) * w;
       const sy = gapY + (hashRand(i, k * 2 + 2) - 0.5) * fontSize * 0.25;
-      drawStar(sx, sy, starSize);
+      const ang = hashRand(i, k * 11 + 7) * Math.PI * 2;
+      stars.push({ x: sx, y: sy, vx: Math.cos(ang), vy: Math.sin(ang) });
     }
+  }
+
+  fieldWidth = w;
+  fieldHeight = h;
+  fontSizeCache = fontSize;
+
+  composeBackground();
+}
+
+// Per-frame compositor: copy the pre-rendered text layer onto bgCanvas and
+// draw the current star positions on top. Runs inside tick().
+function composeBackground(): void {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  bgCtx.setTransform(1, 0, 0, 1, 0, 0);
+  bgCtx.fillStyle = '#000';
+  bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+  bgCtx.drawImage(textCanvas, 0, 0);
+  bgCtx.scale(dpr, dpr);
+
+  const r = fontSizeCache * state.starSize;
+  for (const s of stars) {
+    drawStar(s.x, s.y, r, state.starThickness);
+  }
+
+  bgTexture.needsUpdate = true;
+}
+
+function updateStars(dt: number): void {
+  const speed = state.starSpeed;
+  if (speed <= 0 || stars.length === 0) return;
+  // Wrap around the viewport so stars never disappear.
+  const margin = fontSizeCache * 0.5;
+  const wSpan = fieldWidth + margin * 2;
+  const hSpan = fieldHeight + margin * 2;
+  for (const s of stars) {
+    s.x += s.vx * speed * dt;
+    s.y += s.vy * speed * dt;
+    if (s.x < -margin) s.x += wSpan;
+    else if (s.x > fieldWidth + margin) s.x -= wSpan;
+    if (s.y < -margin) s.y += hSpan;
+    else if (s.y > fieldHeight + margin) s.y -= hSpan;
   }
 }
 
@@ -112,8 +156,8 @@ function hashRand(a: number, b: number): number {
   return s - Math.floor(s);
 }
 
-function drawStar(cx: number, cy: number, r: number): void {
-  const inner = r * 0.4;
+function drawStar(cx: number, cy: number, r: number, innerRatio: number): void {
+  const inner = r * innerRatio;
   bgCtx.save();
   bgCtx.fillStyle = 'rgba(255, 214, 64, 1)';
   bgCtx.strokeStyle = 'rgba(255, 236, 140, 0.9)';
@@ -244,9 +288,15 @@ scene.add(quad);
 // ── lil-gui controls ─────────────────────────────────────
 const gui = new GUI({ title: 'Controls' });
 
-gui.add(state, 'radius', 0.1, 0.8, 0.005).name('Radius');
-gui.add(state, 'strength', 0, 3.0, 0.01).name('Strength');
-gui.add(state, 'thickness', 0.5, 4.0, 0.01).name('Thickness');
+const lensFolder = gui.addFolder('Lens');
+lensFolder.add(state, 'radius', 0.1, 0.8, 0.005).name('Radius');
+lensFolder.add(state, 'strength', 0, 3.0, 0.01).name('Strength');
+lensFolder.add(state, 'thickness', 0.5, 4.0, 0.01).name('Thickness');
+
+const starFolder = gui.addFolder('Stars');
+starFolder.add(state, 'starSize', 0.005, 0.12, 0.001).name('Size');
+starFolder.add(state, 'starThickness', 0.15, 0.7, 0.01).name('Thickness');
+starFolder.add(state, 'starSpeed', 0, 80, 1).name('Speed');
 
 if (window.innerWidth <= 700) gui.close();
 
@@ -294,7 +344,7 @@ function handleResize(): void {
     refreshStageRect();
     renderer.setSize(stageRect.width, stageRect.height, false);
     uniforms.uResolution.value.set(stageRect.width, stageRect.height);
-    drawBackground();
+    bakeBackground();
   }, 100);
 }
 window.addEventListener('resize', handleResize);
@@ -309,7 +359,15 @@ if (window.visualViewport) {
 if (!('ontouchstart' in window)) state.interacting = true;
 
 // ── Loop ─────────────────────────────────────────────────
+let lastFrameTime = performance.now();
 function tick(): void {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+  lastFrameTime = now;
+
+  updateStars(dt);
+  composeBackground();
+
   state.mouse.x += (state.mouseTarget.x - state.mouse.x) * 0.18;
   state.mouse.y += (state.mouseTarget.y - state.mouse.y) * 0.18;
 
@@ -326,5 +384,5 @@ function tick(): void {
   requestAnimationFrame(tick);
 }
 
-drawBackground();
+bakeBackground();
 tick();
