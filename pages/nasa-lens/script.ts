@@ -17,6 +17,9 @@ const state = {
   starSize: 0.035,      // star radius as a fraction of fontSize (halved from 0.07)
   starThickness: 0.4,   // inner/outer radius ratio — lower = thinner/spikier
   starSpeed: 15,        // pixels per second of random drift
+  burstDuration: 0.55,  // seconds the release burst animation runs
+  burstSize: 2.8,       // max radius multiplier at the end of the burst
+  burstIntensity: 1.4,  // fade-out exponent; higher = lens drops off faster
   mouse: { x: 0.5, y: 0.5 },
   mouseTarget: { x: 0.5, y: 0.5 },
   interacting: false,
@@ -296,17 +299,6 @@ const fragmentShader = `
     float innerShade = smoothstep(0.75, 1.0, tc) * lensMask;
     col.rgb *= mix(1.0, 0.88, innerShade);
 
-    // Release burst — while uExpand > 1 the lens is dispersing outward. Paint
-    // a soft ring highlight at the expanded rim that fades as it grows.
-    float expandAmount = uExpand - 1.0;
-    if (expandAmount > 0.01) {
-      float ringDist = abs(t - 1.0);
-      float ringWidth = 0.08 + expandAmount * 0.08;
-      float ring = exp(-ringDist * ringDist / (ringWidth * ringWidth));
-      float ringFade = 1.0 - smoothstep(0.0, 1.6, expandAmount);
-      col.rgb += vec3(0.9, 0.82, 0.35) * ring * ringFade * 0.75;
-    }
-
     col.rgb = clamp(col.rgb, 0.0, 1.0);
     gl_FragColor = col;
   }
@@ -328,6 +320,11 @@ const starFolder = gui.addFolder('Stars');
 starFolder.add(state, 'starSize', 0.005, 0.12, 0.001).name('Size');
 starFolder.add(state, 'starThickness', 0.15, 0.7, 0.01).name('Thickness');
 starFolder.add(state, 'starSpeed', 0, 80, 1).name('Speed');
+
+const burstFolder = gui.addFolder('Burst');
+burstFolder.add(state, 'burstDuration', 0.1, 2.0, 0.01).name('Duration');
+burstFolder.add(state, 'burstSize', 1.2, 5.0, 0.05).name('Size');
+burstFolder.add(state, 'burstIntensity', 0.3, 4.0, 0.05).name('Intensity');
 
 if (window.innerWidth <= 700) gui.close();
 
@@ -409,11 +406,10 @@ if (window.visualViewport) {
 let lastFrameTime = performance.now();
 // Release-burst animation state. When the user lets go mid-interaction we
 // start a one-shot animation where uExpand grows past 1 and uActive fades,
-// making the lens appear to "burst outward" before vanishing.
+// making the lens appear to "burst outward" before vanishing. Duration,
+// end-size, and fade curve are all driven from the GUI.
 let releasing = false;
 let releaseT = 0;
-const RELEASE_SECONDS = 0.55;
-const MAX_EXPAND = 2.8;
 
 function tick(): void {
   const now = performance.now();
@@ -440,11 +436,12 @@ function tick(): void {
     }
     if (releasing) {
       releaseT += dt;
-      const p = Math.min(1, releaseT / RELEASE_SECONDS);
+      const duration = Math.max(0.05, state.burstDuration);
+      const p = Math.min(1, releaseT / duration);
       // Ease-out for both: expansion decelerates, fade accelerates near end.
       const easeOut = 1 - Math.pow(1 - p, 2);
-      uniforms.uExpand.value = 1 + easeOut * (MAX_EXPAND - 1);
-      uniforms.uActive.value = Math.pow(1 - p, 1.4);
+      uniforms.uExpand.value = 1 + easeOut * (state.burstSize - 1);
+      uniforms.uActive.value = Math.pow(1 - p, state.burstIntensity);
       if (p >= 1) {
         releasing = false;
         releaseT = 0;
