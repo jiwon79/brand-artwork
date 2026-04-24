@@ -216,6 +216,10 @@ const uniforms = {
   uStrength: { value: state.strength },
   uThickness: { value: state.thickness },
   uActive: { value: 0.0 },
+  // Effective-radius multiplier, driven by JS. Usually 1.0; briefly grows
+  // during the release animation to make the lens "burst outward" when the
+  // user lets go of the drag.
+  uExpand: { value: 1.0 },
   uResolution: { value: new THREE.Vector2(stageRect.width, stageRect.height) },
 };
 
@@ -240,6 +244,7 @@ const fragmentShader = `
   uniform float uStrength;
   uniform float uThickness;
   uniform float uActive;
+  uniform float uExpand;
 
   void main() {
     // Compute lens geometry in pixel space so the lens is perfectly circular
@@ -248,7 +253,7 @@ const fragmentShader = `
     vec2 pxMouse = uMouse * uResolution;
     vec2 pxDelta = pxPos - pxMouse;
     float pxDist = length(pxDelta);
-    float pxR = uRadius * min(uResolution.x, uResolution.y);
+    float pxR = uRadius * uExpand * min(uResolution.x, uResolution.y);
 
     float t = pxDist / pxR;
 
@@ -291,6 +296,17 @@ const fragmentShader = `
     float innerShade = smoothstep(0.75, 1.0, tc) * lensMask;
     col.rgb *= mix(1.0, 0.88, innerShade);
 
+    // Release burst — while uExpand > 1 the lens is dispersing outward. Paint
+    // a soft ring highlight at the expanded rim that fades as it grows.
+    float expandAmount = uExpand - 1.0;
+    if (expandAmount > 0.01) {
+      float ringDist = abs(t - 1.0);
+      float ringWidth = 0.08 + expandAmount * 0.08;
+      float ring = exp(-ringDist * ringDist / (ringWidth * ringWidth));
+      float ringFade = 1.0 - smoothstep(0.0, 1.6, expandAmount);
+      col.rgb += vec3(0.9, 0.82, 0.35) * ring * ringFade * 0.75;
+    }
+
     col.rgb = clamp(col.rgb, 0.0, 1.0);
     gl_FragColor = col;
   }
@@ -325,10 +341,29 @@ function setPointer(x: number, y: number): void {
     'translate(' + x + 'px, ' + y + 'px) translate(-50%, -50%)';
 }
 
+// Desktop: the lens only engages while the user is dragging (mouse button
+// held). Hover just moves the cursor indicator — no lens.
 window.addEventListener('mousemove', (e) => {
+  if (state.isTouch) return;
+  setPointer(e.clientX, e.clientY);
+});
+
+stage.addEventListener('mousedown', (e) => {
   if (state.isTouch) return;
   state.interacting = true;
   setPointer(e.clientX, e.clientY);
+  // Snap lens to cursor so it appears right at the press point
+  state.mouse.x = state.mouseTarget.x;
+  state.mouse.y = state.mouseTarget.y;
+});
+
+window.addEventListener('mouseup', () => {
+  if (state.isTouch) return;
+  state.interacting = false;
+});
+
+window.addEventListener('blur', () => {
+  state.interacting = false;
 });
 
 stage.addEventListener('touchstart', (e) => {
@@ -370,11 +405,16 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('scroll', refreshStageRect);
 }
 
-// On non-touch, lens is visible in the middle at start
-if (!('ontouchstart' in window)) state.interacting = true;
-
 // ── Loop ─────────────────────────────────────────────────
 let lastFrameTime = performance.now();
+// Release-burst animation state. When the user lets go mid-interaction we
+// start a one-shot animation where uExpand grows past 1 and uActive fades,
+// making the lens appear to "burst outward" before vanishing.
+let releasing = false;
+let releaseT = 0;
+const RELEASE_SECONDS = 0.55;
+const MAX_EXPAND = 2.8;
+
 function tick(): void {
   const now = performance.now();
   const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
@@ -386,8 +426,36 @@ function tick(): void {
   state.mouse.x += (state.mouseTarget.x - state.mouse.x) * 0.18;
   state.mouse.y += (state.mouseTarget.y - state.mouse.y) * 0.18;
 
-  const activeTarget = state.interacting ? 1.0 : 0.0;
-  uniforms.uActive.value += (activeTarget - uniforms.uActive.value) * 0.15;
+  if (state.interacting) {
+    // Active drag: snap to normal size, fade in.
+    uniforms.uActive.value += (1 - uniforms.uActive.value) * 0.25;
+    uniforms.uExpand.value += (1 - uniforms.uExpand.value) * 0.3;
+    releasing = false;
+    releaseT = 0;
+  } else {
+    if (!releasing && uniforms.uActive.value > 0.2) {
+      // Just released while the lens was still visible — start burst.
+      releasing = true;
+      releaseT = 0;
+    }
+    if (releasing) {
+      releaseT += dt;
+      const p = Math.min(1, releaseT / RELEASE_SECONDS);
+      // Ease-out for both: expansion decelerates, fade accelerates near end.
+      const easeOut = 1 - Math.pow(1 - p, 2);
+      uniforms.uExpand.value = 1 + easeOut * (MAX_EXPAND - 1);
+      uniforms.uActive.value = Math.pow(1 - p, 1.4);
+      if (p >= 1) {
+        releasing = false;
+        releaseT = 0;
+        uniforms.uActive.value = 0;
+        uniforms.uExpand.value = 1;
+      }
+    } else {
+      uniforms.uActive.value += (0 - uniforms.uActive.value) * 0.2;
+      uniforms.uExpand.value += (1 - uniforms.uExpand.value) * 0.2;
+    }
+  }
 
   uniforms.uMouse.value.x = state.mouse.x;
   uniforms.uMouse.value.y = state.mouse.y;
