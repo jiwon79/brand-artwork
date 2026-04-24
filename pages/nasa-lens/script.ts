@@ -17,6 +17,7 @@ const state = {
   starSize: 0.035,      // star radius as a fraction of fontSize (halved from 0.07)
   starThickness: 0.4,   // inner/outer radius ratio — lower = thinner/spikier
   starSpeed: 15,        // pixels per second of random drift
+  engageDuration: 0.2,  // seconds for the lens to fade in after first touch
   burstDuration: 0.55,  // seconds the release burst animation runs
   burstSize: 2.8,       // max radius multiplier at the end of the burst
   burstIntensity: 1.4,  // fade-out exponent; higher = lens drops off faster
@@ -322,6 +323,7 @@ starFolder.add(state, 'starThickness', 0.15, 0.7, 0.01).name('Thickness');
 starFolder.add(state, 'starSpeed', 0, 80, 1).name('Speed');
 
 const burstFolder = gui.addFolder('Burst');
+burstFolder.add(state, 'engageDuration', 0.05, 1.5, 0.01).name('Engage');
 burstFolder.add(state, 'burstDuration', 0.1, 2.0, 0.01).name('Duration');
 burstFolder.add(state, 'burstSize', 1.2, 5.0, 0.05).name('Size');
 burstFolder.add(state, 'burstIntensity', 0.3, 4.0, 0.05).name('Intensity');
@@ -404,12 +406,15 @@ if (window.visualViewport) {
 
 // ── Loop ─────────────────────────────────────────────────
 let lastFrameTime = performance.now();
-// Release-burst animation state. When the user lets go mid-interaction we
-// start a one-shot animation where uExpand grows past 1 and uActive fades,
-// making the lens appear to "burst outward" before vanishing. Duration,
-// end-size, and fade curve are all driven from the GUI.
+// Lens transition state. engageT progresses 0→1 while the user drags; on
+// release it freezes to whatever value it had reached and feeds the release
+// burst so a quick tap still bursts from partial strength. releaseT drives
+// the burst from that point out to burstSize / 0.
+let engageT = 0;
 let releasing = false;
 let releaseT = 0;
+let releaseFromActive = 0;
+let releaseFromExpand = 1;
 
 function tick(): void {
   const now = performance.now();
@@ -423,25 +428,31 @@ function tick(): void {
   state.mouse.y += (state.mouseTarget.y - state.mouse.y) * 0.18;
 
   if (state.interacting) {
-    // Active drag: snap to normal size, fade in.
-    uniforms.uActive.value += (1 - uniforms.uActive.value) * 0.25;
-    uniforms.uExpand.value += (1 - uniforms.uExpand.value) * 0.3;
+    // Picking up mid-burst cancels the release and keeps engage continuous.
     releasing = false;
     releaseT = 0;
+    const dur = Math.max(0.02, state.engageDuration);
+    engageT = Math.min(1, engageT + dt / dur);
+    // Ease-out so the fade-in lands softly at full strength.
+    uniforms.uActive.value = 1 - Math.pow(1 - engageT, 2);
+    uniforms.uExpand.value = 1;
   } else {
-    if (!releasing && uniforms.uActive.value > 0.2) {
-      // Just released while the lens was still visible — start burst.
+    if (!releasing && uniforms.uActive.value > 0.02) {
+      // Just released — snapshot current values so the burst is continuous
+      // even if the lens never reached full strength.
       releasing = true;
       releaseT = 0;
+      releaseFromActive = uniforms.uActive.value;
+      releaseFromExpand = uniforms.uExpand.value;
     }
+    engageT = 0;
     if (releasing) {
       releaseT += dt;
       const duration = Math.max(0.05, state.burstDuration);
       const p = Math.min(1, releaseT / duration);
-      // Ease-out for both: expansion decelerates, fade accelerates near end.
       const easeOut = 1 - Math.pow(1 - p, 2);
-      uniforms.uExpand.value = 1 + easeOut * (state.burstSize - 1);
-      uniforms.uActive.value = Math.pow(1 - p, state.burstIntensity);
+      uniforms.uExpand.value = releaseFromExpand + (state.burstSize - releaseFromExpand) * easeOut;
+      uniforms.uActive.value = releaseFromActive * Math.pow(1 - p, state.burstIntensity);
       if (p >= 1) {
         releasing = false;
         releaseT = 0;
@@ -449,8 +460,8 @@ function tick(): void {
         uniforms.uExpand.value = 1;
       }
     } else {
-      uniforms.uActive.value += (0 - uniforms.uActive.value) * 0.2;
-      uniforms.uExpand.value += (1 - uniforms.uExpand.value) * 0.2;
+      uniforms.uActive.value = 0;
+      uniforms.uExpand.value = 1;
     }
   }
 
