@@ -428,14 +428,21 @@ function tick(): void {
   state.mouse.y += (state.mouseTarget.y - state.mouse.y) * 0.18;
 
   if (state.interacting) {
-    // Picking up mid-burst cancels the release and keeps engage continuous.
-    releasing = false;
-    releaseT = 0;
+    if (releasing) {
+      // Re-touching during a burst. Seed engageT from the current uActive so
+      // the fade-in picks up where the release left off instead of snapping
+      // back to 0. Inverse of uActive = 1 - (1 - engageT)^2.
+      releasing = false;
+      releaseT = 0;
+      engageT = 1 - Math.sqrt(Math.max(0, 1 - uniforms.uActive.value));
+    }
     const dur = Math.max(0.02, state.engageDuration);
     engageT = Math.min(1, engageT + dt / dur);
     // Ease-out so the fade-in lands softly at full strength.
     uniforms.uActive.value = 1 - Math.pow(1 - engageT, 2);
-    uniforms.uExpand.value = 1;
+    // Glide uExpand back to 1 instead of snapping — matters when we just
+    // cancelled a burst where uExpand had already grown past 1.
+    uniforms.uExpand.value += (1 - uniforms.uExpand.value) * Math.min(1, dt * 8);
   } else {
     if (!releasing && uniforms.uActive.value > 0.02) {
       // Just released — snapshot current values so the burst is continuous
