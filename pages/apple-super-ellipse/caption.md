@@ -1,6 +1,4 @@
-# 애플의 40년짜리 모서리, 슈퍼엘립스
-
-출처: Instagram [@loop.design.lab](https://www.instagram.com/loop.design.lab/)
+# 애플이 40년간 바꾸지 않은 단 하나의 것
 
 ## 원문 캡션
 

@@ -1,7 +1,5 @@
 # 애니메이션 역사상 가장 비싼 머리카락
 
-출처: Instagram [@loop.design.lab](https://www.instagram.com/loop.design.lab/)
-
 ## 원문 캡션
 
 > 라푼젤의 머리카락은 27만 가닥입니다.

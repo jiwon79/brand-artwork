@@ -1,6 +1,4 @@
-# 토스 · 흐르는 점들
-
-출처: Instagram [@loop.design.lab](https://www.instagram.com/loop.design.lab/)
+# 토스 출신 개발자가 만든 인터랙티브 아트
 
 ## 원문 캡션
 

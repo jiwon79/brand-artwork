@@ -1,6 +1,4 @@
-# 이찬혁 · 손가락 거리로 조종하는 킹콩
-
-출처: Instagram [@loop.design.lab](https://www.instagram.com/loop.design.lab/)
+# Punch like King Kong 하는 찬혁님 조종하기
 
 ## 원문 캡션 (발췌)
 

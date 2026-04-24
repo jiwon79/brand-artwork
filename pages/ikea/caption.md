@@ -1,6 +1,4 @@
-# 이케아 · 빛의 입자로 조립되는 의자
-
-출처: Instagram [@loop.design.lab](https://www.instagram.com/loop.design.lab/)
+# 빛으로 이케아 가구 조립하기
 
 ## 원문 캡션
 
