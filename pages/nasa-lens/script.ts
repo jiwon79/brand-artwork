@@ -14,9 +14,12 @@ const state = {
   radius: 0.4,
   strength: 1.5,
   thickness: 2.0,
+  fontScale: 1.0,       // multiplier on the auto-calibrated font size
+  lineSpacing: 1.35,    // row spacing as a multiplier of fontSize
   starSize: 0.035,      // star radius as a fraction of fontSize (halved from 0.07)
   starThickness: 0.4,   // inner/outer radius ratio — lower = thinner/spikier
   starSpeed: 15,        // pixels per second of random drift
+  starsPerGap: 1.5,     // average stars in each row gap (fractional → probabilistic)
   engageDuration: 0.2,  // seconds for the lens to fade in after first touch
   burstDuration: 0.55,  // seconds the release burst animation runs
   burstSize: 2.8,       // max radius multiplier at the end of the burst
@@ -73,9 +76,9 @@ function bakeBackground(): void {
   const TARGET_CHARS = 6;
   bgCtx.font = '900 ' + REF_SIZE + 'px "Arial Black", "Helvetica Neue", sans-serif';
   const refCharAvg = bgCtx.measureText('SPACES').width / 6;
-  const fontSize = (w / TARGET_CHARS) * (REF_SIZE / refCharAvg);
+  const fontSize = (w / TARGET_CHARS) * (REF_SIZE / refCharAvg) * state.fontScale;
 
-  const rowSpacing = fontSize * 1.35;
+  const rowSpacing = fontSize * state.lineSpacing;
   const rows = Math.ceil(h / rowSpacing) + 2;
   const totalH = rowSpacing * rows;
   const startY = (h - totalH) / 2 + rowSpacing / 2;
@@ -99,13 +102,17 @@ function bakeBackground(): void {
     bgCtx.strokeText(BASE, offX, y);
   }
 
-  // Rebuild the star field — 1 or 2 stars per row gap with a random
-  // drift direction. Positions and directions are seeded by row index so
-  // the starting layout is stable on resize.
+  // Rebuild the star field. Star count per row gap follows state.starsPerGap:
+  // the integer part is guaranteed and the fractional part rolls a per-gap
+  // hashRand to add one more (so 1.5 ≈ 50/50 between 1 and 2). Positions and
+  // drift directions are seeded by row index for a stable initial layout.
   stars = [];
+  const density = Math.max(0, state.starsPerGap);
+  const baseCount = Math.floor(density);
+  const extraChance = density - baseCount;
   for (let i = 0; i < rows - 1; i++) {
     const gapY = startY + (i + 0.5) * rowSpacing;
-    const count = hashRand(i, 0) > 0.45 ? 2 : 1;
+    const count = baseCount + (hashRand(i, 0) < extraChance ? 1 : 0);
     for (let k = 0; k < count; k++) {
       const sx = hashRand(i, k * 2 + 1) * w;
       const sy = gapY + (hashRand(i, k * 2 + 2) - 0.5) * fontSize * 0.25;
@@ -317,7 +324,12 @@ lensFolder.add(state, 'radius', 0.1, 0.8, 0.005).name('Radius');
 lensFolder.add(state, 'strength', 0, 3.0, 0.01).name('Strength');
 lensFolder.add(state, 'thickness', 0.5, 4.0, 0.01).name('Thickness');
 
+const textFolder = gui.addFolder('Text');
+textFolder.add(state, 'fontScale', 0.3, 2.5, 0.01).name('Font Scale').onChange(bakeBackground);
+textFolder.add(state, 'lineSpacing', 0.8, 3.0, 0.01).name('Line Spacing').onChange(bakeBackground);
+
 const starFolder = gui.addFolder('Stars');
+starFolder.add(state, 'starsPerGap', 0, 5, 0.1).name('Density').onChange(bakeBackground);
 starFolder.add(state, 'starSize', 0.005, 0.12, 0.001).name('Size');
 starFolder.add(state, 'starThickness', 0.15, 0.7, 0.01).name('Thickness');
 starFolder.add(state, 'starSpeed', 0, 80, 1).name('Speed');
