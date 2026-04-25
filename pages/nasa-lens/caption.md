@@ -10,6 +10,29 @@
 >
 > 그 렌즈에서 영감을 받아, 우주를 바라보는 렌즈를 만들어 보았습니다. 별들이 움직이는 Space 위에 손을 대면 화면이 굴절되고, 놓으면 퍼지며 사라집니다.
 
+## English Translation
+
+### Title
+**The $50M Lens NASA Made**
+
+### Caption
+
+> In 1990, the United States launched the $1.5 billion Hubble Space Telescope to photograph the universe. Once it reached orbit, every image came back blurry. The primary mirror had been ground incorrectly — off by about 1/50 the thickness of a human hair.
+>
+> Kodak had already built a backup mirror, but swapping mirrors in orbit was impossible. Instead, NASA spent $50 million on a new optical component that introduced the exact opposite of the mirror's flaw. Cancelling out the wrong distortion with its opposite — essentially fitting the telescope with a corrective lens.
+>
+> Hubble has since played a central role in confirming the age of the universe (13.8 billion years), and it continues to contribute to cosmological research to this day.
+>
+> Inspired by that lens, I made one of my own — a lens that looks out at the universe. Touch the Space of drifting stars and the screen bends; let go, and it spreads outward before vanishing.
+
+### 번역 메모
+- **2조 원 → $1.5 billion** / **650억 원 → $50 million**: 영어권 기준 USD로 환산.
+- **138억 년 → 13.8 billion years**: 그대로.
+- **머리카락 굵기의 1/50 → 1/50 the thickness of a human hair**: 가독성 위해 "off by about" 추가.
+- **망원경에 렌즈를 씌운 셈 → essentially fitting the telescope with a corrective lens**: 한글의 "렌즈" 어휘 통일을 영어에서도 "lens"로 유지 (관용적인 "glasses for the telescope" 대신).
+- **별들이 움직이는 Space → the Space of drifting stars**: 작품 텍스트가 "SPACE"인 점을 살리려 고유명사처럼 대문자 유지.
+- **퍼지며 사라집니다 → spreads outward before vanishing**: 릴리스 버스트 애니메이션의 "팽창 후 페이드"를 직역.
+
 ## 분석
 
 ### 구조 (다큐형 4문단)
