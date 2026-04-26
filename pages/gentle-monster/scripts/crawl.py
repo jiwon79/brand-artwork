@@ -160,12 +160,38 @@ def extract_rich_entries(html: str) -> dict[str, dict]:
     return entries
 
 
+# 사이트에서 발견된 모든 각도 — 길이 내림차순으로 정렬해서 그리디 매칭
+KNOWN_ANGLES = (
+    "D_45_DETAIL",
+    "SIDE_DETAIL",
+    "LOOK_BOOK_FIRST",
+    "LOOK_BOOK_SECOND",
+    "PACKAGE_WEB",
+    "PACKAGE",
+    "EXCEPTIONAL",
+    "NORMAL",
+    "FRONT",
+    "SIDE",
+    "D_45",
+)
+_ANGLE_RE = re.compile(
+    r"^(?P<prefix>.+?)_(?P<angle>"
+    + "|".join(KNOWN_ANGLES)
+    + r")(?:-\d+)?\.(?:jpg|jpeg|png|webp)$"
+)
+
+
 def parse_image_filename(filename: str) -> tuple[str | None, str | None]:
-    """`11005049_FRONT.jpg` → (`11005049`, `FRONT`)."""
-    m = re.match(r"^([A-Za-z0-9]+)_([A-Z0-9_]+)\.(?:jpg|jpeg|png|webp)$", filename)
+    """파일명에서 (prefix, angle) 추출.
+
+    `11005049_FRONT.jpg` → (`11005049`, `FRONT`)
+    `11004426_FRONT-3.jpg` → (`11004426`, `FRONT`)  # 변형 suffix 허용
+    `GLEAM_02_D_45.jpg` → (`GLEAM_02`, `D_45`)     # 언더스코어 prefix 허용
+    """
+    m = _ANGLE_RE.match(filename)
     if not m:
         return None, None
-    return m.group(1), m.group(2)
+    return m.group("prefix"), m.group("angle")
 
 
 def cdn_url_for(filename: str) -> str | None:
