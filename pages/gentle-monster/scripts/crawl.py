@@ -41,12 +41,12 @@ SOURCES = [
         "html": ASSETS / "전체보기 _ 선글라스 _ 젠틀몬스터 공식 온라인 스토어.html",
         "files_dir": ASSETS / "전체보기 _ 선글라스 _ 젠틀몬스터 공식 온라인 스토어_files",
     },
-    {
-        "category": "optical",
-        "html": ASSETS / "전체보기 _ 안경 _ 젠틀몬스터 공식 온라인 스토어.html",
-        "files_dir": ASSETS / "전체보기 _ 안경 _ 젠틀몬스터 공식 온라인 스토어_files",
-    },
 ]
+
+# 제품 단독 정/측/45도 컷만 허용 (모델 컷/패키지 등 비제품 컷 제외)
+ALLOWED_ANGLES: frozenset[str] = frozenset(
+    {"FRONT", "SIDE", "D_45", "D_45_DETAIL", "SIDE_DETAIL"}
+)
 
 
 def slugify(value: str) -> str:
@@ -323,15 +323,13 @@ def main() -> int:
             cdn = global_img_map.get(filename) or cdn_url_for(filename)
             image_candidates[filename] = cdn  # None 가능 — local fallback에 의존
 
-        # 다운로드 대상: angle 접미사가 명시된 모든 이미지
-        # (catalog_id가 숫자/SKU 알파넘 둘 다 허용 — local _files/ 에서 복구 가능)
+        # 다운로드 대상: 제품 단독 컷 angle 만
         usable: list[tuple[str, str, str | None]] = []  # (angle, filename, cdn_url|None)
         for filename, cdn in image_candidates.items():
             catalog_id, angle = parse_image_filename(filename)
             if not catalog_id or not angle:
                 continue
-            # PACKAGE/PROMO/EVENT 같은 비제품 이미지 제외
-            if angle in ("PACKAGE",):
+            if angle not in ALLOWED_ANGLES:
                 continue
             usable.append((angle, filename, cdn))
         # 한 angle이 중복(다른 catalog_id)이면 첫 번째만 채택
@@ -435,16 +433,16 @@ def main() -> int:
         encoding="utf-8",
     )
     # 알려진 전역 한계 — 향후 보강 작업의 포인터로 기록
-    n_no_en = sum(1 for p in products_meta if not p.get("name_en"))
-    n_no_shape = sum(1 for p in products_meta if not p.get("frame_shape"))
+    n_no_meta = sum(1 for p in products_meta if not p.get("frame_shape"))
     notes = [
         "# Known limitations (not per-image failures)",
         "# - color_variants: 카테고리 리스팅에는 모델당 한 색상만 노출됨.",
         "#   같은 모델의 다른 색상은 상세 페이지(/kr/ko/item/<sku>/...)에 있고",
         "#   Cloudflare-style 챌린지(HTTP 202)로 막혀있어 헤드리스 브라우저 없이는 미수집.",
-        f"# - 안경(optical) {n_no_en}개 제품은 Next.js 스트리밍 청크에 풍부 메타가 없어",
-        "#   name_en / frame_shape / frame_color / lens_color / materials 가 null.",
-        f"# - 총 {n_no_shape}/{len(products_meta)}개 제품이 frame_shape 미상.",
+        f"# - {n_no_meta}/{len(products_meta)}개 제품은 풍부 메타(frame_shape/color/materials)가",
+        "#   Next.js 스트리밍 청크에 없어 null.",
+        "# - 이미지 각도는 ALLOWED_ANGLES (FRONT/SIDE/D_45/D_45_DETAIL/SIDE_DETAIL)만 보존.",
+        "#   모델 컷(LOOK_BOOK_*) 및 패키지 컷은 의도적으로 제외.",
         "",
     ]
     body = notes + (failed_lines if failed_lines else ["# (no per-image download failures)"])
