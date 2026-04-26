@@ -1,2 +1,8 @@
 node_modules/
 dist/
+.DS_Store
+.omc/
+
+# Gentle Monster crawler outputs (regeneratable from scripts/crawl.py)
+pages/gentle-monster/archive/images/
+pages/gentle-monster/assets/*_files/

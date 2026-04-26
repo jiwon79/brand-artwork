@@ -1,0 +1,9 @@
+# Known limitations (not per-image failures)
+# - color_variants: 카테고리 리스팅에는 모델당 한 색상만 노출됨.
+#   같은 모델의 다른 색상은 상세 페이지(/kr/ko/item/<sku>/...)에 있고
+#   Cloudflare-style 챌린지(HTTP 202)로 막혀있어 헤드리스 브라우저 없이는 미수집.
+# - 안경(optical) 84개 제품은 Next.js 스트리밍 청크에 풍부 메타가 없어
+#   name_en / frame_shape / frame_color / lens_color / materials 가 null.
+# - 총 84/225개 제품이 frame_shape 미상.
+
+# (no per-image download failures)
