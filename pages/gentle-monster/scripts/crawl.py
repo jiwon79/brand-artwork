@@ -44,9 +44,7 @@ SOURCES = [
 ]
 
 # 제품 단독 정/측/45도 컷만 허용 (모델 컷/패키지 등 비제품 컷 제외)
-ALLOWED_ANGLES: frozenset[str] = frozenset(
-    {"FRONT", "SIDE", "D_45", "D_45_DETAIL", "SIDE_DETAIL"}
-)
+ALLOWED_ANGLES: frozenset[str] = frozenset({"FRONT", "SIDE", "D_45"})
 
 
 def slugify(value: str) -> str:
@@ -441,8 +439,8 @@ def main() -> int:
         "#   Cloudflare-style 챌린지(HTTP 202)로 막혀있어 헤드리스 브라우저 없이는 미수집.",
         f"# - {n_no_meta}/{len(products_meta)}개 제품은 풍부 메타(frame_shape/color/materials)가",
         "#   Next.js 스트리밍 청크에 없어 null.",
-        "# - 이미지 각도는 ALLOWED_ANGLES (FRONT/SIDE/D_45/D_45_DETAIL/SIDE_DETAIL)만 보존.",
-        "#   모델 컷(LOOK_BOOK_*) 및 패키지 컷은 의도적으로 제외.",
+        "# - 이미지 각도는 ALLOWED_ANGLES (FRONT/SIDE/D_45)만 보존.",
+        "#   상세 컷(_DETAIL), 모델 컷(LOOK_BOOK_*), 패키지 컷은 의도적으로 제외.",
         "",
     ]
     body = notes + (failed_lines if failed_lines else ["# (no per-image download failures)"])

@@ -3,6 +3,5 @@ dist/
 .DS_Store
 .omc/
 
-# Gentle Monster crawler outputs (regeneratable from scripts/crawl.py)
-pages/gentle-monster/archive/images/
+# Gentle Monster — 브라우저 저장본의 _files/ 디렉토리 (HTML로부터 재생성 가능)
 pages/gentle-monster/assets/*_files/
