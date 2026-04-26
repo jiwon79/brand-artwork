@@ -40,7 +40,7 @@ function renderRow(product: Product): string {
     }
     return `<td class="img">
       <figure>
-        <img loading="lazy" src="archive/images/${encodeURIComponent(file)}" alt="${escape(product.name_kr ?? product.id)} ${ANGLE_LABELS[i]}">
+        <img loading="lazy" src="assets/images/${encodeURIComponent(file)}" alt="${escape(product.name_kr ?? product.id)} ${ANGLE_LABELS[i]}">
         <span class="angle-tag">${ANGLE_LABELS[i]}</span>
       </figure>
     </td>`;
@@ -72,9 +72,11 @@ async function main(): Promise<void> {
   const app = document.getElementById('app')!;
   const summary = document.getElementById('summary')!;
 
-  const response = await fetch('archive/metadata.json');
+  const url = new URL('assets/metadata.json', document.baseURI).href;
+  const response = await fetch(url);
   if (!response.ok) {
-    summary.textContent = `metadata.json 로드 실패 (HTTP ${response.status})`;
+    summary.textContent = `metadata.json 로드 실패 (HTTP ${response.status}) — ${url}`;
+    console.error('fetch failed:', url, response.status);
     return;
   }
   const products: Product[] = await response.json();

@@ -24,10 +24,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
-ARCHIVE = ROOT / "archive"
-IMAGES_DIR = ARCHIVE / "images"
-METADATA_PATH = ARCHIVE / "metadata.json"
-FAILED_LOG_PATH = ARCHIVE / "failed.log"
+# 배포 가능한 산출물(metadata, images)은 assets/ 로 — vite-plugin-static-copy가
+# 빌드 시 dist에 복사함. failed.log는 scripts/ 에만 남겨 자산에 포함되지 않게.
+IMAGES_DIR = ASSETS / "images"
+METADATA_PATH = ASSETS / "metadata.json"
+FAILED_LOG_PATH = Path(__file__).resolve().parent / "failed.log"
 
 CDN_BASE = "https://gm-prd-resource.gentlemonster.com"
 USER_AGENT = (

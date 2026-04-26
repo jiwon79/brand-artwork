@@ -2,6 +2,9 @@ node_modules/
 dist/
 .DS_Store
 .omc/
+__pycache__/
+*.pyc
 
-# Gentle Monster — 브라우저 저장본의 _files/ 디렉토리 (HTML로부터 재생성 가능)
-pages/gentle-monster/assets/*_files/
+# Playwright verify 스크립트 출력
+pages/gentle-monster/scripts/verify_page.png
+
