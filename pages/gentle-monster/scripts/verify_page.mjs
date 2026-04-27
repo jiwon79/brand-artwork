@@ -1,64 +1,64 @@
-// Playwright로 검증 페이지 확인
-// 사용법: node pages/gentle-monster/scripts/verify_page.mjs <URL>
-// 기본 URL: http://localhost:5173/pages/gentle-monster/
-
-import { chromium } from "playwright";
+// Playwright로 리스트 페이지 확인 (모바일 뷰포트)
+import { chromium, devices } from "playwright";
 
 const target = process.argv[2] ?? "http://localhost:5173/pages/gentle-monster/";
+const screenshotDir = new URL(".", import.meta.url).pathname;
 
 const browser = await chromium.launch();
-const context = await browser.newContext();
+const context = await browser.newContext({ ...devices["iPhone 14 Pro"] });
 const page = await context.newPage();
 
-const consoleMsgs = [];
-page.on("console", (msg) => {
-  consoleMsgs.push(`[${msg.type()}] ${msg.text()}`);
+const errs = [];
+page.on("pageerror", (e) => errs.push(`[pageerror] ${e.message}`));
+page.on("console", (m) => {
+  if (m.type() === "error") errs.push(`[console.error] ${m.text()}`);
 });
 
-const failedRequests = [];
-page.on("requestfailed", (req) => {
-  failedRequests.push(`${req.method()} ${req.url()} — ${req.failure()?.errorText}`);
+const failed = [];
+page.on("requestfailed", (r) => {
+  if (r.failure()?.errorText !== "net::ERR_ABORTED") {
+    failed.push(`${r.method()} ${r.url()} — ${r.failure()?.errorText}`);
+  }
 });
 
-const responses = [];
-page.on("response", (res) => {
-  responses.push({ url: res.url(), status: res.status() });
+await page.goto(target, { waitUntil: "domcontentloaded", timeout: 30000 });
+await page.waitForTimeout(1500);
+
+const itemCount = await page.locator(".item").count();
+const loadingHidden = await page.locator("#loading.hidden").count();
+console.log(`items: ${itemCount}`);
+console.log(`loading hidden: ${loadingHidden}`);
+await page.screenshot({ path: `${screenshotDir}verify_initial.png` });
+
+// 핀치 줌 확인 — scale 변경 후 렌더링이 반영되는지
+await page.evaluate(() => {
+  const stage = document.getElementById("stage");
+  const ev = (type, opts) =>
+    stage.dispatchEvent(new PointerEvent(type, { bubbles: true, ...opts }));
+  ev("pointerdown", { pointerId: 1, clientX: 150, clientY: 300 });
+  ev("pointerdown", { pointerId: 2, clientX: 250, clientY: 300 });
+  ev("pointermove", { pointerId: 1, clientX: 50, clientY: 300 });
+  ev("pointermove", { pointerId: 2, clientX: 350, clientY: 300 });
+  ev("pointerup", { pointerId: 1, clientX: 50, clientY: 300 });
+  ev("pointerup", { pointerId: 2, clientX: 350, clientY: 300 });
 });
+await page.waitForTimeout(500);
+const sceneT = await page.locator("#scene").evaluate((el) => getComputedStyle(el).transform);
+console.log(`scene transform after pinch: ${sceneT.slice(0, 80)}`);
+await page.screenshot({ path: `${screenshotDir}verify_pinch.png` });
 
-console.log(`→ navigating to ${target}`);
-const navResp = await page.goto(target, { waitUntil: "domcontentloaded", timeout: 30000 });
-console.log(`response: ${navResp?.status()} ${navResp?.statusText()}`);
-console.log(`final URL: ${page.url()}`);
-console.log(`title: ${await page.title()}`);
+// 각도 토글
+await page.locator('#angle-toggle button[data-angle="D_45"]').click({ force: true });
+await page.waitForTimeout(500);
+const dActive = await page.locator('#angle-toggle button[data-angle="D_45"].active').count();
+const firstSrc = await page.locator(".item img").first().getAttribute("src");
+console.log(`D_45 active: ${dActive > 0}`);
+console.log(`first img: ${firstSrc?.split("/").pop()}`);
+await page.screenshot({ path: `${screenshotDir}verify_d45.png` });
 
-// Wait briefly to let async fetches complete
-await page.waitForTimeout(3000);
-
-const summary = await page.locator("#summary").textContent().catch(() => "(no #summary found)");
-const rowCount = await page.locator("table tbody tr").count().catch(() => 0);
-const imgCount = await page.locator("table img").count().catch(() => 0);
-const bodyText = (await page.locator("body").innerText().catch(() => "")).slice(0, 500);
-
-console.log(`\n=== page state ===`);
-console.log(`summary: ${summary}`);
-console.log(`rows: ${rowCount}`);
-console.log(`<img> elements: ${imgCount}`);
-if (rowCount === 0) {
-  console.log(`\nbody text (first 500 chars):\n${bodyText}`);
-}
-
-console.log(`\n=== console messages (${consoleMsgs.length}) ===`);
-for (const m of consoleMsgs.slice(0, 20)) console.log(m);
-
-console.log(`\n=== failed requests (${failedRequests.length}) ===`);
-for (const r of failedRequests.slice(0, 20)) console.log(r);
-
-const non2xx = responses.filter((r) => r.status >= 400);
-console.log(`\n=== non-2xx responses (${non2xx.length}) ===`);
-for (const r of non2xx.slice(0, 20)) console.log(`  ${r.status}  ${r.url}`);
-
-const screenshot = new URL("verify_page.png", import.meta.url).pathname;
-await page.screenshot({ path: screenshot, fullPage: false });
-console.log(`\nscreenshot → ${screenshot}`);
+console.log(`\nerrors (${errs.length}):`);
+errs.slice(0, 5).forEach((e) => console.log(e));
+console.log(`failed reqs (${failed.length}):`);
+failed.slice(0, 5).forEach((f) => console.log(f));
 
 await browser.close();

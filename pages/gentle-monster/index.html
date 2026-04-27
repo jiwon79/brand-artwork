@@ -2,16 +2,32 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Gentle Monster — 검증 표</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Gentle Monster</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>Gentle Monster — 카탈로그 검증</h1>
-    <p id="summary">로딩…</p>
-  </header>
-  <main id="app"></main>
+  <div id="stage">
+    <div id="scene"></div>
+  </div>
+
+  <div id="detail" class="hidden">
+    <div class="detail-info">
+      <div class="detail-name-kr"></div>
+      <div class="detail-name-en"></div>
+      <div class="detail-meta"></div>
+      <a class="detail-cta" target="_blank" rel="noopener">Buy Now</a>
+    </div>
+  </div>
+
+  <div id="angle-toggle">
+    <button data-angle="D_45">D 45</button>
+    <button data-angle="FRONT" class="active">FRONT</button>
+    <button data-angle="SIDE">SIDE</button>
+  </div>
+
+  <div id="loading">로딩 중…</div>
+
   <script type="module" src="script.ts"></script>
 </body>
 </html>
