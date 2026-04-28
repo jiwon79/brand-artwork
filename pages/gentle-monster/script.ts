@@ -24,13 +24,12 @@ type Angle = 'FRONT' | 'SIDE' | 'D_45';
 const ANGLE_TO_INDEX: Record<Angle, number> = { FRONT: 0, SIDE: 1, D_45: 2 };
 
 const COLS = 9;
-const ROWS = 15; // 9*15 = 135 셀
-const ROW_STEP_RATIO = 0.92; // hex 세로 간격 비율
+const ROWS = 15;
+const ROW_STEP_RATIO = 0.92;
 
 const SCALE_MIN = 0.5;
 const SCALE_MAX = 4;
 
-// 하단 토글 영역 (여기는 그리드가 침범하지 않게)
 const BOTTOM_PADDING = 96;
 const SIDE_PADDING = 12;
 const TOP_PADDING = 24;
@@ -47,11 +46,16 @@ class Catalog {
   private products: Product[] = [];
   private currentAngle: Angle = 'FRONT';
   private cellPx = 60;
+  private viewportW = window.innerWidth;
+  private viewportH = window.innerHeight;
 
   // pan/zoom 상태
   private tx = 0;
   private ty = 0;
   private scale = 1;
+
+  // rAF coalescing
+  private renderQueued = false;
 
   private pointers = new Map<number, { x: number; y: number }>();
   private gestureStart: {
@@ -78,6 +82,7 @@ class Catalog {
       return;
     }
     this.products = await res.json();
+    this.measureViewport();
     this.computeCellSize();
     this.layout();
     this.applySceneTransform();
@@ -87,23 +92,28 @@ class Catalog {
     requestAnimationFrame(() => this.loading.classList.add('hidden'));
   }
 
+  private measureViewport(): void {
+    this.viewportW = window.innerWidth;
+    this.viewportH = window.innerHeight;
+  }
+
   private computeCellSize(): void {
-    const w = window.innerWidth - SIDE_PADDING * 2;
-    const h = window.innerHeight - TOP_PADDING - BOTTOM_PADDING;
-    // hex 가로 폭: 9 cols + 0.5 offset = 9.5 cells
+    const w = this.viewportW - SIDE_PADDING * 2;
+    const h = this.viewportH - TOP_PADDING - BOTTOM_PADDING;
     const byWidth = w / 9.5;
-    // hex 세로: (rows-1) * 0.92 + 1 = 14*0.92 + 1 = 13.88 cells
     const byHeight = h / ((ROWS - 1) * ROW_STEP_RATIO + 1);
     this.cellPx = Math.floor(Math.min(byWidth, byHeight));
   }
 
   private handleResize(): void {
+    this.measureViewport();
     this.computeCellSize();
     this.scene.style.setProperty('--cell', `${this.cellPx}px`);
-    // 모든 아이템의 위치 재계산
+    // 모든 아이템의 left/top 재계산
     this.items.forEach((el, idx) => {
       const { x, y } = this.cellPosition(idx);
-      el.style.transform = `translate(${x}px, ${y}px)`;
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
     });
   }
 
@@ -111,14 +121,20 @@ class Catalog {
     const col = idx % COLS;
     const row = Math.floor(idx / COLS);
     const rowOffset = row % 2 === 0 ? 0 : this.cellPx / 2;
-    const x = (col - (COLS - 1) / 2) * this.cellPx + rowOffset;
-    const y = (row - (ROWS - 1) / 2) * this.cellPx * ROW_STEP_RATIO;
+    // viewport 중앙 기준 + grid 셀 중심 위치 - 셀 크기 절반 (왼쪽 위 기준)
+    const cellCenterX = (col - (COLS - 1) / 2) * this.cellPx + rowOffset;
+    const cellCenterY = (row - (ROWS - 1) / 2) * this.cellPx * ROW_STEP_RATIO;
+    const x = this.viewportW / 2 + cellCenterX - this.cellPx / 2;
+    const y = this.viewportH / 2 + cellCenterY - this.cellPx / 2;
     return { x, y };
   }
 
   private layout(): void {
     this.scene.style.setProperty('--cell', `${this.cellPx}px`);
     const total = Math.min(COLS * ROWS, this.products.length);
+
+    // DocumentFragment로 한 번에 추가 (reflow 최소화)
+    const frag = document.createDocumentFragment();
     for (let i = 0; i < total; i++) {
       const product = this.products[i];
       const { x, y } = this.cellPosition(i);
@@ -126,18 +142,21 @@ class Catalog {
       const el = document.createElement('div');
       el.className = 'item';
       el.dataset.index = String(i);
-      el.style.transform = `translate(${x}px, ${y}px)`;
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
 
       const img = document.createElement('img');
       img.alt = product.name_kr ?? product.id;
       img.loading = 'lazy';
+      img.decoding = 'async';
       img.draggable = false;
       img.src = this.imageSrc(product, this.currentAngle);
       el.appendChild(img);
 
-      this.scene.appendChild(el);
+      frag.appendChild(el);
       this.items.push(el);
     }
+    this.scene.appendChild(frag);
   }
 
   private imageSrc(product: Product, angle: Angle): string {
@@ -147,13 +166,23 @@ class Catalog {
     return new URL(`assets/images/${encodeURIComponent(file)}`, document.baseURI).href;
   }
 
+  /** rAF로 코얼레스 — pointermove가 1프레임에 여러 번 와도 transform은 한 번만 적용 */
+  private requestRender(): void {
+    if (this.renderQueued) return;
+    this.renderQueued = true;
+    requestAnimationFrame(() => {
+      this.renderQueued = false;
+      this.applySceneTransform();
+    });
+  }
+
   private applySceneTransform(): void {
     if (this.tx === 0 && this.ty === 0 && this.scale === 1) {
-      this.scene.style.transform = '';
+      this.scene.style.transform = 'translateZ(0)';
       return;
     }
-    this.scene.style.transform =
-      `translate(${this.tx}px, ${this.ty}px) scale(${this.scale})`;
+    // translate3d로 GPU 레이어 강제
+    this.scene.style.transform = `translate3d(${this.tx}px, ${this.ty}px, 0) scale(${this.scale})`;
   }
 
   private bindInputs(): void {
@@ -184,8 +213,7 @@ class Catalog {
           -this.panLimitY * this.scale,
           this.panLimitY * this.scale,
         );
-        this.applySceneTransform();
-      } else if (ps.length >= 2) {
+      } else {
         const cx = (ps[0].x + ps[1].x) / 2;
         const cy = (ps[0].y + ps[1].y) / 2;
         const dist = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
@@ -209,8 +237,8 @@ class Catalog {
           -this.panLimitY * this.scale,
           this.panLimitY * this.scale,
         );
-        this.applySceneTransform();
       }
+      this.requestRender();
     };
 
     const onUp = (e: PointerEvent) => {
@@ -222,10 +250,11 @@ class Catalog {
       this.gestureStart = null;
     };
 
-    this.stage.addEventListener('pointerdown', onDown, { passive: false });
-    this.stage.addEventListener('pointermove', onMove, { passive: false });
-    this.stage.addEventListener('pointerup', onUp, { passive: false });
-    this.stage.addEventListener('pointercancel', onUp, { passive: false });
+    // passive 옵션으로 처리 비용 줄임 (preventDefault 불필요한 곳)
+    this.stage.addEventListener('pointerdown', onDown);
+    this.stage.addEventListener('pointermove', onMove);
+    this.stage.addEventListener('pointerup', onUp);
+    this.stage.addEventListener('pointercancel', onUp);
 
     this.stage.addEventListener(
       'wheel',
@@ -233,7 +262,7 @@ class Catalog {
         e.preventDefault();
         const delta = -e.deltaY * 0.001;
         this.scale = clamp(this.scale * Math.exp(delta), SCALE_MIN, SCALE_MAX);
-        this.applySceneTransform();
+        this.requestRender();
       },
       { passive: false },
     );

@@ -18,30 +18,35 @@ html, body {
   position: fixed;
   inset: 0;
   overflow: hidden;
+  /* 터치 처리 직접: 브라우저 기본 패닝/줌 차단 */
+  touch-action: none;
 }
 
 #scene {
   position: absolute;
   inset: 0;
+  /* scene만 단일 합성 레이어로 — pan/zoom 시 GPU 합성만 일어남 */
+  will-change: transform;
+  transform: translateZ(0);
   transform-origin: 50% 50%;
 }
 
 .item {
   position: absolute;
-  left: 50%;
-  top: 50%;
   width: var(--cell, 60px);
   height: var(--cell, 60px);
-  margin-left: calc(var(--cell, 60px) / -2);
-  margin-top: calc(var(--cell, 60px) / -2);
+  /* transform 대신 left/top px로 — 개별 레이어 생성 방지 */
+  pointer-events: none;
+  contain: strict;
 }
 
 .item img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  pointer-events: none;
   display: block;
+  pointer-events: none;
+  /* 디코딩 비동기로 메인 스레드 부담 줄이기 */
 }
 
 #angle-toggle {
