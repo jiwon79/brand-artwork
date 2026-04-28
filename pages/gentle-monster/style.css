@@ -24,7 +24,6 @@ html, body {
   position: absolute;
   inset: 0;
   transform-origin: 50% 50%;
-  will-change: transform;
 }
 
 .item {
@@ -35,9 +34,6 @@ html, body {
   height: var(--cell, 60px);
   margin-left: calc(var(--cell, 60px) / -2);
   margin-top: calc(var(--cell, 60px) / -2);
-  transform-origin: 50% 50%;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
 }
 
 .item img {
@@ -46,7 +42,6 @@ html, body {
   object-fit: contain;
   pointer-events: none;
   display: block;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.06));
 }
 
 #angle-toggle {
@@ -75,18 +70,12 @@ html, body {
   border-radius: 999px;
   font: inherit;
   font-weight: 500;
-  cursor: pointer;
-  transition: background 200ms ease, color 200ms ease;
   -webkit-tap-highlight-color: transparent;
 }
 
 #angle-toggle button.active {
   background: #111;
   color: #fff;
-}
-
-#angle-toggle button:not(.active):active {
-  background: rgba(0, 0, 0, 0.05);
 }
 
 #detail {
@@ -103,10 +92,9 @@ html, body {
   color: #888;
   font-size: 12px;
   z-index: 100;
-  transition: opacity 400ms ease;
   pointer-events: none;
 }
 
 #loading.hidden {
-  opacity: 0;
+  display: none;
 }
