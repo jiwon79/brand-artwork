@@ -45,6 +45,9 @@ class Catalog {
   private scene = document.getElementById('scene') as HTMLElement;
   private loading = document.getElementById('loading') as HTMLElement;
   private items: HTMLElement[] = [];
+  // 각 아이템 중심의 씬 공간 오프셋 (뷰포트 중앙 기준) — pan/zoom과 무관, resize 때만 갱신
+  private gxCache: Float32Array = new Float32Array(0);
+  private gyCache: Float32Array = new Float32Array(0);
   private products: Product[] = [];
   private currentAngle: Angle = 'FRONT';
   private cellPx = 60;
@@ -120,6 +123,7 @@ class Catalog {
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
     });
+    this.rebuildGeometryCache();
     this.applySceneTransform();
   }
 
@@ -163,6 +167,7 @@ class Catalog {
       this.items.push(el);
     }
     this.scene.appendChild(frag);
+    this.rebuildGeometryCache();
   }
 
   private imageSrc(product: Product, angle: Angle): string {
@@ -172,26 +177,53 @@ class Catalog {
     return new URL(`assets/images/${encodeURIComponent(file)}`, document.baseURI).href;
   }
 
-  private applyItemDepths(): void {
+  private rebuildGeometryCache(): void {
+    const len = this.items.length;
+    if (this.gxCache.length !== len) {
+      this.gxCache = new Float32Array(len);
+      this.gyCache = new Float32Array(len);
+    }
     const cx = this.viewportW / 2;
     const cy = this.viewportH / 2;
-    this.items.forEach((el, idx) => {
-      const pos = this.cellPosition(idx);
-      // 아이템 중심의 스크린 공간 오프셋 (뷰포트 중앙 기준)
-      const sox = (pos.x + this.cellPx / 2 - cx) * this.scale + this.tx;
-      const soy = (pos.y + this.cellPx / 2 - cy) * this.scale + this.ty;
-      const r = Math.sqrt(sox * sox + soy * soy);
-      const phi = r / this.sphereR;
-      // sin(φ)/φ — φ→0 극한값 1
+    const half = this.cellPx / 2;
+    for (let i = 0; i < len; i++) {
+      const pos = this.cellPosition(i);
+      this.gxCache[i] = pos.x + half - cx;
+      this.gyCache[i] = pos.y + half - cy;
+    }
+  }
+
+  private applyItemDepths(): void {
+    const items = this.items;
+    const len = items.length;
+    if (len === 0) return;
+    const gx = this.gxCache;
+    const gy = this.gyCache;
+    const tx = this.tx;
+    const ty = this.ty;
+    const sScene = this.scale;
+    const invScene = 1 / sScene;
+    const R = this.sphereR;
+    const D = this.cameraD;
+    const invR = 1 / R;
+    // 오프스크린 컬링 박스 (스크린 공간, viewport 중앙 기준)
+    const cullX = this.viewportW * 0.5 + 80;
+    const cullY = this.viewportH * 0.5 + 80;
+    for (let i = 0; i < len; i++) {
+      const sox = gx[i] * sScene + tx;
+      const soy = gy[i] * sScene + ty;
+      // 화면 밖이면 transform 갱신 스킵 (마지막 값 유지)
+      if (sox > cullX || sox < -cullX || soy > cullY || soy < -cullY) continue;
+      const phi = Math.sqrt(sox * sox + soy * soy) * invR;
       const sinc = phi < 1e-4 ? 1 : Math.sin(phi) / phi;
-      // 원근 배율: 구 표면의 Z 후퇴량으로 크기 감소
-      const pf = this.cameraD / (this.cameraD + this.sphereR * (1 - Math.cos(phi)));
-      // 스크린 공간 이동량 → 씬 공간으로 역변환
-      const pull = sinc * pf - 1;
-      const dx = (sox * pull) / this.scale;
-      const dy = (soy * pull) / this.scale;
-      el.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${pf.toFixed(4)})`;
-    });
+      const pf = D / (D + R * (1 - Math.cos(phi)));
+      const pull = (sinc * pf - 1) * invScene;
+      // 정수 반올림으로 문자열/파싱 비용 절감 (서브픽셀 차이 무시)
+      const dx = (sox * pull) | 0;
+      const dy = (soy * pull) | 0;
+      const pfR = ((pf * 1000) | 0) * 0.001;
+      items[i].style.transform = `translate(${dx}px,${dy}px) scale(${pfR})`;
+    }
   }
 
   /** rAF로 코얼레스 — pointermove가 1프레임에 여러 번 와도 transform은 한 번만 적용 */

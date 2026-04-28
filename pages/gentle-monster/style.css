@@ -35,9 +35,11 @@ html, body {
   position: absolute;
   width: var(--cell, 60px);
   height: var(--cell, 60px);
-  /* transform 대신 left/top px로 — 개별 레이어 생성 방지 */
   pointer-events: none;
   contain: strict;
+  /* 매 프레임 transform 갱신 — 레이어 생성/소멸 churn 방지 */
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .item img {
