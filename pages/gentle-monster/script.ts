@@ -1,3 +1,5 @@
+import GUI from 'lil-gui';
+
 interface ColorVariant {
   color_name: string | null;
   color_code: string | null;
@@ -30,8 +32,6 @@ const ROW_STEP_RATIO = 0.92;
 const SCALE_MIN = 0.5;
 const SCALE_MAX = 4;
 
-const PERSPECTIVE_FOCAL = 600; // 원근감 강도 — 클수록 약함
-
 const BOTTOM_PADDING = 96;
 const SIDE_PADDING = 12;
 const TOP_PADDING = 24;
@@ -50,6 +50,8 @@ class Catalog {
   private cellPx = 60;
   private viewportW = window.innerWidth;
   private viewportH = window.innerHeight;
+
+  private perspectiveFocal = 600;
 
   // pan/zoom 상태
   private tx = 0;
@@ -90,6 +92,7 @@ class Catalog {
     this.applySceneTransform();
     this.bindInputs();
     this.bindAngleToggle();
+    this.bindGui();
     window.addEventListener('resize', () => this.handleResize());
     requestAnimationFrame(() => this.loading.classList.add('hidden'));
   }
@@ -176,7 +179,8 @@ class Catalog {
       const dx = (pos.x + this.cellPx / 2 - cx) * this.scale + this.tx;
       const dy = (pos.y + this.cellPx / 2 - cy) * this.scale + this.ty;
       const r2 = dx * dx + dy * dy;
-      const s = PERSPECTIVE_FOCAL / (PERSPECTIVE_FOCAL + r2 / PERSPECTIVE_FOCAL);
+      const f = this.perspectiveFocal;
+      const s = f / (f + r2 / f);
       el.style.transform = `scale(${s.toFixed(4)})`;
     });
   }
@@ -308,6 +312,13 @@ class Catalog {
         dist: Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y),
       };
     }
+  }
+
+  private bindGui(): void {
+    const gui = new GUI({ title: 'Gentle Monster' });
+    gui.add(this, 'perspectiveFocal', 100, 2000, 10).name('Perspective Focal').onChange(() => {
+      this.applySceneTransform();
+    });
   }
 
   private bindAngleToggle(): void {
