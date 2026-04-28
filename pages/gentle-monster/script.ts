@@ -51,7 +51,8 @@ class Catalog {
   private viewportW = window.innerWidth;
   private viewportH = window.innerHeight;
 
-  private perspectiveFocal = 600;
+  private sphereR = 600;   // 구 반지름 — 작을수록 곡률 강함
+  private cameraD = 900;   // 카메라 거리 — 작을수록 원근감 강함
 
   // pan/zoom 상태
   private tx = 0;
@@ -176,12 +177,20 @@ class Catalog {
     const cy = this.viewportH / 2;
     this.items.forEach((el, idx) => {
       const pos = this.cellPosition(idx);
-      const dx = (pos.x + this.cellPx / 2 - cx) * this.scale + this.tx;
-      const dy = (pos.y + this.cellPx / 2 - cy) * this.scale + this.ty;
-      const r2 = dx * dx + dy * dy;
-      const f = this.perspectiveFocal;
-      const s = f / (f + r2 / f);
-      el.style.transform = `scale(${s.toFixed(4)})`;
+      // 아이템 중심의 스크린 공간 오프셋 (뷰포트 중앙 기준)
+      const sox = (pos.x + this.cellPx / 2 - cx) * this.scale + this.tx;
+      const soy = (pos.y + this.cellPx / 2 - cy) * this.scale + this.ty;
+      const r = Math.sqrt(sox * sox + soy * soy);
+      const phi = r / this.sphereR;
+      // sin(φ)/φ — φ→0 극한값 1
+      const sinc = phi < 1e-4 ? 1 : Math.sin(phi) / phi;
+      // 원근 배율: 구 표면의 Z 후퇴량으로 크기 감소
+      const pf = this.cameraD / (this.cameraD + this.sphereR * (1 - Math.cos(phi)));
+      // 스크린 공간 이동량 → 씬 공간으로 역변환
+      const pull = sinc * pf - 1;
+      const dx = (sox * pull) / this.scale;
+      const dy = (soy * pull) / this.scale;
+      el.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${pf.toFixed(4)})`;
     });
   }
 
@@ -316,9 +325,9 @@ class Catalog {
 
   private bindGui(): void {
     const gui = new GUI({ title: 'Gentle Monster' });
-    gui.add(this, 'perspectiveFocal', 100, 2000, 10).name('Perspective Focal').onChange(() => {
-      this.applySceneTransform();
-    });
+    const update = () => this.applySceneTransform();
+    gui.add(this, 'sphereR', 100, 2000, 10).name('Sphere Radius').onChange(update);
+    gui.add(this, 'cameraD', 200, 3000, 10).name('Camera Distance').onChange(update);
   }
 
   private bindAngleToggle(): void {
