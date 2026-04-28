@@ -30,6 +30,8 @@ const ROW_STEP_RATIO = 0.92;
 const SCALE_MIN = 0.5;
 const SCALE_MAX = 4;
 
+const PERSPECTIVE_FOCAL = 600; // 원근감 강도 — 클수록 약함
+
 const BOTTOM_PADDING = 96;
 const SIDE_PADDING = 12;
 const TOP_PADDING = 24;
@@ -109,12 +111,12 @@ class Catalog {
     this.measureViewport();
     this.computeCellSize();
     this.scene.style.setProperty('--cell', `${this.cellPx}px`);
-    // 모든 아이템의 left/top 재계산
     this.items.forEach((el, idx) => {
       const { x, y } = this.cellPosition(idx);
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
     });
+    this.applySceneTransform();
   }
 
   private cellPosition(idx: number): { x: number; y: number } {
@@ -166,6 +168,19 @@ class Catalog {
     return new URL(`assets/images/${encodeURIComponent(file)}`, document.baseURI).href;
   }
 
+  private applyItemDepths(): void {
+    const cx = this.viewportW / 2;
+    const cy = this.viewportH / 2;
+    this.items.forEach((el, idx) => {
+      const pos = this.cellPosition(idx);
+      const dx = (pos.x + this.cellPx / 2 - cx) * this.scale + this.tx;
+      const dy = (pos.y + this.cellPx / 2 - cy) * this.scale + this.ty;
+      const r2 = dx * dx + dy * dy;
+      const s = PERSPECTIVE_FOCAL / (PERSPECTIVE_FOCAL + r2 / PERSPECTIVE_FOCAL);
+      el.style.transform = `scale(${s.toFixed(4)})`;
+    });
+  }
+
   /** rAF로 코얼레스 — pointermove가 1프레임에 여러 번 와도 transform은 한 번만 적용 */
   private requestRender(): void {
     if (this.renderQueued) return;
@@ -179,10 +194,10 @@ class Catalog {
   private applySceneTransform(): void {
     if (this.tx === 0 && this.ty === 0 && this.scale === 1) {
       this.scene.style.transform = 'translateZ(0)';
-      return;
+    } else {
+      this.scene.style.transform = `translate3d(${this.tx}px, ${this.ty}px, 0) scale(${this.scale})`;
     }
-    // translate3d로 GPU 레이어 강제
-    this.scene.style.transform = `translate3d(${this.tx}px, ${this.ty}px, 0) scale(${this.scale})`;
+    if (this.items.length > 0) this.applyItemDepths();
   }
 
   private bindInputs(): void {
