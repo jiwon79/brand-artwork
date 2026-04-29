@@ -8,3 +8,10 @@ __pycache__/
 # Playwright verify 스크립트 출력
 pages/gentle-monster/scripts/verify_*.png
 
+# Python venv (배경 제거 스크립트용)
+.venv/
+
+# Playwright MCP / 임시 스크린샷
+.playwright-mcp/
+/*.png
+
