@@ -120,10 +120,12 @@ class Catalog {
     this.measureViewport();
     this.computeCellSize();
     this.scene.style.setProperty('--cell', `${this.cellPx}px`);
+    const imgScale = `scale(${this.cellPx / 256})`;
     this.items.forEach((el, idx) => {
       const { x, y } = this.cellPosition(idx);
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
+      (el.querySelector('img') as HTMLImageElement).style.transform = imgScale;
     });
     this.rebuildGeometryCache();
     this.applySceneTransform();
@@ -163,6 +165,7 @@ class Catalog {
       img.decoding = 'async';
       img.draggable = false;
       img.src = this.imageSrc(product, this.currentAngle);
+      img.style.transform = `scale(${this.cellPx / 256})`;
       el.appendChild(img);
 
       frag.appendChild(el);
