@@ -19,7 +19,7 @@ LIMIT = 90
 
 BG = np.array([243, 244, 246], dtype=np.int32)  # JPG 배경색 (#f3f4f6)
 EDGE = 12  # max-channel-diff가 이 이상이면 완전 불투명
-TARGET_SIZE = 800  # 리사이즈 출력 크기 (정사각, 화면 표시 < 200px이라 충분)
+TARGET_SIZE = 1200  # 리사이즈 출력 크기 (줌 인 + 고DPI 대응)
 
 products = json.loads(META.read_text(encoding="utf-8"))[:LIMIT]
 files = []

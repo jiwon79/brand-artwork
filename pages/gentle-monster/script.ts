@@ -208,23 +208,32 @@ class Catalog {
     const invR = 1 / R;
     // 구 적도(π/2) 너머는 "뒷면" — 보이지 않아야 함
     const phiMax = Math.PI / 2;
+    // 적도 근처에서 부드럽게 fade out (silhouette 압축 영역)
+    const fadeStart = phiMax * 0.78;
+    const fadeRange = phiMax - fadeStart;
     for (let i = 0; i < len; i++) {
+      const item = items[i];
       const sox = gx[i] * sScene + tx;
       const soy = gy[i] * sScene + ty;
       const phi = Math.sqrt(sox * sox + soy * soy) * invR;
-      // 뒷면이면 숨김 — 적도 너머로 끌어당기려 하지 않음 (꼬리 아티팩트 방지)
+      // 뒷면이면 숨김
       if (phi >= phiMax) {
-        items[i].style.transform = 'scale(0)';
+        item.style.transform = 'scale(0)';
+        item.style.opacity = '0';
         continue;
       }
       const sinc = phi < 1e-4 ? 1 : Math.sin(phi) / phi;
       const pf = D / (D + R * (1 - Math.cos(phi)));
       const pull = (sinc * pf - 1) * invScene;
-      // 정수 반올림으로 문자열/파싱 비용 절감
-      const dx = (sox * pull) | 0;
-      const dy = (soy * pull) | 0;
-      const pfR = ((pf * 1000) | 0) * 0.001;
-      items[i].style.transform = `translate(${dx}px,${dy}px) scale(${pfR})`;
+      // 적도 근처 fade — silhouette 클러스터링 완화
+      const opacity = phi <= fadeStart ? 1 : (phiMax - phi) / fadeRange;
+      // 깊이 순 z-index — 가까운 아이템(pf 큼)이 위
+      const z = (pf * 1000) | 0;
+      const dx = sox * pull;
+      const dy = soy * pull;
+      item.style.transform = `translate(${dx}px,${dy}px) scale(${pf})`;
+      item.style.opacity = opacity < 1 ? String(opacity) : '1';
+      item.style.zIndex = String(z);
     }
   }
 
