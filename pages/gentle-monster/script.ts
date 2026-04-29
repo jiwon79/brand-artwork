@@ -26,7 +26,7 @@ type Angle = 'FRONT' | 'SIDE' | 'D_45';
 const ANGLE_TO_INDEX: Record<Angle, number> = { FRONT: 0, SIDE: 1, D_45: 2 };
 
 const COLS = 9;
-const ROWS = 15;
+const ROWS = 10;
 const ROW_STEP_RATIO = 0.92;
 
 const SCALE_MIN = 0.5;
@@ -209,12 +209,15 @@ class Catalog {
     // 오프스크린 컬링 박스 (스크린 공간, viewport 중앙 기준)
     const cullX = this.viewportW * 0.5 + 80;
     const cullY = this.viewportH * 0.5 + 80;
+    // 구 적도(π/2)까지만 매핑 — 그 너머는 "뒷면"으로 가지 않도록 클램프
+    const phiMax = Math.PI / 2;
     for (let i = 0; i < len; i++) {
       const sox = gx[i] * sScene + tx;
       const soy = gy[i] * sScene + ty;
       // 화면 밖이면 transform 갱신 스킵 (마지막 값 유지)
       if (sox > cullX || sox < -cullX || soy > cullY || soy < -cullY) continue;
-      const phi = Math.sqrt(sox * sox + soy * soy) * invR;
+      let phi = Math.sqrt(sox * sox + soy * soy) * invR;
+      if (phi > phiMax) phi = phiMax;
       const sinc = phi < 1e-4 ? 1 : Math.sin(phi) / phi;
       const pf = D / (D + R * (1 - Math.cos(phi)));
       const pull = (sinc * pf - 1) * invScene;
