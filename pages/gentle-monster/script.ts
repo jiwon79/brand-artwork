@@ -48,6 +48,8 @@ class Catalog {
   // 각 아이템 중심의 씬 공간 오프셋 (뷰포트 중앙 기준) — pan/zoom과 무관, resize 때만 갱신
   private gxCache: Float32Array = new Float32Array(0);
   private gyCache: Float32Array = new Float32Array(0);
+  // opacity 마지막 값 — 변화 없으면 DOM write 스킵
+  private lastOpCache: Float32Array = new Float32Array(0);
   private products: Product[] = [];
   private currentAngle: Angle = 'FRONT';
   private cellPx = 60;
@@ -182,6 +184,7 @@ class Catalog {
     if (this.gxCache.length !== len) {
       this.gxCache = new Float32Array(len);
       this.gyCache = new Float32Array(len);
+      this.lastOpCache = new Float32Array(len).fill(-1); // -1 = 미설정 강제 첫 write
     }
     const cx = this.viewportW / 2;
     const cy = this.viewportH / 2;
@@ -207,34 +210,39 @@ class Catalog {
     const D = this.cameraD;
     const invR = 1 / R;
     // 카메라에서 구로 그은 접선의 각도 — 이 너머는 구에 의해 가려짐
-    // cos(φ_max) = R / (D + R)
     const phiMax = Math.acos(R / (D + R));
-    // silhouette 근처 부드러운 fade
     const fadeStart = phiMax * 0.85;
-    const fadeRange = phiMax - fadeStart;
+    const invFadeRange = 1 / (phiMax - fadeStart);
+    const lastOp = this.lastOpCache;
     for (let i = 0; i < len; i++) {
       const item = items[i];
       const sox = gx[i] * sScene + tx;
       const soy = gy[i] * sScene + ty;
       const phi = Math.sqrt(sox * sox + soy * soy) * invR;
-      // 뒷면이면 숨김
+      // silhouette 너머 — 숨김 (opacity 캐시도 0으로)
       if (phi >= phiMax) {
-        item.style.transform = 'scale(0)';
-        item.style.opacity = '0';
+        if (lastOp[i] !== 0) {
+          item.style.transform = 'scale(0)';
+          item.style.opacity = '0';
+          lastOp[i] = 0;
+        }
         continue;
       }
       const sinc = phi < 1e-4 ? 1 : Math.sin(phi) / phi;
       const pf = D / (D + R * (1 - Math.cos(phi)));
       const pull = (sinc * pf - 1) * invScene;
-      // 적도 근처 fade — silhouette 클러스터링 완화
-      const opacity = phi <= fadeStart ? 1 : (phiMax - phi) / fadeRange;
-      // 깊이 순 z-index — 가까운 아이템(pf 큼)이 위
-      const z = (pf * 1000) | 0;
       const dx = sox * pull;
       const dy = soy * pull;
-      item.style.transform = `translate(${dx}px,${dy}px) scale(${pf})`;
-      item.style.opacity = opacity < 1 ? String(opacity) : '1';
-      item.style.zIndex = String(z);
+      // translateZ로 GPU compositor가 깊이 자동 정렬 (preserve-3d 부모 필요)
+      const z3d = pf * 100;
+      item.style.transform = `translate3d(${dx}px,${dy}px,${z3d}px) scale(${pf})`;
+      // opacity는 변화 시에만 write — 대부분 1이라 큰 절약
+      const opacity = phi <= fadeStart ? 1 : (phiMax - phi) * invFadeRange;
+      // 0.02 임계값으로 노이즈성 write 컷 — 시각 차이 무시 가능
+      if (Math.abs(opacity - lastOp[i]) > 0.02) {
+        item.style.opacity = opacity >= 0.999 ? '' : String(opacity);
+        lastOp[i] = opacity;
+      }
     }
   }
 

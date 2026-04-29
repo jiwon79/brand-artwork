@@ -29,6 +29,8 @@ html, body {
   will-change: transform;
   transform: translateZ(0);
   transform-origin: 50% 50%;
+  /* 자식 아이템의 translateZ로 GPU가 자동 깊이 정렬 — z-index 불필요 */
+  transform-style: preserve-3d;
 }
 
 .item {
