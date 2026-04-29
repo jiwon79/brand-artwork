@@ -206,10 +206,11 @@ class Catalog {
     const R = this.sphereR;
     const D = this.cameraD;
     const invR = 1 / R;
-    // 구 적도(π/2) 너머는 "뒷면" — 보이지 않아야 함
-    const phiMax = Math.PI / 2;
-    // 적도 근처에서 부드럽게 fade out (silhouette 압축 영역)
-    const fadeStart = phiMax * 0.78;
+    // 카메라에서 구로 그은 접선의 각도 — 이 너머는 구에 의해 가려짐
+    // cos(φ_max) = R / (D + R)
+    const phiMax = Math.acos(R / (D + R));
+    // silhouette 근처 부드러운 fade
+    const fadeStart = phiMax * 0.85;
     const fadeRange = phiMax - fadeStart;
     for (let i = 0; i < len; i++) {
       const item = items[i];
