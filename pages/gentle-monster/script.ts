@@ -120,12 +120,10 @@ class Catalog {
     this.measureViewport();
     this.computeCellSize();
     this.scene.style.setProperty('--cell', `${this.cellPx}px`);
-    const imgScale = `scale(${this.cellPx / 256})`;
     this.items.forEach((el, idx) => {
       const { x, y } = this.cellPosition(idx);
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
-      (el.querySelector('img') as HTMLImageElement).style.transform = imgScale;
     });
     this.rebuildGeometryCache();
     this.applySceneTransform();
@@ -138,8 +136,8 @@ class Catalog {
     // viewport 중앙 기준 + grid 셀 중심 위치 - 셀 크기 절반 (왼쪽 위 기준)
     const cellCenterX = (col - (COLS - 1) / 2) * this.cellPx + rowOffset;
     const cellCenterY = (row - (ROWS - 1) / 2) * this.cellPx * ROW_STEP_RATIO;
-    const x = this.viewportW / 2 + cellCenterX - this.cellPx / 2;
-    const y = this.viewportH / 2 + cellCenterY - this.cellPx / 2;
+    const x = this.viewportW / 2 + cellCenterX - 128;
+    const y = this.viewportH / 2 + cellCenterY - 128;
     return { x, y };
   }
 
@@ -165,7 +163,6 @@ class Catalog {
       img.decoding = 'async';
       img.draggable = false;
       img.src = this.imageSrc(product, this.currentAngle);
-      img.style.transform = `scale(${this.cellPx / 256})`;
       el.appendChild(img);
 
       frag.appendChild(el);
@@ -191,11 +188,10 @@ class Catalog {
     }
     const cx = this.viewportW / 2;
     const cy = this.viewportH / 2;
-    const half = this.cellPx / 2;
     for (let i = 0; i < len; i++) {
       const pos = this.cellPosition(i);
-      this.gxCache[i] = pos.x + half - cx;
-      this.gyCache[i] = pos.y + half - cy;
+      this.gxCache[i] = pos.x + 128 - cx;
+      this.gyCache[i] = pos.y + 128 - cy;
     }
   }
 
@@ -209,6 +205,7 @@ class Catalog {
     const ty = this.ty;
     const sScene = this.scale;
     const invScene = 1 / sScene;
+    const cellScale = this.cellPx / 256;
     const R = this.sphereR;
     const D = this.cameraD;
     const invR = 1 / R;
@@ -238,7 +235,7 @@ class Catalog {
       const dy = soy * pull;
       // translateZ로 GPU compositor가 깊이 자동 정렬 (preserve-3d 부모 필요)
       const z3d = pf * 100;
-      item.style.transform = `translate3d(${dx}px,${dy}px,${z3d}px) scale(${pf})`;
+      item.style.transform = `translate3d(${dx}px,${dy}px,${z3d}px) scale(${pf * cellScale})`;
       // opacity는 변화 시에만 write — 대부분 1이라 큰 절약
       const opacity = phi <= fadeStart ? 1 : (phiMax - phi) * invFadeRange;
       // 0.02 임계값으로 노이즈성 write 컷 — 시각 차이 무시 가능
