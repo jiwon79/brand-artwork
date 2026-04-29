@@ -206,22 +206,21 @@ class Catalog {
     const R = this.sphereR;
     const D = this.cameraD;
     const invR = 1 / R;
-    // 오프스크린 컬링 박스 (스크린 공간, viewport 중앙 기준)
-    const cullX = this.viewportW * 0.5 + 80;
-    const cullY = this.viewportH * 0.5 + 80;
-    // 구 적도(π/2)까지만 매핑 — 그 너머는 "뒷면"으로 가지 않도록 클램프
+    // 구 적도(π/2) 너머는 "뒷면" — 보이지 않아야 함
     const phiMax = Math.PI / 2;
     for (let i = 0; i < len; i++) {
       const sox = gx[i] * sScene + tx;
       const soy = gy[i] * sScene + ty;
-      // 화면 밖이면 transform 갱신 스킵 (마지막 값 유지)
-      if (sox > cullX || sox < -cullX || soy > cullY || soy < -cullY) continue;
-      let phi = Math.sqrt(sox * sox + soy * soy) * invR;
-      if (phi > phiMax) phi = phiMax;
+      const phi = Math.sqrt(sox * sox + soy * soy) * invR;
+      // 뒷면이면 숨김 — 적도 너머로 끌어당기려 하지 않음 (꼬리 아티팩트 방지)
+      if (phi >= phiMax) {
+        items[i].style.transform = 'scale(0)';
+        continue;
+      }
       const sinc = phi < 1e-4 ? 1 : Math.sin(phi) / phi;
       const pf = D / (D + R * (1 - Math.cos(phi)));
       const pull = (sinc * pf - 1) * invScene;
-      // 정수 반올림으로 문자열/파싱 비용 절감 (서브픽셀 차이 무시)
+      // 정수 반올림으로 문자열/파싱 비용 절감
       const dx = (sox * pull) | 0;
       const dy = (soy * pull) | 0;
       const pfR = ((pf * 1000) | 0) * 0.001;
