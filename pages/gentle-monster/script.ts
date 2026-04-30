@@ -67,6 +67,11 @@ class Catalog {
   // rAF coalescing
   private renderQueued = false;
 
+  private detailEl = document.getElementById('detail') as HTMLElement;
+  private dimOverlay = document.getElementById('dim-overlay') as HTMLElement;
+  private selectedIdx: number | null = null;
+  private pointerDownPos: { x: number; y: number; time: number } | null = null;
+
   private pointers = new Map<number, { x: number; y: number }>();
   private gestureStart: {
     tx: number;
@@ -99,6 +104,7 @@ class Catalog {
     this.bindInputs();
     this.bindAngleToggle();
     this.bindGui();
+    this.bindDetail();
     window.addEventListener('resize', () => this.handleResize());
     requestAnimationFrame(() => this.loading.classList.add('hidden'));
   }
@@ -267,10 +273,16 @@ class Catalog {
 
   private bindInputs(): void {
     const onDown = (e: PointerEvent) => {
+      if (this.selectedIdx !== null) return;
       try {
         this.stage.setPointerCapture(e.pointerId);
       } catch {}
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.pointers.size === 1) {
+        this.pointerDownPos = { x: e.clientX, y: e.clientY, time: Date.now() };
+      } else {
+        this.pointerDownPos = null;
+      }
       this.captureGestureStart();
     };
 
@@ -322,12 +334,23 @@ class Catalog {
     };
 
     const onUp = (e: PointerEvent) => {
+      if (this.selectedIdx !== null) return;
+      const wasClick =
+        this.pointerDownPos !== null &&
+        this.pointers.size === 1 &&
+        Math.hypot(e.clientX - this.pointerDownPos.x, e.clientY - this.pointerDownPos.y) < 8 &&
+        Date.now() - this.pointerDownPos.time < 400;
+
       this.pointers.delete(e.pointerId);
       if (this.pointers.size > 0) {
         this.captureGestureStart();
+        this.pointerDownPos = null;
         return;
       }
       this.gestureStart = null;
+      this.pointerDownPos = null;
+
+      if (wasClick) this.handleTap(e.clientX, e.clientY);
     };
 
     // passive 옵션으로 처리 비용 줄임 (preventDefault 불필요한 곳)
@@ -375,6 +398,56 @@ class Catalog {
     }
   }
 
+  private handleTap(x: number, y: number): void {
+    for (let i = 0; i < this.items.length; i++) {
+      const r = this.items[i].getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        this.showDetail(i);
+        return;
+      }
+    }
+  }
+
+  private showDetail(idx: number): void {
+    const product = this.products[idx];
+    this.selectedIdx = idx;
+
+    const img = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
+    img.src = this.imageSrc(product, this.currentAngle);
+    img.alt = product.name_kr ?? product.id;
+
+    (this.detailEl.querySelector('.detail-name-kr') as HTMLElement).textContent = product.name_kr ?? '';
+    (this.detailEl.querySelector('.detail-name-en') as HTMLElement).textContent = product.name_en ?? product.id;
+
+    const metaParts: string[] = [];
+    if (product.collection) metaParts.push(product.collection);
+    if (product.price) metaParts.push(`₩${product.price.toLocaleString()}`);
+    (this.detailEl.querySelector('.detail-meta') as HTMLElement).textContent = metaParts.join(' · ');
+
+    (this.detailEl.querySelector('.detail-cta') as HTMLAnchorElement).href = product.url;
+
+    this.dimOverlay.classList.add('active');
+    this.detailEl.classList.remove('hidden');
+    requestAnimationFrame(() => requestAnimationFrame(() => this.detailEl.classList.add('visible')));
+  }
+
+  private hideDetail(): void {
+    if (this.selectedIdx === null) return;
+    this.selectedIdx = null;
+    this.detailEl.classList.remove('visible');
+    this.dimOverlay.classList.remove('active');
+    this.detailEl.addEventListener('transitionend', () => this.detailEl.classList.add('hidden'), { once: true });
+  }
+
+  private bindDetail(): void {
+    this.detailEl.addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('.detail-cta')) this.hideDetail();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.hideDetail();
+    });
+  }
+
   private bindGui(): void {
     const gui = new GUI({ title: 'Gentle Monster' });
     const update = () => this.applySceneTransform();
@@ -401,6 +474,10 @@ class Catalog {
       const img = item.querySelector('img') as HTMLImageElement;
       img.src = this.imageSrc(product, angle);
     });
+    if (this.selectedIdx !== null) {
+      const img = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
+      img.src = this.imageSrc(this.products[this.selectedIdx], angle);
+    }
   }
 }
 
