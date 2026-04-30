@@ -412,9 +412,9 @@ class Catalog {
     const product = this.products[idx];
     this.selectedIdx = idx;
 
-    const img = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
-    img.src = this.imageSrc(product, this.currentAngle);
-    img.alt = product.name_kr ?? product.id;
+    const detailImg = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
+    detailImg.src = this.imageSrc(product, this.currentAngle);
+    detailImg.alt = product.name_kr ?? product.id;
 
     (this.detailEl.querySelector('.detail-name-kr') as HTMLElement).textContent = product.name_kr ?? '';
     (this.detailEl.querySelector('.detail-name-en') as HTMLElement).textContent = product.name_en ?? product.id;
@@ -423,20 +423,68 @@ class Catalog {
     if (product.collection) metaParts.push(product.collection);
     if (product.price) metaParts.push(`₩${product.price.toLocaleString()}`);
     (this.detailEl.querySelector('.detail-meta') as HTMLElement).textContent = metaParts.join(' · ');
-
     (this.detailEl.querySelector('.detail-cta') as HTMLAnchorElement).href = product.url;
 
-    this.dimOverlay.classList.add('active');
+    // FLIP: 아이템의 현재 위치에서 중앙으로 이동
+    const imgWrap = this.detailEl.querySelector('.detail-img-wrap') as HTMLElement;
+    imgWrap.style.transition = 'none';
+    imgWrap.style.transform = 'scale(1)';
+
+    // detail을 보이도록 하되 info는 아직 숨김
     this.detailEl.classList.remove('hidden');
-    requestAnimationFrame(() => requestAnimationFrame(() => this.detailEl.classList.add('visible')));
+
+    // 레이아웃 강제 확정 후 target 위치 측정
+    const wrapRect = imgWrap.getBoundingClientRect();
+    const itemRect = this.items[idx].getBoundingClientRect();
+
+    const ix = (itemRect.left + itemRect.right) / 2;
+    const iy = (itemRect.top + itemRect.bottom) / 2;
+    const tx = ix - (wrapRect.left + wrapRect.right) / 2;
+    const ty = iy - (wrapRect.top + wrapRect.bottom) / 2;
+    const s0 = itemRect.width / wrapRect.width;
+
+    // 아이템 위치에서 시작
+    imgWrap.style.transform = `translate(${tx}px, ${ty}px) scale(${s0})`;
+
+    // 다음 프레임에 애니메이션 시작
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        imgWrap.style.transition = 'transform 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        imgWrap.style.transform = 'scale(1)';
+        this.dimOverlay.classList.add('active');
+        this.detailEl.classList.add('visible');
+      });
+    });
   }
 
   private hideDetail(): void {
     if (this.selectedIdx === null) return;
+    const idx = this.selectedIdx;
     this.selectedIdx = null;
+
+    const imgWrap = this.detailEl.querySelector('.detail-img-wrap') as HTMLElement;
+    const itemRect = this.items[idx].getBoundingClientRect();
+    const wrapRect = imgWrap.getBoundingClientRect();
+
+    const ix = (itemRect.left + itemRect.right) / 2;
+    const iy = (itemRect.top + itemRect.bottom) / 2;
+    const tx = ix - (wrapRect.left + wrapRect.right) / 2;
+    const ty = iy - (wrapRect.top + wrapRect.bottom) / 2;
+    const sEnd = itemRect.width / wrapRect.width;
+
+    // info 즉시 숨기고 dim 제거
     this.detailEl.classList.remove('visible');
     this.dimOverlay.classList.remove('active');
-    this.detailEl.addEventListener('transitionend', () => this.detailEl.classList.add('hidden'), { once: true });
+
+    // img-wrap을 원래 아이템 위치로 돌려보냄
+    imgWrap.style.transition = 'transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+    imgWrap.style.transform = `translate(${tx}px, ${ty}px) scale(${sEnd})`;
+
+    imgWrap.addEventListener('transitionend', () => {
+      this.detailEl.classList.add('hidden');
+      imgWrap.style.transition = 'none';
+      imgWrap.style.transform = 'scale(1)';
+    }, { once: true });
   }
 
   private bindDetail(): void {
