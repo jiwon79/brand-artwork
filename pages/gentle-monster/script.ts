@@ -363,6 +363,7 @@ class Catalog {
       'wheel',
       (e: WheelEvent) => {
         e.preventDefault();
+        if (this.selectedIdx !== null) return;
         const delta = -e.deltaY * 0.001;
         this.scale = clamp(this.scale * Math.exp(delta), SCALE_MIN, SCALE_MAX);
         this.requestRender();
@@ -443,8 +444,9 @@ class Catalog {
     const ty = iy - (wrapRect.top + wrapRect.bottom) / 2;
     const s0 = itemRect.width / wrapRect.width;
 
-    // 아이템 위치에서 시작
+    // 아이템 위치에서 시작, 원본은 숨겨서 단일 이미지처럼 보이게
     imgWrap.style.transform = `translate(${tx}px, ${ty}px) scale(${s0})`;
+    this.items[idx].style.visibility = 'hidden';
 
     // 다음 프레임에 애니메이션 시작
     requestAnimationFrame(() => {
@@ -484,6 +486,7 @@ class Catalog {
       this.detailEl.classList.add('hidden');
       imgWrap.style.transition = 'none';
       imgWrap.style.transform = 'scale(1)';
+      this.items[idx].style.visibility = '';
     }, { once: true });
   }
 
