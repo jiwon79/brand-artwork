@@ -72,6 +72,8 @@ class Catalog {
   private selectedIdx: number | null = null;
   private pointerDownPos: { x: number; y: number; time: number } | null = null;
 
+  private waveCancel: (() => void) | null = null;
+
   private pointers = new Map<number, { x: number; y: number }>();
   private gestureStart: {
     tx: number;
@@ -581,40 +583,58 @@ class Catalog {
   }
 
   private swapAngle(angle: Angle): void {
+    // 이전 wave 취소 — 중복 실행 방지
+    if (this.waveCancel) { this.waveCancel(); this.waveCancel = null; }
+
     const cx = this.viewportW / 2;
     const cy = this.viewportH / 2;
     const MAX_STAGGER = 450;
 
-    // 거리순 정렬 — rank가 tie-breaker
+    // tick 바깥에서 img 레퍼런스 미리 수집 — 루프 내 querySelectorAll 제거
     const sorted = this.items
       .map((item) => {
         const r = item.getBoundingClientRect();
         const dist = Math.hypot((r.left + r.right) / 2 - cx, (r.top + r.bottom) / 2 - cy);
-        return { item, dist };
+        const newImg = item.querySelector<HTMLImageElement>(`img[data-angle="${angle}"]`)!;
+        const activeImgs = Array.from(item.querySelectorAll<HTMLImageElement>('img.active'));
+        return { dist, newImg, activeImgs };
       })
       .sort((a, b) => a.dist - b.dist);
 
     const n = sorted.length;
     const maxDist = sorted[n - 1]?.dist || 1;
-    const waveStart = performance.now();
 
-    const pending = sorted.map(({ item, dist }, rank) => ({
-      item,
+    // 비활성 img는 display:none → GPU 텍스처 없음.
+    // 표시 직전 decode()로 미리 압축 해제 (캐시 히트 = near-zero)
+    const ready = new Uint8Array(n);
+    sorted.forEach(({ newImg }, i) => {
+      newImg.decode().then(() => { ready[i] = 1; }).catch(() => { ready[i] = 1; });
+    });
+
+    let cancelled = false;
+    this.waveCancel = () => { cancelled = true; };
+
+    const waveStart = performance.now();
+    const pending = sorted.map(({ newImg, activeImgs, dist }, rank) => ({
+      newImg,
+      activeImgs,
       at: waveStart + (rank / (n - 1) * 0.6 + dist / maxDist * 0.4) * MAX_STAGGER,
+      rank,
     }));
 
-    // src 교체 없이 active class만 토글 — decode/paint 없음, 순수 composite
     const tick = (now: number) => {
+      if (cancelled) return;
       let i = pending.length;
       while (i--) {
-        if (now >= pending[i].at) {
-          pending[i].item.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
-            img.classList.toggle('active', img.dataset.angle === angle);
-          });
+        const e = pending[i];
+        if (now >= e.at && ready[e.rank]) {
+          e.newImg.classList.add('active');
+          for (const img of e.activeImgs) img.classList.remove('active');
           pending.splice(i, 1);
         }
       }
       if (pending.length > 0) requestAnimationFrame(tick);
+      else this.waveCancel = null;
     };
     requestAnimationFrame(tick);
 

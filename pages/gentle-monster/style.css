@@ -50,13 +50,12 @@ html, body {
   width: 256px;
   height: 256px;
   object-fit: contain;
-  display: block;
+  display: none;
   pointer-events: none;
-  opacity: 0;
 }
 
 .item img.active {
-  opacity: 1;
+  display: block;
 }
 
 #angle-toggle {
