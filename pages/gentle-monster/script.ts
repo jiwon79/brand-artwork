@@ -574,11 +574,28 @@ class Catalog {
   }
 
   private swapAngle(angle: Angle): void {
-    this.items.forEach((item, idx) => {
-      const product = this.products[idx];
-      const img = item.querySelector('img') as HTMLImageElement;
-      img.src = this.imageSrc(product, angle);
+    const cx = this.viewportW / 2;
+    const cy = this.viewportH / 2;
+
+    // 각 아이템의 화면 중심 거리 계산
+    const entries = this.items.map((item, idx) => {
+      const r = item.getBoundingClientRect();
+      const dist = Math.hypot((r.left + r.right) / 2 - cx, (r.top + r.bottom) / 2 - cy);
+      return { item, idx, dist };
     });
+
+    // 가장 먼 거리 기준으로 정규화 → 최대 350ms 스태거
+    const maxDist = Math.max(...entries.map((e) => e.dist), 1);
+    const MAX_STAGGER = 350;
+
+    entries.forEach(({ item, idx, dist }) => {
+      const delay = (dist / maxDist) * MAX_STAGGER;
+      setTimeout(() => {
+        const img = item.querySelector('img') as HTMLImageElement;
+        img.src = this.imageSrc(this.products[idx], angle);
+      }, delay);
+    });
+
     if (this.selectedIdx !== null) {
       const img = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
       img.src = this.imageSrc(this.products[this.selectedIdx], angle);
