@@ -311,6 +311,8 @@ class Catalog {
   private bindInputs(): void {
     const onDown = (e: PointerEvent) => {
       if (this.selectedIdx !== null) return;
+      // 드래그 시작 시 진행 중인 wave 즉시 취소 — rAF 경합 제거
+      if (this.waveCancel) { this.waveCancel(); this.waveCancel = null; }
       try {
         this.stage.setPointerCapture(e.pointerId);
       } catch {}
@@ -436,14 +438,32 @@ class Catalog {
     }
   }
 
+  /** geometry cache로 item의 화면 중심 좌표와 시각적 크기를 계산 — getBoundingClientRect 불필요 */
+  private getItemScreenCenter(idx: number): { cx: number; cy: number; size: number } {
+    const sox = this.gxCache[idx] * this.scale + this.tx;
+    const soy = this.gyCache[idx] * this.scale + this.ty;
+    const phi = Math.sqrt(sox * sox + soy * soy) / this.sphereR;
+    const sinc = phi < 1e-4 ? 1 : Math.sin(phi) / phi;
+    const pf = this.cameraD / (this.cameraD + this.sphereR * (1 - Math.cos(phi)));
+    return {
+      cx: this.viewportW / 2 + sox * sinc * pf,
+      cy: this.viewportH / 2 + soy * sinc * pf,
+      size: this.cellPx * pf * this.scale,
+    };
+  }
+
   private handleTap(x: number, y: number): void {
+    let bestIdx = -1;
+    let bestDist = Infinity;
     for (let i = 0; i < this.items.length; i++) {
-      const r = this.items[i].getBoundingClientRect();
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-        this.showDetail(i);
-        return;
+      const { cx, cy, size } = this.getItemScreenCenter(i);
+      const half = size / 2;
+      if (x >= cx - half && x <= cx + half && y >= cy - half && y <= cy + half) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
     }
+    if (bestIdx >= 0) this.showDetail(bestIdx);
   }
 
   private showDetail(idx: number): void {
@@ -467,23 +487,21 @@ class Catalog {
     // FLIP: 아이템의 현재 위치에서 중앙으로 이동
     const imgWrap = this.detailEl.querySelector('.detail-img-wrap') as HTMLElement;
     const info = this.detailEl.querySelector('.detail-info') as HTMLElement;
-    // 이전 close에서 남은 inline 스타일 초기화 — CSS 트랜지션이 다시 동작하도록
     info.style.cssText = '';
     imgWrap.style.transition = 'none';
     imgWrap.style.transform = 'scale(1)';
 
-    // detail을 보이도록 하되 info는 아직 숨김
     this.detailEl.classList.remove('hidden');
 
-    // 레이아웃 강제 확정 후 target 위치 측정
+    // geometry cache로 item 화면 위치 계산 — contain:strict + display:none 환경에서 getBoundingClientRect 오동작 방지
+    const { cx: itemCx, cy: itemCy, size: itemSize } = this.getItemScreenCenter(idx);
     const wrapRect = imgWrap.getBoundingClientRect();
-    const itemRect = this.items[idx].getBoundingClientRect();
+    const wrapCx = (wrapRect.left + wrapRect.right) / 2;
+    const wrapCy = (wrapRect.top + wrapRect.bottom) / 2;
 
-    const ix = (itemRect.left + itemRect.right) / 2;
-    const iy = (itemRect.top + itemRect.bottom) / 2;
-    const tx = ix - (wrapRect.left + wrapRect.right) / 2;
-    const ty = iy - (wrapRect.top + wrapRect.bottom) / 2;
-    const s0 = itemRect.width / wrapRect.width;
+    const tx = itemCx - wrapCx;
+    const ty = itemCy - wrapCy;
+    const s0 = itemSize / wrapRect.width;
 
     // 아이템 위치에서 시작, 원본은 숨겨서 단일 이미지처럼 보이게
     imgWrap.style.transform = `translate(${tx}px, ${ty}px) scale(${s0})`;
@@ -506,14 +524,12 @@ class Catalog {
     this.selectedIdx = null;
 
     const imgWrap = this.detailEl.querySelector('.detail-img-wrap') as HTMLElement;
-    const itemRect = this.items[idx].getBoundingClientRect();
+    const { cx: itemCx, cy: itemCy, size: itemSize } = this.getItemScreenCenter(idx);
     const wrapRect = imgWrap.getBoundingClientRect();
 
-    const ix = (itemRect.left + itemRect.right) / 2;
-    const iy = (itemRect.top + itemRect.bottom) / 2;
-    const tx = ix - (wrapRect.left + wrapRect.right) / 2;
-    const ty = iy - (wrapRect.top + wrapRect.bottom) / 2;
-    const sEnd = itemRect.width / wrapRect.width;
+    const tx = itemCx - (wrapRect.left + wrapRect.right) / 2;
+    const ty = itemCy - (wrapRect.top + wrapRect.bottom) / 2;
+    const sEnd = itemSize / wrapRect.width;
 
     // info: CSS delay 없이 즉시 숨김 (delayed fade-out이 imgWrap 복귀 후까지 이어지는 버그 방지)
     const info = this.detailEl.querySelector('.detail-info') as HTMLElement;
