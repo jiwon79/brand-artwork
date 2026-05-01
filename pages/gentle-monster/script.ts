@@ -57,7 +57,7 @@ class Catalog {
   private viewportH = window.innerHeight;
 
   private sphereR = 600;   // 구 반지름 — 작을수록 곡률 강함
-  private cameraD = 900;   // 카메라 거리 — 작을수록 원근감 강함
+  private cameraD = 200;   // 카메라 거리 — 작을수록 원근감 강함
 
   // pan/zoom 상태
   private tx = 0;
@@ -428,6 +428,9 @@ class Catalog {
 
     // FLIP: 아이템의 현재 위치에서 중앙으로 이동
     const imgWrap = this.detailEl.querySelector('.detail-img-wrap') as HTMLElement;
+    const info = this.detailEl.querySelector('.detail-info') as HTMLElement;
+    // 이전 close에서 남은 inline 스타일 초기화 — CSS 트랜지션이 다시 동작하도록
+    info.style.cssText = '';
     imgWrap.style.transition = 'none';
     imgWrap.style.transform = 'scale(1)';
 
@@ -474,7 +477,12 @@ class Catalog {
     const ty = iy - (wrapRect.top + wrapRect.bottom) / 2;
     const sEnd = itemRect.width / wrapRect.width;
 
-    // info 즉시 숨기고 dim 제거
+    // info: CSS delay 없이 즉시 숨김 (delayed fade-out이 imgWrap 복귀 후까지 이어지는 버그 방지)
+    const info = this.detailEl.querySelector('.detail-info') as HTMLElement;
+    info.style.transition = 'none';
+    info.style.opacity = '0';
+    info.style.transform = 'translateY(8px)';
+
     this.detailEl.classList.remove('visible');
     this.dimOverlay.classList.remove('active');
 
@@ -503,7 +511,7 @@ class Catalog {
     const gui = new GUI({ title: 'Gentle Monster' });
     const update = () => this.applySceneTransform();
     gui.add(this, 'sphereR', 100, 2000, 10).name('Sphere Radius').onChange(update);
-    gui.add(this, 'cameraD', 200, 3000, 10).name('Camera Distance').onChange(update);
+    gui.add(this, 'cameraD', 50, 800, 5).name('Camera Distance').onChange(update);
   }
 
   private bindAngleToggle(): void {

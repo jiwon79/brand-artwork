@@ -54,35 +54,42 @@ html, body {
 #angle-toggle {
   position: fixed;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
   transform: translateX(-50%);
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  gap: 2px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   border-radius: 999px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border: 0.5px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.6);
   z-index: 20;
-  font-size: 12px;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
 }
 
 #angle-toggle button {
   border: none;
   background: transparent;
-  color: #888;
-  padding: 10px 18px;
+  color: #555;
+  padding: 7px 14px;
   border-radius: 999px;
   font: inherit;
   font-weight: 500;
   -webkit-tap-highlight-color: transparent;
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+#angle-toggle button:active {
+  transform: scale(0.95);
 }
 
 #angle-toggle button.active {
-  background: #111;
+  background: rgba(17, 17, 17, 0.85);
   color: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
 }
 
 #dim-overlay {
