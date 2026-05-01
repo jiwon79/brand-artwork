@@ -576,43 +576,49 @@ class Catalog {
   private swapAngle(angle: Angle): void {
     const cx = this.viewportW / 2;
     const cy = this.viewportH / 2;
-    const MAX_STAGGER = 350;
+    const MAX_STAGGER = 450;
 
-    // 스케줄 구성: 각 아이템의 img 엘리먼트 + 새 src + 상대 딜레이(ms)
-    const schedule = this.items.map((item, idx) => {
-      const r = item.getBoundingClientRect();
-      const dist = Math.hypot((r.left + r.right) / 2 - cx, (r.top + r.bottom) / 2 - cy);
-      return { img: item.querySelector('img') as HTMLImageElement, src: this.imageSrc(this.products[idx], angle), dist };
-    });
-    const maxDist = Math.max(...schedule.map((e) => e.dist), 1);
-
-    // 1) 모든 이미지 병렬 디코딩 (캐시 히트 시 near-zero) → 표시 시점 디코딩 제거
-    Promise.all(
-      schedule.map(({ src }) => {
-        const pre = new Image();
-        pre.src = src;
-        return pre.decode().catch(() => {});
+    // 거리순 정렬 — rank가 tie-breaker 역할
+    const sorted = this.items
+      .map((item, idx) => {
+        const r = item.getBoundingClientRect();
+        const dist = Math.hypot((r.left + r.right) / 2 - cx, (r.top + r.bottom) / 2 - cy);
+        return { img: item.querySelector('img') as HTMLImageElement, src: this.imageSrc(this.products[idx], angle), dist };
       })
-    ).then(() => {
-      // 2) 디코딩 완료 후 rAF 루프로 웨이브 실행 — setTimeout 대신 단일 루프로 프레임 정렬
-      const waveStart = performance.now();
-      const pending = schedule.map((e) => ({
-        img: e.img,
-        src: e.src,
-        at: waveStart + (e.dist / maxDist) * MAX_STAGGER,
-      }));
-      const tick = (now: number) => {
-        let i = pending.length;
-        while (i--) {
-          if (now >= pending[i].at) {
-            pending[i].img.src = pending[i].src;
-            pending.splice(i, 1);
-          }
-        }
-        if (pending.length > 0) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
+      .sort((a, b) => a.dist - b.dist);
+
+    const n = sorted.length;
+    const maxDist = sorted[n - 1]?.dist || 1;
+
+    // 아이템별 decode 완료 플래그 — Promise.all 없이 즉시 웨이브 시작
+    const ready = new Uint8Array(n);
+    sorted.forEach(({ src }, i) => {
+      const pre = new Image();
+      pre.src = src;
+      pre.decode().then(() => { ready[i] = 1; }).catch(() => { ready[i] = 1; });
     });
+
+    // delay = rank 60% + dist 40% — rank 덕분에 같은 거리 아이템도 각각 다른 프레임에 swap
+    const waveStart = performance.now();
+    const pending = sorted.map(({ img, src, dist }, rank) => ({
+      img,
+      src,
+      at: waveStart + (rank / (n - 1) * 0.6 + dist / maxDist * 0.4) * MAX_STAGGER,
+      rank,
+    }));
+
+    const tick = (now: number) => {
+      let i = pending.length;
+      while (i--) {
+        const e = pending[i];
+        if (now >= e.at && ready[e.rank]) {
+          e.img.src = e.src;
+          pending.splice(i, 1);
+        }
+      }
+      if (pending.length > 0) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
 
     if (this.selectedIdx !== null) {
       const img = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
