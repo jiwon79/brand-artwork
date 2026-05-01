@@ -44,11 +44,19 @@ html, body {
 }
 
 .item img {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 256px;
   height: 256px;
   object-fit: contain;
   display: block;
   pointer-events: none;
+  opacity: 0;
+}
+
+.item img.active {
+  opacity: 1;
 }
 
 #angle-toggle {

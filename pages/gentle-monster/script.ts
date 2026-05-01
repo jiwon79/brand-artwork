@@ -193,12 +193,18 @@ class Catalog {
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
 
-      const img = document.createElement('img');
-      img.alt = product.name_kr ?? product.id;
-      img.decoding = 'async';
-      img.draggable = false;
-      img.src = this.imageSrc(product, this.currentAngle);
-      el.appendChild(img);
+      // 3개 앵글 img를 전부 DOM에 올려두고 active class로만 토글 — src 교체 없음
+      const angles: Angle[] = ['FRONT', 'SIDE', 'D_45'];
+      for (const a of angles) {
+        const img = document.createElement('img');
+        img.alt = a === 'FRONT' ? (product.name_kr ?? product.id) : '';
+        img.decoding = 'async';
+        img.draggable = false;
+        img.dataset.angle = a;
+        img.src = this.imageSrc(product, a);
+        if (a === this.currentAngle) img.classList.add('active');
+        el.appendChild(img);
+      }
 
       frag.appendChild(el);
       this.items.push(el);
@@ -443,7 +449,8 @@ class Catalog {
     this.selectedIdx = idx;
 
     const detailImg = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
-    detailImg.src = this.imageSrc(product, this.currentAngle);
+    const activeGridImg = this.items[idx].querySelector<HTMLImageElement>('img.active');
+    detailImg.src = activeGridImg?.src ?? this.imageSrc(product, this.currentAngle);
     detailImg.alt = product.name_kr ?? product.id;
 
     (this.detailEl.querySelector('.detail-name-kr') as HTMLElement).textContent = product.name_kr ?? '';
@@ -578,41 +585,32 @@ class Catalog {
     const cy = this.viewportH / 2;
     const MAX_STAGGER = 450;
 
-    // 거리순 정렬 — rank가 tie-breaker 역할
+    // 거리순 정렬 — rank가 tie-breaker
     const sorted = this.items
-      .map((item, idx) => {
+      .map((item) => {
         const r = item.getBoundingClientRect();
         const dist = Math.hypot((r.left + r.right) / 2 - cx, (r.top + r.bottom) / 2 - cy);
-        return { img: item.querySelector('img') as HTMLImageElement, src: this.imageSrc(this.products[idx], angle), dist };
+        return { item, dist };
       })
       .sort((a, b) => a.dist - b.dist);
 
     const n = sorted.length;
     const maxDist = sorted[n - 1]?.dist || 1;
-
-    // 아이템별 decode 완료 플래그 — Promise.all 없이 즉시 웨이브 시작
-    const ready = new Uint8Array(n);
-    sorted.forEach(({ src }, i) => {
-      const pre = new Image();
-      pre.src = src;
-      pre.decode().then(() => { ready[i] = 1; }).catch(() => { ready[i] = 1; });
-    });
-
-    // delay = rank 60% + dist 40% — rank 덕분에 같은 거리 아이템도 각각 다른 프레임에 swap
     const waveStart = performance.now();
-    const pending = sorted.map(({ img, src, dist }, rank) => ({
-      img,
-      src,
+
+    const pending = sorted.map(({ item, dist }, rank) => ({
+      item,
       at: waveStart + (rank / (n - 1) * 0.6 + dist / maxDist * 0.4) * MAX_STAGGER,
-      rank,
     }));
 
+    // src 교체 없이 active class만 토글 — decode/paint 없음, 순수 composite
     const tick = (now: number) => {
       let i = pending.length;
       while (i--) {
-        const e = pending[i];
-        if (now >= e.at && ready[e.rank]) {
-          e.img.src = e.src;
+        if (now >= pending[i].at) {
+          pending[i].item.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+            img.classList.toggle('active', img.dataset.angle === angle);
+          });
           pending.splice(i, 1);
         }
       }
@@ -621,8 +619,9 @@ class Catalog {
     requestAnimationFrame(tick);
 
     if (this.selectedIdx !== null) {
-      const img = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
-      img.src = this.imageSrc(this.products[this.selectedIdx], angle);
+      const activeImg = this.items[this.selectedIdx].querySelector<HTMLImageElement>(`img[data-angle="${angle}"]`);
+      const detailImg = this.detailEl.querySelector<HTMLImageElement>('.detail-img');
+      if (activeImg && detailImg) detailImg.src = activeImg.src;
     }
   }
 }
