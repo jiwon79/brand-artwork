@@ -516,12 +516,29 @@ class Catalog {
 
   private bindAngleToggle(): void {
     const buttons = document.querySelectorAll<HTMLButtonElement>('#angle-toggle button');
+    const slider = document.getElementById('angle-slider') as HTMLElement;
+
+    const moveSlider = (btn: HTMLButtonElement) => {
+      slider.style.width = `${btn.offsetWidth}px`;
+      slider.style.height = `${btn.offsetHeight}px`;
+      slider.style.transform = `translateX(${btn.offsetLeft}px) translateY(${btn.offsetTop}px)`;
+    };
+
+    // 초기 위치 — 트랜지션 없이 즉시 배치
+    const initBtn = document.querySelector<HTMLButtonElement>('#angle-toggle button.active');
+    if (initBtn) {
+      slider.style.transition = 'none';
+      moveSlider(initBtn);
+      requestAnimationFrame(() => { slider.style.transition = ''; });
+    }
+
     buttons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const angle = btn.dataset.angle as Angle;
         if (angle === this.currentAngle) return;
         this.currentAngle = angle;
         buttons.forEach((b) => b.classList.toggle('active', b === btn));
+        moveSlider(btn);
         this.swapAngle(angle);
       });
     });
