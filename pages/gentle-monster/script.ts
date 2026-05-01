@@ -106,7 +106,37 @@ class Catalog {
     this.bindGui();
     this.bindDetail();
     window.addEventListener('resize', () => this.handleResize());
-    requestAnimationFrame(() => this.loading.classList.add('hidden'));
+    await this.preloadAll();
+    this.loading.classList.add('hidden');
+  }
+
+  private async preloadAll(): Promise<void> {
+    const total = Math.min(COLS * ROWS, this.products.length);
+    const angles: Angle[] = ['FRONT', 'SIDE', 'D_45'];
+    const totalCount = total * angles.length;
+    let loaded = 0;
+    this.loading.textContent = `로딩 중… 0 / ${totalCount}`;
+    const promises: Promise<void>[] = [];
+    for (let i = 0; i < total; i++) {
+      for (const angle of angles) {
+        promises.push(
+          this.preloadImage(this.imageSrc(this.products[i], angle)).then(() => {
+            loaded++;
+            this.loading.textContent = `로딩 중… ${loaded} / ${totalCount}`;
+          })
+        );
+      }
+    }
+    await Promise.all(promises);
+  }
+
+  private preloadImage(src: string): Promise<void> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      img.src = src;
+    });
   }
 
   private measureViewport(): void {
@@ -165,7 +195,6 @@ class Catalog {
 
       const img = document.createElement('img');
       img.alt = product.name_kr ?? product.id;
-      img.loading = 'lazy';
       img.decoding = 'async';
       img.draggable = false;
       img.src = this.imageSrc(product, this.currentAngle);
