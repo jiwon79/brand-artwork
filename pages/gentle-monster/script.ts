@@ -451,7 +451,7 @@ class Catalog {
     // 다음 프레임에 애니메이션 시작
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        imgWrap.style.transition = 'transform 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        imgWrap.style.transition = 'transform 360ms cubic-bezier(0.32, 0.72, 0, 1)';
         imgWrap.style.transform = 'scale(1)';
         this.dimOverlay.classList.add('active');
         this.detailEl.classList.add('visible');
@@ -479,7 +479,7 @@ class Catalog {
     this.dimOverlay.classList.remove('active');
 
     // img-wrap을 원래 아이템 위치로 돌려보냄
-    imgWrap.style.transition = 'transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+    imgWrap.style.transition = 'transform 240ms cubic-bezier(0.23, 1, 0.32, 1)';
     imgWrap.style.transform = `translate(${tx}px, ${ty}px) scale(${sEnd})`;
 
     imgWrap.addEventListener('transitionend', () => {
