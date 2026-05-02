@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Gentle Monster</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="stage">
+    <div id="scene"></div>
+  </div>
+
+  <div id="dim-overlay"></div>
+
+  <div id="detail" class="hidden">
+    <div class="detail-main">
+      <div class="detail-img-wrap">
+        <button class="detail-nav detail-prev" aria-label="이전">&#8249;</button>
+        <img class="detail-img" alt="">
+        <button class="detail-nav detail-next" aria-label="다음">&#8250;</button>
+      </div>
+    </div>
+    <div class="detail-info">
+      <div class="detail-name-kr"></div>
+      <div class="detail-name-en"></div>
+      <div class="detail-meta"></div>
+      <a class="detail-cta" target="_blank" rel="noopener">Buy Now</a>
+    </div>
+  </div>
+
+  <div id="angle-toggle">
+    <span id="angle-slider"></span>
+    <button data-angle="D_45">D 45</button>
+    <button data-angle="FRONT" class="active">FRONT</button>
+    <button data-angle="SIDE">SIDE</button>
+  </div>
+
+  <div id="loading">로딩 중…</div>
+
+  <script type="module" src="script.ts"></script>
+  <script type="module" src="/common/touch-cursor.ts"></script>
+</body>
+</html>
