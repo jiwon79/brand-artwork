@@ -627,8 +627,8 @@ class Catalog {
     const updateDetail = () => {
       const wrap = this.detailEl.querySelector<HTMLElement>('.detail-img-wrap');
       if (wrap) {
-        wrap.style.width = `min(${this.detailSizePx}px, 90vw)`;
-        wrap.style.height = `min(${this.detailSizePx}px, 90vw)`;
+        wrap.style.width = `${this.detailSizePx}px`;
+        wrap.style.height = `${this.detailSizePx}px`;
       }
     };
     gui.add(this, 'sphereR', 100, 2000, 10).name('Sphere Radius').onChange(update);
