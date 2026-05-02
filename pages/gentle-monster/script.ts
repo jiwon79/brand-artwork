@@ -558,12 +558,62 @@ class Catalog {
     }, { once: true });
   }
 
+  private navigateDetail(dir: -1 | 1): void {
+    if (this.selectedIdx === null) return;
+    const total = Math.min(COLS * ROWS, this.products.length);
+    const newIdx = (this.selectedIdx + dir + total) % total;
+
+    const detailImg = this.detailEl.querySelector<HTMLImageElement>('.detail-img')!;
+
+    // 이전 아이템 grid 복원, 새 아이템 숨김
+    this.items[this.selectedIdx].style.visibility = '';
+    this.items[newIdx].style.visibility = 'hidden';
+    this.selectedIdx = newIdx;
+
+    // 이미지 crossfade
+    detailImg.style.transition = 'opacity 150ms ease';
+    detailImg.style.opacity = '0';
+
+    setTimeout(() => {
+      if (this.selectedIdx !== newIdx) return;
+      const product = this.products[newIdx];
+
+      detailImg.src = this.imageSrc(product, this.currentAngle, true);
+      detailImg.alt = product.name_kr ?? product.id;
+      const pre = new Image();
+      pre.onload = () => { if (this.selectedIdx === newIdx) detailImg.src = this.imageSrc(product, this.currentAngle, false); };
+      pre.src = this.imageSrc(product, this.currentAngle, false);
+
+      (this.detailEl.querySelector('.detail-name-kr') as HTMLElement).textContent = product.name_kr ?? '';
+      (this.detailEl.querySelector('.detail-name-en') as HTMLElement).textContent = product.name_en ?? product.id;
+      const metaParts: string[] = [];
+      if (product.collection) metaParts.push(product.collection);
+      if (product.price) metaParts.push(`₩${product.price.toLocaleString()}`);
+      (this.detailEl.querySelector('.detail-meta') as HTMLElement).textContent = metaParts.join(' · ');
+      (this.detailEl.querySelector('.detail-cta') as HTMLAnchorElement).href = product.url;
+
+      detailImg.style.opacity = '1';
+      setTimeout(() => { detailImg.style.transition = ''; detailImg.style.opacity = ''; }, 150);
+    }, 150);
+  }
+
   private bindDetail(): void {
     this.detailEl.addEventListener('click', (e) => {
-      if (!(e.target as HTMLElement).closest('.detail-cta')) this.hideDetail();
+      const target = e.target as HTMLElement;
+      if (!target.closest('.detail-cta') && !target.closest('.detail-nav')) this.hideDetail();
+    });
+    this.detailEl.querySelector('.detail-prev')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.navigateDetail(-1);
+    });
+    this.detailEl.querySelector('.detail-next')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.navigateDetail(1);
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.hideDetail();
+      if (e.key === 'ArrowLeft' && this.selectedIdx !== null) this.navigateDetail(-1);
+      if (e.key === 'ArrowRight' && this.selectedIdx !== null) this.navigateDetail(1);
     });
   }
 
