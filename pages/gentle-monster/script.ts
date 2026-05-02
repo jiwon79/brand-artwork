@@ -56,8 +56,11 @@ class Catalog {
   private viewportW = window.innerWidth;
   private viewportH = window.innerHeight;
 
-  private sphereR = 600;   // 구 반지름 — 작을수록 곡률 강함
-  private cameraD = 200;   // 카메라 거리 — 작을수록 원근감 강함
+  private sphereR = 600;
+  private cameraD = 200;
+  private thumbScale = 1.0;     // 그리드 안경 시각 크기 배율
+  private spacingScale = 1.0;   // 그리드 셀 간격 배율
+  private detailSizePx = 340;   // 디테일 패널 이미지 크기(px)
 
   // pan/zoom 상태
   private tx = 0;
@@ -85,10 +88,10 @@ class Catalog {
   } | null = null;
 
   private get panLimitX(): number {
-    return ((COLS - 1) * this.cellPx) / 2;
+    return ((COLS - 1) * this.cellPx * this.spacingScale) / 2;
   }
   private get panLimitY(): number {
-    return ((ROWS - 1) * this.cellPx * ROW_STEP_RATIO) / 2;
+    return ((ROWS - 1) * this.cellPx * this.spacingScale * ROW_STEP_RATIO) / 2;
   }
 
   async start(): Promise<void> {
@@ -170,10 +173,10 @@ class Catalog {
   private cellPosition(idx: number): { x: number; y: number } {
     const col = idx % COLS;
     const row = Math.floor(idx / COLS);
-    const rowOffset = row % 2 === 0 ? 0 : this.cellPx / 2;
-    // viewport 중앙 기준 + grid 셀 중심 위치 - 셀 크기 절반 (왼쪽 위 기준)
-    const cellCenterX = (col - (COLS - 1) / 2) * this.cellPx + rowOffset;
-    const cellCenterY = (row - (ROWS - 1) / 2) * this.cellPx * ROW_STEP_RATIO;
+    const eff = this.cellPx * this.spacingScale;
+    const rowOffset = row % 2 === 0 ? 0 : eff / 2;
+    const cellCenterX = (col - (COLS - 1) / 2) * eff + rowOffset;
+    const cellCenterY = (row - (ROWS - 1) / 2) * eff * ROW_STEP_RATIO;
     const x = this.viewportW / 2 + cellCenterX - 128;
     const y = this.viewportH / 2 + cellCenterY - 128;
     return { x, y };
@@ -249,7 +252,7 @@ class Catalog {
     const ty = this.ty;
     const sScene = this.scale;
     const invScene = 1 / sScene;
-    const cellScale = this.cellPx / 256;
+    const cellScale = this.cellPx / 256 * this.thumbScale;
     const R = this.sphereR;
     const D = this.cameraD;
     const invR = 1 / R;
@@ -449,7 +452,7 @@ class Catalog {
     return {
       cx: this.viewportW / 2 + sox * sinc * pf,
       cy: this.viewportH / 2 + soy * sinc * pf,
-      size: this.cellPx * pf * this.scale,
+      size: this.cellPx * pf * this.scale * this.thumbScale,
     };
   }
 
@@ -611,8 +614,29 @@ class Catalog {
   private bindGui(): void {
     const gui = new GUI({ title: 'Gentle Monster' });
     const update = () => this.applySceneTransform();
+    const relayout = () => {
+      this.items.forEach((el, idx) => {
+        const { x, y } = this.cellPosition(idx);
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+      });
+      this.rebuildGeometryCache();
+      this.applySceneTransform();
+    };
+    const updateDetail = () => {
+      const wrap = this.detailEl.querySelector<HTMLElement>('.detail-img-wrap');
+      if (wrap) {
+        wrap.style.width = `${this.detailSizePx}px`;
+        wrap.style.height = `${this.detailSizePx}px`;
+      }
+    };
     gui.add(this, 'sphereR', 100, 2000, 10).name('Sphere Radius').onChange(update);
     gui.add(this, 'cameraD', 50, 800, 5).name('Camera Distance').onChange(update);
+    gui.add(this, 'thumbScale', 0.3, 2.0, 0.05).name('Thumb Size').onChange(update);
+    gui.add(this, 'spacingScale', 0.3, 2.0, 0.05).name('Thumb Spacing').onChange(relayout);
+    this.detailSizePx = Math.round(Math.min(Math.min(this.viewportW, this.viewportH) * 0.7, 440));
+    gui.add(this, 'detailSizePx', 150, 600, 10).name('Detail Size').onChange(updateDetail);
+    updateDetail();
   }
 
   private bindAngleToggle(): void {
