@@ -58,9 +58,10 @@ class Catalog {
 
   private sphereR = 600;
   private cameraD = 200;
-  private thumbScale = 1.0;     // 그리드 안경 시각 크기 배율
+  private thumbScale = 1.5;     // 그리드 안경 시각 크기 배율
   private spacingScale = 1.0;   // 그리드 셀 간격 배율
-  private detailSizePx = 340;   // 디테일 패널 이미지 크기(px)
+  private detailSizePx = 500;   // 디테일 패널 이미지 크기(px)
+  private waveStagger = 450;    // 앵글 전환 웨이브 최대 지연(ms)
 
   // pan/zoom 상태
   private tx = 0;
@@ -626,16 +627,16 @@ class Catalog {
     const updateDetail = () => {
       const wrap = this.detailEl.querySelector<HTMLElement>('.detail-img-wrap');
       if (wrap) {
-        wrap.style.width = `${this.detailSizePx}px`;
-        wrap.style.height = `${this.detailSizePx}px`;
+        wrap.style.width = `min(${this.detailSizePx}px, 80vmin)`;
+        wrap.style.height = `min(${this.detailSizePx}px, 80vmin)`;
       }
     };
     gui.add(this, 'sphereR', 100, 2000, 10).name('Sphere Radius').onChange(update);
     gui.add(this, 'cameraD', 50, 800, 5).name('Camera Distance').onChange(update);
     gui.add(this, 'thumbScale', 0.3, 2.0, 0.05).name('Thumb Size').onChange(update);
     gui.add(this, 'spacingScale', 0.3, 2.0, 0.05).name('Thumb Spacing').onChange(relayout);
-    this.detailSizePx = Math.round(Math.min(Math.min(this.viewportW, this.viewportH) * 0.7, 440));
     gui.add(this, 'detailSizePx', 150, 600, 10).name('Detail Size').onChange(updateDetail);
+    gui.add(this, 'waveStagger', 50, 1500, 50).name('Wave Duration');
     updateDetail();
   }
 
@@ -675,7 +676,7 @@ class Catalog {
 
     const cx = this.viewportW / 2;
     const cy = this.viewportH / 2;
-    const MAX_STAGGER = 450;
+    const MAX_STAGGER = this.waveStagger;
 
     // tick 바깥에서 img 레퍼런스 미리 수집 — 루프 내 querySelectorAll 제거
     const sorted = this.items
