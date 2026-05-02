@@ -297,6 +297,11 @@ html, body {
   pointer-events: none;
 }
 
+/* touch-cursor 색 오버라이드 — 밝은 배경에서 가시성 확보 */
+.tc-dot { background: rgba(17, 17, 17, 0.55) !important; }
+.tc-ring { border-color: rgba(17, 17, 17, 0.45) !important; }
+.tc-ripple { border-color: rgba(17, 17, 17, 0.4) !important; }
+
 #loading.hidden {
   display: none;
 }
