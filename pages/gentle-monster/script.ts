@@ -570,31 +570,22 @@ class Catalog {
     this.items[newIdx].style.visibility = 'hidden';
     this.selectedIdx = newIdx;
 
-    // 이미지 crossfade
-    detailImg.style.transition = 'opacity 150ms ease';
-    detailImg.style.opacity = '0';
+    const product = this.products[newIdx];
 
-    setTimeout(() => {
-      if (this.selectedIdx !== newIdx) return;
-      const product = this.products[newIdx];
+    // 썸네일 즉시 표시 후 full-size 백그라운드 로드
+    detailImg.src = this.imageSrc(product, this.currentAngle, true);
+    detailImg.alt = product.name_kr ?? product.id;
+    const pre = new Image();
+    pre.onload = () => { if (this.selectedIdx === newIdx) detailImg.src = this.imageSrc(product, this.currentAngle, false); };
+    pre.src = this.imageSrc(product, this.currentAngle, false);
 
-      detailImg.src = this.imageSrc(product, this.currentAngle, true);
-      detailImg.alt = product.name_kr ?? product.id;
-      const pre = new Image();
-      pre.onload = () => { if (this.selectedIdx === newIdx) detailImg.src = this.imageSrc(product, this.currentAngle, false); };
-      pre.src = this.imageSrc(product, this.currentAngle, false);
-
-      (this.detailEl.querySelector('.detail-name-kr') as HTMLElement).textContent = product.name_kr ?? '';
-      (this.detailEl.querySelector('.detail-name-en') as HTMLElement).textContent = product.name_en ?? product.id;
-      const metaParts: string[] = [];
-      if (product.collection) metaParts.push(product.collection);
-      if (product.price) metaParts.push(`₩${product.price.toLocaleString()}`);
-      (this.detailEl.querySelector('.detail-meta') as HTMLElement).textContent = metaParts.join(' · ');
-      (this.detailEl.querySelector('.detail-cta') as HTMLAnchorElement).href = product.url;
-
-      detailImg.style.opacity = '1';
-      setTimeout(() => { detailImg.style.transition = ''; detailImg.style.opacity = ''; }, 150);
-    }, 150);
+    (this.detailEl.querySelector('.detail-name-kr') as HTMLElement).textContent = product.name_kr ?? '';
+    (this.detailEl.querySelector('.detail-name-en') as HTMLElement).textContent = product.name_en ?? product.id;
+    const metaParts: string[] = [];
+    if (product.collection) metaParts.push(product.collection);
+    if (product.price) metaParts.push(`₩${product.price.toLocaleString()}`);
+    (this.detailEl.querySelector('.detail-meta') as HTMLElement).textContent = metaParts.join(' · ');
+    (this.detailEl.querySelector('.detail-cta') as HTMLAnchorElement).href = product.url;
   }
 
   private bindDetail(): void {
