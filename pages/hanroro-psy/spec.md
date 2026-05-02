@@ -1,7 +1,70 @@
 # Hanroro Psy Brand Artwork — 스펙
 
-## 1. 파일 구성
+## 파일 구성
 
-## 2. 컨셉
+- `index.html` - Main interactive music pad interface
+- `script.ts` - TypeScript module for audio playback, effects, and interactions
+- `style.css` - Styling and 3D cube effects for buttons and LP player
+- `/common/touch-cursor.ts` - Shared touch cursor module
 
-## 3. 장면
+## 컨셉
+
+Interactive music pad interface combining:
+- **LP Record Player** (center): Vinyl spinning at variable speed based on glitch level, with scratch canvas overlay and tonearm
+- **4 FX Buttons** (2x2 grid, right side): Loop, Reverse, Filter, Echo effects
+- **12 Sound Pads** (4x3 grid, bottom): Three rows with distinct visual styles and sound categories
+  - Row 1 (Pink/Gangnam): "옵", "에~", "섹시레이디", "댐걸"
+  - Row 2 (Cyan/Fart): Emoji-based fart sounds and variations
+  - Row 3 (Cream/Hanroro): "0+0 후렴", "기타", "한숨", "사랑해요"
+
+## 장면 (Scene Structure)
+
+```
+#stage (fixed full-screen container)
+├── .center (top section: 38vh height)
+│   ├── .lp-wrap (LP player container)
+│   │   ├── .lp-shadow (drop shadow)
+│   │   ├── .lp (spinning vinyl record)
+│   │   │   ├── .label (record label with text)
+│   │   │   ├── .pin (center spindle)
+│   │   │   └── canvas.scratch-canvas (scratch overlay)
+│   │   └── .tonearm (tonearm element)
+│   └── .fx-grid (2x2 effect buttons)
+│       ├── .fx-btn (loop, reverse, filter, echo)
+│       └── (repeats 4x)
+└── .pad-grid (3x4 sound pad grid)
+    ├── .pad.row-gangnam (4x, pink background)
+    ├── .pad.row-fart (4x, cyan background)
+    └── .pad.row-hanroro (4x, cream/paper background)
+```
+
+## 상호작용 (Interactions)
+
+### LP Player
+- **Tap**: Initialize audio context and start playback
+- **Long press (700ms)**: Reset glitch level to 0
+- **Drag**: Generate scratch sounds and visual scratches on overlay
+
+### Sound Pads
+- **Tap**: Play associated synthesized sound, emit colored rays and particles, update glitch level
+  - Gangnam/Fart rows: Increase glitch (0.08)
+  - Hanroro row: Decrease glitch (-0.05)
+
+### FX Buttons
+- **Hold Down**: Activate effect
+- **Release/Leave**: Deactivate effect
+
+## 스타일 (Styling)
+
+- **3D Cube Effect**: Heavy inset box-shadows and layered gradients for tactile button appearance
+- **Paper Texture**: Grain noise filter on Hanroro (cream) buttons
+- **Neon Glows**: Bright colors with box-shadow halos on Gangnam (pink) and Fart (cyan) buttons
+- **Dynamic Animations**: LP spins at variable speed based on glitch level (3.6s to 1.4s)
+
+## 오디오 (Audio System)
+
+- Web Audio API context with master gain, dry/wet routing
+- Convolver for reverb/echo effect
+- Synthesized sounds using oscillators and noise buffers
+- Dynamic filters and envelope control for each sound
+- FX chain: Filter (lowpass when enabled), Echo (wet/dry routing)
