@@ -79,6 +79,8 @@ html, body {
 }
 
 #angle-toggle button {
+  position: relative;
+  z-index: 1;
   border: none;
   background: transparent;
   color: #555;
