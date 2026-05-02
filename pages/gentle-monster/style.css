@@ -139,7 +139,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: calc(env(safe-area-inset-top, 0px) + 72px) 0 calc(env(safe-area-inset-bottom, 0px) + 24px);
+  padding: calc(env(safe-area-inset-top, 0px) + 20px) 0 calc(env(safe-area-inset-bottom, 0px) + 24px);
   z-index: 40;
   cursor: pointer;
 }
@@ -150,13 +150,13 @@ html, body {
 
 .detail-main {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
   flex-shrink: 0;
 }
 
 .detail-img-wrap {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -235,9 +235,12 @@ html, body {
 }
 
 .detail-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
   width: 30px;
   height: 30px;
-  flex-shrink: 0;
   border: none;
   background: rgba(255, 255, 255, 0.45);
   backdrop-filter: blur(24px) saturate(180%);
@@ -258,13 +261,16 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+.detail-prev { left: 8px; }
+.detail-next { right: 8px; }
+
 #detail.visible .detail-nav {
   opacity: 1;
   pointer-events: auto;
 }
 
 .detail-nav:active {
-  transform: scale(0.92);
+  transform: translateY(-50%) scale(0.92);
 }
 
 @media (prefers-reduced-motion: reduce) {
