@@ -239,7 +239,7 @@ html, body {
 
 .detail-nav {
   position: absolute;
-  top: 50%;
+  top: calc(50% + 10px);
   transform: translateY(-50%);
   z-index: 1;
   width: 30px;
