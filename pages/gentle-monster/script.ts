@@ -122,7 +122,7 @@ class Catalog {
     for (let i = 0; i < total; i++) {
       for (const angle of angles) {
         promises.push(
-          this.preloadImage(this.imageSrc(this.products[i], angle)).then(() => {
+          this.preloadImage(this.imageSrc(this.products[i], angle, true)).then(() => {
             loaded++;
             this.loading.textContent = `로딩 중… ${loaded} / ${totalCount}`;
           })
@@ -203,7 +203,7 @@ class Catalog {
         img.decoding = 'async';
         img.draggable = false;
         img.dataset.angle = a;
-        img.src = this.imageSrc(product, a);
+        img.src = this.imageSrc(product, a, true); // 그리드는 256px 썸네일
         if (a === this.currentAngle) img.classList.add('active');
         el.appendChild(img);
       }
@@ -215,11 +215,12 @@ class Catalog {
     this.rebuildGeometryCache();
   }
 
-  private imageSrc(product: Product, angle: Angle): string {
+  private imageSrc(product: Product, angle: Angle, thumb = false): string {
     const variant = product.color_variants[0];
     const idx = ANGLE_TO_INDEX[angle];
     const file = variant.images[idx] ?? variant.images[0];
-    return new URL(`assets/images/${encodeURIComponent(file)}`, document.baseURI).href;
+    const dir = thumb ? 'thumbnails' : 'images';
+    return new URL(`assets/${dir}/${encodeURIComponent(file)}`, document.baseURI).href;
   }
 
   private rebuildGeometryCache(): void {
@@ -471,9 +472,14 @@ class Catalog {
     this.selectedIdx = idx;
 
     const detailImg = this.detailEl.querySelector('.detail-img') as HTMLImageElement;
-    const activeGridImg = this.items[idx].querySelector<HTMLImageElement>('img.active');
-    detailImg.src = activeGridImg?.src ?? this.imageSrc(product, this.currentAngle);
+    const thumbSrc = this.imageSrc(product, this.currentAngle, true);
+    const fullSrc = this.imageSrc(product, this.currentAngle, false);
+    detailImg.src = thumbSrc; // FLIP은 썸네일로 즉시 시작
     detailImg.alt = product.name_kr ?? product.id;
+    // full-size를 백그라운드 로드 후 교체 — 화질 개선
+    const preloadFull = new Image();
+    preloadFull.onload = () => { if (this.selectedIdx === idx) detailImg.src = fullSrc; };
+    preloadFull.src = fullSrc;
 
     (this.detailEl.querySelector('.detail-name-kr') as HTMLElement).textContent = product.name_kr ?? '';
     (this.detailEl.querySelector('.detail-name-en') as HTMLElement).textContent = product.name_en ?? product.id;
@@ -655,9 +661,8 @@ class Catalog {
     requestAnimationFrame(tick);
 
     if (this.selectedIdx !== null) {
-      const activeImg = this.items[this.selectedIdx].querySelector<HTMLImageElement>(`img[data-angle="${angle}"]`);
       const detailImg = this.detailEl.querySelector<HTMLImageElement>('.detail-img');
-      if (activeImg && detailImg) detailImg.src = activeImg.src;
+      if (detailImg) detailImg.src = this.imageSrc(this.products[this.selectedIdx], angle, false);
     }
   }
 }
