@@ -152,6 +152,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   flex-shrink: 0;
+  transform: translateY(-20px);
 }
 
 .detail-img-wrap {
@@ -175,7 +176,7 @@ html, body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 32px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
   text-align: center;
   opacity: 0;
   transform: translateY(8px);
@@ -263,8 +264,8 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
-.detail-prev { left: 58px; }
-.detail-next { right: 58px; }
+.detail-prev { left: 78px; }
+.detail-next { right: 78px; }
 
 #detail.visible .detail-nav {
   opacity: 1;
