@@ -61,7 +61,7 @@ html, body {
 #angle-toggle {
   position: fixed;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 32px);
   transform: translateX(-50%);
   transition: opacity 0.3s ease;
   display: flex;
