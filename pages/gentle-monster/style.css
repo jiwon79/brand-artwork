@@ -139,6 +139,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding-bottom: 400px;
   z-index: 40;
   cursor: pointer;
 }
@@ -260,8 +261,8 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
-.detail-prev { left: 8px; }
-.detail-next { right: 8px; }
+.detail-prev { left: 58px; }
+.detail-next { right: 58px; }
 
 #detail.visible .detail-nav {
   opacity: 1;
