@@ -61,6 +61,7 @@ function setEchoLevel(level: number) {
 const SAMPLE_URLS: Record<string, string> = {
   gangnam: new URL('./assets/gangnam.mp3', import.meta.url).href,
   ingan: new URL('./assets/ingan.mp3', import.meta.url).href,
+  yeoja: new URL('./assets/yeoja.mp3', import.meta.url).href,
 };
 const sampleBuffers = new Map<string, AudioBuffer>();
 const samplePending = new Map<string, Promise<AudioBuffer>>();
@@ -311,7 +312,7 @@ function playLove() {
 const SOUND_MAP: Record<string, () => void> = {
   gangnam: () => playSample('gangnam'),
   ingan: () => playSample('ingan'),
-  sexy: playSexy,
+  yeoja: () => playSample('yeoja'),
   damn: playDamn,
   fart1: () => playFart(false),
   fart2: () => playFart(true),
