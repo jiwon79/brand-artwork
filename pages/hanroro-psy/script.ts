@@ -68,6 +68,9 @@ const SAMPLE_URLS: Record<string, string> = {
   ultungbultung: new URL('./assets/ultungbultung.mp3', import.meta.url).href,
   eo: new URL('./assets/eo.mp3', import.meta.url).href,
   ehy: new URL('./assets/ehy.mp3', import.meta.url).href,
+  damngirl: new URL('./assets/damngirl.mp3', import.meta.url).href,
+  najeneun: new URL('./assets/najeneun.mp3', import.meta.url).href,
+  meori: new URL('./assets/meori.mp3', import.meta.url).href,
 };
 const sampleBuffers = new Map<string, AudioBuffer>();
 const samplePending = new Map<string, Promise<AudioBuffer>>();
@@ -325,9 +328,9 @@ const SOUND_MAP: Record<string, () => void> = {
   ultungbultung: () => playSample('ultungbultung'),
   eo: () => playSample('eo'),
   ehy: () => playSample('ehy'),
-  guitar: playGuitar,
-  sigh: playSigh,
-  love: playLove,
+  damngirl: () => playSample('damngirl'),
+  najeneun: () => playSample('najeneun'),
+  meori: () => playSample('meori'),
 };
 
 const lp = document.getElementById('lp') as HTMLDivElement;

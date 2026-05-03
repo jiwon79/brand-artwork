@@ -15,7 +15,7 @@ Interactive music pad interface combining:
 - **12 Sound Pads** (4x3 grid, bottom): Three rows with distinct visual styles and sound categories
   - Row 1 (Pink/Gangnam): gangnam, ingan, yeoja, ssanai (all sample-based)
   - Row 2 (Cyan/Fart): op, wanjeon, ultungbultung, eo (sample-based sounds)
-  - Row 3 (Cream/Hanroro): ehy, guitar, sigh, love (ehy is sample-based, others are synthesized)
+  - Row 3 (Cream/Hanroro): ehy, damngirl, najeneun, meori (all sample-based)
 
 ## 장면 (Scene Structure)
 
@@ -65,15 +65,12 @@ Interactive music pad interface combining:
 
 - Web Audio API context with master gain, dry/wet routing
 - Convolver for reverb/echo effect
-- Hybrid audio playback:
-  - Sample-based playback with fetch/decode infrastructure (loadSample, playSample)
-  - SAMPLE_URLS map with MP3 assets: gangnam.mp3, ingan.mp3, yeoja.mp3, ssanai.mp3, op.mp3, wanjeon.mp3, ultungbultung.mp3, eo.mp3, ehy.mp3
+- Sample-based playback with fetch/decode infrastructure (loadSample, playSample)
+  - SAMPLE_URLS map with MP3 assets: gangnam.mp3, ingan.mp3, yeoja.mp3, ssanai.mp3, op.mp3, wanjeon.mp3, ultungbultung.mp3, eo.mp3, ehy.mp3, damngirl.mp3, najeneun.mp3, meori.mp3
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach((name) => loadSample(name))`
   - Sample caching and pending request deduplication
-  - Synthesis for other sounds using oscillators and noise buffers (playSexy, playFart, playSanae, playOppa, playZero, playGuitar, playSigh, playLove)
-- SOUND_MAP: Maps pad dataset.sound attributes to playback functions
-  - gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy: playSample() - sample-based playback
-  - zero, guitar, sigh, love: synthesized sounds (playZero, playGuitar, playSigh, playLove)
-  - History: oppa (synthesized sound) was replaced with eo (sample-based sound); ehy transitioned from synthesized playEhy() to sample-based playSample('ehy')
+- Synthesized sounds still available (oscillators and noise buffers): playSexy, playFart, playSanae, playOppa, playZero (not in current SOUND_MAP)
+- SOUND_MAP: Maps pad dataset.sound attributes to sample-based playback functions
+  - All 12 sounds in SOUND_MAP use playSample(): gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
 - Dynamic filters and envelope control for each sound
 - FX chain: Filter (lowpass when enabled), Echo (wet/dry routing)
