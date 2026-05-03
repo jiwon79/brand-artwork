@@ -58,20 +58,43 @@ function setEchoLevel(level: number) {
   wetGain.gain.linearRampToValueAtTime(level, audioCtx.currentTime + 0.1);
 }
 
-function playOp() {
-  const t = audioCtx!.currentTime;
-  const osc = audioCtx!.createOscillator();
+const SAMPLE_URLS: Record<string, string> = {
+  gangnam: new URL('./assets/gangnam.mp3', import.meta.url).href,
+};
+const sampleBuffers = new Map<string, AudioBuffer>();
+const samplePending = new Map<string, Promise<AudioBuffer>>();
+
+async function loadSample(name: string): Promise<AudioBuffer> {
+  const cached = sampleBuffers.get(name);
+  if (cached) return cached;
+  const pending = samplePending.get(name);
+  if (pending) return pending;
+  const url = SAMPLE_URLS[name];
+  const p = fetch(url)
+    .then((r) => r.arrayBuffer())
+    .then((buf) => audioCtx!.decodeAudioData(buf))
+    .then((decoded) => {
+      sampleBuffers.set(name, decoded);
+      samplePending.delete(name);
+      return decoded;
+    });
+  samplePending.set(name, p);
+  return p;
+}
+
+function playSample(name: string) {
+  const buffer = sampleBuffers.get(name);
+  if (!buffer) {
+    loadSample(name).then(() => playSample(name));
+    return;
+  }
+  const src = audioCtx!.createBufferSource();
+  src.buffer = buffer;
   const gain = audioCtx!.createGain();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(180, t);
-  osc.frequency.exponentialRampToValueAtTime(120, t + 0.15);
-  gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(0.5, t + 0.005);
-  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
-  osc.connect(gain);
+  gain.gain.value = 1;
+  src.connect(gain);
   applyFXChain(gain);
-  osc.start(t);
-  osc.stop(t + 0.2);
+  src.start();
 }
 
 function playEhy() {
@@ -285,7 +308,7 @@ function playLove() {
 }
 
 const SOUND_MAP: Record<string, () => void> = {
-  op: playOp,
+  gangnam: () => playSample('gangnam'),
   ehy: playEhy,
   sexy: playSexy,
   damn: playDamn,
@@ -433,6 +456,7 @@ function startApp() {
   started = true;
   initAudio();
   if (audioCtx!.state === 'suspended') audioCtx!.resume();
+  Object.keys(SAMPLE_URLS).forEach((name) => loadSample(name));
   setupScratchCanvas();
   tonearm.classList.add('playing');
   setTimeout(() => playZero(), 300);

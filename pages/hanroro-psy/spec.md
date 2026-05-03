@@ -13,7 +13,7 @@ Interactive music pad interface combining:
 - **LP Record Player** (center): Vinyl spinning at variable speed based on glitch level, with scratch canvas overlay and tonearm
 - **4 FX Buttons** (2x2 grid, right side): Loop, Reverse, Filter, Echo effects
 - **12 Sound Pads** (4x3 grid, bottom): Three rows with distinct visual styles and sound categories
-  - Row 1 (Pink/Gangnam): "옵", "에~", "섹시레이디", "댐걸"
+  - Row 1 (Pink/Gangnam): "강남" (sample-based), "에~", "섹시레이디", "댐걸"
   - Row 2 (Cyan/Fart): Emoji-based fart sounds and variations
   - Row 3 (Cream/Hanroro): "0+0 후렴", "기타", "한숨", "사랑해요"
 
@@ -65,6 +65,14 @@ Interactive music pad interface combining:
 
 - Web Audio API context with master gain, dry/wet routing
 - Convolver for reverb/echo effect
-- Synthesized sounds using oscillators and noise buffers
+- Hybrid audio playback:
+  - Sample-based playback with fetch/decode infrastructure (loadSample, playSample)
+  - SAMPLE_URLS map with MP3 assets: gangnam.mp3
+  - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach((name) => loadSample(name))`
+  - Sample caching and pending request deduplication
+  - Synthesis for other sounds using oscillators and noise buffers (playEhy, playSexy, playDamn, playFart, playSanae, playOppa, playZero, playGuitar, playSigh, playLove)
+- SOUND_MAP: Maps pad dataset.sound attributes to playback functions
+  - gangnam: playSample('gangnam') - sample-based playback
+  - ehy, sexy, damn, fart1, fart2, sanae, oppa, zero, guitar, sigh, love - synthesized sounds
 - Dynamic filters and envelope control for each sound
 - FX chain: Filter (lowpass when enabled), Echo (wet/dry routing)
