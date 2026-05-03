@@ -14,7 +14,7 @@ Interactive music pad interface combining:
 - **4 FX Buttons** (2x2 grid, right side): Loop, Reverse, Filter, Echo effects
 - **12 Sound Pads** (4x3 grid, bottom): Three rows with distinct visual styles and sound categories
   - Row 1 (Pink/Gangnam): "강남" (sample-based), "인간", "여자", "싸나이" (all sample-based)
-  - Row 2 (Cyan/Fart): "옵" (Korean label), emoji-based fart sounds and variations
+  - Row 2 (Cyan/Fart): "옵", "완전", "사나에", "오빠달린다" (Korean labels and synthesized sounds)
   - Row 3 (Cream/Hanroro): "0+0 후렴", "기타", "한숨", "사랑해요"
 
 ## 장면 (Scene Structure)
@@ -67,13 +67,13 @@ Interactive music pad interface combining:
 - Convolver for reverb/echo effect
 - Hybrid audio playback:
   - Sample-based playback with fetch/decode infrastructure (loadSample, playSample)
-  - SAMPLE_URLS map with MP3 assets: gangnam.mp3, ingan.mp3, yeoja.mp3, ssanai.mp3, op.mp3
+  - SAMPLE_URLS map with MP3 assets: gangnam.mp3, ingan.mp3, yeoja.mp3, ssanai.mp3, op.mp3, wanjeon.mp3
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach((name) => loadSample(name))`
   - Sample caching and pending request deduplication
   - Synthesis for other sounds using oscillators and noise buffers (playEhy, playSexy, playFart, playSanae, playOppa, playZero, playGuitar, playSigh, playLove)
 - SOUND_MAP: Maps pad dataset.sound attributes to playback functions
-  - gangnam, ingan, yeoja, ssanai, op: playSample() - sample-based playback
-  - fart2, sanae, oppa, zero, guitar, sigh, love: synthesized sounds
-  - Note: fart1 was removed and replaced with op (sample-based)
+  - gangnam, ingan, yeoja, ssanai, op, wanjeon: playSample() - sample-based playback
+  - sanae, oppa, zero, guitar, sigh, love: synthesized sounds
+  - Note: fart2 was replaced with wanjeon (sample-based sound)
 - Dynamic filters and envelope control for each sound
 - FX chain: Filter (lowpass when enabled), Echo (wet/dry routing)
