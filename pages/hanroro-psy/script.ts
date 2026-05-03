@@ -63,6 +63,7 @@ const SAMPLE_URLS: Record<string, string> = {
   ingan: new URL('./assets/ingan.mp3', import.meta.url).href,
   yeoja: new URL('./assets/yeoja.mp3', import.meta.url).href,
   ssanai: new URL('./assets/ssanai.mp3', import.meta.url).href,
+  op: new URL('./assets/op.mp3', import.meta.url).href,
 };
 const sampleBuffers = new Map<string, AudioBuffer>();
 const samplePending = new Map<string, Promise<AudioBuffer>>();
@@ -315,7 +316,7 @@ const SOUND_MAP: Record<string, () => void> = {
   ingan: () => playSample('ingan'),
   yeoja: () => playSample('yeoja'),
   ssanai: () => playSample('ssanai'),
-  fart1: () => playFart(false),
+  op: () => playSample('op'),
   fart2: () => playFart(true),
   sanae: playSanae,
   oppa: playOppa,
