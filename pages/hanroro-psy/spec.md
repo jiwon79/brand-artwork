@@ -15,7 +15,7 @@ Interactive music pad interface combining:
 - **12 Sound Pads** (4x3 grid, bottom): Three rows with distinct visual styles and sound categories
   - Row 1 (Pink/Gangnam): gangnam, ingan, yeoja, ssanai (all sample-based)
   - Row 2 (Cyan/Fart): op, wanjeon, ultungbultung, eo (sample-based sounds)
-  - Row 3 (Cream/Hanroro): zero, guitar, sigh, love (synthesized sounds)
+  - Row 3 (Cream/Hanroro): ehy, guitar, sigh, love (ehy is sample-based, others are synthesized)
 
 ## 장면 (Scene Structure)
 
@@ -67,13 +67,13 @@ Interactive music pad interface combining:
 - Convolver for reverb/echo effect
 - Hybrid audio playback:
   - Sample-based playback with fetch/decode infrastructure (loadSample, playSample)
-  - SAMPLE_URLS map with MP3 assets: gangnam.mp3, ingan.mp3, yeoja.mp3, ssanai.mp3, op.mp3, wanjeon.mp3, ultungbultung.mp3, eo.mp3
+  - SAMPLE_URLS map with MP3 assets: gangnam.mp3, ingan.mp3, yeoja.mp3, ssanai.mp3, op.mp3, wanjeon.mp3, ultungbultung.mp3, eo.mp3, ehy.mp3
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach((name) => loadSample(name))`
   - Sample caching and pending request deduplication
-  - Synthesis for other sounds using oscillators and noise buffers (playEhy, playSexy, playFart, playSanae, playOppa, playZero, playGuitar, playSigh, playLove)
+  - Synthesis for other sounds using oscillators and noise buffers (playSexy, playFart, playSanae, playOppa, playZero, playGuitar, playSigh, playLove)
 - SOUND_MAP: Maps pad dataset.sound attributes to playback functions
-  - gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo: playSample() - sample-based playback
-  - zero, guitar, sigh, love: synthesized sounds
-  - History: oppa (synthesized sound) was replaced with eo (sample-based sound)
+  - gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy: playSample() - sample-based playback
+  - zero, guitar, sigh, love: synthesized sounds (playZero, playGuitar, playSigh, playLove)
+  - History: oppa (synthesized sound) was replaced with eo (sample-based sound); ehy transitioned from synthesized playEhy() to sample-based playSample('ehy')
 - Dynamic filters and envelope control for each sound
 - FX chain: Filter (lowpass when enabled), Echo (wet/dry routing)
