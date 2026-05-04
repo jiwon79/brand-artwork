@@ -3,7 +3,7 @@
 ## 파일 구성
 
 - `index.html` - Main interactive music pad interface
-- `script.ts` - TypeScript module for audio playback, effects, and interactions
+- `script.ts` - TypeScript module for audio playback and interactions
 - `style.css` - Styling and 3D cube effects for buttons and LP player
 - `/common/touch-cursor.ts` - Shared touch cursor module
 
@@ -11,12 +11,12 @@
 
 Interactive music pad interface combining:
 - **Two LP Record Players** (center): 
-  - Primary player (lp): Vinyl spinning at variable speed based on glitch level, with scratch canvas overlay and tonearm. Label displays image asset (IMG_7827.webp) instead of gradient + text
-  - Secondary player (lp2): "강남스타일" by PSY, static display with tonearm. Label displays image asset (IMG_7826.webp) instead of text
-- **12 Sound Pads** (4x3 grid, bottom): Three rows with distinct visual styles and sound categories
-  - Row 1 (Pink/Gangnam): gangnam, ingan, yeoja, ssanai (all sample-based)
-  - Row 2 (Cyan/Fart): op, wanjeon, ultungbultung, eo (sample-based sounds)
-  - Row 3 (Cream/Hanroro): ehy, damngirl, najeneun, meori (all sample-based)
+  - Primary player (lp): Vinyl record with tonearm
+  - Secondary player (lp2): "강남스타일" by PSY, static display with tonearm
+- **12 Sound Pads** (4x3 grid, bottom): Simple clickable pads for sound playback
+  - Row 1: gangnam, ingan, yeoja, ssanai
+  - Row 2: op, wanjeon, ultungbultung, eo
+  - Row 3: ehy, damngirl, najeneun, meori
 
 ## 장면 (Scene Structure)
 
@@ -25,68 +25,90 @@ Interactive music pad interface combining:
 ├── .center (top section: contains two LP players)
 │   ├── Layout: flex container with 24px gap and space-around distribution
 │   ├── Height: 38vh (fixed), with responsive adjustment to 32vh below 700px viewport height
-│   ├── .lp-wrap (LP player 1 - primary interactive)
+│   ├── .lp-wrap (LP player 1 - primary)
 │   │   ├── Height: min(100%, calc(50vw - 28px)) — constrains to viewport width with aspect-ratio 1:1
 │   │   ├── .lp-shadow (drop shadow)
 │   │   ├── .lp#lp (spinning vinyl record)
-│   │   │   ├── .label (record label with image background IMG_7827.webp, id="labelText")
-│   │   │   │   ├── .label-text (hidden with display: none)
-│   │   │   │   └── .label-sub (hidden with display: none)
-│   │   │   ├── canvas.scratch-canvas (scratch overlay)
+│   │   │   ├── .label (empty - no visual label content)
 │   │   │   └── .pin (center spindle)
 │   │   └── .tonearm#tonearm (tonearm element)
 │   └── .lp-wrap (LP player 2 - secondary/display)
 │       ├── .lp-shadow (drop shadow)
 │       ├── .lp#lp2 (static vinyl record - "강남스타일" by PSY)
-│       │   ├── .label.label-gangnam (record label with image background IMG_7826.webp)
-│       │   │   ├── .label-text (hidden with display: none)
-│       │   │   └── .label-sub (hidden with display: none)
+│       │   ├── .label (empty record label - no text content)
 │       │   └── .pin (center spindle)
 │       └── .tonearm#tonearm2 (tonearm element)
 └── .pad-grid (3x4 sound pad grid)
-    ├── .pad.row-gangnam (4x, pink background)
-    ├── .pad.row-fart (4x, cyan background)
-    └── .pad.row-hanroro (4x, cream/paper background)
+    ├── .pad.row-gangnam (4x)
+    ├── .pad.row-fart (4x)
+    └── .pad.row-hanroro (4x)
 ```
 
 ## 상호작용 (Interactions)
 
 ### LP Player (Primary - lp)
 - **Tap**: Initialize audio context and start playback
-- **Long press (700ms)**: Reset glitch level to 0
-- **Drag**: Generate scratch sounds and visual scratches on overlay
+- Label element is now empty (no text content or canvas)
+- All previous scratch, drag, and canvas-based functionality has been removed
 
 ### LP Player (Secondary - lp2)
-- Display-only "강남스타일" by PSY album cover with animated tonearm that plays when app starts (visual reference element with active animation)
+- **Tap**: Initialize audio context and start playback
+- Display-only "강남스타일" by PSY album reference with animated tonearm
+- Label element is empty (no text content)
 
 ### Sound Pads
-- **Tap**: Play associated sample sound, emit colored rays and particles, update glitch level
-  - Gangnam/Fart rows: Increase glitch (0.08)
-  - Hanroro row: Decrease glitch (-0.05)
+- **Pointerdown**: Play associated sample sound, add 'held' class for visual feedback
+  - 'held' state: Translate down 6px, scale to 0.97, brighten to 1.18x, saturate to 1.25x
+  - Gloss opacity reduced to 0.3 with scaleY(0.7) transform
+  - Row-specific shadow adjustments for pressed appearance
+- **Pointerup/Pointerleave/Pointercancel**: Remove 'held' class
+- All visual effects (rays, particles, glitch updates) have been removed
 
 ## 스타일 (Styling)
 
-- **LP Record Labels**: Image-based backgrounds (webp assets)
-  - Primary LP (.label): Background image IMG_7827.webp with fallback color #f4a872, center/cover sizing, overflow hidden
-  - Secondary LP (.label.label-gangnam): Background image IMG_7826.webp with fallback color #1a1006
-  - Text elements (.label-text, .label-sub) are hidden with display: none
-- **3D Cube Effect**: Heavy inset box-shadows and layered gradients for tactile button appearance
-- **Paper Texture**: Grain noise filter on Hanroro (cream) buttons
-- **Neon Glows**: Bright colors with box-shadow halos on Gangnam (pink) and Fart (cyan) buttons
-- **Dynamic Animations**: LP spins at variable speed based on glitch level (3.6s to 1.4s)
+### Color System
+- Light paper background (`--paper: #f4ead5`) with warm paper secondary (`--paper-warm: #e8d5b0`)
+- Deep paper accent (`--paper-deep: #c4b390`)
+- Dark ink text (`--ink: #1a1410`, soft: `--ink-soft: #3d2e25`)
+- Neon accents: pink (`#ff2e93`), cyan (`#00f0ff`), yellow (`#fff200`)
+
+### Button/Pad Styling
+- **Skeuomorphic 3D Design**: Heavy inset box-shadows and layered radial gradients for tactile raised button appearance
+- **Paper Texture**: Grain noise filter (SVG-based) applied to Hanroro (cream) row buttons
+- **Neon Glows**: Bright colors with layered box-shadow halos on Gangnam (pink) and Fart (cyan) buttons
+- **Highlight Gloss**: Subtle white gradient overlay on button surface (::after pseudo-element)
+- **Interaction State**: 'held' class for pressed state with brightness/saturation boost and reduced gloss opacity
+
+### LP Player Styling
+- **Vinyl Record**: Dark repeating-radial-gradient with realistic platter appearance
+- **Inset Shadows**: Deep inner shadows and subtle edge highlight for 3D depth
+- **Center Pin**: Radial gradient with bronze/gold tones and inset/outer shadows
+- **Tonearm**: Horizontal arm with pivot mount (::before) and cartridge/needle (::after)
+  - Position: top 0, right 0 with pivot at top-right corner (48deg rotation at rest)
+  - Width: 72% of container
+  - Transform origin: 100% 50% (right edge center for pivot rotation)
+  - Playing state: rotate to 34deg
+  - Pivot mount (::before): 24px circular element at right -12px offset
+  - Cartridge/needle (::after): 16px element at left -4px, top -5px
+  - Smooth 0.6s transition with cubic-bezier easing
+
+### Background & Texture
+- **Radial gradients** at 30% top-left and 70% bottom-right for subtle depth
+- **Noise overlay** (SVG-based feTurbulence with feColorMatrix) with 0.55 opacity using multiply blend mode
+- **Responsive**: Fixed 38vh center section, adjusts to 32vh below 700px viewport height
 
 ## 오디오 (Audio System)
 
-- Web Audio API context with master gain node
+- Web Audio API context with master gain node (gain value: 0.8)
 - Direct routing: source → masterGain → destination
 - Sample-based playback with fetch/decode infrastructure
   - `loadSample(name)`: Async loader with caching and pending request deduplication
-  - `playSample(name)`: Plays cached audio buffer directly to masterGain (no local gain, no tracking)
+  - `playSample(name)`: Plays cached audio buffer directly to masterGain
   - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
-- Scratch sound generation via `playScratchTick()`: Creates bandpass-filtered noise on pointer drag, routed through gain → masterGain
-- Audio Effects: **All FX button handlers have been removed**
-  - Previously supported effects (Loop, Reverse, Filter, Echo) are no longer functional
-  - FX button elements may still exist in HTML but have no event listeners
-  - **NOTE**: `applyFXChain()`, `setEchoLevel()`, reverb convolver, dry/wet routing, `loopInterval` variable, and all FX button event listeners have been removed
 - All 12 sounds use sample-based playback (no synthesized sounds)
+- **All FX and scratch sound generation have been removed**:
+  - `playScratchTick()` function removed
+  - Scratch canvas functionality removed
+  - Glitch level tracking removed
+  - Particle and ray emission removed
