@@ -10,8 +10,9 @@
 ## 컨셉
 
 Interactive music pad interface combining:
-- **LP Record Player** (center): Vinyl spinning at variable speed based on glitch level, with scratch canvas overlay and tonearm
-- **4 FX Buttons** (2x2 grid, right side): Loop, Reverse, Filter, Echo effects
+- **Two LP Record Players** (center): 
+  - Primary player (lp): Vinyl spinning at variable speed based on glitch level, with scratch canvas overlay and tonearm
+  - Secondary player (lp2): "강남스타일" by PSY, static display with tonearm
 - **12 Sound Pads** (4x3 grid, bottom): Three rows with distinct visual styles and sound categories
   - Row 1 (Pink/Gangnam): gangnam, ingan, yeoja, ssanai (all sample-based)
   - Row 2 (Cyan/Fart): op, wanjeon, ultungbultung, eo (sample-based sounds)
@@ -21,17 +22,24 @@ Interactive music pad interface combining:
 
 ```
 #stage (fixed full-screen container)
-├── .center (top section: 38vh height)
-│   ├── .lp-wrap (LP player container)
+├── .center (top section: contains two LP players)
+│   ├── Layout: flex container with 24px gap and space-around distribution
+│   ├── Height: 38vh (fixed), with responsive adjustment to 32vh below 700px viewport height
+│   ├── .lp-wrap (LP player 1 - primary interactive)
 │   │   ├── .lp-shadow (drop shadow)
-│   │   ├── .lp (spinning vinyl record)
-│   │   │   ├── .label (record label with text)
-│   │   │   ├── .pin (center spindle)
-│   │   │   └── canvas.scratch-canvas (scratch overlay)
-│   │   └── .tonearm (tonearm element)
-│   └── .fx-grid (2x2 effect buttons)
-│       ├── .fx-btn (loop, reverse, filter, echo)
-│       └── (repeats 4x)
+│   │   ├── .lp#lp (spinning vinyl record)
+│   │   │   ├── .label (record label with text, id="labelText")
+│   │   │   ├── canvas.scratch-canvas (scratch overlay)
+│   │   │   └── .pin (center spindle)
+│   │   └── .tonearm#tonearm (tonearm element)
+│   └── .lp-wrap (LP player 2 - secondary/display)
+│       ├── .lp-shadow (drop shadow)
+│       ├── .lp#lp2 (static vinyl record - "강남스타일" by PSY)
+│       │   ├── .label.label-gangnam
+│       │   │   ├── .label-text (강남스타일)
+│       │   │   └── .label-sub (PSY)
+│       │   └── .pin (center spindle)
+│       └── .tonearm#tonearm2 (tonearm element)
 └── .pad-grid (3x4 sound pad grid)
     ├── .pad.row-gangnam (4x, pink background)
     ├── .pad.row-fart (4x, cyan background)
@@ -40,19 +48,18 @@ Interactive music pad interface combining:
 
 ## 상호작용 (Interactions)
 
-### LP Player
+### LP Player (Primary - lp)
 - **Tap**: Initialize audio context and start playback
 - **Long press (700ms)**: Reset glitch level to 0
 - **Drag**: Generate scratch sounds and visual scratches on overlay
 
+### LP Player (Secondary - lp2)
+- Display-only "강남스타일" by PSY album cover with animated tonearm that plays when app starts (visual reference element with active animation)
+
 ### Sound Pads
-- **Tap**: Play associated synthesized sound, emit colored rays and particles, update glitch level
+- **Tap**: Play associated sample sound, emit colored rays and particles, update glitch level
   - Gangnam/Fart rows: Increase glitch (0.08)
   - Hanroro row: Decrease glitch (-0.05)
-
-### FX Buttons
-- **Hold Down**: Activate effect
-- **Release/Leave**: Deactivate effect
 
 ## 스타일 (Styling)
 
@@ -63,14 +70,16 @@ Interactive music pad interface combining:
 
 ## 오디오 (Audio System)
 
-- Web Audio API context with master gain, dry/wet routing
-- Convolver for reverb/echo effect
-- Sample-based playback with fetch/decode infrastructure (loadSample, playSample)
-  - SAMPLE_URLS map with MP3 assets: gangnam.mp3, ingan.mp3, yeoja.mp3, ssanai.mp3, op.mp3, wanjeon.mp3, ultungbultung.mp3, eo.mp3, ehy.mp3, damngirl.mp3, najeneun.mp3, meori.mp3
-  - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach((name) => loadSample(name))`
-  - Sample caching and pending request deduplication
-- Synthesized sounds still available (oscillators and noise buffers): playSexy, playFart, playSanae, playOppa, playZero (not in current SOUND_MAP)
-- SOUND_MAP: Maps pad dataset.sound attributes to sample-based playback functions
-  - All 12 sounds in SOUND_MAP use playSample(): gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
-- Dynamic filters and envelope control for each sound
-- FX chain: Filter (lowpass when enabled), Echo (wet/dry routing)
+- Web Audio API context with master gain node
+- Direct routing: source → masterGain → destination
+- Sample-based playback with fetch/decode infrastructure
+  - `loadSample(name)`: Async loader with caching and pending request deduplication
+  - `playSample(name)`: Plays cached audio buffer directly to masterGain (no local gain, no tracking)
+  - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
+  - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
+- Scratch sound generation via `playScratchTick()`: Creates bandpass-filtered noise on pointer drag, routed through gain → masterGain
+- Audio Effects: **All FX button handlers have been removed**
+  - Previously supported effects (Loop, Reverse, Filter, Echo) are no longer functional
+  - FX button elements may still exist in HTML but have no event listeners
+  - **NOTE**: `applyFXChain()`, `setEchoLevel()`, reverb convolver, dry/wet routing, `loopInterval` variable, and all FX button event listeners have been removed
+- All 12 sounds use sample-based playback (no synthesized sounds)

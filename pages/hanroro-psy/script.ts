@@ -28,9 +28,6 @@ const ROW_PARTICLES: Record<Row, string[]> = {
 
 let audioCtx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
-let dryGain: GainNode | null = null;
-let wetGain: GainNode | null = null;
-let filterOn = false;
 
 function initAudio() {
   if (audioCtx) return;
@@ -40,49 +37,7 @@ function initAudio() {
   audioCtx = new Ctor();
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 0.7;
-  dryGain = audioCtx.createGain();
-  wetGain = audioCtx.createGain();
-  wetGain.gain.value = 0;
-  const convolver = audioCtx.createConvolver();
-  convolver.buffer = makeImpulseResponse(2.0, 2.5);
-  dryGain.connect(masterGain);
-  wetGain.connect(convolver);
-  convolver.connect(masterGain);
   masterGain.connect(audioCtx.destination);
-}
-
-function makeImpulseResponse(duration: number, decay: number): AudioBuffer {
-  const ctx = audioCtx!;
-  const len = ctx.sampleRate * duration;
-  const ir = ctx.createBuffer(2, len, ctx.sampleRate);
-  for (let ch = 0; ch < 2; ch++) {
-    const data = ir.getChannelData(ch);
-    for (let i = 0; i < len; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
-    }
-  }
-  return ir;
-}
-
-function applyFXChain(srcNode: AudioNode) {
-  if (filterOn) {
-    const f = audioCtx!.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = 600;
-    f.Q.value = 4;
-    srcNode.connect(f);
-    f.connect(dryGain!);
-    f.connect(wetGain!);
-  } else {
-    srcNode.connect(dryGain!);
-    srcNode.connect(wetGain!);
-  }
-}
-
-function setEchoLevel(level: number) {
-  if (!wetGain || !audioCtx) return;
-  wetGain.gain.cancelScheduledValues(audioCtx.currentTime);
-  wetGain.gain.linearRampToValueAtTime(level, audioCtx.currentTime + 0.1);
 }
 
 const sampleBuffers = new Map<string, AudioBuffer>();
@@ -105,10 +60,7 @@ async function loadSample(name: string): Promise<AudioBuffer> {
   return p;
 }
 
-let lastSample: string | null = null;
-
 function playSample(name: string) {
-  lastSample = name;
   const buffer = sampleBuffers.get(name);
   if (!buffer) {
     loadSample(name).then(() => playSample(name));
@@ -116,9 +68,7 @@ function playSample(name: string) {
   }
   const src = audioCtx!.createBufferSource();
   src.buffer = buffer;
-  const gain = audioCtx!.createGain();
-  src.connect(gain);
-  applyFXChain(gain);
+  src.connect(masterGain!);
   src.start();
 }
 
@@ -140,14 +90,16 @@ function playScratchTick() {
   gain.gain.value = 0.15;
   src.connect(filter);
   filter.connect(gain);
-  applyFXChain(gain);
+  gain.connect(masterGain!);
   src.start(t);
   src.stop(t + dur);
 }
 
 const lp = document.getElementById('lp') as HTMLDivElement;
+const lp2 = document.getElementById('lp2') as HTMLDivElement;
 const labelText = document.getElementById('labelText') as HTMLDivElement;
 const tonearm = document.getElementById('tonearm') as HTMLDivElement;
+const tonearm2 = document.getElementById('tonearm2') as HTMLDivElement;
 const scratchCanvas = document.getElementById('scratchCanvas') as HTMLCanvasElement;
 
 let glitchLevel = 0;
@@ -272,6 +224,7 @@ function startApp() {
   Object.keys(SAMPLE_URLS).forEach(loadSample);
   setupScratchCanvas();
   tonearm.classList.add('playing');
+  tonearm2.classList.add('playing');
 }
 
 document.querySelectorAll<HTMLButtonElement>('.pad').forEach((pad) => {
@@ -298,51 +251,6 @@ document.querySelectorAll<HTMLButtonElement>('.pad').forEach((pad) => {
     }
     shiftGlitch(row === 'row-hanroro' ? -0.05 : 0.08);
   });
-});
-
-let loopInterval: number | null = null;
-document.querySelectorAll<HTMLButtonElement>('.fx-btn').forEach((btn) => {
-  const onDown = (e: PointerEvent) => {
-    e.preventDefault();
-    if (!started) {
-      startApp();
-      return;
-    }
-    const f = btn.dataset.fx;
-    btn.classList.add('held');
-    if (f === 'echo') setEchoLevel(0.55);
-    else if (f === 'filter') filterOn = true;
-    else if (f === 'reverse') {
-      lp.style.animationDirection = 'reverse';
-      tonearm.style.transform = 'rotate(28deg)';
-    } else if (f === 'loop') {
-      const replay = () => {
-        if (lastSample) playSample(lastSample);
-      };
-      replay();
-      loopInterval = window.setInterval(replay, 1300);
-    }
-  };
-  const onUp = (e: PointerEvent) => {
-    e.preventDefault();
-    const f = btn.dataset.fx;
-    btn.classList.remove('held');
-    if (f === 'echo') setEchoLevel(0);
-    else if (f === 'filter') filterOn = false;
-    else if (f === 'reverse') {
-      lp.style.animationDirection = 'normal';
-      tonearm.style.transform = '';
-    } else if (f === 'loop') {
-      if (loopInterval !== null) {
-        clearInterval(loopInterval);
-        loopInterval = null;
-      }
-    }
-  };
-  btn.addEventListener('pointerdown', onDown);
-  btn.addEventListener('pointerup', onUp);
-  btn.addEventListener('pointerleave', onUp);
-  btn.addEventListener('pointercancel', onUp);
 });
 
 let lpPressTimer: number | null = null;
