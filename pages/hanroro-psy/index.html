@@ -45,6 +45,12 @@
       <button class="pad row-hanroro" data-sound="najeneun"><span class="label-ko">낮에는<br>따사로운</span></button>
       <button class="pad row-hanroro" data-sound="meori"><span class="label-ko">머리푸는</span></button>
     </div>
+
+    <div class="player">
+      <button class="player-btn" id="playPause" aria-label="play"></button>
+      <input type="range" class="player-bar" id="seekbar" min="0" max="1000" value="0" step="1">
+    </div>
+    <audio id="bgm" preload="metadata"></audio>
   </div>
 
   <script type="module" src="script.ts"></script>

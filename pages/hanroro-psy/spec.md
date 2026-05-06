@@ -38,25 +38,38 @@ Interactive music pad interface combining:
 │       │   ├── .label (empty record label - no text content)
 │       │   └── .pin (center spindle)
 │       └── .tonearm#tonearm2 (tonearm element)
-└── .pad-grid (3x4 sound pad grid)
-    ├── Layout: CSS grid with 4 columns, auto-sized rows, top-aligned content
-    ├── Grid template: `grid-template-columns: repeat(4, 1fr); grid-auto-rows: min-content; align-content: start;`
-    ├── Padding: 16px 18px max(22px, env(safe-area-inset-bottom)) 18px
-    ├── Gap: 12px
-    ├── .pad.row-gangnam (4x)
-    │   ├── Aspect ratio: 1:1 (square)
-    ├── .pad.row-fart (4x)
-    │   ├── Aspect ratio: 1:1 (square)
-    └── .pad.row-hanroro (4x)
-        ├── Aspect ratio: 1:1 (square)
+├── .pad-grid (3x4 sound pad grid)
+│   ├── Layout: CSS grid with 4 columns, auto-sized rows, top-aligned content
+│   ├── Grid template: `grid-template-columns: repeat(4, 1fr); grid-auto-rows: min-content; align-content: start;`
+│   ├── Padding: 16px 18px max(22px, env(safe-area-inset-bottom)) 18px
+│   ├── Gap: 12px
+│   ├── .pad.row-gangnam (4x)
+│   │   ├── Aspect ratio: 1:1 (square)
+│   ├── .pad.row-fart (4x)
+│   │   ├── Aspect ratio: 1:1 (square)
+│   └── .pad.row-hanroro (4x)
+│       ├── Aspect ratio: 1:1 (square)
+│       └── Last pad: meori (머리푸는)
+├── .player (media player controls)
+│   ├── .player-btn#playPause (play/pause button)
+│   │   └── aria-label="play"
+│   └── .player-bar#seekbar (playback progress slider)
+│       ├── type="range", min="0", max="1000", value="0", step="1"
+└── audio#bgm (background audio element)
+    └── preload="metadata"
 ```
 
 ## 상호작용 (Interactions)
 
 ### LP Player (Primary - lp)
 - **Tap**: Initialize audio context and start playback
+- **Scrubbing Interaction**: Interactive drag control for vinyl rotation
+  - CSS variable `--lp-angle` controls rotation angle dynamically
+  - **Pointerdown**: Add 'scrubbing' class, display cursor: grabbing
+  - **Pointermove**: Update `--lp-angle` based on drag movement
+  - **Pointerup**: Remove 'scrubbing' class, reset cursor
 - Label element is now empty (no text content or canvas)
-- All previous scratch, drag, and canvas-based functionality has been removed
+- No longer auto-spinning (animation removed) — rotation is now user-controlled
 
 ### LP Player (Secondary - lp2)
 - **Tap**: Initialize audio context and start playback
@@ -71,6 +84,19 @@ Interactive music pad interface combining:
 - **Pointerup/Pointerleave/Pointercancel**: Remove 'held' class
 - All visual effects (rays, particles, glitch updates) have been removed
 
+### Media Player Controls
+- **.player-btn#playPause**: Play/pause toggle button
+  - **Click**: Toggle playback state of #bgm audio element
+  - Visual state updates based on audio playback status
+- **.player-bar#seekbar**: Range input for audio progress control
+  - **Input**: Updates playback position of #bgm audio element
+  - Range: 0-1000 (normalized scale, maps to audio duration)
+  - Step: 1 unit per increment
+  - **Pointerup**: Seek to selected position in audio playback
+- **#bgm audio element**: Hidden audio player
+  - Preloads metadata for accurate duration information
+  - Connected to player controls for playback synchronization
+
 ## 스타일 (Styling)
 
 ### Color System
@@ -83,11 +109,23 @@ Interactive music pad interface combining:
 - **Skeuomorphic 3D Design**: Heavy inset box-shadows and layered radial gradients for tactile raised button appearance
 - **Paper Texture**: Grain noise filter (SVG-based) applied to Hanroro (cream) row buttons
 - **Neon Glows**: Bright colors with simplified box-shadow halos on Gangnam (pink) and Fart (cyan) buttons
-  - **Gangnam (pink)**: Streamlined shadow with 3 outer layers (base color, mid blur, far blur) instead of multi-step depth
-  - **Fart (cyan)**: Streamlined shadow with 3 outer layers (base color, mid blur, far blur) instead of multi-step depth
-  - **Hanroro (cream)**: Streamlined shadow with 2 outer layers (base color + enhanced blur, far blur) — simplified from previous multi-step depth effect
-    - Base layer: `0 6px 0 #877555` (solid shadow)
-    - Mid-blur layer: `0 8px 10px rgba(140, 110, 70, 0.45)` (medium spread)
+  - **Gangnam (pink)**: Streamlined shadow with 4 outer layers (base color, mid-layer color, mid blur, far blur) for enhanced depth
+    - Base layer: `0 1px 0 rgba(255, 150, 200, 0.5)` (soft highlight)
+    - Mid-layer: `0 3px 0 #c61774` (first solid shadow)
+    - Additional layer: `0 6px 0 #4a052b` (second solid shadow)
+    - Mid-blur layer: `0 8px 10px rgba(80, 5, 40, 0.5)` (medium spread)
+    - Far-blur layer: `0 16px 24px rgba(60, 30, 40, 0.35)` (distant shadow)
+  - **Fart (cyan)**: Streamlined shadow with 4 outer layers (base color, mid-layer color, mid blur, far blur) for enhanced depth
+    - Base layer: `0 1px 0 rgba(180, 255, 255, 0.6)` (soft highlight)
+    - Mid-layer: `0 3px 0 #00b0c4` (first solid shadow)
+    - Additional layer: `0 6px 0 #003a48` (second solid shadow)
+    - Mid-blur layer: `0 8px 10px rgba(0, 50, 60, 0.5)` (medium spread)
+    - Far-blur layer: `0 16px 24px rgba(20, 50, 60, 0.35)` (distant shadow)
+  - **Hanroro (cream)**: Streamlined shadow with 4 outer layers (base color, mid-layer color, mid blur, far blur) for enhanced depth
+    - Base layer: `0 1px 0 rgba(255, 250, 230, 0.7)` (soft highlight)
+    - Mid-layer: `0 3px 0 #c4b390` (first solid shadow)
+    - Additional layer: `0 6px 0 #4a3e2a` (second solid shadow)
+    - Mid-blur layer: `0 8px 10px rgba(80, 60, 30, 0.5)` (medium spread)
     - Far-blur layer: `0 16px 24px rgba(80, 60, 30, 0.35)` (distant shadow)
 - **Highlight Gloss**: Subtle white gradient overlay on button surface (::after pseudo-element)
 - **Interaction State**: 'held' class for pressed state with brightness/saturation boost and reduced gloss opacity
@@ -117,6 +155,54 @@ Interactive music pad interface combining:
   - Cartridge/needle (::after): 16px element at left -4px, top -5px
   - Smooth 0.6s transition with cubic-bezier easing
 
+### Media Player Controls Styling (.player, .player-btn, .player-bar)
+- **.player** (container):
+  - Layout: `flex: 0 0 auto` with flex direction row, center-aligned items, 14px gap
+  - Padding: `10px 18px max(14px, env(safe-area-inset-bottom)) 18px` (responsive bottom padding for safe areas)
+  - Background: Linear gradient `180deg, #f4ead5 0%, #e3d5b8 100%` (warm paper to deeper paper)
+  - Border: Top border `1px solid rgba(110, 80, 50, 0.25)` (subtle dark divider)
+  - Shadows: Inset top highlight and bottom soft shadow for subtle depth
+  
+- **.player-btn** (play/pause button):
+  - Dimensions: 44px diameter circular button (`border-radius: 50%`)
+  - Background: Radial gradient with ellipse at 30% 25% from light (`#fdf6e0`) to cream (`#f4ead5`) to deep brown (`#c4b390`)
+  - Box-shadow: Complex 5-layer shadow system
+    - Inset highlight: `inset 0 1px 0 rgba(255, 252, 240, 0.9)` (top light)
+    - Inset mid-shadow: `inset 0 -2px 4px rgba(140, 110, 70, 0.4)` (bottom depth)
+    - Outer layers: Solid shadows at 2px and 4px offsets, plus soft blur for 3D embossed effect
+  - State transitions: `transform 0.06s, box-shadow 0.06s` for quick visual response
+  
+- **.player-btn::before** (play icon):
+  - Default state: Triangle pointing right (play icon) using border trick
+    - `border-left: 12px solid var(--ink)` with transparent top/bottom
+    - Positioned center with `transform: translate(-35%, -50%)`
+  - Playing state (`.player-btn.playing::before`): Pause icon using linear-gradient bars
+    - Two vertical bars rendered via gradient pattern
+    - `background: linear-gradient(90deg, var(--ink) 0 35%, transparent 35% 65%, var(--ink) 65% 100%)`
+  
+- **.player-btn:active** (pressed state):
+  - Transform: `translateY(3px)` (pushed down appearance)
+  - Box-shadow: Reduced depth shadows to match inset pressed effect
+  
+- **.player-bar** (progress slider):
+  - Layout: `flex: 1 1 auto` to fill available width
+  - Height: 8px track with 6px border-radius for rounded appearance
+  - Background: Linear gradient `180deg, #c4b390 0%, #9a8866 100%` (paper deep to mid-brown)
+  - Appearance: Reset with `-webkit-appearance: none; appearance: none;`
+  - Outline: Removed for clean look
+  - Box-shadow: Inset shadows for track depth and subtle highlights
+  
+- **.player-bar::-webkit-slider-thumb** (slider thumb - Webkit):
+  - Dimensions: 18px circular thumb
+  - Background: Radial gradient with light center (`#fdf6e0`) to mid-brown (`#c4b390`) to dark (`#6e5e44`)
+  - Box-shadow: Inset highlight plus outer shadow for 3D embossed appearance
+  - Cursor: pointer
+  
+- **.player-bar::-moz-range-thumb** (slider thumb - Firefox):
+  - Identical styling to Webkit version for cross-browser consistency
+  - No border (reset with `border: none`)
+  - Same radial gradient and shadow system
+
 ### Background & Texture
 - **Radial gradients** at 30% top-left and 70% bottom-right for subtle depth
 - **Noise overlay** (SVG-based feTurbulence with feColorMatrix) with 0.55 opacity using multiply blend mode
@@ -124,12 +210,13 @@ Interactive music pad interface combining:
 
 ## 오디오 (Audio System)
 
-- Web Audio API context with master gain node (gain value: 0.8)
+- Web Audio API context with master gain node (gain value: 0.85)
 - Direct routing: source → masterGain → destination
 - Sample-based playback with fetch/decode infrastructure
   - `loadSample(name)`: Async loader with caching and pending request deduplication
   - `playSample(name)`: Plays cached audio buffer directly to masterGain
   - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
+  - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`)
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
 - All 12 sounds use sample-based playback (no synthesized sounds)
 - **All FX and scratch sound generation have been removed**:
@@ -137,3 +224,42 @@ Interactive music pad interface combining:
   - Scratch canvas functionality removed
   - Glitch level tracking removed
   - Particle and ray emission removed
+
+## 구현 상세 (Implementation Details)
+
+### Animation Loop & Rendering
+- **Animation Frame Loop (`tick` function)**:
+  - Runs on `requestAnimationFrame` for 60fps smooth rotation
+  - Calculates delta time (dt) with 50ms cap for stability
+  - Updates both LP rotation angles based on playback state
+  - Updates seekbar position synchronized with audio currentTime
+  
+### LP Player Controls
+- **Primary LP (lp) - Interactive Scrubbing**:
+  - Angle tracking: `pointerAngleOnLP()` calculates angle from center using `atan2`
+  - Scrubbing state: `leftScrubbing` boolean tracks active drag
+  - Delta calculation with wraparound handling (±180° normalization)
+  - Audio seek mapping: `delta * SCRUB_SEC_PER_DEG` (12 seconds per full rotation)
+  - Pointer capture for smooth off-screen dragging
+  - Visual feedback: 'scrubbing' class adds `cursor: grabbing`
+  
+- **Secondary LP (lp2) - Synchronized Rotation**:
+  - Spins at same SPIN_DPS rate as primary when playing
+  - No scrubbing interaction (display-only)
+  
+### Playback Control
+- **Play/Pause Button (#playPause)**:
+  - Click handler toggles bgm.play() / bgm.pause()
+  - Async play with error handling
+  - UI sync function `syncPlayingUI()` updates button and tonearm classes based on bgm state
+  - Event listeners: 'play', 'pause', 'ended' events trigger UI updates
+  
+- **Seekbar (#seekbar)**:
+  - Range input (0-1000) normalized to audio duration
+  - Input event updates bgm.currentTime
+  - Pointerdown/pointerup flag prevents scrubbing conflicts
+  - Reading seekbarDragging prevents animation loop from overwriting user input
+
+### Constants
+- `SPIN_DPS = 100`: Rotation speed in degrees per second (≈3.6 seconds per full revolution)
+- `SCRUB_SEC_PER_DEG = 12 / 360`: Playback time delta per degree of rotation (12 seconds per full turn)

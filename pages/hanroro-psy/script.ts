@@ -13,6 +13,8 @@ const SAMPLE_URLS: Record<string, string> = {
   meori: new URL('./assets/meori.mp3', import.meta.url).href,
 };
 
+const BGM_URL = new URL('./assets/bgm.mp3', import.meta.url).href;
+
 let audioCtx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 
@@ -23,7 +25,7 @@ function initAudio() {
     (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   audioCtx = new Ctor();
   masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.8;
+  masterGain.gain.value = 0.85;
   masterGain.connect(audioCtx.destination);
 }
 
@@ -59,8 +61,14 @@ function playSample(name: string) {
   src.start();
 }
 
+const lp = document.getElementById('lp') as HTMLDivElement;
+const lp2 = document.getElementById('lp2') as HTMLDivElement;
 const tonearm = document.getElementById('tonearm') as HTMLDivElement;
 const tonearm2 = document.getElementById('tonearm2') as HTMLDivElement;
+const playBtn = document.getElementById('playPause') as HTMLButtonElement;
+const seekbar = document.getElementById('seekbar') as HTMLInputElement;
+const bgm = document.getElementById('bgm') as HTMLAudioElement;
+bgm.src = BGM_URL;
 
 let started = false;
 function startApp() {
@@ -69,10 +77,71 @@ function startApp() {
   initAudio();
   if (audioCtx!.state === 'suspended') audioCtx!.resume();
   Object.keys(SAMPLE_URLS).forEach(loadSample);
-  tonearm.classList.add('playing');
-  tonearm2.classList.add('playing');
 }
 
+/* === LP 회전 + 좌측 LP 스크럽 === */
+const lpAngles = [0, 0]; // [left, right] degrees
+const SPIN_DPS = 100; // deg/sec (≈3.6s/rev)
+const SCRUB_SEC_PER_DEG = 12 / 360; // 한 바퀴 ≈ 12초 이동
+let leftScrubbing = false;
+let prevPointerAngle = 0;
+let lastT = performance.now();
+
+function tick(now: number) {
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  const playing = !bgm.paused && !bgm.ended;
+  if (playing && !leftScrubbing) lpAngles[0] += dt * SPIN_DPS;
+  if (playing) lpAngles[1] += dt * SPIN_DPS;
+  lp.style.setProperty('--lp-angle', `${lpAngles[0]}deg`);
+  lp2.style.setProperty('--lp-angle', `${lpAngles[1]}deg`);
+  if (!leftScrubbing && bgm.duration && !seekbarDragging) {
+    seekbar.value = String((bgm.currentTime / bgm.duration) * 1000);
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+function pointerAngleOnLP(e: PointerEvent): number {
+  const r = lp.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  return (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+}
+
+lp.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (!started) startApp();
+  leftScrubbing = true;
+  lp.classList.add('scrubbing');
+  lp.setPointerCapture(e.pointerId);
+  prevPointerAngle = pointerAngleOnLP(e);
+});
+lp.addEventListener('pointermove', (e) => {
+  if (!leftScrubbing) return;
+  const a = pointerAngleOnLP(e);
+  let delta = a - prevPointerAngle;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  prevPointerAngle = a;
+  lpAngles[0] += delta;
+  if (bgm.duration && isFinite(bgm.duration)) {
+    const next = bgm.currentTime + delta * SCRUB_SEC_PER_DEG;
+    bgm.currentTime = Math.max(0, Math.min(bgm.duration, next));
+  }
+});
+const releaseLp = (e: PointerEvent) => {
+  if (!leftScrubbing) return;
+  leftScrubbing = false;
+  lp.classList.remove('scrubbing');
+  try {
+    lp.releasePointerCapture(e.pointerId);
+  } catch {}
+};
+lp.addEventListener('pointerup', releaseLp);
+lp.addEventListener('pointercancel', releaseLp);
+
+/* === 패드 (hold to keep pressed) === */
 document.querySelectorAll<HTMLButtonElement>('.pad').forEach((pad) => {
   const onDown = (e: PointerEvent) => {
     e.preventDefault();
@@ -95,11 +164,38 @@ document.querySelectorAll<HTMLButtonElement>('.pad').forEach((pad) => {
   pad.addEventListener('pointercancel', onUp);
 });
 
-document.querySelectorAll<HTMLDivElement>('.lp').forEach((lpEl) => {
-  lpEl.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    if (!started) startApp();
-  });
+/* === 플레이어 === */
+function syncPlayingUI() {
+  const playing = !bgm.paused && !bgm.ended;
+  playBtn.classList.toggle('playing', playing);
+  tonearm.classList.toggle('playing', playing);
+  tonearm2.classList.toggle('playing', playing);
+}
+bgm.addEventListener('play', syncPlayingUI);
+bgm.addEventListener('pause', syncPlayingUI);
+bgm.addEventListener('ended', syncPlayingUI);
+
+playBtn.addEventListener('click', async () => {
+  if (!started) startApp();
+  if (bgm.paused) {
+    try {
+      await bgm.play();
+    } catch {}
+  } else {
+    bgm.pause();
+  }
+});
+
+let seekbarDragging = false;
+seekbar.addEventListener('pointerdown', () => {
+  seekbarDragging = true;
+});
+seekbar.addEventListener('pointerup', () => {
+  seekbarDragging = false;
+});
+seekbar.addEventListener('input', () => {
+  if (!bgm.duration) return;
+  bgm.currentTime = (Number(seekbar.value) / 1000) * bgm.duration;
 });
 
 document.addEventListener('contextmenu', (e) => e.preventDefault());
