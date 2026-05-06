@@ -59,7 +59,7 @@ async function loadSample(name: string): Promise<AudioBuffer> {
 function playScratchTick(intensity: number) {
   if (!audioCtx || !masterGain) return;
   const t = audioCtx.currentTime;
-  const dur = 0.07;
+  const dur = 0.22;
   const bufSize = Math.floor(audioCtx.sampleRate * dur);
   const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
   const data = buf.getChannelData(0);
@@ -68,12 +68,12 @@ function playScratchTick(intensity: number) {
   src.buffer = buf;
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'bandpass';
-  filter.frequency.value = 1200 + Math.random() * 2400;
-  filter.Q.value = 4;
+  filter.frequency.value = 250 + Math.random() * 700;
+  filter.Q.value = 0.9;
   const gain = audioCtx.createGain();
-  const peak = Math.min(0.45, 0.12 + intensity * 0.6);
+  const peak = Math.min(0.3, 0.08 + intensity * 0.45);
   gain.gain.setValueAtTime(0.0001, t);
-  gain.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(peak, t + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   src.connect(filter);
   filter.connect(gain);
@@ -166,7 +166,7 @@ lp.addEventListener('pointermove', (e) => {
   }
   const now = performance.now();
   const intensity = Math.min(1, Math.abs(delta) / 14);
-  if (intensity > 0.05 && now - lastScratchT > 45) {
+  if (intensity > 0.05 && now - lastScratchT > 25) {
     lastScratchT = now;
     playScratchTick(intensity);
   }

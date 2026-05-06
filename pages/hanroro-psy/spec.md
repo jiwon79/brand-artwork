@@ -249,10 +249,10 @@ Interactive music pad interface combining:
 - All 12 sounds use sample-based playback (no synthesized sounds)
 - **Scratch Sound Generation**:
   - `playScratchTick(intensity: number)`: Procedural scratch tick sound generator
-    - Generates white noise buffer (70ms duration)
-    - Applies bandpass filter (1200-3600 Hz, Q=4)
-    - Envelope: 5ms attack, then exponential decay to 70ms
-    - Peak amplitude: 0.12 to 0.45 (scaled by intensity parameter, 0-1 range)
+    - Generates white noise buffer (220ms duration)
+    - Applies bandpass filter (250-950 Hz, Q=0.9)
+    - Envelope: 20ms attack, then exponential decay to 220ms
+    - Peak amplitude: 0.08 to 0.3 (scaled by intensity parameter, 0-1 range)
     - Routed through masterGain output chain
 
 ## 구현 상세 (Implementation Details)
@@ -275,7 +275,7 @@ Interactive music pad interface combining:
   - **Scratch Sound Feedback**:
     - Triggered during pointermove when scrubbing
     - Intensity calculated as: `Math.min(1, Math.abs(delta) / 14)` (normalized 0-1 range)
-    - Throttled by 45ms: Only plays if `now - lastScratchT > 45`
+    - Throttled by 25ms: Only plays if `now - lastScratchT > 25`
     - Calls `playScratchTick(intensity)` to generate procedural scratch sound
   
 - **Secondary LP (lp2) - Synchronized Rotation**:
