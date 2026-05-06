@@ -26,7 +26,12 @@ html, body {
   background: var(--paper);
   font-family: 'Gowun Batang', serif;
   color: var(--ink);
-  touch-action: manipulation;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.pad {
+  touch-action: none;
 }
 
 #stage {

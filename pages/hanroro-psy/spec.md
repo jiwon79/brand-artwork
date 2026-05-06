@@ -295,6 +295,15 @@ Interactive music pad interface combining:
   - Pointerdown/pointerup flag prevents scrubbing conflicts
   - Reading seekbarDragging prevents animation loop from overwriting user input
 
+### Event Prevention Handlers
+- **Global Touch Gesture Prevention**:
+  - `document.addEventListener('gesturestart', (e) => e.preventDefault())` - Prevents iOS multi-touch gesture events
+  - `document.addEventListener('gesturechange', (e) => e.preventDefault())` - Prevents ongoing gesture changes
+  - `document.addEventListener('gestureend', (e) => e.preventDefault())` - Prevents gesture completion
+- **Context Menu & Double-Click Prevention**:
+  - `document.addEventListener('contextmenu', (e) => e.preventDefault())` - Prevents right-click context menu
+  - `document.addEventListener('dblclick', (e) => e.preventDefault())` - Prevents double-click default behavior (text selection, etc.)
+
 ### Constants
 - `SPIN_DPS = 100`: Rotation speed in degrees per second (≈3.6 seconds per full revolution)
 - `SCRUB_SEC_PER_DEG = 12 / 360`: Playback time delta per degree of rotation (12 seconds per full turn)
