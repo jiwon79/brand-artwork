@@ -259,7 +259,12 @@ Interactive music pad interface combining:
     - Default gain: 1 (no boost) for all other samples
   - Audio chain per sample: source → gainNode (gain = SAMPLE_GAIN[name] ?? 1) → masterGain
   - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
-  - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`) with volume set to 0.33
+  - **BGM Audio Routing** (via Web Audio API):
+    - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`)
+    - BGM is routed through Web Audio GainNode for iOS compatibility (audio.volume property is ignored on iOS)
+    - Audio chain: HTMLAudioElement (bgm) → mediaElementSource → bgmGain → audioCtx.destination
+    - bgmGain gain value: 0.33 (matches original bgm.volume setting)
+    - Routing is wrapped in try-catch to handle browser compatibility
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
 - All 12 sounds use sample-based playback (no synthesized sounds)
 - **Scratch Sound Generation**:
@@ -332,10 +337,10 @@ The application includes a debug GUI for real-time parameter tuning using lil-gu
 
 **Tonearm Folder Controls**:
 - `top` (0-50, step 0.5): Vertical position of tonearm as percentage
-  - Default: 12%
+  - Default: 0%
   - Maps to CSS variable `--ta-top`
 - `right` (0-50, step 0.5): Horizontal position from right edge as percentage
-  - Default: 12%
+  - Default: 4%
   - Maps to CSS variable `--ta-right`
 - `width` (20-100, step 0.5): Tonearm width as percentage of container
   - Default: 60%
@@ -344,10 +349,10 @@ The application includes a debug GUI for real-time parameter tuning using lil-gu
   - Default: 6px
   - Maps to CSS variable `--ta-height`
 - `rotIdle` (-180 to 180, step 1): Rotation angle at rest (idle state) in degrees
-  - Default: -35°
+  - Default: 15°
   - Maps to CSS variable `--ta-rot`
 - `rotPlaying` (-180 to 180, step 1): Rotation angle when music is playing in degrees
-  - Default: -50°
+  - Default: -12°
   - Maps to CSS variable `--ta-rot-playing`
 - `pivotOffset` (-40 to 40, step 1): Horizontal offset of pivot mount in pixels
   - Default: -12px
@@ -375,7 +380,7 @@ The application includes a debug GUI for real-time parameter tuning using lil-gu
   - Label: "pad master"
 - `bgm` (0-1, step 0.01): Background music volume level
   - Default: 0.33
-  - Affects: `bgm.volume` (HTML audio element)
+  - Affects: `bgmGain.gain.value` (Web Audio API gain node) and `bgm.volume` (HTML audio element)
   - Label: "bgm volume"
 
 **Implementation Details**:

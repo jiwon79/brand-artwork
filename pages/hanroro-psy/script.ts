@@ -19,6 +19,7 @@ const BGM_URL = new URL('./assets/bgm.mp3', import.meta.url).href;
 
 let audioCtx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+let bgmGain: GainNode | null = null;
 
 function initAudio() {
   if (audioCtx) return;
@@ -36,6 +37,14 @@ function initAudio() {
   limiter.release.value = 0.08;
   masterGain.connect(limiter);
   limiter.connect(audioCtx.destination);
+  // BGM 라우팅: HTMLAudioElement → Web Audio (iOS는 audio.volume 무시하므로 GainNode 필요)
+  try {
+    const bgmSrc = audioCtx.createMediaElementSource(bgm);
+    bgmGain = audioCtx.createGain();
+    bgmGain.gain.value = 0.33;
+    bgmSrc.connect(bgmGain);
+    bgmGain.connect(audioCtx.destination);
+  } catch {}
 }
 
 const sampleBuffers = new Map<string, AudioBuffer>();
@@ -259,12 +268,12 @@ document.addEventListener('dblclick', (e) => e.preventDefault());
 
 /* === Tuning GUI === */
 const tonearm$ = {
-  top: 12,
-  right: 12,
+  top: 0,
+  right: 4,
   width: 60,
   height: 6,
-  rotIdle: -35,
-  rotPlaying: -50,
+  rotIdle: 15,
+  rotPlaying: -12,
   pivotOffset: -12,
   pivotSize: 24,
   cartLeft: -4,
@@ -293,6 +302,7 @@ function applyTonearm() {
 }
 function applyAudio() {
   if (masterGain) masterGain.gain.value = audio$.master;
+  if (bgmGain) bgmGain.gain.value = audio$.bgm;
   bgm.volume = audio$.bgm;
 }
 applyTonearm();
