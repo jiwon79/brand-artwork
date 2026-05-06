@@ -76,7 +76,7 @@ const playBtn = document.getElementById('playPause') as HTMLButtonElement;
 const seekbar = document.getElementById('seekbar') as HTMLInputElement;
 const bgm = document.getElementById('bgm') as HTMLAudioElement;
 bgm.src = BGM_URL;
-bgm.volume = 0.66;
+bgm.volume = 0.33;
 
 let started = false;
 function startApp() {
@@ -154,19 +154,23 @@ document.querySelectorAll<HTMLButtonElement>('.pad').forEach((pad) => {
   const onDown = (e: PointerEvent) => {
     e.preventDefault();
     if (!started) startApp();
-    if (pad.classList.contains('held')) return;
     pad.classList.add('held');
+    try {
+      pad.setPointerCapture(e.pointerId);
+    } catch {}
     const sound = pad.dataset.sound;
     if (sound && SAMPLE_URLS[sound]) playSample(sound);
   };
   const onUp = (e: PointerEvent) => {
-    e.preventDefault();
     pad.classList.remove('held');
+    try {
+      pad.releasePointerCapture(e.pointerId);
+    } catch {}
   };
   pad.addEventListener('pointerdown', onDown);
   pad.addEventListener('pointerup', onUp);
-  pad.addEventListener('pointerleave', onUp);
   pad.addEventListener('pointercancel', onUp);
+  pad.addEventListener('lostpointercapture', onUp);
 });
 
 /* === 플레이어 === */

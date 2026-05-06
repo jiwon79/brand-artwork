@@ -79,10 +79,13 @@ Interactive music pad interface combining:
 ### Sound Pads
 - **Pointerdown**: Initialize audio context (if not already started), play associated sample sound, add 'held' class for visual feedback
   - If app not started: Call `startApp()` to initialize audio context, then immediately play the sound and add visual feedback
+  - Call `pad.setPointerCapture(e.pointerId)` to capture pointer events (wrapped in try-catch for browser compatibility)
   - 'held' state: Translate down 6px, scale to 0.97, brighten to 1.18x, saturate to 1.25x
   - Gloss opacity reduced to 0.3 with scaleY(0.7) transform
   - Row-specific shadow adjustments for pressed appearance
-- **Pointerup/Pointerleave/Pointercancel**: Remove 'held' class
+- **Pointerup/Pointercancel/Lostpointercapture**: Remove 'held' class and release pointer capture
+  - Call `pad.releasePointerCapture(e.pointerId)` on pointerup and lostpointercapture (wrapped in try-catch)
+  - Removed `pointerleave` event listener (replaced with `lostpointercapture` for proper capture handling)
 - All visual effects (rays, particles, glitch updates) have been removed
 
 ### Media Player Controls
@@ -241,7 +244,7 @@ Interactive music pad interface combining:
   - `loadSample(name)`: Async loader with caching and pending request deduplication
   - `playSample(name)`: Plays cached audio buffer directly to masterGain
   - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
-  - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`) with volume set to 0.66
+  - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`) with volume set to 0.33
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
 - All 12 sounds use sample-based playback (no synthesized sounds)
 - **All FX and scratch sound generation have been removed**:
