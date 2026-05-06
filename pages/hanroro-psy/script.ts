@@ -1,3 +1,5 @@
+import GUI from 'lil-gui';
+
 const SAMPLE_URLS: Record<string, string> = {
   gangnam: new URL('./assets/gangnam.mp3', import.meta.url).href,
   ingan: new URL('./assets/ingan.mp3', import.meta.url).href,
@@ -82,6 +84,12 @@ function playScratchTick(intensity: number) {
   src.stop(t + dur);
 }
 
+const SAMPLE_GAIN: Record<string, number> = {
+  damngirl: 2,
+  najeneun: 2,
+  meori: 2,
+};
+
 function playSample(name: string) {
   const buffer = sampleBuffers.get(name);
   if (!buffer) {
@@ -90,7 +98,10 @@ function playSample(name: string) {
   }
   const src = audioCtx!.createBufferSource();
   src.buffer = buffer;
-  src.connect(masterGain!);
+  const g = audioCtx!.createGain();
+  g.gain.value = SAMPLE_GAIN[name] ?? 1;
+  src.connect(g);
+  g.connect(masterGain!);
   src.start();
 }
 
@@ -245,3 +256,62 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 document.addEventListener('gesturechange', (e) => e.preventDefault());
 document.addEventListener('gestureend', (e) => e.preventDefault());
 document.addEventListener('dblclick', (e) => e.preventDefault());
+
+/* === Tuning GUI === */
+const tonearm$ = {
+  top: 12,
+  right: 12,
+  width: 60,
+  height: 6,
+  rotIdle: -35,
+  rotPlaying: -50,
+  pivotOffset: -12,
+  pivotSize: 24,
+  cartLeft: -4,
+  cartTop: -5,
+  cartW: 16,
+  cartH: 16,
+};
+const audio$ = {
+  master: 1.7,
+  bgm: 0.33,
+};
+const root = document.documentElement;
+function applyTonearm() {
+  root.style.setProperty('--ta-top', `${tonearm$.top}%`);
+  root.style.setProperty('--ta-right', `${tonearm$.right}%`);
+  root.style.setProperty('--ta-width', `${tonearm$.width}%`);
+  root.style.setProperty('--ta-height', `${tonearm$.height}px`);
+  root.style.setProperty('--ta-rot', `${tonearm$.rotIdle}deg`);
+  root.style.setProperty('--ta-rot-playing', `${tonearm$.rotPlaying}deg`);
+  root.style.setProperty('--ta-pivot-offset', `${tonearm$.pivotOffset}px`);
+  root.style.setProperty('--ta-pivot-size', `${tonearm$.pivotSize}px`);
+  root.style.setProperty('--ta-cart-left', `${tonearm$.cartLeft}px`);
+  root.style.setProperty('--ta-cart-top', `${tonearm$.cartTop}px`);
+  root.style.setProperty('--ta-cart-w', `${tonearm$.cartW}px`);
+  root.style.setProperty('--ta-cart-h', `${tonearm$.cartH}px`);
+}
+function applyAudio() {
+  if (masterGain) masterGain.gain.value = audio$.master;
+  bgm.volume = audio$.bgm;
+}
+applyTonearm();
+
+const gui = new GUI({ title: 'Tuning' });
+const fTone = gui.addFolder('Tonearm');
+fTone.add(tonearm$, 'top', 0, 50, 0.5).onChange(applyTonearm);
+fTone.add(tonearm$, 'right', 0, 50, 0.5).onChange(applyTonearm);
+fTone.add(tonearm$, 'width', 20, 100, 0.5).onChange(applyTonearm);
+fTone.add(tonearm$, 'height', 2, 16, 0.5).onChange(applyTonearm);
+fTone.add(tonearm$, 'rotIdle', -180, 180, 1).onChange(applyTonearm);
+fTone.add(tonearm$, 'rotPlaying', -180, 180, 1).onChange(applyTonearm);
+fTone.add(tonearm$, 'pivotOffset', -40, 40, 1).onChange(applyTonearm);
+fTone.add(tonearm$, 'pivotSize', 8, 48, 1).onChange(applyTonearm);
+fTone.add(tonearm$, 'cartLeft', -30, 30, 1).onChange(applyTonearm);
+fTone.add(tonearm$, 'cartTop', -30, 30, 1).onChange(applyTonearm);
+fTone.add(tonearm$, 'cartW', 4, 30, 1).onChange(applyTonearm);
+fTone.add(tonearm$, 'cartH', 4, 30, 1).onChange(applyTonearm);
+const fAud = gui.addFolder('Audio');
+fAud.add(audio$, 'master', 0, 4, 0.05).name('pad master').onChange(applyAudio);
+fAud.add(audio$, 'bgm', 0, 1, 0.01).name('bgm volume').onChange(applyAudio);
+gui.close();

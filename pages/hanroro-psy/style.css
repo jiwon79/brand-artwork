@@ -146,15 +146,15 @@ html, body {
     0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
-/* tonearm — 피봇이 LP 디스크 위에 올라가 있는 형태 */
+/* tonearm — GUI로 조절 가능 (CSS 변수) */
 .tonearm {
   position: absolute;
-  top: 12%;
-  right: 12%;
-  width: 60%;
-  height: 6px;
+  top: var(--ta-top, 12%);
+  right: var(--ta-right, 12%);
+  width: var(--ta-width, 60%);
+  height: var(--ta-height, 6px);
   transform-origin: 100% 50%;
-  transform: rotate(-35deg);
+  transform: rotate(var(--ta-rot, -35deg));
   z-index: 5;
   background: linear-gradient(180deg, #e8e2d4 0%, #c4b8a0 50%, #6e6450 100%);
   border-radius: 3px;
@@ -163,15 +163,15 @@ html, body {
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
   transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.tonearm.playing { transform: rotate(-50deg); }
+.tonearm.playing { transform: rotate(var(--ta-rot-playing, -50deg)); }
 .tonearm::before {
   /* pivot mount */
   content: '';
   position: absolute;
-  right: -12px;
+  right: var(--ta-pivot-offset, -12px);
   top: 50%;
-  width: 24px;
-  height: 24px;
+  width: var(--ta-pivot-size, 24px);
+  height: var(--ta-pivot-size, 24px);
   background: radial-gradient(circle at 35% 30%, #f4ead5 0%, #c4b390 60%, #6e5e44 100%);
   border-radius: 50%;
   transform: translateY(-50%);
@@ -183,10 +183,10 @@ html, body {
   /* cartridge / needle */
   content: '';
   position: absolute;
-  left: -4px;
-  top: -5px;
-  width: 16px;
-  height: 16px;
+  left: var(--ta-cart-left, -4px);
+  top: var(--ta-cart-top, -5px);
+  width: var(--ta-cart-w, 16px);
+  height: var(--ta-cart-h, 16px);
   background: linear-gradient(180deg, #2a2018 0%, #0a0806 100%);
   border-radius: 3px;
   box-shadow:

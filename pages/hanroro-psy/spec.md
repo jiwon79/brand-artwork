@@ -3,7 +3,7 @@
 ## 파일 구성
 
 - `index.html` - Main interactive music pad interface
-- `script.ts` - TypeScript module for audio playback and interactions
+- `script.ts` - TypeScript module for audio playback and interactions (imports lil-gui for GUI controls)
 - `style.css` - Styling and 3D cube effects for buttons and LP player
 - `/common/touch-cursor.ts` - Shared touch cursor module
 
@@ -169,13 +169,22 @@ Interactive music pad interface combining:
 - **Inset Shadows**: Single deep inner shadow (`inset 0 0 30px rgba(0, 0, 0, 0.55)`) for 3D depth
 - **Center Pin**: Radial gradient with bronze/gold tones and inset/outer shadows
 - **Tonearm**: Horizontal arm with pivot mount (::before) and cartridge/needle (::after)
-  - Position: top 12%, right 12% with pivot on LP disk surface (-35deg rotation at rest)
-  - Width: 60% of container
+  - **GUI-Controllable via CSS Variables** (comment: "GUI로 조절 가능 (CSS 변수)")
+  - Position: `top: var(--ta-top, 12%); right: var(--ta-right, 12%);` (defaults to 12% offset from right/top)
+  - Dimensions: 
+    - `width: var(--ta-width, 60%);` (default 60% of container)
+    - `height: var(--ta-height, 6px);` (default 6px)
   - Transform origin: 100% 50% (right edge center for pivot rotation)
-  - Playing state: rotate to -50deg
-  - Pivot mount (::before): 24px circular element at right -12px offset
-  - Cartridge/needle (::after): 16px element at left -4px, top -5px
-  - Smooth 0.6s transition with cubic-bezier easing
+  - Rotation:
+    - At rest: `transform: rotate(var(--ta-rot, -35deg));` (default -35deg)
+    - Playing state: `transform: rotate(var(--ta-rot-playing, -50deg));` (default -50deg on .tonearm.playing)
+  - Smooth 0.6s transition with cubic-bezier(0.4, 0, 0.2, 1) easing
+  - **Pivot Mount (::before)**: 
+    - Offset: `right: var(--ta-pivot-offset, -12px);` (default -12px)
+    - Size: `width/height: var(--ta-pivot-size, 24px);` (default 24px circular element)
+  - **Cartridge/Needle (::after)**:
+    - Position: `left: var(--ta-cart-left, -4px); top: var(--ta-cart-top, -5px);` (default -4px, -5px)
+    - Dimensions: `width: var(--ta-cart-w, 16px); height: var(--ta-cart-h, 16px);` (default 16px element)
 
 ### Media Player Controls Styling (.player, .player-btn, .player-bar)
 - **.player** (container):
@@ -233,7 +242,7 @@ Interactive music pad interface combining:
 ## 오디오 (Audio System)
 
 - Web Audio API context with master gain node (gain value: 1.7)
-- Audio routing chain: source → masterGain → **dynamics compressor (limiter)** → destination
+- Audio routing chain: source → gainNode (per-sample) → masterGain → **dynamics compressor (limiter)** → destination
 - **Dynamics Compressor (Limiter)** settings for peak control:
   - Threshold: -3 dB (triggers compression above -3 dB)
   - Knee: 6 dB (smooth transition zone)
@@ -242,7 +251,13 @@ Interactive music pad interface combining:
   - Release: 0.08 seconds (80ms recovery time)
 - Sample-based playback with fetch/decode infrastructure
   - `loadSample(name)`: Async loader with caching and pending request deduplication
-  - `playSample(name)`: Plays cached audio buffer directly to masterGain
+  - `playSample(name)`: Plays cached audio buffer with per-sample gain control via individual GainNode
+  - **SAMPLE_GAIN Map**: Per-sample gain multiplier for selected sounds
+    - `damngirl: 2` — 2x volume boost
+    - `najeneun: 2` — 2x volume boost
+    - `meori: 2` — 2x volume boost
+    - Default gain: 1 (no boost) for all other samples
+  - Audio chain per sample: source → gainNode (gain = SAMPLE_GAIN[name] ?? 1) → masterGain
   - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
   - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`) with volume set to 0.33
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
@@ -256,6 +271,14 @@ Interactive music pad interface combining:
     - Routed through masterGain output chain
 
 ## 구현 상세 (Implementation Details)
+
+### Dependencies
+- **lil-gui**: GUI library for real-time parameter tuning controls
+  - Import statement: `import GUI from 'lil-gui';`
+  - **Tuning GUI (Debug Panel)**:
+    - Creates a debug GUI window with title 'Tuning' for live parameter adjustment
+    - Two main control folders: **Tonearm** and **Audio**
+    - GUI starts closed (`.close()`) but can be opened via lil-gui's built-in toggle button
 
 ### Animation Loop & Rendering
 - **Animation Frame Loop (`tick` function)**:
@@ -303,6 +326,66 @@ Interactive music pad interface combining:
 - **Context Menu & Double-Click Prevention**:
   - `document.addEventListener('contextmenu', (e) => e.preventDefault())` - Prevents right-click context menu
   - `document.addEventListener('dblclick', (e) => e.preventDefault())` - Prevents double-click default behavior (text selection, etc.)
+
+### Tuning GUI System
+The application includes a debug GUI for real-time parameter tuning using lil-gui:
+
+**Tonearm Folder Controls**:
+- `top` (0-50, step 0.5): Vertical position of tonearm as percentage
+  - Default: 12%
+  - Maps to CSS variable `--ta-top`
+- `right` (0-50, step 0.5): Horizontal position from right edge as percentage
+  - Default: 12%
+  - Maps to CSS variable `--ta-right`
+- `width` (20-100, step 0.5): Tonearm width as percentage of container
+  - Default: 60%
+  - Maps to CSS variable `--ta-width`
+- `height` (2-16, step 0.5): Tonearm height in pixels
+  - Default: 6px
+  - Maps to CSS variable `--ta-height`
+- `rotIdle` (-180 to 180, step 1): Rotation angle at rest (idle state) in degrees
+  - Default: -35°
+  - Maps to CSS variable `--ta-rot`
+- `rotPlaying` (-180 to 180, step 1): Rotation angle when music is playing in degrees
+  - Default: -50°
+  - Maps to CSS variable `--ta-rot-playing`
+- `pivotOffset` (-40 to 40, step 1): Horizontal offset of pivot mount in pixels
+  - Default: -12px
+  - Maps to CSS variable `--ta-pivot-offset`
+- `pivotSize` (8-48, step 1): Size of pivot mount (circular) in pixels
+  - Default: 24px
+  - Maps to CSS variable `--ta-pivot-size`
+- `cartLeft` (-30 to 30, step 1): Cartridge left offset in pixels
+  - Default: -4px
+  - Maps to CSS variable `--ta-cart-left`
+- `cartTop` (-30 to 30, step 1): Cartridge top offset in pixels
+  - Default: -5px
+  - Maps to CSS variable `--ta-cart-top`
+- `cartW` (4-30, step 1): Cartridge width in pixels
+  - Default: 16px
+  - Maps to CSS variable `--ta-cart-w`
+- `cartH` (4-30, step 1): Cartridge height in pixels
+  - Default: 16px
+  - Maps to CSS variable `--ta-cart-h`
+
+**Audio Folder Controls**:
+- `master` (0-4, step 0.05): Master gain node value for all audio output
+  - Default: 1.7
+  - Affects: `masterGain.gain.value`
+  - Label: "pad master"
+- `bgm` (0-1, step 0.01): Background music volume level
+  - Default: 0.33
+  - Affects: `bgm.volume` (HTML audio element)
+  - Label: "bgm volume"
+
+**Implementation Details**:
+- All tonearm parameters trigger `applyTonearm()` onChange callback
+  - Updates root element CSS variables for real-time visual feedback
+  - Changes are immediately reflected in both LP players' tonearm positioning
+- All audio parameters trigger `applyAudio()` onChange callback
+  - Updates audio nodes in real-time without restarting playback
+- GUI object initialized after event handler setup (lines 300-317)
+- GUI starts in closed state (user can toggle visibility via lil-gui button)
 
 ### Constants
 - `SPIN_DPS = 100`: Rotation speed in degrees per second (≈3.6 seconds per full revolution)
