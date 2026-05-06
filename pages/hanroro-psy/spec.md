@@ -77,7 +77,8 @@ Interactive music pad interface combining:
 - Label element is empty (no text content)
 
 ### Sound Pads
-- **Pointerdown**: Play associated sample sound, add 'held' class for visual feedback
+- **Pointerdown**: Initialize audio context (if not already started), play associated sample sound, add 'held' class for visual feedback
+  - If app not started: Call `startApp()` to initialize audio context, then immediately play the sound and add visual feedback
   - 'held' state: Translate down 6px, scale to 0.97, brighten to 1.18x, saturate to 1.25x
   - Gloss opacity reduced to 0.3 with scaleY(0.7) transform
   - Row-specific shadow adjustments for pressed appearance
@@ -229,7 +230,13 @@ Interactive music pad interface combining:
 ## 오디오 (Audio System)
 
 - Web Audio API context with master gain node (gain value: 1.7)
-- Direct routing: source → masterGain → destination
+- Audio routing chain: source → masterGain → **dynamics compressor (limiter)** → destination
+- **Dynamics Compressor (Limiter)** settings for peak control:
+  - Threshold: -3 dB (triggers compression above -3 dB)
+  - Knee: 6 dB (smooth transition zone)
+  - Ratio: 12:1 (strong compression ratio)
+  - Attack: 0.003 seconds (3ms fast response)
+  - Release: 0.08 seconds (80ms recovery time)
 - Sample-based playback with fetch/decode infrastructure
   - `loadSample(name)`: Async loader with caching and pending request deduplication
   - `playSample(name)`: Plays cached audio buffer directly to masterGain

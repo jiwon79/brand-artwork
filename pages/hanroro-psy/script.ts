@@ -26,7 +26,14 @@ function initAudio() {
   audioCtx = new Ctor();
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 1.7;
-  masterGain.connect(audioCtx.destination);
+  const limiter = audioCtx.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.08;
+  masterGain.connect(limiter);
+  limiter.connect(audioCtx.destination);
 }
 
 const sampleBuffers = new Map<string, AudioBuffer>();
@@ -146,10 +153,7 @@ lp.addEventListener('pointercancel', releaseLp);
 document.querySelectorAll<HTMLButtonElement>('.pad').forEach((pad) => {
   const onDown = (e: PointerEvent) => {
     e.preventDefault();
-    if (!started) {
-      startApp();
-      return;
-    }
+    if (!started) startApp();
     if (pad.classList.contains('held')) return;
     pad.classList.add('held');
     const sound = pad.dataset.sound;
