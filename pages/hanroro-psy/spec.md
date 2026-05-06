@@ -39,9 +39,16 @@ Interactive music pad interface combining:
 │       │   └── .pin (center spindle)
 │       └── .tonearm#tonearm2 (tonearm element)
 └── .pad-grid (3x4 sound pad grid)
+    ├── Layout: CSS grid with 4 columns, auto-sized rows, top-aligned content
+    ├── Grid template: `grid-template-columns: repeat(4, 1fr); grid-auto-rows: min-content; align-content: start;`
+    ├── Padding: 16px 18px max(22px, env(safe-area-inset-bottom)) 18px
+    ├── Gap: 12px
     ├── .pad.row-gangnam (4x)
+    │   ├── Aspect ratio: 1:1 (square)
     ├── .pad.row-fart (4x)
+    │   ├── Aspect ratio: 1:1 (square)
     └── .pad.row-hanroro (4x)
+        ├── Aspect ratio: 1:1 (square)
 ```
 
 ## 상호작용 (Interactions)
@@ -81,7 +88,9 @@ Interactive music pad interface combining:
 
 ### LP Player Styling
 - **Vinyl Record**: Dark repeating-radial-gradient with realistic platter appearance
-- **Inset Shadows**: Deep inner shadows and subtle edge highlight for 3D depth
+  - Repeating-radial-gradient: White semi-transparent lines (`rgba(255, 255, 255, 0.09)`) at 1px with 6px spacing for groove effect
+  - Radial-gradient: Center positioned at 35% 28% with gradient stops at `#2a2018 0%`, `#120e0a 55%`, `#050402 100%`
+- **Inset Shadows**: Single deep inner shadow (`inset 0 0 30px rgba(0, 0, 0, 0.55)`) for 3D depth
 - **Center Pin**: Radial gradient with bronze/gold tones and inset/outer shadows
 - **Tonearm**: Horizontal arm with pivot mount (::before) and cartridge/needle (::after)
   - Position: top 0, right 0 with pivot at top-right corner (48deg rotation at rest)
