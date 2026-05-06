@@ -56,6 +56,32 @@ async function loadSample(name: string): Promise<AudioBuffer> {
   return p;
 }
 
+function playScratchTick(intensity: number) {
+  if (!audioCtx || !masterGain) return;
+  const t = audioCtx.currentTime;
+  const dur = 0.07;
+  const bufSize = Math.floor(audioCtx.sampleRate * dur);
+  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 1200 + Math.random() * 2400;
+  filter.Q.value = 4;
+  const gain = audioCtx.createGain();
+  const peak = Math.min(0.45, 0.12 + intensity * 0.6);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+  src.start(t);
+  src.stop(t + dur);
+}
+
 function playSample(name: string) {
   const buffer = sampleBuffers.get(name);
   if (!buffer) {
@@ -125,6 +151,7 @@ lp.addEventListener('pointerdown', (e) => {
   lp.setPointerCapture(e.pointerId);
   prevPointerAngle = pointerAngleOnLP(e);
 });
+let lastScratchT = 0;
 lp.addEventListener('pointermove', (e) => {
   if (!leftScrubbing) return;
   const a = pointerAngleOnLP(e);
@@ -136,6 +163,12 @@ lp.addEventListener('pointermove', (e) => {
   if (bgm.duration && isFinite(bgm.duration)) {
     const next = bgm.currentTime + delta * SCRUB_SEC_PER_DEG;
     bgm.currentTime = Math.max(0, Math.min(bgm.duration, next));
+  }
+  const now = performance.now();
+  const intensity = Math.min(1, Math.abs(delta) / 14);
+  if (intensity > 0.05 && now - lastScratchT > 45) {
+    lastScratchT = now;
+    playScratchTick(intensity);
   }
 });
 const releaseLp = (e: PointerEvent) => {

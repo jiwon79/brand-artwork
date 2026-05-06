@@ -141,15 +141,15 @@ html, body {
     0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
-/* tonearm — LP 위에 얹힌 모습 (피봇은 우상단 코너) */
+/* tonearm — 피봇이 LP 디스크 위에 올라가 있는 형태 */
 .tonearm {
   position: absolute;
-  top: 0;
-  right: 0;
-  width: 72%;
+  top: 12%;
+  right: 12%;
+  width: 60%;
   height: 6px;
   transform-origin: 100% 50%;
-  transform: rotate(48deg);
+  transform: rotate(50deg);
   z-index: 5;
   background: linear-gradient(180deg, #e8e2d4 0%, #c4b8a0 50%, #6e6450 100%);
   border-radius: 3px;
@@ -158,7 +158,7 @@ html, body {
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
   transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.tonearm.playing { transform: rotate(34deg); }
+.tonearm.playing { transform: rotate(32deg); }
 .tonearm::before {
   /* pivot mount */
   content: '';

@@ -169,10 +169,10 @@ Interactive music pad interface combining:
 - **Inset Shadows**: Single deep inner shadow (`inset 0 0 30px rgba(0, 0, 0, 0.55)`) for 3D depth
 - **Center Pin**: Radial gradient with bronze/gold tones and inset/outer shadows
 - **Tonearm**: Horizontal arm with pivot mount (::before) and cartridge/needle (::after)
-  - Position: top 0, right 0 with pivot at top-right corner (48deg rotation at rest)
-  - Width: 72% of container
+  - Position: top 12%, right 12% with pivot on LP disk surface (50deg rotation at rest)
+  - Width: 60% of container
   - Transform origin: 100% 50% (right edge center for pivot rotation)
-  - Playing state: rotate to 34deg
+  - Playing state: rotate to 32deg
   - Pivot mount (::before): 24px circular element at right -12px offset
   - Cartridge/needle (::after): 16px element at left -4px, top -5px
   - Smooth 0.6s transition with cubic-bezier easing
@@ -247,11 +247,13 @@ Interactive music pad interface combining:
   - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`) with volume set to 0.33
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
 - All 12 sounds use sample-based playback (no synthesized sounds)
-- **All FX and scratch sound generation have been removed**:
-  - `playScratchTick()` function removed
-  - Scratch canvas functionality removed
-  - Glitch level tracking removed
-  - Particle and ray emission removed
+- **Scratch Sound Generation**:
+  - `playScratchTick(intensity: number)`: Procedural scratch tick sound generator
+    - Generates white noise buffer (70ms duration)
+    - Applies bandpass filter (1200-3600 Hz, Q=4)
+    - Envelope: 5ms attack, then exponential decay to 70ms
+    - Peak amplitude: 0.12 to 0.45 (scaled by intensity parameter, 0-1 range)
+    - Routed through masterGain output chain
 
 ## 구현 상세 (Implementation Details)
 
@@ -270,6 +272,11 @@ Interactive music pad interface combining:
   - Audio seek mapping: `delta * SCRUB_SEC_PER_DEG` (12 seconds per full rotation)
   - Pointer capture for smooth off-screen dragging
   - Visual feedback: 'scrubbing' class adds `cursor: grabbing`
+  - **Scratch Sound Feedback**:
+    - Triggered during pointermove when scrubbing
+    - Intensity calculated as: `Math.min(1, Math.abs(delta) / 14)` (normalized 0-1 range)
+    - Throttled by 45ms: Only plays if `now - lastScratchT > 45`
+    - Calls `playScratchTick(intensity)` to generate procedural scratch sound
   
 - **Secondary LP (lp2) - Synchronized Rotation**:
   - Spins at same SPIN_DPS rate as primary when playing
