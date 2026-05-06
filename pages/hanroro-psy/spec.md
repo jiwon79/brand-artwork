@@ -169,10 +169,10 @@ Interactive music pad interface combining:
 - **Inset Shadows**: Single deep inner shadow (`inset 0 0 30px rgba(0, 0, 0, 0.55)`) for 3D depth
 - **Center Pin**: Radial gradient with bronze/gold tones and inset/outer shadows
 - **Tonearm**: Horizontal arm with pivot mount (::before) and cartridge/needle (::after)
-  - Position: top 12%, right 12% with pivot on LP disk surface (50deg rotation at rest)
+  - Position: top 12%, right 12% with pivot on LP disk surface (-35deg rotation at rest)
   - Width: 60% of container
   - Transform origin: 100% 50% (right edge center for pivot rotation)
-  - Playing state: rotate to 32deg
+  - Playing state: rotate to -50deg
   - Pivot mount (::before): 24px circular element at right -12px offset
   - Cartridge/needle (::after): 16px element at left -4px, top -5px
   - Smooth 0.6s transition with cubic-bezier easing

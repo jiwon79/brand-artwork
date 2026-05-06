@@ -154,7 +154,7 @@ html, body {
   width: 60%;
   height: 6px;
   transform-origin: 100% 50%;
-  transform: rotate(50deg);
+  transform: rotate(-35deg);
   z-index: 5;
   background: linear-gradient(180deg, #e8e2d4 0%, #c4b8a0 50%, #6e6450 100%);
   border-radius: 3px;
@@ -163,7 +163,7 @@ html, body {
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
   transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.tonearm.playing { transform: rotate(32deg); }
+.tonearm.playing { transform: rotate(-50deg); }
 .tonearm::before {
   /* pivot mount */
   content: '';
