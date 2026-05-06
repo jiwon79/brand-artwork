@@ -25,7 +25,7 @@ function initAudio() {
     (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   audioCtx = new Ctor();
   masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.85;
+  masterGain.gain.value = 1.7;
   masterGain.connect(audioCtx.destination);
 }
 
@@ -69,6 +69,7 @@ const playBtn = document.getElementById('playPause') as HTMLButtonElement;
 const seekbar = document.getElementById('seekbar') as HTMLInputElement;
 const bgm = document.getElementById('bgm') as HTMLAudioElement;
 bgm.src = BGM_URL;
+bgm.volume = 0.66;
 
 let started = false;
 function startApp() {

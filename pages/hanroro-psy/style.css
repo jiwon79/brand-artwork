@@ -67,6 +67,22 @@ html, body {
   position: relative;
   flex: 0 0 auto;
 }
+.lp-wrap::after {
+  /* 우상단 고정 조명 — LP 회전과 무관 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 4;
+  background: radial-gradient(
+    ellipse at 75% 18%,
+    rgba(255, 245, 220, 0.35) 0%,
+    rgba(255, 240, 210, 0.12) 25%,
+    transparent 50%
+  );
+  mix-blend-mode: screen;
+}
 .lp-shadow {
   position: absolute;
   inset: 4%;
@@ -338,7 +354,10 @@ html, body {
     inset 4px 0 8px rgba(255, 100, 180, 0.25),
     inset -4px 0 8px rgba(80, 5, 40, 0.4),
     0 1px 0 rgba(255, 150, 200, 0.5),
-    0 3px 0 #c61774,
+    0 2px 0 #d6207f,
+    0 3px 0 #b81570,
+    0 4px 0 #960e5e,
+    0 5px 0 #730a4a,
     0 6px 0 #4a052b,
     0 8px 10px rgba(80, 5, 40, 0.5),
     0 16px 24px rgba(60, 30, 40, 0.35);
@@ -363,7 +382,10 @@ html, body {
     inset 4px 0 8px rgba(150, 250, 255, 0.3),
     inset -4px 0 8px rgba(0, 50, 60, 0.4),
     0 1px 0 rgba(180, 255, 255, 0.6),
-    0 3px 0 #00b0c4,
+    0 2px 0 #00bcd0,
+    0 3px 0 #00a0b4,
+    0 4px 0 #007a8c,
+    0 5px 0 #005268,
     0 6px 0 #003a48,
     0 8px 10px rgba(0, 50, 60, 0.5),
     0 16px 24px rgba(20, 50, 60, 0.35);
@@ -379,7 +401,10 @@ html, body {
     inset 4px 0 8px rgba(255, 245, 220, 0.4),
     inset -4px 0 8px rgba(140, 110, 70, 0.3),
     0 1px 0 rgba(255, 250, 230, 0.7),
-    0 3px 0 #c4b390,
+    0 2px 0 #c8b896,
+    0 3px 0 #a8967a,
+    0 4px 0 #877555,
+    0 5px 0 #685739,
     0 6px 0 #4a3e2a,
     0 8px 10px rgba(80, 60, 30, 0.5),
     0 16px 24px rgba(80, 60, 30, 0.35);

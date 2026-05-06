@@ -109,22 +109,31 @@ Interactive music pad interface combining:
 - **Skeuomorphic 3D Design**: Heavy inset box-shadows and layered radial gradients for tactile raised button appearance
 - **Paper Texture**: Grain noise filter (SVG-based) applied to Hanroro (cream) row buttons
 - **Neon Glows**: Bright colors with simplified box-shadow halos on Gangnam (pink) and Fart (cyan) buttons
-  - **Gangnam (pink)**: Streamlined shadow with 4 outer layers (base color, mid-layer color, mid blur, far blur) for enhanced depth
+  - **Gangnam (pink)**: Streamlined shadow with 7 outer layers (base highlight + 5 gradient steps + far blur) for enhanced depth
     - Base layer: `0 1px 0 rgba(255, 150, 200, 0.5)` (soft highlight)
-    - Mid-layer: `0 3px 0 #c61774` (first solid shadow)
-    - Additional layer: `0 6px 0 #4a052b` (second solid shadow)
+    - Gradient step 1: `0 2px 0 #d6207f` (first solid shadow)
+    - Gradient step 2: `0 3px 0 #b81570` (second solid shadow)
+    - Gradient step 3: `0 4px 0 #960e5e` (third solid shadow)
+    - Gradient step 4: `0 5px 0 #730a4a` (fourth solid shadow)
+    - Gradient step 5: `0 6px 0 #4a052b` (fifth solid shadow)
     - Mid-blur layer: `0 8px 10px rgba(80, 5, 40, 0.5)` (medium spread)
     - Far-blur layer: `0 16px 24px rgba(60, 30, 40, 0.35)` (distant shadow)
-  - **Fart (cyan)**: Streamlined shadow with 4 outer layers (base color, mid-layer color, mid blur, far blur) for enhanced depth
+  - **Fart (cyan)**: Streamlined shadow with 7 outer layers (base highlight + 5 gradient steps + far blur) for enhanced depth
     - Base layer: `0 1px 0 rgba(180, 255, 255, 0.6)` (soft highlight)
-    - Mid-layer: `0 3px 0 #00b0c4` (first solid shadow)
-    - Additional layer: `0 6px 0 #003a48` (second solid shadow)
+    - Gradient step 1: `0 2px 0 #00bcd0` (first solid shadow)
+    - Gradient step 2: `0 3px 0 #00a0b4` (second solid shadow)
+    - Gradient step 3: `0 4px 0 #007a8c` (third solid shadow)
+    - Gradient step 4: `0 5px 0 #005268` (fourth solid shadow)
+    - Gradient step 5: `0 6px 0 #003a48` (fifth solid shadow)
     - Mid-blur layer: `0 8px 10px rgba(0, 50, 60, 0.5)` (medium spread)
     - Far-blur layer: `0 16px 24px rgba(20, 50, 60, 0.35)` (distant shadow)
-  - **Hanroro (cream)**: Streamlined shadow with 4 outer layers (base color, mid-layer color, mid blur, far blur) for enhanced depth
+  - **Hanroro (cream)**: Streamlined shadow with 7 outer layers (base highlight + 5 gradient steps + far blur) for enhanced depth
     - Base layer: `0 1px 0 rgba(255, 250, 230, 0.7)` (soft highlight)
-    - Mid-layer: `0 3px 0 #c4b390` (first solid shadow)
-    - Additional layer: `0 6px 0 #4a3e2a` (second solid shadow)
+    - Gradient step 1: `0 2px 0 #c8b896` (first solid shadow)
+    - Gradient step 2: `0 3px 0 #a8967a` (second solid shadow)
+    - Gradient step 3: `0 4px 0 #877555` (third solid shadow)
+    - Gradient step 4: `0 5px 0 #685739` (fourth solid shadow)
+    - Gradient step 5: `0 6px 0 #4a3e2a` (fifth solid shadow)
     - Mid-blur layer: `0 8px 10px rgba(80, 60, 30, 0.5)` (medium spread)
     - Far-blur layer: `0 16px 24px rgba(80, 60, 30, 0.35)` (distant shadow)
 - **Highlight Gloss**: Subtle white gradient overlay on button surface (::after pseudo-element)
@@ -141,6 +150,15 @@ Interactive music pad interface combining:
 - **Override for Hanroro (cream) row**: Uses 'Gowun Batang' serif at `clamp(12px, 3.4vw, 16px)` with font-weight 700
 
 ### LP Player Styling
+- **LP Wrap Container (.lp-wrap)**:
+  - **Fixed Upper-Right Lighting (.lp-wrap::after)**:
+    - Pseudo-element that provides fixed top-right illumination independent of LP rotation
+    - Ellipse positioned at 75% 18% with warm cream colors
+    - Gradient stops: `rgba(255, 245, 220, 0.35) 0%`, `rgba(255, 240, 210, 0.12) 25%`, `transparent 50%`
+    - Uses `mix-blend-mode: screen` for light blending effect
+    - `pointer-events: none` to avoid interaction interference
+    - `z-index: 4` (above record, below tonearm)
+
 - **Vinyl Record**: Dark repeating-radial-gradient with realistic platter appearance
   - Repeating-radial-gradient: White semi-transparent lines (`rgba(255, 255, 255, 0.09)`) at 1px with 6px spacing for groove effect
   - Radial-gradient: Center positioned at 35% 28% with gradient stops at `#2a2018 0%`, `#120e0a 55%`, `#050402 100%`
@@ -210,13 +228,13 @@ Interactive music pad interface combining:
 
 ## 오디오 (Audio System)
 
-- Web Audio API context with master gain node (gain value: 0.85)
+- Web Audio API context with master gain node (gain value: 1.7)
 - Direct routing: source → masterGain → destination
 - Sample-based playback with fetch/decode infrastructure
   - `loadSample(name)`: Async loader with caching and pending request deduplication
   - `playSample(name)`: Plays cached audio buffer directly to masterGain
   - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
-  - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`)
+  - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`) with volume set to 0.66
   - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
 - All 12 sounds use sample-based playback (no synthesized sounds)
 - **All FX and scratch sound generation have been removed**:
