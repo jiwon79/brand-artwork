@@ -82,9 +82,25 @@ Interactive music pad interface combining:
 ### Button/Pad Styling
 - **Skeuomorphic 3D Design**: Heavy inset box-shadows and layered radial gradients for tactile raised button appearance
 - **Paper Texture**: Grain noise filter (SVG-based) applied to Hanroro (cream) row buttons
-- **Neon Glows**: Bright colors with layered box-shadow halos on Gangnam (pink) and Fart (cyan) buttons
+- **Neon Glows**: Bright colors with simplified box-shadow halos on Gangnam (pink) and Fart (cyan) buttons
+  - **Gangnam (pink)**: Streamlined shadow with 3 outer layers (base color, mid blur, far blur) instead of multi-step depth
+  - **Fart (cyan)**: Streamlined shadow with 3 outer layers (base color, mid blur, far blur) instead of multi-step depth
+  - **Hanroro (cream)**: Streamlined shadow with 2 outer layers (base color + enhanced blur, far blur) — simplified from previous multi-step depth effect
+    - Base layer: `0 6px 0 #877555` (solid shadow)
+    - Mid-blur layer: `0 8px 10px rgba(140, 110, 70, 0.45)` (medium spread)
+    - Far-blur layer: `0 16px 24px rgba(80, 60, 30, 0.35)` (distant shadow)
 - **Highlight Gloss**: Subtle white gradient overlay on button surface (::after pseudo-element)
 - **Interaction State**: 'held' class for pressed state with brightness/saturation boost and reduced gloss opacity
+
+### Label Typography (.pad .label-ko)
+- **Font Family**: 'Black Han Sans', sans-serif (default for all pads)
+- **Font Size**: `clamp(15px, 4.4vw, 20px)` — responsive sizing between 15px (minimum) and 20px (maximum)
+- **Line Height**: 1.05 — minimal extra spacing for vertical alignment
+- **Letter Spacing**: -0.02em (tight kerning)
+- **Text Align**: center — centered horizontally on pad
+- **Text Shadow**: 0 1px 0 rgba(0, 0, 0, 0.18) — subtle drop shadow for readability
+- **Multi-line Support**: Labels may contain `<br>` tags for line breaking (e.g., "Damn<br>Girl", "낮에는<br>따사로운")
+- **Override for Hanroro (cream) row**: Uses 'Gowun Batang' serif at `clamp(12px, 3.4vw, 16px)` with font-weight 700
 
 ### LP Player Styling
 - **Vinyl Record**: Dark repeating-radial-gradient with realistic platter appearance
