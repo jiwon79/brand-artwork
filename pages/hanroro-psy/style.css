@@ -122,14 +122,14 @@ html, body {
   height: 52%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: #f4a872 url('./assets/IMG_7827.webp') center / cover no-repeat;
+  background: #f4a872 url('./assets/cover-hanroro.webp') center / cover no-repeat;
   box-shadow:
     inset 0 0 18px rgba(0, 0, 0, 0.3),
     0 0 0 1px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
 .label.label-gangnam {
-  background: #1a1006 url('./assets/IMG_7826.webp') center / cover no-repeat;
+  background: #1a1006 url('./assets/cover-gangnam.webp') center / cover no-repeat;
 }
 .pin {
   position: absolute;

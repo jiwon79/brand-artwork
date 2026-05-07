@@ -163,6 +163,11 @@ Interactive music pad interface combining:
     - `pointer-events: none` to avoid interaction interference
     - `z-index: 4` (above record, below tonearm)
 
+- **Record Label (.label)**:
+  - Primary LP player label uses background image: `./assets/cover-hanroro.webp`
+  - Background color: `#f4a872` (apricot fallback)
+  - Background sizing: `center / cover no-repeat` (fills circular label area)
+  - Secondary LP player label (`.label-gangnam`): Uses `./assets/cover-gangnam.webp`
 - **Vinyl Record**: Dark repeating-radial-gradient with realistic platter appearance
   - Repeating-radial-gradient: White semi-transparent lines (`rgba(255, 255, 255, 0.09)`) at 1px with 6px spacing for groove effect
   - Radial-gradient: Center positioned at 35% 28% with gradient stops at `#2a2018 0%`, `#120e0a 55%`, `#050402 100%`
