@@ -15,8 +15,8 @@ Interactive music pad interface combining:
   - Secondary player (lp2): "강남스타일" by PSY, static display with tonearm
 - **12 Sound Pads** (4x3 grid, bottom): Simple clickable pads for sound playback
   - Row 1: gangnam, ingan, yeoja, ssanai
-  - Row 2: op, wanjeon, ultungbultung, eo
-  - Row 3: ehy, damngirl, najeneun, meori
+  - Row 2: ehy, damngirl, najeneun, meori
+  - Row 3: ultungbultung (Drum), op, wanjeon, eo
 
 ## 장면 (Scene Structure)
 
@@ -45,11 +45,11 @@ Interactive music pad interface combining:
 │   ├── Gap: 12px
 │   ├── .pad.row-gangnam (4x)
 │   │   ├── Aspect ratio: 1:1 (square)
-│   ├── .pad.row-fart (4x)
+│   ├── .pad.row-hanroro (4x)
 │   │   ├── Aspect ratio: 1:1 (square)
-│   └── .pad.row-hanroro (4x)
+│   └── .pad.row-fart (4x)
 │       ├── Aspect ratio: 1:1 (square)
-│       └── Last pad: meori (머리푸는)
+│       └── Last pad: eo (어)
 ├── .player (media player controls)
 │   ├── .player-btn#playPause (play/pause button)
 │   │   └── aria-label="play"
@@ -258,7 +258,7 @@ Interactive music pad interface combining:
     - `meori: 2` — 2x volume boost
     - Default gain: 1 (no boost) for all other samples
   - Audio chain per sample: source → gainNode (gain = SAMPLE_GAIN[name] ?? 1) → masterGain
-  - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, op, wanjeon, ultungbultung, eo, ehy, damngirl, najeneun, meori
+  - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, ehy, damngirl, najeneun, meori, ultungbultung, op, wanjeon, eo
   - **BGM Audio Routing** (via Web Audio API):
     - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`)
     - BGM is routed through Web Audio GainNode for iOS compatibility (audio.volume property is ignored on iOS)
