@@ -22,12 +22,13 @@ Interactive music pad interface combining:
 
 ```
 #stage (fixed full-screen container)
-├── .center (top section: contains two LP players)
+├── Layout: flex container with flex-direction column and justify-content flex-end (pushes children to bottom)
+├── .center (bottom section: contains two LP players)
 │   ├── Layout: flex container with 24px gap and space-around distribution
-│   ├── Padding: max(20px, env(safe-area-inset-top)) 16px 4px (top, horizontal, bottom)
-│   ├── Height: 38vh (fixed), with responsive adjustment to 32vh below 700px viewport height
+│   ├── Padding: 8px 16px 0 (top, horizontal, bottom)
+│   ├── Height: auto (flexible, adjusts to content)
 │   ├── .lp-wrap (LP player 1 - primary)
-│   │   ├── Height: min(100%, calc(50vw - 28px)) — constrains to viewport width with aspect-ratio 1:1
+│   │   ├── Width: min(38vh, calc(50vw - 28px)) — constrains to viewport height and width with aspect-ratio 1:1
 │   │   ├── .lp-shadow (drop shadow)
 │   │   ├── .lp#lp (spinning vinyl record)
 │   │   │   ├── .label (empty - no visual label content)
@@ -40,9 +41,9 @@ Interactive music pad interface combining:
 │       │   └── .pin (center spindle)
 │       └── .tonearm#tonearm2 (tonearm element)
 ├── .pad-grid (3x4 sound pad grid)
-│   ├── Layout: CSS grid with 4 columns, auto-sized rows, top-aligned content
-│   ├── Grid template: `grid-template-columns: repeat(4, 1fr); grid-auto-rows: min-content; align-content: start;`
-│   ├── Padding: 6px 18px 12px 18px
+│   ├── Layout: CSS grid with 4 columns, fixed height (flex: 0 0 auto)
+│   ├── Grid template: `grid-template-columns: repeat(4, 1fr);`
+│   ├── Padding: 2px 18px 4px 18px
 │   ├── Gap: 12px
 │   ├── .pad.row-gangnam (4x)
 │   │   ├── Aspect ratio: 1:1 (square)
@@ -199,13 +200,15 @@ Interactive music pad interface combining:
   - Dimensions: `width: calc(100% - 36px)` (full width with 18px left/right margins)
   - Spacing: `margin-bottom: max(16px, env(safe-area-inset-bottom))` (responsive bottom margin for safe areas)
   - Padding: `8px 14px` (compact internal padding)
-  - Background: Linear gradient `180deg, #f4ead5 0%, #e3d5b8 100%` (warm paper to deeper paper)
+  - Background: Radial gradient `ellipse at 30% 20%, #fdf6e0 0%, #f4ead5 35%, #e3d5b8 75%, #c4b390 100%` (warm highlight at top-left to deeper paper)
   - Border Radius: `border-radius: 999px` (fully rounded pill-shaped container)
-  - Shadows: Enhanced 4-layer shadow system for floating appearance:
-    - Inset top highlight: `inset 0 1px 0 rgba(255, 252, 240, 0.85)` (bright top light)
-    - Inset bottom depth: `inset 0 -2px 4px rgba(140, 110, 70, 0.25)` (subtle bottom shadow)
-    - Outer drop shadow 1: `0 4px 10px rgba(80, 60, 30, 0.25)` (medium spread)
-    - Outer drop shadow 2: `0 1px 0 rgba(140, 110, 70, 0.4)` (fine detail line)
+  - Shadows: Enhanced 11-layer shadow system for floating appearance with 3D embossed effect:
+    - Inset top highlight: `inset 0 2px 1px rgba(255, 252, 240, 0.95)` (bright top light with increased opacity)
+    - Inset horizontal side lights: `inset 4px 0 8px rgba(255, 245, 220, 0.4)` (right side), `inset -4px 0 8px rgba(140, 110, 70, 0.3)` (left side)
+    - Inset bottom depth: `inset 0 -6px 10px rgba(140, 110, 70, 0.3)` (deep bottom shadow)
+    - Outer base highlight: `0 1px 0 rgba(255, 250, 230, 0.7)` (fine highlight line)
+    - Gradient steps (stacked depth layers): `0 2px 0 #c8b896`, `0 3px 0 #a8967a`, `0 4px 0 #877555`, `0 5px 0 #685739`, `0 6px 0 #4a3e2a` (5-step color gradient for beveled depth effect)
+    - Outer blur shadow: `0 8px 12px rgba(80, 60, 30, 0.45)` (soft far-field shadow)
   
 - **.player-btn** (play/pause button):
   - Dimensions: 44px diameter circular button (`border-radius: 50%`)
@@ -249,10 +252,17 @@ Interactive music pad interface combining:
   - No border (reset with `border: none`)
   - Same radial gradient and shadow system
 
+### Pad Grid Layout (.pad-grid)
+- **Flex Container**: `flex: 0 0 auto` — fixed height, does not grow or shrink
+- **Grid System**: 4-column grid with equal-width columns (`grid-template-columns: repeat(4, 1fr)`)
+- **Grid Rows**: Auto-sized based on content (no explicit `grid-auto-rows` or `align-content` constraints)
+- **Padding**: Minimal internal spacing (`2px 18px 4px 18px`) — 2px top/bottom, 18px left/right
+- **Gap**: 12px spacing between grid items (both rows and columns)
+- **Height**: `min-height: 0` to allow proper overflow handling within flex container
+
 ### Background & Texture
 - **Radial gradients** at 30% top-left and 70% bottom-right for subtle depth
 - **Noise overlay** (SVG-based feTurbulence with feColorMatrix) with 0.55 opacity using multiply blend mode
-- **Responsive**: Fixed 38vh center section, adjusts to 32vh below 700px viewport height
 
 ## 오디오 (Audio System)
 

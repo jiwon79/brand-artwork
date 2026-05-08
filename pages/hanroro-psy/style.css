@@ -39,6 +39,7 @@ html, body {
   inset: 0;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   background:
     radial-gradient(ellipse at 30% 15%, #fdf6e0 0%, transparent 55%),
     radial-gradient(ellipse at 70% 90%, #e8d5b0 0%, transparent 55%),
@@ -56,10 +57,10 @@ html, body {
 }
 
 .center {
-  flex: 0 0 38vh;
+  flex: 0 0 auto;
   display: flex;
   gap: 24px;
-  padding: max(20px, env(safe-area-inset-top)) 16px 4px;
+  padding: 8px 16px 0;
   align-items: center;
   justify-content: space-around;
   min-height: 0;
@@ -67,7 +68,7 @@ html, body {
 
 /* === LP === */
 .lp-wrap {
-  height: min(100%, calc(50vw - 28px));
+  width: min(38vh, calc(50vw - 28px));
   aspect-ratio: 1 / 1;
   position: relative;
   flex: 0 0 auto;
@@ -204,13 +205,21 @@ html, body {
   width: calc(100% - 36px);
   margin-bottom: max(16px, env(safe-area-inset-bottom));
   padding: 8px 14px;
-  background: linear-gradient(180deg, #f4ead5 0%, #e3d5b8 100%);
+  background:
+    radial-gradient(ellipse at 30% 20%, #fdf6e0 0%, #f4ead5 35%, #e3d5b8 75%, #c4b390 100%);
   border-radius: 999px;
   box-shadow:
-    inset 0 1px 0 rgba(255, 252, 240, 0.85),
-    inset 0 -2px 4px rgba(140, 110, 70, 0.25),
-    0 4px 10px rgba(80, 60, 30, 0.25),
-    0 1px 0 rgba(140, 110, 70, 0.4);
+    inset 0 2px 1px rgba(255, 252, 240, 0.95),
+    inset 0 -6px 10px rgba(140, 110, 70, 0.3),
+    inset 4px 0 8px rgba(255, 245, 220, 0.4),
+    inset -4px 0 8px rgba(140, 110, 70, 0.3),
+    0 1px 0 rgba(255, 250, 230, 0.7),
+    0 2px 0 #c8b896,
+    0 3px 0 #a8967a,
+    0 4px 0 #877555,
+    0 5px 0 #685739,
+    0 6px 0 #4a3e2a,
+    0 8px 12px rgba(80, 60, 30, 0.45);
 }
 .player-btn {
   flex: 0 0 auto;
@@ -301,13 +310,11 @@ html, body {
 
 /* === 패드 그리드 — 스큐어모피즘 === */
 .pad-grid {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: min-content;
-  align-content: start;
   gap: 12px;
-  padding: 6px 18px 12px 18px;
+  padding: 2px 18px 4px 18px;
   min-height: 0;
 }
 
@@ -493,6 +500,3 @@ html, body {
   }
 }
 
-@media (max-height: 700px) {
-  .center { flex: 0 0 32vh; }
-}
