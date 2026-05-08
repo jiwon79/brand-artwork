@@ -152,6 +152,7 @@ function tick(now: number) {
   if (!leftScrubbing && bgm.duration && !seekbarDragging) {
     seekbar.value = String((bgm.currentTime / bgm.duration) * 1000);
   }
+  seekbar.style.setProperty('--seek-pct', String(Number(seekbar.value) / 10));
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);

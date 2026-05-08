@@ -24,6 +24,7 @@ Interactive music pad interface combining:
 #stage (fixed full-screen container)
 ├── .center (top section: contains two LP players)
 │   ├── Layout: flex container with 24px gap and space-around distribution
+│   ├── Padding: max(20px, env(safe-area-inset-top)) 16px 4px (top, horizontal, bottom)
 │   ├── Height: 38vh (fixed), with responsive adjustment to 32vh below 700px viewport height
 │   ├── .lp-wrap (LP player 1 - primary)
 │   │   ├── Height: min(100%, calc(50vw - 28px)) — constrains to viewport width with aspect-ratio 1:1
@@ -41,7 +42,7 @@ Interactive music pad interface combining:
 ├── .pad-grid (3x4 sound pad grid)
 │   ├── Layout: CSS grid with 4 columns, auto-sized rows, top-aligned content
 │   ├── Grid template: `grid-template-columns: repeat(4, 1fr); grid-auto-rows: min-content; align-content: start;`
-│   ├── Padding: 16px 18px max(22px, env(safe-area-inset-bottom)) 18px
+│   ├── Padding: 6px 18px 12px 18px
 │   ├── Gap: 12px
 │   ├── .pad.row-gangnam (4x)
 │   │   ├── Aspect ratio: 1:1 (square)
@@ -194,10 +195,17 @@ Interactive music pad interface combining:
 ### Media Player Controls Styling (.player, .player-btn, .player-bar)
 - **.player** (container):
   - Layout: `flex: 0 0 auto` with flex direction row, center-aligned items, 14px gap
-  - Padding: `10px 18px max(14px, env(safe-area-inset-bottom)) 18px` (responsive bottom padding for safe areas)
+  - Positioning: `align-self: center` to center within parent flex container
+  - Dimensions: `width: calc(100% - 36px)` (full width with 18px left/right margins)
+  - Spacing: `margin-bottom: max(16px, env(safe-area-inset-bottom))` (responsive bottom margin for safe areas)
+  - Padding: `8px 14px` (compact internal padding)
   - Background: Linear gradient `180deg, #f4ead5 0%, #e3d5b8 100%` (warm paper to deeper paper)
-  - Border: Top border `1px solid rgba(110, 80, 50, 0.25)` (subtle dark divider)
-  - Shadows: Inset top highlight and bottom soft shadow for subtle depth
+  - Border Radius: `border-radius: 999px` (fully rounded pill-shaped container)
+  - Shadows: Enhanced 4-layer shadow system for floating appearance:
+    - Inset top highlight: `inset 0 1px 0 rgba(255, 252, 240, 0.85)` (bright top light)
+    - Inset bottom depth: `inset 0 -2px 4px rgba(140, 110, 70, 0.25)` (subtle bottom shadow)
+    - Outer drop shadow 1: `0 4px 10px rgba(80, 60, 30, 0.25)` (medium spread)
+    - Outer drop shadow 2: `0 1px 0 rgba(140, 110, 70, 0.4)` (fine detail line)
   
 - **.player-btn** (play/pause button):
   - Dimensions: 44px diameter circular button (`border-radius: 50%`)
@@ -223,7 +231,9 @@ Interactive music pad interface combining:
 - **.player-bar** (progress slider):
   - Layout: `flex: 1 1 auto` to fill available width
   - Height: 8px track with 6px border-radius for rounded appearance
-  - Background: Linear gradient `180deg, #c4b390 0%, #9a8866 100%` (paper deep to mid-brown)
+  - Background: Dual-layer gradient system:
+    - **Progress fill layer**: `linear-gradient(90deg, #4a3e2a 0, #4a3e2a calc(var(--seek-pct, 0) * 1%), transparent calc(var(--seek-pct, 0) * 1%), transparent 100%)` — horizontal dark fill (#4a3e2a) from left to seek position, controlled by `--seek-pct` CSS variable (0-100 range)
+    - **Track background layer**: `linear-gradient(180deg, #c4b390 0%, #9a8866 100%)` (paper deep to mid-brown)
   - Appearance: Reset with `-webkit-appearance: none; appearance: none;`
   - Outline: Removed for clean look
   - Box-shadow: Inset shadows for track depth and subtle highlights
@@ -296,6 +306,10 @@ Interactive music pad interface combining:
   - Calculates delta time (dt) with 50ms cap for stability
   - Updates both LP rotation angles based on playback state
   - Updates seekbar position synchronized with audio currentTime
+  - Updates seekbar CSS variable `--seek-pct` for progress fill visualization:
+    - Formula: `Number(seekbar.value) / 10` (converts 0-1000 range to 0-100 for percentage)
+    - Set via `seekbar.style.setProperty('--seek-pct', ...)`
+    - Controls the visual progress bar fill in the slider track
   
 ### LP Player Controls
 - **Primary LP (lp) - Interactive Scrubbing**:
