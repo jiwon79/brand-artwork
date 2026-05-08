@@ -43,7 +43,7 @@ Interactive music pad interface combining:
 ├── .pad-grid (3x4 sound pad grid)
 │   ├── Layout: CSS grid with 4 columns, fixed height (flex: 0 0 auto)
 │   ├── Grid template: `grid-template-columns: repeat(4, 1fr);`
-│   ├── Padding: 2px 18px 4px 18px
+│   ├── Padding: 24px 18px 24px 18px
 │   ├── Gap: 12px
 │   ├── .pad.row-gangnam (4x)
 │   │   ├── Aspect ratio: 1:1 (square)
@@ -256,7 +256,7 @@ Interactive music pad interface combining:
 - **Flex Container**: `flex: 0 0 auto` — fixed height, does not grow or shrink
 - **Grid System**: 4-column grid with equal-width columns (`grid-template-columns: repeat(4, 1fr)`)
 - **Grid Rows**: Auto-sized based on content (no explicit `grid-auto-rows` or `align-content` constraints)
-- **Padding**: Minimal internal spacing (`2px 18px 4px 18px`) — 2px top/bottom, 18px left/right
+- **Padding**: Vertical spacing with top/bottom padding (`24px 18px 24px 18px`) — 24px top/bottom, 18px left/right
 - **Gap**: 12px spacing between grid items (both rows and columns)
 - **Height**: `min-height: 0` to allow proper overflow handling within flex container
 
