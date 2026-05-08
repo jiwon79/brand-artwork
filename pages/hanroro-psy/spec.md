@@ -14,9 +14,9 @@ Interactive music pad interface combining:
   - Primary player (lp): Vinyl record with tonearm
   - Secondary player (lp2): "강남스타일" by PSY, static display with tonearm
 - **12 Sound Pads** (4x3 grid, bottom): Simple clickable pads for sound playback
-  - Row 1: gangnam, ingan, yeoja, ssanai
-  - Row 2: ehy, damngirl, najeneun, meori
-  - Row 3: ultungbultung (Drum), op, wanjeon, eo
+  - Row 1 (.pad.row-gangnam): gangnam, ingan, yeoja, ssanai
+  - Row 2 (.pad.row-fart): ehy, damngirl, najeneun, meori
+  - Row 3 (.pad.row-hanroro): ultungbultung (Drum), op, wanjeon, eo
 
 ## 장면 (Scene Structure)
 
