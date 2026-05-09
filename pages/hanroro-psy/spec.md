@@ -1,0 +1,426 @@
+# Hanroro Psy Brand Artwork — 스펙
+
+## 파일 구성
+
+- `index.html` - Main interactive music pad interface
+- `script.ts` - TypeScript module for audio playback and interactions (imports lil-gui for GUI controls)
+- `style.css` - Styling and 3D cube effects for buttons and LP player
+- `/common/touch-cursor.ts` - Shared touch cursor module
+
+## 컨셉
+
+Interactive music pad interface combining:
+- **Two LP Record Players** (center): 
+  - Primary player (lp): Vinyl record with tonearm
+  - Secondary player (lp2): "강남스타일" by PSY, static display with tonearm
+- **12 Sound Pads** (4x3 grid, bottom): Simple clickable pads for sound playback
+  - Row 1 (.pad.row-gangnam): gangnam, ingan, yeoja, ssanai
+  - Row 2 (.pad.row-fart): ehy, damngirl, najeneun, meori
+  - Row 3 (.pad.row-hanroro): ultungbultung (Drum), op, wanjeon, eo
+
+## 장면 (Scene Structure)
+
+```
+#stage (fixed full-screen container)
+├── Layout: flex container with flex-direction column and justify-content flex-end (pushes children to bottom)
+├── .center (bottom section: contains two LP players)
+│   ├── Layout: flex container with 24px gap and space-around distribution
+│   ├── Padding: 8px 16px 0 (top, horizontal, bottom)
+│   ├── Height: auto (flexible, adjusts to content)
+│   ├── .lp-wrap (LP player 1 - primary)
+│   │   ├── Width: min(38vh, calc(50vw - 28px)) — constrains to viewport height and width with aspect-ratio 1:1
+│   │   ├── .lp-shadow (drop shadow)
+│   │   ├── .lp#lp (spinning vinyl record)
+│   │   │   ├── .label (empty - no visual label content)
+│   │   │   └── .pin (center spindle)
+│   │   └── .tonearm#tonearm (tonearm element)
+│   └── .lp-wrap (LP player 2 - secondary/display)
+│       ├── .lp-shadow (drop shadow)
+│       ├── .lp#lp2 (static vinyl record - "강남스타일" by PSY)
+│       │   ├── .label (empty record label - no text content)
+│       │   └── .pin (center spindle)
+│       └── .tonearm#tonearm2 (tonearm element)
+├── .pad-grid (3x4 sound pad grid)
+│   ├── Layout: CSS grid with 4 columns, fixed height (flex: 0 0 auto)
+│   ├── Grid template: `grid-template-columns: repeat(4, 1fr);`
+│   ├── Padding: 24px 18px 24px 18px
+│   ├── Gap: 12px
+│   ├── .pad.row-gangnam (4x)
+│   │   ├── Aspect ratio: 1:1 (square)
+│   ├── .pad.row-hanroro (4x)
+│   │   ├── Aspect ratio: 1:1 (square)
+│   └── .pad.row-fart (4x)
+│       ├── Aspect ratio: 1:1 (square)
+│       └── Last pad: eo (어)
+├── .player (media player controls)
+│   ├── .player-btn#playPause (play/pause button)
+│   │   └── aria-label="play"
+│   └── .player-bar#seekbar (playback progress slider)
+│       ├── type="range", min="0", max="1000", value="0", step="1"
+└── audio#bgm (background audio element)
+    └── preload="metadata"
+```
+
+## 상호작용 (Interactions)
+
+### LP Player (Primary - lp)
+- **Tap**: Initialize audio context and start playback
+- **Scrubbing Interaction**: Interactive drag control for vinyl rotation
+  - CSS variable `--lp-angle` controls rotation angle dynamically
+  - **Pointerdown**: Add 'scrubbing' class, display cursor: grabbing
+  - **Pointermove**: Update `--lp-angle` based on drag movement
+  - **Pointerup**: Remove 'scrubbing' class, reset cursor
+- Label element is now empty (no text content or canvas)
+- No longer auto-spinning (animation removed) — rotation is now user-controlled
+
+### LP Player (Secondary - lp2)
+- **Tap**: Initialize audio context and start playback
+- Display-only "강남스타일" by PSY album reference with animated tonearm
+- Label element is empty (no text content)
+
+### Sound Pads
+- **Pointerdown**: Initialize audio context (if not already started), play associated sample sound, add 'held' class for visual feedback
+  - If app not started: Call `startApp()` to initialize audio context, then immediately play the sound and add visual feedback
+  - Call `pad.setPointerCapture(e.pointerId)` to capture pointer events (wrapped in try-catch for browser compatibility)
+  - 'held' state: Translate down 6px, scale to 0.97, brighten to 1.18x, saturate to 1.25x
+  - Gloss opacity reduced to 0.3 with scaleY(0.7) transform
+  - Row-specific shadow adjustments for pressed appearance
+- **Pointerup/Pointercancel/Lostpointercapture**: Remove 'held' class and release pointer capture
+  - Call `pad.releasePointerCapture(e.pointerId)` on pointerup and lostpointercapture (wrapped in try-catch)
+  - Removed `pointerleave` event listener (replaced with `lostpointercapture` for proper capture handling)
+- All visual effects (rays, particles, glitch updates) have been removed
+
+### Media Player Controls
+- **.player-btn#playPause**: Play/pause toggle button
+  - **Click**: Toggle playback state of #bgm audio element
+  - Visual state updates based on audio playback status
+- **.player-bar#seekbar**: Range input for audio progress control
+  - **Input**: Updates playback position of #bgm audio element
+  - Range: 0-1000 (normalized scale, maps to audio duration)
+  - Step: 1 unit per increment
+  - **Pointerup**: Seek to selected position in audio playback
+- **#bgm audio element**: Hidden audio player
+  - Preloads metadata for accurate duration information
+  - Connected to player controls for playback synchronization
+
+## 스타일 (Styling)
+
+### Color System
+- Light paper background (`--paper: #f4ead5`) with warm paper secondary (`--paper-warm: #e8d5b0`)
+- Deep paper accent (`--paper-deep: #c4b390`)
+- Dark ink text (`--ink: #1a1410`, soft: `--ink-soft: #3d2e25`)
+- Neon accents: pink (`#ff2e93`), cyan (`#00f0ff`), yellow (`#fff200`)
+
+### Button/Pad Styling
+- **Skeuomorphic 3D Design**: Heavy inset box-shadows and layered radial gradients for tactile raised button appearance
+- **Paper Texture**: Grain noise filter (SVG-based) applied to Hanroro (cream) row buttons
+- **Neon Glows**: Bright colors with simplified box-shadow halos on Gangnam (pink) and Fart (cyan) buttons
+  - **Gangnam (pink)**: Streamlined shadow with 7 outer layers (base highlight + 5 gradient steps + far blur) for enhanced depth
+    - Base layer: `0 1px 0 rgba(255, 150, 200, 0.5)` (soft highlight)
+    - Gradient step 1: `0 2px 0 #d6207f` (first solid shadow)
+    - Gradient step 2: `0 3px 0 #b81570` (second solid shadow)
+    - Gradient step 3: `0 4px 0 #960e5e` (third solid shadow)
+    - Gradient step 4: `0 5px 0 #730a4a` (fourth solid shadow)
+    - Gradient step 5: `0 6px 0 #4a052b` (fifth solid shadow)
+    - Mid-blur layer: `0 8px 10px rgba(80, 5, 40, 0.5)` (medium spread)
+    - Far-blur layer: `0 16px 24px rgba(60, 30, 40, 0.35)` (distant shadow)
+  - **Fart (cyan)**: Streamlined shadow with 7 outer layers (base highlight + 5 gradient steps + far blur) for enhanced depth
+    - Base layer: `0 1px 0 rgba(180, 255, 255, 0.6)` (soft highlight)
+    - Gradient step 1: `0 2px 0 #00bcd0` (first solid shadow)
+    - Gradient step 2: `0 3px 0 #00a0b4` (second solid shadow)
+    - Gradient step 3: `0 4px 0 #007a8c` (third solid shadow)
+    - Gradient step 4: `0 5px 0 #005268` (fourth solid shadow)
+    - Gradient step 5: `0 6px 0 #003a48` (fifth solid shadow)
+    - Mid-blur layer: `0 8px 10px rgba(0, 50, 60, 0.5)` (medium spread)
+    - Far-blur layer: `0 16px 24px rgba(20, 50, 60, 0.35)` (distant shadow)
+  - **Hanroro (cream)**: Streamlined shadow with 7 outer layers (base highlight + 5 gradient steps + far blur) for enhanced depth
+    - Base layer: `0 1px 0 rgba(255, 250, 230, 0.7)` (soft highlight)
+    - Gradient step 1: `0 2px 0 #c8b896` (first solid shadow)
+    - Gradient step 2: `0 3px 0 #a8967a` (second solid shadow)
+    - Gradient step 3: `0 4px 0 #877555` (third solid shadow)
+    - Gradient step 4: `0 5px 0 #685739` (fourth solid shadow)
+    - Gradient step 5: `0 6px 0 #4a3e2a` (fifth solid shadow)
+    - Mid-blur layer: `0 8px 10px rgba(80, 60, 30, 0.5)` (medium spread)
+    - Far-blur layer: `0 16px 24px rgba(80, 60, 30, 0.35)` (distant shadow)
+- **Highlight Gloss**: Subtle white gradient overlay on button surface (::after pseudo-element)
+- **Interaction State**: 'held' class for pressed state with brightness/saturation boost and reduced gloss opacity
+
+### Label Typography (.pad .label-ko)
+- **Font Family**: 'Black Han Sans', sans-serif (default for all pads)
+- **Font Size**: `clamp(15px, 4.4vw, 20px)` — responsive sizing between 15px (minimum) and 20px (maximum)
+- **Line Height**: 1.05 — minimal extra spacing for vertical alignment
+- **Letter Spacing**: -0.02em (tight kerning)
+- **Text Align**: center — centered horizontally on pad
+- **Text Shadow**: 0 1px 0 rgba(0, 0, 0, 0.18) — subtle drop shadow for readability
+- **Multi-line Support**: Labels may contain `<br>` tags for line breaking (e.g., "Damn<br>Girl", "낮에는<br>따사로운")
+- **Override for Hanroro (cream) row**: Uses 'Gowun Batang' serif at `clamp(12px, 3.4vw, 16px)` with font-weight 700
+
+### LP Player Styling
+- **LP Wrap Container (.lp-wrap)**:
+  - **Fixed Upper-Right Lighting (.lp-wrap::after)**:
+    - Pseudo-element that provides fixed top-right illumination independent of LP rotation
+    - Ellipse positioned at 75% 18% with warm cream colors
+    - Gradient stops: `rgba(255, 245, 220, 0.35) 0%`, `rgba(255, 240, 210, 0.12) 25%`, `transparent 50%`
+    - Uses `mix-blend-mode: screen` for light blending effect
+    - `pointer-events: none` to avoid interaction interference
+    - `z-index: 4` (above record, below tonearm)
+
+- **Record Label (.label)**:
+  - Primary LP player label uses background image: `./assets/cover-hanroro.webp`
+  - Background color: `#f4a872` (apricot fallback)
+  - Background sizing: `center / cover no-repeat` (fills circular label area)
+  - Secondary LP player label (`.label-gangnam`): Uses `./assets/cover-gangnam.webp`
+- **Vinyl Record**: Dark repeating-radial-gradient with realistic platter appearance
+  - Repeating-radial-gradient: White semi-transparent lines (`rgba(255, 255, 255, 0.09)`) at 1px with 6px spacing for groove effect
+  - Radial-gradient: Center positioned at 35% 28% with gradient stops at `#2a2018 0%`, `#120e0a 55%`, `#050402 100%`
+- **Inset Shadows**: Single deep inner shadow (`inset 0 0 30px rgba(0, 0, 0, 0.55)`) for 3D depth
+- **Center Pin**: Radial gradient with bronze/gold tones and inset/outer shadows
+- **Tonearm**: Horizontal arm with pivot mount (::before) and cartridge/needle (::after)
+  - **GUI-Controllable via CSS Variables** (comment: "GUI로 조절 가능 (CSS 변수)")
+  - Position: `top: var(--ta-top, 12%); right: var(--ta-right, 12%);` (defaults to 12% offset from right/top)
+  - Dimensions: 
+    - `width: var(--ta-width, 60%);` (default 60% of container)
+    - `height: var(--ta-height, 6px);` (default 6px)
+  - Transform origin: 100% 50% (right edge center for pivot rotation)
+  - Rotation:
+    - At rest: `transform: rotate(var(--ta-rot, -35deg));` (default -35deg)
+    - Playing state: `transform: rotate(var(--ta-rot-playing, -50deg));` (default -50deg on .tonearm.playing)
+  - Smooth 0.6s transition with cubic-bezier(0.4, 0, 0.2, 1) easing
+  - **Pivot Mount (::before)**: 
+    - Offset: `right: var(--ta-pivot-offset, -12px);` (default -12px)
+    - Size: `width/height: var(--ta-pivot-size, 24px);` (default 24px circular element)
+  - **Cartridge/Needle (::after)**:
+    - Position: `left: var(--ta-cart-left, -4px); top: var(--ta-cart-top, -5px);` (default -4px, -5px)
+    - Dimensions: `width: var(--ta-cart-w, 16px); height: var(--ta-cart-h, 16px);` (default 16px element)
+
+### Media Player Controls Styling (.player, .player-btn, .player-bar)
+- **.player** (container):
+  - Layout: `flex: 0 0 auto` with flex direction row, center-aligned items, 14px gap
+  - Positioning: `align-self: center` to center within parent flex container
+  - Dimensions: `width: calc(100% - 36px)` (full width with 18px left/right margins)
+  - Spacing: `margin-bottom: max(16px, env(safe-area-inset-bottom))` (responsive bottom margin for safe areas)
+  - Padding: `8px 14px` (compact internal padding)
+  - Background: Radial gradient `ellipse at 30% 20%, #fdf6e0 0%, #f4ead5 35%, #e3d5b8 75%, #c4b390 100%` (warm highlight at top-left to deeper paper)
+  - Border Radius: `border-radius: 999px` (fully rounded pill-shaped container)
+  - Shadows: Enhanced 11-layer shadow system for floating appearance with 3D embossed effect:
+    - Inset top highlight: `inset 0 2px 1px rgba(255, 252, 240, 0.95)` (bright top light with increased opacity)
+    - Inset horizontal side lights: `inset 4px 0 8px rgba(255, 245, 220, 0.4)` (right side), `inset -4px 0 8px rgba(140, 110, 70, 0.3)` (left side)
+    - Inset bottom depth: `inset 0 -6px 10px rgba(140, 110, 70, 0.3)` (deep bottom shadow)
+    - Outer base highlight: `0 1px 0 rgba(255, 250, 230, 0.7)` (fine highlight line)
+    - Gradient steps (stacked depth layers): `0 2px 0 #c8b896`, `0 3px 0 #a8967a`, `0 4px 0 #877555`, `0 5px 0 #685739`, `0 6px 0 #4a3e2a` (5-step color gradient for beveled depth effect)
+    - Outer blur shadow: `0 8px 12px rgba(80, 60, 30, 0.45)` (soft far-field shadow)
+  
+- **.player-btn** (play/pause button):
+  - Dimensions: 44px diameter circular button (`border-radius: 50%`)
+  - Background: Radial gradient with ellipse at 30% 25% from light (`#fdf6e0`) to cream (`#f4ead5`) to deep brown (`#c4b390`)
+  - Box-shadow: Complex 5-layer shadow system
+    - Inset highlight: `inset 0 1px 0 rgba(255, 252, 240, 0.9)` (top light)
+    - Inset mid-shadow: `inset 0 -2px 4px rgba(140, 110, 70, 0.4)` (bottom depth)
+    - Outer layers: Solid shadows at 2px and 4px offsets, plus soft blur for 3D embossed effect
+  - State transitions: `transform 0.06s, box-shadow 0.06s` for quick visual response
+  
+- **.player-btn::before** (play icon):
+  - Default state: Triangle pointing right (play icon) using border trick
+    - `border-left: 12px solid var(--ink)` with transparent top/bottom
+    - Positioned center with `transform: translate(-35%, -50%)`
+  - Playing state (`.player-btn.playing::before`): Pause icon using linear-gradient bars
+    - Two vertical bars rendered via gradient pattern
+    - `background: linear-gradient(90deg, var(--ink) 0 35%, transparent 35% 65%, var(--ink) 65% 100%)`
+  
+- **.player-btn:active** (pressed state):
+  - Transform: `translateY(3px)` (pushed down appearance)
+  - Box-shadow: Reduced depth shadows to match inset pressed effect
+  
+- **.player-bar** (progress slider):
+  - Layout: `flex: 1 1 auto` to fill available width
+  - Height: 8px track with 6px border-radius for rounded appearance
+  - Background: Dual-layer gradient system:
+    - **Progress fill layer**: `linear-gradient(90deg, #4a3e2a 0, #4a3e2a calc(var(--seek-pct, 0) * 1%), transparent calc(var(--seek-pct, 0) * 1%), transparent 100%)` — horizontal dark fill (#4a3e2a) from left to seek position, controlled by `--seek-pct` CSS variable (0-100 range)
+    - **Track background layer**: `linear-gradient(180deg, #c4b390 0%, #9a8866 100%)` (paper deep to mid-brown)
+  - Appearance: Reset with `-webkit-appearance: none; appearance: none;`
+  - Outline: Removed for clean look
+  - Box-shadow: Inset shadows for track depth and subtle highlights
+  
+- **.player-bar::-webkit-slider-thumb** (slider thumb - Webkit):
+  - Dimensions: 18px circular thumb
+  - Background: Radial gradient with light center (`#fdf6e0`) to mid-brown (`#c4b390`) to dark (`#6e5e44`)
+  - Box-shadow: Inset highlight plus outer shadow for 3D embossed appearance
+  - Cursor: pointer
+  
+- **.player-bar::-moz-range-thumb** (slider thumb - Firefox):
+  - Identical styling to Webkit version for cross-browser consistency
+  - No border (reset with `border: none`)
+  - Same radial gradient and shadow system
+
+### Pad Grid Layout (.pad-grid)
+- **Flex Container**: `flex: 0 0 auto` — fixed height, does not grow or shrink
+- **Grid System**: 4-column grid with equal-width columns (`grid-template-columns: repeat(4, 1fr)`)
+- **Grid Rows**: Auto-sized based on content (no explicit `grid-auto-rows` or `align-content` constraints)
+- **Padding**: Vertical spacing with top/bottom padding (`24px 18px 24px 18px`) — 24px top/bottom, 18px left/right
+- **Gap**: 12px spacing between grid items (both rows and columns)
+- **Height**: `min-height: 0` to allow proper overflow handling within flex container
+
+### Background & Texture
+- **Radial gradients** at 30% top-left and 70% bottom-right for subtle depth
+- **Noise overlay** (SVG-based feTurbulence with feColorMatrix) with 0.55 opacity using multiply blend mode
+
+## 오디오 (Audio System)
+
+- Web Audio API context with master gain node (gain value: 1.7)
+- Audio routing chain: source → gainNode (per-sample) → masterGain → **dynamics compressor (limiter)** → destination
+- **Dynamics Compressor (Limiter)** settings for peak control:
+  - Threshold: -3 dB (triggers compression above -3 dB)
+  - Knee: 6 dB (smooth transition zone)
+  - Ratio: 12:1 (strong compression ratio)
+  - Attack: 0.003 seconds (3ms fast response)
+  - Release: 0.08 seconds (80ms recovery time)
+- Sample-based playback with fetch/decode infrastructure
+  - `loadSample(name)`: Async loader with caching and pending request deduplication
+  - `playSample(name)`: Plays cached audio buffer with per-sample gain control via individual GainNode
+  - **SAMPLE_GAIN Map**: Per-sample gain multiplier for selected sounds
+    - `damngirl: 2` — 2x volume boost
+    - `najeneun: 2` — 2x volume boost
+    - `meori: 2` — 2x volume boost
+    - Default gain: 1 (no boost) for all other samples
+  - Audio chain per sample: source → gainNode (gain = SAMPLE_GAIN[name] ?? 1) → masterGain
+  - SAMPLE_URLS map with 12 MP3 assets: gangnam, ingan, yeoja, ssanai, ehy, damngirl, najeneun, meori, ultungbultung, op, wanjeon, eo
+  - **BGM Audio Routing** (via Web Audio API):
+    - BGM_URL: Background music track loaded separately (`./assets/bgm.mp3`)
+    - BGM is routed through Web Audio GainNode for iOS compatibility (audio.volume property is ignored on iOS)
+    - Audio chain: HTMLAudioElement (bgm) → mediaElementSource → bgmGain → audioCtx.destination
+    - bgmGain gain value: 0.33 (matches original bgm.volume setting)
+    - Routing is wrapped in try-catch to handle browser compatibility
+  - Samples are preloaded on app startup via `Object.keys(SAMPLE_URLS).forEach(loadSample)`
+- All 12 sounds use sample-based playback (no synthesized sounds)
+- **Scratch Sound Generation**:
+  - `playScratchTick(intensity: number)`: Procedural scratch tick sound generator
+    - Generates white noise buffer (220ms duration)
+    - Applies bandpass filter (250-950 Hz, Q=0.9)
+    - Envelope: 20ms attack, then exponential decay to 220ms
+    - Peak amplitude: 0.08 to 0.3 (scaled by intensity parameter, 0-1 range)
+    - Routed through masterGain output chain
+
+## 구현 상세 (Implementation Details)
+
+### Dependencies
+- **lil-gui**: GUI library for real-time parameter tuning controls
+  - Import statement: `import GUI from 'lil-gui';`
+  - **Tuning GUI (Debug Panel)**:
+    - Creates a debug GUI window with title 'Tuning' for live parameter adjustment
+    - Two main control folders: **Tonearm** and **Audio**
+    - GUI starts closed (`.close()`) but can be opened via lil-gui's built-in toggle button
+
+### Animation Loop & Rendering
+- **Animation Frame Loop (`tick` function)**:
+  - Runs on `requestAnimationFrame` for 60fps smooth rotation
+  - Calculates delta time (dt) with 50ms cap for stability
+  - Updates both LP rotation angles based on playback state
+  - Updates seekbar position synchronized with audio currentTime
+  - Updates seekbar CSS variable `--seek-pct` for progress fill visualization:
+    - Formula: `Number(seekbar.value) / 10` (converts 0-1000 range to 0-100 for percentage)
+    - Set via `seekbar.style.setProperty('--seek-pct', ...)`
+    - Controls the visual progress bar fill in the slider track
+  
+### LP Player Controls
+- **Primary LP (lp) - Interactive Scrubbing**:
+  - Angle tracking: `pointerAngleOnLP()` calculates angle from center using `atan2`
+  - Scrubbing state: `leftScrubbing` boolean tracks active drag
+  - Delta calculation with wraparound handling (±180° normalization)
+  - Audio seek mapping: `delta * SCRUB_SEC_PER_DEG` (12 seconds per full rotation)
+  - Pointer capture for smooth off-screen dragging
+  - Visual feedback: 'scrubbing' class adds `cursor: grabbing`
+  - **Scratch Sound Feedback**:
+    - Triggered during pointermove when scrubbing
+    - Intensity calculated as: `Math.min(1, Math.abs(delta) / 14)` (normalized 0-1 range)
+    - Throttled by 25ms: Only plays if `now - lastScratchT > 25`
+    - Calls `playScratchTick(intensity)` to generate procedural scratch sound
+  
+- **Secondary LP (lp2) - Synchronized Rotation**:
+  - Spins at same SPIN_DPS rate as primary when playing
+  - No scrubbing interaction (display-only)
+  
+### Playback Control
+- **Play/Pause Button (#playPause)**:
+  - Click handler toggles bgm.play() / bgm.pause()
+  - Async play with error handling
+  - UI sync function `syncPlayingUI()` updates button and tonearm classes based on bgm state
+  - Event listeners: 'play', 'pause', 'ended' events trigger UI updates
+  
+- **Seekbar (#seekbar)**:
+  - Range input (0-1000) normalized to audio duration
+  - Input event updates bgm.currentTime
+  - Pointerdown/pointerup flag prevents scrubbing conflicts
+  - Reading seekbarDragging prevents animation loop from overwriting user input
+
+### Event Prevention Handlers
+- **Global Touch Gesture Prevention**:
+  - `document.addEventListener('gesturestart', (e) => e.preventDefault())` - Prevents iOS multi-touch gesture events
+  - `document.addEventListener('gesturechange', (e) => e.preventDefault())` - Prevents ongoing gesture changes
+  - `document.addEventListener('gestureend', (e) => e.preventDefault())` - Prevents gesture completion
+- **Context Menu & Double-Click Prevention**:
+  - `document.addEventListener('contextmenu', (e) => e.preventDefault())` - Prevents right-click context menu
+  - `document.addEventListener('dblclick', (e) => e.preventDefault())` - Prevents double-click default behavior (text selection, etc.)
+
+### Tuning GUI System
+The application includes a debug GUI for real-time parameter tuning using lil-gui:
+
+**Tonearm Folder Controls**:
+- `top` (0-50, step 0.5): Vertical position of tonearm as percentage
+  - Default: 0%
+  - Maps to CSS variable `--ta-top`
+- `right` (0-50, step 0.5): Horizontal position from right edge as percentage
+  - Default: 4%
+  - Maps to CSS variable `--ta-right`
+- `width` (20-100, step 0.5): Tonearm width as percentage of container
+  - Default: 60%
+  - Maps to CSS variable `--ta-width`
+- `height` (2-16, step 0.5): Tonearm height in pixels
+  - Default: 6px
+  - Maps to CSS variable `--ta-height`
+- `rotIdle` (-180 to 180, step 1): Rotation angle at rest (idle state) in degrees
+  - Default: 15°
+  - Maps to CSS variable `--ta-rot`
+- `rotPlaying` (-180 to 180, step 1): Rotation angle when music is playing in degrees
+  - Default: -12°
+  - Maps to CSS variable `--ta-rot-playing`
+- `pivotOffset` (-40 to 40, step 1): Horizontal offset of pivot mount in pixels
+  - Default: -12px
+  - Maps to CSS variable `--ta-pivot-offset`
+- `pivotSize` (8-48, step 1): Size of pivot mount (circular) in pixels
+  - Default: 24px
+  - Maps to CSS variable `--ta-pivot-size`
+- `cartLeft` (-30 to 30, step 1): Cartridge left offset in pixels
+  - Default: -4px
+  - Maps to CSS variable `--ta-cart-left`
+- `cartTop` (-30 to 30, step 1): Cartridge top offset in pixels
+  - Default: -5px
+  - Maps to CSS variable `--ta-cart-top`
+- `cartW` (4-30, step 1): Cartridge width in pixels
+  - Default: 16px
+  - Maps to CSS variable `--ta-cart-w`
+- `cartH` (4-30, step 1): Cartridge height in pixels
+  - Default: 16px
+  - Maps to CSS variable `--ta-cart-h`
+
+**Audio Folder Controls**:
+- `master` (0-4, step 0.05): Master gain node value for all audio output
+  - Default: 1.7
+  - Affects: `masterGain.gain.value`
+  - Label: "pad master"
+- `bgm` (0-1, step 0.01): Background music volume level
+  - Default: 0.33
+  - Affects: `bgmGain.gain.value` (Web Audio API gain node) and `bgm.volume` (HTML audio element)
+  - Label: "bgm volume"
+
+**Implementation Details**:
+- All tonearm parameters trigger `applyTonearm()` onChange callback
+  - Updates root element CSS variables for real-time visual feedback
+  - Changes are immediately reflected in both LP players' tonearm positioning
+- All audio parameters trigger `applyAudio()` onChange callback
+  - Updates audio nodes in real-time without restarting playback
+- GUI object initialized after event handler setup (lines 300-317)
+- GUI starts in closed state (user can toggle visibility via lil-gui button)
+
+### Constants
+- `SPIN_DPS = 100`: Rotation speed in degrees per second (≈3.6 seconds per full revolution)
+- `SCRUB_SEC_PER_DEG = 12 / 360`: Playback time delta per degree of rotation (12 seconds per full turn)

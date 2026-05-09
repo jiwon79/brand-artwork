@@ -1,0 +1,502 @@
+:root {
+  --paper: #f4ead5;
+  --paper-warm: #e8d5b0;
+  --paper-deep: #c4b390;
+  --grapefruit: #e8745a;
+  --apricot: #f4a872;
+  --ink: #1a1410;
+  --ink-soft: #3d2e25;
+  --neon-pink: #ff2e93;
+  --neon-cyan: #00f0ff;
+  --neon-yellow: #fff200;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  font-family: 'Gowun Batang', serif;
+  color: var(--ink);
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.pad {
+  touch-action: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background:
+    radial-gradient(ellipse at 30% 15%, #fdf6e0 0%, transparent 55%),
+    radial-gradient(ellipse at 70% 90%, #e8d5b0 0%, transparent 55%),
+    var(--paper);
+}
+#stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+  z-index: 100;
+}
+
+.center {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 24px;
+  padding: 8px 16px 0;
+  align-items: center;
+  justify-content: space-around;
+  min-height: 0;
+}
+
+/* === LP === */
+.lp-wrap {
+  width: min(38vh, calc(50vw - 28px));
+  aspect-ratio: 1 / 1;
+  position: relative;
+  flex: 0 0 auto;
+}
+.lp-wrap::after {
+  /* 우상단 고정 조명 — LP 회전과 무관 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 4;
+  background: radial-gradient(
+    ellipse at 75% 18%,
+    rgba(255, 245, 220, 0.35) 0%,
+    rgba(255, 240, 210, 0.12) 25%,
+    transparent 50%
+  );
+  mix-blend-mode: screen;
+}
+.lp-shadow {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  box-shadow:
+    0 14px 28px rgba(60, 40, 20, 0.35),
+    0 4px 12px rgba(40, 25, 10, 0.25);
+}
+.lp {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle at center,
+      rgba(255, 255, 255, 0.09) 0,
+      rgba(255, 255, 255, 0.09) 1px,
+      transparent 1px,
+      transparent 6px),
+    radial-gradient(circle at 35% 28%, #2a2018 0%, #120e0a 55%, #050402 100%);
+  transform: rotate(var(--lp-angle, 0deg));
+  will-change: transform;
+  overflow: hidden;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.55);
+  touch-action: none;
+}
+.lp.scrubbing { cursor: grabbing; }
+.label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 52%;
+  height: 52%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #f4a872 url('./assets/cover-hanroro.webp') center / cover no-repeat;
+  box-shadow:
+    inset 0 0 18px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+.label.label-gangnam {
+  background: #1a1006 url('./assets/cover-gangnam.webp') center / cover no-repeat;
+}
+.pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6%;
+  height: 6%;
+  background: radial-gradient(circle at 35% 30%, #d4c4a8 0%, #6e5e44 70%, #2a1f15 100%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* tonearm — GUI로 조절 가능 (CSS 변수) */
+.tonearm {
+  position: absolute;
+  top: var(--ta-top, 12%);
+  right: var(--ta-right, 12%);
+  width: var(--ta-width, 60%);
+  height: var(--ta-height, 6px);
+  transform-origin: 100% 50%;
+  transform: rotate(var(--ta-rot, -35deg));
+  z-index: 5;
+  background: linear-gradient(180deg, #e8e2d4 0%, #c4b8a0 50%, #6e6450 100%);
+  border-radius: 3px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tonearm.playing { transform: rotate(var(--ta-rot-playing, -50deg)); }
+.tonearm::before {
+  /* pivot mount */
+  content: '';
+  position: absolute;
+  right: var(--ta-pivot-offset, -12px);
+  top: 50%;
+  width: var(--ta-pivot-size, 24px);
+  height: var(--ta-pivot-size, 24px);
+  background: radial-gradient(circle at 35% 30%, #f4ead5 0%, #c4b390 60%, #6e5e44 100%);
+  border-radius: 50%;
+  transform: translateY(-50%);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.5),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.tonearm::after {
+  /* cartridge / needle */
+  content: '';
+  position: absolute;
+  left: var(--ta-cart-left, -4px);
+  top: var(--ta-cart-top, -5px);
+  width: var(--ta-cart-w, 16px);
+  height: var(--ta-cart-h, 16px);
+  background: linear-gradient(180deg, #2a2018 0%, #0a0806 100%);
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 2px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* === 하단 플레이어 === */
+.player {
+  flex: 0 0 auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: calc(100% - 36px);
+  margin-bottom: max(16px, env(safe-area-inset-bottom));
+  padding: 8px 14px;
+  background:
+    radial-gradient(ellipse at 30% 20%, #fdf6e0 0%, #f4ead5 35%, #e3d5b8 75%, #c4b390 100%);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 2px 1px rgba(255, 252, 240, 0.95),
+    inset 0 -6px 10px rgba(140, 110, 70, 0.3),
+    inset 4px 0 8px rgba(255, 245, 220, 0.4),
+    inset -4px 0 8px rgba(140, 110, 70, 0.3),
+    0 1px 0 rgba(255, 250, 230, 0.7),
+    0 2px 0 #c8b896,
+    0 3px 0 #a8967a,
+    0 4px 0 #877555,
+    0 5px 0 #685739,
+    0 6px 0 #4a3e2a,
+    0 8px 12px rgba(80, 60, 30, 0.45);
+}
+.player-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: radial-gradient(ellipse at 30% 25%, #fdf6e0 0%, #f4ead5 35%, #c4b390 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 240, 0.9),
+    inset 0 -2px 4px rgba(140, 110, 70, 0.4),
+    0 2px 0 #9a8866,
+    0 4px 0 #4a3e2a,
+    0 6px 8px rgba(80, 60, 30, 0.4);
+  position: relative;
+  transition: transform 0.06s, box-shadow 0.06s;
+}
+.player-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 12px solid var(--ink);
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  transform: translate(-35%, -50%);
+}
+.player-btn.playing::before {
+  border: none;
+  width: 12px;
+  height: 14px;
+  background:
+    linear-gradient(90deg, var(--ink) 0 35%, transparent 35% 65%, var(--ink) 65% 100%);
+  transform: translate(-50%, -50%);
+}
+.player-btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 240, 0.6),
+    inset 0 -1px 2px rgba(140, 110, 70, 0.3),
+    0 1px 0 #4a3e2a,
+    0 2px 4px rgba(80, 60, 30, 0.4);
+}
+.player-bar {
+  flex: 1 1 auto;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  background:
+    linear-gradient(90deg,
+      #4a3e2a 0,
+      #4a3e2a calc(var(--seek-pct, 0) * 1%),
+      transparent calc(var(--seek-pct, 0) * 1%),
+      transparent 100%),
+    linear-gradient(180deg, #c4b390 0%, #9a8866 100%);
+  border-radius: 6px;
+  outline: none;
+  box-shadow:
+    inset 0 2px 3px rgba(80, 60, 30, 0.4),
+    0 1px 0 rgba(255, 252, 240, 0.6);
+}
+.player-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fdf6e0 0%, #c4b390 70%, #6e5e44 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 240, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+.player-bar::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fdf6e0 0%, #c4b390 70%, #6e5e44 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 240, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+/* === 패드 그리드 — 스큐어모피즘 === */
+.pad-grid {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 24px 18px 24px 18px;
+  min-height: 0;
+}
+
+.pad {
+  position: relative;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  will-change: transform, box-shadow;
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  min-width: 0;
+  transition:
+    transform 0.06s cubic-bezier(0.2, 0, 0.2, 1),
+    box-shadow 0.06s,
+    filter 0.06s;
+}
+
+.pad::after {
+  /* 하이라이트 글로스 */
+  content: '';
+  position: absolute;
+  top: 5%;
+  left: 8%;
+  right: 8%;
+  height: 38%;
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0) 100%);
+  border-radius: 50% 50% 40% 40% / 80% 80% 100% 100%;
+  pointer-events: none;
+  transition: opacity 0.1s, transform 0.06s;
+  filter: blur(0.6px);
+  z-index: 2;
+}
+
+.pad .label-ko {
+  position: relative;
+  z-index: 3;
+  font-family: 'Black Han Sans', sans-serif;
+  font-size: clamp(15px, 4.4vw, 20px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+
+/* 1행: 핑크 */
+.pad.row-gangnam {
+  background: radial-gradient(ellipse at 30% 25%, #ff5fb0 0%, #ff2e93 35%, #d61878 75%, #a0125c 100%);
+  color: var(--neon-yellow);
+  box-shadow:
+    inset 0 2px 1px rgba(255, 200, 230, 0.7),
+    inset 0 -8px 12px rgba(80, 5, 40, 0.5),
+    inset 4px 0 8px rgba(255, 100, 180, 0.25),
+    inset -4px 0 8px rgba(80, 5, 40, 0.4),
+    0 1px 0 rgba(255, 150, 200, 0.5),
+    0 2px 0 #d6207f,
+    0 3px 0 #b81570,
+    0 4px 0 #960e5e,
+    0 5px 0 #730a4a,
+    0 6px 0 #4a052b,
+    0 8px 10px rgba(80, 5, 40, 0.5),
+    0 16px 24px rgba(60, 30, 40, 0.35);
+}
+.pad.row-gangnam::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, transparent 0, transparent 8px, rgba(255, 255, 255, 0.06) 8px, rgba(255, 255, 255, 0.06) 9px);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 2행: 시안 */
+.pad.row-fart {
+  background: radial-gradient(ellipse at 30% 25%, #80f8ff 0%, #00f0ff 35%, #00b8cc 75%, #006677 100%);
+  color: #003d4a;
+  box-shadow:
+    inset 0 2px 1px rgba(220, 255, 255, 0.8),
+    inset 0 -8px 12px rgba(0, 50, 60, 0.5),
+    inset 4px 0 8px rgba(150, 250, 255, 0.3),
+    inset -4px 0 8px rgba(0, 50, 60, 0.4),
+    0 1px 0 rgba(180, 255, 255, 0.6),
+    0 2px 0 #00bcd0,
+    0 3px 0 #00a0b4,
+    0 4px 0 #007a8c,
+    0 5px 0 #005268,
+    0 6px 0 #003a48,
+    0 8px 10px rgba(0, 50, 60, 0.5),
+    0 16px 24px rgba(20, 50, 60, 0.35);
+}
+
+/* 3행: 종이 */
+.pad.row-hanroro {
+  background: radial-gradient(ellipse at 30% 25%, #fdf6e0 0%, #f4ead5 35%, #e3d5b8 75%, #c4b390 100%);
+  color: var(--ink);
+  box-shadow:
+    inset 0 2px 1px rgba(255, 252, 240, 0.9),
+    inset 0 -8px 12px rgba(140, 110, 70, 0.35),
+    inset 4px 0 8px rgba(255, 245, 220, 0.4),
+    inset -4px 0 8px rgba(140, 110, 70, 0.3),
+    0 1px 0 rgba(255, 250, 230, 0.7),
+    0 2px 0 #c8b896,
+    0 3px 0 #a8967a,
+    0 4px 0 #877555,
+    0 5px 0 #685739,
+    0 6px 0 #4a3e2a,
+    0 8px 10px rgba(80, 60, 30, 0.5),
+    0 16px 24px rgba(80, 60, 30, 0.35);
+}
+.pad.row-hanroro .label-ko {
+  font-family: 'Gowun Batang', serif;
+  font-weight: 700;
+  font-size: clamp(12px, 3.4vw, 16px);
+}
+.pad.row-hanroro::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.8' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 0.2 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  border-radius: inherit;
+  z-index: 1;
+}
+
+/* === 누른 상태 (held) — 손가락 떼기 전까지 유지 === */
+.pad.held {
+  transform: translateY(6px) scale(0.97);
+  filter: brightness(1.18) saturate(1.25);
+}
+.pad.held::after {
+  opacity: 0.3;
+  transform: scaleY(0.7);
+}
+.pad.row-gangnam.held {
+  box-shadow:
+    inset 0 4px 8px rgba(80, 5, 40, 0.6),
+    inset 0 -1px 0 rgba(255, 200, 230, 0.4),
+    0 0 0 1px rgba(255, 100, 180, 0.8),
+    0 1px 0 #6e0840,
+    0 2px 0 #4a052b,
+    0 5px 10px rgba(180, 30, 100, 0.45);
+}
+.pad.row-fart.held {
+  box-shadow:
+    inset 0 4px 8px rgba(0, 50, 60, 0.6),
+    inset 0 -1px 0 rgba(220, 255, 255, 0.5),
+    0 0 0 1px rgba(150, 250, 255, 0.8),
+    0 1px 0 #005666,
+    0 2px 0 #003a48,
+    0 5px 10px rgba(0, 150, 170, 0.45);
+}
+.pad.row-hanroro.held {
+  box-shadow:
+    inset 0 4px 8px rgba(140, 110, 70, 0.5),
+    inset 0 -1px 0 rgba(255, 252, 240, 0.5),
+    0 0 0 1px rgba(255, 245, 220, 0.8),
+    0 1px 0 #6e5e44,
+    0 2px 0 #4a3e2a,
+    0 5px 10px rgba(140, 110, 70, 0.4);
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  #stage > * { display: none !important; }
+  #stage::after {
+    content: '세로로 돌려주세요';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+    font-family: 'Gowun Batang', serif;
+    font-size: 16px;
+  }
+}
+

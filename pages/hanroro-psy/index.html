@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>0+0 — 한로로 × 강남스타일</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Black+Han+Sans&family=Major+Mono+Display&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="stage">
+    <div class="center">
+      <div class="lp-wrap">
+        <div class="lp-shadow"></div>
+        <div class="lp" id="lp">
+          <div class="label"></div>
+          <div class="pin"></div>
+        </div>
+        <div class="tonearm" id="tonearm"></div>
+      </div>
+
+      <div class="lp-wrap">
+        <div class="lp-shadow"></div>
+        <div class="lp" id="lp2">
+          <div class="label label-gangnam"></div>
+          <div class="pin"></div>
+        </div>
+        <div class="tonearm" id="tonearm2"></div>
+      </div>
+    </div>
+
+    <div class="pad-grid">
+      <button class="pad row-gangnam" data-sound="gangnam"><span class="label-ko">강남</span></button>
+      <button class="pad row-gangnam" data-sound="ingan"><span class="label-ko">인간</span></button>
+      <button class="pad row-gangnam" data-sound="yeoja"><span class="label-ko">여자</span></button>
+      <button class="pad row-gangnam" data-sound="ssanai"><span class="label-ko">싸나이</span></button>
+      <button class="pad row-fart" data-sound="ehy"><span class="label-ko">에~</span></button>
+      <button class="pad row-fart" data-sound="damngirl"><span class="label-ko">Damn<br>Girl</span></button>
+      <button class="pad row-fart" data-sound="najeneun"><span class="label-ko">낮에는<br>따사로운</span></button>
+      <button class="pad row-fart" data-sound="meori"><span class="label-ko">머리푸는</span></button>
+      <button class="pad row-hanroro" data-sound="ultungbultung"><span class="label-ko">Drum</span></button>
+      <button class="pad row-hanroro" data-sound="op"><span class="label-ko">옵</span></button>
+      <button class="pad row-hanroro" data-sound="wanjeon"><span class="label-ko">완전</span></button>
+      <button class="pad row-hanroro" data-sound="eo"><span class="label-ko">어</span></button>
+    </div>
+
+    <div class="player">
+      <button class="player-btn" id="playPause" aria-label="play"></button>
+      <input type="range" class="player-bar" id="seekbar" min="0" max="1000" value="0" step="1">
+    </div>
+    <audio id="bgm" preload="metadata"></audio>
+  </div>
+
+  <script type="module" src="script.ts"></script>
+  <script type="module" src="/common/touch-cursor.ts"></script>
+</body>
+</html>
