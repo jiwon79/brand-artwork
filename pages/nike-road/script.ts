@@ -4,23 +4,15 @@ import GUI from 'lil-gui';
 const W = 360;
 const H = 640;
 const GRAVITY = 280; // px/s²
-const DURATION_MS = 12000;
+const FPS = 60;
+const TOTAL_FRAMES = 480; // 8s of pre-computed simulation
+const SUB_STEPS = 4;
 
 // ── DOM ──────────────────────────────────────────────────
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-const hook = document.getElementById('hook') as HTMLDivElement;
-const jdi = document.getElementById('jdi') as HTMLDivElement;
-const jdiKr = document.getElementById('jdi-kr') as HTMLDivElement;
-const timerEl = document.getElementById('timer') as HTMLDivElement;
-const debugEl = document.getElementById('debug') as HTMLDivElement;
 const playBtn = document.getElementById('btn-play') as HTMLButtonElement;
 const resetBtn = document.getElementById('btn-reset') as HTMLButtonElement;
-const debugBtn = document.getElementById('btn-debug') as HTMLButtonElement;
-
-debugEl.style.whiteSpace = 'pre-line';
-
-let DEBUG = false;
 
 // ── Words as angled platforms ────────────────────────────
 type Word = {
@@ -54,7 +46,6 @@ function measureWords(): void {
     w.normal = { x: Math.sin(a), y: -Math.cos(a) };
   }
 }
-measureWords();
 
 // ── Ball physics ─────────────────────────────────────────
 const ball = {
@@ -67,7 +58,7 @@ const ball = {
   t: 0,
 };
 
-const trail: { x: number; y: number }[] = [];
+const masterTrail: { x: number; y: number }[] = [];
 
 function resetPhysics(): void {
   ball.x = 105;
@@ -76,8 +67,6 @@ function resetPhysics(): void {
   ball.vy = 0;
   ball.onPlatform = -1;
   ball.t = 0;
-  trail.length = 0;
-  trail.push({ x: ball.x, y: ball.y });
 }
 
 function pointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
@@ -107,12 +96,10 @@ function checkLanding(): void {
       const dx = ball.x - r.cx;
       const dy = ball.y - r.cy;
       const nDot = dx * w.normal.x + dy * w.normal.y;
-      if (nDot >= -ball.r * 0.8) {
-        if (r.dist < bestDist) {
-          bestDist = r.dist;
-          bestI = i;
-          bestRes = r;
-        }
+      if (nDot >= -ball.r * 0.8 && r.dist < bestDist) {
+        bestDist = r.dist;
+        bestI = i;
+        bestRes = r;
       }
     }
   }
@@ -165,9 +152,27 @@ function physicsStep(dt: number): void {
     checkLanding();
   }
 
-  const last = trail[trail.length - 1];
+  const last = masterTrail[masterTrail.length - 1];
   if (!last || Math.abs(last.x - ball.x) > 0.5 || Math.abs(last.y - ball.y) > 0.5) {
-    trail.push({ x: ball.x, y: ball.y });
+    masterTrail.push({ x: ball.x, y: ball.y });
+  }
+}
+
+// ── Pre-computed frames ──────────────────────────────────
+type Frame = { x: number; y: number; trailLen: number };
+let frames: Frame[] = [];
+
+function precompute(): void {
+  measureWords();
+  resetPhysics();
+  masterTrail.length = 0;
+  masterTrail.push({ x: ball.x, y: ball.y });
+  frames = [{ x: ball.x, y: ball.y, trailLen: masterTrail.length }];
+
+  const dt = 1 / FPS;
+  for (let i = 1; i < TOTAL_FRAMES; i++) {
+    for (let s = 0; s < SUB_STEPS; s++) physicsStep(dt / SUB_STEPS);
+    frames.push({ x: ball.x, y: ball.y, trailLen: masterTrail.length });
   }
 }
 
@@ -207,17 +212,17 @@ roadCanvas.width = W;
 roadCanvas.height = H;
 const rCtx = roadCanvas.getContext('2d') as CanvasRenderingContext2D;
 
-function paintTrailToMask(): void {
-  if (trail.length < 2) return;
+function paintTrailToMask(trailLen: number): void {
   mCtx.clearRect(0, 0, W, H);
+  if (trailLen < 2) return;
   mCtx.strokeStyle = 'rgba(0,0,0,1)';
   mCtx.lineWidth = 22;
   mCtx.lineCap = 'round';
   mCtx.lineJoin = 'round';
   mCtx.beginPath();
-  mCtx.moveTo(trail[0].x, trail[0].y);
-  for (let i = 1; i < trail.length; i++) {
-    mCtx.lineTo(trail[i].x, trail[i].y);
+  mCtx.moveTo(masterTrail[0].x, masterTrail[0].y);
+  for (let i = 1; i < trailLen; i++) {
+    mCtx.lineTo(masterTrail[i].x, masterTrail[i].y);
   }
   mCtx.stroke();
 }
@@ -231,185 +236,109 @@ function buildRoad(): void {
 }
 
 // ── Rendering ────────────────────────────────────────────
-function drawWord(w: Word, opacity: number): void {
+function drawWord(w: Word): void {
   ctx.save();
   ctx.translate(w.cx, w.cy);
   ctx.rotate((w.angle * Math.PI) / 180);
   ctx.font = w.font;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = `rgba(10,10,10,${opacity})`;
+  ctx.fillStyle = '#0a0a0a';
   ctx.fillText(w.text, 0, 0);
   ctx.restore();
-
-  if (DEBUG) {
-    ctx.strokeStyle = 'rgba(255,0,0,0.6)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(w.p1.x, w.p1.y);
-    ctx.lineTo(w.p2.x, w.p2.y);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(0,200,0,0.6)';
-    ctx.beginPath();
-    ctx.moveTo(w.cx, w.cy);
-    ctx.lineTo(w.cx + w.normal.x * 18, w.cy + w.normal.y * 18);
-    ctx.stroke();
-  }
 }
 
-function drawBall(opacity: number): void {
+function drawBall(x: number, y: number): void {
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.25)';
   ctx.shadowBlur = 4;
   ctx.shadowOffsetY = 2;
-  ctx.fillStyle = `rgba(10,10,10,${opacity})`;
+  ctx.fillStyle = '#0a0a0a';
   ctx.beginPath();
-  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+  ctx.arc(x, y, ball.r, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
 
-// ── Timeline ─────────────────────────────────────────────
-let startTime: number | null = null;
-let lastFrameTime: number | null = null;
+function renderFrame(idx: number): void {
+  const i = Math.max(0, Math.min(frames.length - 1, Math.round(idx)));
+  const f = frames[i];
+
+  paintTrailToMask(f.trailLen);
+  buildRoad();
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(roadCanvas, 0, 0);
+  for (const w of words) drawWord(w);
+  drawBall(f.x, f.y);
+}
+
+// ── Playback ─────────────────────────────────────────────
+const state = { frame: 0 };
 let raf: number | null = null;
 let playing = false;
-let wordsOpacity = 1;
-let ballOpacity = 0;
-let morphT = 0;
-
-function frame(ts: number): void {
-  if (startTime === null) {
-    startTime = ts;
-    lastFrameTime = ts;
-  }
-  const elapsed = ts - startTime;
-  const dt = Math.min(0.033, (ts - (lastFrameTime ?? ts)) / 1000);
-  lastFrameTime = ts;
-
-  timerEl.textContent = `${(elapsed / 1000).toFixed(2).padStart(5, '0')}s / 12.00s`;
-
-  if (elapsed < 1000) {
-    hook.style.opacity = '1';
-    ballOpacity = 0;
-    wordsOpacity = 1;
-  } else if (elapsed < 2000) {
-    const k = (elapsed - 1000) / 1000;
-    hook.style.opacity = `${1 - k}`;
-    ballOpacity = k;
-  } else if (elapsed < 9000) {
-    hook.style.opacity = '0';
-    ballOpacity = 1;
-    const steps = 4;
-    for (let i = 0; i < steps; i++) {
-      physicsStep(dt / steps);
-    }
-    paintTrailToMask();
-  } else if (elapsed < 10000) {
-    const k = (elapsed - 9000) / 1000;
-    ballOpacity = 1 - k;
-    wordsOpacity = 1 - k;
-  } else if (elapsed < 11500) {
-    morphT = (elapsed - 10000) / 1500;
-    ballOpacity = 0;
-    wordsOpacity = 0;
-  } else if (elapsed < DURATION_MS) {
-    const k = (elapsed - 11500) / 500;
-    morphT = 1;
-    jdi.style.opacity = '1';
-    jdiKr.style.opacity = `${k}`;
-  } else {
-    morphT = 1;
-    jdi.style.opacity = '1';
-    jdiKr.style.opacity = '1';
-    playing = false;
-    timerEl.textContent = '12.00s / 12.00s';
-    renderScene();
-    return;
-  }
-
-  renderScene();
-  if (playing) raf = requestAnimationFrame(frame);
-}
-
-function renderScene(): void {
-  ctx.clearRect(0, 0, W, H);
-
-  if (morphT < 0.001) {
-    buildRoad();
-    ctx.drawImage(roadCanvas, 0, 0);
-  } else if (morphT < 1) {
-    buildRoad();
-    ctx.globalAlpha = 1 - morphT;
-    ctx.drawImage(roadCanvas, 0, 0);
-    ctx.globalAlpha = 1;
-  }
-
-  if (wordsOpacity > 0) {
-    for (const w of words) drawWord(w, wordsOpacity);
-  }
-
-  if (ballOpacity > 0) {
-    drawBall(ballOpacity);
-  }
-
-  if (DEBUG) {
-    debugEl.textContent =
-      `pos: ${ball.x.toFixed(0)}, ${ball.y.toFixed(0)}\n` +
-      `vel: ${ball.vx.toFixed(0)}, ${ball.vy.toFixed(0)}\n` +
-      `on platform: ${ball.onPlatform}\n` +
-      `t: ${ball.t.toFixed(2)}\n` +
-      `trail: ${trail.length} pts`;
-  } else {
-    debugEl.textContent = '';
-  }
-}
 
 function play(): void {
   if (playing) return;
-  reset();
+  if (state.frame >= frames.length - 1) state.frame = 0;
   playing = true;
-  startTime = null;
-  lastFrameTime = null;
-  raf = requestAnimationFrame(frame);
+  let lastTs: number | null = null;
+  const tick = (ts: number) => {
+    if (!playing) return;
+    if (lastTs === null) lastTs = ts;
+    const dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    state.frame = Math.min(frames.length - 1, state.frame + dt * FPS);
+    frameCtrl.updateDisplay();
+    renderFrame(state.frame);
+    if (state.frame >= frames.length - 1) {
+      playing = false;
+      return;
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
 }
 
 function reset(): void {
   if (raf !== null) cancelAnimationFrame(raf);
   playing = false;
-  startTime = null;
-  resetPhysics();
-  mCtx.clearRect(0, 0, W, H);
-  morphT = 0;
-  wordsOpacity = 1;
-  ballOpacity = 0;
-  hook.style.opacity = '1';
-  jdi.style.opacity = '0';
-  jdiKr.style.opacity = '0';
-  timerEl.textContent = '00.00s / 12.00s';
-  renderScene();
+  state.frame = 0;
+  frameCtrl.updateDisplay();
+  renderFrame(0);
 }
 
-function toggleDebug(): void {
-  DEBUG = !DEBUG;
-  renderScene();
+function stopPlayback(): void {
+  if (raf !== null) cancelAnimationFrame(raf);
+  playing = false;
 }
 
 playBtn.addEventListener('click', play);
 resetBtn.addEventListener('click', reset);
-debugBtn.addEventListener('click', toggleDebug);
 
-// ── lil-gui: word position controls ──────────────────────
-const gui = new GUI({ title: 'Word Positions' });
+// ── GUI ──────────────────────────────────────────────────
+const gui = new GUI({ title: 'Controls' });
+
+precompute();
+
+const frameCtrl = gui.add(state, 'frame', 0, TOTAL_FRAMES - 1, 1).name('frame').onChange((v: number) => {
+  stopPlayback();
+  renderFrame(v);
+});
+
+const wordsFolder = gui.addFolder('Word Positions');
 for (const w of words) {
-  const folder = gui.addFolder(w.text);
+  const f = wordsFolder.addFolder(w.text);
   const onChange = () => {
-    measureWords();
-    if (!playing) renderScene();
+    stopPlayback();
+    precompute();
+    state.frame = 0;
+    frameCtrl.updateDisplay();
+    renderFrame(0);
   };
-  folder.add(w, 'cx', 0, W, 1).onChange(onChange);
-  folder.add(w, 'cy', 0, H, 1).onChange(onChange);
-  folder.add(w, 'angle', -45, 45, 1).onChange(onChange);
+  f.add(w, 'cx', 0, W, 1).onChange(onChange);
+  f.add(w, 'cy', 0, H, 1).onChange(onChange);
+  f.add(w, 'angle', -45, 45, 1).onChange(onChange);
 }
 
-reset();
+renderFrame(0);

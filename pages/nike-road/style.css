@@ -58,38 +58,6 @@ html, body {
   border-radius: 4px;
   white-space: nowrap;
   z-index: 10;
-  transition: opacity 0.6s ease;
-}
-
-#jdi {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-family: "Helvetica Neue", -apple-system, sans-serif;
-  font-weight: 900;
-  font-size: 38px;
-  color: #0a0a0a;
-  letter-spacing: -0.02em;
-  opacity: 0;
-  z-index: 12;
-  font-style: italic;
-  transition: opacity 0.8s ease;
-}
-
-#jdi-kr {
-  position: absolute;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: -apple-system, "Apple SD Gothic Neo", sans-serif;
-  font-weight: 500;
-  font-size: 14px;
-  color: #1a1a1a;
-  letter-spacing: 0.02em;
-  opacity: 0;
-  z-index: 12;
-  transition: opacity 0.8s ease;
 }
 
 #controls {
@@ -117,25 +85,3 @@ html, body {
 }
 
 #controls button:hover { opacity: 0.7; }
-
-#timer {
-  position: fixed;
-  top: 30px;
-  right: 30px;
-  color: #666;
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  z-index: 100;
-}
-
-#debug {
-  position: fixed;
-  top: 30px;
-  left: 30px;
-  color: #aaa;
-  font-family: ui-monospace, monospace;
-  font-size: 10px;
-  z-index: 100;
-  line-height: 1.5;
-}
