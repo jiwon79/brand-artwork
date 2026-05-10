@@ -20,8 +20,8 @@ html, body {
 
 #stage {
   position: relative;
-  width: 720px;
-  height: 405px;
+  width: 405px;
+  height: 720px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }

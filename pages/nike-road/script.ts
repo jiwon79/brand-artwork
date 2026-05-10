@@ -1,8 +1,8 @@
 import GUI from 'lil-gui';
 
 // ── Constants ────────────────────────────────────────────
-const W = 720;
-const H = 405;
+const W = 405;
+const H = 720;
 const GRAVITY = 280; // px/s²
 const FPS = 60;
 const TOTAL_FRAMES = 480; // 8s of pre-computed simulation
@@ -29,10 +29,10 @@ type Word = {
 };
 
 const words: Word[] = [
-  { text: 'failures', cx: 240, cy:  85, angle:  15, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'become',   cx: 470, cy: 175, angle: -20, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'the',      cx: 230, cy: 260, angle:  22, font: 'italic 30px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'road',     cx: 480, cy: 340, angle: -18, font: 'italic 32px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'failures', cx: 145, cy: 195, angle:  18, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'become',   cx: 260, cy: 330, angle: -22, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'the',      cx: 125, cy: 465, angle:  25, font: 'italic 30px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'road',     cx: 275, cy: 595, angle: -20, font: 'italic 32px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
 ];
 
 function fontPx(fontStr: string): number {
@@ -63,7 +63,7 @@ function measureWords(): void {
 
 // ── Ball physics ─────────────────────────────────────────
 const ball = {
-  x: 215,
+  x: 120,
   y: -20,
   vx: 0,
   vy: 0,
@@ -75,7 +75,7 @@ const ball = {
 const masterTrail: { x: number; y: number }[] = [];
 
 function resetPhysics(): void {
-  ball.x = 215;
+  ball.x = 120;
   ball.y = -20;
   ball.vx = 0;
   ball.vy = 0;
