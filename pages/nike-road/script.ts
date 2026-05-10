@@ -1,12 +1,13 @@
 import GUI from 'lil-gui';
 
 // ── Constants ────────────────────────────────────────────
-const W = 360;
-const H = 640;
+const W = 720;
+const H = 405;
 const GRAVITY = 280; // px/s²
 const FPS = 60;
 const TOTAL_FRAMES = 480; // 8s of pre-computed simulation
 const SUB_STEPS = 4;
+const TOP_OFFSET_RATIO = 0.4; // how far above word baseline-center the platform sits
 
 // ── DOM ──────────────────────────────────────────────────
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
@@ -28,11 +29,16 @@ type Word = {
 };
 
 const words: Word[] = [
-  { text: 'failures', cx: 130, cy: 175, angle:  18, font: 'italic 26px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'become',   cx: 230, cy: 295, angle: -22, font: 'italic 26px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'the',      cx: 110, cy: 415, angle:  25, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'road',     cx: 245, cy: 530, angle: -20, font: 'italic 30px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'failures', cx: 240, cy:  85, angle:  15, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'become',   cx: 470, cy: 175, angle: -20, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'the',      cx: 230, cy: 260, angle:  22, font: 'italic 30px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'road',     cx: 480, cy: 340, angle: -18, font: 'italic 32px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
 ];
+
+function fontPx(fontStr: string): number {
+  const m = fontStr.match(/(\d+(?:\.\d+)?)px/);
+  return m ? parseFloat(m[1]) : 24;
+}
 
 function measureWords(): void {
   for (const w of words) {
@@ -41,15 +47,23 @@ function measureWords(): void {
     w.width = m.width;
     const a = (w.angle * Math.PI) / 180;
     const half = w.width / 2;
-    w.p1 = { x: w.cx - Math.cos(a) * half, y: w.cy - Math.sin(a) * half };
-    w.p2 = { x: w.cx + Math.cos(a) * half, y: w.cy + Math.sin(a) * half };
-    w.normal = { x: Math.sin(a), y: -Math.cos(a) };
+    const cosA = Math.cos(a);
+    const sinA = Math.sin(a);
+    // Surface normal pointing UP from the word's top edge
+    w.normal = { x: sinA, y: -cosA };
+    // Lift platform line from baseline-center to top of glyph so the ball rolls
+    // ABOVE the word (keeping the text visible).
+    const topOff = fontPx(w.font) * TOP_OFFSET_RATIO;
+    const ox = w.normal.x * topOff;
+    const oy = w.normal.y * topOff;
+    w.p1 = { x: w.cx - cosA * half + ox, y: w.cy - sinA * half + oy };
+    w.p2 = { x: w.cx + cosA * half + ox, y: w.cy + sinA * half + oy };
   }
 }
 
 // ── Ball physics ─────────────────────────────────────────
 const ball = {
-  x: 105,
+  x: 215,
   y: -20,
   vx: 0,
   vy: 0,
@@ -61,7 +75,7 @@ const ball = {
 const masterTrail: { x: number; y: number }[] = [];
 
 function resetPhysics(): void {
-  ball.x = 105;
+  ball.x = 215;
   ball.y = -20;
   ball.vx = 0;
   ball.vy = 0;
@@ -332,9 +346,7 @@ for (const w of words) {
   const onChange = () => {
     stopPlayback();
     precompute();
-    state.frame = 0;
-    frameCtrl.updateDisplay();
-    renderFrame(0);
+    renderFrame(state.frame);
   };
   f.add(w, 'cx', 0, W, 1).onChange(onChange);
   f.add(w, 'cy', 0, H, 1).onChange(onChange);
