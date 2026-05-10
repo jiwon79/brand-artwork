@@ -29,10 +29,10 @@ type Word = {
 };
 
 const words: Word[] = [
-  { text: 'failures', cx: 145, cy: 195, angle:  18, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'become',   cx: 260, cy: 330, angle: -22, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'the',      cx: 125, cy: 465, angle:  25, font: 'italic 30px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'road',     cx: 275, cy: 595, angle: -20, font: 'italic 32px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'failures', cx: 127, cy: 237, angle:  13, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'become',   cx: 281, cy: 325, angle: -21, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'the',      cx: 176, cy: 413, angle:  20, font: 'italic 30px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'road',     cx: 251, cy: 511, angle: -20, font: 'italic 32px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
 ];
 
 function fontPx(fontStr: string): number {
