@@ -14,6 +14,7 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
 const playBtn = document.getElementById('btn-play') as HTMLButtonElement;
 const resetBtn = document.getElementById('btn-reset') as HTMLButtonElement;
+const skyVideo = document.getElementById('sky') as HTMLVideoElement;
 
 // ── Words as angled platforms ────────────────────────────
 type Word = {
@@ -320,6 +321,7 @@ function reset(): void {
   state.frame = 0;
   frameCtrl.updateDisplay();
   renderFrame(0);
+  seekVideo(video.startTime);
 }
 
 function stopPlayback(): void {
@@ -330,6 +332,27 @@ function stopPlayback(): void {
 playBtn.addEventListener('click', play);
 resetBtn.addEventListener('click', reset);
 
+// ── Video ────────────────────────────────────────────────
+const video = {
+  playbackRate: 1.0,
+  startTime: 0,
+};
+
+function applyVideo(): void {
+  skyVideo.playbackRate = video.playbackRate;
+}
+
+function seekVideo(t: number): void {
+  if (!Number.isFinite(skyVideo.duration) || skyVideo.duration === 0) return;
+  skyVideo.currentTime = Math.max(0, Math.min(skyVideo.duration - 0.001, t));
+}
+
+skyVideo.addEventListener('loadedmetadata', () => {
+  videoStartCtrl.max(skyVideo.duration);
+  seekVideo(video.startTime);
+  applyVideo();
+});
+
 // ── GUI ──────────────────────────────────────────────────
 const gui = new GUI({ title: 'Controls' });
 
@@ -339,6 +362,13 @@ const frameCtrl = gui.add(state, 'frame', 0, TOTAL_FRAMES - 1, 1).name('frame').
   stopPlayback();
   renderFrame(v);
 });
+
+const videoFolder = gui.addFolder('Video');
+videoFolder.add(video, 'playbackRate', 0.1, 4, 0.05).onChange(applyVideo);
+const videoStartCtrl = videoFolder
+  .add(video, 'startTime', 0, 60, 0.05)
+  .name('startTime')
+  .onChange((v: number) => seekVideo(v));
 
 const wordsFolder = gui.addFolder('Word Positions');
 for (const w of words) {
