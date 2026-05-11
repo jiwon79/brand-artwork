@@ -227,27 +227,53 @@ roadCanvas.width = W;
 roadCanvas.height = H;
 const rCtx = roadCanvas.getContext('2d') as CanvasRenderingContext2D;
 
-function paintTrailToMask(trailLen: number): void {
-  mCtx.clearRect(0, 0, W, H);
-  if (trailLen < 2) return;
-  mCtx.strokeStyle = 'rgba(0,0,0,1)';
-  mCtx.lineWidth = 22;
-  mCtx.lineCap = 'round';
-  mCtx.lineJoin = 'round';
-  mCtx.beginPath();
-  mCtx.moveTo(masterTrail[0].x, masterTrail[0].y);
+const ROAD_WIDTH = 22;
+const EDGE_INSET = 2;        // white edge band thickness on each side
+const CENTER_LINE_WIDTH = 1.8;
+const CENTER_LINE_COLOR = '#f0c419';
+const EDGE_COLOR = '#f4f1ea';
+
+function traceTrail(c: CanvasRenderingContext2D, trailLen: number): void {
+  c.beginPath();
+  c.moveTo(masterTrail[0].x, masterTrail[0].y);
   for (let i = 1; i < trailLen; i++) {
-    mCtx.lineTo(masterTrail[i].x, masterTrail[i].y);
+    c.lineTo(masterTrail[i].x, masterTrail[i].y);
   }
-  mCtx.stroke();
+  c.stroke();
 }
 
-function buildRoad(): void {
+function buildRoad(trailLen: number): void {
   rCtx.clearRect(0, 0, W, H);
+  if (trailLen < 2) return;
+
+  rCtx.lineCap = 'round';
+  rCtx.lineJoin = 'round';
+
+  // 1) White edge band (full road width)
+  rCtx.strokeStyle = EDGE_COLOR;
+  rCtx.lineWidth = ROAD_WIDTH;
+  traceTrail(rCtx, trailLen);
+
+  // 2) Asphalt-textured inner band, carved inside the edges via scratch mask
+  mCtx.clearRect(0, 0, W, H);
+  mCtx.lineCap = 'round';
+  mCtx.lineJoin = 'round';
+  mCtx.strokeStyle = '#000';
+  mCtx.lineWidth = ROAD_WIDTH - EDGE_INSET * 2;
+  traceTrail(mCtx, trailLen);
+  mCtx.globalCompositeOperation = 'source-in';
+  mCtx.drawImage(asphalt, 0, 0);
+  mCtx.globalCompositeOperation = 'source-over';
   rCtx.drawImage(mask, 0, 0);
-  rCtx.globalCompositeOperation = 'source-in';
-  rCtx.drawImage(asphalt, 0, 0);
-  rCtx.globalCompositeOperation = 'source-over';
+
+  // 3) Yellow dashed center line
+  rCtx.save();
+  rCtx.strokeStyle = CENTER_LINE_COLOR;
+  rCtx.lineWidth = CENTER_LINE_WIDTH;
+  rCtx.lineCap = 'butt';
+  rCtx.setLineDash([6, 8]);
+  traceTrail(rCtx, trailLen);
+  rCtx.restore();
 }
 
 // ── Rendering ────────────────────────────────────────────
@@ -279,8 +305,7 @@ function renderFrame(idx: number): void {
   const i = Math.max(0, Math.min(frames.length - 1, Math.round(idx)));
   const f = frames[i];
 
-  paintTrailToMask(f.trailLen);
-  buildRoad();
+  buildRoad(f.trailLen);
 
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(roadCanvas, 0, 0);
