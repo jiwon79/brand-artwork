@@ -395,17 +395,4 @@ const videoStartCtrl = videoFolder
   .name('startTime')
   .onChange((v: number) => seekVideo(v));
 
-const wordsFolder = gui.addFolder('Word Positions');
-for (const w of words) {
-  const f = wordsFolder.addFolder(w.text);
-  const onChange = () => {
-    stopPlayback();
-    precompute();
-    renderFrame(state.frame);
-  };
-  f.add(w, 'cx', 0, W, 1).onChange(onChange);
-  f.add(w, 'cy', 0, H, 1).onChange(onChange);
-  f.add(w, 'angle', -45, 45, 1).onChange(onChange);
-}
-
 renderFrame(0);
