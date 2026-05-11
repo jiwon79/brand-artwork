@@ -177,16 +177,64 @@ function physicsStep(dt: number): void {
 type Frame = { x: number; y: number; trailLen: number };
 let frames: Frame[] = [];
 
+type Dust = { spawn: number; x: number; y: number; vx: number; vy: number };
+const DUST_LIFE_FRAMES = 36;
+const DUST_GRAVITY = 90; // softer than ball gravity
+let dustParticles: Dust[] = [];
+
+function hashRand(seed: number): number {
+  const x = Math.sin(seed) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function emitDustLanding(frameIdx: number): void {
+  for (let k = 0; k < 10; k++) {
+    const s = frameIdx * 19 + k;
+    const angle = -Math.PI / 2 + (hashRand(s) - 0.5) * 1.5;
+    const speed = 28 + hashRand(s + 1.7) * 50;
+    dustParticles.push({
+      spawn: frameIdx,
+      x: ball.x,
+      y: ball.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+    });
+  }
+}
+
+function emitDustRoll(frameIdx: number): void {
+  const s = frameIdx * 37;
+  const angle = -Math.PI / 2 + (hashRand(s) - 0.5) * 0.7;
+  const speed = 8 + hashRand(s + 0.3) * 18;
+  dustParticles.push({
+    spawn: frameIdx,
+    x: ball.x,
+    y: ball.y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+  });
+}
+
 function precompute(): void {
   measureWords();
   resetPhysics();
   masterTrail.length = 0;
   masterTrail.push({ x: ball.x, y: ball.y });
   frames = [{ x: ball.x, y: ball.y, trailLen: masterTrail.length }];
+  dustParticles = [];
 
   const dt = 1 / FPS;
   for (let i = 1; i < TOTAL_FRAMES; i++) {
+    const wasInAir = ball.onPlatform < 0;
     for (let s = 0; s < SUB_STEPS; s++) physicsStep(dt / SUB_STEPS);
+
+    if (wasInAir && ball.onPlatform >= 0) {
+      emitDustLanding(i);
+    }
+    if (ball.onPlatform >= 0 && i % 3 === 0) {
+      emitDustRoll(i);
+    }
+
     frames.push({ x: ball.x, y: ball.y, trailLen: masterTrail.length });
   }
 }
@@ -242,7 +290,11 @@ function traceTrail(c: CanvasRenderingContext2D, trailLen: number): void {
   c.stroke();
 }
 
-function buildRoad(trailLen: number): void {
+const DASH_PATTERN = [6, 8];
+const DASH_LEN = DASH_PATTERN[0] + DASH_PATTERN[1];
+const DASH_FLOW_SPEED = 30; // px/s
+
+function buildRoad(trailLen: number, ts: number): void {
   rCtx.clearRect(0, 0, W, H);
   if (trailLen < 2) return;
 
@@ -266,15 +318,80 @@ function buildRoad(trailLen: number): void {
   mCtx.globalCompositeOperation = 'source-over';
   rCtx.drawImage(mask, 0, 0);
 
-  // 3) Yellow dashed center line
+  // 3) Yellow dashed center line — flows along the path over time
   rCtx.save();
   rCtx.strokeStyle = CENTER_LINE_COLOR;
   rCtx.lineWidth = CENTER_LINE_WIDTH;
   rCtx.lineCap = 'butt';
-  rCtx.setLineDash([6, 8]);
+  rCtx.setLineDash(DASH_PATTERN);
+  rCtx.lineDashOffset = -(((ts * 0.001) * DASH_FLOW_SPEED) % DASH_LEN);
   traceTrail(rCtx, trailLen);
   rCtx.restore();
 }
+
+// ── Cinematic overlays: dust, grain, vignette ────────────
+function drawDust(currentFrame: number): void {
+  for (const p of dustParticles) {
+    const age = currentFrame - p.spawn;
+    if (age < 0 || age >= DUST_LIFE_FRAMES) continue;
+    const t = age / FPS;
+    const ageT = age / DUST_LIFE_FRAMES;
+    const x = p.x + p.vx * t;
+    const y = p.y + p.vy * t + 0.5 * DUST_GRAVITY * t * t;
+    const alpha = (1 - ageT) * 0.55;
+    const radius = 1.4 + ageT * 2.4;
+    ctx.fillStyle = `rgba(232,222,200,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+const grain = document.createElement('canvas');
+grain.width = 256;
+grain.height = 256;
+(function buildGrain() {
+  const gCtx = grain.getContext('2d') as CanvasRenderingContext2D;
+  const img = gCtx.createImageData(256, 256);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = 100 + (Math.random() * 110) | 0;
+    d[i] = v;
+    d[i + 1] = v;
+    d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  gCtx.putImageData(img, 0, 0);
+})();
+
+function applyGrain(ts: number): void {
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.globalCompositeOperation = 'overlay';
+  const offX = (((ts * 0.05) | 0) % 256 + 256) % 256;
+  const offY = (((ts * 0.07) | 0) % 256 + 256) % 256;
+  for (let x = -offX; x < W; x += 256) {
+    for (let y = -offY; y < H; y += 256) {
+      ctx.drawImage(grain, x, y);
+    }
+  }
+  ctx.restore();
+}
+
+const vignette = document.createElement('canvas');
+vignette.width = W;
+vignette.height = H;
+(function buildVignette() {
+  const vCtx = vignette.getContext('2d') as CanvasRenderingContext2D;
+  const grad = vCtx.createRadialGradient(
+    W / 2, H / 2, Math.min(W, H) * 0.35,
+    W / 2, H / 2, Math.max(W, H) * 0.72,
+  );
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.55)');
+  vCtx.fillStyle = grad;
+  vCtx.fillRect(0, 0, W, H);
+})();
 
 // ── Rendering ────────────────────────────────────────────
 function drawWord(w: Word): void {
@@ -301,56 +418,58 @@ function drawBall(x: number, y: number): void {
   ctx.restore();
 }
 
-function renderFrame(idx: number): void {
+function renderFrame(idx: number, ts: number): void {
   const i = Math.max(0, Math.min(frames.length - 1, Math.round(idx)));
   const f = frames[i];
 
-  buildRoad(f.trailLen);
+  buildRoad(f.trailLen, ts);
 
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(roadCanvas, 0, 0);
   for (const w of words) drawWord(w);
+  drawDust(i);
   drawBall(f.x, f.y);
+  applyGrain(ts);
+  ctx.drawImage(vignette, 0, 0);
 }
 
 // ── Playback ─────────────────────────────────────────────
 const state = { frame: 0 };
-let raf: number | null = null;
 let playing = false;
+let lastTs: number | null = null;
+
+function tick(ts: number): void {
+  if (lastTs === null) lastTs = ts;
+  const dt = (ts - lastTs) / 1000;
+  lastTs = ts;
+
+  if (playing) {
+    state.frame = state.frame + dt * FPS;
+    if (state.frame >= frames.length - 1) {
+      state.frame = frames.length - 1;
+      playing = false;
+    }
+    frameCtrl.updateDisplay();
+  }
+
+  renderFrame(state.frame, ts);
+  requestAnimationFrame(tick);
+}
 
 function play(): void {
   if (playing) return;
   if (state.frame >= frames.length - 1) state.frame = 0;
   playing = true;
-  let lastTs: number | null = null;
-  const tick = (ts: number) => {
-    if (!playing) return;
-    if (lastTs === null) lastTs = ts;
-    const dt = (ts - lastTs) / 1000;
-    lastTs = ts;
-    state.frame = Math.min(frames.length - 1, state.frame + dt * FPS);
-    frameCtrl.updateDisplay();
-    renderFrame(state.frame);
-    if (state.frame >= frames.length - 1) {
-      playing = false;
-      return;
-    }
-    raf = requestAnimationFrame(tick);
-  };
-  raf = requestAnimationFrame(tick);
 }
 
 function reset(): void {
-  if (raf !== null) cancelAnimationFrame(raf);
   playing = false;
   state.frame = 0;
   frameCtrl.updateDisplay();
-  renderFrame(0);
   seekVideo(video.startTime);
 }
 
 function stopPlayback(): void {
-  if (raf !== null) cancelAnimationFrame(raf);
   playing = false;
 }
 
@@ -383,9 +502,8 @@ const gui = new GUI({ title: 'Controls' });
 
 precompute();
 
-const frameCtrl = gui.add(state, 'frame', 0, TOTAL_FRAMES - 1, 1).name('frame').onChange((v: number) => {
+const frameCtrl = gui.add(state, 'frame', 0, TOTAL_FRAMES - 1, 1).name('frame').onChange(() => {
   stopPlayback();
-  renderFrame(v);
 });
 
 const videoFolder = gui.addFolder('Video');
@@ -395,4 +513,4 @@ const videoStartCtrl = videoFolder
   .name('startTime')
   .onChange((v: number) => seekVideo(v));
 
-renderFrame(0);
+requestAnimationFrame(tick);
