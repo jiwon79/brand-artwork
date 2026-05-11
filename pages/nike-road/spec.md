@@ -37,6 +37,14 @@
 
 ### 애니메이션 방식
 - **Pre-computed frame system**: 모든 물리 시뮬레이션을 미리 계산하여 480개 프레임으로 저장
+- **Frame 타입 정의**: `{ x: number; y: number; trailLen: number; bx: number; by: number }`
+  - `x, y` - 프레임에서 공의 위치
+  - `trailLen` - 렌더링할 궤적(masterTrail)의 길이
+  - `bx, by` - 착지 후 반동 오프셋 (착지 시점 기준 사인파로 감소)
+    - 공이 플랫폼에 착지한 후 표면 법선을 따라 나타나는 부드러운 반동 효과
+    - `age < BOUNCE_FRAMES` (프레임 수)일 때 활성화
+    - `amp = Math.sin((age / BOUNCE_FRAMES) * Math.PI) * BOUNCE_AMP` 공식으로 계산
+    - 반동 진폭: `BOUNCE_AMP = 4.5px`
 - **프레임 기반 재생**: 실시간이 아닌 프리레이더 방식으로 일관된 성능 제공
 - **재사용 가능한 데이터**: 프레임 데이터는 메모리에 캐시되어 반복 재생 시 효율적
 - **연속 애니메이션 루프**: `tick(ts: number)` 함수가 `requestAnimationFrame`으로 계속 실행
@@ -53,8 +61,6 @@
   - `GRAVITY = 280` - 중력 (px/s²)
   - `SUB_STEPS = 4` - 각 프레임당 물리 계산 반복 횟수
   - `TOP_OFFSET_RATIO = 0.4` - 공이 문자 위쪽에서 구르도록 플랫폼을 올리는 비율
-  - `DUST_LIFE_FRAMES = 36` - 먼지 입자의 생명주기 (프레임 단위)
-  - `DUST_GRAVITY = 90` - 먼지 입자의 중력 (공의 중력보다 부드러움, px/s²)
 - **공 물리**: 
   - 위치 (x: 120, y: -20), 속도, 반지름(7px), 플랫폼 착지 상태 추적
   - 초기 x 위치는 120 (중앙-왼쪽에서 시작)
@@ -71,32 +77,6 @@
     - `fontPx(fontStr)` - 폰트 문자열에서 픽셀 크기 추출
     - `topOff = fontPx(w.font) * TOP_OFFSET_RATIO` - 올림 거리 계산
     - 플랫폼의 시작점(p1)과 끝점(p2)에 오프셋(ox, oy) 적용
-
-### 먼지 입자 시스템
-- **타입 정의**:
-  - `Dust` 타입: `{ spawn: number; x: number; y: number; vx: number; vy: number }`
-    - `spawn` - 입자가 생성된 프레임 인덱스
-    - `x, y` - 입자의 현재 위치
-    - `vx, vy` - 입자의 속도
-- **난수 생성**:
-  - `hashRand(seed: number): number` - 시드 기반 결정적 난수 생성
-    - `Math.sin(seed) * 43758.5453`를 사용한 해시 함수
-    - 항상 0~1 범위의 값 반환
-    - 같은 시드는 같은 값을 생성하여 재현 가능한 입자 효과 제공
-- **먼지 배출 함수**:
-  - `emitDustLanding(frameIdx: number)` - 착지 시 먼지 배출
-    - 프레임마다 10개의 입자 생성
-    - 각도: -90° ± 0.75라디안 범위 (대체로 위쪽으로 분사)
-    - 속도: 28 ~ 78 px/frame (28 + 50의 난수)
-  - `emitDustRoll(frameIdx: number)` - 구르는 중 먼지 배출
-    - 프레임마다 1개의 입자 생성
-    - 각도: -90° ± 0.35라디안 범위 (더 좁은 범위)
-    - 속도: 8 ~ 26 px/frame (8 + 18의 난수)
-- **precompute() 함수의 먼지 시뮬레이션**:
-  - 매 프레임마다 공의 착지 상태 추적 (`wasInAir` 플래그)
-  - 착지 순간 (`wasInAir && ball.onPlatform >= 0`): `emitDustLanding()` 호출
-  - 구르는 중 (`ball.onPlatform >= 0 && i % 3 === 0`): 3 프레임마다 `emitDustRoll()` 호출
-  - 입자는 사전 계산 단계에서 생성되어 `dustParticles` 배열에 누적
 
 ### 렌더링 시스템
 - **캔버스**: 405×720px (세로 형식)
@@ -138,24 +118,12 @@
     2. `ctx.clearRect()` - 캔버스 초기화
     3. `ctx.drawImage(roadCanvas, 0, 0)` - 도로 그리기
     4. 루프: `drawWord(w)` - 모든 문자 플랫폼 렌더링
-    5. `drawDust(i)` - 먼지 입자 렌더링
-    6. `drawBall(f.x, f.y)` - 공 렌더링
-    7. `applyGrain(ts)` - 필름 그레인 오버레이 (ts 기반 노이즈 애니메이션)
-    8. `ctx.drawImage(vignette, 0, 0)` - 비그넷 오버레이
-- **레이어 순서**: 도로 → 문자 → 먼지 → 공 → 그레인 오버레이 → 비그넷
+    5. `drawBall(f.x + f.bx, f.y + f.by)` - 공 렌더링 (반동 오프셋 적용)
+    6. `applyGrain(ts)` - 필름 그레인 오버레이 (ts 기반 노이즈 애니메이션)
+    7. `ctx.drawImage(vignette, 0, 0)` - 비그넷 오버레이
+- **레이어 순서**: 도로 → 문자 → 공 (반동 애니메이션) → 그레인 오버레이 → 비그넷
 
 ### 시네마틱 오버레이 시스템
-- **먼지 입자 렌더링**: `drawDust(currentFrame: number)` 함수
-  - `dustParticles` 배열의 각 입자에 대해 다음 계산 수행:
-    - `age = currentFrame - p.spawn` - 입자의 나이(프레임 단위)
-    - `t = age / FPS` - 경과 시간(초 단위)
-    - `ageT = age / DUST_LIFE_FRAMES` - 정규화된 나이 (0~1)
-    - 위치: `x = p.x + p.vx * t`, `y = p.y + p.vy * t + 0.5 * DUST_GRAVITY * t * t` (포물선 운동)
-    - 알파: `alpha = (1 - ageT) * 0.55` (시간이 지남에 따라 페이드아웃)
-    - 반지름: `radius = 1.4 + ageT * 2.4` (시간에 따라 커짐)
-    - 색상: `rgba(232,222,200,${alpha})` (따뜻한 먼지 색)
-  - 유효한 입자만 렌더링 (age >= 0 && age < DUST_LIFE_FRAMES)
-
 - **필름 그레인 오버레이**: 시네마틱 감성 강화
   - `grain` 캔버스: 256×256px 노이즈 텍스처
     - `buildGrain()` IIFE로 초기화: RGB 값 100~210 범위의 랜덤 그레이스케일 노이즈

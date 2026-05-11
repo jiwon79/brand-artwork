@@ -174,54 +174,21 @@ function physicsStep(dt: number): void {
 }
 
 // ── Pre-computed frames ──────────────────────────────────
-type Frame = { x: number; y: number; trailLen: number };
+type Frame = { x: number; y: number; trailLen: number; bx: number; by: number };
 let frames: Frame[] = [];
 
-type Dust = { spawn: number; x: number; y: number; vx: number; vy: number };
-const DUST_LIFE_FRAMES = 36;
-const DUST_GRAVITY = 90; // softer than ball gravity
-let dustParticles: Dust[] = [];
-
-function hashRand(seed: number): number {
-  const x = Math.sin(seed) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function emitDustLanding(frameIdx: number): void {
-  for (let k = 0; k < 10; k++) {
-    const s = frameIdx * 19 + k;
-    const angle = -Math.PI / 2 + (hashRand(s) - 0.5) * 1.5;
-    const speed = 28 + hashRand(s + 1.7) * 50;
-    dustParticles.push({
-      spawn: frameIdx,
-      x: ball.x,
-      y: ball.y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-    });
-  }
-}
-
-function emitDustRoll(frameIdx: number): void {
-  const s = frameIdx * 37;
-  const angle = -Math.PI / 2 + (hashRand(s) - 0.5) * 0.7;
-  const speed = 8 + hashRand(s + 0.3) * 18;
-  dustParticles.push({
-    spawn: frameIdx,
-    x: ball.x,
-    y: ball.y,
-    vx: Math.cos(angle) * speed,
-    vy: Math.sin(angle) * speed,
-  });
-}
+const BOUNCE_FRAMES = 9;
+const BOUNCE_AMP = 4.5; // px, peak offset along surface normal
 
 function precompute(): void {
   measureWords();
   resetPhysics();
   masterTrail.length = 0;
   masterTrail.push({ x: ball.x, y: ball.y });
-  frames = [{ x: ball.x, y: ball.y, trailLen: masterTrail.length }];
-  dustParticles = [];
+  frames = [{ x: ball.x, y: ball.y, trailLen: masterTrail.length, bx: 0, by: 0 }];
+
+  let lastLandingFrame = -BOUNCE_FRAMES;
+  let lastNormal = { x: 0, y: 0 };
 
   const dt = 1 / FPS;
   for (let i = 1; i < TOTAL_FRAMES; i++) {
@@ -229,13 +196,20 @@ function precompute(): void {
     for (let s = 0; s < SUB_STEPS; s++) physicsStep(dt / SUB_STEPS);
 
     if (wasInAir && ball.onPlatform >= 0) {
-      emitDustLanding(i);
-    }
-    if (ball.onPlatform >= 0 && i % 3 === 0) {
-      emitDustRoll(i);
+      lastLandingFrame = i;
+      lastNormal = { x: words[ball.onPlatform].normal.x, y: words[ball.onPlatform].normal.y };
     }
 
-    frames.push({ x: ball.x, y: ball.y, trailLen: masterTrail.length });
+    let bx = 0;
+    let by = 0;
+    const age = i - lastLandingFrame;
+    if (age >= 0 && age < BOUNCE_FRAMES) {
+      const amp = Math.sin((age / BOUNCE_FRAMES) * Math.PI) * BOUNCE_AMP;
+      bx = lastNormal.x * amp;
+      by = lastNormal.y * amp;
+    }
+
+    frames.push({ x: ball.x, y: ball.y, trailLen: masterTrail.length, bx, by });
   }
 }
 
@@ -329,24 +303,7 @@ function buildRoad(trailLen: number, ts: number): void {
   rCtx.restore();
 }
 
-// ── Cinematic overlays: dust, grain, vignette ────────────
-function drawDust(currentFrame: number): void {
-  for (const p of dustParticles) {
-    const age = currentFrame - p.spawn;
-    if (age < 0 || age >= DUST_LIFE_FRAMES) continue;
-    const t = age / FPS;
-    const ageT = age / DUST_LIFE_FRAMES;
-    const x = p.x + p.vx * t;
-    const y = p.y + p.vy * t + 0.5 * DUST_GRAVITY * t * t;
-    const alpha = (1 - ageT) * 0.55;
-    const radius = 1.4 + ageT * 2.4;
-    ctx.fillStyle = `rgba(232,222,200,${alpha})`;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
+// ── Cinematic overlays: grain, vignette ──────────────────
 const grain = document.createElement('canvas');
 grain.width = 256;
 grain.height = 256;
@@ -427,8 +384,7 @@ function renderFrame(idx: number, ts: number): void {
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(roadCanvas, 0, 0);
   for (const w of words) drawWord(w);
-  drawDust(i);
-  drawBall(f.x, f.y);
+  drawBall(f.x + f.bx, f.y + f.by);
   applyGrain(ts);
   ctx.drawImage(vignette, 0, 0);
 }
