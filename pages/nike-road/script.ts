@@ -73,6 +73,11 @@ const ball = {
   t: 0,
 };
 
+const physics = {
+  restitution: 0.45,     // 0=stick, 1=elastic
+  stickSpeed: 35,        // normal-velocity threshold below which the ball stops bouncing
+};
+
 const masterTrail: { x: number; y: number }[] = [];
 
 function resetPhysics(): void {
@@ -121,6 +126,21 @@ function checkLanding(): void {
 
   if (bestI >= 0 && bestRes) {
     const w = words[bestI];
+    // Velocity component along the surface normal (positive = leaving surface).
+    // On impact, this is negative (ball moving into surface).
+    const vN = ball.vx * w.normal.x + ball.vy * w.normal.y;
+
+    if (vN < -physics.stickSpeed) {
+      // Bounce: reflect normal component with restitution, keep ball airborne
+      const dv = -(1 + physics.restitution) * vN;
+      ball.vx += w.normal.x * dv;
+      ball.vy += w.normal.y * dv;
+      ball.x = bestRes.cx + w.normal.x * (ball.r + 0.5);
+      ball.y = bestRes.cy + w.normal.y * (ball.r + 0.5);
+      return;
+    }
+
+    // Stick & roll along the surface
     ball.onPlatform = bestI;
     ball.t = bestRes.t;
     ball.x = bestRes.cx + w.normal.x * ball.r;
@@ -174,42 +194,20 @@ function physicsStep(dt: number): void {
 }
 
 // ── Pre-computed frames ──────────────────────────────────
-type Frame = { x: number; y: number; trailLen: number; bx: number; by: number };
+type Frame = { x: number; y: number; trailLen: number };
 let frames: Frame[] = [];
-
-const BOUNCE_FRAMES = 9;
-const BOUNCE_AMP = 4.5; // px, peak offset along surface normal
 
 function precompute(): void {
   measureWords();
   resetPhysics();
   masterTrail.length = 0;
   masterTrail.push({ x: ball.x, y: ball.y });
-  frames = [{ x: ball.x, y: ball.y, trailLen: masterTrail.length, bx: 0, by: 0 }];
-
-  let lastLandingFrame = -BOUNCE_FRAMES;
-  let lastNormal = { x: 0, y: 0 };
+  frames = [{ x: ball.x, y: ball.y, trailLen: masterTrail.length }];
 
   const dt = 1 / FPS;
   for (let i = 1; i < TOTAL_FRAMES; i++) {
-    const wasInAir = ball.onPlatform < 0;
     for (let s = 0; s < SUB_STEPS; s++) physicsStep(dt / SUB_STEPS);
-
-    if (wasInAir && ball.onPlatform >= 0) {
-      lastLandingFrame = i;
-      lastNormal = { x: words[ball.onPlatform].normal.x, y: words[ball.onPlatform].normal.y };
-    }
-
-    let bx = 0;
-    let by = 0;
-    const age = i - lastLandingFrame;
-    if (age >= 0 && age < BOUNCE_FRAMES) {
-      const amp = Math.sin((age / BOUNCE_FRAMES) * Math.PI) * BOUNCE_AMP;
-      bx = lastNormal.x * amp;
-      by = lastNormal.y * amp;
-    }
-
-    frames.push({ x: ball.x, y: ball.y, trailLen: masterTrail.length, bx, by });
+    frames.push({ x: ball.x, y: ball.y, trailLen: masterTrail.length });
   }
 }
 
@@ -384,7 +382,7 @@ function renderFrame(idx: number, ts: number): void {
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(roadCanvas, 0, 0);
   for (const w of words) drawWord(w);
-  drawBall(f.x + f.bx, f.y + f.by);
+  drawBall(f.x, f.y);
   applyGrain(ts);
   ctx.drawImage(vignette, 0, 0);
 }
@@ -461,6 +459,14 @@ precompute();
 const frameCtrl = gui.add(state, 'frame', 0, TOTAL_FRAMES - 1, 1).name('frame').onChange(() => {
   stopPlayback();
 });
+
+const physicsFolder = gui.addFolder('Physics');
+const repre = () => {
+  stopPlayback();
+  precompute();
+};
+physicsFolder.add(physics, 'restitution', 0, 0.95, 0.01).onChange(repre);
+physicsFolder.add(physics, 'stickSpeed', 0, 200, 1).onChange(repre);
 
 const videoFolder = gui.addFolder('Video');
 videoFolder.add(video, 'playbackRate', 0.1, 4, 0.05).onChange(applyVideo);

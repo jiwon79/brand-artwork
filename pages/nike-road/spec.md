@@ -37,14 +37,9 @@
 
 ### 애니메이션 방식
 - **Pre-computed frame system**: 모든 물리 시뮬레이션을 미리 계산하여 480개 프레임으로 저장
-- **Frame 타입 정의**: `{ x: number; y: number; trailLen: number; bx: number; by: number }`
+- **Frame 타입 정의**: `{ x: number; y: number; trailLen: number }`
   - `x, y` - 프레임에서 공의 위치
   - `trailLen` - 렌더링할 궤적(masterTrail)의 길이
-  - `bx, by` - 착지 후 반동 오프셋 (착지 시점 기준 사인파로 감소)
-    - 공이 플랫폼에 착지한 후 표면 법선을 따라 나타나는 부드러운 반동 효과
-    - `age < BOUNCE_FRAMES` (프레임 수)일 때 활성화
-    - `amp = Math.sin((age / BOUNCE_FRAMES) * Math.PI) * BOUNCE_AMP` 공식으로 계산
-    - 반동 진폭: `BOUNCE_AMP = 4.5px`
 - **프레임 기반 재생**: 실시간이 아닌 프리레이더 방식으로 일관된 성능 제공
 - **재사용 가능한 데이터**: 프레임 데이터는 메모리에 캐시되어 반복 재생 시 효율적
 - **연속 애니메이션 루프**: `tick(ts: number)` 함수가 `requestAnimationFrame`으로 계속 실행
@@ -61,6 +56,22 @@
   - `GRAVITY = 280` - 중력 (px/s²)
   - `SUB_STEPS = 4` - 각 프레임당 물리 계산 반복 횟수
   - `TOP_OFFSET_RATIO = 0.4` - 공이 문자 위쪽에서 구르도록 플랫폼을 올리는 비율
+- **물리 설정 객체**:
+  - `restitution: 0.45` - 반발 계수 (0=완전 비탄성, 1=완전 탄성)
+  - `stickSpeed: 35` - 공이 튕기기를 멈추고 플랫폼에 고정되는 속도 임계값 (법선 속도 기준, px/s)
+- **착지 물리 로직** (`checkLanding()` 함수 내 새로운 로직):
+  - 플랫폼에 접촉 감지 시 법선 속도(`vN`) 계산: `vN = ball.vx * w.normal.x + ball.vy * w.normal.y`
+    - `vN < 0` - 공이 표면 쪽으로 움직임 (착지 중)
+    - `vN > 0` - 공이 표면에서 떨어지는 중
+  - **튕기기(Bounce) 조건**: `vN < -physics.stickSpeed`일 때
+    - 반발력 계산: `dv = -(1 + physics.restitution) * vN`
+    - 법선 성분의 반발: `ball.vx += w.normal.x * dv`, `ball.vy += w.normal.y * dv`
+    - 공을 표면에서 약간 떨어지게 위치: `ball.x = bestRes.cx + w.normal.x * (ball.r + 0.5)`, `ball.y = bestRes.cy + w.normal.y * (ball.r + 0.5)`
+    - `return` - 플랫폼 고정 로직을 건너뜀 (공이 공중 상태 유지)
+  - **고정 및 구르기(Stick & Roll) 로직**: 튕기기 조건을 만족하지 않을 때 실행
+    - 공을 플랫폼에 고정: `ball.onPlatform = bestI`
+    - 표면을 따라 속도 성분만 유지 (법선 성분 제거)
+    - 플랫폼에서 떨어날 때까지 계속 구르기
 - **공 물리**: 
   - 위치 (x: 120, y: -20), 속도, 반지름(7px), 플랫폼 착지 상태 추적
   - 초기 x 위치는 120 (중앙-왼쪽에서 시작)
@@ -118,10 +129,10 @@
     2. `ctx.clearRect()` - 캔버스 초기화
     3. `ctx.drawImage(roadCanvas, 0, 0)` - 도로 그리기
     4. 루프: `drawWord(w)` - 모든 문자 플랫폼 렌더링
-    5. `drawBall(f.x + f.bx, f.y + f.by)` - 공 렌더링 (반동 오프셋 적용)
+    5. `drawBall(f.x, f.y)` - 공 렌더링
     6. `applyGrain(ts)` - 필름 그레인 오버레이 (ts 기반 노이즈 애니메이션)
     7. `ctx.drawImage(vignette, 0, 0)` - 비그넷 오버레이
-- **레이어 순서**: 도로 → 문자 → 공 (반동 애니메이션) → 그레인 오버레이 → 비그넷
+- **레이어 순서**: 도로 → 문자 → 공 → 그레인 오버레이 → 비그넷
 
 ### 시네마틱 오버레이 시스템
 - **필름 그레인 오버레이**: 시네마틱 감성 강화
@@ -142,6 +153,23 @@
     - 내부 반지름: `Math.min(W, H) * 0.35` (약 141px) - 투명
     - 외부 반지름: `Math.max(W, H) * 0.72` (약 518px) - `rgba(0,0,0,0.55)` (어두움)
     - 화면 주변부를 어둡게 하여 초점 집중 효과
+
+### GUI 제어 패널
+- **frame 슬라이더** - 0 ~ 479 프레임을 직접 제어
+  - onChange 콜백: `stopPlayback()` 호출하여 재생 중이면 일시정지
+- **Physics 폴더** - 물리 파라미터 실시간 조정
+  - **restitution** - 반발 계수 (0 ~ 0.95, 0.01 단위)
+    - onChange 콜백: `repre()` 함수 호출
+  - **stickSpeed** - 공이 고정되는 속도 임계값 (0 ~ 200, 1 단위)
+    - onChange 콜백: `repre()` 함수 호출
+  - **repre() 함수** - 물리 파라미터 변경 시 시뮬레이션 재계산
+    - `stopPlayback()` - 현재 재생 일시정지
+    - `precompute()` - 전체 시뮬레이션 재계산 및 프레임 업데이트
+- **Video 폴더** - 비디오 재생 제어
+  - **playbackRate** - 비디오 재생 속도 (0.1 ~ 4배속, 0.05 단위)
+    - onChange 콜백: `applyVideo()` 호출
+  - **startTime** - 비디오 시작 시간 (0 ~ 60초, 0.05 단위)
+    - onChange 콜백: `seekVideo(v)` 호출하여 비디오를 지정된 시간으로 이동
 
 ### Playback 함수들과 애니메이션 루프
 - **tick(ts: number)** - 연속 애니메이션 루프 (requestAnimationFrame으로 매 프레임마다 호출)
