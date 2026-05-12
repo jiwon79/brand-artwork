@@ -472,6 +472,18 @@ const repre = () => {
 physicsFolder.add(physics, 'restitution', 0, 0.95, 0.01).onChange(repre);
 physicsFolder.add(physics, 'stickSpeed', 0, 200, 1).onChange(repre);
 
+const wordsFolder = gui.addFolder('Words');
+for (const w of words) {
+  const f = wordsFolder.addFolder(w.text);
+  const onChange = () => {
+    stopPlayback();
+    precompute();
+  };
+  f.add(w, 'cx', 0, W, 1).onChange(onChange);
+  f.add(w, 'cy', 0, H, 1).onChange(onChange);
+  f.add(w, 'angle', -45, 45, 1).onChange(onChange);
+}
+
 const videoFolder = gui.addFolder('Video');
 videoFolder.add(video, 'playbackRate', 0.1, 4, 0.05).onChange(applyVideo);
 const videoStartCtrl = videoFolder
