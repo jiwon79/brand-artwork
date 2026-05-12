@@ -62,13 +62,17 @@
 - **착지 물리 로직** (`checkLanding()` 함수 내 새로운 로직):
   - 플랫폼에 접촉 감지 시 법선 속도(`vN`) 계산: `vN = ball.vx * w.normal.x + ball.vy * w.normal.y`
     - `vN < 0` - 공이 표면 쪽으로 움직임 (착지 중)
-    - `vN > 0` - 공이 표면에서 떨어지는 중
+    - `vN >= 0` - 공이 표면에서 떨어지는 중
+  - **조기 탈출(Early Exit) 조건**: `vN >= 0`일 때
+    - 공이 표면에서 멀어지고 있는 상태 (예: 방금 튕겨 나온 직후)
+    - 이 플랫폼 후보를 무시하고 계속 공중에서 날아감 (`return`)
+    - 이를 통해 공이 같은 플랫폼에 반복해서 충돌하는 문제 해결
   - **튕기기(Bounce) 조건**: `vN < -physics.stickSpeed`일 때
     - 반발력 계산: `dv = -(1 + physics.restitution) * vN`
     - 법선 성분의 반발: `ball.vx += w.normal.x * dv`, `ball.vy += w.normal.y * dv`
     - 공을 표면에서 약간 떨어지게 위치: `ball.x = bestRes.cx + w.normal.x * (ball.r + 0.5)`, `ball.y = bestRes.cy + w.normal.y * (ball.r + 0.5)`
     - `return` - 플랫폼 고정 로직을 건너뜀 (공이 공중 상태 유지)
-  - **고정 및 구르기(Stick & Roll) 로직**: 튕기기 조건을 만족하지 않을 때 실행
+  - **고정 및 구르기(Stick & Roll) 로직**: 조기 탈출 및 튕기기 조건을 모두 만족하지 않을 때 실행
     - 공을 플랫폼에 고정: `ball.onPlatform = bestI`
     - 표면을 따라 속도 성분만 유지 (법선 성분 제거)
     - 플랫폼에서 떨어날 때까지 계속 구르기

@@ -130,6 +130,10 @@ function checkLanding(): void {
     // On impact, this is negative (ball moving into surface).
     const vN = ball.vx * w.normal.x + ball.vy * w.normal.y;
 
+    // Ball is moving away from the surface (e.g., just bounced off it).
+    // Don't engage this candidate — let it continue flying.
+    if (vN >= 0) return;
+
     if (vN < -physics.stickSpeed) {
       // Bounce: reflect normal component with restitution, keep ball airborne
       const dv = -(1 + physics.restitution) * vN;
