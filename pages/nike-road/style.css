@@ -24,6 +24,14 @@ html, body {
   height: 720px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  filter: url(#post-fx);
+}
+
+#fx-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 #sky {
@@ -33,7 +41,6 @@ html, body {
   height: 100%;
   object-fit: cover;
   pointer-events: none;
-  filter: saturate(0.82) contrast(1.05) brightness(0.95);
 }
 
 #scene {

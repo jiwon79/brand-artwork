@@ -316,38 +316,7 @@ function buildRoad(trailLen: number, ts: number): void {
   rCtx.restore();
 }
 
-// ── Cinematic overlays: grain, vignette ──────────────────
-const grain = document.createElement('canvas');
-grain.width = 256;
-grain.height = 256;
-(function buildGrain() {
-  const gCtx = grain.getContext('2d') as CanvasRenderingContext2D;
-  const img = gCtx.createImageData(256, 256);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const v = 100 + (Math.random() * 110) | 0;
-    d[i] = v;
-    d[i + 1] = v;
-    d[i + 2] = v;
-    d[i + 3] = 255;
-  }
-  gCtx.putImageData(img, 0, 0);
-})();
-
-function applyGrain(ts: number): void {
-  ctx.save();
-  ctx.globalAlpha = 0.08;
-  ctx.globalCompositeOperation = 'overlay';
-  const offX = (((ts * 0.05) | 0) % 256 + 256) % 256;
-  const offY = (((ts * 0.07) | 0) % 256 + 256) % 256;
-  for (let x = -offX; x < W; x += 256) {
-    for (let y = -offY; y < H; y += 256) {
-      ctx.drawImage(grain, x, y);
-    }
-  }
-  ctx.restore();
-}
-
+// ── Cinematic overlays: vignette ─────────────────────────
 const vignette = document.createElement('canvas');
 vignette.width = W;
 vignette.height = H;
@@ -398,7 +367,6 @@ function renderFrame(idx: number, ts: number): void {
   ctx.drawImage(roadCanvas, 0, 0);
   for (const w of words) drawWord(w);
   drawBall(f.x, f.y);
-  applyGrain(ts);
   ctx.drawImage(vignette, 0, 0);
 }
 

@@ -5,6 +5,7 @@
 - **index.html** - HTML 구조 (semantic, 모든 로직은 외부 모듈로 분리)
   - Google Fonts 임포트: Anton, Bebas Neue, Inter, Playfair Display
   - 폰트 프리로드: `preconnect` 링크로 로딩 성능 최적화
+  - SVG 필터 정의: `#fx-defs` 요소로 포스트 프로세싱 효과 (크로매틱 수차, 색상 그레이딩)
 - **style.css** - 스타일시트 (외부 파일)
 - **script.ts** - TypeScript 메인 로직 (모듈)
 - **/common/touch-cursor.ts** - 공통 터치 커서 기능 (모듈)
@@ -159,22 +160,10 @@
     3. `ctx.drawImage(roadCanvas, 0, 0)` - 도로 그리기
     4. 루프: `drawWord(w)` - 모든 문자 플랫폼 렌더링
     5. `drawBall(f.x, f.y)` - 공 렌더링
-    6. `applyGrain(ts)` - 필름 그레인 오버레이 (ts 기반 노이즈 애니메이션)
-    7. `ctx.drawImage(vignette, 0, 0)` - 비그넷 오버레이
-- **레이어 순서**: 도로 → 문자 → 공 → 그레인 오버레이 → 비그넷
+    6. `ctx.drawImage(vignette, 0, 0)` - 비그넷 오버레이
+- **레이어 순서**: 도로 → 문자 → 공 → 비그넷
 
 ### 시네마틱 오버레이 시스템
-- **필름 그레인 오버레이**: 시네마틱 감성 강화
-  - `grain` 캔버스: 256×256px 노이즈 텍스처
-    - `buildGrain()` IIFE로 초기화: RGB 값 100~210 범위의 랜덤 그레이스케일 노이즈
-  - `applyGrain(ts: number)` 함수:
-    - 글로벌 알파: 0.08 (은은함)
-    - 컴포지트 모드: 'overlay' (이미지와 혼합)
-    - 타임스탬프 기반 오프셋으로 그레인이 미묘하게 움직이는 효과
-      - `offX = (((ts * 0.05) | 0) % 256 + 256) % 256`
-      - `offY = (((ts * 0.07) | 0) % 256 + 256) % 256`
-    - 화면을 256×256 타일로 채워 그레인 패턴 적용
-
 - **비그넷 오버레이**: 화면 주변 어둡게 처리
   - `vignette` 캔버스: 캔버스 크기(405×720px)와 동일
   - `buildVignette()` IIFE로 초기화:
@@ -231,7 +220,7 @@
     - 프레임이 마지막에 도달하면 `state.frame = frames.length - 1`으로 클램핑하고 `playing = false`
     - `frameCtrl.updateDisplay()` - GUI 슬라이더 업데이트
   - **항상 실행**: `renderFrame(state.frame, ts)` - 모든 프레임마다 현재 상태를 렌더링
-    - `ts` 파라미터는 동적 효과(중앙선 흐름, 그레인 애니메이션)에 필수
+    - `ts` 파라미터는 동적 효과(중앙선 흐름)에 필수
   - `requestAnimationFrame(tick)` - 다음 프레임을 위해 자신을 재호출 (애니메이션 루프 유지)
 
 - **play()** - 애니메이션 재생 시작
@@ -260,7 +249,30 @@
 
 ## 4. 장면
 
+### SVG 포스트 프로세싱 필터 시스템
+- **#fx-defs** - SVG 필터 정의 요소 (`aria-hidden="true"`)
+  - **#post-fx** - 포스트 프로세싱 필터 (메인 필터)
+    - 영역: x="-5%", y="-5%", width="110%", height="110%"
+    - `color-interpolation-filters="sRGB"` - sRGB 색상 공간에서 처리
+  - **크로매틱 수차 (Chromatic Aberration)**:
+    - 3개의 `<feColorMatrix>` 요소로 R/G/B 채널 분리
+      - R 채널: `values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"` → result="r"
+      - G 채널: `values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0"` → result="g"
+      - B 채널: `values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0"` → result="b"
+    - 2개의 `<feOffset>` 요소로 오프셋 적용
+      - R: dx="1.2" (오른쪽으로 이동)
+      - B: dx="-1.2" (왼쪽으로 이동)
+    - 2개의 `<feBlend>` 요소로 채널 합성 (mode="screen")
+      - R과 G 합성 → result="rg"
+      - RG와 B 합성 → result="rgb"
+  - **색상 그레이딩 (Color Grading)**:
+    - `<feColorMatrix>` with type="matrix"
+    - 따뜻한 하이라이트 (R: +1.08, G: +1.04), 살짝 차가운 블루 (B: 0.96)
+    - 값 오프셋: R=-0.03, G=-0.02, B=-0.01 (부드러운 감소)
+    - 마지막 행: 알파 채널 유지 (0 0 0 1 0)
+
 ### HTML 구조
+- **#fx-defs** - SVG 필터 정의 (위에서 상세 설명)
 - **#layout** - 전체 레이아웃 래퍼
   - **#stage** - 캔버스와 하늘 요소를 포함하는 스테이지 컨테이너
     - **#sky** - 하늘 배경 비디오 요소 (`assets/sky.mp4` 자동 재생, 루프, 음소거)
@@ -278,7 +290,10 @@
 - **기본 스타일**: 마진/패딩 초기화, border-box 박스 모델
 - **#layout**: 전체 레이아웃 컨테이너 (position: fixed, flex column, 중앙 정렬, gap: 20px)
 - **#stage**: 상대 위치 컨테이너 (position: relative, 405×720px, box-shadow)
-- **#sky**: 비디오 배경 컨테이너 (position: absolute, inset: 0, width: 100%, height: 100%, object-fit: cover, pointer-events: none, filter: saturate(0.82) contrast(1.05) brightness(0.95))
+  - **filter: url(#post-fx)** - SVG 포스트 프로세싱 필터 적용 (크로매틱 수차, 색상 그레이딩)
+- **#fx-defs**: SVG 필터 정의 컨테이너 (position: absolute, width: 0, height: 0, overflow: hidden)
+  - DOM에서 숨김 처리하면서 SVG 필터 정의가 참조 가능하도록 함
+- **#sky**: 비디오 배경 컨테이너 (position: absolute, inset: 0, width: 100%, height: 100%, object-fit: cover, pointer-events: none)
 - **#scene**: Canvas 요소 컨테이너 (position: absolute, inset: 0)
 - **#controls**: 버튼 그룹 (display: flex, gap: 12px, #layout 내부에 위치)
 

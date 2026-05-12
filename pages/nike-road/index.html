@@ -10,6 +10,26 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <svg id="fx-defs" aria-hidden="true">
+    <defs>
+      <filter id="post-fx" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+        <!-- chromatic aberration: split R/B and offset opposite directions -->
+        <feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r" />
+        <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g" />
+        <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b" />
+        <feOffset in="r" dx="1.2" dy="0" result="rOff" />
+        <feOffset in="b" dx="-1.2" dy="0" result="bOff" />
+        <feBlend in="rOff" in2="g" mode="screen" result="rg" />
+        <feBlend in="rg" in2="bOff" mode="screen" result="rgb" />
+        <!-- color grading: warm highlights, slightly cool blues, mild contrast -->
+        <feColorMatrix in="rgb" type="matrix" values="
+          1.08 0    0    0  -0.03
+          0    1.04 0    0  -0.02
+          0    0    0.96 0  -0.01
+          0    0    0    1   0" />
+      </filter>
+    </defs>
+  </svg>
   <div id="layout">
     <div id="stage">
       <video id="sky" src="assets/sky.mp4" autoplay muted loop playsinline preload="auto"></video>
