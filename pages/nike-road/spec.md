@@ -156,12 +156,20 @@
     - `ts` - 타임스탬프 (밀리초, 동적 효과 애니메이션에 필수)
   - 렌더링 순서:
     1. `buildRoad(f.trailLen, ts)` - 도로 렌더링 (ts 파라미터로 중앙선 흐름 애니메이션 처리)
-    2. `ctx.clearRect()` - 캔버스 초기화
+    2. **비디오 배경 렌더링** (캔버스 초기화 대체)
+       - `skyVideo` 준비 상태 확인: `skyVideo.readyState >= 2 && skyVideo.videoWidth > 0`
+       - 비디오 준비됨: 영상을 중앙 정렬하며 종횡비 유지하여 그리기
+         - 스케일 계산: `scale = Math.max(W / vw, H / vh)` (커버 모드)
+         - 렌더링 크기: `dw = vw * scale`, `dh = vh * scale`
+         - 위치: `((W - dw) / 2, (H - dh) / 2)` (캔버스 중앙)
+       - 비디오 미준비: 어두운 회색 배경(`#3a3a3a`) 채우기
     3. `ctx.drawImage(roadCanvas, 0, 0)` - 도로 그리기
     4. 루프: `drawWord(w)` - 모든 문자 플랫폼 렌더링
     5. `drawBall(f.x, f.y)` - 공 렌더링
     6. `ctx.drawImage(vignette, 0, 0)` - 비그넷 오버레이
-- **레이어 순서**: 도로 → 문자 → 공 → 비그넷
+- **레이어 순서**: 비디오 배경 → 도로 → 문자 → 공 → 비그넷
+  - 비디오 배경이 SVG 필터(#post-fx)의 영향을 받도록 변경
+  - 어두운 배경은 비디오 로딩 실패 시 폴백
 
 ### 시네마틱 오버레이 시스템
 - **비그넷 오버레이**: 화면 주변 어둡게 처리
@@ -322,11 +330,10 @@
 - **기본 스타일**: 마진/패딩 초기화, border-box 박스 모델
 - **#layout**: 전체 레이아웃 컨테이너 (position: fixed, flex column, 중앙 정렬, gap: 20px)
 - **#stage**: 상대 위치 컨테이너 (position: relative, 405×720px, box-shadow)
-  - **filter: url(#post-fx)** - SVG 포스트 프로세싱 필터 적용 (크로매틱 수차, 색상 그레이딩)
 - **#fx-defs**: SVG 필터 정의 컨테이너 (position: absolute, width: 0, height: 0, overflow: hidden)
   - DOM에서 숨김 처리하면서 SVG 필터 정의가 참조 가능하도록 함
-- **#sky**: 비디오 배경 컨테이너 (position: absolute, inset: 0, width: 100%, height: 100%, object-fit: cover, pointer-events: none)
-- **#scene**: Canvas 요소 컨테이너 (position: absolute, inset: 0)
+- **#sky**: 비디오 배경 컨테이너 (position: absolute, inset: 0, width: 100%, height: 100%, object-fit: cover, pointer-events: none, visibility: hidden)
+- **#scene**: Canvas 요소 컨테이너 (position: absolute, inset: 0, filter: url(#post-fx))
 - **#controls**: 버튼 그룹 (display: flex, gap: 12px, #layout 내부에 위치)
 
 ### 주요 변경사항

@@ -24,7 +24,6 @@ html, body {
   height: 720px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  filter: url(#post-fx);
 }
 
 #fx-defs {
@@ -41,11 +40,13 @@ html, body {
   height: 100%;
   object-fit: cover;
   pointer-events: none;
+  visibility: hidden;
 }
 
 #scene {
   position: absolute;
   inset: 0;
+  filter: url(#post-fx);
 }
 
 #controls {

@@ -363,7 +363,19 @@ function renderFrame(idx: number, ts: number): void {
 
   buildRoad(f.trailLen, ts);
 
-  ctx.clearRect(0, 0, W, H);
+  // Draw the video frame as the base so the SVG filter applies to it too.
+  if (skyVideo.readyState >= 2 && skyVideo.videoWidth > 0) {
+    const vw = skyVideo.videoWidth;
+    const vh = skyVideo.videoHeight;
+    const scale = Math.max(W / vw, H / vh);
+    const dw = vw * scale;
+    const dh = vh * scale;
+    ctx.drawImage(skyVideo, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  } else {
+    ctx.fillStyle = '#3a3a3a';
+    ctx.fillRect(0, 0, W, H);
+  }
+
   ctx.drawImage(roadCanvas, 0, 0);
   for (const w of words) drawWord(w);
   drawBall(f.x, f.y);
