@@ -434,6 +434,36 @@ skyVideo.addEventListener('loadedmetadata', () => {
   applyVideo();
 });
 
+// ── Post-FX (SVG filter) ─────────────────────────────────
+const fx = {
+  aberration: 2.5, // px offset for R and B channels
+  grading: 1.0,    // 0..1 mix between identity and warm/contrast matrix
+};
+
+const offRNode = document.getElementById('fx-offset-r') as unknown as SVGFEOffsetElement;
+const offBNode = document.getElementById('fx-offset-b') as unknown as SVGFEOffsetElement;
+const gradeNode = document.getElementById('fx-grade') as unknown as SVGFEColorMatrixElement;
+
+function applyAberration(): void {
+  offRNode.setAttribute('dx', String(fx.aberration));
+  offBNode.setAttribute('dx', String(-fx.aberration));
+}
+
+function applyGrading(): void {
+  const t = fx.grading;
+  const lerp = (a: number, b: number) => a + (b - a) * t;
+  const m = [
+    lerp(1, 1.08), 0, 0, 0, lerp(0, -0.03),
+    0, lerp(1, 1.04), 0, 0, lerp(0, -0.02),
+    0, 0, lerp(1, 0.96), 0, lerp(0, -0.01),
+    0, 0, 0, 1, 0,
+  ].join(' ');
+  gradeNode.setAttribute('values', m);
+}
+
+applyAberration();
+applyGrading();
+
 // ── GUI ──────────────────────────────────────────────────
 const gui = new GUI({ title: 'Controls' });
 
@@ -455,6 +485,10 @@ const onWordChange = () => {
   stopPlayback();
   precompute();
 };
+
+const fxFolder = gui.addFolder('FX');
+fxFolder.add(fx, 'aberration', 0, 12, 0.1).onChange(applyAberration);
+fxFolder.add(fx, 'grading', 0, 2, 0.05).onChange(applyGrading);
 
 const styleFolder = gui.addFolder('Style');
 styleFolder.add(style, 'preset', Object.keys(FONT_PRESETS)).onChange(onWordChange);

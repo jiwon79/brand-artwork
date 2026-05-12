@@ -183,6 +183,11 @@
   - **repre() 함수** - 물리 파라미터 변경 시 시뮬레이션 재계산
     - `stopPlayback()` - 현재 재생 일시정지
     - `precompute()` - 전체 시뮬레이션 재계산 및 프레임 업데이트
+- **FX 폴더** - 포스트 이펙트 실시간 조정
+  - **aberration** - 색수차 오프셋 거리 (0 ~ 12px, 0.1 단위)
+    - onChange 콜백: `applyAberration()` 호출하여 R/B 채널 오프셋 즉시 적용
+  - **grading** - 색상 그레이딩 강도 (0 ~ 2, 0.05 단위)
+    - onChange 콜백: `applyGrading()` 호출하여 색상 매트릭스 즉시 적용
 - **Style 폴더** - 폰트 및 색상 실시간 조정
   - **preset** - 폰트 프리셋 선택 (FONT_PRESETS의 모든 옵션)
     - onChange 콜백: `onWordChange()` 호출
@@ -208,6 +213,32 @@
     - onChange 콜백: `applyVideo()` 호출
   - **startTime** - 비디오 시작 시간 (0 ~ 60초, 0.05 단위)
     - onChange 콜백: `seekVideo(v)` 호출하여 비디오를 지정된 시간으로 이동
+
+### Post-FX (SVG 필터) 시스템
+- **fx 객체** - 포스트 이펙트 파라미터 관리
+  - `aberration: 2.5` - 색수차(Chromatic Aberration) 오프셋 거리 (픽셀 단위)
+    - R 채널과 B 채널을 반대 방향으로 이동시켜 색상 분리 효과 생성
+  - `grading: 1.0` - 색상 그레이딩 강도 (0 ~ 1, 0=원본, 1=최대 적용)
+    - 따뜻한 톤의 하이라이트와 차가운 톤의 그림자 조합
+- **SVG DOM 요소 참조** - 포스트 FX 필터 엘리먼트 직접 제어
+  - `offRNode` - #fx-offset-r 요소 (R 채널 오프셋 필터)
+  - `offBNode` - #fx-offset-b 요소 (B 채널 오프셋 필터)
+  - `gradeNode` - #fx-grade 요소 (색상 그레이딩 색상 매트릭스 필터)
+- **applyAberration() 함수** - 색수차 오프셋 적용
+  - `offRNode.setAttribute('dx', String(fx.aberration))` - R 채널을 오른쪽으로 이동
+  - `offBNode.setAttribute('dx', String(-fx.aberration))` - B 채널을 왼쪽으로 이동
+  - 두 채널 간의 위치 차이로 색상 분리 효과 생성
+- **applyGrading() 함수** - 색상 그레이딩 매트릭스 동적 계산
+  - `lerp(a: number, b: number)` - 선형 보간 함수 (a에서 b로의 혼합 비율)
+  - 색상 매트릭스 계산 (5×4 행렬):
+    - R 채널: 1 → 1.08 (밝아짐), 오프셋 -0.03
+    - G 채널: 1 → 1.04 (밝아짐), 오프셋 -0.02
+    - B 채널: 1 → 0.96 (어두워짐), 오프셋 -0.01
+    - A 채널: 불변 (0 0 0 1 0)
+  - `gradeNode.setAttribute('values', m)` - 계산된 매트릭스를 필터에 적용
+- **초기화** - 스크립트 로드 시 자동으로 실행
+  - `applyAberration()` - 기본 색수차 오프셋 설정 (2.5px)
+  - `applyGrading()` - 기본 색상 그레이딩 설정 (강도 1.0)
 
 ### Playback 함수들과 애니메이션 루프
 - **tick(ts: number)** - 연속 애니메이션 루프 (requestAnimationFrame으로 매 프레임마다 호출)
@@ -260,13 +291,14 @@
       - G 채널: `values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0"` → result="g"
       - B 채널: `values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0"` → result="b"
     - 2개의 `<feOffset>` 요소로 오프셋 적용
-      - R: dx="1.2" (오른쪽으로 이동)
-      - B: dx="-1.2" (왼쪽으로 이동)
+      - R: `id="fx-offset-r"`, dx="1.2" (오른쪽으로 이동)
+      - B: `id="fx-offset-b"`, dx="-1.2" (왼쪽으로 이동)
     - 2개의 `<feBlend>` 요소로 채널 합성 (mode="screen")
       - R과 G 합성 → result="rg"
       - RG와 B 합성 → result="rgb"
   - **색상 그레이딩 (Color Grading)**:
-    - `<feColorMatrix>` with type="matrix"
+    - `<feColorMatrix id="fx-grade">` with type="matrix"
+    - ID: `fx-grade` - JavaScript에서 색상 그레이딩 필터를 참조하기 위한 식별자
     - 따뜻한 하이라이트 (R: +1.08, G: +1.04), 살짝 차가운 블루 (B: 0.96)
     - 값 오프셋: R=-0.03, G=-0.02, B=-0.01 (부드러운 감소)
     - 마지막 행: 알파 채널 유지 (0 0 0 1 0)

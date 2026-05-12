@@ -17,12 +17,12 @@
         <feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r" />
         <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g" />
         <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b" />
-        <feOffset in="r" dx="1.2" dy="0" result="rOff" />
-        <feOffset in="b" dx="-1.2" dy="0" result="bOff" />
+        <feOffset id="fx-offset-r" in="r" dx="1.2" dy="0" result="rOff" />
+        <feOffset id="fx-offset-b" in="b" dx="-1.2" dy="0" result="bOff" />
         <feBlend in="rOff" in2="g" mode="screen" result="rg" />
         <feBlend in="rg" in2="bOff" mode="screen" result="rgb" />
         <!-- color grading: warm highlights, slightly cool blues, mild contrast -->
-        <feColorMatrix in="rgb" type="matrix" values="
+        <feColorMatrix id="fx-grade" in="rgb" type="matrix" values="
           1.08 0    0    0  -0.03
           0    1.04 0    0  -0.02
           0    0    0.96 0  -0.01
