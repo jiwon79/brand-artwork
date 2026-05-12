@@ -3,6 +3,8 @@
 ## 1. 파일 구성
 
 - **index.html** - HTML 구조 (semantic, 모든 로직은 외부 모듈로 분리)
+  - Google Fonts 임포트: Anton, Bebas Neue, Inter, Playfair Display
+  - 폰트 프리로드: `preconnect` 링크로 로딩 성능 최적화
 - **style.css** - 스타일시트 (외부 파일)
 - **script.ts** - TypeScript 메인 로직 (모듈)
 - **/common/touch-cursor.ts** - 공통 터치 커서 기능 (모듈)
@@ -23,7 +25,7 @@
 
 ### 비디오 제어 시스템
 - **video 객체**:
-  - `playbackRate: 1.0` - 비디오 재생 속도 (기본값 1배속)
+  - `playbackRate: 0.7` - 비디오 재생 속도 (기본값 0.7배속)
   - `startTime: 0` - 비디오 시작 시간 (초 단위)
 - **applyVideo()** - 비디오 객체의 playbackRate를 실제 비디오 요소에 적용
 - **seekVideo(t: number)** - 비디오를 지정된 시간(t)으로 이동
@@ -49,6 +51,17 @@
   - `playing` 상태일 때만 `state.frame` 증가, 그 외 항상 `renderFrame(state.frame, ts)` 호출
   - 타임스탠프는 동적 효과(중앙선 흐름, 그레인 애니메이션)에 필수
 
+### Word 타입 정의
+- `text: string` - 문자열
+- `cx: number` - 중심 X 좌표
+- `cy: number` - 중심 Y 좌표
+- `angle: number` - 회전 각도 (도 단위)
+- `size: number` - 폰트 크기 (픽셀, 정수)
+- `width: number` - 렌더링된 텍스트 폭 (측정값, 초기값 0)
+- `p1: { x: number; y: number }` - 플랫폼 시작점
+- `p2: { x: number; y: number }` - 플랫폼 끝점
+- `normal: { x: number; y: number }` - 표면 법선 벡터
+
 ### 물리 시뮬레이션
 - **상수**:
   - `FPS = 60` - 프레임레이트
@@ -57,7 +70,7 @@
   - `SUB_STEPS = 4` - 각 프레임당 물리 계산 반복 횟수
   - `TOP_OFFSET_RATIO = 0.4` - 공이 문자 위쪽에서 구르도록 플랫폼을 올리는 비율
 - **물리 설정 객체**:
-  - `restitution: 0.45` - 반발 계수 (0=완전 비탄성, 1=완전 탄성)
+  - `restitution: 0.25` - 반발 계수 (0=완전 비탄성, 1=완전 탄성)
   - `stickSpeed: 35` - 공이 튕기기를 멈추고 플랫폼에 고정되는 속도 임계값 (법선 속도 기준, px/s)
 - **착지 물리 로직** (`checkLanding()` 함수 내 새로운 로직):
   - 플랫폼에 접촉 감지 시 법선 속도(`vN`) 계산: `vN = ball.vx * w.normal.x + ball.vy * w.normal.y`
@@ -81,16 +94,28 @@
   - 초기 x 위치는 120 (중앙-왼쪽에서 시작)
   - `resetPhysics()` 함수는 x: 120으로 리셋하여 초기 위치와 일치
 - **플랫폼**: 4개의 문자열("failures", "become", "the", "road")을 각도 지정 플랫폼으로 사용
-  - 각 문자마다 위치(cx, cy)와 각도(angle) 제어 가능
+  - 각 문자마다 위치(cx, cy), 각도(angle), 폰트 크기(size) 제어 가능
   - 런타임에 조정 시 전체 시뮬레이션 재계산
   - **현재 플랫폼 배치**:
-    - 'failures': cx: 127, cy: 237, angle: 13°, font: italic 28px
-    - 'become': cx: 281, cy: 325, angle: -21°, font: italic 28px
-    - 'the': cx: 176, cy: 413, angle: 20°, font: italic 30px
-    - 'road': cx: 251, cy: 511, angle: -20°, font: italic 32px
+    - 'failures': cx: 127, cy: 237, angle: 13°, size: 28px
+    - 'become': cx: 244, cy: 325, angle: -21°, size: 28px
+    - 'the': cx: 139, cy: 413, angle: 20°, size: 30px
+    - 'road': cx: 238, cy: 511, angle: 5°, size: 32px
+  - **폰트 프리셋 시스템**:
+    - `FONT_PRESETS` - 폰트 스타일 템플릿 저장 객체
+      - 'Georgia Italic Black': `italic 900 {SIZE}px Georgia, serif`
+      - 'Playfair Italic Black': `italic 900 {SIZE}px "Playfair Display", serif` (현재 기본값)
+      - 'Playfair Italic Regular': `italic 400 {SIZE}px "Playfair Display", serif`
+      - 'Anton': `400 {SIZE}px Anton, sans-serif`
+      - 'Bebas Neue': `400 {SIZE}px "Bebas Neue", sans-serif`
+      - 'Inter Italic Black': `italic 900 {SIZE}px Inter, sans-serif`
+      - 'Helvetica Italic Black': `italic 900 {SIZE}px "Helvetica Neue", Arial, sans-serif`
+    - `style` 객체 - 현재 폰트 스타일 및 색상 관리
+      - `preset: 'Playfair Italic Black'` - 현재 사용 폰트 프리셋
+      - `color: '#f4ecd8'` - 텍스트 색상 (drawWord에서 사용되는 현재 글자 색상)
+    - `getFont(size: number)` - 폰트 크기를 받아 선택된 프리셋에 {SIZE}를 대체하여 반환
   - **플랫폼 리프팅**: 공이 문자 위쪽에서 구르도록 플랫폼 선을 위로 올림
-    - `fontPx(fontStr)` - 폰트 문자열에서 픽셀 크기 추출
-    - `topOff = fontPx(w.font) * TOP_OFFSET_RATIO` - 올림 거리 계산
+    - `topOff = w.size * TOP_OFFSET_RATIO` - 올림 거리 계산 (Word 객체의 size 필드 사용)
     - 플랫폼의 시작점(p1)과 끝점(p2)에 오프셋(ox, oy) 적용
 
 ### 렌더링 시스템
@@ -169,16 +194,26 @@
   - **repre() 함수** - 물리 파라미터 변경 시 시뮬레이션 재계산
     - `stopPlayback()` - 현재 재생 일시정지
     - `precompute()` - 전체 시뮬레이션 재계산 및 프레임 업데이트
-- **Words 폴더** - 각 플랫폼(문자) 위치 및 각도 실시간 조정
+- **Style 폴더** - 폰트 및 색상 실시간 조정
+  - **preset** - 폰트 프리셋 선택 (FONT_PRESETS의 모든 옵션)
+    - onChange 콜백: `onWordChange()` 호출
+  - **color** - 텍스트 색상 선택 (색상 피커)
+    - onChange 콜백: 없음 (색상 변경 시 자동으로 style.color 업데이트)
+  - 폰트 프리셋이나 색상이 변경되면 시뮬레이션을 재계산하여 새로운 스타일 적용
+- **Words 폴더** - 각 플랫폼(문자) 위치, 각도, 크기 실시간 조정
   - 각 단어('failures', 'become', 'the', 'road')마다 서브 폴더 생성
-  - 각 단어 폴더 내 3개 슬라이더:
+  - 각 단어 폴더 내 4개 슬라이더:
     - **cx** - 문자의 중심 X 좌표 (0 ~ 405px, 1px 단위)
     - **cy** - 문자의 중심 Y 좌표 (0 ~ 720px, 1px 단위)
     - **angle** - 문자의 회전 각도 (-45도 ~ 45도, 1도 단위)
-  - onChange 콜백: 각 조정값이 변경될 때마다 실행
+    - **size** - 문자의 폰트 크기 (10px ~ 60px, 1px 단위)
+  - onChange 콜백: 각 조정값이 변경될 때마다 `onWordChange()` 실행
     - `stopPlayback()` - 현재 재생 일시정지
-    - `precompute()` - 전체 시뮬레이션 재계산 (변경된 플랫폼 위치/각도 반영)
+    - `precompute()` - 전체 시뮬레이션 재계산 (변경된 플랫폼 위치/각도/크기 반영)
   - **용도**: 런타임에 플랫폼 배치를 실험적으로 조정하여 공의 궤적 변경
+  - **공통 콜백**: `onWordChange()` 함수
+    - Style 폴더의 preset 슬라이더와 Words 폴더의 모든 슬라이더에서 공유
+    - 코드 중복 제거하여 유지보수성 향상
 - **Video 폴더** - 비디오 재생 제어
   - **playbackRate** - 비디오 재생 속도 (0.1 ~ 4배속, 0.05 단위)
     - onChange 콜백: `applyVideo()` 호출

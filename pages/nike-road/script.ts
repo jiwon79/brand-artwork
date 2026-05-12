@@ -22,7 +22,7 @@ type Word = {
   cx: number;
   cy: number;
   angle: number; // degrees
-  font: string;
+  size: number;  // font px
   width: number;
   p1: { x: number; y: number };
   p2: { x: number; y: number };
@@ -30,31 +30,42 @@ type Word = {
 };
 
 const words: Word[] = [
-  { text: 'failures', cx: 127, cy: 237, angle:  13, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'become',   cx: 281, cy: 325, angle: -21, font: 'italic 28px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'the',      cx: 176, cy: 413, angle:  20, font: 'italic 30px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'road',     cx: 251, cy: 511, angle: -20, font: 'italic 32px Georgia, serif', width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'failures', cx: 127, cy: 237, angle:  13, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'become',   cx: 244, cy: 325, angle: -21, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'the',      cx: 139, cy: 413, angle:  20, size: 30, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'road',     cx: 238, cy: 511, angle:   5, size: 32, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
 ];
 
-function fontPx(fontStr: string): number {
-  const m = fontStr.match(/(\d+(?:\.\d+)?)px/);
-  return m ? parseFloat(m[1]) : 24;
+const FONT_PRESETS: Record<string, string> = {
+  'Georgia Italic Black':      'italic 900 {SIZE}px Georgia, serif',
+  'Playfair Italic Black':     'italic 900 {SIZE}px "Playfair Display", serif',
+  'Playfair Italic Regular':   'italic 400 {SIZE}px "Playfair Display", serif',
+  'Anton':                     '400 {SIZE}px Anton, sans-serif',
+  'Bebas Neue':                '400 {SIZE}px "Bebas Neue", sans-serif',
+  'Inter Italic Black':        'italic 900 {SIZE}px Inter, sans-serif',
+  'Helvetica Italic Black':    'italic 900 {SIZE}px "Helvetica Neue", Arial, sans-serif',
+};
+
+const style = {
+  preset: 'Playfair Italic Black' as keyof typeof FONT_PRESETS,
+  color: '#f4ecd8',
+};
+
+function getFont(size: number): string {
+  return FONT_PRESETS[style.preset].replace('{SIZE}', size.toString());
 }
 
 function measureWords(): void {
   for (const w of words) {
-    ctx.font = w.font;
+    ctx.font = getFont(w.size);
     const m = ctx.measureText(w.text);
     w.width = m.width;
     const a = (w.angle * Math.PI) / 180;
     const half = w.width / 2;
     const cosA = Math.cos(a);
     const sinA = Math.sin(a);
-    // Surface normal pointing UP from the word's top edge
     w.normal = { x: sinA, y: -cosA };
-    // Lift platform line from baseline-center to top of glyph so the ball rolls
-    // ABOVE the word (keeping the text visible).
-    const topOff = fontPx(w.font) * TOP_OFFSET_RATIO;
+    const topOff = w.size * TOP_OFFSET_RATIO;
     const ox = w.normal.x * topOff;
     const oy = w.normal.y * topOff;
     w.p1 = { x: w.cx - cosA * half + ox, y: w.cy - sinA * half + oy };
@@ -74,7 +85,7 @@ const ball = {
 };
 
 const physics = {
-  restitution: 0.45,     // 0=stick, 1=elastic
+  restitution: 0.25,     // 0=stick, 1=elastic
   stickSpeed: 35,        // normal-velocity threshold below which the ball stops bouncing
 };
 
@@ -357,10 +368,10 @@ function drawWord(w: Word): void {
   ctx.save();
   ctx.translate(w.cx, w.cy);
   ctx.rotate((w.angle * Math.PI) / 180);
-  ctx.font = w.font;
+  ctx.font = getFont(w.size);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#0a0a0a';
+  ctx.fillStyle = style.color;
   ctx.fillText(w.text, 0, 0);
   ctx.restore();
 }
@@ -436,7 +447,7 @@ resetBtn.addEventListener('click', reset);
 
 // ── Video ────────────────────────────────────────────────
 const video = {
-  playbackRate: 1.0,
+  playbackRate: 0.7,
   startTime: 0,
 };
 
@@ -472,16 +483,22 @@ const repre = () => {
 physicsFolder.add(physics, 'restitution', 0, 0.95, 0.01).onChange(repre);
 physicsFolder.add(physics, 'stickSpeed', 0, 200, 1).onChange(repre);
 
+const onWordChange = () => {
+  stopPlayback();
+  precompute();
+};
+
+const styleFolder = gui.addFolder('Style');
+styleFolder.add(style, 'preset', Object.keys(FONT_PRESETS)).onChange(onWordChange);
+styleFolder.addColor(style, 'color');
+
 const wordsFolder = gui.addFolder('Words');
 for (const w of words) {
   const f = wordsFolder.addFolder(w.text);
-  const onChange = () => {
-    stopPlayback();
-    precompute();
-  };
-  f.add(w, 'cx', 0, W, 1).onChange(onChange);
-  f.add(w, 'cy', 0, H, 1).onChange(onChange);
-  f.add(w, 'angle', -45, 45, 1).onChange(onChange);
+  f.add(w, 'cx', 0, W, 1).onChange(onWordChange);
+  f.add(w, 'cy', 0, H, 1).onChange(onWordChange);
+  f.add(w, 'angle', -45, 45, 1).onChange(onWordChange);
+  f.add(w, 'size', 10, 60, 1).onChange(onWordChange);
 }
 
 const videoFolder = gui.addFolder('Video');
