@@ -36,10 +36,10 @@ type Word = {
 };
 
 const words: Word[] = [
-  { text: 'failures', cx: 127, cy: 237, angle:  13, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'become',   cx: 244, cy: 325, angle: -21, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'the',      cx: 139, cy: 413, angle:  20, size: 30, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'road',     cx: 238, cy: 511, angle:   5, size: 32, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'failures', cx: 127, cy: 257, angle:  13, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'become',   cx: 244, cy: 345, angle: -21, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'the',      cx: 139, cy: 433, angle:  20, size: 30, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'road',     cx: 238, cy: 531, angle:   5, size: 32, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
 ];
 
 const FONT_PRESETS: Record<string, string> = {
@@ -440,8 +440,8 @@ const VIDEO_SOURCES: Record<string, string> = {
 };
 
 const video = {
-  source: 'sky' as keyof typeof VIDEO_SOURCES,
-  playbackRate: 0.7,
+  source: 'sky-alt' as keyof typeof VIDEO_SOURCES,
+  playbackRate: 2.0,
   startTime: 0,
 };
 
@@ -468,8 +468,8 @@ skyVideo.addEventListener('loadedmetadata', () => {
 
 // ── Post-FX (SVG filter) ─────────────────────────────────
 const fx = {
-  aberration: 2.5, // px offset for R and B channels
-  grading: 1.0,    // 0..1 mix between identity and warm/contrast matrix
+  aberration: 1.2, // px offset for R and B channels
+  grading: 0.75,   // 0..1 mix between identity and warm/contrast matrix
 };
 
 const offRNode = document.getElementById('fx-offset-r') as unknown as SVGFEOffsetElement;

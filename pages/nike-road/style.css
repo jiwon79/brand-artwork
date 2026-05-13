@@ -21,7 +21,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  padding: 16px;
+  padding: 8px 16px 16px;
 }
 
 #topbar {
@@ -81,23 +81,32 @@ body {
 }
 
 #controls {
+  position: fixed;
+  top: 12px;
+  left: 12px;
   display: flex;
-  gap: 12px;
-  justify-content: center;
+  gap: 6px;
+  z-index: 1000;
 }
 
 #controls button {
-  background: #fff;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
   color: #0a0a0a;
   border: none;
-  padding: 10px 22px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
-  border-radius: 2px;
-  transition: opacity 0.2s;
+  border-radius: 4px;
+  transition: opacity 0.2s, background 0.2s;
 }
 
-#controls button:hover { opacity: 0.7; }
+#controls button:hover {
+  background: #fff;
+  opacity: 0.85;
+}

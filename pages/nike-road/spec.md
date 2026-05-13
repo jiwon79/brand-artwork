@@ -47,9 +47,11 @@
   - `'sky': 'assets/sky.mp4'` - 기본 하늘 비디오
   - `'sky-alt': 'assets/sky-alt.mp4'` - 대체 하늘 비디오
   - 런타임에 다른 비디오로 전환 가능한 구조
+- **HTML에서 사용되는 비디오**:
+  - `#sky` 요소의 `src` 속성: `assets/sky-alt.mp4` - 현재 사용 중인 하늘 배경 비디오
 - **video 객체**:
-  - `source: 'sky' as keyof typeof VIDEO_SOURCES` - 현재 로드된 비디오 소스 (기본값: 'sky')
-  - `playbackRate: 0.7` - 비디오 재생 속도 (기본값 0.7배속)
+  - `source: 'sky-alt' as keyof typeof VIDEO_SOURCES` - 현재 로드된 비디오 소스 (기본값: 'sky-alt')
+  - `playbackRate: 2.0` - 비디오 재생 속도 (기본값 2.0배속)
   - `startTime: 0` - 비디오 시작 시간 (초 단위)
 - **applyVideo()** - 비디오 객체의 playbackRate를 실제 비디오 요소에 적용
 - **seekVideo(t: number)** - 비디오를 지정된 시간(t)으로 이동
@@ -126,10 +128,10 @@
   - 각 문자마다 위치(cx, cy), 각도(angle), 폰트 크기(size) 제어 가능
   - 런타임에 조정 시 전체 시뮬레이션 재계산
   - **현재 플랫폼 배치**:
-    - 'failures': cx: 127, cy: 237, angle: 13°, size: 28px
-    - 'become': cx: 244, cy: 325, angle: -21°, size: 28px
-    - 'the': cx: 139, cy: 413, angle: 20°, size: 30px
-    - 'road': cx: 238, cy: 511, angle: 5°, size: 32px
+    - 'failures': cx: 127, cy: 257, angle: 13°, size: 28px
+    - 'become': cx: 244, cy: 345, angle: -21°, size: 28px
+    - 'the': cx: 139, cy: 433, angle: 20°, size: 30px
+    - 'road': cx: 238, cy: 531, angle: 5°, size: 32px
   - **폰트 프리셋 시스템**:
     - `FONT_PRESETS` - 폰트 스타일 템플릿 저장 객체
       - 'Georgia Italic Black': `italic 900 {SIZE}px Georgia, serif`
@@ -260,9 +262,9 @@
 
 ### Post-FX (SVG 필터) 시스템
 - **fx 객체** - 포스트 이펙트 파라미터 관리
-  - `aberration: 2.5` - 색수차(Chromatic Aberration) 오프셋 거리 (픽셀 단위)
+  - `aberration: 1.2` - 색수차(Chromatic Aberration) 오프셋 거리 (픽셀 단위)
     - R 채널과 B 채널을 반대 방향으로 이동시켜 색상 분리 효과 생성
-  - `grading: 1.0` - 색상 그레이딩 강도 (0 ~ 1, 0=원본, 1=최대 적용)
+  - `grading: 0.75` - 색상 그레이딩 강도 (0 ~ 1, 0=원본, 1=최대 적용)
     - 따뜻한 톤의 하이라이트와 차가운 톤의 그림자 조합
 - **SVG DOM 요소 참조** - 포스트 FX 필터 엘리먼트 직접 제어
   - `offRNode` - #fx-offset-r 요소 (R 채널 오프셋 필터)
@@ -281,8 +283,8 @@
     - A 채널: 불변 (0 0 0 1 0)
   - `gradeNode.setAttribute('values', m)` - 계산된 매트릭스를 필터에 적용
 - **초기화** - 스크립트 로드 시 자동으로 실행
-  - `applyAberration()` - 기본 색수차 오프셋 설정 (2.5px)
-  - `applyGrading()` - 기본 색상 그레이딩 설정 (강도 1.0)
+  - `applyAberration()` - 기본 색수차 오프셋 설정 (1.2px)
+  - `applyGrading()` - 기본 색상 그레이딩 설정 (강도 0.75)
 
 ### Playback 함수들과 애니메이션 루프
 - **tick(ts: number)** - 연속 애니메이션 루프 (requestAnimationFrame으로 매 프레임마다 호출)
@@ -335,8 +337,8 @@
       - G 채널: `values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0"` → result="g"
       - B 채널: `values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0"` → result="b"
     - 2개의 `<feOffset>` 요소로 오프셋 적용
-      - R: `id="fx-offset-r"`, dx="1.2" (오른쪽으로 이동)
-      - B: `id="fx-offset-b"`, dx="-1.2" (왼쪽으로 이동)
+      - R: `id="fx-offset-r"`, dx="1.2" (기본값, 동적으로 변경 가능)
+      - B: `id="fx-offset-b"`, dx="-1.2" (기본값, 동적으로 변경 가능)
     - 2개의 `<feBlend>` 요소로 채널 합성 (mode="screen")
       - R과 G 합성 → result="rg"
       - RG와 B 합성 → result="rgb"
@@ -349,11 +351,11 @@
 
 ### HTML 구조
 - **#fx-defs** - SVG 필터 정의 (위에서 상세 설명)
+- **#controls** - 재생 제어 버튼 그룹 (상단, #layout 밖)
+  - **#btn-play** - 재생/일시정지 (aria-label="Play", 심볼만 표시: ▶)
+  - **#btn-reset** - 초기 프레임으로 리셋 (aria-label="Reset", 심볼만 표시: ↺)
 - **#layout** - 전체 레이아웃 래퍼
   - **#topbar** - 헤더 컨테이너 (상단에 위치)
-    - **#controls** - 재생 제어 버튼 그룹 (상단 왼쪽)
-      - **#btn-play** - 재생/일시정지
-      - **#btn-reset** - 초기 프레임으로 리셋
     - **#gui-mount** - lil-gui 컨트롤패널 마운트 포인트 (상단 오른쪽)
   - **#stage** - 캔버스와 하늘 요소를 포함하는 스테이지 컨테이너
     - **#sky** - 하늘 배경 비디오 요소 (`assets/sky.mp4` 자동 재생, 루프, 음소거)
@@ -373,7 +375,7 @@
 - **#layout**: 전체 레이아웃 컨테이너 (스크롤 가능, flex column)
   - `min-height: 100vh` / `100dvh` - 최소 높이 (콘텐츠 초과 시 자동 확장)
   - `display: flex`, `flex-direction: column`, `align-items: center`
-  - `gap: 16px`, `padding: 16px` - 간결한 여백
+  - `gap: 16px`, `padding: 8px 16px 16px` - 상단 8px, 좌우 16px, 하단 16px 여백
   - 스크롤 가능 모드: 콘텐츠가 뷰포트를 초과하면 스크롤됨
 - **#topbar**: 헤더 컨테이너 (유연한 높이, 스크롤 불가)
   - `flex-shrink: 0` - 플렉스박스에서 축소 방지
@@ -381,12 +383,29 @@
   - `display: flex`, `flex-direction: column`, `align-items: center`
   - `gap: 12px` - 내부 요소 간격
   - 더 이상 내부 스크롤 불가 (max-height, overflow-y 제거)
-  - **#controls**: 재생 제어 버튼 그룹 (display: flex, gap: 12px, justify-content: center)
   - **#gui-mount**: lil-gui 컨트롤패널 마운트 포인트
     - `width: 100%`, `display: flex`, `justify-content: center`
     - **#gui-mount .lil-gui.root**: 
       - `position: static` - 절대 포지셔닝 제거
       - `width: min(360px, 100%)` - 반응형 너비
+- **#controls** - 재생 제어 버튼 그룹 (고정 위치, #layout 밖)
+  - `position: fixed` - 뷰포트에 고정
+  - `top: 12px`, `left: 12px` - 좌상단에 배치
+  - `display: flex`, `gap: 6px` - 수평 정렬, 버튼 간격 6px
+  - `z-index: 1000` - 다른 요소 위에 표시
+  - **#controls button** - 제어 버튼 스타일
+    - `width: 28px`, `height: 28px` - 정사각형 크기
+    - `padding: 0`, `display: inline-flex`, `align-items: center`, `justify-content: center` - 중앙 정렬
+    - `background: rgba(255, 255, 255, 0.85)` - 반투명 흰색 배경
+    - `color: #0a0a0a` - 검은색 텍스트
+    - `border: none` - 테두리 없음
+    - `font-size: 12px`, `line-height: 1` - 작은 아이콘 폰트
+    - `cursor: pointer` - 포인터 커서
+    - `border-radius: 4px` - 둥근 모서리
+    - `transition: opacity 0.2s, background 0.2s` - 호버 효과 애니메이션
+    - **#controls button:hover** - 호버 상태
+      - `background: #fff` - 불투명한 흰색
+      - `opacity: 0.85` - 약간의 투명도
 - **#stage**: 상대 위치 컨테이너
   - `position: relative` - 상대 위치 지정
   - `width: calc(100vw - 40px)` - 뷰포트 너비에서 16px 패딩(좌우)을 고려한 고정 너비
