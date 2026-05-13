@@ -362,21 +362,25 @@
 ### 스타일 시스템
 - **기본 스타일**: 마진/패딩 초기화, border-box 박스 모델
 - **html, body**:
-  - `width: 100%`, `height: 100%` - 전체 뷰포트 커버
-  - `overflow: hidden` - 모든 스크롤 방지 (뷰포트 고정 레이아웃)
+  - `width: 100%` - 전체 너비 커버
   - `background: #0a0a0a`, `font-family` 설정
-- **#layout**: 전체 레이아웃 컨테이너 (고정 높이, flex column)
-  - `height: 100vh` / `100dvh` - 동적 뷰포트 높이에 맞춤 (스크롤 불가)
+  - `overflow-x: hidden` - 가로 스크롤만 방지
+- **body** (새로운 규칙):
+  - `min-height: 100vh` / `100dvh` - 최소 뷰포트 높이 (콘텐츠가 넘으면 확장)
+  - `overflow-y: auto` - 세로 스크롤 활성화 (콘텐츠 초과 시)
+  - `-webkit-overflow-scrolling: touch` - iOS에서 모멘텀 스크롤링 활성화
+  - 스크롤 가능 페이지 레이아웃으로 변경
+- **#layout**: 전체 레이아웃 컨테이너 (스크롤 가능, flex column)
+  - `min-height: 100vh` / `100dvh` - 최소 높이 (콘텐츠 초과 시 자동 확장)
   - `display: flex`, `flex-direction: column`, `align-items: center`
-  - `gap: 16px`, `padding: 16px` - 간결한 여백 (이전: 24px, 24px 16px 48px)
-  - 고정 뷰포트 모드: 스크롤 불가, 전체 화면을 채우는 폐쇄형 레이아웃
-- **#topbar**: 헤더 컨테이너 (고정 크기, 내부 스크롤 가능)
+  - `gap: 16px`, `padding: 16px` - 간결한 여백
+  - 스크롤 가능 모드: 콘텐츠가 뷰포트를 초과하면 스크롤됨
+- **#topbar**: 헤더 컨테이너 (유연한 높이, 스크롤 불가)
   - `flex-shrink: 0` - 플렉스박스에서 축소 방지
   - `width: 100%`, `max-width: 720px` - 최대 너비 제한
-  - `max-height: 45vh` - 최대 높이 제한 (뷰포트 높이의 45%)
-  - `overflow-y: auto` - 내부 스크롤만 가능 (요소가 높이를 초과할 경우)
   - `display: flex`, `flex-direction: column`, `align-items: center`
-  - `gap: 12px` - 내부 요소 간격 (이전: 16px)
+  - `gap: 12px` - 내부 요소 간격
+  - 더 이상 내부 스크롤 불가 (max-height, overflow-y 제거)
   - **#controls**: 재생 제어 버튼 그룹 (display: flex, gap: 12px, justify-content: center)
   - **#gui-mount**: lil-gui 컨트롤패널 마운트 포인트
     - `width: 100%`, `display: flex`, `justify-content: center`
