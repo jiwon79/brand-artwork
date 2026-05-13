@@ -61,21 +61,23 @@ function getFont(size: number): string {
   return FONT_PRESETS[style.preset].replace('{SIZE}', size.toString());
 }
 
+const PLATFORM_OVERHANG = 8; // px past the glyph edge to make collisions forgiving
+
 function measureWords(): void {
   for (const w of words) {
     ctx.font = getFont(w.size);
     const m = ctx.measureText(w.text);
     w.width = m.width;
     const a = (w.angle * Math.PI) / 180;
-    const half = w.width / 2;
+    const halfExt = w.width / 2 + PLATFORM_OVERHANG;
     const cosA = Math.cos(a);
     const sinA = Math.sin(a);
     w.normal = { x: sinA, y: -cosA };
     const topOff = w.size * TOP_OFFSET_RATIO;
     const ox = w.normal.x * topOff;
     const oy = w.normal.y * topOff;
-    w.p1 = { x: w.cx - cosA * half + ox, y: w.cy - sinA * half + oy };
-    w.p2 = { x: w.cx + cosA * half + ox, y: w.cy + sinA * half + oy };
+    w.p1 = { x: w.cx - cosA * halfExt + ox, y: w.cy - sinA * halfExt + oy };
+    w.p2 = { x: w.cx + cosA * halfExt + ox, y: w.cy + sinA * halfExt + oy };
   }
 }
 
