@@ -372,12 +372,11 @@
       - `width: min(360px, 100%)` - 반응형 너비
 - **#stage**: 상대 위치 컨테이너
   - `position: relative` - 상대 위치 지정
-  - `flex: 1 1 0` - 플렉스박스에서 가용 공간을 균등하게 차지
-  - `min-height: 0` - 플렉스박스에서 자식 콘텐츠의 최소 높이 제약 제거
+  - `width: calc(100vw - 40px)` - 뷰포트 너비에서 16px 패딩(좌우)을 고려한 고정 너비
+  - `height: auto` - 높이는 종횡비에 의해 자동 결정
   - `aspect-ratio: 9 / 16` - 세로 형식 화면비 유지 (405×720px 기준)
-  - `width: auto` - 플렉스박스에 의해 동적으로 결정되는 너비
-  - `max-width: 100%` - 최대 너비를 부모 컨테이너로 제한
   - `overflow: hidden`, `box-shadow` - 오버플로우 처리 및 그림자 효과
+  - `flex-shrink: 0` - 플렉스박스에서 축소 방지
 - **#fx-defs**: SVG 필터 정의 컨테이너 (position: absolute, width: 0, height: 0, overflow: hidden)
   - DOM에서 숨김 처리하면서 SVG 필터 정의가 참조 가능하도록 함
 - **#sky**: 비디오 배경 컨테이너 (position: absolute, inset: 0, width: 100%, height: 100%, object-fit: cover, pointer-events: none, visibility: hidden)
