@@ -36,10 +36,10 @@ type Word = {
 };
 
 const words: Word[] = [
-  { text: 'failures', cx: 127, cy: 257, angle:  13, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'become',   cx: 244, cy: 345, angle: -21, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'the',      cx: 139, cy: 433, angle:  20, size: 30, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
-  { text: 'road',     cx: 238, cy: 531, angle:   5, size: 32, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'failures', cx: 147, cy: 257, angle:  13, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'become',   cx: 264, cy: 345, angle: -21, size: 28, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'the',      cx: 159, cy: 433, angle:  20, size: 30, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
+  { text: 'road',     cx: 258, cy: 531, angle:   5, size: 32, width: 0, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, normal: { x: 0, y: 0 } },
 ];
 
 const FONT_PRESETS: Record<string, string> = {
@@ -81,7 +81,7 @@ function measureWords(): void {
 
 // ── Ball physics ─────────────────────────────────────────
 const ball = {
-  x: 120,
+  x: 140,
   y: -20,
   vx: 0,
   vy: 0,
@@ -98,7 +98,7 @@ const physics = {
 const masterTrail: { x: number; y: number }[] = [];
 
 function resetPhysics(): void {
-  ball.x = 120;
+  ball.x = 140;
   ball.y = -20;
   ball.vx = 0;
   ball.vy = 0;

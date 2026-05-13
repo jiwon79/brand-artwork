@@ -121,17 +121,17 @@
     - 표면을 따라 속도 성분만 유지 (법선 성분 제거)
     - 플랫폼에서 떨어날 때까지 계속 구르기
 - **공 물리**: 
-  - 위치 (x: 120, y: -20), 속도, 반지름(7px), 플랫폼 착지 상태 추적
-  - 초기 x 위치는 120 (중앙-왼쪽에서 시작)
-  - `resetPhysics()` 함수는 x: 120으로 리셋하여 초기 위치와 일치
+  - 위치 (x: 140, y: -20), 속도, 반지름(7px), 플랫폼 착지 상태 추적
+  - 초기 x 위치는 140 (중앙 근처에서 시작)
+  - `resetPhysics()` 함수는 x: 140으로 리셋하여 초기 위치와 일치
 - **플랫폼**: 4개의 문자열("failures", "become", "the", "road")을 각도 지정 플랫폼으로 사용
   - 각 문자마다 위치(cx, cy), 각도(angle), 폰트 크기(size) 제어 가능
   - 런타임에 조정 시 전체 시뮬레이션 재계산
   - **현재 플랫폼 배치**:
-    - 'failures': cx: 127, cy: 257, angle: 13°, size: 28px
-    - 'become': cx: 244, cy: 345, angle: -21°, size: 28px
-    - 'the': cx: 139, cy: 433, angle: 20°, size: 30px
-    - 'road': cx: 238, cy: 531, angle: 5°, size: 32px
+    - 'failures': cx: 147, cy: 257, angle: 13°, size: 28px
+    - 'become': cx: 264, cy: 345, angle: -21°, size: 28px
+    - 'the': cx: 159, cy: 433, angle: 20°, size: 30px
+    - 'road': cx: 258, cy: 531, angle: 5°, size: 32px
   - **폰트 프리셋 시스템**:
     - `FONT_PRESETS` - 폰트 스타일 템플릿 저장 객체
       - 'Georgia Italic Black': `italic 900 {SIZE}px Georgia, serif`
@@ -351,11 +351,11 @@
 
 ### HTML 구조
 - **#fx-defs** - SVG 필터 정의 (위에서 상세 설명)
-- **#controls** - 재생 제어 버튼 그룹 (상단, #layout 밖)
-  - **#btn-play** - 재생/일시정지 (aria-label="Play", 심볼만 표시: ▶)
-  - **#btn-reset** - 초기 프레임으로 리셋 (aria-label="Reset", 심볼만 표시: ↺)
 - **#layout** - 전체 레이아웃 래퍼
   - **#topbar** - 헤더 컨테이너 (상단에 위치)
+    - **#controls** - 재생 제어 버튼 그룹 (상단, #topbar 내부)
+      - **#btn-play** - 재생/일시정지 (aria-label="Play", 심볼만 표시: ▶)
+      - **#btn-reset** - 초기 프레임으로 리셋 (aria-label="Reset", 심볼만 표시: ↺)
     - **#gui-mount** - lil-gui 컨트롤패널 마운트 포인트 (상단 오른쪽)
   - **#stage** - 캔버스와 하늘 요소를 포함하는 스테이지 컨테이너
     - **#sky** - 하늘 배경 비디오 요소 (`assets/sky.mp4` 자동 재생, 루프, 음소거)
@@ -380,19 +380,21 @@
 - **#topbar**: 헤더 컨테이너 (유연한 높이, 스크롤 불가)
   - `flex-shrink: 0` - 플렉스박스에서 축소 방지
   - `width: 100%`, `max-width: 720px` - 최대 너비 제한
-  - `display: flex`, `flex-direction: column`, `align-items: center`
-  - `gap: 12px` - 내부 요소 간격
+  - `display: flex`, `flex-direction: row`, `align-items: flex-start`, `justify-content: center`
+  - `gap: 8px` - 내부 요소 간격 (12px에서 8px로 감소)
   - 더 이상 내부 스크롤 불가 (max-height, overflow-y 제거)
+  - **레이아웃 변경**: 수직 배열(column)에서 수평 배열(row)로 변경, 정렬 기준 상단(flex-start)으로 변경
   - **#gui-mount**: lil-gui 컨트롤패널 마운트 포인트
-    - `width: 100%`, `display: flex`, `justify-content: center`
+    - `flex: 1` - 사용 가능한 나머지 공간 차지
+    - `min-width: 0` - 플렉스 아이템이 내용보다 작아질 수 있도록 허용
+    - `display: flex`, `justify-content: flex-start` - 왼쪽 정렬
     - **#gui-mount .lil-gui.root**: 
       - `position: static` - 절대 포지셔닝 제거
-      - `width: min(360px, 100%)` - 반응형 너비
-- **#controls** - 재생 제어 버튼 그룹 (고정 위치, #layout 밖)
-  - `position: fixed` - 뷰포트에 고정
-  - `top: 12px`, `left: 12px` - 좌상단에 배치
+      - `width: 100%` - 전체 너비 사용
+      - `max-width: 320px` - 최대 너비 제한
+- **#controls** - 재생 제어 버튼 그룹 (#topbar 내부, 플렉스 레이아웃)
   - `display: flex`, `gap: 6px` - 수평 정렬, 버튼 간격 6px
-  - `z-index: 1000` - 다른 요소 위에 표시
+  - `flex-shrink: 0` - 플렉스박스에서 축소 방지
   - **#controls button** - 제어 버튼 스타일
     - `width: 28px`, `height: 28px` - 정사각형 크기
     - `padding: 0`, `display: inline-flex`, `align-items: center`, `justify-content: center` - 중앙 정렬
@@ -408,7 +410,7 @@
       - `opacity: 0.85` - 약간의 투명도
 - **#stage**: 상대 위치 컨테이너
   - `position: relative` - 상대 위치 지정
-  - `width: calc(100vw - 40px)` - 뷰포트 너비에서 16px 패딩(좌우)을 고려한 고정 너비
+  - `width: calc(100vw - 80px)` - 뷰포트 너비에서 40px 패딩(좌우)을 고려한 고정 너비
   - `height: auto` - 높이는 종횡비에 의해 자동 결정
   - `aspect-ratio: 9 / 16` - 세로 형식 화면비 유지 (405×720px 기준)
   - `overflow: hidden`, `box-shadow` - 오버플로우 처리 및 그림자 효과

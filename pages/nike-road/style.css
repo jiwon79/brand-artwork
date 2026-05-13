@@ -29,25 +29,28 @@ body {
   width: 100%;
   max-width: 720px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
 }
 
 #gui-mount {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 #gui-mount .lil-gui.root {
   position: static;
-  width: min(360px, 100%);
+  width: 100%;
+  max-width: 320px;
 }
 
 #stage {
   position: relative;
-  width: calc(100vw - 40px);
+  width: calc(100vw - 80px);
   height: auto;
   aspect-ratio: 9 / 16;
   overflow: hidden;
@@ -81,12 +84,9 @@ body {
 }
 
 #controls {
-  position: fixed;
-  top: 12px;
-  left: 12px;
   display: flex;
   gap: 6px;
-  z-index: 1000;
+  flex-shrink: 0;
 }
 
 #controls button {
