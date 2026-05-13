@@ -477,7 +477,8 @@ applyAberration();
 applyGrading();
 
 // ── GUI ──────────────────────────────────────────────────
-const gui = new GUI({ title: 'Controls' });
+const guiMount = document.getElementById('gui-mount') as HTMLElement;
+const gui = new GUI({ title: 'Controls', container: guiMount });
 
 precompute();
 

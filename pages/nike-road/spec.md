@@ -180,6 +180,12 @@
     - 외부 반지름: `Math.max(W, H) * 0.72` (약 518px) - `rgba(0,0,0,0.55)` (어두움)
     - 화면 주변부를 어둡게 하여 초점 집중 효과
 
+### GUI 제어 패널 초기화
+- **GUI 마운트 포인트** - lil-gui 컨트롤 패널을 HTML의 `#gui-mount` 요소에 마운트
+  - `const guiMount = document.getElementById('gui-mount') as HTMLElement;` - DOM에서 마운트 포인트 선택
+  - `const gui = new GUI({ title: 'Controls', container: guiMount });` - GUI 인스턴스 생성 시 `container` 옵션으로 마운트 위치 지정
+  - 이를 통해 lil-gui가 자체 절대 포지셔닝 스타일 대신 HTML 레이아웃에 통합됨
+
 ### GUI 제어 패널
 - **frame 슬라이더** - 0 ~ 479 프레임을 직접 제어
   - onChange 콜백: `stopPlayback()` 호출하여 재생 중이면 일시정지
@@ -314,27 +320,45 @@
 ### HTML 구조
 - **#fx-defs** - SVG 필터 정의 (위에서 상세 설명)
 - **#layout** - 전체 레이아웃 래퍼
+  - **#topbar** - 헤더 컨테이너 (상단에 위치)
+    - **#controls** - 재생 제어 버튼 그룹 (상단 왼쪽)
+      - **#btn-play** - 재생/일시정지
+      - **#btn-reset** - 초기 프레임으로 리셋
+    - **#gui-mount** - lil-gui 컨트롤패널 마운트 포인트 (상단 오른쪽)
   - **#stage** - 캔버스와 하늘 요소를 포함하는 스테이지 컨테이너
     - **#sky** - 하늘 배경 비디오 요소 (`assets/sky.mp4` 자동 재생, 루프, 음소거)
     - **#scene** - Canvas 렌더링 컨테이너 (405×720px)
-  - **#controls** - 하단 버튼 그룹
-    - **#btn-play** - 재생/일시정지
-    - **#btn-reset** - 초기 프레임으로 리셋
-- **lil-gui 컨트롤패널**:
-  - **frame** 슬라이더 - 0 ~ 479 프레임 직접 선택
-  - **Video** 폴더 - 비디오 재생 제어
-    - playbackRate - 비디오 재생 속도 (0.1 ~ 4배속, 0.05 단위)
-    - startTime - 비디오 시작 시간 (0 ~ 60초, 0.05 단위)
 
 ### 스타일 시스템
 - **기본 스타일**: 마진/패딩 초기화, border-box 박스 모델
-- **#layout**: 전체 레이아웃 컨테이너 (position: fixed, flex column, 중앙 정렬, gap: 20px)
-- **#stage**: 상대 위치 컨테이너 (position: relative, 405×720px, box-shadow)
+- **html, body**:
+  - `width: 100%`, `min-height: 100%` - 전체 뷰포트 커버
+  - `overflow-x: hidden` - 수평 스크롤 방지
+  - `body { overflow-y: auto }` - 수직 스크롤 활성화
+  - `background: #0a0a0a`, `font-family` 설정
+- **#layout**: 전체 레이아웃 컨테이너 (반응형, flex column)
+  - `min-height: 100vh` / `100dvh` - 동적 뷰포트 높이 지원
+  - `display: flex`, `flex-direction: column`, `align-items: center`
+  - `gap: 24px`, `padding: 24px 16px 48px` - 여백 및 패딩
+  - 이전의 `position: fixed`, `inset: 0`, `justify-content: center` 제거 → 스크롤 가능하게 변경
+- **#topbar**: 헤더 컨테이너 (상단에 위치, 버튼과 GUI 마운트 포인트 포함)
+  - `width: 100%`, `max-width: 720px` - 최대 너비 제한
+  - `display: flex`, `flex-direction: column`, `align-items: center`
+  - `gap: 16px` - 내부 요소 간격
+  - **#controls**: 재생 제어 버튼 그룹 (display: flex, gap: 12px, justify-content: center)
+  - **#gui-mount**: lil-gui 컨트롤패널 마운트 포인트
+    - `width: 100%`, `display: flex`, `justify-content: center`
+    - **#gui-mount .lil-gui.root**: 
+      - `position: static` - 절대 포지셔닝 제거
+      - `width: min(360px, 100%)` - 반응형 너비
+- **#stage**: 상대 위치 컨테이너
+  - `width: 405px`, `height: 720px` - 고정 크기
+  - `max-width: 100%`, `flex-shrink: 0` - 반응형 스케일링 + 최소 크기 보장
+  - `position: relative`, `overflow: hidden`, `box-shadow`
 - **#fx-defs**: SVG 필터 정의 컨테이너 (position: absolute, width: 0, height: 0, overflow: hidden)
   - DOM에서 숨김 처리하면서 SVG 필터 정의가 참조 가능하도록 함
 - **#sky**: 비디오 배경 컨테이너 (position: absolute, inset: 0, width: 100%, height: 100%, object-fit: cover, pointer-events: none, visibility: hidden)
 - **#scene**: Canvas 요소 컨테이너 (position: absolute, inset: 0, filter: url(#post-fx))
-- **#controls**: 버튼 그룹 (display: flex, gap: 12px, #layout 내부에 위치)
 
 ### 주요 변경사항
 - 타임라인 기반 애니메이션에서 프레임 기반 재생 방식으로 전환
