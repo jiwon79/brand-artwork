@@ -24,6 +24,23 @@
 - **resetBtn** - #btn-reset 버튼 요소
 - **skyVideo** - #sky 비디오 요소 (하늘 배경 비디오)
 
+### HiDPI 렌더링 최적화
+- **DPR (Device Pixel Ratio)**: `Math.max(1, window.devicePixelRatio || 1)`
+  - 고해상도 디스플레이에서 텍스트와 선이 선명하게 렌더링되도록 설정
+  - 최소값 1로 설정하여 브라우저 지원 부족 시에도 작동
+- **메인 캔버스 물리 크기 설정** (#scene):
+  - `canvas.width = Math.round(W * DPR)` - 논리 크기(405px) × 기기 픽셀 비율로 스케일
+  - `canvas.height = Math.round(H * DPR)` - 논리 크기(720px) × 기기 픽셀 비율로 스케일
+- **오프스크린 캔버스 물리 크기 설정** (mask, roadCanvas):
+  - `mask.width = Math.round(W * DPR)`, `mask.height = Math.round(H * DPR)` - 마스킹용 오프스크린 캔버스 스케일
+  - `roadCanvas.width = Math.round(W * DPR)`, `roadCanvas.height = Math.round(H * DPR)` - 도로 렌더링용 오프스크린 캔버스 스케일
+- **렌더링 컨텍스트 스케일링**:
+  - `ctx.scale(DPR, DPR)` - 메인 컨텍스트를 DPR 배수로 스케일하여 좌표계를 조정
+  - `mCtx.scale(DPR, DPR)` - 마스크 컨텍스트를 DPR 배수로 스케일
+  - `rCtx.scale(DPR, DPR)` - 도로 렌더링 컨텍스트를 DPR 배수로 스케일
+  - 이를 통해 코드에서는 논리 좌표(405×720)를 사용하면서 실제로는 고해상도로 렌더링됨
+- **효과**: 고DPI 디스플레이(Retina, 4K 등)에서 모든 레이어(메인, 도로, 마스크)의 텍스트와 선이 흐릿하지 않고 선명하게 표시됨
+
 ### 비디오 제어 시스템
 - **video 객체**:
   - `playbackRate: 0.7` - 비디오 재생 속도 (기본값 0.7배속)
@@ -163,10 +180,10 @@
          - 렌더링 크기: `dw = vw * scale`, `dh = vh * scale`
          - 위치: `((W - dw) / 2, (H - dh) / 2)` (캔버스 중앙)
        - 비디오 미준비: 어두운 회색 배경(`#3a3a3a`) 채우기
-    3. `ctx.drawImage(roadCanvas, 0, 0)` - 도로 그리기
+    3. `ctx.drawImage(roadCanvas, 0, 0, W, H)` - 도로 그리기 (명시적 너비/높이 지정)
     4. 루프: `drawWord(w)` - 모든 문자 플랫폼 렌더링
     5. `drawBall(f.x, f.y)` - 공 렌더링
-    6. `ctx.drawImage(vignette, 0, 0)` - 비그넷 오버레이
+    6. `ctx.drawImage(vignette, 0, 0, W, H)` - 비그넷 오버레이 (명시적 너비/높이 지정)
 - **레이어 순서**: 비디오 배경 → 도로 → 문자 → 공 → 비그넷
   - 비디오 배경이 SVG 필터(#post-fx)의 영향을 받도록 변경
   - 어두운 배경은 비디오 로딩 실패 시 폴백
@@ -332,19 +349,21 @@
 ### 스타일 시스템
 - **기본 스타일**: 마진/패딩 초기화, border-box 박스 모델
 - **html, body**:
-  - `width: 100%`, `min-height: 100%` - 전체 뷰포트 커버
-  - `overflow-x: hidden` - 수평 스크롤 방지
-  - `body { overflow-y: auto }` - 수직 스크롤 활성화
+  - `width: 100%`, `height: 100%` - 전체 뷰포트 커버
+  - `overflow: hidden` - 모든 스크롤 방지 (뷰포트 고정 레이아웃)
   - `background: #0a0a0a`, `font-family` 설정
-- **#layout**: 전체 레이아웃 컨테이너 (반응형, flex column)
-  - `min-height: 100vh` / `100dvh` - 동적 뷰포트 높이 지원
+- **#layout**: 전체 레이아웃 컨테이너 (고정 높이, flex column)
+  - `height: 100vh` / `100dvh` - 동적 뷰포트 높이에 맞춤 (스크롤 불가)
   - `display: flex`, `flex-direction: column`, `align-items: center`
-  - `gap: 24px`, `padding: 24px 16px 48px` - 여백 및 패딩
-  - 이전의 `position: fixed`, `inset: 0`, `justify-content: center` 제거 → 스크롤 가능하게 변경
-- **#topbar**: 헤더 컨테이너 (상단에 위치, 버튼과 GUI 마운트 포인트 포함)
+  - `gap: 16px`, `padding: 16px` - 간결한 여백 (이전: 24px, 24px 16px 48px)
+  - 고정 뷰포트 모드: 스크롤 불가, 전체 화면을 채우는 폐쇄형 레이아웃
+- **#topbar**: 헤더 컨테이너 (고정 크기, 내부 스크롤 가능)
+  - `flex-shrink: 0` - 플렉스박스에서 축소 방지
   - `width: 100%`, `max-width: 720px` - 최대 너비 제한
+  - `max-height: 45vh` - 최대 높이 제한 (뷰포트 높이의 45%)
+  - `overflow-y: auto` - 내부 스크롤만 가능 (요소가 높이를 초과할 경우)
   - `display: flex`, `flex-direction: column`, `align-items: center`
-  - `gap: 16px` - 내부 요소 간격
+  - `gap: 12px` - 내부 요소 간격 (이전: 16px)
   - **#controls**: 재생 제어 버튼 그룹 (display: flex, gap: 12px, justify-content: center)
   - **#gui-mount**: lil-gui 컨트롤패널 마운트 포인트
     - `width: 100%`, `display: flex`, `justify-content: center`
@@ -352,13 +371,17 @@
       - `position: static` - 절대 포지셔닝 제거
       - `width: min(360px, 100%)` - 반응형 너비
 - **#stage**: 상대 위치 컨테이너
-  - `width: 405px`, `height: 720px` - 고정 크기
-  - `max-width: 100%`, `flex-shrink: 0` - 반응형 스케일링 + 최소 크기 보장
-  - `position: relative`, `overflow: hidden`, `box-shadow`
+  - `position: relative` - 상대 위치 지정
+  - `flex: 1 1 0` - 플렉스박스에서 가용 공간을 균등하게 차지
+  - `min-height: 0` - 플렉스박스에서 자식 콘텐츠의 최소 높이 제약 제거
+  - `aspect-ratio: 9 / 16` - 세로 형식 화면비 유지 (405×720px 기준)
+  - `width: auto` - 플렉스박스에 의해 동적으로 결정되는 너비
+  - `max-width: 100%` - 최대 너비를 부모 컨테이너로 제한
+  - `overflow: hidden`, `box-shadow` - 오버플로우 처리 및 그림자 효과
 - **#fx-defs**: SVG 필터 정의 컨테이너 (position: absolute, width: 0, height: 0, overflow: hidden)
   - DOM에서 숨김 처리하면서 SVG 필터 정의가 참조 가능하도록 함
 - **#sky**: 비디오 배경 컨테이너 (position: absolute, inset: 0, width: 100%, height: 100%, object-fit: cover, pointer-events: none, visibility: hidden)
-- **#scene**: Canvas 요소 컨테이너 (position: absolute, inset: 0, filter: url(#post-fx))
+- **#scene**: Canvas 요소 컨테이너 (position: absolute, inset: 0, width: 100%, height: 100%, filter: url(#post-fx))
 
 ### 주요 변경사항
 - 타임라인 기반 애니메이션에서 프레임 기반 재생 방식으로 전환

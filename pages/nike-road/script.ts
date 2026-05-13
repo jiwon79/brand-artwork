@@ -12,6 +12,12 @@ const TOP_OFFSET_RATIO = 0.4; // how far above word baseline-center the platform
 // ── DOM ──────────────────────────────────────────────────
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+
+// ── HiDPI: render at devicePixelRatio for crisp text/lines ───
+const DPR = Math.max(1, window.devicePixelRatio || 1);
+canvas.width = Math.round(W * DPR);
+canvas.height = Math.round(H * DPR);
+ctx.scale(DPR, DPR);
 const playBtn = document.getElementById('btn-play') as HTMLButtonElement;
 const resetBtn = document.getElementById('btn-reset') as HTMLButtonElement;
 const skyVideo = document.getElementById('sky') as HTMLVideoElement;
@@ -253,14 +259,16 @@ asphalt.height = H;
 })();
 
 const mask = document.createElement('canvas');
-mask.width = W;
-mask.height = H;
+mask.width = Math.round(W * DPR);
+mask.height = Math.round(H * DPR);
 const mCtx = mask.getContext('2d') as CanvasRenderingContext2D;
+mCtx.scale(DPR, DPR);
 
 const roadCanvas = document.createElement('canvas');
-roadCanvas.width = W;
-roadCanvas.height = H;
+roadCanvas.width = Math.round(W * DPR);
+roadCanvas.height = Math.round(H * DPR);
 const rCtx = roadCanvas.getContext('2d') as CanvasRenderingContext2D;
+rCtx.scale(DPR, DPR);
 
 const ROAD_WIDTH = 22;
 const EDGE_INSET = 2;        // white edge band thickness on each side
@@ -301,9 +309,9 @@ function buildRoad(trailLen: number, ts: number): void {
   mCtx.lineWidth = ROAD_WIDTH - EDGE_INSET * 2;
   traceTrail(mCtx, trailLen);
   mCtx.globalCompositeOperation = 'source-in';
-  mCtx.drawImage(asphalt, 0, 0);
+  mCtx.drawImage(asphalt, 0, 0, W, H);
   mCtx.globalCompositeOperation = 'source-over';
-  rCtx.drawImage(mask, 0, 0);
+  rCtx.drawImage(mask, 0, 0, W, H);
 
   // 3) Yellow dashed center line — flows along the path over time
   rCtx.save();
@@ -376,10 +384,10 @@ function renderFrame(idx: number, ts: number): void {
     ctx.fillRect(0, 0, W, H);
   }
 
-  ctx.drawImage(roadCanvas, 0, 0);
+  ctx.drawImage(roadCanvas, 0, 0, W, H);
   for (const w of words) drawWord(w);
   drawBall(f.x, f.y);
-  ctx.drawImage(vignette, 0, 0);
+  ctx.drawImage(vignette, 0, 0, W, H);
 }
 
 // ── Playback ─────────────────────────────────────────────
