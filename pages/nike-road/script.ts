@@ -434,7 +434,13 @@ playBtn.addEventListener('click', play);
 resetBtn.addEventListener('click', reset);
 
 // ── Video ────────────────────────────────────────────────
+const VIDEO_SOURCES: Record<string, string> = {
+  'sky':     'assets/sky.mp4',
+  'sky-alt': 'assets/sky-alt.mp4',
+};
+
 const video = {
+  source: 'sky' as keyof typeof VIDEO_SOURCES,
   playbackRate: 0.7,
   startTime: 0,
 };
@@ -446,6 +452,12 @@ function applyVideo(): void {
 function seekVideo(t: number): void {
   if (!Number.isFinite(skyVideo.duration) || skyVideo.duration === 0) return;
   skyVideo.currentTime = Math.max(0, Math.min(skyVideo.duration - 0.001, t));
+}
+
+function loadVideo(): void {
+  skyVideo.src = VIDEO_SOURCES[video.source];
+  skyVideo.load();
+  skyVideo.play().catch(() => {});
 }
 
 skyVideo.addEventListener('loadedmetadata', () => {
@@ -525,6 +537,7 @@ for (const w of words) {
 }
 
 const videoFolder = gui.addFolder('Video');
+videoFolder.add(video, 'source', Object.keys(VIDEO_SOURCES)).onChange(loadVideo);
 videoFolder.add(video, 'playbackRate', 0.1, 4, 0.05).onChange(applyVideo);
 const videoStartCtrl = videoFolder
   .add(video, 'startTime', 0, 60, 0.05)

@@ -42,13 +42,24 @@
 - **효과**: 고DPI 디스플레이(Retina, 4K 등)에서 모든 레이어(메인, 도로, 마스크)의 텍스트와 선이 흐릿하지 않고 선명하게 표시됨
 
 ### 비디오 제어 시스템
+- **VIDEO_SOURCES 상수**:
+  - `Record<string, string>` 타입으로 정의된 비디오 소스 맵
+  - `'sky': 'assets/sky.mp4'` - 기본 하늘 비디오
+  - `'sky-alt': 'assets/sky-alt.mp4'` - 대체 하늘 비디오
+  - 런타임에 다른 비디오로 전환 가능한 구조
 - **video 객체**:
+  - `source: 'sky' as keyof typeof VIDEO_SOURCES` - 현재 로드된 비디오 소스 (기본값: 'sky')
   - `playbackRate: 0.7` - 비디오 재생 속도 (기본값 0.7배속)
   - `startTime: 0` - 비디오 시작 시간 (초 단위)
 - **applyVideo()** - 비디오 객체의 playbackRate를 실제 비디오 요소에 적용
 - **seekVideo(t: number)** - 비디오를 지정된 시간(t)으로 이동
   - 유효한 범위(0 ~ duration - 0.001)로 자동 클램핑
   - 비디오 duration이 유효하지 않으면 무시
+- **loadVideo()** - 새 비디오 소스를 로드하고 재생 시작
+  - `skyVideo.src = VIDEO_SOURCES[video.source]` - video.source에 따라 비디오 URL 설정
+  - `skyVideo.load()` - 비디오 리소스 로드
+  - `skyVideo.play().catch(() => {})` - 자동 재생 시도 (실패 무시)
+  - 비디오 소스 변경 시 이 함수를 호출하여 새 비디오로 전환
 - **loadedmetadata 이벤트**:
   - 비디오 메타데이터 로드 완료 시 발생
   - `videoStartCtrl.max(skyVideo.duration)` - GUI 슬라이더 최대값 설정
@@ -240,6 +251,8 @@
     - Style 폴더의 preset 슬라이더와 Words 폴더의 모든 슬라이더에서 공유
     - 코드 중복 제거하여 유지보수성 향상
 - **Video 폴더** - 비디오 재생 제어
+  - **source** - 비디오 소스 선택 (VIDEO_SOURCES 키 기반 드롭다운)
+    - onChange 콜백: `loadVideo()` 호출하여 선택한 비디오 로드 및 재생 시작
   - **playbackRate** - 비디오 재생 속도 (0.1 ~ 4배속, 0.05 단위)
     - onChange 콜백: `applyVideo()` 호출
   - **startTime** - 비디오 시작 시간 (0 ~ 60초, 0.05 단위)
