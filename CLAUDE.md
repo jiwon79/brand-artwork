@@ -6,6 +6,7 @@ Interactive web implementations of brand artworks.
 
 - TypeScript + Vite
 - lil-gui (debug/parameter tuning UI)
+- pnpm (package manager)
 
 ## Project Structure
 
