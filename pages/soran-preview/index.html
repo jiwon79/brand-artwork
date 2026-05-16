@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>소란 × loop.design.lab — 인터랙티브 프리뷰</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <section class="scene scene--intro">
+    <div class="intro">
+      <p class="kicker">소란 × loop.design.lab</p>
+      <h1>인터랙티브 인스타툰 · 프리뷰</h1>
+      <p class="lead">전체 20컷 중 핵심 3컷을 인터랙티브로 시연합니다.<br>아래로 스크롤하세요.</p>
+      <div class="arrow">↓</div>
+    </div>
+  </section>
+
+  <section class="scene scene--dark" id="scene-dark">
+    <div class="cut-label">컷 6 / 우울의 정점</div>
+    <div class="dark-stage">
+      <img src="./assets/cut6-dark-room.jpeg" alt="검은 방, 작은 창문" class="dark-img">
+      <div class="spotlight" id="spotlight"></div>
+      <div class="hint">움직여 빛을 비춰보세요</div>
+    </div>
+  </section>
+
+  <section class="scene scene--empty" id="scene-empty">
+    <div class="cut-label">컷 11 / 텅 빈 공간</div>
+    <div class="empty-stage">
+      <img src="./assets/cut11-empty.jpeg" alt="텅 빈 칸 속 캐릭터" class="empty-img" id="emptyImg">
+      <div class="hint hint--empty">스크롤할수록 작아져요</div>
+    </div>
+  </section>
+
+  <section class="scene scene--finale" id="scene-finale">
+    <div class="cut-label">컷 20 / 살아주라, 제발</div>
+    <div class="finale-stage" id="finaleStage">
+      <canvas id="confettiCanvas"></canvas>
+      <div class="finale-figure" id="finaleFigure"></div>
+      <img src="./assets/cut20-finale.jpeg" alt="finale" class="finale-img" id="finaleImg">
+      <div class="finale-bubbles" id="finaleBubbles">
+        <div class="bubble">살아주라</div>
+        <div class="bubble">제발.</div>
+      </div>
+      <div class="tap-counter" id="tapCounter">
+        <span class="hint">화면을 탭/클릭해서 색을 모아보세요</span>
+        <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>이 프리뷰는 인터랙션 방향성 시연용입니다. 실제 구현은 전체 20컷 + 분리 레이어 기반으로 진행됩니다.</p>
+  </footer>
+
+  <script type="module" src="./script.ts"></script>
+</body>
+</html>
