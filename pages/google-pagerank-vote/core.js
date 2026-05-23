@@ -3,6 +3,34 @@ export const TOKENS = Object.freeze(['LINK', 'VOTE', 'RANK', 'PAGE', 'SEARCH', '
 
 const TWO_PI = Math.PI * 2;
 
+export function buildCharacterBelt(tokens, charSpacing, beltLength, tokenOffset = 0) {
+  const cleanTokens = tokens
+    .map((token) => String(token).replace(/\s+/g, ''))
+    .filter((token) => token.length > 0);
+  const glyphs = [];
+
+  if (cleanTokens.length === 0 || charSpacing <= 0 || beltLength <= 0) return glyphs;
+
+  let distance = 0;
+  let tokenCursor = 0;
+  while (distance < beltLength) {
+    const tokenIndex = mod(tokenOffset + tokenCursor, cleanTokens.length);
+    const token = cleanTokens[tokenIndex];
+    for (let charIndex = 0; charIndex < token.length && distance < beltLength; charIndex++) {
+      glyphs.push({
+        char: token[charIndex],
+        distance,
+        tokenIndex,
+        charIndex,
+      });
+      distance += charSpacing;
+    }
+    tokenCursor++;
+  }
+
+  return glyphs;
+}
+
 export function createGoogleGMask(width, height) {
   const size = Math.min(width * 1.02, height * 0.86);
   const outer = size * 0.5;

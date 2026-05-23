@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildCharacterBelt,
   buildContactGraph,
   createGoogleGMask,
   createPropagationSchedule,
@@ -39,4 +40,19 @@ test('generated loops fill the G and produce a connected propagation graph', () 
     const insideCount = loop.samples.filter((point) => mask.contains(point.x, point.y)).length;
     assert.ok(insideCount / loop.samples.length > 0.74, `loop ${loop.id} should mostly stay inside the G mask`);
   }
+});
+
+test('character belt breaks tokens into individually spaced glyphs', () => {
+  const belt = buildCharacterBelt(['LINK'], 12, 96);
+
+  assert.deepEqual(
+    belt.slice(0, 8).map((glyph) => glyph.char),
+    ['L', 'I', 'N', 'K', 'L', 'I', 'N', 'K']
+  );
+  assert.equal(belt[0].tokenIndex, 0);
+  assert.equal(belt[3].tokenIndex, 0);
+  assert.equal(belt[0].distance, 0);
+  assert.equal(belt[1].distance, 12);
+  assert.equal(belt[2].distance, 24);
+  assert.equal(belt[3].distance, 36);
 });

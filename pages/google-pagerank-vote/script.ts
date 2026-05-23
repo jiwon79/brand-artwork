@@ -1,6 +1,7 @@
 import {
   GOOGLE_COLORS,
   TOKENS,
+  buildCharacterBelt,
   buildContactGraph,
   createGoogleGMask,
   createPropagationSchedule,
@@ -87,6 +88,12 @@ function rebuildLayout(): void {
     targetCount: TARGET_LOOP_COUNT,
     mask,
   });
+  const fontSize = getArtworkFontSize(mask);
+  const charSpacing = Math.max(fontSize * 0.98, 8);
+  for (const loop of loops) {
+    loop.glyphs = buildCharacterBelt(TOKENS, charSpacing, loop.length + charSpacing * 4, loop.tokenOffset);
+    loop.charSpacing = charSpacing;
+  }
   const graph = buildContactGraph(loops, mask.scale * 22);
   const seedIndex = findSeedLoop(loops, mask);
 
@@ -100,7 +107,7 @@ function render(now: number): void {
   if (!layout) return;
 
   const elapsed = getCycleTime(now);
-  const fontSize = clamp(layout.mask.scale * 15, 8.5, 16);
+  const fontSize = getArtworkFontSize(layout.mask);
 
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, layout.width, layout.height);
@@ -129,22 +136,20 @@ function render(now: number): void {
 }
 
 function drawTextBelt(loop: any, activation: any, elapsed: number, fontSize: number): void {
-  const spacing = Math.max(fontSize * 3.8, loop.radius * 0.86);
-  const count = Math.ceil(loop.length / spacing) + 2;
+  const spacing = loop.charSpacing || Math.max(fontSize * 0.76, 6);
   const speedBoost = loop.id === hoveredLoop ? 1.8 : 1;
   const phase = loop.phase + elapsed * loop.speed * loop.direction * speedBoost;
   const color = GOOGLE_COLORS[loop.colorIndex % GOOGLE_COLORS.length];
   const front = activation.front * loop.length;
 
-  for (let k = 0; k < count; k++) {
-    const beltDistance = k * spacing;
+  for (const glyph of loop.glyphs || []) {
+    const beltDistance = glyph.distance;
     const pathDistance = beltDistance + phase;
     const point = pointAt(loop, pathDistance);
-    const token = TOKENS[(loop.tokenOffset + k) % TOKENS.length];
     const arc = mod(beltDistance + loop.phase * 0.15, loop.length);
     const lit = activation.energy > 0.02 && (activation.age > 1.18 || arc <= front);
     const frontDelta = Math.abs(arc - front);
-    const leading = activation.age >= 0 && activation.age < 1.25 && frontDelta < spacing * 1.2;
+    const leading = activation.age >= 0 && activation.age < 1.25 && frontDelta < spacing * 4;
 
     ctx.save();
     ctx.translate(point.x, point.y);
@@ -155,13 +160,13 @@ function drawTextBelt(loop: any, activation: any, elapsed: number, fontSize: num
       const alpha = 0.42 + activation.energy * 0.52;
       ctx.fillStyle = hexToRgba(color, alpha);
       ctx.shadowColor = color;
-      ctx.shadowBlur = leading ? fontSize * 1.25 : fontSize * 0.42;
+      ctx.shadowBlur = leading ? fontSize * 0.95 : fontSize * 0.18;
     } else {
       const alpha = 0.34 + (1 - activation.energy) * 0.34;
       ctx.fillStyle = `rgba(245, 245, 245, ${alpha})`;
     }
 
-    ctx.fillText(token, 0, 0);
+    ctx.fillText(glyph.char, 0, 0);
     ctx.restore();
   }
 }
@@ -181,12 +186,12 @@ function drawLoopGlow(loop: any, activation: any, fontSize: number): void {
     ctx.lineTo(samples[i].x, samples[i].y);
   }
   if (progress >= 0.98) ctx.closePath();
-  ctx.strokeStyle = hexToRgba(color, activation.energy * 0.13);
-  ctx.lineWidth = fontSize * 1.8;
+  ctx.strokeStyle = hexToRgba(color, activation.energy * 0.075);
+  ctx.lineWidth = fontSize * 1.05;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.shadowColor = color;
-  ctx.shadowBlur = fontSize * 1.8 * activation.energy;
+  ctx.shadowBlur = fontSize * 0.95 * activation.energy;
   ctx.stroke();
   ctx.restore();
 }
@@ -243,6 +248,10 @@ function accelerateNear(x: number, y: number, force: boolean): void {
 
 function getCycleTime(now: number): number {
   return mod((now - cycleStart) / 1000, CYCLE_SECONDS);
+}
+
+function getArtworkFontSize(mask: ReturnType<typeof createGoogleGMask>): number {
+  return clamp(mask.scale * 16, 9.5, 17);
 }
 
 function toCanvasPoint(event: PointerEvent): { x: number; y: number } {
