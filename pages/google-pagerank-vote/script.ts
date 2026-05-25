@@ -274,7 +274,7 @@ async function loadArtwork() {
     const bounds = parsePathBounds(d);
     const center = centerOf(bounds);
     const radius = radiusOf(bounds);
-    const fontSize = clamp(radius * 0.17, 22, 38);
+    const fontSize = clamp(radius * 0.115, 13, 24);
     const motion = measurePathMotion(measurementSvg, d, bounds, fontSize);
 
     return {
@@ -291,7 +291,7 @@ async function loadArtwork() {
       samples: motion.samples,
       glyphs: buildCharacterBelt(
         TOKENS,
-        fontSize * 1.22,
+        fontSize * 1.85,
         motion.length + fontSize * 2,
         index * 2,
       ),
