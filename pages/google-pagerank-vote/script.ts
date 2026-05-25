@@ -12,6 +12,16 @@ type BeltGlyph = {
   distance: number;
 };
 
+type Point = {
+  x: number;
+  y: number;
+};
+
+type GearPoint = Point & {
+  radius: number;
+  phase: number;
+};
+
 type PathSample = {
   x: number;
   y: number;
@@ -36,6 +46,7 @@ type ArtworkShape = {
   glyphs: BeltGlyph[];
   fontSize: number;
   textPhase: number;
+  gears: GearPoint[];
 };
 
 type FitTransform = {
@@ -55,6 +66,8 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const TANGENT_WINDOW_RATIO = 0.42;
 const MIN_TANGENT_WINDOW = 3;
 const MAX_TANGENT_WINDOW = 12;
+const PATH_TOKEN_PATTERN = /[AaCcHhLlMmQqSsTtVvZz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi;
+const TWO_PI = Math.PI * 2;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
@@ -129,6 +142,144 @@ function measurePathMotion(
   };
 }
 
+function cubicPoint(start: Point, controlA: Point, controlB: Point, end: Point, t: number) {
+  const u = 1 - t;
+  const tt = t * t;
+  const uu = u * u;
+
+  return {
+    x: uu * u * start.x + 3 * uu * t * controlA.x + 3 * u * tt * controlB.x + tt * t * end.x,
+    y: uu * u * start.y + 3 * uu * t * controlA.y + 3 * u * tt * controlB.y + tt * t * end.y,
+  };
+}
+
+function lineIntersection(originA: Point, vectorA: Point, originB: Point, vectorB: Point) {
+  const denominator = vectorA.x * vectorB.y - vectorA.y * vectorB.x;
+
+  if (Math.abs(denominator) < 0.0001) {
+    return null;
+  }
+
+  const offsetX = originB.x - originA.x;
+  const offsetY = originB.y - originA.y;
+  const amount = (offsetX * vectorB.y - offsetY * vectorB.x) / denominator;
+
+  return {
+    x: originA.x + vectorA.x * amount,
+    y: originA.y + vectorA.y * amount,
+  };
+}
+
+function createGearPoint(
+  start: Point,
+  controlA: Point,
+  controlB: Point,
+  end: Point,
+  fontSize: number,
+  index: number,
+) {
+  const entry = normalizeVector(controlA.x - start.x, controlA.y - start.y, 1, 0);
+  const exit = normalizeVector(end.x - controlB.x, end.y - controlB.y, 1, 0);
+  const angle = Math.acos(clamp(entry.x * exit.x + entry.y * exit.y, -1, 1));
+
+  if (angle < 0.18) {
+    return null;
+  }
+
+  const midpoint = cubicPoint(start, controlA, controlB, end, 0.5);
+  const vertex = lineIntersection(start, entry, end, exit) ?? midpoint;
+  const distanceToArc = Math.hypot(vertex.x - midpoint.x, vertex.y - midpoint.y);
+  const radius = clamp(distanceToArc * 0.68, fontSize * 0.36, fontSize * 0.76);
+  const gearCenter = distanceToArc > fontSize * 3.2 ? midpoint : vertex;
+
+  return {
+    x: gearCenter.x,
+    y: gearCenter.y,
+    radius,
+    phase: (index * 0.91 + midpoint.x * 0.017 + midpoint.y * 0.011) % TWO_PI,
+  };
+}
+
+function parseCornerGears(d: string, fontSize: number) {
+  const tokens = d.match(PATH_TOKEN_PATTERN) ?? [];
+  const gears: GearPoint[] = [];
+  let index = 0;
+  let command = "";
+  let x = 0;
+  let y = 0;
+  let startX = 0;
+  let startY = 0;
+
+  function isCommand(token: string) {
+    return /^[A-Za-z]$/.test(token);
+  }
+
+  function readPoint(relative: boolean): Point {
+    const nextX = Number(tokens[index++]);
+    const nextY = Number(tokens[index++]);
+    return {
+      x: relative ? x + nextX : nextX,
+      y: relative ? y + nextY : nextY,
+    };
+  }
+
+  while (index < tokens.length) {
+    if (isCommand(tokens[index])) {
+      command = tokens[index++];
+    }
+
+    const relative = command === command.toLowerCase();
+
+    if (command === "M" || command === "m") {
+      const point = readPoint(relative);
+      x = point.x;
+      y = point.y;
+      startX = x;
+      startY = y;
+      command = relative ? "l" : "L";
+    } else if (command === "L" || command === "l") {
+      while (index < tokens.length && !isCommand(tokens[index])) {
+        const point = readPoint(relative);
+        x = point.x;
+        y = point.y;
+      }
+    } else if (command === "H" || command === "h") {
+      while (index < tokens.length && !isCommand(tokens[index])) {
+        const nextX = Number(tokens[index++]);
+        x = relative ? x + nextX : nextX;
+      }
+    } else if (command === "V" || command === "v") {
+      while (index < tokens.length && !isCommand(tokens[index])) {
+        const nextY = Number(tokens[index++]);
+        y = relative ? y + nextY : nextY;
+      }
+    } else if (command === "C" || command === "c") {
+      while (index < tokens.length && !isCommand(tokens[index])) {
+        const start = { x, y };
+        const controlA = readPoint(relative);
+        const controlB = readPoint(relative);
+        const end = readPoint(relative);
+        const gear = createGearPoint(start, controlA, controlB, end, fontSize, gears.length);
+
+        if (gear) {
+          gears.push(gear);
+        }
+
+        x = end.x;
+        y = end.y;
+      }
+    } else if (command === "Z" || command === "z") {
+      x = startX;
+      y = startY;
+      command = "";
+    } else {
+      break;
+    }
+  }
+
+  return gears;
+}
+
 async function loadArtwork() {
   const response = await fetch(ARTWORK_URL);
 
@@ -168,6 +319,7 @@ async function loadArtwork() {
       ),
       fontSize,
       textPhase: (index * 53) % motion.length,
+      gears: parseCornerGears(d, fontSize),
     };
   });
 
@@ -327,9 +479,58 @@ function drawShapeGlyphs(
   ctx.restore();
 }
 
+function drawGear(gear: GearPoint, shape: ArtworkShape, elapsedSeconds: number) {
+  const spin = reduceMotionQuery.matches
+    ? gear.phase
+    : gear.phase + (elapsedSeconds * shape.speed * shape.direction) / Math.max(1, gear.radius);
+  const toothCount = 8;
+
+  ctx.save();
+  ctx.translate(gear.x, gear.y);
+  ctx.rotate(spin);
+  ctx.fillStyle = "rgba(5, 5, 5, 0.9)";
+  ctx.strokeStyle = "rgba(248, 248, 248, 0.82)";
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(1.4, gear.radius * 0.14);
+
+  ctx.beginPath();
+  ctx.arc(0, 0, gear.radius, 0, TWO_PI);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.lineWidth = Math.max(1, gear.radius * 0.1);
+  ctx.beginPath();
+  ctx.arc(0, 0, gear.radius * 0.32, 0, TWO_PI);
+  ctx.stroke();
+
+  for (let index = 0; index < toothCount; index += 1) {
+    const angle = (index / toothCount) * TWO_PI;
+    const inner = gear.radius * 0.42;
+    const outer = gear.radius * 0.86;
+
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+    ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawShapeGears(shape: ArtworkShape, elapsedSeconds: number) {
+  ctx.save();
+
+  for (const gear of shape.gears) {
+    drawGear(gear, shape, elapsedSeconds);
+  }
+
+  ctx.restore();
+}
+
 function drawShape(shape: ArtworkShape, elapsedSeconds: number) {
   ctx.save();
 
+  drawShapeGears(shape, elapsedSeconds);
   drawShapeGlyphs(shape, elapsedSeconds);
 
   ctx.restore();
