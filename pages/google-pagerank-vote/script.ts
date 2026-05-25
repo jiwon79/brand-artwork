@@ -1,8 +1,21 @@
+import { TOKENS, buildCharacterBelt } from "./core.js";
+
 type ShapeBounds = {
   minX: number;
   minY: number;
   maxX: number;
   maxY: number;
+};
+
+type BeltGlyph = {
+  char: string;
+  distance: number;
+};
+
+type PathSample = {
+  x: number;
+  y: number;
+  angle: number;
 };
 
 type ArtworkShape = {
@@ -19,6 +32,12 @@ type ArtworkShape = {
   dash: number;
   gap: number;
   delay: number;
+  length: number;
+  sampleStep: number;
+  samples: PathSample[];
+  glyphs: BeltGlyph[];
+  fontSize: number;
+  textPhase: number;
 };
 
 type FitTransform = {
@@ -36,6 +55,7 @@ const ARTWORK_URL = new URL(
 const SVG_SIZE = 1339;
 const CYCLE_SECONDS = 10.5;
 const BASE_STROKE_WIDTH = 9;
+const SVG_NS = "http://www.w3.org/2000/svg";
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
@@ -98,6 +118,89 @@ function radiusOf(bounds: ShapeBounds) {
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
   return Math.hypot(width, height) / 2;
+}
+
+function createMeasurementSvg() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("width", "0");
+  svg.setAttribute("height", "0");
+  svg.setAttribute("viewBox", `0 0 ${SVG_SIZE} ${SVG_SIZE}`);
+  svg.style.position = "absolute";
+  svg.style.width = "0";
+  svg.style.height = "0";
+  svg.style.overflow = "hidden";
+  svg.style.pointerEvents = "none";
+  document.body.append(svg);
+  return svg;
+}
+
+function makePathSample(
+  metricPath: SVGPathElement,
+  distance: number,
+  length: number,
+  centerX: number,
+  centerY: number,
+  inset: number,
+): PathSample {
+  const point = metricPath.getPointAtLength(mod(distance, length));
+  const before = metricPath.getPointAtLength(mod(distance - 2, length));
+  const after = metricPath.getPointAtLength(mod(distance + 2, length));
+  const tangentX = after.x - before.x;
+  const tangentY = after.y - before.y;
+  const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+  const unitX = tangentX / tangentLength;
+  const unitY = tangentY / tangentLength;
+  let normalX = -unitY;
+  let normalY = unitX;
+  const insideX = centerX - point.x;
+  const insideY = centerY - point.y;
+
+  if (normalX * insideX + normalY * insideY < 0) {
+    normalX *= -1;
+    normalY *= -1;
+  }
+
+  return {
+    x: point.x + normalX * inset,
+    y: point.y + normalY * inset,
+    angle: Math.atan2(unitY, unitX),
+  };
+}
+
+function measurePathMotion(
+  measurementSvg: SVGSVGElement,
+  d: string,
+  bounds: ShapeBounds,
+) {
+  const metricPath = document.createElementNS(SVG_NS, "path");
+  const center = centerOf(bounds);
+  const radius = radiusOf(bounds);
+  const inset = clamp(radius * 0.1, 11, 18);
+
+  metricPath.setAttribute("d", d);
+  measurementSvg.append(metricPath);
+
+  const length = Math.max(1, metricPath.getTotalLength());
+  const sampleCount = Math.max(24, Math.ceil(length / 8));
+  const sampleStep = length / sampleCount;
+  const samples: PathSample[] = [];
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    samples.push(
+      makePathSample(
+        metricPath,
+        index * sampleStep,
+        length,
+        center.x,
+        center.y,
+        inset,
+      ),
+    );
+  }
+
+  metricPath.remove();
+
+  return { length, sampleStep, samples };
 }
 
 function distanceBetween(a: ArtworkShape, b: ArtworkShape) {
@@ -180,11 +283,15 @@ async function loadArtwork() {
   const svgText = await response.text();
   const doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
   const paths = Array.from(doc.querySelectorAll("path[stroke='#F8F8F8']"));
+  const measurementSvg = createMeasurementSvg();
 
   shapes = paths.map((pathEl, index) => {
     const d = pathEl.getAttribute("d") ?? "";
     const bounds = parsePathBounds(d);
     const center = centerOf(bounds);
+    const radius = radiusOf(bounds);
+    const motion = measurePathMotion(measurementSvg, d, bounds);
+    const fontSize = clamp(radius * 0.17, 22, 38);
 
     return {
       id: index,
@@ -193,15 +300,28 @@ async function loadArtwork() {
       bounds,
       cx: center.x,
       cy: center.y,
-      radius: radiusOf(bounds),
+      radius,
       phase: (index * 37) % 160,
       speed: 32 + (index % 7) * 7,
       direction: index % 2 === 0 ? 1 : -1,
       dash: 28 + (index % 4) * 6,
       gap: 24 + (index % 5) * 4,
       delay: 0,
+      length: motion.length,
+      sampleStep: motion.sampleStep,
+      samples: motion.samples,
+      glyphs: buildCharacterBelt(
+        TOKENS,
+        fontSize * 0.78,
+        motion.length + fontSize * 2,
+        index * 2,
+      ),
+      fontSize,
+      textPhase: (index * 53) % motion.length,
     };
   });
+
+  measurementSvg.remove();
 
   if (shapes.length === 0) {
     throw new Error("Figma artwork does not contain polygon stroke paths.");
@@ -246,6 +366,37 @@ function clamp(value: number, min: number, max: number) {
 function smoothstep(value: number) {
   const x = clamp(value, 0, 1);
   return x * x * (3 - 2 * x);
+}
+
+function mod(value: number, divisor: number) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function lerpAngle(from: number, to: number, amount: number) {
+  const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  return from + delta * amount;
+}
+
+function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
+  const samples = shape.samples;
+
+  if (samples.length === 0) {
+    return { x: shape.cx, y: shape.cy, angle: 0 };
+  }
+
+  const target = mod(distance, shape.length);
+  const rawIndex = target / shape.sampleStep;
+  const index = Math.floor(rawIndex) % samples.length;
+  const nextIndex = (index + 1) % samples.length;
+  const amount = rawIndex - Math.floor(rawIndex);
+  const current = samples[index];
+  const next = samples[nextIndex];
+
+  return {
+    x: current.x + (next.x - current.x) * amount,
+    y: current.y + (next.y - current.y) * amount,
+    angle: lerpAngle(current.angle, next.angle, amount),
+  };
 }
 
 function shapeActivation(shape: ArtworkShape, cycleTime: number) {
@@ -299,6 +450,46 @@ function drawLoading(width: number, height: number) {
   ctx.restore();
 }
 
+function drawShapeGlyphs(
+  shape: ArtworkShape,
+  activation: number,
+  pointerLift: number,
+  elapsedSeconds: number,
+) {
+  const reduced = reduceMotionQuery.matches;
+  const pointerBoost = pointerIsDown ? pointerLift * 46 : pointerLift * 18;
+  const motion = reduced
+    ? 0
+    : elapsedSeconds * (shape.speed * 0.92 + pointerBoost) * shape.direction;
+  const alpha = clamp(0.38 + activation * 0.5 + pointerLift * 0.26, 0, 0.94);
+
+  ctx.save();
+  ctx.clip(shape.path);
+  ctx.font = `800 ${shape.fontSize}px "Arial Black", Impact, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = `rgba(248, 248, 248, ${alpha})`;
+  ctx.shadowColor = `rgba(255, 255, 255, ${activation * 0.3})`;
+  ctx.shadowBlur = reduced ? 0 : 3 + activation * 9 + pointerLift * 5;
+
+  for (const glyph of shape.glyphs) {
+    const point = pointAtShape(shape, glyph.distance + shape.textPhase + motion);
+    const shimmer = reduced
+      ? 1
+      : 0.78 +
+        Math.sin(elapsedSeconds * 4.2 + glyph.distance * 0.05 + shape.id) * 0.22;
+
+    ctx.save();
+    ctx.globalAlpha = shimmer;
+    ctx.translate(point.x, point.y);
+    ctx.rotate(point.angle);
+    ctx.fillText(glyph.char, 0, 0);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
 function drawShape(shape: ArtworkShape, cycleTime: number, elapsedSeconds: number) {
   const reduced = reduceMotionQuery.matches;
   const activation = reduced ? 0.72 : shapeActivation(shape, cycleTime);
@@ -310,6 +501,8 @@ function drawShape(shape: ArtworkShape, cycleTime: number, elapsedSeconds: numbe
   ctx.save();
   ctx.fillStyle = "#030303";
   ctx.fill(shape.path);
+
+  drawShapeGlyphs(shape, activation, pointerLift, elapsedSeconds);
 
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
