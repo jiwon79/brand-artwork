@@ -19,7 +19,7 @@ type PathSample = {
   ty: number;
   nx: number;
   ny: number;
-  corner: number;
+  distance: number;
 };
 
 type ArtworkShape = {
@@ -33,7 +33,6 @@ type ArtworkShape = {
   speed: number;
   direction: number;
   length: number;
-  sampleStep: number;
   samples: PathSample[];
   glyphs: BeltGlyph[];
   fontSize: number;
@@ -162,31 +161,62 @@ function makePathSample(
     ty: unitY,
     nx: normalX,
     ny: normalY,
-    corner: 0,
+    distance: 0,
   };
 }
 
-function addCornerGuards(samples: PathSample[], sampleStep: number, fontSize: number) {
-  const guardSamples = Math.max(2, Math.ceil((fontSize * 0.72) / sampleStep));
-  const turns = samples.map((sample, index) => {
-    const prev = samples[mod(index - 1, samples.length)];
-    const next = samples[(index + 1) % samples.length];
-    const dot = clamp(prev.tx * next.tx + prev.ty * next.ty, -1, 1);
-    return Math.acos(dot);
-  });
+function completeOffsetSamples(
+  samples: PathSample[],
+  centerX: number,
+  centerY: number,
+) {
+  if (samples.length === 0) {
+    return 0;
+  }
+
+  let totalLength = 0;
+  samples[0].distance = 0;
+
+  for (let index = 1; index < samples.length; index += 1) {
+    totalLength += Math.hypot(
+      samples[index].x - samples[index - 1].x,
+      samples[index].y - samples[index - 1].y,
+    );
+    samples[index].distance = totalLength;
+  }
+
+  totalLength += Math.hypot(
+    samples[0].x - samples[samples.length - 1].x,
+    samples[0].y - samples[samples.length - 1].y,
+  );
 
   for (let index = 0; index < samples.length; index += 1) {
-    let corner = turns[index];
+    const sample = samples[index];
+    const prev = samples[mod(index - 1, samples.length)];
+    const next = samples[(index + 1) % samples.length];
+    const tangent = normalizeVector(
+      next.x - prev.x,
+      next.y - prev.y,
+      sample.tx,
+      sample.ty,
+    );
+    let normalX = -tangent.y;
+    let normalY = tangent.x;
+    const insideX = centerX - sample.x;
+    const insideY = centerY - sample.y;
 
-    for (let offset = 1; offset <= guardSamples; offset += 1) {
-      const falloff = 1 - offset / (guardSamples + 1);
-      const before = turns[mod(index - offset, samples.length)] * falloff;
-      const after = turns[(index + offset) % samples.length] * falloff;
-      corner = Math.max(corner, before, after);
+    if (normalX * insideX + normalY * insideY < 0) {
+      normalX *= -1;
+      normalY *= -1;
     }
 
-    samples[index].corner = corner;
+    sample.tx = tangent.x;
+    sample.ty = tangent.y;
+    sample.nx = normalX;
+    sample.ny = normalY;
   }
+
+  return Math.max(1, totalLength);
 }
 
 function measurePathMotion(
@@ -197,13 +227,13 @@ function measurePathMotion(
 ) {
   const metricPath = document.createElementNS(SVG_NS, "path");
   const center = centerOf(bounds);
-  const inset = fontSize * 0.9 + BASE_STROKE_WIDTH * 0.5;
+  const inset = fontSize * 0.74 + BASE_STROKE_WIDTH * 0.5;
 
   metricPath.setAttribute("d", d);
   measurementSvg.append(metricPath);
 
   const length = Math.max(1, metricPath.getTotalLength());
-  const sampleCount = Math.max(24, Math.ceil(length / 8));
+  const sampleCount = Math.max(48, Math.ceil(length / 5));
   const sampleStep = length / sampleCount;
   const samples: PathSample[] = [];
 
@@ -220,11 +250,11 @@ function measurePathMotion(
     );
   }
 
-  addCornerGuards(samples, sampleStep, fontSize);
+  const offsetLength = completeOffsetSamples(samples, center.x, center.y);
 
   metricPath.remove();
 
-  return { length, sampleStep, samples };
+  return { length: offsetLength, samples };
 }
 
 async function loadArtwork() {
@@ -258,7 +288,6 @@ async function loadArtwork() {
       speed: 32 + (index % 7) * 7,
       direction: index % 2 === 0 ? 1 : -1,
       length: motion.length,
-      sampleStep: motion.sampleStep,
       samples: motion.samples,
       glyphs: buildCharacterBelt(
         TOKENS,
@@ -337,17 +366,32 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
       ty: 0,
       nx: 0,
       ny: 1,
-      corner: 1,
+      distance: 0,
     };
   }
 
   const target = mod(distance, shape.length);
-  const rawIndex = target / shape.sampleStep;
-  const index = Math.floor(rawIndex) % samples.length;
+  let index = samples.length - 1;
+
+  for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex += 1) {
+    const start = samples[sampleIndex].distance;
+    const end =
+      sampleIndex === samples.length - 1
+        ? shape.length
+        : samples[sampleIndex + 1].distance;
+
+    if (target >= start && target < end) {
+      index = sampleIndex;
+      break;
+    }
+  }
+
   const nextIndex = (index + 1) % samples.length;
-  const amount = rawIndex - Math.floor(rawIndex);
   const current = samples[index];
   const next = samples[nextIndex];
+  const startDistance = current.distance;
+  const endDistance = index === samples.length - 1 ? shape.length : next.distance;
+  const amount = clamp((target - startDistance) / Math.max(1, endDistance - startDistance), 0, 1);
   const tangent = normalizeVector(
     current.tx + (next.tx - current.tx) * amount,
     current.ty + (next.ty - current.ty) * amount,
@@ -368,7 +412,7 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
     ty: tangent.y,
     nx: normal.x,
     ny: normal.y,
-    corner: current.corner + (next.corner - current.corner) * amount,
+    distance: target,
   };
 }
 
@@ -421,10 +465,6 @@ function drawShapeGlyphs(
 
   for (const glyph of shape.glyphs) {
     const point = pointAtShape(shape, glyph.distance + shape.textPhase + motion);
-
-    if (point.corner > 0.055) {
-      continue;
-    }
 
     ctx.save();
     ctx.transform(point.tx, point.ty, point.nx, point.ny, point.x, point.y);
