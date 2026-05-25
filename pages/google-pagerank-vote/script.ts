@@ -12,11 +12,6 @@ type BeltGlyph = {
   distance: number;
 };
 
-type DebugPoint = {
-  x: number;
-  y: number;
-};
-
 type PathSample = {
   x: number;
   y: number;
@@ -30,7 +25,6 @@ type PathSample = {
 type ArtworkShape = {
   id: number;
   metricPath: SVGPathElement;
-  debugPath: Path2D;
   d: string;
   bounds: ShapeBounds;
   cx: number;
@@ -42,7 +36,6 @@ type ArtworkShape = {
   glyphs: BeltGlyph[];
   fontSize: number;
   textPhase: number;
-  debugPoints: DebugPoint[];
 };
 
 type FitTransform = {
@@ -62,8 +55,6 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const TANGENT_WINDOW_RATIO = 0.42;
 const MIN_TANGENT_WINDOW = 3;
 const MAX_TANGENT_WINDOW = 12;
-const SHOW_PATH_DEBUG = true;
-const DEBUG_SAMPLE_STEP = 18;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
@@ -138,18 +129,6 @@ function measurePathMotion(
   };
 }
 
-function sampleDebugPoints(metricPath: SVGPathElement, length: number) {
-  const pointCount = Math.max(6, Math.ceil(length / DEBUG_SAMPLE_STEP));
-  const points: DebugPoint[] = [];
-
-  for (let index = 0; index < pointCount; index += 1) {
-    const point = metricPath.getPointAtLength((index / pointCount) * length);
-    points.push({ x: point.x, y: point.y });
-  }
-
-  return points;
-}
-
 async function loadArtwork() {
   const response = await fetch(ARTWORK_URL);
 
@@ -168,12 +147,11 @@ async function loadArtwork() {
     const bounds = motion.bounds;
     const center = centerOf(bounds);
     const radius = radiusOf(bounds);
-    const fontSize = clamp(radius * 0.115, 13, 24);
+    const fontSize = clamp(radius * 0.145, 17, 31);
 
     return {
       id: index,
       metricPath: motion.metricPath,
-      debugPath: new Path2D(d),
       d,
       bounds,
       cx: center.x,
@@ -184,13 +162,12 @@ async function loadArtwork() {
       length: motion.length,
       glyphs: buildCharacterBelt(
         TOKENS,
-        fontSize * 1.85,
+        fontSize * 0.78,
         motion.length + fontSize * 2,
         index * 2,
       ),
       fontSize,
       textPhase: (index * 53) % motion.length,
-      debugPoints: sampleDebugPoints(motion.metricPath, motion.length),
     };
   });
 
@@ -350,31 +327,10 @@ function drawShapeGlyphs(
   ctx.restore();
 }
 
-function drawShapeDebug(shape: ArtworkShape) {
-  if (!SHOW_PATH_DEBUG) {
-    return;
-  }
-
-  ctx.save();
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = "rgba(80, 218, 255, 0.66)";
-  ctx.stroke(shape.debugPath);
-  ctx.fillStyle = "rgba(255, 213, 74, 0.92)";
-
-  for (const point of shape.debugPoints) {
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, 3.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.restore();
-}
-
 function drawShape(shape: ArtworkShape, elapsedSeconds: number) {
   ctx.save();
 
   drawShapeGlyphs(shape, elapsedSeconds);
-  drawShapeDebug(shape);
 
   ctx.restore();
 }
