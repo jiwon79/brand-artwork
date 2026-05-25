@@ -493,36 +493,28 @@ function drawGear(gear: GearPoint, shape: ArtworkShape, elapsedSeconds: number) 
   const spin = reduceMotionQuery.matches
     ? gear.phase
     : gear.phase + (elapsedSeconds * shape.speed * shape.direction) / Math.max(1, gear.radius);
-  const toothCount = 8;
+  const dashLength = Math.max(2.2, gear.radius * 0.34);
+  const gapLength = Math.max(1.8, gear.radius * 0.24);
 
   ctx.save();
   ctx.translate(gear.x, gear.y);
   ctx.rotate(spin);
-  ctx.fillStyle = "rgba(5, 5, 5, 0.9)";
-  ctx.strokeStyle = "rgba(248, 248, 248, 0.82)";
+  ctx.strokeStyle = "rgba(248, 248, 248, 0.86)";
   ctx.lineCap = "round";
-  ctx.lineWidth = Math.max(1.4, gear.radius * 0.14);
+  ctx.lineWidth = Math.max(1.7, gear.radius * 0.16);
+  ctx.setLineDash([dashLength, gapLength]);
 
   ctx.beginPath();
   ctx.arc(0, 0, gear.radius, 0, TWO_PI);
-  ctx.fill();
   ctx.stroke();
 
-  ctx.lineWidth = Math.max(1, gear.radius * 0.1);
+  ctx.rotate(-spin * 0.55);
+  ctx.strokeStyle = "rgba(248, 248, 248, 0.48)";
+  ctx.lineWidth = Math.max(1.1, gear.radius * 0.09);
+  ctx.setLineDash([dashLength * 0.72, gapLength * 1.25]);
   ctx.beginPath();
-  ctx.arc(0, 0, gear.radius * 0.32, 0, TWO_PI);
+  ctx.arc(0, 0, gear.radius * 0.56, 0, TWO_PI);
   ctx.stroke();
-
-  for (let index = 0; index < toothCount; index += 1) {
-    const angle = (index / toothCount) * TWO_PI;
-    const inner = gear.radius * 0.42;
-    const outer = gear.radius * 0.86;
-
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-    ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-    ctx.stroke();
-  }
 
   ctx.restore();
 }
