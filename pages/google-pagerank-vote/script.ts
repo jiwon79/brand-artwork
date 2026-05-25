@@ -499,9 +499,9 @@ function drawGear(gear: GearPoint, shape: ArtworkShape, elapsedSeconds: number) 
   ctx.save();
   ctx.translate(gear.x, gear.y);
   ctx.rotate(spin);
-  ctx.strokeStyle = "rgba(248, 248, 248, 0.86)";
+  ctx.strokeStyle = "rgba(248, 248, 248, 0.98)";
   ctx.lineCap = "round";
-  ctx.lineWidth = Math.max(1.7, gear.radius * 0.16);
+  ctx.lineWidth = Math.max(2.5, gear.radius * 0.24);
   ctx.setLineDash([dashLength, gapLength]);
 
   ctx.beginPath();
@@ -509,8 +509,8 @@ function drawGear(gear: GearPoint, shape: ArtworkShape, elapsedSeconds: number) 
   ctx.stroke();
 
   ctx.rotate(-spin * 0.55);
-  ctx.strokeStyle = "rgba(248, 248, 248, 0.48)";
-  ctx.lineWidth = Math.max(1.1, gear.radius * 0.09);
+  ctx.strokeStyle = "rgba(248, 248, 248, 0.82)";
+  ctx.lineWidth = Math.max(1.8, gear.radius * 0.16);
   ctx.setLineDash([dashLength * 0.72, gapLength * 1.25]);
   ctx.beginPath();
   ctx.arc(0, 0, gear.radius * 0.56, 0, TWO_PI);
