@@ -227,7 +227,7 @@ function measurePathMotion(
 ) {
   const metricPath = document.createElementNS(SVG_NS, "path");
   const center = centerOf(bounds);
-  const inset = fontSize * 0.74 + BASE_STROKE_WIDTH * 0.5;
+  const inset = fontSize * 1.05 + BASE_STROKE_WIDTH * 0.5;
 
   metricPath.setAttribute("d", d);
   measurementSvg.append(metricPath);
@@ -392,26 +392,31 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   const startDistance = current.distance;
   const endDistance = index === samples.length - 1 ? shape.length : next.distance;
   const amount = clamp((target - startDistance) / Math.max(1, endDistance - startDistance), 0, 1);
+  const x = current.x + (next.x - current.x) * amount;
+  const y = current.y + (next.y - current.y) * amount;
   const tangent = normalizeVector(
     current.tx + (next.tx - current.tx) * amount,
     current.ty + (next.ty - current.ty) * amount,
     current.tx,
     current.ty,
   );
-  const normal = normalizeVector(
-    current.nx + (next.nx - current.nx) * amount,
-    current.ny + (next.ny - current.ny) * amount,
-    current.nx,
-    current.ny,
-  );
+  let normalX = -tangent.y;
+  let normalY = tangent.x;
+  const insideX = shape.cx - x;
+  const insideY = shape.cy - y;
+
+  if (normalX * insideX + normalY * insideY < 0) {
+    normalX *= -1;
+    normalY *= -1;
+  }
 
   return {
-    x: current.x + (next.x - current.x) * amount,
-    y: current.y + (next.y - current.y) * amount,
+    x,
+    y,
     tx: tangent.x,
     ty: tangent.y,
-    nx: normal.x,
-    ny: normal.y,
+    nx: normalX,
+    ny: normalY,
     distance: target,
   };
 }
@@ -456,7 +461,6 @@ function drawShapeGlyphs(
     : elapsedSeconds * shape.speed * 0.92 * shape.direction;
 
   ctx.save();
-  ctx.clip(shape.path);
   ctx.font = `800 ${shape.fontSize}px "Arial Black", Impact, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
@@ -477,8 +481,6 @@ function drawShapeGlyphs(
 
 function drawShape(shape: ArtworkShape, elapsedSeconds: number) {
   ctx.save();
-  ctx.fillStyle = "#030303";
-  ctx.fill(shape.path);
 
   drawShapeGlyphs(shape, elapsedSeconds);
 
