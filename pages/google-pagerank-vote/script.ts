@@ -24,7 +24,7 @@ type PathSample = {
 
 type ArtworkShape = {
   id: number;
-  path: Path2D;
+  metricPath: SVGPathElement;
   d: string;
   bounds: ShapeBounds;
   cx: number;
@@ -33,7 +33,6 @@ type ArtworkShape = {
   speed: number;
   direction: number;
   length: number;
-  samples: PathSample[];
   glyphs: BeltGlyph[];
   fontSize: number;
   textPhase: number;
@@ -53,6 +52,9 @@ const ARTWORK_URL = new URL(
 
 const SVG_SIZE = 1339;
 const SVG_NS = "http://www.w3.org/2000/svg";
+const TANGENT_WINDOW_RATIO = 0.42;
+const MIN_TANGENT_WINDOW = 3;
+const MAX_TANGENT_WINDOW = 12;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
@@ -117,6 +119,7 @@ function createMeasurementSvg() {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("width", "0");
   svg.setAttribute("height", "0");
+  svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("viewBox", `0 0 ${SVG_SIZE} ${SVG_SIZE}`);
   svg.style.position = "absolute";
   svg.style.width = "0";
@@ -127,129 +130,17 @@ function createMeasurementSvg() {
   return svg;
 }
 
-function makePathSample(
-  metricPath: SVGPathElement,
-  distance: number,
-  length: number,
-  centerX: number,
-  centerY: number,
-): PathSample {
-  const point = metricPath.getPointAtLength(mod(distance, length));
-  const before = metricPath.getPointAtLength(mod(distance - 2, length));
-  const after = metricPath.getPointAtLength(mod(distance + 2, length));
-  const tangentX = after.x - before.x;
-  const tangentY = after.y - before.y;
-  const tangentLength = Math.hypot(tangentX, tangentY) || 1;
-  const unitX = tangentX / tangentLength;
-  const unitY = tangentY / tangentLength;
-  let normalX = -unitY;
-  let normalY = unitX;
-  const insideX = centerX - point.x;
-  const insideY = centerY - point.y;
-
-  if (normalX * insideX + normalY * insideY < 0) {
-    normalX *= -1;
-    normalY *= -1;
-  }
-
-  return {
-    x: point.x,
-    y: point.y,
-    tx: unitX,
-    ty: unitY,
-    nx: normalX,
-    ny: normalY,
-    distance: 0,
-  };
-}
-
-function completeMotionSamples(
-  samples: PathSample[],
-  centerX: number,
-  centerY: number,
-) {
-  if (samples.length === 0) {
-    return 0;
-  }
-
-  let totalLength = 0;
-  samples[0].distance = 0;
-
-  for (let index = 1; index < samples.length; index += 1) {
-    totalLength += Math.hypot(
-      samples[index].x - samples[index - 1].x,
-      samples[index].y - samples[index - 1].y,
-    );
-    samples[index].distance = totalLength;
-  }
-
-  totalLength += Math.hypot(
-    samples[0].x - samples[samples.length - 1].x,
-    samples[0].y - samples[samples.length - 1].y,
-  );
-
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = samples[index];
-    const prev = samples[mod(index - 1, samples.length)];
-    const next = samples[(index + 1) % samples.length];
-    const tangent = normalizeVector(
-      next.x - prev.x,
-      next.y - prev.y,
-      sample.tx,
-      sample.ty,
-    );
-    let normalX = -tangent.y;
-    let normalY = tangent.x;
-    const insideX = centerX - sample.x;
-    const insideY = centerY - sample.y;
-
-    if (normalX * insideX + normalY * insideY < 0) {
-      normalX *= -1;
-      normalY *= -1;
-    }
-
-    sample.tx = tangent.x;
-    sample.ty = tangent.y;
-    sample.nx = normalX;
-    sample.ny = normalY;
-  }
-
-  return Math.max(1, totalLength);
-}
-
 function measurePathMotion(
   measurementSvg: SVGSVGElement,
   d: string,
-  bounds: ShapeBounds,
 ) {
   const metricPath = document.createElementNS(SVG_NS, "path");
-  const center = centerOf(bounds);
 
   metricPath.setAttribute("d", d);
   measurementSvg.append(metricPath);
 
   const length = Math.max(1, metricPath.getTotalLength());
-  const sampleCount = Math.max(48, Math.ceil(length / 5));
-  const sampleStep = length / sampleCount;
-  const samples: PathSample[] = [];
-
-  for (let index = 0; index < sampleCount; index += 1) {
-    samples.push(
-      makePathSample(
-        metricPath,
-        index * sampleStep,
-        length,
-        center.x,
-        center.y,
-      ),
-    );
-  }
-
-  const motionLength = completeMotionSamples(samples, center.x, center.y);
-
-  metricPath.remove();
-
-  return { length: motionLength, samples };
+  return { length, metricPath };
 }
 
 async function loadArtwork() {
@@ -270,11 +161,11 @@ async function loadArtwork() {
     const center = centerOf(bounds);
     const radius = radiusOf(bounds);
     const fontSize = clamp(radius * 0.115, 13, 24);
-    const motion = measurePathMotion(measurementSvg, d, bounds);
+    const motion = measurePathMotion(measurementSvg, d);
 
     return {
       id: index,
-      path: new Path2D(d),
+      metricPath: motion.metricPath,
       d,
       bounds,
       cx: center.x,
@@ -283,7 +174,6 @@ async function loadArtwork() {
       speed: 32 + (index % 7) * 7,
       direction: index % 2 === 0 ? 1 : -1,
       length: motion.length,
-      samples: motion.samples,
       glyphs: buildCharacterBelt(
         TOKENS,
         fontSize * 1.85,
@@ -294,8 +184,6 @@ async function loadArtwork() {
       textPhase: (index * 53) % motion.length,
     };
   });
-
-  measurementSvg.remove();
 
   if (shapes.length === 0) {
     throw new Error("Figma artwork does not contain polygon stroke paths.");
@@ -351,54 +239,29 @@ function normalizeVector(x: number, y: number, fallbackX: number, fallbackY: num
 }
 
 function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
-  const samples = shape.samples;
-
-  if (samples.length === 0) {
-    return {
-      x: shape.cx,
-      y: shape.cy,
-      tx: 1,
-      ty: 0,
-      nx: 0,
-      ny: 1,
-      distance: 0,
-    };
-  }
-
   const target = mod(distance, shape.length);
-  let index = samples.length - 1;
-
-  for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex += 1) {
-    const start = samples[sampleIndex].distance;
-    const end =
-      sampleIndex === samples.length - 1
-        ? shape.length
-        : samples[sampleIndex + 1].distance;
-
-    if (target >= start && target < end) {
-      index = sampleIndex;
-      break;
-    }
-  }
-
-  const nextIndex = (index + 1) % samples.length;
-  const current = samples[index];
-  const next = samples[nextIndex];
-  const startDistance = current.distance;
-  const endDistance = index === samples.length - 1 ? shape.length : next.distance;
-  const amount = clamp((target - startDistance) / Math.max(1, endDistance - startDistance), 0, 1);
-  const x = current.x + (next.x - current.x) * amount;
-  const y = current.y + (next.y - current.y) * amount;
+  const point = shape.metricPath.getPointAtLength(target);
+  const tangentWindow = clamp(
+    shape.fontSize * TANGENT_WINDOW_RATIO,
+    MIN_TANGENT_WINDOW,
+    Math.min(MAX_TANGENT_WINDOW, shape.length * 0.08),
+  );
+  const before = shape.metricPath.getPointAtLength(
+    mod(target - tangentWindow, shape.length),
+  );
+  const after = shape.metricPath.getPointAtLength(
+    mod(target + tangentWindow, shape.length),
+  );
   const tangent = normalizeVector(
-    current.tx + (next.tx - current.tx) * amount,
-    current.ty + (next.ty - current.ty) * amount,
-    current.tx,
-    current.ty,
+    after.x - before.x,
+    after.y - before.y,
+    1,
+    0,
   );
   let normalX = -tangent.y;
   let normalY = tangent.x;
-  const insideX = shape.cx - x;
-  const insideY = shape.cy - y;
+  const insideX = shape.cx - point.x;
+  const insideY = shape.cy - point.y;
 
   if (normalX * insideX + normalY * insideY < 0) {
     normalX *= -1;
@@ -406,8 +269,8 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   }
 
   return {
-    x,
-    y,
+    x: point.x,
+    y: point.y,
     tx: tangent.x,
     ty: tangent.y,
     nx: normalX,
