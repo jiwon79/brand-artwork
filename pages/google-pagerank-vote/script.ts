@@ -176,6 +176,7 @@ function createGearPoint(
   controlB: Point,
   end: Point,
   fontSize: number,
+  center: Point,
   index: number,
 ) {
   const entry = normalizeVector(controlA.x - start.x, controlA.y - start.y, 1, 0);
@@ -189,18 +190,19 @@ function createGearPoint(
   const midpoint = cubicPoint(start, controlA, controlB, end, 0.5);
   const vertex = lineIntersection(start, entry, end, exit) ?? midpoint;
   const distanceToArc = Math.hypot(vertex.x - midpoint.x, vertex.y - midpoint.y);
-  const radius = clamp(distanceToArc * 0.68, fontSize * 0.36, fontSize * 0.76);
-  const gearCenter = distanceToArc > fontSize * 3.2 ? midpoint : vertex;
+  const radius = clamp(distanceToArc * 0.58, fontSize * 0.32, fontSize * 0.68);
+  const inward = normalizeVector(center.x - midpoint.x, center.y - midpoint.y, 0, 1);
+  const inset = radius + fontSize * 0.18;
 
   return {
-    x: gearCenter.x,
-    y: gearCenter.y,
+    x: midpoint.x + inward.x * inset,
+    y: midpoint.y + inward.y * inset,
     radius,
     phase: (index * 0.91 + midpoint.x * 0.017 + midpoint.y * 0.011) % TWO_PI,
   };
 }
 
-function parseCornerGears(d: string, fontSize: number) {
+function parseCornerGears(d: string, fontSize: number, center: Point) {
   const tokens = d.match(PATH_TOKEN_PATTERN) ?? [];
   const gears: GearPoint[] = [];
   let index = 0;
@@ -259,7 +261,15 @@ function parseCornerGears(d: string, fontSize: number) {
         const controlA = readPoint(relative);
         const controlB = readPoint(relative);
         const end = readPoint(relative);
-        const gear = createGearPoint(start, controlA, controlB, end, fontSize, gears.length);
+        const gear = createGearPoint(
+          start,
+          controlA,
+          controlB,
+          end,
+          fontSize,
+          center,
+          gears.length,
+        );
 
         if (gear) {
           gears.push(gear);
@@ -319,7 +329,7 @@ async function loadArtwork() {
       ),
       fontSize,
       textPhase: (index * 53) % motion.length,
-      gears: parseCornerGears(d, fontSize),
+      gears: parseCornerGears(d, fontSize, center),
     };
   });
 
