@@ -1,285 +1,461 @@
-import {
-  GOOGLE_COLORS,
-  TOKENS,
-  buildCharacterBelt,
-  buildContactGraph,
-  createGoogleGMask,
-  createPropagationSchedule,
-  findNearestLoop,
-  findSeedLoop,
-  generateLoops,
-  pointAt,
-} from './core.js';
-
-const CYCLE_SECONDS = 12;
-const SEED = 8421;
-const TARGET_LOOP_COUNT = 45;
-
-const canvas = document.getElementById('scene') as HTMLCanvasElement;
-const ctx = canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
-const errorEl = document.getElementById('error') as HTMLDivElement;
-
-type Layout = {
-  width: number;
-  height: number;
-  mask: ReturnType<typeof createGoogleGMask>;
-  loops: any[];
-  graph: { adjacency: any[][]; edgeCount: number };
+type ShapeBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 };
 
-let layout: Layout | null = null;
-let schedule: number[] = [];
-let cycleStart = performance.now();
-let needsResize = true;
-let hoveredLoop = -1;
-let pointerDown = false;
+type ArtworkShape = {
+  id: number;
+  path: Path2D;
+  d: string;
+  bounds: ShapeBounds;
+  cx: number;
+  cy: number;
+  radius: number;
+  phase: number;
+  speed: number;
+  direction: number;
+  dash: number;
+  gap: number;
+  delay: number;
+};
 
-window.addEventListener('error', (event) => {
-  errorEl.textContent = event.message || 'Render error';
-  errorEl.classList.add('show');
-});
+type FitTransform = {
+  x: number;
+  y: number;
+  scale: number;
+  size: number;
+};
 
-const resizeObserver = new ResizeObserver(() => {
-  needsResize = true;
-});
-resizeObserver.observe(canvas);
+const ARTWORK_URL = new URL(
+  "./assets/figma-g-polygon-reference.svg",
+  import.meta.url,
+).href;
 
-canvas.addEventListener('pointerdown', (event) => {
-  pointerDown = true;
-  canvas.setPointerCapture(event.pointerId);
-  const point = toCanvasPoint(event);
-  const nearest = layout ? findNearestLoop(layout.loops, point.x, point.y) : { index: -1, distance: Infinity };
-  if (layout && nearest.index >= 0) {
-    restartPropagation(nearest.index);
-  }
-});
+const SVG_SIZE = 1339;
+const CYCLE_SECONDS = 10.5;
+const BASE_STROKE_WIDTH = 9;
+const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-canvas.addEventListener('pointermove', (event) => {
-  const point = toCanvasPoint(event);
-  accelerateNear(point.x, point.y, pointerDown);
-});
+const canvas = document.querySelector<HTMLCanvasElement>("#scene");
+const errorEl = document.querySelector<HTMLDivElement>("#error");
 
-canvas.addEventListener('pointerup', (event) => {
-  pointerDown = false;
-  hoveredLoop = -1;
-  canvas.releasePointerCapture(event.pointerId);
-});
-
-canvas.addEventListener('pointercancel', () => {
-  pointerDown = false;
-  hoveredLoop = -1;
-});
-
-function rebuildLayout(): void {
-  const rect = canvas.getBoundingClientRect();
-  const width = Math.max(1, Math.round(rect.width));
-  const height = Math.max(1, Math.round(rect.height));
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  const mask = createGoogleGMask(width, height);
-  const loops = generateLoops({
-    width,
-    height,
-    seed: SEED,
-    targetCount: TARGET_LOOP_COUNT,
-    mask,
-  });
-  const fontSize = getArtworkFontSize(mask);
-  const charSpacing = Math.max(fontSize * 0.98, 8);
-  for (const loop of loops) {
-    loop.glyphs = buildCharacterBelt(TOKENS, charSpacing, loop.length + charSpacing * 4, loop.tokenOffset);
-    loop.charSpacing = charSpacing;
-  }
-  const graph = buildContactGraph(loops, mask.scale * 22);
-  const seedIndex = findSeedLoop(loops, mask);
-
-  layout = { width, height, mask, loops, graph };
-  schedule = createPropagationSchedule(loops, graph, seedIndex);
-  needsResize = false;
+if (!canvas || !errorEl) {
+  throw new Error("Google PageRank Vote stage is missing required elements.");
 }
 
-function render(now: number): void {
-  if (needsResize || !layout) rebuildLayout();
-  if (!layout) return;
+const ctx = canvas.getContext("2d", { alpha: false });
 
-  const elapsed = getCycleTime(now);
-  const fontSize = getArtworkFontSize(layout.mask);
+if (!ctx) {
+  throw new Error("Canvas 2D context is not available.");
+}
 
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, layout.width, layout.height);
+let pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+let shapes: ArtworkShape[] = [];
+let fit: FitTransform = { x: 0, y: 0, scale: 1, size: SVG_SIZE };
+let cycleStartedAt = performance.now();
+let pointerArtworkX = Number.NaN;
+let pointerArtworkY = Number.NaN;
+let hoveredShapeId = -1;
+let pointerIsDown = false;
+let artworkLoaded = false;
+let loadError = "";
 
-  drawQuietGrain(now, layout.width, layout.height);
+function parsePathBounds(d: string): ShapeBounds {
+  const numbers = d.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi)?.map(Number) ?? [];
+  const bounds: ShapeBounds = {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+  };
+
+  for (let index = 0; index < numbers.length - 1; index += 2) {
+    const x = numbers[index];
+    const y = numbers[index + 1];
+    bounds.minX = Math.min(bounds.minX, x);
+    bounds.minY = Math.min(bounds.minY, y);
+    bounds.maxX = Math.max(bounds.maxX, x);
+    bounds.maxY = Math.max(bounds.maxY, y);
+  }
+
+  if (!Number.isFinite(bounds.minX)) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  }
+
+  return bounds;
+}
+
+function centerOf(bounds: ShapeBounds) {
+  return {
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2,
+  };
+}
+
+function radiusOf(bounds: ShapeBounds) {
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  return Math.hypot(width, height) / 2;
+}
+
+function distanceBetween(a: ArtworkShape, b: ArtworkShape) {
+  return Math.hypot(a.cx - b.cx, a.cy - b.cy);
+}
+
+function edgeWeight(a: ArtworkShape, b: ArtworkShape) {
+  const gap = Math.max(0, distanceBetween(a, b) - (a.radius + b.radius) * 0.58);
+  return 0.16 + gap / 270;
+}
+
+function chooseDefaultSeed() {
+  const target = { x: SVG_SIZE * 0.3, y: SVG_SIZE * 0.18 };
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const shape of shapes) {
+    const distance = Math.hypot(shape.cx - target.x, shape.cy - target.y);
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = shape.id;
+    }
+  }
+
+  return bestIndex;
+}
+
+function computePropagation(seedIndex = chooseDefaultSeed()) {
+  const distances = shapes.map(() => Number.POSITIVE_INFINITY);
+  const visited = shapes.map(() => false);
+  distances[seedIndex] = 0;
+
+  for (let step = 0; step < shapes.length; step += 1) {
+    let current = -1;
+    let best = Number.POSITIVE_INFINITY;
+
+    for (let index = 0; index < distances.length; index += 1) {
+      if (!visited[index] && distances[index] < best) {
+        current = index;
+        best = distances[index];
+      }
+    }
+
+    if (current === -1) {
+      break;
+    }
+
+    visited[current] = true;
+
+    for (let next = 0; next < shapes.length; next += 1) {
+      if (visited[next] || next === current) {
+        continue;
+      }
+
+      const candidate =
+        distances[current] + edgeWeight(shapes[current], shapes[next]);
+
+      if (candidate < distances[next]) {
+        distances[next] = candidate;
+      }
+    }
+  }
+
+  const maxDistance = Math.max(...distances.filter(Number.isFinite), 1);
+
+  for (const shape of shapes) {
+    const normalized = distances[shape.id] / maxDistance;
+    shape.delay = 0.55 + normalized * 7.7;
+  }
+}
+
+async function loadArtwork() {
+  const response = await fetch(ARTWORK_URL);
+
+  if (!response.ok) {
+    throw new Error(`Could not load Figma artwork (${response.status}).`);
+  }
+
+  const svgText = await response.text();
+  const doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
+  const paths = Array.from(doc.querySelectorAll("path[stroke='#F8F8F8']"));
+
+  shapes = paths.map((pathEl, index) => {
+    const d = pathEl.getAttribute("d") ?? "";
+    const bounds = parsePathBounds(d);
+    const center = centerOf(bounds);
+
+    return {
+      id: index,
+      path: new Path2D(d),
+      d,
+      bounds,
+      cx: center.x,
+      cy: center.y,
+      radius: radiusOf(bounds),
+      phase: (index * 37) % 160,
+      speed: 32 + (index % 7) * 7,
+      direction: index % 2 === 0 ? 1 : -1,
+      dash: 28 + (index % 4) * 6,
+      gap: 24 + (index % 5) * 4,
+      delay: 0,
+    };
+  });
+
+  if (shapes.length === 0) {
+    throw new Error("Figma artwork does not contain polygon stroke paths.");
+  }
+
+  computePropagation();
+  artworkLoaded = true;
+}
+
+function resizeCanvas() {
+  const bounds = canvas.getBoundingClientRect();
+  const nextRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const nextWidth = Math.max(1, Math.round(bounds.width * nextRatio));
+  const nextHeight = Math.max(1, Math.round(bounds.height * nextRatio));
+
+  if (
+    canvas.width !== nextWidth ||
+    canvas.height !== nextHeight ||
+    pixelRatio !== nextRatio
+  ) {
+    pixelRatio = nextRatio;
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
+  }
+
+  const width = canvas.width / pixelRatio;
+  const height = canvas.height / pixelRatio;
+  const size = Math.min(width * 0.96, height * 0.74);
+
+  fit = {
+    size,
+    scale: size / SVG_SIZE,
+    x: (width - size) / 2,
+    y: (height - size) / 2,
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function smoothstep(value: number) {
+  const x = clamp(value, 0, 1);
+  return x * x * (3 - 2 * x);
+}
+
+function shapeActivation(shape: ArtworkShape, cycleTime: number) {
+  const age = cycleTime - shape.delay;
+
+  if (age < 0) {
+    return 0;
+  }
+
+  const arrival = smoothstep(age / 0.72);
+  const tail = 1 - smoothstep((age - 1.65) / 1.2);
+  return clamp(arrival * tail, 0, 1);
+}
+
+function shapePointerLift(shape: ArtworkShape) {
+  if (!Number.isFinite(pointerArtworkX) || !Number.isFinite(pointerArtworkY)) {
+    return 0;
+  }
+
+  const distance = Math.hypot(pointerArtworkX - shape.cx, pointerArtworkY - shape.cy);
+  return 1 - smoothstep(distance / Math.max(120, shape.radius * 1.05));
+}
+
+function drawBackground(width: number, height: number, time: number) {
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  ctx.fillStyle = "#030303";
+  ctx.fillRect(0, 0, width, height);
+
+  const grainStep = 3;
+  const grainAlpha = reduceMotionQuery.matches ? 0.018 : 0.025;
+  ctx.fillStyle = `rgba(255, 255, 255, ${grainAlpha})`;
+
+  for (let y = (Math.floor(time * 19) % grainStep) - grainStep; y < height; y += grainStep) {
+    for (let x = (Math.floor(time * 13) % grainStep) - grainStep; x < width; x += grainStep) {
+      const value = Math.sin(x * 11.7 + y * 5.3 + time * 0.001);
+
+      if (value > 0.72) {
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+}
+
+function drawLoading(width: number, height: number) {
+  ctx.save();
+  ctx.fillStyle = "rgba(248, 248, 248, 0.72)";
+  ctx.font = "500 13px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Loading Figma artwork", width / 2, height / 2);
+  ctx.restore();
+}
+
+function drawShape(shape: ArtworkShape, cycleTime: number, elapsedSeconds: number) {
+  const reduced = reduceMotionQuery.matches;
+  const activation = reduced ? 0.72 : shapeActivation(shape, cycleTime);
+  const pointerLift = shapePointerLift(shape);
+  const hoverLift = hoveredShapeId === shape.id ? 0.32 : 0;
+  const intensity = clamp(0.36 + activation * 0.5 + pointerLift * 0.28 + hoverLift, 0, 1);
+  const lineWidth = BASE_STROKE_WIDTH + activation * 1.8 + pointerLift * 1.4;
 
   ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  for (const loop of layout.loops) {
-    const activation = getActivation(loop.id, loop, elapsed);
-    drawLoopGlow(loop, activation, fontSize);
+  ctx.fillStyle = "#030303";
+  ctx.fill(shape.path);
+
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.lineWidth = lineWidth;
+  ctx.shadowColor = "rgba(255, 255, 255, 0)";
+  ctx.setLineDash([]);
+  ctx.strokeStyle = `rgba(248, 248, 248, ${0.3 + intensity * 0.28})`;
+  ctx.stroke(shape.path);
+
+  if (!reduced) {
+    const pointerBoost = pointerIsDown ? pointerLift * 70 : pointerLift * 28;
+    const motion = elapsedSeconds * (shape.speed + pointerBoost) * shape.direction;
+
+    ctx.shadowColor = `rgba(255, 255, 255, ${0.16 + activation * 0.24})`;
+    ctx.shadowBlur = 6 + activation * 18 + pointerLift * 12;
+    ctx.lineWidth = lineWidth + activation * 0.8;
+    ctx.setLineDash([shape.dash, shape.gap]);
+    ctx.lineDashOffset = shape.phase - motion;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.64 + intensity * 0.34})`;
+    ctx.stroke(shape.path);
+
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = Math.max(2, lineWidth * 0.32);
+    ctx.setLineDash([4, shape.dash + shape.gap + 18]);
+    ctx.lineDashOffset = -shape.phase * 0.7 - motion * 1.55;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.28 + activation * 0.48})`;
+    ctx.stroke(shape.path);
   }
+
   ctx.restore();
+}
+
+function drawArtwork(time: number) {
+  const elapsedSeconds = (time - cycleStartedAt) / 1000;
+  const cycleTime = ((elapsedSeconds % CYCLE_SECONDS) + CYCLE_SECONDS) % CYCLE_SECONDS;
 
   ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `900 ${fontSize}px "Arial Black", Impact, sans-serif`;
-  for (const loop of layout.loops) {
-    const activation = getActivation(loop.id, loop, elapsed);
-    drawTextBelt(loop, activation, elapsed, fontSize);
+  ctx.translate(fit.x, fit.y);
+  ctx.scale(fit.scale, fit.scale);
+
+  for (const shape of shapes) {
+    drawShape(shape, cycleTime, elapsedSeconds);
   }
+
   ctx.restore();
+}
+
+function render(time: number) {
+  resizeCanvas();
+
+  const width = canvas.width / pixelRatio;
+  const height = canvas.height / pixelRatio;
+
+  drawBackground(width, height, time);
+
+  if (loadError) {
+    errorEl.textContent = loadError;
+    errorEl.classList.add("show");
+  } else {
+    errorEl.classList.remove("show");
+
+    if (artworkLoaded) {
+      drawArtwork(time);
+    } else {
+      drawLoading(width, height);
+    }
+  }
 
   requestAnimationFrame(render);
 }
 
-function drawTextBelt(loop: any, activation: any, elapsed: number, fontSize: number): void {
-  const spacing = loop.charSpacing || Math.max(fontSize * 0.76, 6);
-  const speedBoost = loop.id === hoveredLoop ? 1.8 : 1;
-  const phase = loop.phase + elapsed * loop.speed * loop.direction * speedBoost;
-  const color = GOOGLE_COLORS[loop.colorIndex % GOOGLE_COLORS.length];
-  const front = activation.front * loop.length;
-
-  for (const glyph of loop.glyphs || []) {
-    const beltDistance = glyph.distance;
-    const pathDistance = beltDistance + phase;
-    const point = pointAt(loop, pathDistance);
-    const arc = mod(beltDistance + loop.phase * 0.15, loop.length);
-    const lit = activation.energy > 0.02 && (activation.age > 1.18 || arc <= front);
-    const frontDelta = Math.abs(arc - front);
-    const leading = activation.age >= 0 && activation.age < 1.25 && frontDelta < spacing * 4;
-
-    ctx.save();
-    ctx.translate(point.x, point.y);
-    ctx.rotate(point.angle);
-    ctx.shadowBlur = 0;
-
-    if (lit) {
-      const alpha = 0.42 + activation.energy * 0.52;
-      ctx.fillStyle = hexToRgba(color, alpha);
-      ctx.shadowColor = color;
-      ctx.shadowBlur = leading ? fontSize * 0.95 : fontSize * 0.18;
-    } else {
-      const alpha = 0.34 + (1 - activation.energy) * 0.34;
-      ctx.fillStyle = `rgba(245, 245, 245, ${alpha})`;
-    }
-
-    ctx.fillText(glyph.char, 0, 0);
-    ctx.restore();
-  }
-}
-
-function drawLoopGlow(loop: any, activation: any, fontSize: number): void {
-  if (activation.energy <= 0.03) return;
-
-  const color = GOOGLE_COLORS[loop.colorIndex % GOOGLE_COLORS.length];
-  const samples = loop.samples;
-  const progress = activation.age < 1.2 ? clamp(activation.front, 0.04, 1) : 1;
-  const limit = Math.max(2, Math.floor(samples.length * progress));
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(samples[0].x, samples[0].y);
-  for (let i = 1; i < limit; i++) {
-    ctx.lineTo(samples[i].x, samples[i].y);
-  }
-  if (progress >= 0.98) ctx.closePath();
-  ctx.strokeStyle = hexToRgba(color, activation.energy * 0.075);
-  ctx.lineWidth = fontSize * 1.05;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.shadowColor = color;
-  ctx.shadowBlur = fontSize * 0.95 * activation.energy;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawQuietGrain(now: number, width: number, height: number): void {
-  const shift = Math.floor(now / 120) % 5;
-  ctx.save();
-  ctx.globalAlpha = 0.045;
-  ctx.fillStyle = '#fff';
-  for (let y = shift; y < height; y += 5) {
-    ctx.fillRect(0, y, width, 1);
-  }
-  ctx.restore();
-}
-
-function getActivation(index: number, loop: any, elapsed: number): { age: number; energy: number; front: number } {
-  const start = schedule[index] ?? Infinity;
-  const age = elapsed - start;
-  if (age < 0) return { age, energy: 0, front: 0 };
-
-  const enter = smoothstep(clamp(age / 0.95, 0, 1));
-  const decay = elapsed > 10.4 ? 1 - smoothstep(clamp((elapsed - 10.4) / 1.25, 0, 1)) : 1;
-  const energy = enter * decay;
-  const travelSeconds = Math.max(0.8, loop.length / Math.max(110, loop.speed * 3));
-  const front = clamp(age / travelSeconds, 0, 1);
-
-  return { age, energy, front };
-}
-
-function restartPropagation(seedIndex: number): void {
-  if (!layout) return;
-  schedule = createPropagationSchedule(layout.loops, layout.graph, seedIndex);
-  cycleStart = performance.now() - 880;
-}
-
-function accelerateNear(x: number, y: number, force: boolean): void {
-  if (!layout) return;
-
-  const nearest = findNearestLoop(layout.loops, x, y);
-  const loop = layout.loops[nearest.index];
-  if (!loop || nearest.distance > loop.radius * (force ? 2.3 : 1.25)) {
-    if (!force) hoveredLoop = -1;
-    return;
-  }
-
-  hoveredLoop = nearest.index;
-  const elapsed = getCycleTime(performance.now());
-  schedule[nearest.index] = Math.min(schedule[nearest.index] ?? Infinity, Math.max(0, elapsed - 0.12));
-
-  for (const edge of layout.graph.adjacency[nearest.index] || []) {
-    schedule[edge.to] = Math.min(schedule[edge.to] ?? Infinity, elapsed + 0.34 + Math.min(edge.distance / 90, 0.45));
-  }
-}
-
-function getCycleTime(now: number): number {
-  return mod((now - cycleStart) / 1000, CYCLE_SECONDS);
-}
-
-function getArtworkFontSize(mask: ReturnType<typeof createGoogleGMask>): number {
-  return clamp(mask.scale * 16, 9.5, 17);
-}
-
-function toCanvasPoint(event: PointerEvent): { x: number; y: number } {
+function eventToArtworkPoint(event: PointerEvent) {
   const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+
   return {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
+    x: (x - fit.x) / fit.scale,
+    y: (y - fit.y) / fit.scale,
   };
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const value = Number.parseInt(hex.slice(1), 16);
-  const r = (value >> 16) & 255;
-  const g = (value >> 8) & 255;
-  const b = value & 255;
-  return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
+function distanceToBounds(x: number, y: number, bounds: ShapeBounds) {
+  const dx = Math.max(bounds.minX - x, 0, x - bounds.maxX);
+  const dy = Math.max(bounds.minY - y, 0, y - bounds.maxY);
+  return Math.hypot(dx, dy);
 }
 
-function smoothstep(value: number): number {
-  return value * value * (3 - 2 * value);
+function findNearestShape(x: number, y: number) {
+  let bestShape: ArtworkShape | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const shape of shapes) {
+    const distance =
+      distanceToBounds(x, y, shape.bounds) +
+      Math.hypot(x - shape.cx, y - shape.cy) * 0.08;
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestShape = shape;
+    }
+  }
+
+  if (!bestShape || bestDistance > Math.max(85, bestShape.radius * 0.68)) {
+    return undefined;
+  }
+
+  return bestShape;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+function updatePointer(event: PointerEvent) {
+  const point = eventToArtworkPoint(event);
+  pointerArtworkX = point.x;
+  pointerArtworkY = point.y;
+  hoveredShapeId = findNearestShape(point.x, point.y)?.id ?? -1;
 }
 
-function mod(value: number, divisor: number): number {
-  return ((value % divisor) + divisor) % divisor;
-}
+canvas.addEventListener("pointermove", updatePointer);
+
+canvas.addEventListener("pointerdown", (event) => {
+  canvas.setPointerCapture(event.pointerId);
+  pointerIsDown = true;
+  updatePointer(event);
+
+  const nearest = findNearestShape(pointerArtworkX, pointerArtworkY);
+
+  if (nearest) {
+    computePropagation(nearest.id);
+    cycleStartedAt = performance.now() - 180;
+  }
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  pointerIsDown = false;
+  canvas.releasePointerCapture(event.pointerId);
+});
+
+canvas.addEventListener("pointerleave", () => {
+  pointerArtworkX = Number.NaN;
+  pointerArtworkY = Number.NaN;
+  hoveredShapeId = -1;
+  pointerIsDown = false;
+});
+
+void loadArtwork().catch((error: unknown) => {
+  loadError = error instanceof Error ? error.message : "Failed to load artwork.";
+});
 
 requestAnimationFrame(render);
