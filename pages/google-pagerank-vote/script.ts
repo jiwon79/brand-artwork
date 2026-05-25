@@ -15,7 +15,10 @@ type BeltGlyph = {
 type PathSample = {
   x: number;
   y: number;
-  angle: number;
+  tx: number;
+  ty: number;
+  nx: number;
+  ny: number;
 };
 
 type ArtworkShape = {
@@ -26,11 +29,8 @@ type ArtworkShape = {
   cx: number;
   cy: number;
   radius: number;
-  phase: number;
   speed: number;
   direction: number;
-  dash: number;
-  gap: number;
   delay: number;
   length: number;
   sampleStep: number;
@@ -163,7 +163,10 @@ function makePathSample(
   return {
     x: point.x + normalX * inset,
     y: point.y + normalY * inset,
-    angle: Math.atan2(unitY, unitX),
+    tx: unitX,
+    ty: unitY,
+    nx: normalX,
+    ny: normalY,
   };
 }
 
@@ -171,11 +174,11 @@ function measurePathMotion(
   measurementSvg: SVGSVGElement,
   d: string,
   bounds: ShapeBounds,
+  fontSize: number,
 ) {
   const metricPath = document.createElementNS(SVG_NS, "path");
   const center = centerOf(bounds);
-  const radius = radiusOf(bounds);
-  const inset = clamp(radius * 0.1, 11, 18);
+  const inset = fontSize * 0.9 + BASE_STROKE_WIDTH * 0.5;
 
   metricPath.setAttribute("d", d);
   measurementSvg.append(metricPath);
@@ -290,8 +293,8 @@ async function loadArtwork() {
     const bounds = parsePathBounds(d);
     const center = centerOf(bounds);
     const radius = radiusOf(bounds);
-    const motion = measurePathMotion(measurementSvg, d, bounds);
     const fontSize = clamp(radius * 0.17, 22, 38);
+    const motion = measurePathMotion(measurementSvg, d, bounds, fontSize);
 
     return {
       id: index,
@@ -301,18 +304,15 @@ async function loadArtwork() {
       cx: center.x,
       cy: center.y,
       radius,
-      phase: (index * 37) % 160,
       speed: 32 + (index % 7) * 7,
       direction: index % 2 === 0 ? 1 : -1,
-      dash: 28 + (index % 4) * 6,
-      gap: 24 + (index % 5) * 4,
       delay: 0,
       length: motion.length,
       sampleStep: motion.sampleStep,
       samples: motion.samples,
       glyphs: buildCharacterBelt(
         TOKENS,
-        fontSize * 0.78,
+        fontSize * 1.08,
         motion.length + fontSize * 2,
         index * 2,
       ),
@@ -372,16 +372,21 @@ function mod(value: number, divisor: number) {
   return ((value % divisor) + divisor) % divisor;
 }
 
-function lerpAngle(from: number, to: number, amount: number) {
-  const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
-  return from + delta * amount;
+function normalizeVector(x: number, y: number, fallbackX: number, fallbackY: number) {
+  const length = Math.hypot(x, y);
+
+  if (length < 0.0001) {
+    return { x: fallbackX, y: fallbackY };
+  }
+
+  return { x: x / length, y: y / length };
 }
 
 function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   const samples = shape.samples;
 
   if (samples.length === 0) {
-    return { x: shape.cx, y: shape.cy, angle: 0 };
+    return { x: shape.cx, y: shape.cy, tx: 1, ty: 0, nx: 0, ny: 1 };
   }
 
   const target = mod(distance, shape.length);
@@ -391,11 +396,26 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   const amount = rawIndex - Math.floor(rawIndex);
   const current = samples[index];
   const next = samples[nextIndex];
+  const tangent = normalizeVector(
+    current.tx + (next.tx - current.tx) * amount,
+    current.ty + (next.ty - current.ty) * amount,
+    current.tx,
+    current.ty,
+  );
+  const normal = normalizeVector(
+    current.nx + (next.nx - current.nx) * amount,
+    current.ny + (next.ny - current.ny) * amount,
+    current.nx,
+    current.ny,
+  );
 
   return {
     x: current.x + (next.x - current.x) * amount,
     y: current.y + (next.y - current.y) * amount,
-    angle: lerpAngle(current.angle, next.angle, amount),
+    tx: tangent.x,
+    ty: tangent.y,
+    nx: normal.x,
+    ny: normal.y,
   };
 }
 
@@ -467,7 +487,7 @@ function drawShapeGlyphs(
   ctx.clip(shape.path);
   ctx.font = `800 ${shape.fontSize}px "Arial Black", Impact, sans-serif`;
   ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  ctx.textBaseline = "bottom";
   ctx.fillStyle = `rgba(248, 248, 248, ${alpha})`;
   ctx.shadowColor = `rgba(255, 255, 255, ${activation * 0.3})`;
   ctx.shadowBlur = reduced ? 0 : 3 + activation * 9 + pointerLift * 5;
@@ -481,8 +501,7 @@ function drawShapeGlyphs(
 
     ctx.save();
     ctx.globalAlpha = shimmer;
-    ctx.translate(point.x, point.y);
-    ctx.rotate(point.angle);
+    ctx.transform(point.tx, point.ty, point.nx, point.ny, point.x, point.y);
     ctx.fillText(glyph.char, 0, 0);
     ctx.restore();
   }
@@ -495,8 +514,7 @@ function drawShape(shape: ArtworkShape, cycleTime: number, elapsedSeconds: numbe
   const activation = reduced ? 0.72 : shapeActivation(shape, cycleTime);
   const pointerLift = shapePointerLift(shape);
   const hoverLift = hoveredShapeId === shape.id ? 0.32 : 0;
-  const intensity = clamp(0.36 + activation * 0.5 + pointerLift * 0.28 + hoverLift, 0, 1);
-  const lineWidth = BASE_STROKE_WIDTH + activation * 1.8 + pointerLift * 1.4;
+  const outlineAlpha = clamp(0.74 + hoverLift * 0.12, 0, 0.86);
 
   ctx.save();
   ctx.fillStyle = "#030303";
@@ -506,31 +524,11 @@ function drawShape(shape: ArtworkShape, cycleTime: number, elapsedSeconds: numbe
 
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  ctx.lineWidth = lineWidth;
+  ctx.lineWidth = BASE_STROKE_WIDTH;
   ctx.shadowColor = "rgba(255, 255, 255, 0)";
   ctx.setLineDash([]);
-  ctx.strokeStyle = `rgba(248, 248, 248, ${0.3 + intensity * 0.28})`;
+  ctx.strokeStyle = `rgba(248, 248, 248, ${outlineAlpha})`;
   ctx.stroke(shape.path);
-
-  if (!reduced) {
-    const pointerBoost = pointerIsDown ? pointerLift * 70 : pointerLift * 28;
-    const motion = elapsedSeconds * (shape.speed + pointerBoost) * shape.direction;
-
-    ctx.shadowColor = `rgba(255, 255, 255, ${0.16 + activation * 0.24})`;
-    ctx.shadowBlur = 6 + activation * 18 + pointerLift * 12;
-    ctx.lineWidth = lineWidth + activation * 0.8;
-    ctx.setLineDash([shape.dash, shape.gap]);
-    ctx.lineDashOffset = shape.phase - motion;
-    ctx.strokeStyle = `rgba(255, 255, 255, ${0.64 + intensity * 0.34})`;
-    ctx.stroke(shape.path);
-
-    ctx.shadowBlur = 0;
-    ctx.lineWidth = Math.max(2, lineWidth * 0.32);
-    ctx.setLineDash([4, shape.dash + shape.gap + 18]);
-    ctx.lineDashOffset = -shape.phase * 0.7 - motion * 1.55;
-    ctx.strokeStyle = `rgba(255, 255, 255, ${0.28 + activation * 0.48})`;
-    ctx.stroke(shape.path);
-  }
 
   ctx.restore();
 }
