@@ -86,31 +86,6 @@ let cycleStartedAt = performance.now();
 let artworkLoaded = false;
 let loadError = "";
 
-function parsePathBounds(d: string): ShapeBounds {
-  const numbers = d.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi)?.map(Number) ?? [];
-  const bounds: ShapeBounds = {
-    minX: Number.POSITIVE_INFINITY,
-    minY: Number.POSITIVE_INFINITY,
-    maxX: Number.NEGATIVE_INFINITY,
-    maxY: Number.NEGATIVE_INFINITY,
-  };
-
-  for (let index = 0; index < numbers.length - 1; index += 2) {
-    const x = numbers[index];
-    const y = numbers[index + 1];
-    bounds.minX = Math.min(bounds.minX, x);
-    bounds.minY = Math.min(bounds.minY, y);
-    bounds.maxX = Math.max(bounds.maxX, x);
-    bounds.maxY = Math.max(bounds.maxY, y);
-  }
-
-  if (!Number.isFinite(bounds.minX)) {
-    return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-  }
-
-  return bounds;
-}
-
 function centerOf(bounds: ShapeBounds) {
   return {
     x: (bounds.minX + bounds.maxX) / 2,
@@ -149,7 +124,18 @@ function measurePathMotion(
   measurementSvg.append(metricPath);
 
   const length = Math.max(1, metricPath.getTotalLength());
-  return { length, metricPath };
+  const bounds = metricPath.getBBox();
+
+  return {
+    length,
+    metricPath,
+    bounds: {
+      minX: bounds.x,
+      minY: bounds.y,
+      maxX: bounds.x + bounds.width,
+      maxY: bounds.y + bounds.height,
+    },
+  };
 }
 
 function sampleDebugPoints(metricPath: SVGPathElement, length: number) {
@@ -178,11 +164,11 @@ async function loadArtwork() {
 
   shapes = paths.map((pathEl, index) => {
     const d = pathEl.getAttribute("d") ?? "";
-    const bounds = parsePathBounds(d);
+    const motion = measurePathMotion(measurementSvg, d);
+    const bounds = motion.bounds;
     const center = centerOf(bounds);
     const radius = radiusOf(bounds);
     const fontSize = clamp(radius * 0.115, 13, 24);
-    const motion = measurePathMotion(measurementSvg, d);
 
     return {
       id: index,
@@ -275,7 +261,7 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   const after = shape.metricPath.getPointAtLength(
     mod(target + tangentWindow, shape.length),
   );
-  const tangent = normalizeVector(
+  let tangent = normalizeVector(
     after.x - before.x,
     after.y - before.y,
     1,
@@ -289,6 +275,10 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   if (normalX * insideX + normalY * insideY < 0) {
     normalX *= -1;
     normalY *= -1;
+    tangent = {
+      x: -tangent.x,
+      y: -tangent.y,
+    };
   }
 
   return {
