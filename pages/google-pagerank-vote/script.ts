@@ -19,6 +19,7 @@ type PathSample = {
   ty: number;
   nx: number;
   ny: number;
+  corner: number;
 };
 
 type ArtworkShape = {
@@ -31,7 +32,6 @@ type ArtworkShape = {
   radius: number;
   speed: number;
   direction: number;
-  delay: number;
   length: number;
   sampleStep: number;
   samples: PathSample[];
@@ -53,7 +53,6 @@ const ARTWORK_URL = new URL(
 ).href;
 
 const SVG_SIZE = 1339;
-const CYCLE_SECONDS = 10.5;
 const BASE_STROKE_WIDTH = 9;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -75,10 +74,6 @@ let pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 let shapes: ArtworkShape[] = [];
 let fit: FitTransform = { x: 0, y: 0, scale: 1, size: SVG_SIZE };
 let cycleStartedAt = performance.now();
-let pointerArtworkX = Number.NaN;
-let pointerArtworkY = Number.NaN;
-let hoveredShapeId = -1;
-let pointerIsDown = false;
 let artworkLoaded = false;
 let loadError = "";
 
@@ -167,7 +162,31 @@ function makePathSample(
     ty: unitY,
     nx: normalX,
     ny: normalY,
+    corner: 0,
   };
+}
+
+function addCornerGuards(samples: PathSample[], sampleStep: number, fontSize: number) {
+  const guardSamples = Math.max(2, Math.ceil((fontSize * 0.72) / sampleStep));
+  const turns = samples.map((sample, index) => {
+    const prev = samples[mod(index - 1, samples.length)];
+    const next = samples[(index + 1) % samples.length];
+    const dot = clamp(prev.tx * next.tx + prev.ty * next.ty, -1, 1);
+    return Math.acos(dot);
+  });
+
+  for (let index = 0; index < samples.length; index += 1) {
+    let corner = turns[index];
+
+    for (let offset = 1; offset <= guardSamples; offset += 1) {
+      const falloff = 1 - offset / (guardSamples + 1);
+      const before = turns[mod(index - offset, samples.length)] * falloff;
+      const after = turns[(index + offset) % samples.length] * falloff;
+      corner = Math.max(corner, before, after);
+    }
+
+    samples[index].corner = corner;
+  }
 }
 
 function measurePathMotion(
@@ -201,79 +220,11 @@ function measurePathMotion(
     );
   }
 
+  addCornerGuards(samples, sampleStep, fontSize);
+
   metricPath.remove();
 
   return { length, sampleStep, samples };
-}
-
-function distanceBetween(a: ArtworkShape, b: ArtworkShape) {
-  return Math.hypot(a.cx - b.cx, a.cy - b.cy);
-}
-
-function edgeWeight(a: ArtworkShape, b: ArtworkShape) {
-  const gap = Math.max(0, distanceBetween(a, b) - (a.radius + b.radius) * 0.58);
-  return 0.16 + gap / 270;
-}
-
-function chooseDefaultSeed() {
-  const target = { x: SVG_SIZE * 0.3, y: SVG_SIZE * 0.18 };
-  let bestIndex = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-
-  for (const shape of shapes) {
-    const distance = Math.hypot(shape.cx - target.x, shape.cy - target.y);
-
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = shape.id;
-    }
-  }
-
-  return bestIndex;
-}
-
-function computePropagation(seedIndex = chooseDefaultSeed()) {
-  const distances = shapes.map(() => Number.POSITIVE_INFINITY);
-  const visited = shapes.map(() => false);
-  distances[seedIndex] = 0;
-
-  for (let step = 0; step < shapes.length; step += 1) {
-    let current = -1;
-    let best = Number.POSITIVE_INFINITY;
-
-    for (let index = 0; index < distances.length; index += 1) {
-      if (!visited[index] && distances[index] < best) {
-        current = index;
-        best = distances[index];
-      }
-    }
-
-    if (current === -1) {
-      break;
-    }
-
-    visited[current] = true;
-
-    for (let next = 0; next < shapes.length; next += 1) {
-      if (visited[next] || next === current) {
-        continue;
-      }
-
-      const candidate =
-        distances[current] + edgeWeight(shapes[current], shapes[next]);
-
-      if (candidate < distances[next]) {
-        distances[next] = candidate;
-      }
-    }
-  }
-
-  const maxDistance = Math.max(...distances.filter(Number.isFinite), 1);
-
-  for (const shape of shapes) {
-    const normalized = distances[shape.id] / maxDistance;
-    shape.delay = 0.55 + normalized * 7.7;
-  }
 }
 
 async function loadArtwork() {
@@ -306,13 +257,12 @@ async function loadArtwork() {
       radius,
       speed: 32 + (index % 7) * 7,
       direction: index % 2 === 0 ? 1 : -1,
-      delay: 0,
       length: motion.length,
       sampleStep: motion.sampleStep,
       samples: motion.samples,
       glyphs: buildCharacterBelt(
         TOKENS,
-        fontSize * 1.08,
+        fontSize * 1.22,
         motion.length + fontSize * 2,
         index * 2,
       ),
@@ -327,7 +277,6 @@ async function loadArtwork() {
     throw new Error("Figma artwork does not contain polygon stroke paths.");
   }
 
-  computePropagation();
   artworkLoaded = true;
 }
 
@@ -363,11 +312,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function smoothstep(value: number) {
-  const x = clamp(value, 0, 1);
-  return x * x * (3 - 2 * x);
-}
-
 function mod(value: number, divisor: number) {
   return ((value % divisor) + divisor) % divisor;
 }
@@ -386,7 +330,15 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   const samples = shape.samples;
 
   if (samples.length === 0) {
-    return { x: shape.cx, y: shape.cy, tx: 1, ty: 0, nx: 0, ny: 1 };
+    return {
+      x: shape.cx,
+      y: shape.cy,
+      tx: 1,
+      ty: 0,
+      nx: 0,
+      ny: 1,
+      corner: 1,
+    };
   }
 
   const target = mod(distance, shape.length);
@@ -416,28 +368,8 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
     ty: tangent.y,
     nx: normal.x,
     ny: normal.y,
+    corner: current.corner + (next.corner - current.corner) * amount,
   };
-}
-
-function shapeActivation(shape: ArtworkShape, cycleTime: number) {
-  const age = cycleTime - shape.delay;
-
-  if (age < 0) {
-    return 0;
-  }
-
-  const arrival = smoothstep(age / 0.72);
-  const tail = 1 - smoothstep((age - 1.65) / 1.2);
-  return clamp(arrival * tail, 0, 1);
-}
-
-function shapePointerLift(shape: ArtworkShape) {
-  if (!Number.isFinite(pointerArtworkX) || !Number.isFinite(pointerArtworkY)) {
-    return 0;
-  }
-
-  const distance = Math.hypot(pointerArtworkX - shape.cx, pointerArtworkY - shape.cy);
-  return 1 - smoothstep(distance / Math.max(120, shape.radius * 1.05));
 }
 
 function drawBackground(width: number, height: number, time: number) {
@@ -472,35 +404,29 @@ function drawLoading(width: number, height: number) {
 
 function drawShapeGlyphs(
   shape: ArtworkShape,
-  activation: number,
-  pointerLift: number,
   elapsedSeconds: number,
 ) {
   const reduced = reduceMotionQuery.matches;
-  const pointerBoost = pointerIsDown ? pointerLift * 46 : pointerLift * 18;
   const motion = reduced
     ? 0
-    : elapsedSeconds * (shape.speed * 0.92 + pointerBoost) * shape.direction;
-  const alpha = clamp(0.38 + activation * 0.5 + pointerLift * 0.26, 0, 0.94);
+    : elapsedSeconds * shape.speed * 0.92 * shape.direction;
 
   ctx.save();
   ctx.clip(shape.path);
   ctx.font = `800 ${shape.fontSize}px "Arial Black", Impact, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
-  ctx.fillStyle = `rgba(248, 248, 248, ${alpha})`;
-  ctx.shadowColor = `rgba(255, 255, 255, ${activation * 0.3})`;
-  ctx.shadowBlur = reduced ? 0 : 3 + activation * 9 + pointerLift * 5;
+  ctx.fillStyle = "rgba(248, 248, 248, 0.84)";
+  ctx.shadowBlur = 0;
 
   for (const glyph of shape.glyphs) {
     const point = pointAtShape(shape, glyph.distance + shape.textPhase + motion);
-    const shimmer = reduced
-      ? 1
-      : 0.78 +
-        Math.sin(elapsedSeconds * 4.2 + glyph.distance * 0.05 + shape.id) * 0.22;
+
+    if (point.corner > 0.055) {
+      continue;
+    }
 
     ctx.save();
-    ctx.globalAlpha = shimmer;
     ctx.transform(point.tx, point.ty, point.nx, point.ny, point.x, point.y);
     ctx.fillText(glyph.char, 0, 0);
     ctx.restore();
@@ -509,40 +435,25 @@ function drawShapeGlyphs(
   ctx.restore();
 }
 
-function drawShape(shape: ArtworkShape, cycleTime: number, elapsedSeconds: number) {
-  const reduced = reduceMotionQuery.matches;
-  const activation = reduced ? 0.72 : shapeActivation(shape, cycleTime);
-  const pointerLift = shapePointerLift(shape);
-  const hoverLift = hoveredShapeId === shape.id ? 0.32 : 0;
-  const outlineAlpha = clamp(0.74 + hoverLift * 0.12, 0, 0.86);
-
+function drawShape(shape: ArtworkShape, elapsedSeconds: number) {
   ctx.save();
   ctx.fillStyle = "#030303";
   ctx.fill(shape.path);
 
-  drawShapeGlyphs(shape, activation, pointerLift, elapsedSeconds);
-
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.lineWidth = BASE_STROKE_WIDTH;
-  ctx.shadowColor = "rgba(255, 255, 255, 0)";
-  ctx.setLineDash([]);
-  ctx.strokeStyle = `rgba(248, 248, 248, ${outlineAlpha})`;
-  ctx.stroke(shape.path);
+  drawShapeGlyphs(shape, elapsedSeconds);
 
   ctx.restore();
 }
 
 function drawArtwork(time: number) {
   const elapsedSeconds = (time - cycleStartedAt) / 1000;
-  const cycleTime = ((elapsedSeconds % CYCLE_SECONDS) + CYCLE_SECONDS) % CYCLE_SECONDS;
 
   ctx.save();
   ctx.translate(fit.x, fit.y);
   ctx.scale(fit.scale, fit.scale);
 
   for (const shape of shapes) {
-    drawShape(shape, cycleTime, elapsedSeconds);
+    drawShape(shape, elapsedSeconds);
   }
 
   ctx.restore();
@@ -571,79 +482,6 @@ function render(time: number) {
 
   requestAnimationFrame(render);
 }
-
-function eventToArtworkPoint(event: PointerEvent) {
-  const rect = canvas.getBoundingClientRect();
-  const x = event.clientX - rect.left;
-  const y = event.clientY - rect.top;
-
-  return {
-    x: (x - fit.x) / fit.scale,
-    y: (y - fit.y) / fit.scale,
-  };
-}
-
-function distanceToBounds(x: number, y: number, bounds: ShapeBounds) {
-  const dx = Math.max(bounds.minX - x, 0, x - bounds.maxX);
-  const dy = Math.max(bounds.minY - y, 0, y - bounds.maxY);
-  return Math.hypot(dx, dy);
-}
-
-function findNearestShape(x: number, y: number) {
-  let bestShape: ArtworkShape | undefined;
-  let bestDistance = Number.POSITIVE_INFINITY;
-
-  for (const shape of shapes) {
-    const distance =
-      distanceToBounds(x, y, shape.bounds) +
-      Math.hypot(x - shape.cx, y - shape.cy) * 0.08;
-
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestShape = shape;
-    }
-  }
-
-  if (!bestShape || bestDistance > Math.max(85, bestShape.radius * 0.68)) {
-    return undefined;
-  }
-
-  return bestShape;
-}
-
-function updatePointer(event: PointerEvent) {
-  const point = eventToArtworkPoint(event);
-  pointerArtworkX = point.x;
-  pointerArtworkY = point.y;
-  hoveredShapeId = findNearestShape(point.x, point.y)?.id ?? -1;
-}
-
-canvas.addEventListener("pointermove", updatePointer);
-
-canvas.addEventListener("pointerdown", (event) => {
-  canvas.setPointerCapture(event.pointerId);
-  pointerIsDown = true;
-  updatePointer(event);
-
-  const nearest = findNearestShape(pointerArtworkX, pointerArtworkY);
-
-  if (nearest) {
-    computePropagation(nearest.id);
-    cycleStartedAt = performance.now() - 180;
-  }
-});
-
-canvas.addEventListener("pointerup", (event) => {
-  pointerIsDown = false;
-  canvas.releasePointerCapture(event.pointerId);
-});
-
-canvas.addEventListener("pointerleave", () => {
-  pointerArtworkX = Number.NaN;
-  pointerArtworkY = Number.NaN;
-  hoveredShapeId = -1;
-  pointerIsDown = false;
-});
 
 void loadArtwork().catch((error: unknown) => {
   loadError = error instanceof Error ? error.message : "Failed to load artwork.";
