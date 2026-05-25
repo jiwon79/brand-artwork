@@ -52,7 +52,6 @@ const ARTWORK_URL = new URL(
 ).href;
 
 const SVG_SIZE = 1339;
-const BASE_STROKE_WIDTH = 9;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -134,7 +133,6 @@ function makePathSample(
   length: number,
   centerX: number,
   centerY: number,
-  inset: number,
 ): PathSample {
   const point = metricPath.getPointAtLength(mod(distance, length));
   const before = metricPath.getPointAtLength(mod(distance - 2, length));
@@ -155,8 +153,8 @@ function makePathSample(
   }
 
   return {
-    x: point.x + normalX * inset,
-    y: point.y + normalY * inset,
+    x: point.x,
+    y: point.y,
     tx: unitX,
     ty: unitY,
     nx: normalX,
@@ -165,7 +163,7 @@ function makePathSample(
   };
 }
 
-function completeOffsetSamples(
+function completeMotionSamples(
   samples: PathSample[],
   centerX: number,
   centerY: number,
@@ -223,11 +221,9 @@ function measurePathMotion(
   measurementSvg: SVGSVGElement,
   d: string,
   bounds: ShapeBounds,
-  fontSize: number,
 ) {
   const metricPath = document.createElementNS(SVG_NS, "path");
   const center = centerOf(bounds);
-  const inset = fontSize * 1.05 + BASE_STROKE_WIDTH * 0.5;
 
   metricPath.setAttribute("d", d);
   measurementSvg.append(metricPath);
@@ -245,16 +241,15 @@ function measurePathMotion(
         length,
         center.x,
         center.y,
-        inset,
       ),
     );
   }
 
-  const offsetLength = completeOffsetSamples(samples, center.x, center.y);
+  const motionLength = completeMotionSamples(samples, center.x, center.y);
 
   metricPath.remove();
 
-  return { length: offsetLength, samples };
+  return { length: motionLength, samples };
 }
 
 async function loadArtwork() {
@@ -275,7 +270,7 @@ async function loadArtwork() {
     const center = centerOf(bounds);
     const radius = radiusOf(bounds);
     const fontSize = clamp(radius * 0.115, 13, 24);
-    const motion = measurePathMotion(measurementSvg, d, bounds, fontSize);
+    const motion = measurePathMotion(measurementSvg, d, bounds);
 
     return {
       id: index,
