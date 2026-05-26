@@ -1,4 +1,3 @@
-import GUI from "lil-gui";
 import {
   GOOGLE_COLORS,
   TOKENS,
@@ -94,17 +93,8 @@ const GLYPH_HIT_CENTER_RATIO = 0.46;
 const PATH_TOKEN_PATTERN = /[AaCcHhLlMmQqSsTtVvZz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi;
 const TWO_PI = Math.PI * 2;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-const FONT_STACKS: Record<string, string> = {
-  "Arial Black": '"Arial Black", Impact, sans-serif',
-  Impact: 'Impact, "Arial Black", sans-serif',
-  Helvetica: 'Helvetica, Arial, sans-serif',
-  Georgia: 'Georgia, "Times New Roman", serif',
-  "Courier New": '"Courier New", Courier, monospace',
-};
-const typography = {
-  fontScale: 1,
-  fontFamily: "Arial Black",
-};
+const FONT_SCALE = 1.2;
+const FONT_STACK = "Helvetica, Arial, sans-serif";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const errorEl = document.querySelector<HTMLDivElement>("#error");
@@ -354,7 +344,7 @@ function parseCornerGears(d: string, fontSize: number, center: Point) {
 
 function rebuildTypography() {
   for (const shape of shapes) {
-    shape.fontSize = clamp(shape.baseFontSize * typography.fontScale, 8, 96);
+    shape.fontSize = clamp(shape.baseFontSize * FONT_SCALE, 8, 96);
     shape.glyphs = buildCharacterBelt(
       TOKENS,
       shape.fontSize * 0.78,
@@ -677,7 +667,7 @@ function drawShapeGlyphs(
   const brushes = pendingPaintBrushes.length > 0 ? collectShapeBrushes(shape) : null;
 
   ctx.save();
-  ctx.font = `800 ${shape.fontSize}px ${FONT_STACKS[typography.fontFamily] ?? FONT_STACKS["Arial Black"]}`;
+  ctx.font = `800 ${shape.fontSize}px ${FONT_STACK}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   ctx.shadowBlur = 0;
@@ -786,20 +776,6 @@ function render(time: number) {
 
   requestAnimationFrame(render);
 }
-
-function initGui() {
-  const gui = new GUI({ title: "Type" });
-
-  gui.add(typography, "fontScale", 0.45, 2.4, 0.01)
-    .name("글자 크기")
-    .onChange(rebuildTypography);
-
-  gui.add(typography, "fontFamily", Object.keys(FONT_STACKS))
-    .name("글자 폰트")
-    .onChange(rebuildTypography);
-}
-
-initGui();
 
 canvas.addEventListener("pointerdown", startDragPaint);
 canvas.addEventListener("pointermove", moveDragPaint);
