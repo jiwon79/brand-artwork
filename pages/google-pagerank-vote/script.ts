@@ -1,7 +1,7 @@
 import {
   GOOGLE_COLORS,
   TOKENS,
-  buildCharacterBelt,
+  buildFittedCharacterBelt,
 } from "./core.js";
 
 type ShapeBounds = {
@@ -95,7 +95,7 @@ const TWO_PI = Math.PI * 2;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const FONT_SCALE = 1.2;
 const FONT_STACK = "Helvetica, Arial, sans-serif";
-const GLYPH_SPACING_RATIO = 1.12;
+const GLYPH_GAP_RATIO = 0.38;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const errorEl = document.querySelector<HTMLDivElement>("#error");
@@ -343,14 +343,34 @@ function parseCornerGears(d: string, fontSize: number, center: Point) {
   return gears;
 }
 
+function measureTokenCharacterWidths(tokens: readonly string[], fontSize: number) {
+  const widths: Record<string, number> = {};
+
+  ctx.save();
+  ctx.font = `800 ${fontSize}px ${FONT_STACK}`;
+
+  for (const token of tokens) {
+    for (const char of String(token).replace(/\s+/g, "")) {
+      if (widths[char] === undefined) {
+        widths[char] = ctx.measureText(char).width;
+      }
+    }
+  }
+
+  ctx.restore();
+  return widths;
+}
+
 function rebuildTypography() {
   for (const shape of shapes) {
     shape.fontSize = clamp(shape.baseFontSize * FONT_SCALE, 8, 96);
-    shape.glyphs = buildCharacterBelt(
+    const charWidths = measureTokenCharacterWidths(TOKENS, shape.fontSize);
+    shape.glyphs = buildFittedCharacterBelt(
       TOKENS,
-      shape.fontSize * GLYPH_SPACING_RATIO,
-      shape.length + shape.fontSize * 2,
+      charWidths,
+      shape.length,
       shape.id * 2,
+      shape.fontSize * GLYPH_GAP_RATIO,
     );
     shape.gears = parseCornerGears(shape.d, shape.fontSize, { x: shape.cx, y: shape.cy });
   }

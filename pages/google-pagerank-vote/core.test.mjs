@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildCharacterBelt,
+  buildFittedCharacterBelt,
   buildContactGraph,
   createGoogleGMask,
   createPropagationSchedule,
@@ -56,6 +57,26 @@ test('character belt breaks tokens into individually spaced glyphs', () => {
   assert.equal(belt[1].distance, 12);
   assert.equal(belt[2].distance, 24);
   assert.equal(belt[3].distance, 36);
+});
+
+test('fitted character belt spaces measured glyphs across the whole loop', () => {
+  const widths = { W: 20, I: 4, D: 14, E: 12 };
+  const belt = buildFittedCharacterBelt(['WIDE'], widths, 86, 0, 6);
+
+  assert.equal(belt.length, 3);
+  assert.deepEqual(
+    belt.map((glyph) => glyph.char),
+    ['W', 'I', 'D'],
+  );
+
+  const gaps = belt.map((glyph, index) => {
+    const next = belt[(index + 1) % belt.length];
+    return index === belt.length - 1
+      ? 86 - glyph.distance + next.distance
+      : next.distance - glyph.distance;
+  });
+
+  assert.equal(gaps.every((gap) => gap >= widths.W + 6), true);
 });
 
 test('drag brush colors touched glyphs and overwrites previous paint', () => {

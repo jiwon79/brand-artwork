@@ -31,6 +31,46 @@ export function buildCharacterBelt(tokens, charSpacing, beltLength, tokenOffset 
   return glyphs;
 }
 
+export function buildFittedCharacterBelt(tokens, charWidths, beltLength, tokenOffset = 0, minGap = 0) {
+  const cleanTokens = tokens
+    .map((token) => String(token).replace(/\s+/g, ''))
+    .filter((token) => token.length > 0);
+  const glyphs = [];
+
+  if (cleanTokens.length === 0 || beltLength <= 0) return glyphs;
+
+  const widthFor = typeof charWidths === 'function'
+    ? charWidths
+    : (char) => charWidths?.[char] ?? 0;
+  const uniqueChars = Array.from(new Set(cleanTokens.join('')));
+  const maxCharWidth = uniqueChars.reduce(
+    (maxWidth, char) => Math.max(maxWidth, Number(widthFor(char)) || 0),
+    0,
+  );
+  const minSpacing = Math.max(1, maxCharWidth + Math.max(0, minGap));
+  const glyphCount = Math.max(1, Math.floor(beltLength / minSpacing));
+  const spacing = beltLength / glyphCount;
+
+  let tokenCursor = 0;
+  while (glyphs.length < glyphCount) {
+    const tokenIndex = mod(tokenOffset + tokenCursor, cleanTokens.length);
+    const token = cleanTokens[tokenIndex];
+
+    for (let charIndex = 0; charIndex < token.length && glyphs.length < glyphCount; charIndex++) {
+      glyphs.push({
+        char: token[charIndex],
+        distance: glyphs.length * spacing,
+        tokenIndex,
+        charIndex,
+      });
+    }
+
+    tokenCursor++;
+  }
+
+  return glyphs;
+}
+
 export function paintGlyphsInBrush(glyphs, positions, brush) {
   if (!brush || brush.radius <= 0 || !brush.color) return 0;
 
