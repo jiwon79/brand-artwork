@@ -41,7 +41,7 @@ export function paintGlyphsInBrush(glyphs, positions, brush) {
     const glyph = glyphs[index];
     const position = positions[index];
 
-    if (!glyph || !position || glyph.paintColor) continue;
+    if (!glyph || !position) continue;
 
     const dx = position.x - brush.x;
     const dy = position.y - brush.y;

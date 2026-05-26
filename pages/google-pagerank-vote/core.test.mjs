@@ -58,7 +58,7 @@ test('character belt breaks tokens into individually spaced glyphs', () => {
   assert.equal(belt[3].distance, 36);
 });
 
-test('drag brush colors only touched glyphs and keeps that color on the glyph', () => {
+test('drag brush colors touched glyphs and overwrites previous paint', () => {
   const belt = buildCharacterBelt(['LINK'], 12, 60);
   const positions = [
     { x: 10, y: 10 },
@@ -85,7 +85,7 @@ test('drag brush colors only touched glyphs and keeps that color on the glyph', 
     { x: 10, y: 10, radius: 9, color: '#EA4335' },
   );
 
-  assert.equal(repainted, 0);
-  assert.equal(belt[0].paintColor, '#4285F4');
-  assert.equal(belt[1].paintColor, '#4285F4');
+  assert.equal(repainted, 2);
+  assert.equal(belt[0].paintColor, '#EA4335');
+  assert.equal(belt[1].paintColor, '#EA4335');
 });

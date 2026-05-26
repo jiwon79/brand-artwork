@@ -2,7 +2,6 @@ import {
   GOOGLE_COLORS,
   TOKENS,
   buildCharacterBelt,
-  paintGlyphsInBrush,
 } from "./core.js";
 
 type ShapeBounds = {
@@ -85,6 +84,8 @@ const MIN_TANGENT_WINDOW = 3;
 const MAX_TANGENT_WINDOW = 12;
 const PAINT_BRUSH_RADIUS_PX = 36;
 const PAINT_STROKE_STEP_RATIO = 0.42;
+const MAX_STROKE_SAMPLES_PER_EVENT = 18;
+const MAX_PENDING_PAINT_BRUSHES = 180;
 const GLYPH_HIT_CENTER_RATIO = 0.46;
 const PATH_TOKEN_PATTERN = /[AaCcHhLlMmQqSsTtVvZz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi;
 const TWO_PI = Math.PI * 2;
@@ -111,6 +112,8 @@ let artworkLoaded = false;
 let loadError = "";
 let paintStrokeIndex = 0;
 let dragPaint: DragPaint | null = null;
+const pendingPaintBrushes: PaintBrush[] = [];
+const shapeBrushes: PaintBrush[] = [];
 
 function centerOf(bounds: ShapeBounds) {
   return {
@@ -453,10 +456,6 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   };
 }
 
-function elapsedSecondsAt(time = performance.now()) {
-  return (time - cycleStartedAt) / 1000;
-}
-
 function glyphDistanceForShape(
   shape: ArtworkShape,
   glyph: BeltGlyph,
@@ -467,25 +466,6 @@ function glyphDistanceForShape(
     : elapsedSeconds * shape.speed * 0.92 * shape.direction;
 
   return glyph.distance + shape.textPhase + motion;
-}
-
-function glyphHitCenter(shape: ArtworkShape, glyph: BeltGlyph, elapsedSeconds: number) {
-  const point = pointAtShape(
-    shape,
-    glyphDistanceForShape(shape, glyph, elapsedSeconds),
-  );
-
-  return {
-    x: point.x - point.nx * shape.fontSize * GLYPH_HIT_CENTER_RATIO,
-    y: point.y - point.ny * shape.fontSize * GLYPH_HIT_CENTER_RATIO,
-  };
-}
-
-function paintAtBrush(brush: PaintBrush, elapsedSeconds: number) {
-  for (const shape of shapes) {
-    const positions = shape.glyphs.map((glyph) => glyphHitCenter(shape, glyph, elapsedSeconds));
-    paintGlyphsInBrush(shape.glyphs, positions, brush);
-  }
 }
 
 function pointerToArtworkPoint(event: PointerEvent) {
@@ -510,23 +490,60 @@ function createPaintBrush(point: Point, color: string): PaintBrush {
   };
 }
 
-function paintStrokeBetween(from: Point, to: Point, color: string) {
-  const elapsedSeconds = elapsedSecondsAt();
+function queuePaintBrush(brush: PaintBrush) {
+  pendingPaintBrushes.push(brush);
+
+  if (pendingPaintBrushes.length > MAX_PENDING_PAINT_BRUSHES) {
+    pendingPaintBrushes.splice(0, pendingPaintBrushes.length - MAX_PENDING_PAINT_BRUSHES);
+  }
+}
+
+function queuePaintStroke(from: Point, to: Point, color: string) {
   const radius = PAINT_BRUSH_RADIUS_PX / Math.max(0.001, fit.scale);
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
-  const steps = Math.max(1, Math.ceil(distance / Math.max(1, radius * PAINT_STROKE_STEP_RATIO)));
+  const steps = Math.min(
+    MAX_STROKE_SAMPLES_PER_EVENT,
+    Math.max(1, Math.ceil(distance / Math.max(1, radius * PAINT_STROKE_STEP_RATIO))),
+  );
 
   for (let step = 1; step <= steps; step++) {
     const t = step / steps;
-    paintAtBrush(
-      {
-        x: from.x + (to.x - from.x) * t,
-        y: from.y + (to.y - from.y) * t,
-        radius,
-        color,
-      },
-      elapsedSeconds,
-    );
+    queuePaintBrush({
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t,
+      radius,
+      color,
+    });
+  }
+}
+
+function collectShapeBrushes(shape: ArtworkShape) {
+  shapeBrushes.length = 0;
+
+  for (const brush of pendingPaintBrushes) {
+    const reach = brush.radius + shape.fontSize;
+
+    if (
+      brush.x + reach >= shape.bounds.minX &&
+      brush.x - reach <= shape.bounds.maxX &&
+      brush.y + reach >= shape.bounds.minY &&
+      brush.y - reach <= shape.bounds.maxY
+    ) {
+      shapeBrushes.push(brush);
+    }
+  }
+
+  return shapeBrushes;
+}
+
+function paintGlyphAtPoint(glyph: BeltGlyph, x: number, y: number, brushes: PaintBrush[]) {
+  for (const brush of brushes) {
+    const dx = x - brush.x;
+    const dy = y - brush.y;
+
+    if (dx * dx + dy * dy <= brush.radius * brush.radius) {
+      glyph.paintColor = brush.color;
+    }
   }
 }
 
@@ -542,7 +559,7 @@ function startDragPaint(event: PointerEvent) {
     pointerId: event.pointerId,
   };
   canvas.setPointerCapture(event.pointerId);
-  paintAtBrush(dragPaint, elapsedSecondsAt());
+  queuePaintBrush({ ...dragPaint });
 }
 
 function moveDragPaint(event: PointerEvent) {
@@ -552,7 +569,7 @@ function moveDragPaint(event: PointerEvent) {
   if (!point) return;
 
   event.preventDefault();
-  paintStrokeBetween(dragPaint, point, dragPaint.color);
+  queuePaintStroke(dragPaint, point, dragPaint.color);
   dragPaint.x = point.x;
   dragPaint.y = point.y;
   dragPaint.radius = PAINT_BRUSH_RADIUS_PX / Math.max(0.001, fit.scale);
@@ -602,6 +619,8 @@ function drawShapeGlyphs(
   shape: ArtworkShape,
   elapsedSeconds: number,
 ) {
+  const brushes = pendingPaintBrushes.length > 0 ? collectShapeBrushes(shape) : null;
+
   ctx.save();
   ctx.font = `800 ${shape.fontSize}px "Arial Black", Impact, sans-serif`;
   ctx.textAlign = "center";
@@ -610,6 +629,15 @@ function drawShapeGlyphs(
 
   for (const glyph of shape.glyphs) {
     const point = pointAtShape(shape, glyphDistanceForShape(shape, glyph, elapsedSeconds));
+
+    if (brushes && brushes.length > 0) {
+      paintGlyphAtPoint(
+        glyph,
+        point.x - point.nx * shape.fontSize * GLYPH_HIT_CENTER_RATIO,
+        point.y - point.ny * shape.fontSize * GLYPH_HIT_CENTER_RATIO,
+        brushes,
+      );
+    }
 
     ctx.save();
     ctx.transform(point.tx, point.ty, point.nx, point.ny, point.x, point.y);
@@ -620,6 +648,35 @@ function drawShapeGlyphs(
     ctx.restore();
   }
 
+  ctx.restore();
+}
+
+function drawTouchIndicator(time: number) {
+  if (!dragPaint) return;
+
+  const pulse = reduceMotionQuery.matches
+    ? 0
+    : Math.sin(time * 0.012) * (2 / Math.max(0.001, fit.scale));
+
+  ctx.save();
+  ctx.translate(fit.x, fit.y);
+  ctx.scale(fit.scale, fit.scale);
+  ctx.globalAlpha = 0.24;
+  ctx.fillStyle = dragPaint.color;
+  ctx.beginPath();
+  ctx.arc(dragPaint.x, dragPaint.y, dragPaint.radius + pulse, 0, TWO_PI);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.96;
+  ctx.strokeStyle = dragPaint.color;
+  ctx.lineWidth = 2.4 / Math.max(0.001, fit.scale);
+  ctx.setLineDash([
+    8 / Math.max(0.001, fit.scale),
+    6 / Math.max(0.001, fit.scale),
+  ]);
+  ctx.beginPath();
+  ctx.arc(dragPaint.x, dragPaint.y, dragPaint.radius + pulse, 0, TWO_PI);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -683,6 +740,8 @@ function drawArtwork(time: number) {
     drawShape(shape, elapsedSeconds);
   }
 
+  pendingPaintBrushes.length = 0;
+
   ctx.restore();
 }
 
@@ -702,6 +761,7 @@ function render(time: number) {
 
     if (artworkLoaded) {
       drawArtwork(time);
+      drawTouchIndicator(time);
     } else {
       drawLoading(width, height);
     }
