@@ -95,6 +95,7 @@ const TWO_PI = Math.PI * 2;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const FONT_SCALE = 1.2;
 const FONT_STACK = "Helvetica, Arial, sans-serif";
+const GLYPH_SPACING_RATIO = 1.12;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const errorEl = document.querySelector<HTMLDivElement>("#error");
@@ -347,7 +348,7 @@ function rebuildTypography() {
     shape.fontSize = clamp(shape.baseFontSize * FONT_SCALE, 8, 96);
     shape.glyphs = buildCharacterBelt(
       TOKENS,
-      shape.fontSize * 0.78,
+      shape.fontSize * GLYPH_SPACING_RATIO,
       shape.length + shape.fontSize * 2,
       shape.id * 2,
     );
