@@ -39,7 +39,6 @@ type PathSample = {
 
 type ArtworkShape = {
   id: number;
-  metricPath: SVGPathElement;
   d: string;
   bounds: ShapeBounds;
   cx: number;
@@ -51,6 +50,7 @@ type ArtworkShape = {
   baseFontSize: number;
   glyphs: BeltGlyph[];
   fontSize: number;
+  samples: PathSample[];
   textPhase: number;
   gears: GearPoint[];
 };
@@ -96,6 +96,10 @@ const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const FONT_SCALE = 1.2;
 const FONT_STACK = "Helvetica, Arial, sans-serif";
 const GLYPH_GAP_RATIO = 0.38;
+const PATH_SAMPLE_SPACING = 2.2;
+const MIN_PATH_SAMPLE_COUNT = 96;
+const MAX_PATH_SAMPLE_COUNT = 960;
+const GRAIN_TILE_SIZE = 192;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const errorEl = document.querySelector<HTMLDivElement>("#error");
@@ -125,6 +129,10 @@ let artworkLoaded = false;
 let loadError = "";
 let paintStrokeIndex = 0;
 let dragPaint: DragPaint | null = null;
+let fitDirty = true;
+let lastCanvasCssWidth = 0;
+let lastCanvasCssHeight = 0;
+let grainTile: HTMLCanvasElement | null = null;
 const pendingPaintBrushes: PaintBrush[] = [];
 const shapeBrushes: PaintBrush[] = [];
 
@@ -193,6 +201,58 @@ function measurePathMotion(
       maxY: bounds.y + bounds.height,
     },
   };
+}
+
+function createPathSamples(
+  metricPath: SVGPathElement,
+  length: number,
+  center: Point,
+  fontSize: number,
+) {
+  const sampleCount = clamp(
+    Math.ceil(length / PATH_SAMPLE_SPACING),
+    MIN_PATH_SAMPLE_COUNT,
+    MAX_PATH_SAMPLE_COUNT,
+  );
+  const tangentWindow = clamp(
+    fontSize * TANGENT_WINDOW_RATIO,
+    MIN_TANGENT_WINDOW,
+    Math.min(MAX_TANGENT_WINDOW, length * 0.08),
+  );
+  const samples: PathSample[] = [];
+
+  for (let index = 0; index < sampleCount; index++) {
+    const distance = (length * index) / sampleCount;
+    const point = metricPath.getPointAtLength(distance);
+    const before = metricPath.getPointAtLength(mod(distance - tangentWindow, length));
+    const after = metricPath.getPointAtLength(mod(distance + tangentWindow, length));
+    let tangent = normalizeVector(after.x - before.x, after.y - before.y, 1, 0);
+    let normalX = -tangent.y;
+    let normalY = tangent.x;
+    const insideX = center.x - point.x;
+    const insideY = center.y - point.y;
+
+    if (normalX * insideX + normalY * insideY < 0) {
+      normalX *= -1;
+      normalY *= -1;
+      tangent = {
+        x: -tangent.x,
+        y: -tangent.y,
+      };
+    }
+
+    samples.push({
+      x: point.x,
+      y: point.y,
+      tx: tangent.x,
+      ty: tangent.y,
+      nx: normalX,
+      ny: normalY,
+      distance,
+    });
+  }
+
+  return samples;
 }
 
 function cubicPoint(start: Point, controlA: Point, controlB: Point, end: Point, t: number) {
@@ -396,10 +456,10 @@ async function loadArtwork() {
     const center = centerOf(bounds);
     const radius = radiusOf(bounds);
     const fontSize = clamp(radius * 0.145, 17, 31);
+    const samples = createPathSamples(motion.metricPath, motion.length, center, fontSize);
 
     return {
       id: index,
-      metricPath: motion.metricPath,
       d,
       bounds,
       cx: center.x,
@@ -411,24 +471,43 @@ async function loadArtwork() {
       baseFontSize: fontSize,
       glyphs: [],
       fontSize,
+      samples,
       textPhase: (index * 53) % motion.length,
       gears: [],
     };
   });
+
+  measurementSvg.remove();
 
   if (shapes.length === 0) {
     throw new Error("Figma artwork does not contain polygon stroke paths.");
   }
 
   rebuildTypography();
+  fitDirty = true;
   artworkLoaded = true;
 }
 
 function resizeCanvas() {
-  const bounds = canvas.getBoundingClientRect();
+  const cssWidth = Math.max(1, canvas.clientWidth);
+  const cssHeight = Math.max(1, canvas.clientHeight);
   const nextRatio = Math.min(window.devicePixelRatio || 1, 2);
-  const nextWidth = Math.max(1, Math.round(bounds.width * nextRatio));
-  const nextHeight = Math.max(1, Math.round(bounds.height * nextRatio));
+  const nextWidth = Math.max(1, Math.round(cssWidth * nextRatio));
+  const nextHeight = Math.max(1, Math.round(cssHeight * nextRatio));
+
+  if (
+    !fitDirty &&
+    lastCanvasCssWidth === cssWidth &&
+    lastCanvasCssHeight === cssHeight &&
+    pixelRatio === nextRatio &&
+    canvas.width === nextWidth &&
+    canvas.height === nextHeight
+  ) {
+    return;
+  }
+
+  lastCanvasCssWidth = cssWidth;
+  lastCanvasCssHeight = cssHeight;
 
   if (
     canvas.width !== nextWidth ||
@@ -457,6 +536,7 @@ function resizeCanvas() {
     x: (width - artworkSize.width * scale) / 2,
     y: (height - artworkSize.height * scale) / 2,
   };
+  fitDirty = false;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -479,45 +559,34 @@ function normalizeVector(x: number, y: number, fallbackX: number, fallbackY: num
 
 function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   const target = mod(distance, shape.length);
-  const point = shape.metricPath.getPointAtLength(target);
-  const tangentWindow = clamp(
-    shape.fontSize * TANGENT_WINDOW_RATIO,
-    MIN_TANGENT_WINDOW,
-    Math.min(MAX_TANGENT_WINDOW, shape.length * 0.08),
+  const samples = shape.samples;
+  const sampleCount = samples.length;
+  const samplePosition = (target / shape.length) * sampleCount;
+  const index = Math.floor(samplePosition) % sampleCount;
+  const nextIndex = (index + 1) % sampleCount;
+  const amount = samplePosition - Math.floor(samplePosition);
+  const current = samples[index];
+  const next = samples[nextIndex];
+  const tangent = normalizeVector(
+    current.tx + (next.tx - current.tx) * amount,
+    current.ty + (next.ty - current.ty) * amount,
+    current.tx,
+    current.ty,
   );
-  const before = shape.metricPath.getPointAtLength(
-    mod(target - tangentWindow, shape.length),
+  const normal = normalizeVector(
+    current.nx + (next.nx - current.nx) * amount,
+    current.ny + (next.ny - current.ny) * amount,
+    current.nx,
+    current.ny,
   );
-  const after = shape.metricPath.getPointAtLength(
-    mod(target + tangentWindow, shape.length),
-  );
-  let tangent = normalizeVector(
-    after.x - before.x,
-    after.y - before.y,
-    1,
-    0,
-  );
-  let normalX = -tangent.y;
-  let normalY = tangent.x;
-  const insideX = shape.cx - point.x;
-  const insideY = shape.cy - point.y;
-
-  if (normalX * insideX + normalY * insideY < 0) {
-    normalX *= -1;
-    normalY *= -1;
-    tangent = {
-      x: -tangent.x,
-      y: -tangent.y,
-    };
-  }
 
   return {
-    x: point.x,
-    y: point.y,
+    x: current.x + (next.x - current.x) * amount,
+    y: current.y + (next.y - current.y) * amount,
     tx: tangent.x,
     ty: tangent.y,
-    nx: normalX,
-    ny: normalY,
+    nx: normal.x,
+    ny: normal.y,
     distance: target,
   };
 }
@@ -651,24 +720,54 @@ function stopDragPaint(event: PointerEvent) {
   dragPaint = null;
 }
 
+function getGrainTile() {
+  if (grainTile) return grainTile;
+
+  grainTile = document.createElement("canvas");
+  grainTile.width = GRAIN_TILE_SIZE;
+  grainTile.height = GRAIN_TILE_SIZE;
+
+  const tileCtx = grainTile.getContext("2d");
+  if (!tileCtx) return grainTile;
+
+  tileCtx.clearRect(0, 0, GRAIN_TILE_SIZE, GRAIN_TILE_SIZE);
+
+  for (let y = 0; y < GRAIN_TILE_SIZE; y += 4) {
+    tileCtx.fillStyle = "rgba(255, 255, 255, 0.018)";
+    tileCtx.fillRect(0, y, GRAIN_TILE_SIZE, 1);
+  }
+
+  for (let index = 0; index < 1550; index++) {
+    const x = (index * 73 + index * index * 19) % GRAIN_TILE_SIZE;
+    const y = (index * 47 + index * index * 29) % GRAIN_TILE_SIZE;
+    const alpha = 0.015 + ((index * 37) % 100) / 8000;
+
+    tileCtx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+    tileCtx.fillRect(x, y, 1, 1);
+  }
+
+  return grainTile;
+}
+
 function drawBackground(width: number, height: number, time: number) {
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   ctx.fillStyle = "#030303";
   ctx.fillRect(0, 0, width, height);
 
-  const grainStep = 3;
-  const grainAlpha = reduceMotionQuery.matches ? 0.018 : 0.025;
-  ctx.fillStyle = `rgba(255, 255, 255, ${grainAlpha})`;
+  const tile = getGrainTile();
+  const driftX = reduceMotionQuery.matches ? 0 : -Math.floor(time * 0.013) % GRAIN_TILE_SIZE;
+  const driftY = reduceMotionQuery.matches ? 0 : -Math.floor(time * 0.019) % GRAIN_TILE_SIZE;
 
-  for (let y = (Math.floor(time * 19) % grainStep) - grainStep; y < height; y += grainStep) {
-    for (let x = (Math.floor(time * 13) % grainStep) - grainStep; x < width; x += grainStep) {
-      const value = Math.sin(x * 11.7 + y * 5.3 + time * 0.001);
+  ctx.save();
+  ctx.globalAlpha = reduceMotionQuery.matches ? 0.52 : 0.72;
 
-      if (value > 0.72) {
-        ctx.fillRect(x, y, 1, 1);
-      }
+  for (let y = driftY - GRAIN_TILE_SIZE; y < height + GRAIN_TILE_SIZE; y += GRAIN_TILE_SIZE) {
+    for (let x = driftX - GRAIN_TILE_SIZE; x < width + GRAIN_TILE_SIZE; x += GRAIN_TILE_SIZE) {
+      ctx.drawImage(tile, x, y);
     }
   }
+
+  ctx.restore();
 }
 
 function drawLoading(width: number, height: number) {
@@ -705,13 +804,18 @@ function drawShapeGlyphs(
       );
     }
 
-    ctx.save();
-    ctx.transform(point.tx, point.ty, point.nx, point.ny, point.x, point.y);
+    ctx.setTransform(
+      pixelRatio * fit.scale * point.tx,
+      pixelRatio * fit.scale * point.ty,
+      pixelRatio * fit.scale * point.nx,
+      pixelRatio * fit.scale * point.ny,
+      pixelRatio * (fit.x + point.x * fit.scale),
+      pixelRatio * (fit.y + point.y * fit.scale),
+    );
     ctx.fillStyle = glyph.paintColor ?? "rgba(248, 248, 248, 0.84)";
     ctx.shadowColor = glyph.paintColor ?? "transparent";
     ctx.shadowBlur = glyph.paintColor ? Math.max(1.5, shape.fontSize * 0.1) : 0;
     ctx.fillText(glyph.char, 0, 0);
-    ctx.restore();
   }
 
   ctx.restore();
@@ -740,22 +844,14 @@ function drawGear(gear: GearPoint, shape: ArtworkShape, elapsedSeconds: number) 
 }
 
 function drawShapeGears(shape: ArtworkShape, elapsedSeconds: number) {
-  ctx.save();
-
   for (const gear of shape.gears) {
     drawGear(gear, shape, elapsedSeconds);
   }
-
-  ctx.restore();
 }
 
 function drawShape(shape: ArtworkShape, elapsedSeconds: number) {
-  ctx.save();
-
   drawShapeGears(shape, elapsedSeconds);
   drawShapeGlyphs(shape, elapsedSeconds);
-
-  ctx.restore();
 }
 
 function drawArtwork(time: number) {
