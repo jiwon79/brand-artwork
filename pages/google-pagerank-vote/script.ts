@@ -1,4 +1,9 @@
-import { TOKENS, buildCharacterBelt } from "./core.js";
+import {
+  GOOGLE_COLORS,
+  TOKENS,
+  buildCharacterBelt,
+  paintGlyphsInBrush,
+} from "./core.js";
 
 type ShapeBounds = {
   minX: number;
@@ -10,6 +15,7 @@ type ShapeBounds = {
 type BeltGlyph = {
   char: string;
   distance: number;
+  paintColor?: string;
 };
 
 type Point = {
@@ -56,6 +62,17 @@ type FitTransform = {
   size: number;
 };
 
+type PaintBrush = {
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+};
+
+type DragPaint = PaintBrush & {
+  pointerId: number;
+};
+
 const ARTWORK_URL = new URL(
   "./assets/figma-g-polygon-reference.svg",
   import.meta.url,
@@ -66,6 +83,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const TANGENT_WINDOW_RATIO = 0.42;
 const MIN_TANGENT_WINDOW = 3;
 const MAX_TANGENT_WINDOW = 12;
+const PAINT_BRUSH_RADIUS_PX = 36;
+const PAINT_STROKE_STEP_RATIO = 0.42;
+const GLYPH_HIT_CENTER_RATIO = 0.46;
 const PATH_TOKEN_PATTERN = /[AaCcHhLlMmQqSsTtVvZz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi;
 const TWO_PI = Math.PI * 2;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -89,6 +109,8 @@ let fit: FitTransform = { x: 0, y: 0, scale: 1, size: SVG_SIZE };
 let cycleStartedAt = performance.now();
 let artworkLoaded = false;
 let loadError = "";
+let paintStrokeIndex = 0;
+let dragPaint: DragPaint | null = null;
 
 function centerOf(bounds: ShapeBounds) {
   return {
@@ -431,6 +453,121 @@ function pointAtShape(shape: ArtworkShape, distance: number): PathSample {
   };
 }
 
+function elapsedSecondsAt(time = performance.now()) {
+  return (time - cycleStartedAt) / 1000;
+}
+
+function glyphDistanceForShape(
+  shape: ArtworkShape,
+  glyph: BeltGlyph,
+  elapsedSeconds: number,
+) {
+  const motion = reduceMotionQuery.matches
+    ? 0
+    : elapsedSeconds * shape.speed * 0.92 * shape.direction;
+
+  return glyph.distance + shape.textPhase + motion;
+}
+
+function glyphHitCenter(shape: ArtworkShape, glyph: BeltGlyph, elapsedSeconds: number) {
+  const point = pointAtShape(
+    shape,
+    glyphDistanceForShape(shape, glyph, elapsedSeconds),
+  );
+
+  return {
+    x: point.x - point.nx * shape.fontSize * GLYPH_HIT_CENTER_RATIO,
+    y: point.y - point.ny * shape.fontSize * GLYPH_HIT_CENTER_RATIO,
+  };
+}
+
+function paintAtBrush(brush: PaintBrush, elapsedSeconds: number) {
+  for (const shape of shapes) {
+    const positions = shape.glyphs.map((glyph) => glyphHitCenter(shape, glyph, elapsedSeconds));
+    paintGlyphsInBrush(shape.glyphs, positions, brush);
+  }
+}
+
+function pointerToArtworkPoint(event: PointerEvent) {
+  const bounds = canvas.getBoundingClientRect();
+  const x = event.clientX - bounds.left;
+  const y = event.clientY - bounds.top;
+
+  if (fit.scale <= 0) return null;
+
+  return {
+    x: (x - fit.x) / fit.scale,
+    y: (y - fit.y) / fit.scale,
+  };
+}
+
+function createPaintBrush(point: Point, color: string): PaintBrush {
+  return {
+    x: point.x,
+    y: point.y,
+    radius: PAINT_BRUSH_RADIUS_PX / Math.max(0.001, fit.scale),
+    color,
+  };
+}
+
+function paintStrokeBetween(from: Point, to: Point, color: string) {
+  const elapsedSeconds = elapsedSecondsAt();
+  const radius = PAINT_BRUSH_RADIUS_PX / Math.max(0.001, fit.scale);
+  const distance = Math.hypot(to.x - from.x, to.y - from.y);
+  const steps = Math.max(1, Math.ceil(distance / Math.max(1, radius * PAINT_STROKE_STEP_RATIO)));
+
+  for (let step = 1; step <= steps; step++) {
+    const t = step / steps;
+    paintAtBrush(
+      {
+        x: from.x + (to.x - from.x) * t,
+        y: from.y + (to.y - from.y) * t,
+        radius,
+        color,
+      },
+      elapsedSeconds,
+    );
+  }
+}
+
+function startDragPaint(event: PointerEvent) {
+  const point = pointerToArtworkPoint(event);
+  if (!point) return;
+
+  event.preventDefault();
+  const color = GOOGLE_COLORS[paintStrokeIndex % GOOGLE_COLORS.length];
+  paintStrokeIndex++;
+  dragPaint = {
+    ...createPaintBrush(point, color),
+    pointerId: event.pointerId,
+  };
+  canvas.setPointerCapture(event.pointerId);
+  paintAtBrush(dragPaint, elapsedSecondsAt());
+}
+
+function moveDragPaint(event: PointerEvent) {
+  if (!dragPaint || dragPaint.pointerId !== event.pointerId) return;
+
+  const point = pointerToArtworkPoint(event);
+  if (!point) return;
+
+  event.preventDefault();
+  paintStrokeBetween(dragPaint, point, dragPaint.color);
+  dragPaint.x = point.x;
+  dragPaint.y = point.y;
+  dragPaint.radius = PAINT_BRUSH_RADIUS_PX / Math.max(0.001, fit.scale);
+}
+
+function stopDragPaint(event: PointerEvent) {
+  if (!dragPaint || dragPaint.pointerId !== event.pointerId) return;
+
+  if (canvas.hasPointerCapture(event.pointerId)) {
+    canvas.releasePointerCapture(event.pointerId);
+  }
+
+  dragPaint = null;
+}
+
 function drawBackground(width: number, height: number, time: number) {
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   ctx.fillStyle = "#030303";
@@ -465,23 +602,20 @@ function drawShapeGlyphs(
   shape: ArtworkShape,
   elapsedSeconds: number,
 ) {
-  const reduced = reduceMotionQuery.matches;
-  const motion = reduced
-    ? 0
-    : elapsedSeconds * shape.speed * 0.92 * shape.direction;
-
   ctx.save();
   ctx.font = `800 ${shape.fontSize}px "Arial Black", Impact, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
-  ctx.fillStyle = "rgba(248, 248, 248, 0.84)";
   ctx.shadowBlur = 0;
 
   for (const glyph of shape.glyphs) {
-    const point = pointAtShape(shape, glyph.distance + shape.textPhase + motion);
+    const point = pointAtShape(shape, glyphDistanceForShape(shape, glyph, elapsedSeconds));
 
     ctx.save();
     ctx.transform(point.tx, point.ty, point.nx, point.ny, point.x, point.y);
+    ctx.fillStyle = glyph.paintColor ?? "rgba(248, 248, 248, 0.84)";
+    ctx.shadowColor = glyph.paintColor ?? "transparent";
+    ctx.shadowBlur = glyph.paintColor ? Math.max(1.5, shape.fontSize * 0.1) : 0;
     ctx.fillText(glyph.char, 0, 0);
     ctx.restore();
   }
@@ -575,6 +709,14 @@ function render(time: number) {
 
   requestAnimationFrame(render);
 }
+
+canvas.addEventListener("pointerdown", startDragPaint);
+canvas.addEventListener("pointermove", moveDragPaint);
+canvas.addEventListener("pointerup", stopDragPaint);
+canvas.addEventListener("pointercancel", stopDragPaint);
+canvas.addEventListener("lostpointercapture", () => {
+  dragPaint = null;
+});
 
 void loadArtwork().catch((error: unknown) => {
   loadError = error instanceof Error ? error.message : "Failed to load artwork.";

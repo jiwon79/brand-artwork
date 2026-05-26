@@ -31,6 +31,30 @@ export function buildCharacterBelt(tokens, charSpacing, beltLength, tokenOffset 
   return glyphs;
 }
 
+export function paintGlyphsInBrush(glyphs, positions, brush) {
+  if (!brush || brush.radius <= 0 || !brush.color) return 0;
+
+  const radiusSquared = brush.radius * brush.radius;
+  let painted = 0;
+
+  for (let index = 0; index < glyphs.length && index < positions.length; index++) {
+    const glyph = glyphs[index];
+    const position = positions[index];
+
+    if (!glyph || !position || glyph.paintColor) continue;
+
+    const dx = position.x - brush.x;
+    const dy = position.y - brush.y;
+
+    if (dx * dx + dy * dy <= radiusSquared) {
+      glyph.paintColor = brush.color;
+      painted++;
+    }
+  }
+
+  return painted;
+}
+
 export function createGoogleGMask(width, height) {
   const size = Math.min(width * 1.02, height * 0.86);
   const outer = size * 0.5;
