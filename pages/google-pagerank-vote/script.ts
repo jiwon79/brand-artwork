@@ -1,3 +1,4 @@
+import GUI from "lil-gui";
 import {
   GOOGLE_COLORS,
   TOKENS,
@@ -48,6 +49,7 @@ type ArtworkShape = {
   speed: number;
   direction: number;
   length: number;
+  baseFontSize: number;
   glyphs: BeltGlyph[];
   fontSize: number;
   textPhase: number;
@@ -58,7 +60,8 @@ type FitTransform = {
   x: number;
   y: number;
   scale: number;
-  size: number;
+  width: number;
+  height: number;
 };
 
 type PaintBrush = {
@@ -77,7 +80,8 @@ const ARTWORK_URL = new URL(
   import.meta.url,
 ).href;
 
-const SVG_SIZE = 1339;
+const DEFAULT_ARTWORK_WIDTH = 1339;
+const DEFAULT_ARTWORK_HEIGHT = 1339;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TANGENT_WINDOW_RATIO = 0.42;
 const MIN_TANGENT_WINDOW = 3;
@@ -90,6 +94,17 @@ const GLYPH_HIT_CENTER_RATIO = 0.46;
 const PATH_TOKEN_PATTERN = /[AaCcHhLlMmQqSsTtVvZz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi;
 const TWO_PI = Math.PI * 2;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const FONT_STACKS: Record<string, string> = {
+  "Arial Black": '"Arial Black", Impact, sans-serif',
+  Impact: 'Impact, "Arial Black", sans-serif',
+  Helvetica: 'Helvetica, Arial, sans-serif',
+  Georgia: 'Georgia, "Times New Roman", serif',
+  "Courier New": '"Courier New", Courier, monospace',
+};
+const typography = {
+  fontScale: 1,
+  fontFamily: "Arial Black",
+};
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const errorEl = document.querySelector<HTMLDivElement>("#error");
@@ -106,7 +121,14 @@ if (!ctx) {
 
 let pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 let shapes: ArtworkShape[] = [];
-let fit: FitTransform = { x: 0, y: 0, scale: 1, size: SVG_SIZE };
+let artworkSize = { width: DEFAULT_ARTWORK_WIDTH, height: DEFAULT_ARTWORK_HEIGHT };
+let fit: FitTransform = {
+  x: 0,
+  y: 0,
+  scale: 1,
+  width: DEFAULT_ARTWORK_WIDTH,
+  height: DEFAULT_ARTWORK_HEIGHT,
+};
 let cycleStartedAt = performance.now();
 let artworkLoaded = false;
 let loadError = "";
@@ -128,12 +150,12 @@ function radiusOf(bounds: ShapeBounds) {
   return Math.hypot(width, height) / 2;
 }
 
-function createMeasurementSvg() {
+function createMeasurementSvg(width: number, height: number) {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("width", "0");
   svg.setAttribute("height", "0");
   svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("viewBox", `0 0 ${SVG_SIZE} ${SVG_SIZE}`);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.style.position = "absolute";
   svg.style.width = "0";
   svg.style.height = "0";
@@ -141,6 +163,21 @@ function createMeasurementSvg() {
   svg.style.pointerEvents = "none";
   document.body.append(svg);
   return svg;
+}
+
+function parseArtworkSize(svg: SVGSVGElement) {
+  const viewBox = svg.getAttribute("viewBox")?.trim().split(/\s+/).map(Number);
+  const widthAttr = Number(svg.getAttribute("width"));
+  const heightAttr = Number(svg.getAttribute("height"));
+
+  if (viewBox?.length === 4 && viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[3] > 0) {
+    return { width: viewBox[2], height: viewBox[3] };
+  }
+
+  return {
+    width: Number.isFinite(widthAttr) && widthAttr > 0 ? widthAttr : DEFAULT_ARTWORK_WIDTH,
+    height: Number.isFinite(heightAttr) && heightAttr > 0 ? heightAttr : DEFAULT_ARTWORK_HEIGHT,
+  };
 }
 
 function measurePathMotion(
@@ -315,6 +352,19 @@ function parseCornerGears(d: string, fontSize: number, center: Point) {
   return gears;
 }
 
+function rebuildTypography() {
+  for (const shape of shapes) {
+    shape.fontSize = clamp(shape.baseFontSize * typography.fontScale, 8, 96);
+    shape.glyphs = buildCharacterBelt(
+      TOKENS,
+      shape.fontSize * 0.78,
+      shape.length + shape.fontSize * 2,
+      shape.id * 2,
+    );
+    shape.gears = parseCornerGears(shape.d, shape.fontSize, { x: shape.cx, y: shape.cy });
+  }
+}
+
 async function loadArtwork() {
   const response = await fetch(ARTWORK_URL);
 
@@ -324,8 +374,9 @@ async function loadArtwork() {
 
   const svgText = await response.text();
   const doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
+  artworkSize = parseArtworkSize(doc.documentElement as unknown as SVGSVGElement);
   const paths = Array.from(doc.querySelectorAll("path[stroke='#F8F8F8']"));
-  const measurementSvg = createMeasurementSvg();
+  const measurementSvg = createMeasurementSvg(artworkSize.width, artworkSize.height);
 
   shapes = paths.map((pathEl, index) => {
     const d = pathEl.getAttribute("d") ?? "";
@@ -346,15 +397,11 @@ async function loadArtwork() {
       speed: 32 + (index % 7) * 7,
       direction: index % 2 === 0 ? 1 : -1,
       length: motion.length,
-      glyphs: buildCharacterBelt(
-        TOKENS,
-        fontSize * 0.78,
-        motion.length + fontSize * 2,
-        index * 2,
-      ),
+      baseFontSize: fontSize,
+      glyphs: [],
       fontSize,
       textPhase: (index * 53) % motion.length,
-      gears: parseCornerGears(d, fontSize, center),
+      gears: [],
     };
   });
 
@@ -362,6 +409,7 @@ async function loadArtwork() {
     throw new Error("Figma artwork does not contain polygon stroke paths.");
   }
 
+  rebuildTypography();
   artworkLoaded = true;
 }
 
@@ -383,13 +431,20 @@ function resizeCanvas() {
 
   const width = canvas.width / pixelRatio;
   const height = canvas.height / pixelRatio;
-  const size = Math.min(width * 0.96, height * 0.74);
+  const isPortrait = height > width;
+  const marginX = isPortrait ? 1 : 0.94;
+  const marginY = isPortrait ? 0.98 : 0.92;
+  const scale = Math.min(
+    (width * marginX) / artworkSize.width,
+    (height * marginY) / artworkSize.height,
+  );
 
   fit = {
-    size,
-    scale: size / SVG_SIZE,
-    x: (width - size) / 2,
-    y: (height - size) / 2,
+    width: artworkSize.width,
+    height: artworkSize.height,
+    scale,
+    x: (width - artworkSize.width * scale) / 2,
+    y: (height - artworkSize.height * scale) / 2,
   };
 }
 
@@ -622,7 +677,7 @@ function drawShapeGlyphs(
   const brushes = pendingPaintBrushes.length > 0 ? collectShapeBrushes(shape) : null;
 
   ctx.save();
-  ctx.font = `800 ${shape.fontSize}px "Arial Black", Impact, sans-serif`;
+  ctx.font = `800 ${shape.fontSize}px ${FONT_STACKS[typography.fontFamily] ?? FONT_STACKS["Arial Black"]}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   ctx.shadowBlur = 0;
@@ -651,60 +706,23 @@ function drawShapeGlyphs(
   ctx.restore();
 }
 
-function drawTouchIndicator(time: number) {
-  if (!dragPaint) return;
-
-  const pulse = reduceMotionQuery.matches
-    ? 0
-    : Math.sin(time * 0.012) * (2 / Math.max(0.001, fit.scale));
-
-  ctx.save();
-  ctx.translate(fit.x, fit.y);
-  ctx.scale(fit.scale, fit.scale);
-  ctx.globalAlpha = 0.24;
-  ctx.fillStyle = dragPaint.color;
-  ctx.beginPath();
-  ctx.arc(dragPaint.x, dragPaint.y, dragPaint.radius + pulse, 0, TWO_PI);
-  ctx.fill();
-
-  ctx.globalAlpha = 0.96;
-  ctx.strokeStyle = dragPaint.color;
-  ctx.lineWidth = 2.4 / Math.max(0.001, fit.scale);
-  ctx.setLineDash([
-    8 / Math.max(0.001, fit.scale),
-    6 / Math.max(0.001, fit.scale),
-  ]);
-  ctx.beginPath();
-  ctx.arc(dragPaint.x, dragPaint.y, dragPaint.radius + pulse, 0, TWO_PI);
-  ctx.stroke();
-  ctx.restore();
-}
-
 function drawGear(gear: GearPoint, shape: ArtworkShape, elapsedSeconds: number) {
   const spin = reduceMotionQuery.matches
     ? gear.phase
     : gear.phase + (elapsedSeconds * shape.speed * shape.direction) / Math.max(1, gear.radius);
-  const dashLength = Math.max(2.2, gear.radius * 0.34);
-  const gapLength = Math.max(1.8, gear.radius * 0.24);
+  const dashLength = Math.max(4, gear.radius * 0.58);
+  const gapLength = Math.max(3, gear.radius * 0.34);
 
   ctx.save();
   ctx.translate(gear.x, gear.y);
   ctx.rotate(spin);
-  ctx.strokeStyle = "rgba(248, 248, 248, 0.98)";
+  ctx.strokeStyle = "rgba(248, 248, 248, 0.96)";
   ctx.lineCap = "round";
-  ctx.lineWidth = Math.max(2.5, gear.radius * 0.24);
+  ctx.lineWidth = Math.max(3.5, gear.radius * 0.24);
   ctx.setLineDash([dashLength, gapLength]);
 
   ctx.beginPath();
   ctx.arc(0, 0, gear.radius, 0, TWO_PI);
-  ctx.stroke();
-
-  ctx.rotate(-spin * 0.55);
-  ctx.strokeStyle = "rgba(248, 248, 248, 0.82)";
-  ctx.lineWidth = Math.max(1.8, gear.radius * 0.16);
-  ctx.setLineDash([dashLength * 0.72, gapLength * 1.25]);
-  ctx.beginPath();
-  ctx.arc(0, 0, gear.radius * 0.56, 0, TWO_PI);
   ctx.stroke();
 
   ctx.restore();
@@ -761,7 +779,6 @@ function render(time: number) {
 
     if (artworkLoaded) {
       drawArtwork(time);
-      drawTouchIndicator(time);
     } else {
       drawLoading(width, height);
     }
@@ -769,6 +786,20 @@ function render(time: number) {
 
   requestAnimationFrame(render);
 }
+
+function initGui() {
+  const gui = new GUI({ title: "Type" });
+
+  gui.add(typography, "fontScale", 0.45, 2.4, 0.01)
+    .name("글자 크기")
+    .onChange(rebuildTypography);
+
+  gui.add(typography, "fontFamily", Object.keys(FONT_STACKS))
+    .name("글자 폰트")
+    .onChange(rebuildTypography);
+}
+
+initGui();
 
 canvas.addEventListener("pointerdown", startDragPaint);
 canvas.addEventListener("pointermove", moveDragPaint);

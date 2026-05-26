@@ -26,8 +26,9 @@ body {
 
 #stage {
   position: relative;
-  width: min(100vw, calc(100dvh * 9 / 16));
-  height: min(100dvh, calc(100vw * 16 / 9));
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   background: #000;
   overflow: hidden;
   isolation: isolate;
@@ -77,4 +78,15 @@ body {
 
 #error.show {
   display: block;
+}
+
+.lil-gui.root {
+  --background-color: rgba(10, 10, 10, 0.92);
+  --text-color: #f8f8f8;
+  --title-background-color: rgba(30, 30, 30, 0.96);
+  --widget-color: rgba(248, 248, 248, 0.14);
+  --hover-color: rgba(248, 248, 248, 0.22);
+  --focus-color: rgba(66, 133, 244, 0.7);
+  cursor: default;
+  z-index: 10;
 }
