@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildCharacterBelt,
   buildFittedCharacterBelt,
-  buildFittedWordBelt,
+  buildGroupedWordCharacterBelt,
   buildContactGraph,
   createGoogleGMask,
   createPropagationSchedule,
@@ -80,23 +80,24 @@ test('fitted character belt spaces measured glyphs across the whole loop', () =>
   assert.equal(gaps.every((gap) => gap >= widths.W + 6), true);
 });
 
-test('fitted word belt keeps letters grouped and spaces words around the loop', () => {
-  const widths = { VOTE: 44, RANK: 48, WEB: 34 };
-  const belt = buildFittedWordBelt(['VOTE', 'RANK', 'WEB'], widths, 180, 0, 18);
+test('grouped word character belt keeps words close while rotating letters individually', () => {
+  const widths = { V: 12, O: 13, T: 10, E: 11, R: 12, A: 12, N: 13, K: 12, W: 16, B: 12 };
+  const belt = buildGroupedWordCharacterBelt(['VOTE', 'RANK', 'WEB'], widths, 200, 0, 1, 18);
 
   assert.deepEqual(
     belt.map((glyph) => glyph.char),
-    ['VOTE', 'RANK', 'WEB'],
+    ['V', 'O', 'T', 'E', 'R', 'A', 'N', 'K', 'W', 'E', 'B'],
   );
 
-  const firstStart = belt[0].distance - belt[0].width / 2;
-  const firstEnd = belt[0].distance + belt[0].width / 2;
-  const secondStart = belt[1].distance - belt[1].width / 2;
-  const lastEnd = belt[2].distance + belt[2].width / 2;
+  const firstWordStart = belt[0].distance - belt[0].width / 2;
+  const firstWordEnd = belt[3].distance + belt[3].width / 2;
+  const secondWordStart = belt[4].distance - belt[4].width / 2;
+  const lastWordEnd = belt[10].distance + belt[10].width / 2;
 
-  assert.equal(firstStart, 0);
-  assert.ok(secondStart - firstEnd >= 18);
-  assert.ok(180 - lastEnd + firstStart >= 18);
+  assert.equal(firstWordStart, 0);
+  assert.ok(belt[1].distance - belt[0].distance < 15);
+  assert.ok(secondWordStart - firstWordEnd >= 18);
+  assert.ok(200 - lastWordEnd + firstWordStart >= 18);
 });
 
 test('drag brush colors touched glyphs and overwrites previous paint', () => {

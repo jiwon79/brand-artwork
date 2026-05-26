@@ -1,7 +1,7 @@
 import {
   GOOGLE_COLORS,
   TOKENS,
-  buildFittedWordBelt,
+  buildGroupedWordCharacterBelt,
 } from "./core.js";
 
 type ShapeBounds = {
@@ -96,6 +96,7 @@ const TWO_PI = Math.PI * 2;
 const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const FONT_SCALE = 1.2;
 const FONT_STACK = "Helvetica, Arial, sans-serif";
+const LETTER_GAP_RATIO = 0.035;
 const WORD_GAP_RATIO = 0.85;
 const PATH_SAMPLE_SPACING = 2.2;
 const MIN_PATH_SAMPLE_COUNT = 96;
@@ -404,7 +405,7 @@ function parseCornerGears(d: string, fontSize: number, center: Point) {
   return gears;
 }
 
-function measureTokenWidths(tokens: readonly string[], fontSize: number) {
+function measureTokenCharacterWidths(tokens: readonly string[], fontSize: number) {
   const widths: Record<string, number> = {};
 
   ctx.save();
@@ -413,8 +414,10 @@ function measureTokenWidths(tokens: readonly string[], fontSize: number) {
   for (const token of tokens) {
     const word = String(token).replace(/\s+/g, "");
 
-    if (word && widths[word] === undefined) {
-      widths[word] = ctx.measureText(word).width;
+    for (const char of word) {
+      if (widths[char] === undefined) {
+        widths[char] = ctx.measureText(char).width;
+      }
     }
   }
 
@@ -425,12 +428,13 @@ function measureTokenWidths(tokens: readonly string[], fontSize: number) {
 function rebuildTypography() {
   for (const shape of shapes) {
     shape.fontSize = clamp(shape.baseFontSize * FONT_SCALE, 8, 96);
-    const wordWidths = measureTokenWidths(TOKENS, shape.fontSize);
-    shape.glyphs = buildFittedWordBelt(
+    const charWidths = measureTokenCharacterWidths(TOKENS, shape.fontSize);
+    shape.glyphs = buildGroupedWordCharacterBelt(
       TOKENS,
-      wordWidths,
+      charWidths,
       shape.length,
       shape.id * 2,
+      shape.fontSize * LETTER_GAP_RATIO,
       shape.fontSize * WORD_GAP_RATIO,
     );
     shape.gears = parseCornerGears(shape.d, shape.fontSize, { x: shape.cx, y: shape.cy });

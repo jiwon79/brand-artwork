@@ -71,7 +71,14 @@ export function buildFittedCharacterBelt(tokens, charWidths, beltLength, tokenOf
   return glyphs;
 }
 
-export function buildFittedWordBelt(tokens, wordWidths, beltLength, tokenOffset = 0, minGap = 0) {
+export function buildGroupedWordCharacterBelt(
+  tokens,
+  charWidths,
+  beltLength,
+  tokenOffset = 0,
+  letterGap = 0,
+  wordGap = 0,
+) {
   const cleanTokens = tokens
     .map((token) => String(token).replace(/\s+/g, ''))
     .filter((token) => token.length > 0);
@@ -79,9 +86,15 @@ export function buildFittedWordBelt(tokens, wordWidths, beltLength, tokenOffset 
 
   if (cleanTokens.length === 0 || beltLength <= 0) return glyphs;
 
-  const widthFor = typeof wordWidths === 'function'
-    ? wordWidths
-    : (word) => wordWidths?.[word] ?? 0;
+  const widthFor = typeof charWidths === 'function'
+    ? charWidths
+    : (char) => charWidths?.[char] ?? 0;
+  const normalizedLetterGap = Math.max(0, letterGap);
+  const normalizedWordGap = Math.max(0, wordGap);
+  const measureWord = (word) => Array.from(word).reduce(
+    (sum, char, index) => sum + Math.max(1, Number(widthFor(char)) || 0) + (index > 0 ? normalizedLetterGap : 0),
+    0,
+  );
   const words = [];
   let totalWidth = 0;
   let tokenCursor = 0;
@@ -89,9 +102,9 @@ export function buildFittedWordBelt(tokens, wordWidths, beltLength, tokenOffset 
   while (words.length < 1000) {
     const tokenIndex = mod(tokenOffset + tokenCursor, cleanTokens.length);
     const word = cleanTokens[tokenIndex];
-    const width = Math.max(1, Number(widthFor(word)) || 0);
+    const width = measureWord(word);
     const nextTotalWidth = totalWidth + width;
-    const nextRequiredLength = nextTotalWidth + (words.length + 1) * Math.max(0, minGap);
+    const nextRequiredLength = nextTotalWidth + (words.length + 1) * normalizedWordGap;
 
     if (words.length > 0 && nextRequiredLength > beltLength) break;
 
@@ -107,7 +120,7 @@ export function buildFittedWordBelt(tokens, wordWidths, beltLength, tokenOffset 
     const word = cleanTokens[tokenIndex];
     words.push({
       word,
-      width: Math.max(1, Number(widthFor(word)) || 0),
+      width: measureWord(word),
       tokenIndex,
     });
     totalWidth = words[0].width;
@@ -117,13 +130,23 @@ export function buildFittedWordBelt(tokens, wordWidths, beltLength, tokenOffset 
   let distance = 0;
 
   for (const word of words) {
-    glyphs.push({
-      char: word.word,
-      distance: distance + word.width / 2,
-      tokenIndex: word.tokenIndex,
-      charIndex: 0,
-      width: word.width,
-    });
+    let cursor = distance;
+
+    for (let charIndex = 0; charIndex < word.word.length; charIndex++) {
+      const char = word.word[charIndex];
+      const width = Math.max(1, Number(widthFor(char)) || 0);
+
+      glyphs.push({
+        char,
+        distance: cursor + width / 2,
+        tokenIndex: word.tokenIndex,
+        charIndex,
+        width,
+      });
+
+      cursor += width + normalizedLetterGap;
+    }
+
     distance += word.width + gap;
   }
 
