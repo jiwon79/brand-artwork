@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildCharacterBelt,
   buildFittedCharacterBelt,
+  buildFittedWordBelt,
   buildContactGraph,
   createGoogleGMask,
   createPropagationSchedule,
@@ -77,6 +78,25 @@ test('fitted character belt spaces measured glyphs across the whole loop', () =>
   });
 
   assert.equal(gaps.every((gap) => gap >= widths.W + 6), true);
+});
+
+test('fitted word belt keeps letters grouped and spaces words around the loop', () => {
+  const widths = { VOTE: 44, RANK: 48, WEB: 34 };
+  const belt = buildFittedWordBelt(['VOTE', 'RANK', 'WEB'], widths, 180, 0, 18);
+
+  assert.deepEqual(
+    belt.map((glyph) => glyph.char),
+    ['VOTE', 'RANK', 'WEB'],
+  );
+
+  const firstStart = belt[0].distance - belt[0].width / 2;
+  const firstEnd = belt[0].distance + belt[0].width / 2;
+  const secondStart = belt[1].distance - belt[1].width / 2;
+  const lastEnd = belt[2].distance + belt[2].width / 2;
+
+  assert.equal(firstStart, 0);
+  assert.ok(secondStart - firstEnd >= 18);
+  assert.ok(180 - lastEnd + firstStart >= 18);
 });
 
 test('drag brush colors touched glyphs and overwrites previous paint', () => {

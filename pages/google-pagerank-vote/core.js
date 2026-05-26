@@ -71,6 +71,65 @@ export function buildFittedCharacterBelt(tokens, charWidths, beltLength, tokenOf
   return glyphs;
 }
 
+export function buildFittedWordBelt(tokens, wordWidths, beltLength, tokenOffset = 0, minGap = 0) {
+  const cleanTokens = tokens
+    .map((token) => String(token).replace(/\s+/g, ''))
+    .filter((token) => token.length > 0);
+  const glyphs = [];
+
+  if (cleanTokens.length === 0 || beltLength <= 0) return glyphs;
+
+  const widthFor = typeof wordWidths === 'function'
+    ? wordWidths
+    : (word) => wordWidths?.[word] ?? 0;
+  const words = [];
+  let totalWidth = 0;
+  let tokenCursor = 0;
+
+  while (words.length < 1000) {
+    const tokenIndex = mod(tokenOffset + tokenCursor, cleanTokens.length);
+    const word = cleanTokens[tokenIndex];
+    const width = Math.max(1, Number(widthFor(word)) || 0);
+    const nextTotalWidth = totalWidth + width;
+    const nextRequiredLength = nextTotalWidth + (words.length + 1) * Math.max(0, minGap);
+
+    if (words.length > 0 && nextRequiredLength > beltLength) break;
+
+    words.push({ word, width, tokenIndex });
+    totalWidth = nextTotalWidth;
+    tokenCursor++;
+
+    if (nextRequiredLength >= beltLength) break;
+  }
+
+  if (words.length === 0) {
+    const tokenIndex = mod(tokenOffset, cleanTokens.length);
+    const word = cleanTokens[tokenIndex];
+    words.push({
+      word,
+      width: Math.max(1, Number(widthFor(word)) || 0),
+      tokenIndex,
+    });
+    totalWidth = words[0].width;
+  }
+
+  const gap = Math.max(0, (beltLength - totalWidth) / words.length);
+  let distance = 0;
+
+  for (const word of words) {
+    glyphs.push({
+      char: word.word,
+      distance: distance + word.width / 2,
+      tokenIndex: word.tokenIndex,
+      charIndex: 0,
+      width: word.width,
+    });
+    distance += word.width + gap;
+  }
+
+  return glyphs;
+}
+
 export function paintGlyphsInBrush(glyphs, positions, brush) {
   if (!brush || brush.radius <= 0 || !brush.color) return 0;
 
