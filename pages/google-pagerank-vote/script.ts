@@ -98,6 +98,7 @@ const FONT_SCALE = 1.2;
 const FONT_STACK = "Helvetica, Arial, sans-serif";
 const LETTER_GAP_RATIO = 0.035;
 const WORD_GAP_RATIO = 0.85;
+const HORIZONTAL_STAGE_PADDING = 8;
 const PATH_SAMPLE_SPACING = 2.2;
 const MIN_PATH_SAMPLE_COUNT = 96;
 const MAX_PATH_SAMPLE_COUNT = 960;
@@ -526,11 +527,12 @@ function resizeCanvas() {
 
   const width = canvas.width / pixelRatio;
   const height = canvas.height / pixelRatio;
+  const availableWidth = Math.max(1, width - HORIZONTAL_STAGE_PADDING * 2);
   const isPortrait = height > width;
   const marginX = isPortrait ? 1 : 0.94;
   const marginY = isPortrait ? 0.98 : 0.92;
   const scale = Math.min(
-    (width * marginX) / artworkSize.width,
+    (availableWidth * marginX) / artworkSize.width,
     (height * marginY) / artworkSize.height,
   );
 
@@ -538,7 +540,7 @@ function resizeCanvas() {
     width: artworkSize.width,
     height: artworkSize.height,
     scale,
-    x: (width - artworkSize.width * scale) / 2,
+    x: HORIZONTAL_STAGE_PADDING + (availableWidth - artworkSize.width * scale) / 2,
     y: (height - artworkSize.height * scale) / 2,
   };
   fitDirty = false;
