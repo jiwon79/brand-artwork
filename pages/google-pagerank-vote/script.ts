@@ -742,15 +742,6 @@ function getGrainTile() {
     tileCtx.fillRect(0, y, GRAIN_TILE_SIZE, 1);
   }
 
-  for (let index = 0; index < 1550; index++) {
-    const x = (index * 73 + index * index * 19) % GRAIN_TILE_SIZE;
-    const y = (index * 47 + index * index * 29) % GRAIN_TILE_SIZE;
-    const alpha = 0.015 + ((index * 37) % 100) / 8000;
-
-    tileCtx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-    tileCtx.fillRect(x, y, 1, 1);
-  }
-
   return grainTile;
 }
 
