@@ -102,7 +102,6 @@ const HORIZONTAL_STAGE_PADDING = 8;
 const PATH_SAMPLE_SPACING = 2.2;
 const MIN_PATH_SAMPLE_COUNT = 96;
 const MAX_PATH_SAMPLE_COUNT = 960;
-const GRAIN_TILE_SIZE = 192;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const errorEl = document.querySelector<HTMLDivElement>("#error");
@@ -135,7 +134,6 @@ let dragPaint: DragPaint | null = null;
 let fitDirty = true;
 let lastCanvasCssWidth = 0;
 let lastCanvasCssHeight = 0;
-let grainTile: HTMLCanvasElement | null = null;
 const pendingPaintBrushes: PaintBrush[] = [];
 const shapeBrushes: PaintBrush[] = [];
 
@@ -727,45 +725,10 @@ function stopDragPaint(event: PointerEvent) {
   dragPaint = null;
 }
 
-function getGrainTile() {
-  if (grainTile) return grainTile;
-
-  grainTile = document.createElement("canvas");
-  grainTile.width = GRAIN_TILE_SIZE;
-  grainTile.height = GRAIN_TILE_SIZE;
-
-  const tileCtx = grainTile.getContext("2d");
-  if (!tileCtx) return grainTile;
-
-  tileCtx.clearRect(0, 0, GRAIN_TILE_SIZE, GRAIN_TILE_SIZE);
-
-  for (let y = 0; y < GRAIN_TILE_SIZE; y += 4) {
-    tileCtx.fillStyle = "rgba(255, 255, 255, 0.018)";
-    tileCtx.fillRect(0, y, GRAIN_TILE_SIZE, 1);
-  }
-
-  return grainTile;
-}
-
-function drawBackground(width: number, height: number, time: number) {
+function drawBackground(width: number, height: number) {
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  ctx.fillStyle = "#030303";
+  ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
-
-  const tile = getGrainTile();
-  const driftX = reduceMotionQuery.matches ? 0 : -Math.floor(time * 0.013) % GRAIN_TILE_SIZE;
-  const driftY = reduceMotionQuery.matches ? 0 : -Math.floor(time * 0.019) % GRAIN_TILE_SIZE;
-
-  ctx.save();
-  ctx.globalAlpha = reduceMotionQuery.matches ? 0.52 : 0.72;
-
-  for (let y = driftY - GRAIN_TILE_SIZE; y < height + GRAIN_TILE_SIZE; y += GRAIN_TILE_SIZE) {
-    for (let x = driftX - GRAIN_TILE_SIZE; x < width + GRAIN_TILE_SIZE; x += GRAIN_TILE_SIZE) {
-      ctx.drawImage(tile, x, y);
-    }
-  }
-
-  ctx.restore();
 }
 
 function drawLoading(width: number, height: number) {
@@ -874,7 +837,7 @@ function render(time: number) {
   const width = canvas.width / pixelRatio;
   const height = canvas.height / pixelRatio;
 
-  drawBackground(width, height, time);
+  drawBackground(width, height);
 
   if (loadError) {
     errorEl.textContent = loadError;
