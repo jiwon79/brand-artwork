@@ -1,0 +1,151 @@
+:root {
+  --paper: #e9ece8;
+  --ink: #262827;
+  --muted: rgba(38, 40, 39, 0.42);
+  --rail: rgba(38, 40, 39, 0.14);
+  --wax: #7ec9af;
+  --edge: #3f8676;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  touch-action: none;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  cursor: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  background:
+    radial-gradient(circle at 54% 42%, rgba(255, 255, 255, 0.48), transparent 29%),
+    linear-gradient(145deg, #f3f6f0 0%, var(--paper) 45%, #d9dfdc 100%);
+}
+
+#hud {
+  position: fixed;
+  top: max(18px, env(safe-area-inset-top));
+  left: 20px;
+  right: 20px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  pointer-events: none;
+}
+
+.brand {
+  max-width: 54vw;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.18em;
+}
+
+.meter {
+  width: min(132px, 28vw);
+  height: 2px;
+  overflow: hidden;
+  background: var(--rail);
+}
+
+#meterFill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--edge), var(--wax));
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+#resetButton {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 6;
+  min-width: 44px;
+  min-height: 32px;
+  padding: 9px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(38, 40, 39, 0.24);
+  border-radius: 0;
+  background: transparent;
+  color: rgba(38, 40, 39, 0.54);
+  font: 700 10px/1 "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#resetButton:focus-visible {
+  outline: 2px solid rgba(63, 134, 118, 0.75);
+  outline-offset: 4px;
+}
+
+.lil-gui.root {
+  --background-color: rgba(20, 22, 21, 0.86);
+  --text-color: #f4f7f3;
+  --title-background-color: #262827;
+  --widget-color: #39403d;
+  --hover-color: #48524e;
+  --focus-color: #5c6c65;
+  --number-color: #9fe4c7;
+  --string-color: #9fe4c7;
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 640px) {
+  #hud {
+    top: max(14px, env(safe-area-inset-top));
+    left: 14px;
+    right: 14px;
+  }
+
+  .brand {
+    max-width: 60vw;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+  }
+
+  .meter {
+    width: 80px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

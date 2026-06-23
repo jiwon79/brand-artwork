@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Wakppu Ball</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="stage" aria-label="Wakppu Ball interactive artwork"></canvas>
+
+  <header id="hud" aria-hidden="true">
+    <div class="brand">WAKPPU BALL</div>
+    <div class="meter">
+      <span id="meterFill"></span>
+    </div>
+  </header>
+
+  <button id="resetButton" type="button" aria-label="Reset artwork">reset</button>
+
+  <script type="module" src="script.ts"></script>
+</body>
+</html>
