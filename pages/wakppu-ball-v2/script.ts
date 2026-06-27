@@ -59,9 +59,13 @@ let height = 0;
 let dpr = 1;
 let ball: { x: number; y: number; radius: number } = { x: 0, y: 0, radius: 1 };
 let pointer: Point = { x: 0, y: 0 };
+let screenPointer: Point = { x: 0, y: 0 };
+let previousScreenPointer: Point | null = null;
 let pressure = 0;
 let targetPressure = 0;
 let isDown = false;
+let isRotating = false;
+let suppressClickUntil = 0;
 let activePointerId: number | null = null;
 let zones: BreakZone[] = [];
 let zoneId = 1;
@@ -71,6 +75,10 @@ let lastBreakAt = 0;
 let lastHoldBreakAt = 0;
 let holdDuration = 0;
 let inputForce = 1;
+let pointerTravel = 0;
+let lastPointerAt = performance.now();
+let ballRotation = 0;
+let rotationVelocity = 0;
 
 function resize(): void {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -98,6 +106,13 @@ function resetArtwork(): void {
   targetPressure = 0;
   zoneId = 1;
   pointer = { x: ball.x, y: ball.y };
+  screenPointer = { x: ball.x, y: ball.y };
+  previousScreenPointer = null;
+  isRotating = false;
+  suppressClickUntil = 0;
+  pointerTravel = 0;
+  ballRotation = 0;
+  rotationVelocity = 0;
 }
 
 function createBreakZone(point: Point, force = 1): BreakZone {
@@ -336,6 +351,11 @@ function draw(timestamp: number): void {
   lastTimestamp = timestamp;
   pressure += (targetPressure - pressure) * (reducedMotion ? 0.4 : 0.16);
 
+  if (!isDown && Math.abs(rotationVelocity) > 0.0001) {
+    ballRotation = normalizeAngle(ballRotation + rotationVelocity * dt);
+    rotationVelocity *= reducedMotion ? 0.82 : Math.pow(0.045, dt);
+  }
+
   if (isDown && isInsideBall(pointer)) {
     holdDuration += dt;
     const holdForce = Math.min(2.2, inputForce + holdDuration * 0.7);
@@ -343,7 +363,7 @@ function draw(timestamp: number): void {
     mixTouchedZones(pointer, holdForce, dt);
 
     const interval = Math.max(90, 260 - holdForce * 58);
-    if (timestamp - lastHoldBreakAt > interval) {
+    if (!isRotating && timestamp - lastHoldBreakAt > interval) {
       triggerBreak(pointer, holdForce, true);
       lastHoldBreakAt = timestamp;
     }
@@ -355,13 +375,22 @@ function draw(timestamp: number): void {
 
   drawBackdrop();
   drawShadow();
+  drawRotatedBall(timestamp);
+
+  requestAnimationFrame(draw);
+}
+
+function drawRotatedBall(timestamp: number): void {
+  ctx.save();
+  ctx.translate(ball.x, ball.y);
+  ctx.rotate(ballRotation);
+  ctx.translate(-ball.x, -ball.y);
   drawCore(timestamp);
   drawWaxShell(timestamp);
   zones.forEach((zone) => drawZone(zone, timestamp));
   drawRubberMembrane(timestamp);
   drawFingerDent();
-
-  requestAnimationFrame(draw);
+  ctx.restore();
 }
 
 function drawBackdrop(): void {
@@ -485,9 +514,9 @@ function drawZone(zone: BreakZone, timestamp: number): void {
     ctx.translate(-shard.center.x, -shard.center.y);
     drawPolygon(shard.polygon);
     ctx.fillStyle = color;
-    ctx.shadowColor = `rgba(91, 111, 30, ${0.16 * t})`;
-    ctx.shadowBlur = 6 * t;
-    ctx.shadowOffsetY = 2 * t;
+    ctx.shadowColor = `rgba(91, 111, 30, ${0.025 * t})`;
+    ctx.shadowBlur = 1.2 * t;
+    ctx.shadowOffsetY = 0.35 * t;
     ctx.fill();
     ctx.restore();
   }
@@ -505,8 +534,8 @@ function drawZone(zone: BreakZone, timestamp: number): void {
 
   zone.edges.forEach((edge, index) => {
     const pulse = 0.9 + Math.sin(timestamp * 0.003 + zone.id + index) * 0.1;
-    ctx.strokeStyle = `rgba(107, 126, 42, ${(0.18 - mix * 0.05) * t})`;
-    ctx.lineWidth = (0.58 + edge.weight * (0.22 + zone.damage * 0.035)) * t * pulse;
+    ctx.strokeStyle = `rgba(107, 126, 42, ${(0.045 - mix * 0.02) * t})`;
+    ctx.lineWidth = (0.2 + edge.weight * (0.08 + zone.damage * 0.015)) * t * pulse;
     drawJaggedLine(edge.a, edge.b, zone.id * 1000 + index * 13);
   });
 
@@ -823,37 +852,83 @@ function mixTouchedZones(point: Point, force: number, dt: number): void {
   }
 }
 
+function toModelPoint(point: Point): Point {
+  const local = toLocal(point);
+  const cos = Math.cos(-ballRotation);
+  const sin = Math.sin(-ballRotation);
+  return fromLocal({
+    x: local.x * cos - local.y * sin,
+    y: local.x * sin + local.y * cos,
+  });
+}
+
+function rotateBallFromDrag(previous: Point, next: Point, elapsed: number): void {
+  const previousLocal = toLocal(previous);
+  const nextLocal = toLocal(next);
+  const previousDistance = length(previousLocal);
+  const nextDistance = length(nextLocal);
+  if (previousDistance < ball.radius * 0.08 || nextDistance < ball.radius * 0.08) return;
+
+  const previousAngle = Math.atan2(previousLocal.y, previousLocal.x);
+  const nextAngle = Math.atan2(nextLocal.y, nextLocal.x);
+  const orbitDelta = normalizeAngle(nextAngle - previousAngle)
+    * Math.min(1.2, Math.max(0.25, (previousDistance + nextDistance) / (ball.radius * 2)));
+  const swipeDelta = ((next.x - previous.x) / ball.radius) * 0.32;
+  const delta = orbitDelta * 0.88 + swipeDelta;
+  if (Math.abs(delta) < 0.0004) return;
+
+  ballRotation = normalizeAngle(ballRotation + delta);
+  rotationVelocity = reducedMotion ? 0 : delta / Math.max(0.016, elapsed / 1000);
+}
+
 function pointerForce(event: PointerEvent): number {
   const raw = event.pressure && event.pressure > 0 ? event.pressure : 0.62;
   return Math.min(2.4, 0.72 + raw * 1.35 + holdDuration * 0.28);
 }
 
-function updatePointer(event: PointerEvent): void {
+function updatePointer(event: PointerEvent | MouseEvent): void {
   const rect = canvas.getBoundingClientRect();
-  pointer = {
+  const nextScreenPointer = {
     x: event.clientX - rect.left,
     y: event.clientY - rect.top,
   };
+  const now = performance.now();
+
+  if (isDown && previousScreenPointer) {
+    const travel = distance(nextScreenPointer, previousScreenPointer);
+    pointerTravel += travel;
+    if (pointerTravel > 6 && isInsideBall(nextScreenPointer)) {
+      isRotating = true;
+      rotateBallFromDrag(previousScreenPointer, nextScreenPointer, now - lastPointerAt);
+    }
+  }
+
+  screenPointer = nextScreenPointer;
+  pointer = toModelPoint(screenPointer);
+  previousScreenPointer = screenPointer;
+  lastPointerAt = now;
 }
 
 canvas.addEventListener('pointerdown', (event) => {
   activePointerId = event.pointerId;
   isDown = true;
+  isRotating = false;
+  pointerTravel = 0;
+  previousScreenPointer = null;
   holdDuration = 0;
-  inputForce = pointerForce(event);
   updatePointer(event);
+  inputForce = pointerForce(event);
   canvas.setPointerCapture(event.pointerId);
   triggerBreak(pointer, inputForce);
   lastHoldBreakAt = performance.now();
 });
 
 canvas.addEventListener('click', (event) => {
+  if (performance.now() < suppressClickUntil) {
+    return;
+  }
   if (performance.now() - lastBreakAt < 120) return;
-  const rect = canvas.getBoundingClientRect();
-  pointer = {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
-  };
+  updatePointer(event);
   inputForce = 1;
   triggerBreak(pointer, 1);
 });
@@ -866,6 +941,11 @@ canvas.addEventListener('pointermove', (event) => {
 
 canvas.addEventListener('pointerup', (event) => {
   isDown = false;
+  if (pointerTravel > 7 || isRotating) {
+    suppressClickUntil = performance.now() + 260;
+  }
+  isRotating = false;
+  previousScreenPointer = null;
   holdDuration = 0;
   targetPressure = 0.12;
   if (activePointerId === event.pointerId && canvas.hasPointerCapture(event.pointerId)) {
@@ -876,6 +956,8 @@ canvas.addEventListener('pointerup', (event) => {
 
 canvas.addEventListener('pointerleave', () => {
   isDown = false;
+  isRotating = false;
+  previousScreenPointer = null;
   holdDuration = 0;
   targetPressure = 0;
 });
@@ -1079,6 +1161,10 @@ function lerp(a: number, b: number, t: number): number {
 function smoothstep(value: number): number {
   const t = Math.max(0, Math.min(1, value));
   return t * t * (3 - 2 * t);
+}
+
+function normalizeAngle(value: number): number {
+  return Math.atan2(Math.sin(value), Math.cos(value));
 }
 
 function noise(seed: number): number {
