@@ -303,13 +303,13 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     stretch: 1,
     width: 0.92,
   };
-  const radiusBase = footprint.kind === 'stroke' ? 0.33 + rng() * 0.08 : 0.54 + rng() * 0.16;
+  const radiusBase = footprint.kind === 'stroke' ? 0.24 + rng() * 0.06 : 0.54 + rng() * 0.16;
   const radius = radiusBase * (0.9 + forceScale * 0.08);
   const impactPolygon = createImpactPolygon(radius, 15 + Math.floor(rng() * 7), rng, footprint);
   const points = createImpactPoints(
     radius,
     impactPolygon,
-    Math.round((footprint.kind === 'stroke' ? 15 : 13) + forceScale * 5 + rng() * 5),
+    Math.round((footprint.kind === 'stroke' ? 10 : 13) + forceScale * 4 + rng() * 4),
     rng,
     footprint,
   );
@@ -610,7 +610,7 @@ function shouldCreateTrailZone(zone: BreakZone, normal: THREE.Vector3, impact: I
   const localDistance = Math.hypot(localPoint.x, localPoint.y);
   const direction = normalizePoint(impact.direction);
   const along = Math.abs(localPoint.x * direction.x + localPoint.y * direction.y);
-  return localDistance > zone.radius * 0.3 || along > zone.radius * 0.24;
+  return localDistance > zone.radius * 0.42 || along > zone.radius * 0.38;
 }
 
 function fractureExistingZone(
@@ -625,7 +625,7 @@ function fractureExistingZone(
   const seed = zone.seed + zone.fractureCount * 4099 + Math.floor(performance.now());
   const breakRadius = zone.radius * (
     impact?.kind === 'stroke'
-      ? 0.2 + forceScale * 0.08
+      ? 0.18 + forceScale * 0.05
       : 0.26 + forceScale * 0.09 + zone.mix * 0.12
   );
   const candidates = zone.shards
@@ -743,9 +743,19 @@ function continueSingleFingerBreak(hit: SurfaceHit, force: number, travel: numbe
   }
 
   const now = performance.now();
-  if (travel > 2.5 && now - lastStrokeBreakAt > Math.max(42, 118 - force * 22)) {
-    const impact = previousHit ? createStrokeFootprint(previousHit, hit, travel) : undefined;
-    triggerBreak(hit, Math.max(0.72, force * 0.8), true, impact);
+  if (travel > 2.5 && now - lastStrokeBreakAt > Math.max(36, 104 - force * 20)) {
+    if (previousHit) {
+      createStrokeSamples(previousHit, hit, travel).forEach((sample, index) => {
+        triggerBreak(
+          sample,
+          Math.max(0.64, force * (0.64 + index * 0.04)),
+          true,
+          createStrokeFootprint(previousHit, hit, travel, index),
+        );
+      });
+    } else {
+      triggerBreak(hit, Math.max(0.68, force * 0.72), true);
+    }
     lastStrokeBreakAt = now;
   }
 }
@@ -963,7 +973,28 @@ function surfaceToZonePoint(zone: BreakZone, normal: THREE.Vector3): Point {
   };
 }
 
-function createStrokeFootprint(previousHit: SurfaceHit, hit: SurfaceHit, pixelTravel: number): ImpactFootprint {
+function createStrokeSamples(previousHit: SurfaceHit, hit: SurfaceHit, pixelTravel: number): SurfaceHit[] {
+  const count = Math.min(4, Math.max(1, Math.floor(pixelTravel / 14) + 1));
+  const samples: SurfaceHit[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const t = count === 1 ? 1 : (i + 1) / count;
+    const normal = previousHit.normal.clone().lerp(hit.normal, t).normalize();
+    samples.push({
+      normal,
+      point: normal.clone().multiplyScalar(SPHERE_RADIUS),
+    });
+  }
+
+  return samples;
+}
+
+function createStrokeFootprint(
+  previousHit: SurfaceHit,
+  hit: SurfaceHit,
+  pixelTravel: number,
+  sampleIndex = 0,
+): ImpactFootprint {
   const basis = createBasis(hit.normal);
   const delta = hit.normal.clone().sub(previousHit.normal).multiplyScalar(SPHERE_RADIUS);
   const direction = normalizePoint({
@@ -971,11 +1002,12 @@ function createStrokeFootprint(previousHit: SurfaceHit, hit: SurfaceHit, pixelTr
     y: delta.dot(basis.bitangent),
   });
   const surfaceTravel = Math.max(0.04, Math.hypot(delta.dot(basis.tangent), delta.dot(basis.bitangent)));
+  const jitter = sampleIndex % 2 === 0 ? 0.18 : -0.16;
   return {
     kind: 'stroke',
-    direction,
-    stretch: Math.min(2.9, 1.45 + surfaceTravel * 2.4 + pixelTravel * 0.012),
-    width: Math.max(0.34, 0.52 - Math.min(0.16, surfaceTravel * 0.18)),
+    direction: rotatePoint(direction, jitter),
+    stretch: Math.min(1.22, 0.78 + surfaceTravel * 0.72 + pixelTravel * 0.0025),
+    width: Math.max(0.54, 0.78 - Math.min(0.12, surfaceTravel * 0.16)),
   };
 }
 
@@ -1089,13 +1121,23 @@ function createImpactPoints(
   if (footprint.kind === 'stroke') {
     const direction = normalizePoint(footprint.direction);
     const normal = perpendicular(direction);
-    const spineCount = 7;
+    const spineCount = 3;
     for (let i = 0; i < spineCount; i += 1) {
-      const t = (i / (spineCount - 1) - 0.5) * radius * footprint.stretch * 1.36;
-      const jitter = (rng() - 0.5) * radius * footprint.width * 0.42;
+      const t = (i / (spineCount - 1) - 0.5) * radius * footprint.stretch * 0.82;
+      const jitter = (rng() - 0.5) * radius * footprint.width * 0.52;
       const candidate = {
         x: direction.x * t + normal.x * jitter,
         y: direction.y * t + normal.y * jitter,
+      };
+      if (pointInPolygon(candidate, polygon)) points.push(candidate);
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      const side = i % 2 === 0 ? 1 : -1;
+      const branchDirection = rotatePoint(direction, side * (0.75 + rng() * 0.42));
+      const candidate = {
+        x: branchDirection.x * radius * (0.28 + rng() * 0.36),
+        y: branchDirection.y * radius * (0.28 + rng() * 0.36),
       };
       if (pointInPolygon(candidate, polygon)) points.push(candidate);
     }
@@ -1129,13 +1171,23 @@ function createShardSplitPoints(
   if (impact?.kind === 'stroke') {
     const direction = normalizePoint(impact.direction);
     const normal = perpendicular(direction);
-    const linePoints = Math.min(count - points.length, 5);
+    const linePoints = Math.min(count - points.length, 3);
     for (let i = 0; i < linePoints; i += 1) {
-      const t = (i / Math.max(1, linePoints - 1) - 0.5) * maxRadius * 1.55;
-      const jitter = (rng() - 0.5) * maxRadius * 0.22;
+      const t = (i / Math.max(1, linePoints - 1) - 0.5) * maxRadius * 0.72;
+      const jitter = (rng() - 0.5) * maxRadius * 0.36;
       const candidate = {
         x: focus.x + direction.x * t + normal.x * jitter,
         y: focus.y + direction.y * t + normal.y * jitter,
+      };
+      if (pointInPolygon(candidate, polygon)) points.push(candidate);
+    }
+
+    const branchCount = Math.min(count - points.length, 2);
+    for (let i = 0; i < branchCount; i += 1) {
+      const branchDirection = rotatePoint(direction, (i === 0 ? 1 : -1) * (0.68 + rng() * 0.5));
+      const candidate = {
+        x: focus.x + branchDirection.x * maxRadius * (0.22 + rng() * 0.34),
+        y: focus.y + branchDirection.y * maxRadius * (0.22 + rng() * 0.34),
       };
       if (pointInPolygon(candidate, polygon)) points.push(candidate);
     }
