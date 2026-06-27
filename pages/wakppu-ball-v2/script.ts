@@ -23,6 +23,8 @@ type BreakZone = {
   id: number;
   center: Point;
   radius: number;
+  damage: number;
+  mix: number;
   progress: number;
   target: number;
   shards: Shard[];
@@ -62,6 +64,9 @@ let zoneId = 1;
 let audioContext: AudioContext | null = null;
 let lastTimestamp = performance.now();
 let lastBreakAt = 0;
+let lastHoldBreakAt = 0;
+let holdDuration = 0;
+let inputForce = 1;
 
 function resize(): void {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -95,9 +100,15 @@ function createBreakZone(point: Point, force = 1): BreakZone {
   const center = clampToBall(point, 0.94);
   const seed = Math.floor(Math.random() * 1_000_000_000) + zoneId * 1009;
   const rng = mulberry32(seed);
-  const impactRadius = ball.radius * (0.23 + rng() * 0.11 + Math.min(force, 1.4) * 0.03);
-  const impactPolygon = createImpactPolygon(center, impactRadius, 28, rng);
-  const points = createImpactPoints(center, impactRadius, impactPolygon, 26 + Math.floor(rng() * 9), rng);
+  const nearby = findNearestZone(center);
+  const nested = nearby && distance(center, nearby.center) < nearby.radius * 0.74;
+  const forceScale = Math.min(1.8, Math.max(0.45, force));
+  const impactRadius = ball.radius
+    * (nested ? 0.1 + rng() * 0.08 : 0.22 + rng() * 0.11)
+    * (0.88 + forceScale * 0.16);
+  const pointCount = Math.round((nested ? 22 : 26) + forceScale * 11 + rng() * 10);
+  const impactPolygon = createImpactPolygon(center, impactRadius, 22 + Math.floor(rng() * 9), rng);
+  const points = createImpactPoints(center, impactRadius, impactPolygon, pointCount, rng);
   const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, impactRadius * 0.55));
   const shards: Shard[] = [];
   const edgeMap = new Map<string, CrackEdge & { count: number }>();
@@ -126,6 +137,8 @@ function createBreakZone(point: Point, force = 1): BreakZone {
     id: zoneId++,
     center,
     radius: impactRadius,
+    damage: forceScale,
+    mix: nested ? Math.min(1, nearby.mix + 0.12 * forceScale) : 0,
     progress: 0,
     target: 1,
     shards,
@@ -311,6 +324,19 @@ function draw(timestamp: number): void {
   lastTimestamp = timestamp;
   pressure += (targetPressure - pressure) * (reducedMotion ? 0.4 : 0.16);
 
+  if (isDown && isInsideBall(pointer)) {
+    holdDuration += dt;
+    const holdForce = Math.min(2.2, inputForce + holdDuration * 0.7);
+    targetPressure = Math.max(targetPressure, Math.min(1.3, holdForce * 0.58));
+    mixTouchedZones(pointer, holdForce, dt);
+
+    const interval = Math.max(90, 260 - holdForce * 58);
+    if (timestamp - lastHoldBreakAt > interval) {
+      triggerBreak(pointer, holdForce, true);
+      lastHoldBreakAt = timestamp;
+    }
+  }
+
   zones.forEach((zone) => {
     zone.progress += (zone.target - zone.progress) * (reducedMotion ? 0.5 : 0.08);
   });
@@ -427,19 +453,20 @@ function drawWaxShell(timestamp: number): void {
 
 function drawZone(zone: BreakZone, timestamp: number): void {
   const t = smoothstep(zone.progress);
+  const mix = smoothstep(zone.mix);
   ctx.save();
   clipBall(0.992);
 
-  drawCoreReveal(zone, t);
+  drawCoreReveal(zone, t, mix);
 
   for (const shard of zone.shards) {
     const outward = normalize(sub(shard.center, zone.center));
-    const offset = mul(outward, shard.lift * t);
-    const angle = shard.angle * t;
-    const color = adjustWaxColor(shard.tint, t);
+    const offset = mul(outward, shard.lift * t * (1 + zone.damage * 0.12));
+    const angle = shard.angle * t * (1 + zone.damage * 0.16);
+    const color = adjustWaxColor(shard.tint, t, mix);
 
     ctx.save();
-    ctx.globalAlpha = 0.82 + t * 0.12;
+    ctx.globalAlpha = 0.86 + t * 0.1 - mix * 0.08;
     ctx.translate(shard.center.x + offset.x, shard.center.y + offset.y);
     ctx.rotate(angle);
     ctx.translate(-shard.center.x, -shard.center.y);
@@ -454,18 +481,20 @@ function drawZone(zone: BreakZone, timestamp: number): void {
 
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  drawMixedCracks(zone, t, mix, timestamp);
+
   zone.edges.forEach((edge, index) => {
     const pulse = 0.88 + Math.sin(timestamp * 0.003 + zone.id + index) * 0.12;
     ctx.strokeStyle = `rgba(255, 231, 187, ${0.36 * t})`;
-    ctx.lineWidth = (1.8 + edge.weight * 0.84) * t * pulse;
+    ctx.lineWidth = (1.8 + edge.weight * (0.72 + zone.damage * 0.12)) * t * pulse;
     drawJaggedLine(edge.a, edge.b, zone.id * 1000 + index * 13);
   });
 
   ctx.globalCompositeOperation = 'multiply';
   zone.edges.forEach((edge, index) => {
     const pulse = 0.9 + Math.sin(timestamp * 0.003 + zone.id + index) * 0.1;
-    ctx.strokeStyle = `rgba(17, 23, 4, ${0.42 * t})`;
-    ctx.lineWidth = (0.72 + edge.weight * 0.44) * t * pulse;
+    ctx.strokeStyle = `rgba(17, 23, 4, ${(0.42 - mix * 0.1) * t})`;
+    ctx.lineWidth = (0.72 + edge.weight * (0.36 + zone.damage * 0.06)) * t * pulse;
     drawJaggedLine(edge.a, edge.b, zone.id * 1000 + index * 13);
   });
   ctx.globalCompositeOperation = 'source-over';
@@ -482,7 +511,7 @@ function drawZone(zone: BreakZone, timestamp: number): void {
   ctx.restore();
 }
 
-function drawCoreReveal(zone: BreakZone, progress: number): void {
+function drawCoreReveal(zone: BreakZone, progress: number, mix: number): void {
   if (progress <= 0.01) return;
 
   const gradient = ctx.createRadialGradient(
@@ -493,16 +522,32 @@ function drawCoreReveal(zone: BreakZone, progress: number): void {
     zone.center.y,
     zone.radius * 0.92,
   );
-  gradient.addColorStop(0, 'rgba(255, 249, 220, 0.82)');
-  gradient.addColorStop(0.58, 'rgba(244, 220, 180, 0.66)');
+  gradient.addColorStop(0, `rgba(255, 249, 220, ${0.78 + mix * 0.14})`);
+  gradient.addColorStop(0.54, `rgba(244, 220, 180, ${0.58 + mix * 0.18})`);
   gradient.addColorStop(1, 'rgba(209, 157, 101, 0)');
 
   ctx.save();
-  ctx.globalAlpha = progress * 0.58;
+  ctx.globalAlpha = progress * (0.5 + mix * 0.34);
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.ellipse(zone.center.x, zone.center.y, zone.radius * 0.74, zone.radius * 0.62, 0.08, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
+}
+
+function drawMixedCracks(zone: BreakZone, progress: number, mix: number, timestamp: number): void {
+  if (mix <= 0.02) return;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  zone.edges.forEach((edge, index) => {
+    if (index % 2 === 1 && mix < 0.48) return;
+    const pulse = 0.82 + Math.sin(timestamp * 0.004 + edge.weight + zone.id) * 0.18;
+    ctx.strokeStyle = `rgba(246, 214, 157, ${0.22 * progress * mix})`;
+    ctx.lineWidth = (3.8 + edge.weight * 1.2) * mix * progress * pulse;
+    drawJaggedLine(edge.a, edge.b, zone.id * 5000 + index * 31);
+  });
   ctx.restore();
 }
 
@@ -541,13 +586,46 @@ function drawFingerDent(): void {
   ctx.restore();
 }
 
-function triggerBreak(point: Point, force = 1): void {
+function triggerBreak(point: Point, force = 1, fromHold = false): void {
   if (!isInsideBall(point)) return;
   lastBreakAt = performance.now();
   targetPressure = Math.max(targetPressure, 1);
-  zones.push(createBreakZone(point, force));
-  zones = zones.slice(-4);
+  const zone = createBreakZone(point, force);
+  zones.push(zone);
+  mixTouchedZones(point, force, fromHold ? 0.08 : 0.04);
   playCrack(force);
+}
+
+function findNearestZone(point: Point): BreakZone | null {
+  let nearest: BreakZone | null = null;
+  let nearestDistance = Infinity;
+
+  for (const zone of zones) {
+    const zoneDistance = distance(point, zone.center);
+    if (zoneDistance < nearestDistance) {
+      nearest = zone;
+      nearestDistance = zoneDistance;
+    }
+  }
+
+  return nearest;
+}
+
+function mixTouchedZones(point: Point, force: number, dt: number): void {
+  for (const zone of zones) {
+    const zoneDistance = distance(point, zone.center);
+    const falloff = Math.max(0, 1 - zoneDistance / (zone.radius * 1.12));
+    if (falloff <= 0) continue;
+
+    zone.mix = Math.min(1, zone.mix + dt * falloff * (0.42 + force * 0.34));
+    zone.damage = Math.min(3.2, zone.damage + dt * falloff * (0.32 + force * 0.28));
+    zone.radius = Math.min(ball.radius * 0.46, zone.radius + dt * falloff * force * 2.4);
+  }
+}
+
+function pointerForce(event: PointerEvent): number {
+  const raw = event.pressure && event.pressure > 0 ? event.pressure : 0.62;
+  return Math.min(2.4, 0.72 + raw * 1.35 + holdDuration * 0.28);
 }
 
 function updatePointer(event: PointerEvent): void {
@@ -561,9 +639,12 @@ function updatePointer(event: PointerEvent): void {
 canvas.addEventListener('pointerdown', (event) => {
   activePointerId = event.pointerId;
   isDown = true;
+  holdDuration = 0;
+  inputForce = pointerForce(event);
   updatePointer(event);
   canvas.setPointerCapture(event.pointerId);
-  triggerBreak(pointer, event.pressure || 1);
+  triggerBreak(pointer, inputForce);
+  lastHoldBreakAt = performance.now();
 });
 
 canvas.addEventListener('click', (event) => {
@@ -573,19 +654,19 @@ canvas.addEventListener('click', (event) => {
     x: event.clientX - rect.left,
     y: event.clientY - rect.top,
   };
+  inputForce = 1;
   triggerBreak(pointer, 1);
 });
 
 canvas.addEventListener('pointermove', (event) => {
   updatePointer(event);
+  inputForce = pointerForce(event);
   targetPressure = isDown ? 1 : 0.08;
-  if (isDown && zones.length < 4 && noise(performance.now() * 0.02) > 0.68) {
-    triggerBreak(pointer, 0.7);
-  }
 });
 
 canvas.addEventListener('pointerup', (event) => {
   isDown = false;
+  holdDuration = 0;
   targetPressure = 0.12;
   if (activePointerId === event.pointerId && canvas.hasPointerCapture(event.pointerId)) {
     canvas.releasePointerCapture(event.pointerId);
@@ -595,6 +676,7 @@ canvas.addEventListener('pointerup', (event) => {
 
 canvas.addEventListener('pointerleave', () => {
   isDown = false;
+  holdDuration = 0;
   targetPressure = 0;
 });
 
@@ -654,15 +736,16 @@ function drawJaggedLine(a: Point, b: Point, seed: number): void {
   ctx.stroke();
 }
 
-function adjustWaxColor(tint: number, crack: number): string {
+function adjustWaxColor(tint: number, crack: number, mix = 0): string {
   const base = [199, 240, 107];
   const light = [238, 252, 164];
   const dark = [125, 154, 38];
+  const core = [236, 205, 150];
   const mixTarget = tint > 0 ? light : dark;
   const amount = Math.abs(tint) * 0.42 + crack * 0.08;
-  const r = Math.round(lerp(base[0], mixTarget[0], amount));
-  const g = Math.round(lerp(base[1], mixTarget[1], amount));
-  const b = Math.round(lerp(base[2], mixTarget[2], amount));
+  const r = Math.round(lerp(lerp(base[0], mixTarget[0], amount), core[0], mix * 0.26));
+  const g = Math.round(lerp(lerp(base[1], mixTarget[1], amount), core[1], mix * 0.26));
+  const b = Math.round(lerp(lerp(base[2], mixTarget[2], amount), core[2], mix * 0.26));
   return `rgb(${r}, ${g}, ${b})`;
 }
 
