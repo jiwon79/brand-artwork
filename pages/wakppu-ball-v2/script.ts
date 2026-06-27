@@ -19,7 +19,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x171011, 8, 15);
 
 const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
-camera.position.set(0, 0.18, 7.4);
+camera.position.set(0, 0.18, 6.4);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -50,9 +50,9 @@ const pointer = {
 let crackProgress = 0;
 let crackTarget = 0;
 
-const outerRadius = 2.18;
-const shellRadius = 1.46;
-const marshmallowRadius = 1.1;
+const outerRadius = 1.68;
+const shellRadius = 1.43;
+const marshmallowRadius = 1.12;
 
 const highlightMaterial = new THREE.MeshBasicMaterial({
   color: 0xdbfffa,
@@ -65,13 +65,13 @@ const rubberMaterial = new THREE.MeshPhysicalMaterial({
   color: 0xa7fff0,
   roughness: 0.08,
   metalness: 0,
-  transmission: 0.72,
-  thickness: 0.11,
+  transmission: 0.82,
+  thickness: 0.08,
   ior: 1.23,
   clearcoat: 1,
   clearcoatRoughness: 0.04,
   transparent: true,
-  opacity: 0.2,
+  opacity: 0.16,
   depthWrite: false,
   side: THREE.DoubleSide,
 });
@@ -138,6 +138,15 @@ verticalSeam.rotation.y = Math.PI / 2;
 verticalSeam.renderOrder = 4;
 root.add(verticalSeam);
 
+const rubberKnot = new THREE.Mesh(
+  new THREE.SphereGeometry(0.22, 32, 18),
+  rubberMaterial.clone(),
+);
+rubberKnot.position.set(0, outerRadius * 0.92, -0.04);
+rubberKnot.scale.set(0.74, 0.32, 0.58);
+rubberKnot.renderOrder = 4;
+root.add(rubberKnot);
+
 const marshmallowGeometry = new THREE.SphereGeometry(marshmallowRadius, 80, 48);
 const marshmallowBasePositions = copyPositions(marshmallowGeometry);
 const marshmallow = new THREE.Mesh(marshmallowGeometry, marshmallowMaterial);
@@ -173,7 +182,7 @@ rimMaterial.transparent = true;
 rimMaterial.opacity = 0;
 
 const rim = new THREE.Mesh(
-  new THREE.TorusGeometry(shellRadius * 0.86, 0.05, 14, 180),
+  new THREE.TorusGeometry(shellRadius * 0.88, 0.014, 8, 180),
   rimMaterial,
 );
 rim.position.z = shellRadius * 0.5;
@@ -190,7 +199,7 @@ const bubbles = createRubberBubbles();
 root.add(bubbles);
 
 const floorShadow = new THREE.Mesh(
-  new THREE.CircleGeometry(2.45, 96),
+  new THREE.CircleGeometry(1.94, 96),
   new THREE.MeshBasicMaterial({
     color: 0x070404,
     transparent: true,
@@ -198,7 +207,7 @@ const floorShadow = new THREE.Mesh(
     depthWrite: false,
   }),
 );
-floorShadow.position.set(0, -2.55, -0.3);
+floorShadow.position.set(0, -2.05, -0.3);
 floorShadow.scale.set(1.28, 0.26, 1);
 floorShadow.rotation.x = -Math.PI / 2;
 scene.add(floorShadow);
@@ -223,8 +232,8 @@ function copyPositions(geometry: THREE.BufferGeometry): Float32Array {
 
 function createChocolateShell(): THREE.Group {
   const group = new THREE.Group();
-  const latSteps = 12;
-  const lonSteps = 24;
+  const latSteps = 13;
+  const lonSteps = 27;
   const latMin = -Math.PI * 0.47;
   const latMax = Math.PI * 0.47;
 
@@ -242,7 +251,24 @@ function createChocolateShell(): THREE.Group {
       if (front > 0.68) continue;
       if ((x + y * 3) % 17 === 0 && front > -0.25) continue;
 
-      const geometry = createSphericalPatchGeometry(lat0, lat1, lon0, lon1, shellRadius + noise2(x, y) * 0.025);
+      const cellLat = lat1 - lat0;
+      const cellLon = lon1 - lon0;
+      const latCenter = (lat0 + lat1) * 0.5 + noise2(x + 2, y + 3) * cellLat * 0.16;
+      const lonCenter = (lon0 + lon1) * 0.5 + noise2(x + 6, y + 9) * cellLon * 0.16;
+      const latSpan = cellLat * (0.52 + noise1(x * 29 + y * 7) * 0.38);
+      const lonSpan = cellLon * (0.48 + noise1(x * 17 + y * 37) * 0.46);
+      const patchLat0 = latCenter - latSpan * 0.5;
+      const patchLat1 = latCenter + latSpan * 0.5;
+      const patchLon0 = lonCenter - lonSpan * 0.5;
+      const patchLon1 = lonCenter + lonSpan * 0.5;
+      const geometry = createSphericalPatchGeometry(
+        patchLat0,
+        patchLat1,
+        patchLon0,
+        patchLon1,
+        shellRadius + noise2(x, y) * 0.025,
+        x * 97 + y * 131,
+      );
       const material = chocolateMaterial.clone();
       const shade = 0.82 + noise2(x + 11, y + 7) * 0.32;
       material.color.setRGB(0.21 * shade, 0.09 * shade, 0.06 * shade);
@@ -284,7 +310,14 @@ function createChocolateShell(): THREE.Group {
   return group;
 }
 
-function createSphericalPatchGeometry(lat0: number, lat1: number, lon0: number, lon1: number, radius: number): THREE.BufferGeometry {
+function createSphericalPatchGeometry(
+  lat0: number,
+  lat1: number,
+  lon0: number,
+  lon1: number,
+  radius: number,
+  seed: number,
+): THREE.BufferGeometry {
   const rows = 3;
   const cols = 3;
   const positions: number[] = [];
@@ -296,8 +329,13 @@ function createSphericalPatchGeometry(lat0: number, lat1: number, lon0: number, 
 
     for (let col = 0; col <= cols; col += 1) {
       const u = col / cols;
+      const edge = row === 0 || row === rows || col === 0 || col === cols;
       const lon = THREE.MathUtils.lerp(lon0, lon1, u);
-      const p = sphericalPoint(radius, lat, lon);
+      const jitter = edge ? 0 : 1;
+      const jitteredLat = lat + noise2(seed + row * 11, col * 13) * (lat1 - lat0) * 0.08 * jitter;
+      const jitteredLon = lon + noise2(seed + row * 17, col * 19) * (lon1 - lon0) * 0.08 * jitter;
+      const jitteredRadius = radius + noise2(seed + row * 23, col * 29) * 0.018;
+      const p = sphericalPoint(jitteredRadius, jitteredLat, jitteredLon);
       positions.push(p.x, p.y, p.z);
     }
   }
@@ -570,8 +608,8 @@ function updateBreakState(time: number): void {
   });
 
   rim.visible = reveal > 0.04;
-  rimMaterial.opacity = reveal;
-  rim.scale.setScalar(0.9 + reveal * 0.1);
+  rimMaterial.opacity = reveal * 0.22;
+  rim.scale.setScalar(0.96 + reveal * 0.04);
 
   crumbs.visible = reveal > 0.05;
   crumbs.children.forEach((child, index) => {
@@ -649,9 +687,9 @@ function resize(): void {
   renderer.setPixelRatio(dpr);
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
-  camera.position.z = width < 680 ? 8.3 : 7.4;
+  camera.position.z = width < 680 ? 7.2 : 6.4;
   camera.updateProjectionMatrix();
-  root.scale.setScalar(width < 680 ? 0.86 : 1);
+  root.scale.setScalar(width < 680 ? 0.9 : 1);
 }
 
 function animate(): void {
