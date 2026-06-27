@@ -191,8 +191,8 @@ function createRubberHighlights(): THREE.Group {
 
 function createWaxFlakes(): THREE.Group {
   const group = new THREE.Group();
-  const latSteps = 12;
-  const lonSteps = 25;
+  const latSteps = 9;
+  const lonSteps = 17;
   const latMin = -Math.PI * 0.47;
   const latMax = Math.PI * 0.47;
 
@@ -207,8 +207,8 @@ function createWaxFlakes(): THREE.Group {
       const lonMid = (lon0 + lon1) * 0.5;
       const front = Math.cos(latMid) * Math.cos(lonMid);
 
-      if (front > 0.72) continue;
-      if ((col * 5 + row * 3) % 19 === 0 && front > -0.4) continue;
+      if (front > 0.98) continue;
+      if ((col * 5 + row * 3) % 23 === 0 && front > -0.25) continue;
 
       const cellLat = lat1 - lat0;
       const cellLon = lon1 - lon0;
@@ -225,8 +225,8 @@ function createWaxFlakes(): THREE.Group {
         col * 97 + row * 131,
       );
       const material = waxMaterial.clone();
-      const shade = 0.86 + noise2(col + 11, row + 7) * 0.18;
-      material.color.setRGB(0.78 * shade, 0.91 * shade, 0.42 * shade);
+      const shade = 0.84 + noise2(col + 11, row + 7) * 0.12;
+      material.color.setRGB(0.68 * shade, 0.79 * shade, 0.28 * shade);
       material.opacity = 0;
 
       const flake = new THREE.Mesh(geometry, material);
@@ -237,12 +237,12 @@ function createWaxFlakes(): THREE.Group {
       ).normalize();
       flake.renderOrder = 3;
       flake.userData.normal = normal;
-      flake.userData.shift = 0.045 + noise1(col * 23 + row * 41) * 0.28;
+      flake.userData.shift = 0.012 + noise1(col * 23 + row * 41) * 0.058;
       flake.userData.rotation = new THREE.Vector3(
         noise2(col + 3, row + 5),
         noise2(col + 7, row + 11),
         noise2(col + 13, row + 17),
-      ).multiplyScalar(0.44);
+      ).multiplyScalar(0.12);
       group.add(flake);
     }
   }
@@ -344,7 +344,7 @@ function createWaxDust(): THREE.Group {
     chip.rotation.set(noise1(i + 2) * Math.PI, noise1(i + 5) * Math.PI, noise1(i + 8) * Math.PI);
     chip.userData.base = base;
     chip.userData.normal = base.clone().normalize();
-    chip.userData.drift = noise1(i + 9) * 0.06;
+    chip.userData.drift = noise1(i + 9) * 0.018;
     chip.renderOrder = 4;
     group.add(chip);
   }
@@ -424,16 +424,16 @@ function updateBreakState(time: number): void {
     breakProgress = breakTarget;
   }
 
-  const shellFade = smoothstep(0.1, 0.64, breakProgress);
-  const flakeReveal = smoothstep(0.08, 0.72, breakProgress);
-  const scatter = smoothstep(0.02, 0.38, breakProgress);
-  const squishyReveal = smoothstep(0.18, 0.78, breakProgress);
+  const shellFade = smoothstep(0.1, 0.68, breakProgress);
+  const flakeReveal = smoothstep(0.08, 0.62, breakProgress);
+  const scatter = smoothstep(0.02, 0.42, breakProgress);
+  const squishyReveal = smoothstep(0.22, 0.82, breakProgress);
 
-  intactWaxShell.visible = shellFade < 0.99;
-  waxMaterial.opacity = 1 - shellFade;
-  waxMaterial.depthWrite = shellFade < 0.45;
+  intactWaxShell.visible = true;
+  waxMaterial.opacity = 1 - shellFade * 0.66;
+  waxMaterial.depthWrite = waxMaterial.opacity > 0.58;
 
-  setObjectOpacity(squishyCore, squishyReveal);
+  setObjectOpacity(squishyCore, squishyReveal * 0.42);
 
   waxFlakes.visible = flakeReveal > 0.01;
   waxFlakes.children.forEach((child) => {
@@ -441,8 +441,8 @@ function updateBreakState(time: number): void {
     const normal = flake.userData.normal as THREE.Vector3;
     const shift = flake.userData.shift as number;
     const rotation = flake.userData.rotation as THREE.Vector3;
-    setObjectOpacity(flake, flakeReveal);
-    flake.position.copy(normal).multiplyScalar(scatter * scatter * shift);
+    setObjectOpacity(flake, flakeReveal * 0.82);
+    flake.position.copy(normal).multiplyScalar(scatter * shift);
     flake.rotation.set(rotation.x * scatter, rotation.y * scatter, rotation.z * scatter);
   });
 
@@ -452,13 +452,13 @@ function updateBreakState(time: number): void {
     const base = chip.userData.base as THREE.Vector3;
     const normal = chip.userData.normal as THREE.Vector3;
     const drift = chip.userData.drift as number;
-    setObjectOpacity(chip, flakeReveal);
-    chip.position.copy(base).addScaledVector(normal, scatter * (0.12 + drift));
-    chip.position.y += Math.sin(time * 1.1 + index) * 0.008 * flakeReveal;
+    setObjectOpacity(chip, flakeReveal * 0.38);
+    chip.position.copy(base).addScaledVector(normal, scatter * (0.018 + drift));
+    chip.position.y += Math.sin(time * 1.1 + index) * 0.003 * flakeReveal;
   });
 
-  cracks.visible = breakProgress > 0.02 && breakProgress < 0.8;
-  const crackOpacity = Math.sin(Math.min(1, breakProgress / 0.8) * Math.PI) * 0.86;
+  cracks.visible = breakProgress > 0.02;
+  const crackOpacity = smoothstep(0.02, 0.28, breakProgress) * 0.78;
   cracks.children.forEach((child) => setObjectOpacity(child, crackOpacity));
 }
 
@@ -497,7 +497,7 @@ canvas.addEventListener('pointermove', (event) => {
 canvas.addEventListener('pointerdown', (event) => {
   pointer.isDown = true;
   pointer.targetPressure = 1;
-  breakTarget = 1;
+  breakTarget = 0.82;
   updatePointerFromEvent(event);
   canvas.setPointerCapture(event.pointerId);
 });
