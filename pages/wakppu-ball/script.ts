@@ -21,12 +21,16 @@ type Shard = {
   splitAt: number;
   detachAt: number;
   gap: number;
+  offset: Point;
   lift: number;
   thickness: number;
   angle: number;
   targetGap: number;
+  targetOffset: Point;
   targetLift: number;
   targetAngle: number;
+  breakOrigin: Point | null;
+  breakDir: Point;
   baseAngle: number;
   hueShift: number;
   detachDrift: Point;
@@ -56,6 +60,7 @@ const params = {
   maxDepth: 2,
   maxShards: 230,
   maxSplitsPerFrame: 2,
+  separationStrength: 0.58,
   bevelWidth: 1.25,
   shadowStrength: 0.24,
   debugSeeds: false,
@@ -84,6 +89,7 @@ gui.add(params, 'pressRadius', 110, 230, 1);
 gui.add(params, 'energyRate', 0.6, 1.8, 0.01);
 gui.add(params, 'gapScale', 0.4, 1.8, 0.01);
 gui.add(params, 'liftScale', 0, 1.8, 0.01);
+gui.add(params, 'separationStrength', 0, 1, 0.01);
 gui.add(params, 'splitDensity', 3, 7, 1).onFinishChange(resetArtwork);
 gui.add(params, 'maxDepth', 1, 3, 1).onFinishChange(resetArtwork);
 gui.addColor(params, 'waxColor').onChange((value: string) => {
@@ -189,12 +195,16 @@ function makeShard(polygon: Point[], parentId: number | null, depth: number, inh
     splitAt: 0.56 + jitter + depthBias * 1.6,
     detachAt: 1.05 + jitter + depthBias * 2.2,
     gap: 0,
+    offset: { x: 0, y: 0 },
     lift: 0,
     thickness: rand(1.8, 3.7),
     angle: 0,
     targetGap: 0,
+    targetOffset: { x: 0, y: 0 },
     targetLift: 0,
     targetAngle: 0,
+    breakOrigin: null,
+    breakDir: normalize(sub(center, diskCenter)),
     baseAngle,
     hueShift: rand(-1, 1),
     detachDrift: {
@@ -227,7 +237,26 @@ function splitShard(parent: Shard): void {
   for (const polygon of children) {
     if (shards.length >= params.maxShards) break;
     const child = makeShard(polygon, parent.id, parent.depth + 1, parent.energy * rand(0.46, 0.68));
+    const localDir = normalize(sub(child.center, parent.center));
+    const inheritedDir = parent.breakOrigin
+      ? parent.breakDir
+      : normalize(sub(parent.center, holdPoint ?? diskCenter));
+    const childDir = normalize({
+      x: inheritedDir.x * 0.64 + localDir.x * 0.92 + rand(-0.08, 0.08),
+      y: inheritedDir.y * 0.64 + localDir.y * 0.92 + rand(-0.08, 0.08),
+    });
+    child.breakOrigin = parent.breakOrigin ?? holdPoint ?? parent.center;
+    child.breakDir = childDir;
     child.gap = parent.gap * rand(0.65, 0.95);
+    child.offset = {
+      x: parent.offset.x + localDir.x * rand(0.4, 1.2),
+      y: parent.offset.y + localDir.y * rand(0.4, 1.2),
+    };
+    child.targetGap = parent.targetGap * rand(0.72, 0.96);
+    child.targetOffset = {
+      x: parent.targetOffset.x + localDir.x * rand(1.2, 2.6),
+      y: parent.targetOffset.y + localDir.y * rand(1.2, 2.6),
+    };
     child.lift = parent.lift * rand(0.45, 0.85);
     child.angle = parent.angle * rand(0.3, 0.8);
     parent.children.push(child.id);
@@ -254,8 +283,6 @@ function update(now: number): void {
 
     maxEnergy = Math.max(maxEnergy, shard.energy);
     updateState(shard);
-    updateTargets(shard);
-    easeMotion(shard);
 
     if (shard.energy >= shard.splitAt && !shard.hidden && shard.children.length === 0) {
       const canSplit = shard.depth < params.maxDepth && shard.area > 520 && shards.length + pendingSplits * 5 < params.maxShards;
@@ -267,6 +294,15 @@ function update(now: number): void {
   }
 
   processSplitQueue();
+
+  for (const shard of visibleShards()) {
+    updateTargets(shard);
+  }
+  applySeparation();
+  for (const shard of visibleShards()) {
+    easeMotion(shard);
+  }
+
   meterFill.style.transform = `scaleX(${clamp(maxEnergy / 1.55, 0, 1)})`;
 }
 
@@ -286,20 +322,30 @@ function updateState(shard: Shard): void {
   }
 
   if (previous === shard.state) return;
+  if (previous === 'solid' && shard.state !== 'solid') {
+    freezeBreakPose(shard, holdPoint ?? diskCenter);
+  }
   if (shard.state === 'cracked') audio.play('crackSmall');
   if (shard.state === 'separated') audio.play('snapClean');
   if (shard.state === 'detached') audio.play('flake');
 }
 
 function updateTargets(shard: Shard): void {
-  if (!holdPoint) {
-    shard.targetGap *= 0.96;
-    shard.targetLift *= 0.94;
-    shard.targetAngle *= 0.94;
+  if (shard.state === 'solid') {
+    shard.targetGap = 0;
+    shard.targetOffset = { x: 0, y: 0 };
+    shard.targetLift = 0;
+    shard.targetAngle = 0;
     return;
   }
 
-  const fromHold = normalize(sub(shard.center, holdPoint));
+  if (!shard.breakOrigin) {
+    freezeBreakPose(shard, holdPoint ?? diskCenter);
+  }
+
+  const breakDir = vectorLength(shard.breakDir) > EPSILON
+    ? shard.breakDir
+    : normalize(sub(shard.center, shard.breakOrigin ?? diskCenter));
   const radialNoise = 0.82 + (Math.sin(shard.id * 12.9898) + 1) * 0.14;
   const stage = clamp((shard.energy - shard.crackAt) / Math.max(0.1, shard.detachAt - shard.crackAt), 0, 1);
 
@@ -330,14 +376,100 @@ function updateTargets(shard: Shard): void {
 
   const outwardBias = 0.82 + stage * 0.4 + shard.depth * 0.08;
   shard.targetGap = targetGap * params.gapScale * radialNoise * outwardBias;
+  shard.targetOffset = {
+    x: breakDir.x * shard.targetGap,
+    y: breakDir.y * shard.targetGap,
+  };
+  if (shard.state === 'detached') {
+    shard.targetOffset.x += shard.detachDrift.x * shard.targetGap * 0.7;
+    shard.targetOffset.y += shard.detachDrift.y * shard.targetGap * 0.7;
+  }
   shard.targetLift = targetLift * params.liftScale;
-  shard.targetAngle = targetAngle + (fromHold.x * 0.018 + fromHold.y * 0.012) * stage;
+  shard.targetAngle = targetAngle + (breakDir.x * 0.018 + breakDir.y * 0.012) * stage;
 }
 
 function easeMotion(shard: Shard): void {
   shard.gap += (shard.targetGap - shard.gap) * 0.18;
+  shard.offset.x += (shard.targetOffset.x - shard.offset.x) * 0.18;
+  shard.offset.y += (shard.targetOffset.y - shard.offset.y) * 0.18;
   shard.lift += (shard.targetLift - shard.lift) * 0.16;
   shard.angle += (shard.targetAngle - shard.angle) * 0.12;
+}
+
+function freezeBreakPose(shard: Shard, origin: Point): void {
+  if (shard.breakOrigin) return;
+
+  const fallback = vectorLength(sub(shard.center, diskCenter)) > EPSILON
+    ? diskCenter
+    : { x: diskCenter.x - 1, y: diskCenter.y - 1 };
+  const dir = normalize(sub(shard.center, origin));
+  shard.breakOrigin = { ...origin };
+  shard.breakDir = vectorLength(dir) > EPSILON
+    ? dir
+    : normalize(sub(shard.center, fallback));
+}
+
+function applySeparation(): void {
+  if (params.separationStrength <= 0) return;
+
+  const active = visibleShards().filter((shard) => (
+    shard.state === 'split' || shard.state === 'detached' || shard.depth > 0
+  ));
+  const passes = 2;
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    for (let i = 0; i < active.length; i += 1) {
+      const a = active[i];
+      const ar = separationRadius(a);
+      const ac = projectedCenter(a);
+
+      for (let j = i + 1; j < active.length; j += 1) {
+        const b = active[j];
+        const br = separationRadius(b);
+        const bc = projectedCenter(b);
+        const delta = sub(bc, ac);
+        const dist = Math.max(vectorLength(delta), 0.001);
+        const minDist = Math.min(24, (ar + br) * 0.62);
+        if (dist >= minDist) continue;
+
+        const dir = dist > 0.01
+          ? { x: delta.x / dist, y: delta.y / dist }
+          : normalize({
+            x: Math.sin((a.id + b.id) * 12.9898),
+            y: Math.cos((a.id - b.id) * 78.233),
+          });
+        const push = (minDist - dist) * 0.5 * params.separationStrength;
+        a.targetOffset.x -= dir.x * push;
+        a.targetOffset.y -= dir.y * push;
+        b.targetOffset.x += dir.x * push;
+        b.targetOffset.y += dir.y * push;
+
+        clampTargetOffset(a);
+        clampTargetOffset(b);
+      }
+    }
+  }
+}
+
+function projectedCenter(shard: Shard): Point {
+  return {
+    x: shard.center.x + shard.targetOffset.x,
+    y: shard.center.y + shard.targetOffset.y,
+  };
+}
+
+function separationRadius(shard: Shard): number {
+  const base = Math.sqrt(shard.area) * (shard.depth > 0 ? 0.2 : 0.14);
+  return clamp(base, 4, shard.depth > 0 ? 18 : 24);
+}
+
+function clampTargetOffset(shard: Shard): void {
+  const maxOffset = Math.max(10, shard.targetGap * 1.85 + 4 + shard.depth * 2);
+  const length = vectorLength(shard.targetOffset);
+  if (length <= maxOffset || length < EPSILON) return;
+  const scale = maxOffset / length;
+  shard.targetOffset.x *= scale;
+  shard.targetOffset.y *= scale;
 }
 
 function processSplitQueue(): void {
@@ -694,12 +826,9 @@ function transformedPoints(
   shard: Shard,
   options: { x?: number; y?: number; includeLift?: boolean } = {},
 ): Point[] {
-  const hold = holdPoint ?? diskCenter;
-  const outward = normalize(sub(shard.center, hold));
-  const detached = shard.state === 'detached' ? shard.detachDrift : { x: 0, y: 0 };
   const offset = {
-    x: outward.x * shard.gap + detached.x * shard.gap * 0.7 + (options.x ?? 0),
-    y: outward.y * shard.gap + detached.y * shard.gap * 0.7 + (options.y ?? 0),
+    x: shard.offset.x + (options.x ?? 0),
+    y: shard.offset.y + (options.y ?? 0),
   };
   const liftY = options.includeLift === false ? 0 : -shard.lift;
   const cos = Math.cos(shard.angle);
@@ -991,11 +1120,7 @@ function onPointerDown(event: PointerEvent): void {
 }
 
 function onPointerMove(event: PointerEvent): void {
-  if (event.pointerId !== activePointerId || !holdPoint) return;
-  holdPoint = {
-    x: lerp(holdPoint.x, event.clientX, 0.22),
-    y: lerp(holdPoint.y, event.clientY, 0.22),
-  };
+  if (event.pointerId !== activePointerId) return;
 }
 
 function onPointerUp(event: PointerEvent): void {
@@ -1028,6 +1153,10 @@ function lerp(a: number, b: number, t: number): number {
 
 function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function vectorLength(point: Point): number {
+  return Math.hypot(point.x, point.y);
 }
 
 function sub(a: Point, b: Point): Point {
