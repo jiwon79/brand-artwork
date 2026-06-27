@@ -62,8 +62,8 @@ const resetButton = document.querySelector('.reset-button') as HTMLButtonElement
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const EPSILON = 0.0001;
 const SPHERE_RADIUS = 2.24;
-const WAX_THICKNESS = 0.074;
-const OOZE_DELAY = 0.3;
+const WAX_THICKNESS = 0.026;
+const OOZE_DELAY = 0.22;
 
 const colors = {
   wax: new THREE.Color('#c7f06b'),
@@ -107,10 +107,10 @@ const coreMaterial = new THREE.MeshPhysicalMaterial({
 
 const waxMaterial = new THREE.MeshPhysicalMaterial({
   color: colors.wax,
-  roughness: 0.34,
+  roughness: 0.28,
   metalness: 0,
-  clearcoat: 0.78,
-  clearcoatRoughness: 0.2,
+  clearcoat: 0.92,
+  clearcoatRoughness: 0.14,
 });
 
 const rubberMaterial = new THREE.MeshPhysicalMaterial({
@@ -126,11 +126,11 @@ const rubberMaterial = new THREE.MeshPhysicalMaterial({
 
 const gelMaterial = new THREE.MeshPhysicalMaterial({
   color: colors.gel,
-  roughness: 0.36,
+  roughness: 0.48,
   metalness: 0,
-  clearcoat: 0.34,
-  clearcoatRoughness: 0.32,
-  transparent: true,
+  clearcoat: 0.18,
+  clearcoatRoughness: 0.52,
+  transparent: false,
   opacity: 0.82,
   depthWrite: false,
 });
@@ -145,7 +145,7 @@ const seamMaterialTemplate = new THREE.MeshPhysicalMaterial({
 });
 
 const coreMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(SPHERE_RADIUS * 0.89, 96, 48),
+  new THREE.SphereGeometry(SPHERE_RADIUS * 0.93, 96, 48),
   coreMaterial,
 );
 coreMesh.castShadow = true;
@@ -319,7 +319,7 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
   const seamGroup = new THREE.Group();
   const group = new THREE.Group();
   const gelMesh = new THREE.Mesh(new THREE.BufferGeometry(), gelMaterial.clone());
-  gelMesh.renderOrder = 8;
+  gelMesh.renderOrder = 3;
   gelMesh.visible = false;
   group.add(shardGroup, seamGroup, gelMesh);
   sphereGroup.add(group);
@@ -363,10 +363,10 @@ function addShard(
 
   const material = new THREE.MeshPhysicalMaterial({
     color: colors.wax,
-    roughness: 0.36,
+    roughness: 0.25,
     metalness: 0,
-    clearcoat: 0.62,
-    clearcoatRoughness: 0.22,
+    clearcoat: 0.88,
+    clearcoatRoughness: 0.16,
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
@@ -499,7 +499,7 @@ function updateShardMesh(
   });
 
   points.forEach((_, index) => {
-    const bottomOffset = topOffsets[index] - WAX_THICKNESS * (0.68 + progress * 0.32);
+    const bottomOffset = topOffsets[index] - WAX_THICKNESS * (0.72 + progress * 0.28);
     const surfacePoint = tangentToSurface(zone, rotatedPoints[index], bottomOffset);
     positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
   });
@@ -542,11 +542,11 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
 
   zone.gelMesh.visible = true;
   const pressure = smoothstep(zone.pressure);
-  const radius = zone.radius * (0.1 + mix * 0.64);
+  const radius = zone.radius * (0.1 + mix * 0.72);
   const sides = 28;
   const positions: number[] = [];
   const indices: number[] = [];
-  positions.push(...vectorToArray(tangentToSurface(zone, { x: 0, y: 0 }, -0.028 - pressure * 0.016 + mix * 0.026)));
+  positions.push(...vectorToArray(tangentToSurface(zone, { x: 0, y: 0 }, 0.004 - pressure * 0.002 + mix * 0.036)));
 
   for (let i = 0; i < sides; i += 1) {
     const angle = (i / sides) * Math.PI * 2;
@@ -555,7 +555,7 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
       x: Math.cos(angle) * radius * pulse,
       y: Math.sin(angle) * radius * (0.82 + noise(zone.seed + i * 71) * 0.2),
     };
-    positions.push(...vectorToArray(tangentToSurface(zone, point, -0.036 - pressure * 0.01 + mix * 0.022)));
+    positions.push(...vectorToArray(tangentToSurface(zone, point, 0.002 - pressure * 0.0015 + mix * 0.032)));
   }
 
   for (let i = 1; i <= sides; i += 1) {
@@ -567,7 +567,7 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
-  zone.gelMesh.material.opacity = (0.12 + mix * 0.7) * progress;
+  zone.gelMesh.material.opacity = (0.24 + mix * 0.7) * progress;
 }
 
 function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: ImpactFootprint): void {
@@ -678,7 +678,7 @@ function fractureExistingZone(
   zone.fractureCount += 1;
   zone.damage = Math.min(4.4, zone.damage + forceScale * 0.16);
   zone.pressure = Math.min(1, zone.pressure + (fromHold ? 0.04 : 0.065) * forceScale);
-  zone.mix = Math.min(1, zone.mix + (fromHold ? 0.026 : 0.014) * forceScale);
+  zone.mix = Math.min(1, zone.mix + (fromHold ? 0.052 : 0.01) * forceScale);
   rebuildAllZoneEdges(zone, seed);
 }
 
@@ -725,13 +725,13 @@ function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: numbe
   const localPoint = surfaceToZonePoint(zone, normal);
   const forceScale = Math.min(2.4, Math.max(0.5, force));
   zone.pressure = Math.min(1, zone.pressure + amount * (3.6 + forceScale * 0.9));
-  zone.mix = Math.min(1, zone.mix + amount * (0.2 + forceScale * 0.08));
+  zone.mix = Math.min(1, zone.mix + amount * (0.72 + forceScale * 0.22));
   const ooze = delayedOoze(zone);
 
   zone.shards.forEach((shard) => {
     const falloff = Math.max(0, 1 - distance(localPoint, shard.center) / (zone.radius * (0.34 + zone.mix * 0.5)));
     if (falloff <= 0) return;
-    shard.consumed = Math.min(1, shard.consumed + amount * falloff * (0.58 + forceScale * 0.18 + ooze * 1.4));
+    shard.consumed = Math.min(1, shard.consumed + amount * falloff * (0.34 + forceScale * 0.12 + ooze * 1.1));
     shard.lift = Math.max(0, shard.lift - amount * falloff * 0.052);
   });
 }
@@ -984,9 +984,9 @@ function delayedOoze(zone: BreakZone): number {
 }
 
 function deformSphereSurfaces(): void {
-  deformSphereGeometry(shellMesh, shellBasePositions, 1);
-  deformSphereGeometry(rubberMesh, rubberBasePositions, 0.92);
-  deformSphereGeometry(coreMesh, coreBasePositions, 0.58);
+  deformSphereGeometry(shellMesh, shellBasePositions, 0.28);
+  deformSphereGeometry(rubberMesh, rubberBasePositions, 0.42);
+  deformSphereGeometry(coreMesh, coreBasePositions, 0.72);
 }
 
 function deformSphereGeometry(
@@ -1011,8 +1011,8 @@ function deformSphereGeometry(
       if (localDistance > pressRadius) return;
       const falloff = smoothstep(1 - localDistance / pressRadius);
       depression += (
-        0.018
-        + zone.pressure * 0.15
+        0.008
+        + zone.pressure * 0.09
         + zone.damage * 0.006
       ) * zone.progress * falloff;
     });
@@ -1044,7 +1044,7 @@ function vectorToArray(vector: THREE.Vector3): [number, number, number] {
 function waxColor(tint: number, consumed: number, mix: number): THREE.Color {
   const target = tint > 0 ? colors.waxLight : colors.waxDark;
   const color = colors.wax.clone().lerp(target, Math.abs(tint) * 0.34);
-  return color.lerp(colors.gel, Math.min(0.46, consumed * mix * 0.44 + mix * 0.08));
+  return color.lerp(colors.waxDark, Math.min(0.18, consumed * 0.08 + mix * 0.05));
 }
 
 function createImpactPolygon(
