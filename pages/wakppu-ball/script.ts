@@ -50,17 +50,17 @@ const params = {
   seed: 230623,
   waxColor: '#7ec9af',
   waxWarmth: 0.16,
-  initialShards: 16,
+  initialShards: 14,
   circleSides: 124,
   pressRadius: 186,
   energyRate: 1.28,
   gapScale: 1.12,
   liftScale: 1,
-  splitDensity: 5,
-  maxDepth: 2,
-  maxShards: 230,
-  maxSplitsPerFrame: 2,
-  separationStrength: 0.58,
+  splitDensity: 3,
+  maxDepth: 1,
+  maxShards: 90,
+  maxSplitsPerFrame: 1,
+  separationStrength: 0.9,
   bevelWidth: 1.25,
   shadowStrength: 0.24,
   debugSeeds: false,
@@ -218,14 +218,14 @@ function makeShard(polygon: Point[], parentId: number | null, depth: number, inh
 function splitShard(parent: Shard): void {
   if (parent.hidden || parent.depth >= params.maxDepth || shards.length >= params.maxShards) return;
 
-  const count = Math.max(3, Math.min(7, Math.round(params.splitDensity + rand(-1.2, 1.2))));
+  const count = Math.max(3, Math.min(4, Math.round(params.splitDensity + rand(-0.65, 0.75))));
   const points = randomPointsInPolygon(parent.polygon, count);
   if (points.length < 3) return;
 
   const cells = createVoronoiCells(points, parent.polygon, boundsFromPolygon(parent.polygon, 60));
   const children = cells
-    .filter((polygon) => Math.abs(polygonArea(polygon)) > Math.max(80, parent.area * 0.04))
-    .slice(0, 7);
+    .filter((polygon) => Math.abs(polygonArea(polygon)) > Math.max(180, parent.area * 0.08))
+    .slice(0, 4);
 
   if (children.length < 2) return;
 
@@ -412,10 +412,8 @@ function freezeBreakPose(shard: Shard, origin: Point): void {
 function applySeparation(): void {
   if (params.separationStrength <= 0) return;
 
-  const active = visibleShards().filter((shard) => (
-    shard.state === 'split' || shard.state === 'detached' || shard.depth > 0
-  ));
-  const passes = 2;
+  const active = visibleShards().filter((shard) => shard.state !== 'solid');
+  const passes = 3;
 
   for (let pass = 0; pass < passes; pass += 1) {
     for (let i = 0; i < active.length; i += 1) {
@@ -429,7 +427,7 @@ function applySeparation(): void {
         const bc = projectedCenter(b);
         const delta = sub(bc, ac);
         const dist = Math.max(vectorLength(delta), 0.001);
-        const minDist = Math.min(24, (ar + br) * 0.62);
+        const minDist = Math.min(34, (ar + br) * 0.95);
         if (dist >= minDist) continue;
 
         const dir = dist > 0.01
@@ -459,12 +457,12 @@ function projectedCenter(shard: Shard): Point {
 }
 
 function separationRadius(shard: Shard): number {
-  const base = Math.sqrt(shard.area) * (shard.depth > 0 ? 0.2 : 0.14);
-  return clamp(base, 4, shard.depth > 0 ? 18 : 24);
+  const base = Math.sqrt(shard.area) * (shard.depth > 0 ? 0.28 : 0.18);
+  return clamp(base, 7, shard.depth > 0 ? 24 : 30);
 }
 
 function clampTargetOffset(shard: Shard): void {
-  const maxOffset = Math.max(10, shard.targetGap * 1.85 + 4 + shard.depth * 2);
+  const maxOffset = Math.max(16, shard.targetGap * 2.8 + 8 + shard.depth * 4);
   const length = vectorLength(shard.targetOffset);
   if (length <= maxOffset || length < EPSILON) return;
   const scale = maxOffset / length;
@@ -1120,7 +1118,11 @@ function onPointerDown(event: PointerEvent): void {
 }
 
 function onPointerMove(event: PointerEvent): void {
-  if (event.pointerId !== activePointerId) return;
+  if (event.pointerId !== activePointerId || !holdPoint) return;
+  holdPoint = {
+    x: lerp(holdPoint.x, event.clientX, 0.35),
+    y: lerp(holdPoint.y, event.clientY, 0.35),
+  };
 }
 
 function onPointerUp(event: PointerEvent): void {
