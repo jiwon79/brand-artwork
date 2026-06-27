@@ -69,6 +69,8 @@ const colors = {
   wax: new THREE.Color('#c7f06b'),
   waxLight: new THREE.Color('#eefca4'),
   waxDark: new THREE.Color('#7d9a26'),
+  waxCut: new THREE.Color('#9fbd45'),
+  crackShadow: new THREE.Color('#3f4a18'),
   core: new THREE.Color('#fcfcf8'),
   coreDeep: new THREE.Color('#dce1db'),
   gel: new THREE.Color('#ffffff'),
@@ -136,11 +138,11 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
 });
 
 const seamMaterialTemplate = new THREE.MeshPhysicalMaterial({
-  color: colors.gel,
-  roughness: 0.5,
+  color: colors.crackShadow,
+  roughness: 0.64,
   metalness: 0,
   transparent: true,
-  opacity: 0.92,
+  opacity: 0.48,
   depthWrite: false,
 });
 
@@ -425,8 +427,8 @@ function rebuildZoneEdges(zone: BreakZone, edgeMap: Map<string, CrackEdge & { co
     .filter((edge) => edge.count > 1)
     .map((edge, index) => {
       const material = seamMaterialTemplate.clone();
-      material.opacity = 0.84;
-      const seam = new THREE.Mesh(new THREE.TubeGeometry(createSurfaceCurve(zone, edge.a, edge.b, -0.006), 3, 0.011 + edge.weight * 0.0025, 6, false), material);
+      material.opacity = 0.46;
+      const seam = new THREE.Mesh(new THREE.TubeGeometry(createSurfaceCurve(zone, edge.a, edge.b, -0.014), 3, 0.0038 + edge.weight * 0.0009, 5, false), material);
       seam.renderOrder = 7;
       zone.seamGroup.add(seam);
       return {
@@ -458,7 +460,7 @@ function updateZone(zone: BreakZone, dt: number, elapsed: number): void {
   zone.edges.forEach((edge) => {
     if (!edge.seam) return;
     const material = edge.seam.material;
-    material.opacity = (0.5 + ooze * 0.3) * progress;
+    material.opacity = (0.36 + zone.damage * 0.035) * progress;
   });
 
   updateGelMesh(zone, progress, ooze, elapsed);
@@ -1076,7 +1078,9 @@ function vectorToArray(vector: THREE.Vector3): [number, number, number] {
 function waxColor(tint: number, consumed: number, mix: number): THREE.Color {
   const target = tint > 0 ? colors.waxLight : colors.waxDark;
   const color = colors.wax.clone().lerp(target, Math.abs(tint) * 0.34);
-  return color.lerp(colors.waxDark, Math.min(0.18, consumed * 0.08 + mix * 0.05));
+  return color
+    .lerp(colors.waxCut, Math.min(0.2, consumed * 0.1))
+    .lerp(colors.waxDark, Math.min(0.12, mix * 0.04));
 }
 
 function createImpactPolygon(
