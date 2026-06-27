@@ -538,7 +538,7 @@ function updateShardMesh(
     undersideMaterial.opacity = 1;
   }
   if (edgeMaterial) {
-    const wetness = Math.min(0.96, 0.34 + consumed * 0.52 + mix * 0.72);
+    const wetness = Math.min(0.54, 0.08 + consumed * 0.28 + mix * 0.34);
     const edgeColor = colors.waxCut.clone().lerp(colors.gel, wetness);
     edgeMaterial.color.copy(edgeColor);
     edgeMaterial.emissive.copy(edgeColor).multiplyScalar(0.12 + wetness * 0.04);
@@ -547,19 +547,19 @@ function updateShardMesh(
 }
 
 function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: number): void {
-  const crackFill = Math.max(mix, progress * 0.22);
-  if (crackFill <= 0.018) {
+  const crackFill = Math.max(0, mix - 0.02);
+  if (crackFill <= 0.025) {
     zone.gelMesh.visible = false;
     return;
   }
 
   zone.gelMesh.visible = true;
   const pressure = smoothstep(zone.pressure);
-  const radius = zone.radius * (0.2 + crackFill * 0.76);
+  const radius = zone.radius * (0.07 + crackFill * 0.46);
   const sides = 28;
   const positions: number[] = [];
   const indices: number[] = [];
-  positions.push(...vectorToArray(tangentToSurface(zone, { x: 0, y: 0 }, 0.002 - pressure * 0.004 + mix * 0.036)));
+  positions.push(...vectorToArray(tangentToSurface(zone, { x: 0, y: 0 }, -0.006 - pressure * 0.004 + mix * 0.018)));
 
   for (let i = 0; i < sides; i += 1) {
     const angle = (i / sides) * Math.PI * 2;
@@ -568,7 +568,7 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
       x: Math.cos(angle) * radius * pulse,
       y: Math.sin(angle) * radius * (0.82 + noise(zone.seed + i * 71) * 0.2),
     };
-    positions.push(...vectorToArray(tangentToSurface(zone, point, -0.001 - pressure * 0.004 + mix * 0.032)));
+    positions.push(...vectorToArray(tangentToSurface(zone, point, -0.008 - pressure * 0.004 + mix * 0.016)));
   }
 
   for (let i = 1; i <= sides; i += 1) {
@@ -580,7 +580,7 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
-  zone.gelMesh.material.opacity = (0.2 + crackFill * 0.68) * progress;
+  zone.gelMesh.material.opacity = (0.1 + crackFill * 0.34) * progress;
 }
 
 function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: ImpactFootprint): void {
@@ -738,7 +738,7 @@ function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: numbe
   const localPoint = surfaceToZonePoint(zone, normal);
   const forceScale = Math.min(2.4, Math.max(0.5, force));
   zone.pressure = Math.min(1, zone.pressure + amount * (3.6 + forceScale * 0.9));
-  zone.mix = Math.min(1, zone.mix + amount * (0.72 + forceScale * 0.22));
+  zone.mix = Math.min(1, zone.mix + amount * (0.42 + forceScale * 0.14));
   const ooze = delayedOoze(zone);
 
   zone.shards.forEach((shard) => {
