@@ -11,6 +11,8 @@ type Shard = {
   lift: number;
   tint: number;
   angle: number;
+  split: number;
+  phase: number;
 };
 
 type CrackEdge = {
@@ -21,10 +23,12 @@ type CrackEdge = {
 
 type BreakZone = {
   id: number;
+  seed: number;
   center: Point;
   radius: number;
   damage: number;
   mix: number;
+  fractureCount: number;
   progress: number;
   target: number;
   shards: Shard[];
@@ -42,11 +46,11 @@ const palette = {
   wax: '#c7f06b',
   waxLight: '#eefca4',
   waxDark: '#7d9a26',
-  core: '#f4dcb4',
-  coreHot: '#fff4d2',
-  coreDeep: '#d6a46f',
+  core: '#fbfbf6',
+  coreHot: '#ffffff',
+  coreDeep: '#d9ded7',
   rubber: '#eafcff',
-  crack: '#28320f',
+  crack: '#f9fbf2',
   table: '#171214',
 };
 
@@ -100,14 +104,12 @@ function createBreakZone(point: Point, force = 1): BreakZone {
   const center = clampToBall(point, 0.94);
   const seed = Math.floor(Math.random() * 1_000_000_000) + zoneId * 1009;
   const rng = mulberry32(seed);
-  const nearby = findNearestZone(center);
-  const nested = nearby && distance(center, nearby.center) < nearby.radius * 0.74;
   const forceScale = Math.min(1.8, Math.max(0.45, force));
   const impactRadius = ball.radius
-    * (nested ? 0.1 + rng() * 0.08 : 0.22 + rng() * 0.11)
+    * (0.22 + rng() * 0.1)
     * (0.88 + forceScale * 0.16);
-  const pointCount = Math.round((nested ? 22 : 26) + forceScale * 11 + rng() * 10);
-  const impactPolygon = createImpactPolygon(center, impactRadius, 22 + Math.floor(rng() * 9), rng);
+  const pointCount = Math.round(12 + forceScale * 4 + rng() * 6);
+  const impactPolygon = createImpactPolygon(center, impactRadius, 15 + Math.floor(rng() * 7), rng);
   const points = createImpactPoints(center, impactRadius, impactPolygon, pointCount, rng);
   const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, impactRadius * 0.55));
   const shards: Shard[] = [];
@@ -120,25 +122,16 @@ function createBreakZone(point: Point, force = 1): BreakZone {
   const edges = Array.from(edgeMap.values())
     .filter((edge) => edge.count > 1)
     .map((edge) => ({ a: edge.a, b: edge.b, weight: edge.weight }));
-  const crumbs = edges
-    .filter((_, index) => index % 3 === 0)
-    .slice(0, 34)
-    .map((edge, index) => {
-      const t = 0.25 + noise(seed + index * 11) * 0.5;
-      return {
-        x: lerp(edge.a.x, edge.b.x, t),
-        y: lerp(edge.a.y, edge.b.y, t),
-        size: 1.7 + noise(seed + index * 19) * 3.4,
-        phase: noise(seed + index * 43) * Math.PI * 2,
-      };
-    });
+  const crumbs = createCrumbsFromEdges(edges, seed);
 
   return {
     id: zoneId++,
+    seed,
     center,
     radius: impactRadius,
     damage: forceScale,
-    mix: nested ? Math.min(1, nearby.mix + 0.12 * forceScale) : 0,
+    mix: 0,
+    fractureCount: 0,
     progress: 0,
     target: 1,
     shards,
@@ -152,22 +145,36 @@ function addShard(
   shards: Shard[],
   edgeMap: Map<string, CrackEdge & { count: number }>,
   seed: number,
+  split = 0,
+  minArea = 24,
 ): void {
-  if (Math.abs(polygonArea(polygon)) < 24) return;
+  if (Math.abs(polygonArea(polygon)) < minArea) return;
 
   const center = polygonCentroid(polygon);
-  const fromBall = normalize(sub(center, ball));
-  shards.push({
+  const shard: Shard = {
     polygon,
     center,
-    lift: 2.5 + noise(seed) * 8,
+    lift: 2.5 + noise(seed) * 7 + split * 0.7,
     tint: noise(seed + 9) - 0.5,
-    angle: (noise(seed + 18) - 0.5) * 0.045,
-  });
+    angle: (noise(seed + 18) - 0.5) * (0.04 + split * 0.01),
+    split,
+    phase: noise(seed + 29) * Math.PI * 2,
+  };
 
-  for (let i = 0; i < polygon.length; i += 1) {
-    const a = polygon[i];
-    const b = polygon[(i + 1) % polygon.length];
+  shards.push(shard);
+  registerShardEdges(shard, edgeMap, seed);
+}
+
+function registerShardEdges(
+  shard: Shard,
+  edgeMap: Map<string, CrackEdge & { count: number }>,
+  seed: number,
+): void {
+  const fromBall = normalize(sub(shard.center, ball));
+
+  for (let i = 0; i < shard.polygon.length; i += 1) {
+    const a = shard.polygon[i];
+    const b = shard.polygon[(i + 1) % shard.polygon.length];
     const key = edgeKey(a, b);
     const edge = edgeMap.get(key);
     if (edge) {
@@ -235,7 +242,12 @@ function createImpactPoints(
   return points;
 }
 
-function createVoronoiCells(points: Point[], clipPolygon: Point[], bounds: [number, number, number, number]): Point[][] {
+function createVoronoiCells(
+  points: Point[],
+  clipPolygon: Point[],
+  bounds: [number, number, number, number],
+  minArea = 42,
+): Point[][] {
   if (points.length < 3) return [];
 
   const delaunay = Delaunay.from(points, (point) => point.x, (point) => point.y);
@@ -247,7 +259,7 @@ function createVoronoiCells(points: Point[], clipPolygon: Point[], bounds: [numb
     if (!cell || cell.length < 4) continue;
     const subject = cell.slice(0, -1).map(([x, y]) => ({ x, y }));
     const clipped = clipPolygonToConvex(subject, clipPolygon);
-    if (clipped.length >= 3 && Math.abs(polygonArea(clipped)) > 42) {
+    if (clipped.length >= 3 && Math.abs(polygonArea(clipped)) > minArea) {
       polygons.push(clipped);
     }
   }
@@ -403,7 +415,7 @@ function drawCore(timestamp: number): void {
   ctx.fill();
 
   ctx.globalAlpha = 0.16 + pressure * 0.08;
-  ctx.strokeStyle = '#fff8df';
+  ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = Math.max(1.2, ball.radius * 0.012);
   for (let i = 0; i < 7; i += 1) {
     const y = ball.y - ball.radius * 0.34 + i * ball.radius * 0.1 + Math.sin(timestamp * 0.0015 + i) * 3;
@@ -461,19 +473,20 @@ function drawZone(zone: BreakZone, timestamp: number): void {
 
   for (const shard of zone.shards) {
     const outward = normalize(sub(shard.center, zone.center));
-    const offset = mul(outward, shard.lift * t * (1 + zone.damage * 0.12));
+    const splitJitter = reducedMotion ? 0 : Math.sin(timestamp * 0.003 + shard.phase) * shard.split * 0.18;
+    const offset = mul(outward, (shard.lift + splitJitter) * t * (1 + zone.damage * 0.12));
     const angle = shard.angle * t * (1 + zone.damage * 0.16);
     const color = adjustWaxColor(shard.tint, t, mix);
 
     ctx.save();
-    ctx.globalAlpha = 0.86 + t * 0.1 - mix * 0.08;
+    ctx.globalAlpha = 0.93 + t * 0.06;
     ctx.translate(shard.center.x + offset.x, shard.center.y + offset.y);
     ctx.rotate(angle);
     ctx.translate(-shard.center.x, -shard.center.y);
     drawPolygon(shard.polygon);
     ctx.fillStyle = color;
-    ctx.shadowColor = `rgba(31, 39, 8, ${0.2 * t})`;
-    ctx.shadowBlur = 8 * t;
+    ctx.shadowColor = `rgba(91, 111, 30, ${0.16 * t})`;
+    ctx.shadowBlur = 6 * t;
     ctx.shadowOffsetY = 2 * t;
     ctx.fill();
     ctx.restore();
@@ -485,24 +498,22 @@ function drawZone(zone: BreakZone, timestamp: number): void {
 
   zone.edges.forEach((edge, index) => {
     const pulse = 0.88 + Math.sin(timestamp * 0.003 + zone.id + index) * 0.12;
-    ctx.strokeStyle = `rgba(255, 231, 187, ${0.36 * t})`;
-    ctx.lineWidth = (1.8 + edge.weight * (0.72 + zone.damage * 0.12)) * t * pulse;
+    ctx.strokeStyle = `rgba(255, 255, 248, ${(0.42 + mix * 0.2) * t})`;
+    ctx.lineWidth = (2.1 + edge.weight * (0.82 + zone.damage * 0.16)) * t * pulse;
     drawJaggedLine(edge.a, edge.b, zone.id * 1000 + index * 13);
   });
 
-  ctx.globalCompositeOperation = 'multiply';
   zone.edges.forEach((edge, index) => {
     const pulse = 0.9 + Math.sin(timestamp * 0.003 + zone.id + index) * 0.1;
-    ctx.strokeStyle = `rgba(17, 23, 4, ${(0.42 - mix * 0.1) * t})`;
-    ctx.lineWidth = (0.72 + edge.weight * (0.36 + zone.damage * 0.06)) * t * pulse;
+    ctx.strokeStyle = `rgba(107, 126, 42, ${(0.18 - mix * 0.05) * t})`;
+    ctx.lineWidth = (0.58 + edge.weight * (0.22 + zone.damage * 0.035)) * t * pulse;
     drawJaggedLine(edge.a, edge.b, zone.id * 1000 + index * 13);
   });
-  ctx.globalCompositeOperation = 'source-over';
 
   zone.crumbs.forEach((crumb) => {
     const drift = reducedMotion ? 0 : Math.sin(timestamp * 0.004 + crumb.phase) * 1.8;
     ctx.globalAlpha = 0.2 + t * 0.52;
-    ctx.fillStyle = '#e7f99a';
+    ctx.fillStyle = '#edf9a6';
     ctx.beginPath();
     ctx.arc(crumb.x + drift, crumb.y - drift * 0.35, crumb.size * t, 0, Math.PI * 2);
     ctx.fill();
@@ -522,9 +533,9 @@ function drawCoreReveal(zone: BreakZone, progress: number, mix: number): void {
     zone.center.y,
     zone.radius * 0.92,
   );
-  gradient.addColorStop(0, `rgba(255, 249, 220, ${0.78 + mix * 0.14})`);
-  gradient.addColorStop(0.54, `rgba(244, 220, 180, ${0.58 + mix * 0.18})`);
-  gradient.addColorStop(1, 'rgba(209, 157, 101, 0)');
+  gradient.addColorStop(0, `rgba(255, 255, 255, ${0.84 + mix * 0.12})`);
+  gradient.addColorStop(0.5, `rgba(248, 250, 244, ${0.66 + mix * 0.2})`);
+  gradient.addColorStop(1, 'rgba(218, 222, 214, 0)');
 
   ctx.save();
   ctx.globalAlpha = progress * (0.5 + mix * 0.34);
@@ -544,8 +555,8 @@ function drawMixedCracks(zone: BreakZone, progress: number, mix: number, timesta
   zone.edges.forEach((edge, index) => {
     if (index % 2 === 1 && mix < 0.48) return;
     const pulse = 0.82 + Math.sin(timestamp * 0.004 + edge.weight + zone.id) * 0.18;
-    ctx.strokeStyle = `rgba(246, 214, 157, ${0.22 * progress * mix})`;
-    ctx.lineWidth = (3.8 + edge.weight * 1.2) * mix * progress * pulse;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.28 * progress * mix})`;
+    ctx.lineWidth = (4.2 + edge.weight * 1.35) * mix * progress * pulse;
     drawJaggedLine(edge.a, edge.b, zone.id * 5000 + index * 31);
   });
   ctx.restore();
@@ -590,25 +601,214 @@ function triggerBreak(point: Point, force = 1, fromHold = false): void {
   if (!isInsideBall(point)) return;
   lastBreakAt = performance.now();
   targetPressure = Math.max(targetPressure, 1);
+
+  const touchedZone = findBreakableZone(point);
+  if (touchedZone) {
+    fractureExistingZone(touchedZone, point, force, fromHold);
+    mixTouchedZones(point, force, fromHold ? 0.09 : 0.05);
+    playCrack(force * (fromHold ? 0.72 : 1));
+    return;
+  }
+
   const zone = createBreakZone(point, force);
   zones.push(zone);
   mixTouchedZones(point, force, fromHold ? 0.08 : 0.04);
   playCrack(force);
 }
 
-function findNearestZone(point: Point): BreakZone | null {
+function findBreakableZone(point: Point): BreakZone | null {
   let nearest: BreakZone | null = null;
-  let nearestDistance = Infinity;
+  let nearestScore = Infinity;
 
   for (const zone of zones) {
+    const insideShard = zone.shards.some((shard) => pointInPolygon(point, shard.polygon));
     const zoneDistance = distance(point, zone.center);
-    if (zoneDistance < nearestDistance) {
+    const touchesZone = insideShard || zoneDistance < zone.radius * (1.08 + zone.mix * 0.16);
+    if (!touchesZone) continue;
+
+    const score = insideShard ? zoneDistance / (zone.radius * 2) : zoneDistance / zone.radius;
+    if (score < nearestScore) {
       nearest = zone;
-      nearestDistance = zoneDistance;
+      nearestScore = score;
     }
   }
 
   return nearest;
+}
+
+function fractureExistingZone(zone: BreakZone, point: Point, force: number, fromHold: boolean): void {
+  const forceScale = Math.min(2.4, Math.max(0.55, force));
+  const seed = zone.seed + zone.fractureCount * 4099 + Math.floor(performance.now());
+  const rng = mulberry32(seed);
+  const breakRadius = Math.min(
+    zone.radius * (0.36 + forceScale * 0.11 + zone.mix * 0.08),
+    ball.radius * (0.09 + forceScale * 0.045 + zone.mix * 0.045),
+  );
+  const candidates = zone.shards
+    .map((shard, index) => ({
+      shard,
+      index,
+      contains: pointInPolygon(point, shard.polygon),
+      distance: distance(point, shard.center),
+    }))
+    .filter((candidate) => (
+      candidate.contains
+      || candidate.distance < breakRadius * (1.05 + Math.min(candidate.shard.split, 4) * 0.08)
+    ))
+    .sort((a, b) => {
+      if (a.contains !== b.contains) return a.contains ? -1 : 1;
+      return a.distance - b.distance;
+    });
+
+  if (candidates.length === 0 && zone.shards.length > 0) {
+    const nearestShard = zone.shards
+      .map((shard, index) => ({ shard, index, distance: distance(point, shard.center) }))
+      .sort((a, b) => a.distance - b.distance)[0];
+    candidates.push({ ...nearestShard, contains: false });
+  }
+
+  const selectedCount = Math.min(
+    candidates.length,
+    Math.max(1, Math.round((fromHold ? 1 : 2) + forceScale * 1.25 + zone.mix * 1.4)),
+  );
+  const selectedIndexes = new Set(candidates.slice(0, selectedCount).map((candidate) => candidate.index));
+  const nextShards: Shard[] = [];
+  let didFracture = false;
+
+  zone.shards.forEach((shard, index) => {
+    if (!selectedIndexes.has(index)) {
+      nextShards.push(shard);
+      return;
+    }
+
+    const pieces = splitShard(shard, point, forceScale, seed + index * 83);
+    if (pieces.length > 1) {
+      didFracture = true;
+      nextShards.push(...pieces);
+    } else {
+      nextShards.push({
+        ...shard,
+        lift: Math.min(22, shard.lift + forceScale * 1.2),
+        angle: shard.angle + (rng() - 0.5) * 0.018 * forceScale,
+      });
+    }
+  });
+
+  zone.shards = nextShards;
+  zone.fractureCount += 1;
+  zone.damage = Math.min(4.2, zone.damage + 0.2 + forceScale * 0.16);
+  zone.mix = Math.min(1, zone.mix + (fromHold ? 0.07 : 0.04) * forceScale + (didFracture ? 0.04 : 0.01));
+  zone.radius = Math.min(ball.radius * 0.5, zone.radius + forceScale * (fromHold ? 0.7 : 1.1));
+  rebuildZoneEdges(zone, seed);
+}
+
+function splitShard(shard: Shard, point: Point, forceScale: number, seed: number): Shard[] {
+  const area = Math.abs(polygonArea(shard.polygon));
+  if (area < 26 || shard.split > 7) return [shard];
+
+  const rng = mulberry32(seed);
+  const focus = pointInPolygon(point, shard.polygon) ? point : shard.center;
+  const splitCount = Math.min(12, Math.round(3 + forceScale * 2.1 + rng() * 3 + shard.split * 0.55));
+  const points = createShardSplitPoints(shard.polygon, focus, splitCount, rng);
+  if (points.length < 3) return [shard];
+
+  const cells = createVoronoiCells(
+    points,
+    shard.polygon,
+    boundsFromPolygon(shard.polygon, 8),
+    Math.max(8, area / (splitCount * 9)),
+  );
+  if (cells.length < 2) return [shard];
+
+  const newShards: Shard[] = [];
+  const edgeMap = new Map<string, CrackEdge & { count: number }>();
+  cells.forEach((cell, index) => {
+    const previousLength = newShards.length;
+    addShard(cell, newShards, edgeMap, seed + index * 53, shard.split + 1, Math.max(8, area / (splitCount * 14)));
+    const created = newShards[newShards.length - 1];
+    if (newShards.length > previousLength && created) {
+      created.lift = Math.min(23, created.lift + shard.lift * 0.48 + forceScale * 1.2);
+      created.angle += shard.angle * 0.58 + (rng() - 0.5) * 0.018 * forceScale;
+      created.tint = created.tint * 0.62 + shard.tint * 0.38;
+    }
+  });
+
+  return newShards.length > 1 ? newShards : [shard];
+}
+
+function createShardSplitPoints(
+  polygon: Point[],
+  focus: Point,
+  count: number,
+  rng: () => number,
+): Point[] {
+  const center = polygonCentroid(polygon);
+  const points: Point[] = [];
+  const start = pointInPolygon(focus, polygon) ? focus : center;
+  const maxRadius = polygon.reduce((max, point) => Math.max(max, distance(start, point)), 0);
+  const [minX, minY, maxX, maxY] = boundsFromPolygon(polygon, 0);
+
+  points.push(start);
+  if (distance(start, center) > 1.5) {
+    points.push({
+      x: lerp(start.x, center.x, 0.55),
+      y: lerp(start.y, center.y, 0.55),
+    });
+  } else {
+    points.push(center);
+  }
+
+  let attempts = 0;
+  while (points.length < count && attempts < count * 90) {
+    attempts += 1;
+    let candidate: Point;
+    if (rng() < 0.78) {
+      const angle = rng() * Math.PI * 2;
+      const radius = maxRadius * Math.sqrt(rng()) * (0.18 + rng() * 0.78);
+      candidate = {
+        x: start.x + Math.cos(angle) * radius,
+        y: start.y + Math.sin(angle) * radius,
+      };
+    } else {
+      candidate = {
+        x: lerp(minX, maxX, rng()),
+        y: lerp(minY, maxY, rng()),
+      };
+    }
+
+    if (pointInPolygon(candidate, polygon)) {
+      points.push(candidate);
+    }
+  }
+
+  return points;
+}
+
+function rebuildZoneEdges(zone: BreakZone, seed: number): void {
+  const edgeMap = new Map<string, CrackEdge & { count: number }>();
+  zone.shards.forEach((shard, index) => {
+    registerShardEdges(shard, edgeMap, seed + index * 37 + shard.split * 131);
+  });
+
+  zone.edges = Array.from(edgeMap.values())
+    .filter((edge) => edge.count > 1)
+    .map((edge) => ({ a: edge.a, b: edge.b, weight: edge.weight }));
+  zone.crumbs = createCrumbsFromEdges(zone.edges, seed);
+}
+
+function createCrumbsFromEdges(edges: CrackEdge[], seed: number): Array<Point & { size: number; phase: number }> {
+  return edges
+    .filter((_, index) => index % 3 === 0)
+    .slice(0, 42)
+    .map((edge, index) => {
+      const t = 0.2 + noise(seed + index * 11) * 0.6;
+      return {
+        x: lerp(edge.a.x, edge.b.x, t),
+        y: lerp(edge.a.y, edge.b.y, t),
+        size: 1.3 + noise(seed + index * 19) * 2.8,
+        phase: noise(seed + index * 43) * Math.PI * 2,
+      };
+    });
 }
 
 function mixTouchedZones(point: Point, force: number, dt: number): void {
@@ -618,8 +818,8 @@ function mixTouchedZones(point: Point, force: number, dt: number): void {
     if (falloff <= 0) continue;
 
     zone.mix = Math.min(1, zone.mix + dt * falloff * (0.42 + force * 0.34));
-    zone.damage = Math.min(3.2, zone.damage + dt * falloff * (0.32 + force * 0.28));
-    zone.radius = Math.min(ball.radius * 0.46, zone.radius + dt * falloff * force * 2.4);
+    zone.damage = Math.min(4.2, zone.damage + dt * falloff * (0.32 + force * 0.28));
+    zone.radius = Math.min(ball.radius * 0.5, zone.radius + dt * falloff * force * 2.4);
   }
 }
 
@@ -740,12 +940,13 @@ function adjustWaxColor(tint: number, crack: number, mix = 0): string {
   const base = [199, 240, 107];
   const light = [238, 252, 164];
   const dark = [125, 154, 38];
-  const core = [236, 205, 150];
+  const core = [249, 250, 244];
   const mixTarget = tint > 0 ? light : dark;
-  const amount = Math.abs(tint) * 0.42 + crack * 0.08;
-  const r = Math.round(lerp(lerp(base[0], mixTarget[0], amount), core[0], mix * 0.26));
-  const g = Math.round(lerp(lerp(base[1], mixTarget[1], amount), core[1], mix * 0.26));
-  const b = Math.round(lerp(lerp(base[2], mixTarget[2], amount), core[2], mix * 0.26));
+  const amount = Math.abs(tint) * 0.42 + crack * 0.06;
+  const coreLift = mix * 0.18;
+  const r = Math.round(lerp(lerp(base[0], mixTarget[0], amount), core[0], coreLift));
+  const g = Math.round(lerp(lerp(base[1], mixTarget[1], amount), core[1], coreLift));
+  const b = Math.round(lerp(lerp(base[2], mixTarget[2], amount), core[2], coreLift));
   return `rgb(${r}, ${g}, ${b})`;
 }
 
