@@ -16,6 +16,31 @@ type PointerState = {
   isDown: boolean;
 };
 
+type CrackPoint = {
+  x: number;
+  y: number;
+};
+
+type CrackPieceSpec = {
+  polygon: CrackPoint[];
+  center: CrackPoint;
+  normal: THREE.Vector3;
+  shift: number;
+  rotation: THREE.Vector3;
+  shade: number;
+};
+
+type CrackEdgeSpec = {
+  a: CrackPoint;
+  b: CrackPoint;
+  width: number;
+};
+
+type CrackPattern = {
+  pieces: CrackPieceSpec[];
+  edges: CrackEdgeSpec[];
+};
+
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -57,6 +82,7 @@ let breakTarget = 0;
 const squishyRadius = 1.18;
 const waxRadius = 1.28;
 const rubberRadius = 1.34;
+const crackPattern = createCrackPattern();
 
 const rubberMaterial = new THREE.MeshPhysicalMaterial({
   color: 0xf4fffb,
@@ -129,10 +155,10 @@ const intactWaxShell = new THREE.Mesh(new THREE.SphereGeometry(waxRadius, 96, 64
 intactWaxShell.renderOrder = 2;
 ball.add(intactWaxShell);
 
-const waxFlakes = createWaxFlakes();
+const waxFlakes = createWaxFlakes(crackPattern.pieces);
 ball.add(waxFlakes);
 
-const cracks = createCracks();
+const cracks = createCracks(crackPattern.edges);
 ball.add(cracks);
 
 const waxDust = createWaxDust();
@@ -189,106 +215,127 @@ function createRubberHighlights(): THREE.Group {
   return group;
 }
 
-function createWaxFlakes(): THREE.Group {
-  const group = new THREE.Group();
-  const latSteps = 9;
-  const lonSteps = 17;
-  const latMin = -Math.PI * 0.47;
-  const latMax = Math.PI * 0.47;
+function createCrackPattern(): CrackPattern {
+  const center: CrackPoint = { x: -0.06, y: 0.12 };
+  const rayAngles = [-2.92, -2.25, -1.62, -0.98, -0.32, 0.34, 1.02, 1.72, 2.38];
+  const ringRadii = [0.16, 0.43, 0.72, 1.0];
+  const rayPoints = rayAngles.map((angle, rayIndex) => ringRadii.map((radius, ringIndex) => {
+    const bend = noise2(rayIndex * 17 + 4, ringIndex * 23 + 9) * (0.06 + ringIndex * 0.035);
+    const stretch = 0.94 + noise2(rayIndex * 19 + 8, ringIndex * 29 + 3) * 0.06;
+    return {
+      x: center.x + Math.cos(angle + bend) * radius * stretch,
+      y: center.y + Math.sin(angle + bend) * radius * stretch * 0.86,
+    };
+  }));
+  const pieces: CrackPoint[][] = [];
 
-  for (let row = 0; row < latSteps; row += 1) {
-    const lat0 = THREE.MathUtils.lerp(latMin, latMax, row / latSteps);
-    const lat1 = THREE.MathUtils.lerp(latMin, latMax, (row + 0.86) / latSteps);
+  for (let rayIndex = 0; rayIndex < rayPoints.length; rayIndex += 1) {
+    const nextRayIndex = (rayIndex + 1) % rayPoints.length;
+    pieces.push([center, rayPoints[rayIndex][0], rayPoints[nextRayIndex][0]]);
 
-    for (let col = 0; col < lonSteps; col += 1) {
-      const lon0 = THREE.MathUtils.lerp(-Math.PI, Math.PI, col / lonSteps);
-      const lon1 = THREE.MathUtils.lerp(-Math.PI, Math.PI, (col + 0.86) / lonSteps);
-      const latMid = (lat0 + lat1) * 0.5;
-      const lonMid = (lon0 + lon1) * 0.5;
-      const front = Math.cos(latMid) * Math.cos(lonMid);
+    for (let ringIndex = 1; ringIndex < ringRadii.length; ringIndex += 1) {
+      const innerA = rayPoints[rayIndex][ringIndex - 1];
+      const outerA = rayPoints[rayIndex][ringIndex];
+      const innerB = rayPoints[nextRayIndex][ringIndex - 1];
+      const outerB = rayPoints[nextRayIndex][ringIndex];
 
-      if (front > 0.98) continue;
-      if ((col * 5 + row * 3) % 23 === 0 && front > -0.25) continue;
-
-      const cellLat = lat1 - lat0;
-      const cellLon = lon1 - lon0;
-      const latCenter = (lat0 + lat1) * 0.5 + noise2(col + 2, row + 3) * cellLat * 0.18;
-      const lonCenter = (lon0 + lon1) * 0.5 + noise2(col + 6, row + 9) * cellLon * 0.18;
-      const latSpan = cellLat * (0.46 + noise1(col * 29 + row * 7) * 0.42);
-      const lonSpan = cellLon * (0.44 + noise1(col * 17 + row * 37) * 0.5);
-      const geometry = createWaxFlakeGeometry(
-        latCenter - latSpan * 0.5,
-        latCenter + latSpan * 0.5,
-        lonCenter - lonSpan * 0.5,
-        lonCenter + lonSpan * 0.5,
-        waxRadius + noise2(col, row) * 0.014,
-        col * 97 + row * 131,
-      );
-      const material = waxMaterial.clone();
-      const shade = 0.84 + noise2(col + 11, row + 7) * 0.12;
-      material.color.setRGB(0.68 * shade, 0.79 * shade, 0.28 * shade);
-      material.opacity = 0;
-
-      const flake = new THREE.Mesh(geometry, material);
-      const normal = new THREE.Vector3(
-        Math.sin(lonMid) * Math.cos(latMid),
-        Math.sin(latMid),
-        Math.cos(lonMid) * Math.cos(latMid),
-      ).normalize();
-      flake.renderOrder = 3;
-      flake.userData.normal = normal;
-      flake.userData.shift = 0.012 + noise1(col * 23 + row * 41) * 0.058;
-      flake.userData.rotation = new THREE.Vector3(
-        noise2(col + 3, row + 5),
-        noise2(col + 7, row + 11),
-        noise2(col + 13, row + 17),
-      ).multiplyScalar(0.12);
-      group.add(flake);
+      if ((rayIndex + ringIndex) % 2 === 0) {
+        pieces.push([innerA, outerA, outerB]);
+        pieces.push([innerA, outerB, innerB]);
+      } else {
+        pieces.push([innerA, outerA, innerB]);
+        pieces.push([outerA, outerB, innerB]);
+      }
     }
   }
+
+  const edgeMap = new Map<string, { a: CrackPoint; b: CrackPoint; count: number }>();
+  const pieceSpecs = pieces
+    .filter((polygon) => polygon.length >= 3 && Math.abs(polygonArea2D(polygon)) > 0.002)
+    .map((polygon, index) => {
+      for (let i = 0; i < polygon.length; i += 1) {
+        const a = polygon[i];
+        const b = polygon[(i + 1) % polygon.length];
+        const key = edgeKey(a, b);
+        const edge = edgeMap.get(key);
+        if (edge) {
+          edge.count += 1;
+        } else {
+          edgeMap.set(key, { a, b, count: 1 });
+        }
+      }
+
+      const pieceCenter = polygonCentroid2D(polygon);
+      const normal = projectWaxPoint(pieceCenter, waxRadius).normalize();
+      const shade = 0.86 + noise2(index * 11 + 3, index * 7 + 5) * 0.1;
+      return {
+        polygon,
+        center: pieceCenter,
+        normal,
+        shift: 0.012 + noise1(index * 31 + 12) * 0.038,
+        rotation: new THREE.Vector3(
+          noise2(index + 3, index + 5),
+          noise2(index + 7, index + 11),
+          noise2(index + 13, index + 17),
+        ).multiplyScalar(0.08),
+        shade,
+      };
+    });
+
+  const edges = Array.from(edgeMap.values())
+    .filter((edge) => edge.count > 1)
+    .map((edge, index) => {
+      const midpoint = {
+        x: (edge.a.x + edge.b.x) * 0.5,
+        y: (edge.a.y + edge.b.y) * 0.5,
+      };
+      const fromCenter = Math.hypot(midpoint.x - center.x, midpoint.y - center.y);
+      return {
+        a: edge.a,
+        b: edge.b,
+        width: 0.0065 + Math.max(0, 1 - fromCenter / 1.05) * 0.006 + noise1(index * 37 + 4) * 0.002,
+      };
+    });
+
+  return { pieces: pieceSpecs, edges };
+}
+
+function createWaxFlakes(pieces: CrackPieceSpec[]): THREE.Group {
+  const group = new THREE.Group();
+
+  pieces.forEach((piece, index) => {
+    const geometry = createWaxShardGeometry(piece.polygon, waxRadius + noise2(index, index + 1) * 0.01);
+    const material = waxMaterial.clone();
+    material.color.setRGB(0.68 * piece.shade, 0.8 * piece.shade, 0.28 * piece.shade);
+    material.opacity = 0;
+
+    const flake = new THREE.Mesh(geometry, material);
+    flake.renderOrder = 3;
+    flake.userData.normal = piece.normal;
+    flake.userData.shift = piece.shift;
+    flake.userData.rotation = piece.rotation;
+    group.add(flake);
+  });
 
   return group;
 }
 
-function createWaxFlakeGeometry(
-  lat0: number,
-  lat1: number,
-  lon0: number,
-  lon1: number,
-  radius: number,
-  seed: number,
-): THREE.BufferGeometry {
-  const rows = 3;
-  const cols = 3;
+function createWaxShardGeometry(polygon: CrackPoint[], radius: number): THREE.BufferGeometry {
   const positions: number[] = [];
   const indices: number[] = [];
+  const center = polygonCentroid2D(polygon);
 
-  for (let row = 0; row <= rows; row += 1) {
-    const v = row / rows;
-    const lat = THREE.MathUtils.lerp(lat0, lat1, v);
+  polygon.forEach((point) => {
+    const p = projectWaxPoint(point, radius);
+    positions.push(p.x, p.y, p.z);
+  });
 
-    for (let col = 0; col <= cols; col += 1) {
-      const u = col / cols;
-      const edge = row === 0 || row === rows || col === 0 || col === cols;
-      const lon = THREE.MathUtils.lerp(lon0, lon1, u);
-      const jitter = edge ? 0 : 1;
-      const p = sphericalPoint(
-        radius + noise2(seed + row * 23, col * 29) * 0.012,
-        lat + noise2(seed + row * 11, col * 13) * (lat1 - lat0) * 0.08 * jitter,
-        lon + noise2(seed + row * 17, col * 19) * (lon1 - lon0) * 0.08 * jitter,
-      );
-      positions.push(p.x, p.y, p.z);
-    }
-  }
+  const centerPoint = projectWaxPoint(center, radius + 0.004);
+  positions.push(centerPoint.x, centerPoint.y, centerPoint.z);
+  const centerIndex = polygon.length;
 
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const a = row * (cols + 1) + col;
-      const b = a + 1;
-      const c = a + cols + 1;
-      const d = c + 1;
-      indices.push(a, c, b, b, c, d);
-    }
+  for (let i = 0; i < polygon.length; i += 1) {
+    indices.push(centerIndex, i, (i + 1) % polygon.length);
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -298,32 +345,89 @@ function createWaxFlakeGeometry(
   return geometry;
 }
 
-function createCracks(): THREE.Group {
+function createCracks(edges: CrackEdgeSpec[]): THREE.Group {
   const group = new THREE.Group();
-  const material = new THREE.LineBasicMaterial({
-    color: 0x6f8836,
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x28350f,
     transparent: true,
     opacity: 0,
     depthWrite: false,
   });
-  const branches = [
-    [[-0.02, 0.7], [-0.12, 0.36], [-0.02, 0.08], [-0.18, -0.18], [-0.12, -0.55]],
-    [[0.02, 0.42], [0.22, 0.24], [0.13, -0.08], [0.42, -0.28]],
-    [[-0.06, 0.22], [-0.34, 0.14], [-0.56, -0.1]],
-    [[0.08, 0.02], [0.36, 0.04], [0.58, -0.12]],
-  ];
 
-  for (const branch of branches) {
-    const points = branch.map(([x, y]) => {
-      const z = Math.sqrt(Math.max(0, waxRadius * waxRadius - x * x - y * y));
-      return new THREE.Vector3(x, y, z + 0.016);
-    });
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material.clone());
-    line.renderOrder = 5;
+  edges.forEach((edge) => {
+    const geometry = createCrackTubeGeometry(edge.a, edge.b, edge.width);
+    const line = new THREE.Mesh(geometry, material.clone());
+    line.renderOrder = 6;
     group.add(line);
-  }
+  });
 
   return group;
+}
+
+function createCrackTubeGeometry(a: CrackPoint, b: CrackPoint, width: number): THREE.BufferGeometry {
+  const points: THREE.Vector3[] = [];
+  const steps = 6;
+
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const p = {
+      x: THREE.MathUtils.lerp(a.x, b.x, t),
+      y: THREE.MathUtils.lerp(a.y, b.y, t),
+    };
+    points.push(projectWaxPoint(p, waxRadius + 0.034));
+  }
+
+  const curve = new THREE.CatmullRomCurve3(points);
+  return new THREE.TubeGeometry(curve, steps, width, 5, false);
+}
+
+function projectWaxPoint(point: CrackPoint, radius: number): THREE.Vector3 {
+  const inset = Math.min(Math.hypot(point.x, point.y), radius * 0.965);
+  const scale = inset > 0 ? inset / Math.hypot(point.x, point.y) : 1;
+  const x = point.x * scale;
+  const y = point.y * scale;
+  const z = Math.sqrt(Math.max(0, radius * radius - x * x - y * y));
+  return new THREE.Vector3(x, y, z);
+}
+
+function polygonArea2D(points: CrackPoint[]): number {
+  let area = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area * 0.5;
+}
+
+function polygonCentroid2D(points: CrackPoint[]): CrackPoint {
+  const area = polygonArea2D(points);
+
+  if (Math.abs(area) < 0.00001) {
+    const sum = points.reduce((acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }), { x: 0, y: 0 });
+    return { x: sum.x / points.length, y: sum.y / points.length };
+  }
+
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const cross = a.x * b.y - b.x * a.y;
+    x += (a.x + b.x) * cross;
+    y += (a.y + b.y) * cross;
+  }
+
+  return {
+    x: x / (6 * area),
+    y: y / (6 * area),
+  };
+}
+
+function edgeKey(a: CrackPoint, b: CrackPoint): string {
+  const keyA = `${a.x.toFixed(4)},${a.y.toFixed(4)}`;
+  const keyB = `${b.x.toFixed(4)},${b.y.toFixed(4)}`;
+  return keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
 }
 
 function createWaxDust(): THREE.Group {
@@ -350,15 +454,6 @@ function createWaxDust(): THREE.Group {
   }
 
   return group;
-}
-
-function sphericalPoint(radius: number, lat: number, lon: number): THREE.Vector3 {
-  const c = Math.cos(lat);
-  return new THREE.Vector3(
-    radius * c * Math.sin(lon),
-    radius * Math.sin(lat),
-    radius * c * Math.cos(lon),
-  );
 }
 
 function updateRubberCover(time: number, dent: THREE.Vector3): void {
