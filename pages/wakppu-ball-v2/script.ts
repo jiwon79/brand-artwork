@@ -1,25 +1,29 @@
 import * as THREE from 'three';
 
-type VectorLike = {
-  x: number;
-  y: number;
-  z: number;
-};
-
 type OpacityMaterial = THREE.Material & {
   opacity: number;
   transparent: boolean;
   depthWrite: boolean;
 };
 
+type PointerState = {
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  pressure: number;
+  targetPressure: number;
+  isDown: boolean;
+};
+
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x171011, 8, 15);
+scene.fog = new THREE.Fog(0x151313, 7.5, 13);
 
-const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
-camera.position.set(0, 0.18, 6.4);
+const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
+camera.position.set(0, 0.05, 6.15);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -31,13 +35,9 @@ const renderer = new THREE.WebGLRenderer({
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.08;
-renderer.setClearColor(0x171011, 1);
+renderer.setClearColor(0x151313, 1);
 
-const clock = new THREE.Clock();
-const root = new THREE.Group();
-scene.add(root);
-
-const pointer = {
+const pointer: PointerState = {
   x: 0,
   y: 0,
   targetX: 0,
@@ -47,270 +47,210 @@ const pointer = {
   isDown: false,
 };
 
-let crackProgress = 0;
-let crackTarget = 0;
+const clock = new THREE.Clock();
+const ball = new THREE.Group();
+scene.add(ball);
 
-const outerRadius = 1.68;
-const shellRadius = 1.43;
-const marshmallowRadius = 1.12;
+let breakProgress = 0;
+let breakTarget = 0;
 
-const highlightMaterial = new THREE.MeshBasicMaterial({
-  color: 0xdbfffa,
-  transparent: true,
-  opacity: 0.24,
-  depthWrite: false,
-});
+const squishyRadius = 1.18;
+const waxRadius = 1.28;
+const rubberRadius = 1.34;
 
 const rubberMaterial = new THREE.MeshPhysicalMaterial({
-  color: 0xa7fff0,
-  roughness: 0.08,
+  color: 0xf4fffb,
+  roughness: 0.05,
   metalness: 0,
-  transmission: 0.82,
-  thickness: 0.08,
-  ior: 1.23,
+  transmission: 0.86,
+  thickness: 0.055,
+  ior: 1.22,
   clearcoat: 1,
-  clearcoatRoughness: 0.04,
+  clearcoatRoughness: 0.03,
   transparent: true,
-  opacity: 0.16,
+  opacity: 0.18,
   depthWrite: false,
   side: THREE.DoubleSide,
 });
 
-const chocolateMaterial = new THREE.MeshPhysicalMaterial({
-  color: 0x351711,
-  roughness: 0.88,
-  metalness: 0.01,
-  clearcoat: 0.06,
-  clearcoatRoughness: 0.86,
+const waxMaterial = new THREE.MeshPhysicalMaterial({
+  color: 0xc8e86d,
+  roughness: 0.82,
+  metalness: 0,
+  clearcoat: 0.08,
+  clearcoatRoughness: 0.82,
+  transparent: true,
+  opacity: 1,
   side: THREE.DoubleSide,
 });
 
-const chocolateEdgeMaterial = new THREE.MeshPhysicalMaterial({
-  color: 0x5c2b20,
-  roughness: 0.64,
-  metalness: 0.02,
-  clearcoat: 0.28,
-  clearcoatRoughness: 0.5,
-});
-
-const marshmallowMaterial = new THREE.MeshPhysicalMaterial({
-  color: 0xfff1f4,
-  emissive: 0x6a2432,
-  emissiveIntensity: 0.1,
-  roughness: 0.86,
+const squishyMaterial = new THREE.MeshPhysicalMaterial({
+  color: 0xffcfdf,
+  emissive: 0x562437,
+  emissiveIntensity: 0.07,
+  roughness: 0.72,
   metalness: 0,
-  clearcoat: 0.34,
-  clearcoatRoughness: 0.72,
-  transmission: 0.12,
-  thickness: 0.72,
+  clearcoat: 0.44,
+  clearcoatRoughness: 0.46,
   transparent: true,
   opacity: 0,
 });
 
-const lobeMaterial = new THREE.MeshPhysicalMaterial({
-  color: 0xffdce4,
-  roughness: 0.96,
-  metalness: 0,
+const shineMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
   transparent: true,
-  opacity: 0,
+  opacity: 0.26,
   depthWrite: false,
 });
 
-const outerGeometry = new THREE.SphereGeometry(outerRadius, 96, 64);
-const outerBasePositions = copyPositions(outerGeometry);
-const outerPouch = new THREE.Mesh(outerGeometry, rubberMaterial);
-outerPouch.renderOrder = 3;
-root.add(outerPouch);
+const rubberGeometry = new THREE.SphereGeometry(rubberRadius, 96, 64);
+const rubberBase = copyPositions(rubberGeometry);
+const rubberCover = new THREE.Mesh(rubberGeometry, rubberMaterial);
+rubberCover.renderOrder = 4;
+ball.add(rubberCover);
 
-const seam = new THREE.Mesh(
-  new THREE.TorusGeometry(outerRadius * 1.005, 0.004, 8, 180),
-  highlightMaterial,
-);
-seam.rotation.x = Math.PI / 2;
-seam.renderOrder = 4;
-root.add(seam);
+const rubberKnot = new THREE.Mesh(new THREE.SphereGeometry(0.18, 32, 18), rubberMaterial.clone());
+rubberKnot.position.set(0.02, rubberRadius * 0.92, -0.04);
+rubberKnot.scale.set(0.74, 0.28, 0.58);
+rubberKnot.renderOrder = 5;
+ball.add(rubberKnot);
 
-const verticalSeam = new THREE.Mesh(
-  new THREE.TorusGeometry(outerRadius * 1.006, 0.003, 8, 180),
-  highlightMaterial.clone(),
-);
-verticalSeam.rotation.y = Math.PI / 2;
-verticalSeam.renderOrder = 4;
-root.add(verticalSeam);
+const rubberHighlights = createRubberHighlights();
+ball.add(rubberHighlights);
 
-const rubberKnot = new THREE.Mesh(
-  new THREE.SphereGeometry(0.22, 32, 18),
-  rubberMaterial.clone(),
-);
-rubberKnot.position.set(0, outerRadius * 0.92, -0.04);
-rubberKnot.scale.set(0.74, 0.32, 0.58);
-rubberKnot.renderOrder = 4;
-root.add(rubberKnot);
+const squishyGeometry = new THREE.SphereGeometry(squishyRadius, 96, 64);
+const squishyBase = copyPositions(squishyGeometry);
+const squishyCore = new THREE.Mesh(squishyGeometry, squishyMaterial);
+squishyCore.scale.set(1.04, 0.92, 1);
+squishyCore.renderOrder = 1;
+ball.add(squishyCore);
 
-const marshmallowGeometry = new THREE.SphereGeometry(marshmallowRadius, 80, 48);
-const marshmallowBasePositions = copyPositions(marshmallowGeometry);
-const marshmallow = new THREE.Mesh(marshmallowGeometry, marshmallowMaterial);
-marshmallow.position.y = -0.08;
-marshmallow.scale.set(1.12, 0.82, 0.92);
-marshmallow.renderOrder = 1;
-root.add(marshmallow);
+const intactWaxShell = new THREE.Mesh(new THREE.SphereGeometry(waxRadius, 96, 64), waxMaterial);
+intactWaxShell.renderOrder = 2;
+ball.add(intactWaxShell);
 
-const marshmallowLobes = createMarshmallowLobes();
-root.add(marshmallowLobes);
+const waxFlakes = createWaxFlakes();
+ball.add(waxFlakes);
 
-const marshmallowDrips = createMarshmallowDrips();
-root.add(marshmallowDrips);
+const cracks = createCracks();
+ball.add(cracks);
 
-const solidChocolateMaterial = chocolateMaterial.clone();
-solidChocolateMaterial.color.set(0x32140f);
-solidChocolateMaterial.transparent = true;
-solidChocolateMaterial.opacity = 1;
-solidChocolateMaterial.depthWrite = true;
+const waxDust = createWaxDust();
+ball.add(waxDust);
 
-const solidChocolateShell = new THREE.Mesh(
-  new THREE.SphereGeometry(shellRadius, 96, 64),
-  solidChocolateMaterial,
-);
-solidChocolateShell.renderOrder = 2;
-root.add(solidChocolateShell);
-
-const shell = createChocolateShell();
-root.add(shell);
-
-const rimMaterial = chocolateEdgeMaterial.clone();
-rimMaterial.transparent = true;
-rimMaterial.opacity = 0;
-
-const rim = new THREE.Mesh(
-  new THREE.TorusGeometry(shellRadius * 0.88, 0.014, 8, 180),
-  rimMaterial,
-);
-rim.position.z = shellRadius * 0.5;
-rim.renderOrder = 2;
-root.add(rim);
-
-const crumbs = createChocolateCrumbs();
-root.add(crumbs);
-
-const crackLines = createCrackLines();
-root.add(crackLines);
-
-const bubbles = createRubberBubbles();
-root.add(bubbles);
-
-const floorShadow = new THREE.Mesh(
-  new THREE.CircleGeometry(1.94, 96),
+const tableShadow = new THREE.Mesh(
+  new THREE.CircleGeometry(1.75, 96),
   new THREE.MeshBasicMaterial({
-    color: 0x070404,
+    color: 0x050404,
     transparent: true,
-    opacity: 0.32,
+    opacity: 0.3,
     depthWrite: false,
   }),
 );
-floorShadow.position.set(0, -2.05, -0.3);
-floorShadow.scale.set(1.28, 0.26, 1);
-floorShadow.rotation.x = -Math.PI / 2;
-scene.add(floorShadow);
+tableShadow.position.set(0, -1.82, -0.45);
+tableShadow.scale.set(1.34, 0.24, 1);
+tableShadow.rotation.x = -Math.PI / 2;
+scene.add(tableShadow);
 
-scene.add(new THREE.HemisphereLight(0xd6fff7, 0x2c1511, 1.55));
+scene.add(new THREE.HemisphereLight(0xf8fffb, 0x2c1916, 1.4));
 
-const keyLight = new THREE.DirectionalLight(0xffdac3, 3.4);
-keyLight.position.set(-3.4, 4.8, 4.2);
+const keyLight = new THREE.DirectionalLight(0xffeadc, 3.2);
+keyLight.position.set(-3.2, 4.8, 4.6);
 scene.add(keyLight);
 
-const coolLight = new THREE.PointLight(0x7cfff1, 4.6, 11);
-coolLight.position.set(3.6, 1.6, 3.1);
-scene.add(coolLight);
+const fillLight = new THREE.PointLight(0xb9ffe7, 3.1, 9);
+fillLight.position.set(3.2, 1.4, 2.4);
+scene.add(fillLight);
 
-const lowWarmLight = new THREE.PointLight(0xff8d66, 2.2, 8);
-lowWarmLight.position.set(-2.5, -2.7, 2.7);
-scene.add(lowWarmLight);
+const lowLight = new THREE.PointLight(0xff86a8, 1.7, 7);
+lowLight.position.set(-2.4, -2.1, 2.2);
+scene.add(lowLight);
 
 function copyPositions(geometry: THREE.BufferGeometry): Float32Array {
-  return new Float32Array((geometry.attributes.position.array as Float32Array));
+  return new Float32Array(geometry.attributes.position.array as Float32Array);
 }
 
-function createChocolateShell(): THREE.Group {
+function createRubberHighlights(): THREE.Group {
   const group = new THREE.Group();
-  const latSteps = 13;
-  const lonSteps = 27;
-  const latMin = -Math.PI * 0.47;
-  const latMax = Math.PI * 0.47;
+  const spots = [
+    [-0.46, 0.56, 1.16, 0.13, 0.09],
+    [0.52, 0.48, 1.12, 0.12, 0.08],
+    [0.64, -0.24, 1.1, 0.1, 0.06],
+  ];
 
-  for (let y = 0; y < latSteps; y += 1) {
-    const lat0 = THREE.MathUtils.lerp(latMin, latMax, y / latSteps);
-    const lat1 = THREE.MathUtils.lerp(latMin, latMax, (y + 0.82) / latSteps);
-
-    for (let x = 0; x < lonSteps; x += 1) {
-      const lon0 = THREE.MathUtils.lerp(-Math.PI, Math.PI, x / lonSteps);
-      const lon1 = THREE.MathUtils.lerp(-Math.PI, Math.PI, (x + 0.82) / lonSteps);
-      const latMid = (lat0 + lat1) * 0.5;
-      const lonMid = (lon0 + lon1) * 0.5;
-      const front = Math.cos(latMid) * Math.cos(lonMid);
-
-      if (front > 0.68) continue;
-      if ((x + y * 3) % 17 === 0 && front > -0.25) continue;
-
-      const cellLat = lat1 - lat0;
-      const cellLon = lon1 - lon0;
-      const latCenter = (lat0 + lat1) * 0.5 + noise2(x + 2, y + 3) * cellLat * 0.16;
-      const lonCenter = (lon0 + lon1) * 0.5 + noise2(x + 6, y + 9) * cellLon * 0.16;
-      const latSpan = cellLat * (0.52 + noise1(x * 29 + y * 7) * 0.38);
-      const lonSpan = cellLon * (0.48 + noise1(x * 17 + y * 37) * 0.46);
-      const patchLat0 = latCenter - latSpan * 0.5;
-      const patchLat1 = latCenter + latSpan * 0.5;
-      const patchLon0 = lonCenter - lonSpan * 0.5;
-      const patchLon1 = lonCenter + lonSpan * 0.5;
-      const geometry = createSphericalPatchGeometry(
-        patchLat0,
-        patchLat1,
-        patchLon0,
-        patchLon1,
-        shellRadius + noise2(x, y) * 0.025,
-        x * 97 + y * 131,
-      );
-      const material = chocolateMaterial.clone();
-      const shade = 0.82 + noise2(x + 11, y + 7) * 0.32;
-      material.color.setRGB(0.21 * shade, 0.09 * shade, 0.06 * shade);
-      material.transparent = true;
-      material.opacity = 0;
-      const patch = new THREE.Mesh(geometry, material);
-      patch.renderOrder = 2;
-      patch.userData.opacityMax = 1;
-      patch.userData.breakNormal = new THREE.Vector3(
-        Math.sin(lonMid) * Math.cos(latMid),
-        Math.sin(latMid),
-        Math.cos(lonMid) * Math.cos(latMid),
-      ).normalize();
-      patch.userData.breakShift = 0.07 + noise1(x * 19 + y * 31) * 0.34;
-      patch.userData.breakRotation = new THREE.Vector3(
-        noise2(x + 21, y + 31),
-        noise2(x + 41, y + 13),
-        noise2(x + 9, y + 53),
-      ).multiplyScalar(0.38);
-      group.add(patch);
-    }
+  for (const [x, y, z, sx, sy] of spots) {
+    const spot = new THREE.Mesh(new THREE.CircleGeometry(1, 36), shineMaterial.clone());
+    spot.position.set(x, y, z);
+    spot.scale.set(sx, sy, 1);
+    spot.renderOrder = 6;
+    group.add(spot);
   }
-
-  const backCap = new THREE.Mesh(
-    new THREE.SphereGeometry(shellRadius * 0.997, 64, 32, 0, Math.PI * 2, 0, Math.PI),
-    new THREE.MeshPhysicalMaterial({
-      color: 0x2c120f,
-      roughness: 0.78,
-      metalness: 0.02,
-      transparent: true,
-      opacity: 0,
-      side: THREE.BackSide,
-    }),
-  );
-  backCap.renderOrder = 0;
-  backCap.userData.opacityMax = 0.34;
-  group.add(backCap);
 
   return group;
 }
 
-function createSphericalPatchGeometry(
+function createWaxFlakes(): THREE.Group {
+  const group = new THREE.Group();
+  const latSteps = 12;
+  const lonSteps = 25;
+  const latMin = -Math.PI * 0.47;
+  const latMax = Math.PI * 0.47;
+
+  for (let row = 0; row < latSteps; row += 1) {
+    const lat0 = THREE.MathUtils.lerp(latMin, latMax, row / latSteps);
+    const lat1 = THREE.MathUtils.lerp(latMin, latMax, (row + 0.86) / latSteps);
+
+    for (let col = 0; col < lonSteps; col += 1) {
+      const lon0 = THREE.MathUtils.lerp(-Math.PI, Math.PI, col / lonSteps);
+      const lon1 = THREE.MathUtils.lerp(-Math.PI, Math.PI, (col + 0.86) / lonSteps);
+      const latMid = (lat0 + lat1) * 0.5;
+      const lonMid = (lon0 + lon1) * 0.5;
+      const front = Math.cos(latMid) * Math.cos(lonMid);
+
+      if (front > 0.72) continue;
+      if ((col * 5 + row * 3) % 19 === 0 && front > -0.4) continue;
+
+      const cellLat = lat1 - lat0;
+      const cellLon = lon1 - lon0;
+      const latCenter = (lat0 + lat1) * 0.5 + noise2(col + 2, row + 3) * cellLat * 0.18;
+      const lonCenter = (lon0 + lon1) * 0.5 + noise2(col + 6, row + 9) * cellLon * 0.18;
+      const latSpan = cellLat * (0.46 + noise1(col * 29 + row * 7) * 0.42);
+      const lonSpan = cellLon * (0.44 + noise1(col * 17 + row * 37) * 0.5);
+      const geometry = createWaxFlakeGeometry(
+        latCenter - latSpan * 0.5,
+        latCenter + latSpan * 0.5,
+        lonCenter - lonSpan * 0.5,
+        lonCenter + lonSpan * 0.5,
+        waxRadius + noise2(col, row) * 0.014,
+        col * 97 + row * 131,
+      );
+      const material = waxMaterial.clone();
+      const shade = 0.86 + noise2(col + 11, row + 7) * 0.18;
+      material.color.setRGB(0.78 * shade, 0.91 * shade, 0.42 * shade);
+      material.opacity = 0;
+
+      const flake = new THREE.Mesh(geometry, material);
+      const normal = new THREE.Vector3(
+        Math.sin(lonMid) * Math.cos(latMid),
+        Math.sin(latMid),
+        Math.cos(lonMid) * Math.cos(latMid),
+      ).normalize();
+      flake.renderOrder = 3;
+      flake.userData.normal = normal;
+      flake.userData.shift = 0.045 + noise1(col * 23 + row * 41) * 0.28;
+      flake.userData.rotation = new THREE.Vector3(
+        noise2(col + 3, row + 5),
+        noise2(col + 7, row + 11),
+        noise2(col + 13, row + 17),
+      ).multiplyScalar(0.44);
+      group.add(flake);
+    }
+  }
+
+  return group;
+}
+
+function createWaxFlakeGeometry(
   lat0: number,
   lat1: number,
   lon0: number,
@@ -332,10 +272,11 @@ function createSphericalPatchGeometry(
       const edge = row === 0 || row === rows || col === 0 || col === cols;
       const lon = THREE.MathUtils.lerp(lon0, lon1, u);
       const jitter = edge ? 0 : 1;
-      const jitteredLat = lat + noise2(seed + row * 11, col * 13) * (lat1 - lat0) * 0.08 * jitter;
-      const jitteredLon = lon + noise2(seed + row * 17, col * 19) * (lon1 - lon0) * 0.08 * jitter;
-      const jitteredRadius = radius + noise2(seed + row * 23, col * 29) * 0.018;
-      const p = sphericalPoint(jitteredRadius, jitteredLat, jitteredLon);
+      const p = sphericalPoint(
+        radius + noise2(seed + row * 23, col * 29) * 0.012,
+        lat + noise2(seed + row * 11, col * 13) * (lat1 - lat0) * 0.08 * jitter,
+        lon + noise2(seed + row * 17, col * 19) * (lon1 - lon0) * 0.08 * jitter,
+      );
       positions.push(p.x, p.y, p.z);
     }
   }
@@ -357,183 +298,106 @@ function createSphericalPatchGeometry(
   return geometry;
 }
 
-function sphericalPoint(radius: number, lat: number, lon: number): VectorLike {
-  const c = Math.cos(lat);
-  return {
-    x: radius * c * Math.sin(lon),
-    y: radius * Math.sin(lat),
-    z: radius * c * Math.cos(lon),
-  };
-}
-
-function createMarshmallowLobes(): THREE.Group {
-  const group = new THREE.Group();
-  const seeds = [
-    [-0.36, 0.16, 0.78, 0.52],
-    [0.3, 0.1, 0.9, 0.48],
-    [-0.08, -0.34, 0.92, 0.58],
-    [0.46, -0.42, 0.66, 0.36],
-    [-0.48, -0.3, 0.58, 0.34],
-    [0.04, 0.3, 0.62, 0.34],
-  ];
-
-  for (const [x, y, z, scale] of seeds) {
-    const lobe = new THREE.Mesh(new THREE.SphereGeometry(scale, 36, 24), lobeMaterial.clone());
-    lobe.position.set(x, y, z);
-    lobe.scale.set(1.22, 0.58, 0.72);
-    lobe.userData.baseY = y;
-    lobe.renderOrder = 1;
-    group.add(lobe);
-  }
-
-  return group;
-}
-
-function createMarshmallowDrips(): THREE.Group {
-  const group = new THREE.Group();
-  const seeds = [
-    [-0.38, -0.78, 0.72, 0.16, 0.48, -0.12],
-    [0.08, -0.82, 0.88, 0.18, 0.58, 0.06],
-    [0.43, -0.68, 0.68, 0.13, 0.38, 0.18],
-  ];
-
-  for (const [x, y, z, sx, sy, rot] of seeds) {
-    const drip = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), lobeMaterial.clone());
-    drip.position.set(x, y, z);
-    drip.scale.set(sx, sy, sx * 0.82);
-    drip.rotation.z = rot;
-    drip.userData.baseY = y;
-    drip.userData.baseScaleY = sy;
-    drip.renderOrder = 1;
-    group.add(drip);
-  }
-
-  return group;
-}
-
-function createCrackLines(): THREE.Group {
+function createCracks(): THREE.Group {
   const group = new THREE.Group();
   const material = new THREE.LineBasicMaterial({
-    color: 0x0f0504,
+    color: 0x6f8836,
     transparent: true,
     opacity: 0,
     depthWrite: false,
   });
   const branches = [
-    [[-0.05, 0.74], [-0.16, 0.36], [-0.03, 0.08], [-0.22, -0.22], [-0.16, -0.62]],
-    [[0.0, 0.52], [0.24, 0.24], [0.15, -0.1], [0.42, -0.34]],
-    [[-0.1, 0.18], [-0.44, 0.1], [-0.58, -0.16]],
-    [[0.08, -0.04], [0.36, 0.02], [0.62, -0.12]],
+    [[-0.02, 0.7], [-0.12, 0.36], [-0.02, 0.08], [-0.18, -0.18], [-0.12, -0.55]],
+    [[0.02, 0.42], [0.22, 0.24], [0.13, -0.08], [0.42, -0.28]],
+    [[-0.06, 0.22], [-0.34, 0.14], [-0.56, -0.1]],
+    [[0.08, 0.02], [0.36, 0.04], [0.58, -0.12]],
   ];
 
   for (const branch of branches) {
     const points = branch.map(([x, y]) => {
-      const z = Math.sqrt(Math.max(0, shellRadius * shellRadius - x * x - y * y));
-      return new THREE.Vector3(x, y, z + 0.018);
+      const z = Math.sqrt(Math.max(0, waxRadius * waxRadius - x * x - y * y));
+      return new THREE.Vector3(x, y, z + 0.016);
     });
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material.clone());
-    line.renderOrder = 4;
+    line.renderOrder = 5;
     group.add(line);
   }
 
   return group;
 }
 
-function createChocolateCrumbs(): THREE.Group {
+function createWaxDust(): THREE.Group {
   const group = new THREE.Group();
-  const crumbMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0x6b3525,
-    roughness: 0.8,
-    metalness: 0.01,
-    transparent: true,
-    opacity: 0,
-  });
+  const material = waxMaterial.clone();
+  material.opacity = 0;
 
-  for (let i = 0; i < 26; i += 1) {
-    const angle = i * 2.399 + 0.24;
-    const band = 0.68 + noise1(i) * 0.36;
-    const geometry = new THREE.DodecahedronGeometry(0.025 + noise1(i + 50) * 0.035, 0);
-    const crumb = new THREE.Mesh(geometry, crumbMaterial.clone());
-    const basePosition = new THREE.Vector3(
-      Math.cos(angle) * shellRadius * band,
-      Math.sin(angle) * shellRadius * band * 0.74,
-      shellRadius * (0.53 + noise1(i + 13) * 0.18),
+  for (let i = 0; i < 34; i += 1) {
+    const angle = i * 2.399 + 0.2;
+    const band = 0.62 + noise1(i) * 0.42;
+    const chip = new THREE.Mesh(new THREE.DodecahedronGeometry(0.018 + noise1(i + 50) * 0.032, 0), material.clone());
+    const base = new THREE.Vector3(
+      Math.cos(angle) * waxRadius * band,
+      Math.sin(angle) * waxRadius * band * 0.76,
+      waxRadius * (0.54 + noise1(i + 13) * 0.2),
     );
-    crumb.position.copy(basePosition);
-    crumb.rotation.set(noise1(i + 2) * Math.PI, noise1(i + 5) * Math.PI, noise1(i + 8) * Math.PI);
-    crumb.userData.basePosition = basePosition;
-    crumb.userData.breakNormal = basePosition.clone().normalize();
-    crumb.userData.drift = noise1(i + 9) * 0.02;
-    crumb.renderOrder = 3;
-    group.add(crumb);
+    chip.position.copy(base);
+    chip.rotation.set(noise1(i + 2) * Math.PI, noise1(i + 5) * Math.PI, noise1(i + 8) * Math.PI);
+    chip.userData.base = base;
+    chip.userData.normal = base.clone().normalize();
+    chip.userData.drift = noise1(i + 9) * 0.06;
+    chip.renderOrder = 4;
+    group.add(chip);
   }
 
   return group;
 }
 
-function createRubberBubbles(): THREE.Group {
-  const group = new THREE.Group();
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xe8fffb,
-    transparent: true,
-    opacity: 0.24,
-    depthWrite: false,
-  });
-
-  for (let i = 0; i < 18; i += 1) {
-    const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.025 + noise1(i + 2) * 0.04, 18, 12), material.clone());
-    const lat = -0.9 + noise1(i + 3) * 1.8;
-    const lon = -Math.PI + noise1(i + 4) * Math.PI * 2;
-    const radius = 1.7 + noise1(i + 5) * 0.34;
-    const p = sphericalPoint(radius, lat, lon);
-    bubble.position.set(p.x, p.y, p.z);
-    bubble.userData.float = noise1(i + 10) * Math.PI * 2;
-    bubble.renderOrder = 5;
-    group.add(bubble);
-  }
-
-  return group;
+function sphericalPoint(radius: number, lat: number, lon: number): THREE.Vector3 {
+  const c = Math.cos(lat);
+  return new THREE.Vector3(
+    radius * c * Math.sin(lon),
+    radius * Math.sin(lat),
+    radius * c * Math.cos(lon),
+  );
 }
 
-function updateOuterPouch(time: number, dent: THREE.Vector3): void {
-  const positions = outerGeometry.attributes.position.array as Float32Array;
+function updateRubberCover(time: number, dent: THREE.Vector3): void {
+  const positions = rubberGeometry.attributes.position.array as Float32Array;
   const press = pointer.pressure;
 
   for (let i = 0; i < positions.length; i += 3) {
-    const x = outerBasePositions[i];
-    const y = outerBasePositions[i + 1];
-    const z = outerBasePositions[i + 2];
+    const x = rubberBase[i];
+    const y = rubberBase[i + 1];
+    const z = rubberBase[i + 2];
     const length = Math.hypot(x, y, z);
     const nx = x / length;
     const ny = y / length;
     const nz = z / length;
     const surfaceDot = nx * dent.x + ny * dent.y + nz * dent.z;
     const directDent = Math.max(0, (surfaceDot - 0.7) / 0.3);
-    const raisedLip = Math.max(0, 1 - Math.abs(surfaceDot - 0.69) / 0.13);
+    const raisedLip = Math.max(0, 1 - Math.abs(surfaceDot - 0.67) / 0.13);
     const wave =
-      Math.sin(time * 1.45 + nx * 4.4 + ny * 2.6) * 0.014 +
-      Math.sin(time * 1.02 + nz * 5.7 + ny * 1.7) * 0.011;
-    const displacement = wave - directDent * directDent * press * 0.34 + raisedLip * press * 0.052;
-    const radius = outerRadius + displacement;
-
+      Math.sin(time * 1.24 + nx * 4.2 + ny * 2.4) * 0.01 +
+      Math.sin(time * 0.94 + nz * 5.2 + ny * 1.6) * 0.008;
+    const radius = rubberRadius + wave - directDent * directDent * press * 0.22 + raisedLip * press * 0.034;
     positions[i] = nx * radius;
     positions[i + 1] = ny * radius;
     positions[i + 2] = nz * radius;
   }
 
-  outerGeometry.attributes.position.needsUpdate = true;
-  outerGeometry.computeVertexNormals();
+  rubberGeometry.attributes.position.needsUpdate = true;
+  rubberGeometry.computeVertexNormals();
 }
 
-function updateMarshmallow(time: number, dent: THREE.Vector3): void {
-  const positions = marshmallowGeometry.attributes.position.array as Float32Array;
-  const press = pointer.pressure;
-  const meltMotion = 0.36 + crackProgress * 0.92;
+function updateSquishy(time: number, dent: THREE.Vector3): void {
+  const positions = squishyGeometry.attributes.position.array as Float32Array;
+  const reveal = smoothstep(0.16, 0.76, breakProgress);
+  const press = pointer.pressure * (0.3 + reveal * 0.7);
 
   for (let i = 0; i < positions.length; i += 3) {
-    const x = marshmallowBasePositions[i];
-    const y = marshmallowBasePositions[i + 1];
-    const z = marshmallowBasePositions[i + 2];
+    const x = squishyBase[i];
+    const y = squishyBase[i + 1];
+    const z = squishyBase[i + 2];
     const length = Math.hypot(x, y, z);
     const nx = x / length;
     const ny = y / length;
@@ -541,103 +405,71 @@ function updateMarshmallow(time: number, dent: THREE.Vector3): void {
     const surfaceDot = nx * dent.x + ny * dent.y + nz * dent.z;
     const softDent = Math.max(0, (surfaceDot - 0.5) / 0.5);
     const wobble =
-      Math.sin(time * 2.1 + nx * 5.5 + ny * 1.4) * 0.034 * meltMotion +
-      Math.sin(time * 1.6 + nz * 4.3 - ny * 2.3) * 0.028 * meltMotion;
-    const sag = Math.max(0, -ny) * (0.045 + crackProgress * 0.065);
-    const radius = marshmallowRadius + wobble + sag - softDent * press * 0.08;
-
+      Math.sin(time * 2.0 + nx * 5.2 + ny * 1.4) * 0.032 * reveal +
+      Math.sin(time * 1.45 + nz * 4.0 - ny * 2.1) * 0.026 * reveal;
+    const slowRise = Math.max(0, -ny) * reveal * 0.05;
+    const radius = squishyRadius + wobble + slowRise - softDent * press * 0.16;
     positions[i] = nx * radius;
     positions[i + 1] = ny * radius;
     positions[i + 2] = nz * radius;
   }
 
-  marshmallowGeometry.attributes.position.needsUpdate = true;
-  marshmallowGeometry.computeVertexNormals();
-}
-
-function updatePointerFromEvent(event: PointerEvent): void {
-  const rect = canvas.getBoundingClientRect();
-  pointer.targetX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.targetY = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+  squishyGeometry.attributes.position.needsUpdate = true;
+  squishyGeometry.computeVertexNormals();
 }
 
 function updateBreakState(time: number): void {
-  crackProgress += (crackTarget - crackProgress) * (crackTarget > crackProgress ? 0.045 : 0.08);
-  if (Math.abs(crackTarget - crackProgress) < 0.001) {
-    crackProgress = crackTarget;
+  breakProgress += (breakTarget - breakProgress) * (breakTarget > breakProgress ? 0.044 : 0.08);
+  if (Math.abs(breakTarget - breakProgress) < 0.001) {
+    breakProgress = breakTarget;
   }
 
-  const reveal = smoothstep(0.08, 0.82, crackProgress);
-  const fracture = smoothstep(0.02, 0.36, crackProgress);
-  const marshmallowReveal = smoothstep(0.16, 0.78, crackProgress);
-  const solidOpacity = 1 - reveal;
+  const shellFade = smoothstep(0.1, 0.64, breakProgress);
+  const flakeReveal = smoothstep(0.08, 0.72, breakProgress);
+  const scatter = smoothstep(0.02, 0.38, breakProgress);
+  const squishyReveal = smoothstep(0.18, 0.78, breakProgress);
 
-  solidChocolateShell.visible = solidOpacity > 0.012;
-  solidChocolateMaterial.opacity = solidOpacity;
-  solidChocolateMaterial.depthWrite = solidOpacity > 0.18;
+  intactWaxShell.visible = shellFade < 0.99;
+  waxMaterial.opacity = 1 - shellFade;
+  waxMaterial.depthWrite = shellFade < 0.45;
 
-  marshmallow.visible = marshmallowReveal > 0.01;
-  setObjectOpacity(marshmallow, marshmallowReveal);
-  marshmallowLobes.visible = marshmallowReveal > 0.01;
-  marshmallowLobes.children.forEach((child) => {
-    setObjectOpacity(child, marshmallowReveal * 0.72);
-  });
-  marshmallowDrips.visible = marshmallowReveal > 0.01;
-  marshmallowDrips.children.forEach((child) => {
-    setObjectOpacity(child, marshmallowReveal * 0.78);
-  });
+  setObjectOpacity(squishyCore, squishyReveal);
 
-  shell.visible = reveal > 0.01;
-  shell.children.forEach((child) => {
-    const mesh = child as THREE.Mesh;
-    const normal = mesh.userData.breakNormal as THREE.Vector3 | undefined;
-    const breakShift = mesh.userData.breakShift as number | undefined;
-    const breakRotation = mesh.userData.breakRotation as THREE.Vector3 | undefined;
-    const opacityMax = (mesh.userData.opacityMax as number | undefined) ?? 1;
-    setObjectOpacity(mesh, reveal * opacityMax);
-
-    if (normal && breakShift !== undefined && breakRotation) {
-      const push = fracture * fracture * breakShift;
-      mesh.position.copy(normal).multiplyScalar(push);
-      mesh.rotation.set(
-        breakRotation.x * fracture,
-        breakRotation.y * fracture,
-        breakRotation.z * fracture,
-      );
-    }
+  waxFlakes.visible = flakeReveal > 0.01;
+  waxFlakes.children.forEach((child) => {
+    const flake = child as THREE.Mesh;
+    const normal = flake.userData.normal as THREE.Vector3;
+    const shift = flake.userData.shift as number;
+    const rotation = flake.userData.rotation as THREE.Vector3;
+    setObjectOpacity(flake, flakeReveal);
+    flake.position.copy(normal).multiplyScalar(scatter * scatter * shift);
+    flake.rotation.set(rotation.x * scatter, rotation.y * scatter, rotation.z * scatter);
   });
 
-  rim.visible = reveal > 0.04;
-  rimMaterial.opacity = reveal * 0.22;
-  rim.scale.setScalar(0.96 + reveal * 0.04);
-
-  crumbs.visible = reveal > 0.05;
-  crumbs.children.forEach((child, index) => {
-    const mesh = child as THREE.Mesh;
-    const basePosition = mesh.userData.basePosition as THREE.Vector3;
-    const normal = mesh.userData.breakNormal as THREE.Vector3;
-    const drift = mesh.userData.drift as number;
-    setObjectOpacity(mesh, reveal);
-    mesh.position.copy(basePosition).addScaledVector(normal, fracture * (0.14 + drift * 4));
-    mesh.position.y += Math.sin(time * 1.2 + index) * 0.01 * reveal;
+  waxDust.visible = flakeReveal > 0.05;
+  waxDust.children.forEach((child, index) => {
+    const chip = child as THREE.Mesh;
+    const base = chip.userData.base as THREE.Vector3;
+    const normal = chip.userData.normal as THREE.Vector3;
+    const drift = chip.userData.drift as number;
+    setObjectOpacity(chip, flakeReveal);
+    chip.position.copy(base).addScaledVector(normal, scatter * (0.12 + drift));
+    chip.position.y += Math.sin(time * 1.1 + index) * 0.008 * flakeReveal;
   });
 
-  crackLines.visible = crackProgress > 0.015 && crackProgress < 0.9;
-  const crackOpacity = Math.sin(Math.min(1, crackProgress / 0.9) * Math.PI) * 0.78;
-  crackLines.children.forEach((child) => {
-    setObjectOpacity(child, crackOpacity);
-  });
+  cracks.visible = breakProgress > 0.02 && breakProgress < 0.8;
+  const crackOpacity = Math.sin(Math.min(1, breakProgress / 0.8) * Math.PI) * 0.86;
+  cracks.children.forEach((child) => setObjectOpacity(child, crackOpacity));
 }
 
 function setObjectOpacity(object: THREE.Object3D, opacity: number): void {
   const material = (object as THREE.Mesh).material as OpacityMaterial | OpacityMaterial[] | undefined;
   if (!material) return;
   const materials = Array.isArray(material) ? material : [material];
-
   materials.forEach((entry) => {
     entry.transparent = true;
     entry.opacity = opacity;
-    entry.depthWrite = opacity > 0.82;
+    entry.depthWrite = opacity > 0.88;
   });
 }
 
@@ -646,27 +478,33 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
   return t * t * (3 - 2 * t);
 }
 
+function updatePointerFromEvent(event: PointerEvent): void {
+  const rect = canvas.getBoundingClientRect();
+  pointer.targetX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.targetY = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+}
+
 canvas.addEventListener('pointerenter', (event) => {
   updatePointerFromEvent(event);
-  pointer.targetPressure = pointer.isDown ? 1 : 0.36;
+  pointer.targetPressure = pointer.isDown ? 1 : 0.22;
 });
 
 canvas.addEventListener('pointermove', (event) => {
   updatePointerFromEvent(event);
-  pointer.targetPressure = pointer.isDown ? 1 : 0.36;
+  pointer.targetPressure = pointer.isDown ? 1 : 0.22;
 });
 
 canvas.addEventListener('pointerdown', (event) => {
   pointer.isDown = true;
   pointer.targetPressure = 1;
-  crackTarget = 1;
+  breakTarget = 1;
   updatePointerFromEvent(event);
   canvas.setPointerCapture(event.pointerId);
 });
 
 canvas.addEventListener('pointerup', (event) => {
   pointer.isDown = false;
-  pointer.targetPressure = 0.22;
+  pointer.targetPressure = 0.16;
   if (canvas.hasPointerCapture(event.pointerId)) {
     canvas.releasePointerCapture(event.pointerId);
   }
@@ -687,9 +525,9 @@ function resize(): void {
   renderer.setPixelRatio(dpr);
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
-  camera.position.z = width < 680 ? 7.2 : 6.4;
+  camera.position.z = width < 680 ? 6.8 : 6.15;
   camera.updateProjectionMatrix();
-  root.scale.setScalar(width < 680 ? 0.9 : 1);
+  ball.scale.setScalar(width < 680 ? 0.92 : 1);
 }
 
 function animate(): void {
@@ -697,52 +535,21 @@ function animate(): void {
   const time = reducedMotion ? 0.6 : elapsed;
   pointer.x += (pointer.targetX - pointer.x) * 0.08;
   pointer.y += (pointer.targetY - pointer.y) * 0.08;
-  pointer.pressure += (pointer.targetPressure - pointer.pressure) * 0.1;
+  pointer.pressure += (pointer.targetPressure - pointer.pressure) * 0.11;
 
-  const dent = new THREE.Vector3(pointer.x * 0.72, pointer.y * 0.62, 1).normalize();
-  updateOuterPouch(time, dent);
-  updateMarshmallow(time, dent);
+  const dent = new THREE.Vector3(pointer.x * 0.7, pointer.y * 0.62, 1).normalize();
+  updateRubberCover(time, dent);
+  updateSquishy(time, dent);
   updateBreakState(time);
 
-  const idleRotation = reducedMotion ? 0 : Math.sin(time * 0.32) * 0.12;
-  root.rotation.y += ((pointer.x * 0.28 + idleRotation) - root.rotation.y) * 0.035;
-  root.rotation.x += ((-pointer.y * 0.16 + Math.sin(time * 0.27) * 0.04) - root.rotation.x) * 0.035;
-  root.rotation.z = Math.sin(time * 0.22) * 0.025;
+  const idleRotation = reducedMotion ? 0 : Math.sin(time * 0.28) * 0.1;
+  ball.rotation.y += ((pointer.x * 0.24 + idleRotation) - ball.rotation.y) * 0.035;
+  ball.rotation.x += ((-pointer.y * 0.15 + Math.sin(time * 0.24) * 0.035) - ball.rotation.x) * 0.035;
+  ball.rotation.z = Math.sin(time * 0.2) * 0.018;
+  rubberKnot.rotation.z = Math.sin(time * 1.2) * 0.08;
 
-  seam.rotation.z = time * 0.08;
-  verticalSeam.rotation.z = -time * 0.06;
-  rim.rotation.z = Math.sin(time * 0.28) * 0.035;
-  shell.rotation.y = Math.sin(time * 0.18) * 0.025;
-  solidChocolateShell.rotation.y = shell.rotation.y;
-
-  marshmallowLobes.children.forEach((child, index) => {
-    const mesh = child as THREE.Mesh;
-    const baseY = mesh.userData.baseY as number;
-    mesh.position.y = baseY + Math.sin(time * 1.8 + index * 1.3) * (0.014 + crackProgress * 0.03);
-    mesh.scale.y = 0.54 + crackProgress * 0.1 + Math.sin(time * 2.2 + index) * 0.035;
-  });
-
-  marshmallowDrips.children.forEach((child, index) => {
-    const mesh = child as THREE.Mesh;
-    const baseY = mesh.userData.baseY as number;
-    const baseScaleY = mesh.userData.baseScaleY as number;
-    mesh.position.y = baseY - crackProgress * (0.035 + index * 0.014);
-    mesh.scale.y = baseScaleY * (1 + crackProgress * 0.22 + Math.sin(time * 1.6 + index) * 0.035);
-  });
-
-  crumbs.children.forEach((child, index) => {
-    child.rotation.x += 0.002 + index * 0.00002;
-    child.rotation.y -= 0.0015;
-    child.position.z += Math.sin(time * 1.2 + index) * 0.0004;
-  });
-
-  bubbles.children.forEach((child, index) => {
-    const phase = child.userData.float as number;
-    child.position.y += Math.sin(time * 1.3 + phase + index) * 0.0007;
-  });
-
-  floorShadow.scale.x = 1.28 + pointer.pressure * 0.05;
-  floorShadow.material.opacity = 0.29 + pointer.pressure * 0.08;
+  tableShadow.scale.x = 1.34 + pointer.pressure * 0.05;
+  tableShadow.material.opacity = 0.26 + pointer.pressure * 0.08;
 
   renderer.render(scene, camera);
 }

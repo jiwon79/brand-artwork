@@ -1,9 +1,8 @@
 :root {
   --ink: #171011;
-  --warm-shadow: #33211d;
-  --rubber: #a4fff0;
-  --shell: #331712;
-  --mallow: #fff2f5;
+  --mat: #24201d;
+  --wax: #c8e86d;
+  --squishy: #ffcfdf;
 }
 
 * {
@@ -18,10 +17,9 @@ body {
   overflow: hidden;
   overscroll-behavior: none;
   background:
-    linear-gradient(112deg, rgba(123, 64, 50, 0.16), transparent 38%),
-    linear-gradient(236deg, rgba(112, 231, 216, 0.12), transparent 44%),
-    linear-gradient(180deg, #241816 0%, var(--ink) 54%, #0f0b0b 100%);
-  color: var(--mallow);
+    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.06), transparent 34%),
+    linear-gradient(180deg, var(--mat) 0%, var(--ink) 58%, #0d0b0b 100%);
+  color: var(--squishy);
   font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
   touch-action: none;
 }
@@ -29,30 +27,6 @@ body {
 body {
   position: fixed;
   inset: 0;
-}
-
-body::before {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  content: "";
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.028) 0,
-      rgba(255, 255, 255, 0.028) 1px,
-      transparent 1px,
-      transparent 76px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.018) 0,
-      rgba(255, 255, 255, 0.018) 1px,
-      transparent 1px,
-      transparent 76px
-    );
-  mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
 }
 
 #stage {
