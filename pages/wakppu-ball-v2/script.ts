@@ -1,3 +1,5 @@
+import { Delaunay } from 'd3-delaunay';
+
 type Point = {
   x: number;
   y: number;
@@ -32,6 +34,7 @@ const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
 const resetButton = document.querySelector('.reset-button') as HTMLButtonElement;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const EPSILON = 0.0001;
 
 const palette = {
   wax: '#c7f06b',
@@ -88,51 +91,19 @@ function resetArtwork(): void {
 }
 
 function createBreakZone(point: Point, force = 1): BreakZone {
-  const center = clampToBall(point, 0.76);
-  const seed = zoneId * 109 + Math.round(center.x * 0.37 + center.y * 0.21);
-  const rayCount = 12 + Math.floor(noise(seed) * 5);
-  const ringCount = 4;
-  const rings = [0.08, 0.2, 0.36, 0.52].map((value) => ball.radius * value * (0.9 + force * 0.12));
-  const rayPoints: Point[][] = [];
-
-  for (let ray = 0; ray < rayCount; ray += 1) {
-    const baseAngle = (ray / rayCount) * Math.PI * 2;
-    const rayBend = (noise(seed + ray * 17) - 0.5) * 0.28;
-    rayPoints[ray] = [];
-
-    for (let ring = 0; ring < ringCount; ring += 1) {
-      const radius = rings[ring] * (0.88 + noise(seed + ray * 31 + ring * 13) * 0.24);
-      const angle = baseAngle + rayBend + (noise(seed + ring * 71 + ray * 5) - 0.5) * (0.12 + ring * 0.055);
-      const p = clampToBall({
-        x: center.x + Math.cos(angle) * radius,
-        y: center.y + Math.sin(angle) * radius * 0.92,
-      }, 0.985);
-      rayPoints[ray][ring] = p;
-    }
-  }
-
+  const center = clampToBall(point, 0.94);
+  const seed = Math.floor(Math.random() * 1_000_000_000) + zoneId * 1009;
+  const rng = mulberry32(seed);
+  const impactRadius = ball.radius * (0.23 + rng() * 0.11 + Math.min(force, 1.4) * 0.03);
+  const impactPolygon = createImpactPolygon(center, impactRadius, 28, rng);
+  const points = createImpactPoints(center, impactRadius, impactPolygon, 26 + Math.floor(rng() * 9), rng);
+  const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, impactRadius * 0.55));
   const shards: Shard[] = [];
   const edgeMap = new Map<string, CrackEdge & { count: number }>();
 
-  for (let ray = 0; ray < rayCount; ray += 1) {
-    const next = (ray + 1) % rayCount;
-    addShard([center, rayPoints[ray][0], rayPoints[next][0]], shards, edgeMap, seed + ray);
-
-    for (let ring = 1; ring < ringCount; ring += 1) {
-      const innerA = rayPoints[ray][ring - 1];
-      const outerA = rayPoints[ray][ring];
-      const innerB = rayPoints[next][ring - 1];
-      const outerB = rayPoints[next][ring];
-
-      if ((ray + ring) % 2 === 0) {
-        addShard([innerA, outerA, outerB], shards, edgeMap, seed + ray * 23 + ring);
-        addShard([innerA, outerB, innerB], shards, edgeMap, seed + ray * 29 + ring);
-      } else {
-        addShard([innerA, outerA, innerB], shards, edgeMap, seed + ray * 37 + ring);
-        addShard([outerA, outerB, innerB], shards, edgeMap, seed + ray * 41 + ring);
-      }
-    }
-  }
+  cells.forEach((cell, index) => {
+    addShard(cell, shards, edgeMap, seed + index * 37);
+  });
 
   const edges = Array.from(edgeMap.values())
     .filter((edge) => edge.count > 1)
@@ -153,7 +124,7 @@ function createBreakZone(point: Point, force = 1): BreakZone {
   return {
     id: zoneId++,
     center,
-    radius: rings[ringCount - 1],
+    radius: impactRadius,
     progress: 0,
     target: 1,
     shards,
@@ -196,6 +167,142 @@ function addShard(
       });
     }
   }
+}
+
+function createImpactPolygon(center: Point, radius: number, sides: number, rng: () => number): Point[] {
+  const points: Point[] = [];
+  const lean = (rng() - 0.5) * 0.18;
+
+  for (let i = 0; i < sides; i += 1) {
+    const angle = (i / sides) * Math.PI * 2 + lean * Math.sin(i * 0.7);
+    const variance = 0.9 + rng() * 0.16;
+    points.push(clampToBall({
+      x: center.x + Math.cos(angle) * radius * variance,
+      y: center.y + Math.sin(angle) * radius * variance * (0.86 + rng() * 0.1),
+    }, 0.992));
+  }
+
+  return points;
+}
+
+function createImpactPoints(
+  center: Point,
+  radius: number,
+  polygon: Point[],
+  count: number,
+  rng: () => number,
+): Point[] {
+  const points: Point[] = [center];
+  const boundaryCount = 8;
+
+  for (let i = 0; i < boundaryCount; i += 1) {
+    const angle = (i / boundaryCount) * Math.PI * 2 + (rng() - 0.5) * 0.18;
+    points.push(clampToBall({
+      x: center.x + Math.cos(angle) * radius * (0.72 + rng() * 0.16),
+      y: center.y + Math.sin(angle) * radius * (0.64 + rng() * 0.16),
+    }, 0.992));
+  }
+
+  let attempts = 0;
+  while (points.length < count && attempts < count * 80) {
+    attempts += 1;
+    const angle = rng() * Math.PI * 2;
+    const band = Math.sqrt(rng());
+    const point = clampToBall({
+      x: center.x + Math.cos(angle) * radius * band * (0.98 + rng() * 0.12),
+      y: center.y + Math.sin(angle) * radius * band * (0.84 + rng() * 0.1),
+    }, 0.992);
+
+    if (pointInPolygon(point, polygon) && isInsideBall(point)) {
+      points.push(point);
+    }
+  }
+
+  return points;
+}
+
+function createVoronoiCells(points: Point[], clipPolygon: Point[], bounds: [number, number, number, number]): Point[][] {
+  if (points.length < 3) return [];
+
+  const delaunay = Delaunay.from(points, (point) => point.x, (point) => point.y);
+  const voronoi = delaunay.voronoi(bounds);
+  const polygons: Point[][] = [];
+
+  for (let i = 0; i < points.length; i += 1) {
+    const cell = voronoi.cellPolygon(i);
+    if (!cell || cell.length < 4) continue;
+    const subject = cell.slice(0, -1).map(([x, y]) => ({ x, y }));
+    const clipped = clipPolygonToConvex(subject, clipPolygon);
+    if (clipped.length >= 3 && Math.abs(polygonArea(clipped)) > 42) {
+      polygons.push(clipped);
+    }
+  }
+
+  return polygons;
+}
+
+function clipPolygonToConvex(subject: Point[], clip: Point[]): Point[] {
+  let output = subject.slice();
+  const clipSign = Math.sign(polygonArea(clip)) || 1;
+
+  for (let i = 0; i < clip.length; i += 1) {
+    const a = clip[i];
+    const b = clip[(i + 1) % clip.length];
+    const input = output;
+    output = [];
+    if (input.length === 0) break;
+
+    let start = input[input.length - 1];
+    for (const end of input) {
+      const endInside = isInsideClip(end, a, b, clipSign);
+      const startInside = isInsideClip(start, a, b, clipSign);
+
+      if (endInside) {
+        if (!startInside) output.push(lineIntersection(start, end, a, b));
+        output.push(end);
+      } else if (startInside) {
+        output.push(lineIntersection(start, end, a, b));
+      }
+
+      start = end;
+    }
+  }
+
+  return dedupePoints(output);
+}
+
+function isInsideClip(point: Point, a: Point, b: Point, sign: number): boolean {
+  const value = cross(sub(b, a), sub(point, a));
+  return sign >= 0 ? value >= -EPSILON : value <= EPSILON;
+}
+
+function lineIntersection(p1: Point, p2: Point, p3: Point, p4: Point): Point {
+  const r = sub(p2, p1);
+  const s = sub(p4, p3);
+  const denom = cross(r, s);
+  if (Math.abs(denom) < EPSILON) return { ...p2 };
+  const t = cross(sub(p3, p1), s) / denom;
+  return {
+    x: p1.x + r.x * t,
+    y: p1.y + r.y * t,
+  };
+}
+
+function dedupePoints(points: Point[]): Point[] {
+  const deduped: Point[] = [];
+
+  for (const point of points) {
+    const previous = deduped[deduped.length - 1];
+    if (!previous || distance(previous, point) > 0.2) {
+      deduped.push(point);
+    }
+  }
+
+  if (deduped.length > 1 && distance(deduped[0], deduped[deduped.length - 1]) < 0.2) {
+    deduped.pop();
+  }
+
+  return deduped;
 }
 
 function draw(timestamp: number): void {
@@ -435,9 +542,10 @@ canvas.addEventListener('pointerdown', (event) => {
 
 canvas.addEventListener('click', (event) => {
   if (performance.now() - lastBreakAt < 120) return;
+  const rect = canvas.getBoundingClientRect();
   pointer = {
-    x: event.clientX,
-    y: event.clientY,
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
   };
   triggerBreak(pointer, 1);
 });
@@ -556,6 +664,36 @@ function midpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
 }
 
+function pointInPolygon(point: Point, polygon: Point[]): boolean {
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const a = polygon[i];
+    const b = polygon[j];
+    const intersects = ((a.y > point.y) !== (b.y > point.y))
+      && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y + EPSILON) + a.x;
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function boundsFromPolygon(polygon: Point[], padding: number): [number, number, number, number] {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const point of polygon) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+
+  return [minX - padding, minY - padding, maxX + padding, maxY + padding];
+}
+
 function polygonArea(points: Point[]): number {
   let area = 0;
   for (let i = 0; i < points.length; i += 1) {
@@ -607,6 +745,10 @@ function dot(a: Point, b: Point): number {
   return a.x * b.x + a.y * b.y;
 }
 
+function cross(a: Point, b: Point): number {
+  return a.x * b.y - a.y * b.x;
+}
+
 function length(point: Point): number {
   return Math.hypot(point.x, point.y);
 }
@@ -632,6 +774,16 @@ function smoothstep(value: number): number {
 function noise(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453123;
   return x - Math.floor(x);
+}
+
+function mulberry32(seed: number): () => number {
+  return () => {
+    seed |= 0;
+    seed = seed + 0x6d2b79f5 | 0;
+    let value = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
 }
 
 resize();
