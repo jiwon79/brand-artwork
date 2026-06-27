@@ -22,6 +22,7 @@ type CrackEdge = {
   a: Point;
   b: Point;
   weight: number;
+  seam?: THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
 };
 
 type ImpactFootprint = {
@@ -45,6 +46,7 @@ type BreakZone = {
   fractureCount: number;
   group: THREE.Group;
   shardGroup: THREE.Group;
+  seamGroup: THREE.Group;
   edgeMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   gelMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
   shards: Shard[];
@@ -132,6 +134,15 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
   transparent: false,
   opacity: 0.82,
   depthWrite: false,
+});
+
+const crackSeamMaterialTemplate = new THREE.MeshBasicMaterial({
+  color: colors.core,
+  transparent: true,
+  opacity: 0.86,
+  depthWrite: false,
+  depthTest: false,
+  side: THREE.DoubleSide,
 });
 
 const coreMesh = new THREE.Mesh(
@@ -296,19 +307,20 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     stretch: 1,
     width: 0.92,
   };
-  const radiusBase = footprint.kind === 'stroke' ? 0.2 + rng() * 0.05 : 0.36 + rng() * 0.1;
+  const radiusBase = footprint.kind === 'stroke' ? 0.2 + rng() * 0.05 : 0.46 + rng() * 0.12;
   const radius = radiusBase * (0.9 + forceScale * 0.08);
-  const impactPolygon = createImpactPolygon(radius, 11 + Math.floor(rng() * 5), rng, footprint);
+  const impactPolygon = createImpactPolygon(radius, 13 + Math.floor(rng() * 5), rng, footprint);
   const points = createImpactPoints(
     radius,
     impactPolygon,
-    Math.round((footprint.kind === 'stroke' ? 6 : 8) + forceScale * 2.1 + rng() * 2.5),
+    Math.round((footprint.kind === 'stroke' ? 6 : 11) + forceScale * 3 + rng() * 3),
     rng,
     footprint,
   );
   const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, radius * 0.55));
   const edgeMap = new Map<string, CrackEdge & { count: number }>();
   const shardGroup = new THREE.Group();
+  const seamGroup = new THREE.Group();
   const group = new THREE.Group();
   const edgeMesh = new THREE.Mesh(
     new THREE.BufferGeometry(),
@@ -325,9 +337,10 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
   );
   const gelMesh = new THREE.Mesh(new THREE.BufferGeometry(), gelMaterial.clone());
   edgeMesh.renderOrder = 5;
+  seamGroup.renderOrder = 7;
   gelMesh.renderOrder = 3;
   gelMesh.visible = false;
-  group.add(shardGroup, edgeMesh, gelMesh);
+  group.add(shardGroup, edgeMesh, seamGroup, gelMesh);
   sphereGroup.add(group);
 
   const zone: BreakZone = {
@@ -344,6 +357,7 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     fractureCount: 0,
     group,
     shardGroup,
+    seamGroup,
     edgeMesh,
     gelMesh,
     shards: [],
@@ -440,13 +454,33 @@ function registerShardEdges(
 }
 
 function rebuildZoneEdges(zone: BreakZone, edgeMap: Map<string, CrackEdge & { count: number }>): void {
+  zone.seamGroup.children.forEach((child) => {
+    const seam = child as THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
+    seam.geometry.dispose();
+    seam.material.dispose();
+  });
+  zone.seamGroup.clear();
+
   zone.edges = Array.from(edgeMap.values())
     .filter((edge) => edge.count > 1)
     .map((edge, index) => {
+      const mid = midpoint(edge.a, edge.b);
+      const centerBias = 1 - smoothstep(Math.hypot(mid.x, mid.y) / Math.max(zone.radius, EPSILON));
+      const material = crackSeamMaterialTemplate.clone();
+      material.opacity = Math.min(0.92, 0.62 + centerBias * 0.22 + edge.weight * 0.025);
+      const seamRadius = 0.011 + centerBias * 0.012 + edge.weight * 0.0026;
+      const seam = new THREE.Mesh(
+        new THREE.TubeGeometry(createSurfaceCurve(zone, edge.a, edge.b, -0.002), 4, seamRadius, 7, false),
+        material,
+      );
+      seam.renderOrder = 7;
+      zone.seamGroup.add(seam);
+
       return {
         a: edge.a,
         b: edge.b,
         weight: edge.weight + noise(zone.seed + index * 19) * 0.4,
+        seam,
       };
     });
 }
@@ -469,6 +503,15 @@ function updateZone(zone: BreakZone, dt: number, elapsed: number): void {
   });
 
   updateCrackEdgeMesh(zone, progress);
+  zone.edges.forEach((edge) => {
+    if (!edge.seam) return;
+    const mid = midpoint(edge.a, edge.b);
+    const centerBias = 1 - smoothstep(Math.hypot(mid.x, mid.y) / Math.max(zone.radius, EPSILON));
+    edge.seam.material.opacity = Math.min(
+      0.94,
+      (0.48 + progress * 0.34 + centerBias * 0.18 + zone.fractureCount * 0.018),
+    );
+  });
   updateGelMesh(zone);
 }
 
@@ -1013,6 +1056,15 @@ function tangentToSurface(zone: BreakZone, point: Point, offset = 0): THREE.Vect
     .multiplyScalar(SPHERE_RADIUS + offset);
 }
 
+function createSurfaceCurve(zone: BreakZone, a: Point, b: Point, offset: number): THREE.CatmullRomCurve3 {
+  const mid = midpoint(a, b);
+  return new THREE.CatmullRomCurve3([
+    tangentToSurface(zone, a, offset * 0.72),
+    tangentToSurface(zone, mid, offset),
+    tangentToSurface(zone, b, offset * 0.72),
+  ]);
+}
+
 function surfaceToZonePoint(zone: BreakZone, normal: THREE.Vector3): Point {
   const delta = normal.clone().normalize().multiplyScalar(SPHERE_RADIUS)
     .sub(zone.normal.clone().multiplyScalar(SPHERE_RADIUS));
@@ -1522,6 +1574,13 @@ function cross(a: Point, b: Point): number {
 
 function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function midpoint(a: Point, b: Point): Point {
+  return {
+    x: (a.x + b.x) * 0.5,
+    y: (a.y + b.y) * 0.5,
+  };
 }
 
 function strokeDistance(focus: Point, point: Point, impact: ImpactFootprint, length: number): number {
