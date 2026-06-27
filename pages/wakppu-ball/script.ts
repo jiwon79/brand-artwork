@@ -358,7 +358,7 @@ function render(): void {
   drawBaseShadow();
   drawAmbientGap();
   drawContactShadows();
-  drawUndersides();
+  drawSideWalls();
   drawTopFaces();
   drawPressureBloom();
   if (params.debugSeeds) drawDebugCenters();
@@ -413,33 +413,111 @@ function drawAmbientGap(): void {
 function drawContactShadows(): void {
   for (const shard of visibleShards()) {
     if (shard.gap < 0.1 && shard.lift < 0.1) continue;
-    const alpha = clamp(0.04 + shard.gap * 0.012 + shard.lift * 0.016, 0.05, 0.22);
+    const alpha = clamp(0.025 + shard.gap * 0.006 + shard.lift * 0.01, 0.035, 0.15);
     ctx.save();
     ctx.shadowColor = `rgba(14, 25, 22, ${alpha})`;
-    ctx.shadowBlur = 4 + shard.lift * 1.4 + shard.gap * 0.45;
-    ctx.shadowOffsetY = 2 + shard.lift * 0.65;
-    ctx.fillStyle = `rgba(14, 25, 22, ${alpha})`;
+    ctx.shadowBlur = 7 + shard.lift * 1.8 + shard.gap * 0.55;
+    ctx.shadowOffsetY = 3 + shard.lift * 0.55;
+    ctx.fillStyle = `rgba(14, 25, 22, ${alpha * 0.55})`;
     drawTransformedPolygon(shard, {
-      x: shard.thickness * 0.4,
-      y: shard.thickness * 0.85 + shard.lift * 0.35,
+      x: shard.thickness * 0.3,
+      y: shard.thickness * 0.5 + shard.lift * 0.24,
     });
     ctx.fill();
     ctx.restore();
   }
 }
 
-function drawUndersides(): void {
+function drawSideWalls(): void {
+  const walls: Array<{
+    a: Point;
+    b: Point;
+    c: Point;
+    d: Point;
+    brightness: number;
+    shade: number;
+  }> = [];
+
   for (const shard of visibleShards()) {
-    if (shard.gap < 0.08 && shard.lift < 0.08) continue;
-    const underside = adjustColor(palette.edge, -0.05 + shard.hueShift * 0.025);
-    ctx.fillStyle = underside;
-    drawTransformedPolygon(shard, {
-      x: shard.thickness * 0.5,
-      y: shard.thickness * 0.82 + shard.lift * 0.28,
-      includeLift: false,
-    });
-    ctx.fill();
+    if (shard.state === 'solid' || (shard.gap < 0.08 && shard.lift < 0.08)) continue;
+
+    const top = transformedPoints(shard, { includeLift: true });
+    const bottom = transformedPoints(shard, sideWallOffset(shard));
+    const areaSign = Math.sign(polygonArea(top)) || 1;
+
+    for (let i = 0; i < top.length; i += 1) {
+      const a = top[i];
+      const b = top[(i + 1) % top.length];
+      const d = bottom[i];
+      const c = bottom[(i + 1) % bottom.length];
+      const edge = sub(b, a);
+      const normal = areaSign >= 0
+        ? normalize({ x: edge.y, y: -edge.x })
+        : normalize({ x: -edge.y, y: edge.x });
+      const brightness = dot(normal, LIGHT);
+      walls.push({
+        a,
+        b,
+        c,
+        d,
+        brightness,
+        shade: (a.y + b.y + c.y + d.y) * 0.25,
+      });
+    }
   }
+
+  walls.sort((left, right) => left.shade - right.shade);
+
+  for (const wall of walls) {
+    drawSideWall(wall.a, wall.b, wall.c, wall.d, wall.brightness);
+  }
+}
+
+function sideWallOffset(shard: Shard): { x: number; y: number; includeLift: boolean } {
+  return {
+    x: shard.thickness * 0.52,
+    y: shard.thickness * 0.9 + shard.lift * 0.46,
+    includeLift: false,
+  };
+}
+
+function drawSideWall(a: Point, b: Point, c: Point, d: Point, brightness: number): void {
+  const midTop = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
+  const midBottom = { x: (c.x + d.x) * 0.5, y: (c.y + d.y) * 0.5 };
+  const lightAmount = clamp(brightness * 0.18, -0.16, 0.12);
+  const topColor = adjustColor(palette.edge, 0.04 + lightAmount);
+  const bottomColor = adjustColor(palette.edge, -0.16 + lightAmount * 0.65);
+  const gradient = ctx.createLinearGradient(midTop.x, midTop.y, midBottom.x, midBottom.y);
+  gradient.addColorStop(0, topColor);
+  gradient.addColorStop(1, bottomColor);
+
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.lineTo(c.x, c.y);
+  ctx.lineTo(d.x, d.y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 0.65;
+  ctx.strokeStyle = brightness > 0.18
+    ? `rgba(235, 255, 246, ${0.16 + brightness * 0.18})`
+    : `rgba(18, 66, 59, ${0.2 + Math.abs(brightness) * 0.16})`;
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.45;
+  ctx.strokeStyle = 'rgba(16, 55, 50, 0.18)';
+  ctx.beginPath();
+  ctx.moveTo(d.x, d.y);
+  ctx.lineTo(c.x, c.y);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawTopFaces(): void {
