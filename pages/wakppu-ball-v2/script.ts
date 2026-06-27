@@ -15,14 +15,13 @@ type Shard = {
   split: number;
   consumed: number;
   phase: number;
-  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial | THREE.MeshPhysicalMaterial[]>;
 };
 
 type CrackEdge = {
   a: Point;
   b: Point;
   weight: number;
-  seam?: THREE.Mesh<THREE.TubeGeometry, THREE.MeshPhysicalMaterial>;
 };
 
 type ImpactFootprint = {
@@ -46,7 +45,6 @@ type BreakZone = {
   fractureCount: number;
   group: THREE.Group;
   shardGroup: THREE.Group;
-  seamGroup: THREE.Group;
   gelMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
   shards: Shard[];
   edges: CrackEdge[];
@@ -70,7 +68,6 @@ const colors = {
   waxLight: new THREE.Color('#eefca4'),
   waxDark: new THREE.Color('#7d9a26'),
   waxCut: new THREE.Color('#9fbd45'),
-  crackShadow: new THREE.Color('#3f4a18'),
   core: new THREE.Color('#fcfcf8'),
   coreDeep: new THREE.Color('#dce1db'),
   gel: new THREE.Color('#ffffff'),
@@ -134,15 +131,6 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
   clearcoatRoughness: 0.52,
   transparent: false,
   opacity: 0.82,
-  depthWrite: false,
-});
-
-const seamMaterialTemplate = new THREE.MeshPhysicalMaterial({
-  color: colors.crackShadow,
-  roughness: 0.64,
-  metalness: 0,
-  transparent: true,
-  opacity: 0.48,
   depthWrite: false,
 });
 
@@ -265,13 +253,16 @@ function disposeObject3D(root: THREE.Object3D): void {
     const mesh = child as THREE.Mesh;
     if (!mesh.geometry) return;
     mesh.geometry.dispose();
-    const material = mesh.material;
-    if (Array.isArray(material)) {
-      material.forEach((item) => item.dispose());
-    } else if (material) {
-      material.dispose();
-    }
+    disposeMaterial(mesh.material);
   });
+}
+
+function disposeMaterial(material: THREE.Material | THREE.Material[] | undefined): void {
+  if (Array.isArray(material)) {
+    material.forEach((item) => item.dispose());
+  } else if (material) {
+    material.dispose();
+  }
 }
 
 function clonePositions(geometry: THREE.BufferGeometry): Float32Array {
@@ -318,12 +309,11 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
   const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, radius * 0.55));
   const edgeMap = new Map<string, CrackEdge & { count: number }>();
   const shardGroup = new THREE.Group();
-  const seamGroup = new THREE.Group();
   const group = new THREE.Group();
   const gelMesh = new THREE.Mesh(new THREE.BufferGeometry(), gelMaterial.clone());
   gelMesh.renderOrder = 3;
   gelMesh.visible = false;
-  group.add(shardGroup, seamGroup, gelMesh);
+  group.add(shardGroup, gelMesh);
   sphereGroup.add(group);
 
   const zone: BreakZone = {
@@ -340,7 +330,6 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     fractureCount: 0,
     group,
     shardGroup,
-    seamGroup,
     gelMesh,
     shards: [],
     edges: [],
@@ -363,17 +352,36 @@ function addShard(
 ): void {
   if (Math.abs(polygonArea(polygon)) < minArea) return;
 
-  const material = new THREE.MeshPhysicalMaterial({
+  const topMaterial = new THREE.MeshPhysicalMaterial({
     color: colors.wax,
     roughness: 0.25,
     metalness: 0,
     clearcoat: 0.88,
     clearcoatRoughness: 0.16,
     side: THREE.DoubleSide,
+    emissive: colors.wax.clone().multiplyScalar(0.08),
   });
-  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
+  const undersideMaterial = new THREE.MeshPhysicalMaterial({
+    color: colors.gel,
+    roughness: 0.52,
+    metalness: 0,
+    clearcoat: 0.16,
+    clearcoatRoughness: 0.5,
+    side: THREE.DoubleSide,
+    emissive: colors.gel.clone().multiplyScalar(0.04),
+  });
+  const edgeMaterial = new THREE.MeshPhysicalMaterial({
+    color: colors.waxCut,
+    roughness: 0.34,
+    metalness: 0,
+    clearcoat: 0.46,
+    clearcoatRoughness: 0.24,
+    side: THREE.DoubleSide,
+    emissive: colors.waxCut.clone().multiplyScalar(0.12),
+  });
+  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), [topMaterial, undersideMaterial, edgeMaterial]);
   mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  mesh.receiveShadow = false;
   mesh.renderOrder = 4;
   zone.shardGroup.add(mesh);
 
@@ -417,25 +425,13 @@ function registerShardEdges(
 }
 
 function rebuildZoneEdges(zone: BreakZone, edgeMap: Map<string, CrackEdge & { count: number }>): void {
-  zone.seamGroup.children.forEach((child) => {
-    const seam = child as THREE.Mesh<THREE.TubeGeometry, THREE.MeshPhysicalMaterial>;
-    seam.geometry.dispose();
-    seam.material.dispose();
-  });
-  zone.seamGroup.clear();
   zone.edges = Array.from(edgeMap.values())
     .filter((edge) => edge.count > 1)
     .map((edge, index) => {
-      const material = seamMaterialTemplate.clone();
-      material.opacity = 0.46;
-      const seam = new THREE.Mesh(new THREE.TubeGeometry(createSurfaceCurve(zone, edge.a, edge.b, -0.014), 3, 0.0038 + edge.weight * 0.0009, 5, false), material);
-      seam.renderOrder = 7;
-      zone.seamGroup.add(seam);
       return {
         a: edge.a,
         b: edge.b,
         weight: edge.weight + noise(zone.seed + index * 19) * 0.4,
-        seam,
       };
     });
 }
@@ -455,12 +451,6 @@ function updateZone(zone: BreakZone, dt: number, elapsed: number): void {
 
   zone.shards.forEach((shard) => {
     updateShardMesh(zone, shard, progress, ooze, elapsed);
-  });
-
-  zone.edges.forEach((edge) => {
-    if (!edge.seam) return;
-    const material = edge.seam.material;
-    material.opacity = (0.36 + zone.damage * 0.035) * progress;
   });
 
   updateGelMesh(zone, progress, ooze, elapsed);
@@ -528,27 +518,48 @@ function updateShardMesh(
   const geometry = shard.mesh.geometry;
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setIndex(indices);
+  const capIndexCount = (points.length - 1) * 3;
+  geometry.clearGroups();
+  geometry.addGroup(0, capIndexCount, 0);
+  geometry.addGroup(capIndexCount, capIndexCount, 1);
+  geometry.addGroup(capIndexCount * 2, indices.length - capIndexCount * 2, 2);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 
   const color = waxColor(shard.tint, consumed, mix);
-  shard.mesh.material.color.copy(color);
-  shard.mesh.material.opacity = 1;
+  const materials = Array.isArray(shard.mesh.material) ? shard.mesh.material : [shard.mesh.material];
+  const [topMaterial, undersideMaterial, edgeMaterial] = materials;
+  topMaterial.color.copy(color);
+  topMaterial.emissive.copy(color).multiplyScalar(0.08 + consumed * 0.05);
+  topMaterial.opacity = 1;
+  if (undersideMaterial) {
+    undersideMaterial.color.copy(colors.gel);
+    undersideMaterial.emissive.copy(colors.gel).multiplyScalar(0.05 + mix * 0.03);
+    undersideMaterial.opacity = 1;
+  }
+  if (edgeMaterial) {
+    const wetness = Math.min(0.96, 0.34 + consumed * 0.52 + mix * 0.72);
+    const edgeColor = colors.waxCut.clone().lerp(colors.gel, wetness);
+    edgeMaterial.color.copy(edgeColor);
+    edgeMaterial.emissive.copy(edgeColor).multiplyScalar(0.12 + wetness * 0.04);
+    edgeMaterial.opacity = 1;
+  }
 }
 
 function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: number): void {
-  if (mix <= 0.02) {
+  const crackFill = Math.max(mix, progress * 0.22);
+  if (crackFill <= 0.018) {
     zone.gelMesh.visible = false;
     return;
   }
 
   zone.gelMesh.visible = true;
   const pressure = smoothstep(zone.pressure);
-  const radius = zone.radius * (0.1 + mix * 0.72);
+  const radius = zone.radius * (0.2 + crackFill * 0.76);
   const sides = 28;
   const positions: number[] = [];
   const indices: number[] = [];
-  positions.push(...vectorToArray(tangentToSurface(zone, { x: 0, y: 0 }, 0.004 - pressure * 0.002 + mix * 0.036)));
+  positions.push(...vectorToArray(tangentToSurface(zone, { x: 0, y: 0 }, 0.002 - pressure * 0.004 + mix * 0.036)));
 
   for (let i = 0; i < sides; i += 1) {
     const angle = (i / sides) * Math.PI * 2;
@@ -557,7 +568,7 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
       x: Math.cos(angle) * radius * pulse,
       y: Math.sin(angle) * radius * (0.82 + noise(zone.seed + i * 71) * 0.2),
     };
-    positions.push(...vectorToArray(tangentToSurface(zone, point, 0.002 - pressure * 0.0015 + mix * 0.032)));
+    positions.push(...vectorToArray(tangentToSurface(zone, point, -0.001 - pressure * 0.004 + mix * 0.032)));
   }
 
   for (let i = 1; i <= sides; i += 1) {
@@ -569,7 +580,7 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
-  zone.gelMesh.material.opacity = (0.24 + mix * 0.7) * progress;
+  zone.gelMesh.material.opacity = (0.2 + crackFill * 0.68) * progress;
 }
 
 function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: ImpactFootprint): void {
@@ -667,7 +678,7 @@ function fractureExistingZone(
     if (pieces.length > 1) {
       zone.shardGroup.remove(shard.mesh);
       shard.mesh.geometry.dispose();
-      shard.mesh.material.dispose();
+      disposeMaterial(shard.mesh.material);
       nextShards.push(...pieces);
     } else {
       shard.lift = Math.max(0, shard.lift - forceScale * 0.002);
@@ -1060,15 +1071,6 @@ function deformSphereGeometry(
   position.needsUpdate = true;
   mesh.geometry.computeVertexNormals();
   mesh.geometry.computeBoundingSphere();
-}
-
-function createSurfaceCurve(zone: BreakZone, a: Point, b: Point, offset: number): THREE.CatmullRomCurve3 {
-  const mid = midpoint(a, b);
-  return new THREE.CatmullRomCurve3([
-    tangentToSurface(zone, a, offset * 0.72),
-    tangentToSurface(zone, mid, offset),
-    tangentToSurface(zone, b, offset * 0.72),
-  ]);
 }
 
 function vectorToArray(vector: THREE.Vector3): [number, number, number] {
@@ -1476,10 +1478,6 @@ function normalizePoint(point: Point): Point {
 
 function perpendicular(point: Point): Point {
   return { x: -point.y, y: point.x };
-}
-
-function midpoint(a: Point, b: Point): Point {
-  return { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
 }
 
 function add(a: Point, b: Point): Point {
