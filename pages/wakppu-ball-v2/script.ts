@@ -198,15 +198,17 @@ const clock = new THREE.Clock();
 
 let width = 1;
 let height = 1;
-let activePointerId: number | null = null;
+const activePointers = new Map<number, THREE.Vector2>();
 let isDown = false;
 let isRotating = false;
 let pointerTravel = 0;
 let lastPointer = new THREE.Vector2();
+let lastGestureAt = performance.now();
 let currentHit: SurfaceHit | null = null;
 let holdDuration = 0;
 let lastBreakAt = 0;
 let lastHoldBreakAt = 0;
+let lastStrokeBreakAt = 0;
 let suppressClickUntil = 0;
 let inputForce = 1;
 let zoneId = 1;
@@ -235,6 +237,7 @@ function resetArtwork(): void {
   zoneId = 1;
   holdDuration = 0;
   pointerTravel = 0;
+  activePointers.clear();
   isRotating = false;
   suppressClickUntil = 0;
   spinVelocity.set(0, 0);
@@ -445,7 +448,9 @@ function updateShardMesh(
   points.forEach((point) => {
     const outward = Math.min(1, Math.hypot(point.x, point.y) / zone.radius);
     const anchor = 1 - smoothstep(Math.max(0, outward - 0.72) / 0.28);
-    const lift = (0.004 + shard.lift * (0.22 + anchor * 0.78)) * progress * (1 - consumed * 0.48) + wobble;
+    const surfaceLift = (0.004 + shard.lift * (0.18 + anchor * 0.76)) * progress * (1 - consumed * 0.58);
+    const pressedIn = consumed * (0.052 + mix * 0.032) * (0.3 + anchor * 0.7);
+    const lift = surfaceLift - pressedIn + wobble;
     const twist = shard.twist * progress * anchor * (1 - consumed * 0.5);
     const rotated = rotatePoint(point, twist);
     const surfacePoint = tangentToSurface(zone, rotated, lift);
@@ -474,11 +479,11 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
   }
 
   zone.gelMesh.visible = true;
-  const radius = zone.radius * (0.22 + mix * 0.68);
+  const radius = zone.radius * (0.18 + mix * 0.7);
   const sides = 28;
   const positions: number[] = [];
   const indices: number[] = [];
-  positions.push(...vectorToArray(tangentToSurface(zone, { x: 0, y: 0 }, 0.078 + mix * 0.05)));
+  positions.push(...vectorToArray(tangentToSurface(zone, { x: 0, y: 0 }, 0.006 + mix * 0.012)));
 
   for (let i = 0; i < sides; i += 1) {
     const angle = (i / sides) * Math.PI * 2;
@@ -487,7 +492,7 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
       x: Math.cos(angle) * radius * pulse,
       y: Math.sin(angle) * radius * (0.82 + noise(zone.seed + i * 71) * 0.2),
     };
-    positions.push(...vectorToArray(tangentToSurface(zone, point, 0.088 + mix * 0.06)));
+    positions.push(...vectorToArray(tangentToSurface(zone, point, 0.004 + mix * 0.01)));
   }
 
   for (let i = 1; i <= sides; i += 1) {
@@ -499,7 +504,7 @@ function updateGelMesh(zone: BreakZone, progress: number, mix: number, elapsed: 
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
-  zone.gelMesh.material.opacity = (0.24 + mix * 0.62) * progress;
+  zone.gelMesh.material.opacity = (0.2 + mix * 0.66) * progress;
 }
 
 function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false): void {
@@ -631,14 +636,27 @@ function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: numbe
     const falloff = Math.max(0, 1 - distance(localPoint, shard.center) / (zone.radius * (0.34 + zone.mix * 0.5)));
     if (falloff <= 0) return;
     shard.consumed = Math.min(1, shard.consumed + amount * falloff * (1.8 + forceScale * 0.6));
-    shard.lift = Math.max(0.004, shard.lift - amount * falloff * 0.018);
+    shard.lift = Math.max(0, shard.lift - amount * falloff * 0.03);
   });
 }
 
-function getSurfaceHit(event: PointerEvent | MouseEvent): SurfaceHit | null {
+function continueSingleFingerBreak(hit: SurfaceHit, force: number, travel: number): void {
+  const touchedZone = findBreakableZone(hit.normal);
+  if (touchedZone) {
+    consumeTouchedZone(touchedZone, hit.normal, force, 0.018 + Math.min(0.08, travel * 0.0024));
+  }
+
+  const now = performance.now();
+  if (travel > 3 && now - lastStrokeBreakAt > Math.max(58, 150 - force * 26)) {
+    triggerBreak(hit, Math.max(0.72, force * 0.78), true);
+    lastStrokeBreakAt = now;
+  }
+}
+
+function getSurfaceHitAt(clientX: number, clientY: number): SurfaceHit | null {
   const rect = canvas.getBoundingClientRect();
-  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(pointerNdc, camera);
   const hit = raycaster.intersectObject(hitMesh, false)[0];
   if (!hit) return null;
@@ -648,6 +666,20 @@ function getSurfaceHit(event: PointerEvent | MouseEvent): SurfaceHit | null {
     normal: localPoint.clone().normalize(),
     point: hit.point.clone(),
   };
+}
+
+function getSurfaceHit(event: PointerEvent | MouseEvent): SurfaceHit | null {
+  return getSurfaceHitAt(event.clientX, event.clientY);
+}
+
+function pointerPosition(event: PointerEvent): THREE.Vector2 {
+  return new THREE.Vector2(event.clientX, event.clientY);
+}
+
+function activePointerCenter(): THREE.Vector2 {
+  const center = new THREE.Vector2();
+  activePointers.forEach((point) => center.add(point));
+  return center.multiplyScalar(1 / Math.max(1, activePointers.size));
 }
 
 function rotateFromDrag(previous: THREE.Vector2, next: THREE.Vector2, dt: number): void {
@@ -676,17 +708,17 @@ function animate(): void {
     spinVelocity.multiplyScalar(reducedMotion ? 0.78 : Math.pow(0.02, dt));
   }
 
-  if (isDown && currentHit) {
+  if (isDown && activePointers.size === 1 && currentHit) {
     holdDuration += dt;
     const holdForce = Math.min(2.55, inputForce + holdDuration * 0.72);
     const touchedZone = findBreakableZone(currentHit.normal);
     if (touchedZone) {
-      consumeTouchedZone(touchedZone, currentHit.normal, holdForce, dt * (isRotating ? 0.7 : 1.8));
+      consumeTouchedZone(touchedZone, currentHit.normal, holdForce, dt * 1.9);
     }
 
     const interval = Math.max(86, 260 - holdForce * 58);
     const now = performance.now();
-    if (!isRotating && now - lastHoldBreakAt > interval) {
+    if (now - lastHoldBreakAt > interval) {
       triggerBreak(currentHit, holdForce, true);
       lastHoldBreakAt = now;
     }
@@ -699,50 +731,105 @@ function animate(): void {
 
 function onPointerDown(event: PointerEvent): void {
   if (event.target === resetButton) return;
-  activePointerId = event.pointerId;
   canvas.setPointerCapture(event.pointerId);
+  activePointers.set(event.pointerId, pointerPosition(event));
   isDown = true;
-  isRotating = false;
-  pointerTravel = 0;
-  holdDuration = 0;
-  lastPointer.set(event.clientX, event.clientY);
   inputForce = pointerForce(event);
-  currentHit = getSurfaceHit(event);
-  if (currentHit) {
+
+  if (activePointers.size === 1) {
+    isRotating = false;
+    pointerTravel = 0;
+    holdDuration = 0;
+    spinVelocity.set(0, 0);
+    lastPointer.set(event.clientX, event.clientY);
+    lastGestureAt = performance.now();
+    currentHit = getSurfaceHit(event);
+  } else {
+    isRotating = true;
+    currentHit = null;
+    holdDuration = 0;
+    pointerTravel = 0;
+    lastPointer.copy(activePointerCenter());
+    lastGestureAt = performance.now();
+    suppressClickUntil = performance.now() + 260;
+  }
+
+  if (activePointers.size === 1 && currentHit) {
     triggerBreak(currentHit, inputForce);
     lastHoldBreakAt = performance.now();
+    lastStrokeBreakAt = lastHoldBreakAt;
   }
 }
 
 function onPointerMove(event: PointerEvent): void {
-  const next = new THREE.Vector2(event.clientX, event.clientY);
-  if (isDown) {
-    const travel = next.distanceTo(lastPointer);
-    pointerTravel += travel;
-    if (pointerTravel > 6) {
-      isRotating = true;
-      rotateFromDrag(lastPointer, next, event.timeStamp);
-    }
+  if (!activePointers.has(event.pointerId)) return;
+
+  const now = performance.now();
+  const previous = activePointers.get(event.pointerId)?.clone() ?? pointerPosition(event);
+  const next = pointerPosition(event);
+  activePointers.set(event.pointerId, next);
+  inputForce = pointerForce(event);
+
+  if (activePointers.size >= 2) {
+    const center = activePointerCenter();
+    pointerTravel += center.distanceTo(lastPointer);
+    isRotating = true;
+    currentHit = null;
+    rotateFromDrag(lastPointer, center, now - lastGestureAt);
+    lastPointer.copy(center);
+    lastGestureAt = now;
+    suppressClickUntil = now + 260;
+    return;
   }
 
+  const travel = next.distanceTo(previous);
+  pointerTravel += travel;
+  isRotating = false;
   currentHit = getSurfaceHit(event);
   lastPointer.copy(next);
-  inputForce = pointerForce(event);
+  lastGestureAt = now;
+
+  if (isDown && currentHit) {
+    continueSingleFingerBreak(currentHit, inputForce, travel);
+  }
 }
 
 function onPointerUp(event: PointerEvent): void {
+  activePointers.delete(event.pointerId);
+  if (canvas.hasPointerCapture(event.pointerId)) {
+    canvas.releasePointerCapture(event.pointerId);
+  }
+
+  if (activePointers.size >= 2) {
+    isDown = true;
+    isRotating = true;
+    currentHit = null;
+    lastPointer.copy(activePointerCenter());
+    lastGestureAt = performance.now();
+    return;
+  }
+
+  if (activePointers.size === 1) {
+    const [, remainingPoint] = Array.from(activePointers.entries())[0];
+    isDown = true;
+    isRotating = false;
+    pointerTravel = 0;
+    holdDuration = 0;
+    lastPointer.copy(remainingPoint);
+    currentHit = getSurfaceHitAt(remainingPoint.x, remainingPoint.y);
+    lastGestureAt = performance.now();
+    return;
+  }
+
   isDown = false;
   if (pointerTravel > 7 || isRotating) suppressClickUntil = performance.now() + 260;
   isRotating = false;
   holdDuration = 0;
-  if (activePointerId === event.pointerId && canvas.hasPointerCapture(event.pointerId)) {
-    canvas.releasePointerCapture(event.pointerId);
-  }
-  activePointerId = null;
+  currentHit = null;
 }
 
 function onClick(event: MouseEvent): void {
-  if (performance.now() < suppressClickUntil || performance.now() - lastBreakAt < 120) return;
+  if (activePointers.size > 0 || performance.now() < suppressClickUntil || performance.now() - lastBreakAt < 120) return;
   const hit = getSurfaceHit(event);
   if (hit) triggerBreak(hit, 1);
 }
