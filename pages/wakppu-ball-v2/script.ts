@@ -40,8 +40,9 @@ const palette = {
   wax: '#c7f06b',
   waxLight: '#eefca4',
   waxDark: '#7d9a26',
-  core: '#ff8fb6',
-  coreHot: '#ffd5de',
+  core: '#f4dcb4',
+  coreHot: '#fff4d2',
+  coreDeep: '#d6a46f',
   rubber: '#eafcff',
   crack: '#28320f',
   table: '#171214',
@@ -367,7 +368,7 @@ function drawCore(timestamp: number): void {
   );
   gradient.addColorStop(0, palette.coreHot);
   gradient.addColorStop(0.46, palette.core);
-  gradient.addColorStop(1, '#ba4f74');
+  gradient.addColorStop(1, palette.coreDeep);
 
   ctx.save();
   ctx.beginPath();
@@ -376,7 +377,7 @@ function drawCore(timestamp: number): void {
   ctx.fill();
 
   ctx.globalAlpha = 0.16 + pressure * 0.08;
-  ctx.strokeStyle = '#fff5ee';
+  ctx.strokeStyle = '#fff8df';
   ctx.lineWidth = Math.max(1.2, ball.radius * 0.012);
   for (let i = 0; i < 7; i += 1) {
     const y = ball.y - ball.radius * 0.34 + i * ball.radius * 0.1 + Math.sin(timestamp * 0.0015 + i) * 3;
@@ -388,7 +389,6 @@ function drawCore(timestamp: number): void {
 }
 
 function drawWaxShell(timestamp: number): void {
-  const crackCoverage = Math.min(0.72, zones.reduce((sum, zone) => sum + zone.progress * 0.18, 0));
   const gradient = ctx.createRadialGradient(
     ball.x - ball.radius * 0.34,
     ball.y - ball.radius * 0.34,
@@ -403,7 +403,7 @@ function drawWaxShell(timestamp: number): void {
 
   ctx.save();
   clipBall(0.98);
-  ctx.globalAlpha = 0.96 - crackCoverage;
+  ctx.globalAlpha = 0.98;
   ctx.fillStyle = gradient;
   ctx.fillRect(ball.x - ball.radius, ball.y - ball.radius, ball.radius * 2, ball.radius * 2);
 
@@ -430,6 +430,8 @@ function drawZone(zone: BreakZone, timestamp: number): void {
   ctx.save();
   clipBall(0.992);
 
+  drawCoreReveal(zone, t);
+
   for (const shard of zone.shards) {
     const outward = normalize(sub(shard.center, zone.center));
     const offset = mul(outward, shard.lift * t);
@@ -437,7 +439,7 @@ function drawZone(zone: BreakZone, timestamp: number): void {
     const color = adjustWaxColor(shard.tint, t);
 
     ctx.save();
-    ctx.globalAlpha = 0.38 + t * 0.24;
+    ctx.globalAlpha = 0.82 + t * 0.12;
     ctx.translate(shard.center.x + offset.x, shard.center.y + offset.y);
     ctx.rotate(angle);
     ctx.translate(-shard.center.x, -shard.center.y);
@@ -454,8 +456,8 @@ function drawZone(zone: BreakZone, timestamp: number): void {
   ctx.lineJoin = 'round';
   zone.edges.forEach((edge, index) => {
     const pulse = 0.88 + Math.sin(timestamp * 0.003 + zone.id + index) * 0.12;
-    ctx.strokeStyle = `rgba(255, 137, 181, ${0.28 * t})`;
-    ctx.lineWidth = (2.2 + edge.weight * 1.05) * t * pulse;
+    ctx.strokeStyle = `rgba(255, 231, 187, ${0.36 * t})`;
+    ctx.lineWidth = (1.8 + edge.weight * 0.84) * t * pulse;
     drawJaggedLine(edge.a, edge.b, zone.id * 1000 + index * 13);
   });
 
@@ -480,17 +482,41 @@ function drawZone(zone: BreakZone, timestamp: number): void {
   ctx.restore();
 }
 
+function drawCoreReveal(zone: BreakZone, progress: number): void {
+  if (progress <= 0.01) return;
+
+  const gradient = ctx.createRadialGradient(
+    zone.center.x - zone.radius * 0.25,
+    zone.center.y - zone.radius * 0.22,
+    zone.radius * 0.08,
+    zone.center.x,
+    zone.center.y,
+    zone.radius * 0.92,
+  );
+  gradient.addColorStop(0, 'rgba(255, 249, 220, 0.82)');
+  gradient.addColorStop(0.58, 'rgba(244, 220, 180, 0.66)');
+  gradient.addColorStop(1, 'rgba(209, 157, 101, 0)');
+
+  ctx.save();
+  ctx.globalAlpha = progress * 0.58;
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(zone.center.x, zone.center.y, zone.radius * 0.74, zone.radius * 0.62, 0.08, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawRubberMembrane(timestamp: number): void {
   const wobble = reducedMotion ? 0 : Math.sin(timestamp * 0.0017) * 0.006;
   ctx.save();
-  ctx.globalAlpha = 0.42;
+  ctx.globalAlpha = 0.78;
   ctx.lineWidth = Math.max(5, ball.radius * 0.026);
-  ctx.strokeStyle = 'rgba(221, 255, 255, 0.36)';
+  ctx.strokeStyle = 'rgba(214, 241, 235, 0.82)';
   ctx.beginPath();
   ctx.ellipse(ball.x, ball.y, ball.radius * (1.02 + wobble), ball.radius * (1.0 - wobble), 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.globalAlpha = 0.38;
+  ctx.globalAlpha = 0.54;
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   ctx.ellipse(ball.x + ball.radius * 0.34, ball.y - ball.radius * 0.36, ball.radius * 0.075, ball.radius * 0.04, 0.2, 0, Math.PI * 2);
