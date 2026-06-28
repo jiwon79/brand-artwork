@@ -22,7 +22,6 @@ type CrackEdge = {
   a: Point;
   b: Point;
   weight: number;
-  seam?: THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
 };
 
 type ImpactFootprint = {
@@ -46,8 +45,6 @@ type BreakZone = {
   fractureCount: number;
   group: THREE.Group;
   shardGroup: THREE.Group;
-  seamGroup: THREE.Group;
-  edgeMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   gelMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
   shards: Shard[];
   edges: CrackEdge[];
@@ -134,15 +131,6 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
   transparent: false,
   opacity: 0.82,
   depthWrite: false,
-});
-
-const crackSeamMaterialTemplate = new THREE.MeshBasicMaterial({
-  color: colors.core,
-  transparent: true,
-  opacity: 0.86,
-  depthWrite: false,
-  depthTest: false,
-  side: THREE.DoubleSide,
 });
 
 const coreMesh = new THREE.Mesh(
@@ -320,27 +308,11 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
   const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, radius * 0.55));
   const edgeMap = new Map<string, CrackEdge & { count: number }>();
   const shardGroup = new THREE.Group();
-  const seamGroup = new THREE.Group();
   const group = new THREE.Group();
-  const edgeMesh = new THREE.Mesh(
-    new THREE.BufferGeometry(),
-    new THREE.MeshBasicMaterial({
-      color: colors.waxLight,
-      transparent: true,
-      opacity: 0.52,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-      side: THREE.DoubleSide,
-    }),
-  );
   const gelMesh = new THREE.Mesh(new THREE.BufferGeometry(), gelMaterial.clone());
-  edgeMesh.renderOrder = 5;
-  seamGroup.renderOrder = 7;
   gelMesh.renderOrder = 3;
   gelMesh.visible = false;
-  group.add(shardGroup, edgeMesh, seamGroup, gelMesh);
+  group.add(shardGroup, gelMesh);
   sphereGroup.add(group);
 
   const zone: BreakZone = {
@@ -357,8 +329,6 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     fractureCount: 0,
     group,
     shardGroup,
-    seamGroup,
-    edgeMesh,
     gelMesh,
     shards: [],
     edges: [],
@@ -454,33 +424,13 @@ function registerShardEdges(
 }
 
 function rebuildZoneEdges(zone: BreakZone, edgeMap: Map<string, CrackEdge & { count: number }>): void {
-  zone.seamGroup.children.forEach((child) => {
-    const seam = child as THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
-    seam.geometry.dispose();
-    seam.material.dispose();
-  });
-  zone.seamGroup.clear();
-
   zone.edges = Array.from(edgeMap.values())
     .filter((edge) => edge.count > 1)
     .map((edge, index) => {
-      const mid = midpoint(edge.a, edge.b);
-      const centerBias = 1 - smoothstep(Math.hypot(mid.x, mid.y) / Math.max(zone.radius, EPSILON));
-      const material = crackSeamMaterialTemplate.clone();
-      material.opacity = Math.min(0.92, 0.62 + centerBias * 0.22 + edge.weight * 0.025);
-      const seamRadius = 0.011 + centerBias * 0.012 + edge.weight * 0.0026;
-      const seam = new THREE.Mesh(
-        new THREE.TubeGeometry(createSurfaceCurve(zone, edge.a, edge.b, -0.002), 4, seamRadius, 7, false),
-        material,
-      );
-      seam.renderOrder = 7;
-      zone.seamGroup.add(seam);
-
       return {
         a: edge.a,
         b: edge.b,
         weight: edge.weight + noise(zone.seed + index * 19) * 0.4,
-        seam,
       };
     });
 }
@@ -502,17 +452,7 @@ function updateZone(zone: BreakZone, dt: number, elapsed: number): void {
     updateShardMesh(zone, shard, progress, ooze, elapsed);
   });
 
-  updateCrackEdgeMesh(zone, progress);
-  zone.edges.forEach((edge) => {
-    if (!edge.seam) return;
-    const mid = midpoint(edge.a, edge.b);
-    const centerBias = 1 - smoothstep(Math.hypot(mid.x, mid.y) / Math.max(zone.radius, EPSILON));
-    edge.seam.material.opacity = Math.min(
-      0.94,
-      (0.48 + progress * 0.34 + centerBias * 0.18 + zone.fractureCount * 0.018),
-    );
-  });
-  updateGelMesh(zone);
+  updateGelMesh(zone, progress);
 }
 
 function updateShardMesh(
@@ -530,27 +470,57 @@ function updateShardMesh(
   const wobble = reducedMotion ? 0 : Math.sin(elapsed * 4.3 + shard.phase) * 0.0015 * shard.split * (1 - pressure);
   const topOffsets: number[] = [];
   const rotatedPoints: Point[] = [];
+  const shardDistance = Math.hypot(shard.center.x, shard.center.y);
+  const shardDirection = shardDistance > EPSILON
+    ? { x: shard.center.x / shardDistance, y: shard.center.y / shardDistance }
+    : { x: Math.cos(shard.phase), y: Math.sin(shard.phase) };
+  const splitProgress = progress * (0.68 + pressure * 0.32);
+  const gap = splitProgress * (0.028 + pressure * 0.044 + zone.fractureCount * 0.006) * (1 - consumed * 0.15);
+  const inset = Math.min(0.16, splitProgress * (0.048 + pressure * 0.048 + zone.fractureCount * 0.006));
+  const shiftedCenter = {
+    x: shard.center.x + shardDirection.x * gap,
+    y: shard.center.y + shardDirection.y * gap,
+  };
+  const tiltAxis = {
+    x: Math.cos(shard.phase),
+    y: Math.sin(shard.phase),
+  };
 
   points.forEach((point) => {
     const outward = Math.min(1, Math.hypot(point.x, point.y) / zone.radius);
     const anchor = 1 - smoothstep(Math.max(0, outward - 0.72) / 0.28);
     const surfaceLift = shard.lift * (0.05 + anchor * 0.16) * progress * (1 - consumed * 0.72);
     const pressedIn = (
-      pressure * (0.092 + zone.damage * 0.012)
-      + consumed * 0.06
+      pressure * (0.06 + zone.damage * 0.008)
+      + consumed * 0.028
       + mix * 0.028
     ) * (0.2 + anchor * 0.8);
-    const lift = surfaceLift - pressedIn + wobble;
     const twist = shard.twist * progress * anchor * (1 - consumed * 0.5);
-    const rotated = rotatePoint(point, twist);
-    rotatedPoints.push(rotated);
+    const local = {
+      x: (point.x - shard.center.x) * (1 - inset),
+      y: (point.y - shard.center.y) * (1 - inset),
+    };
+    const rotatedLocal = rotatePoint(local, twist);
+    const separated = {
+      x: shiftedCenter.x + rotatedLocal.x,
+      y: shiftedCenter.y + rotatedLocal.y,
+    };
+    const tilt = (
+      (rotatedLocal.x * tiltAxis.x + rotatedLocal.y * tiltAxis.y)
+      / Math.max(zone.radius, EPSILON)
+    ) * splitProgress * (0.026 + pressure * 0.032);
+    const centerSink = splitProgress * pressure * (
+      0.004 + (1 - Math.min(1, shardDistance / Math.max(zone.radius, EPSILON))) * 0.004
+    );
+    const lift = Math.max(0.003, surfaceLift - pressedIn - centerSink + tilt + wobble);
+    rotatedPoints.push(separated);
     topOffsets.push(lift);
-    const surfacePoint = tangentToSurface(zone, rotated, lift);
+    const surfacePoint = tangentToSurface(zone, separated, lift);
     positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
   });
 
   points.forEach((_, index) => {
-    const bottomOffset = topOffsets[index] - WAX_THICKNESS * (0.72 + progress * 0.28);
+    const bottomOffset = topOffsets[index] - WAX_THICKNESS * (0.95 + progress * 0.38 + pressure * 0.18);
     const surfacePoint = tangentToSurface(zone, rotatedPoints[index], bottomOffset);
     positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
   });
@@ -598,68 +568,55 @@ function updateShardMesh(
     undersideMaterial.opacity = 1;
   }
   if (edgeMaterial) {
-    const exposedCut = Math.min(0.68, 0.38 + consumed * 0.18);
-    const edgeColor = colors.waxCut.clone().lerp(colors.waxLight, exposedCut);
+    const exposedCut = Math.min(0.7, 0.44 + consumed * 0.2);
+    const edgeColor = colors.waxDark.clone().lerp(colors.waxCut, exposedCut);
     edgeMaterial.color.copy(edgeColor);
-    edgeMaterial.emissive.copy(edgeColor).multiplyScalar(0.12);
+    edgeMaterial.emissive.copy(edgeColor).multiplyScalar(0.05);
     edgeMaterial.opacity = 1;
   }
 }
 
-function updateGelMesh(zone: BreakZone): void {
-  zone.gelMesh.visible = false;
-}
-
-function updateCrackEdgeMesh(zone: BreakZone, progress: number): void {
-  if (zone.edges.length === 0) {
-    zone.edgeMesh.visible = false;
+function updateGelMesh(zone: BreakZone, progress: number): void {
+  if (zone.shards.length === 0) {
+    zone.gelMesh.visible = false;
     return;
   }
 
-  zone.edgeMesh.visible = true;
+  zone.gelMesh.visible = true;
   const pressure = smoothstep(zone.pressure);
+  const radius = zone.radius * (0.62 + pressure * 0.08);
+  const sides = 30;
   const positions: number[] = [];
   const indices: number[] = [];
-  const surfaceOffset = 0.006 - pressure * 0.001;
+  const center = tangentToSurface(zone, { x: 0, y: 0 }, -0.028 - pressure * 0.006);
+  positions.push(center.x, center.y, center.z);
 
-  zone.edges.forEach((edge) => {
-    const dx = edge.b.x - edge.a.x;
-    const dy = edge.b.y - edge.a.y;
-    const length = Math.hypot(dx, dy);
-    if (length < EPSILON) return;
-
-    const normal = { x: -dy / length, y: dx / length };
-    const trim = Math.min(length * 0.18, 0.014);
-    const width = 0.0062 + Math.min(0.0075, edge.weight * 0.0014 + zone.fractureCount * 0.00065);
-    const a = {
-      x: edge.a.x + (dx / length) * trim,
-      y: edge.a.y + (dy / length) * trim,
+  for (let i = 0; i < sides; i += 1) {
+    const angle = (i / sides) * Math.PI * 2;
+    const pulse = 0.82 + noise(zone.seed + i * 71) * 0.2;
+    const point = {
+      x: Math.cos(angle) * radius * pulse,
+      y: Math.sin(angle) * radius * (0.86 + noise(zone.seed + i * 43) * 0.18),
     };
-    const b = {
-      x: edge.b.x - (dx / length) * trim,
-      y: edge.b.y - (dy / length) * trim,
-    };
-    const base = positions.length / 3;
-    [
-      { x: a.x + normal.x * width, y: a.y + normal.y * width },
-      { x: a.x - normal.x * width, y: a.y - normal.y * width },
-      { x: b.x + normal.x * width, y: b.y + normal.y * width },
-      { x: b.x - normal.x * width, y: b.y - normal.y * width },
-    ].forEach((point) => {
-      const surfacePoint = tangentToSurface(zone, point, surfaceOffset);
-      positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
-    });
-    indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
-  });
+    const surfacePoint = tangentToSurface(zone, point, -0.026 - pressure * 0.006);
+    positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
+  }
 
-  const geometry = zone.edgeMesh.geometry;
+  for (let i = 1; i <= sides; i += 1) {
+    indices.push(0, i, i === sides ? 1 : i + 1);
+  }
+
+  const geometry = zone.gelMesh.geometry;
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setIndex(indices);
+  geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 
-  const edgeColor = colors.waxLight.clone().lerp(colors.waxCut, 0.28);
-  zone.edgeMesh.material.color.copy(edgeColor);
-  zone.edgeMesh.material.opacity = Math.min(0.74, 0.42 + progress * 0.22 + zone.fractureCount * 0.024);
+  zone.gelMesh.material.transparent = true;
+  zone.gelMesh.material.depthTest = false;
+  zone.gelMesh.material.depthWrite = false;
+  zone.gelMesh.material.color.copy(colors.waxCut).lerp(colors.coreDeep, 0.58);
+  zone.gelMesh.material.opacity = Math.min(0.3, (0.14 + pressure * 0.12) * progress);
 }
 
 function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: ImpactFootprint): void {
@@ -823,8 +780,8 @@ function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: numbe
   zone.shards.forEach((shard) => {
     const falloff = Math.max(0, 1 - distance(localPoint, shard.center) / (zone.radius * 0.34));
     if (falloff <= 0) return;
-    shard.consumed = Math.min(1, shard.consumed + amount * falloff * (0.34 + forceScale * 0.12 + ooze * 1.1));
-    shard.lift = Math.max(0, shard.lift - amount * falloff * 0.052);
+    shard.consumed = Math.min(1, shard.consumed + amount * falloff * (0.18 + forceScale * 0.07 + ooze * 0.8));
+    shard.lift = Math.max(0.001, shard.lift - amount * falloff * 0.018);
   });
 }
 
@@ -1054,15 +1011,6 @@ function tangentToSurface(zone: BreakZone, point: Point, offset = 0): THREE.Vect
     .addScaledVector(zone.bitangent, point.y)
     .normalize()
     .multiplyScalar(SPHERE_RADIUS + offset);
-}
-
-function createSurfaceCurve(zone: BreakZone, a: Point, b: Point, offset: number): THREE.CatmullRomCurve3 {
-  const mid = midpoint(a, b);
-  return new THREE.CatmullRomCurve3([
-    tangentToSurface(zone, a, offset * 0.72),
-    tangentToSurface(zone, mid, offset),
-    tangentToSurface(zone, b, offset * 0.72),
-  ]);
 }
 
 function surfaceToZonePoint(zone: BreakZone, normal: THREE.Vector3): Point {
@@ -1574,13 +1522,6 @@ function cross(a: Point, b: Point): number {
 
 function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function midpoint(a: Point, b: Point): Point {
-  return {
-    x: (a.x + b.x) * 0.5,
-    y: (a.y + b.y) * 0.5,
-  };
 }
 
 function strokeDistance(focus: Point, point: Point, impact: ImpactFootprint, length: number): number {
