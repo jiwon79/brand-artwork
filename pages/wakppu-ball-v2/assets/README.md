@@ -1,6 +1,13 @@
 # Wakppu crack audio samples
 
-Put local or licensed wax-crack audio files in this directory when you want the built-in presets to play sound.
+The default `첨부 영상 크랙` preset uses the four extracted user-provided samples in this directory:
+
+- `wakppu-crack-clip-1.m4a`
+- `wakppu-crack-clip-2.m4a`
+- `wakppu-crack-clip-3.m4a`
+- `wakppu-crack-clip-4.m4a`
+
+Put additional local or licensed wax-crack audio files in this directory when you want the older built-in presets to play sound.
 
 Expected preset filenames:
 

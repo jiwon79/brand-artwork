@@ -98,10 +98,20 @@ const TOUCH_BREAK_DELAY_MS = 180;
 const DEFAULT_MIN_VISIBLE_SHARD_AREA = 0.01;
 const BASE_MAX_SHARDS_PER_ZONE = 52;
 const LOCAL_CRACK_SAMPLE_LABEL = '업로드한 소리';
+const ATTACHED_CRACK_SAMPLE_LABEL = '첨부 영상 크랙';
 const CRACK_SAMPLE_PRESETS: CrackSamplePreset[] = [
   {
     label: LOCAL_CRACK_SAMPLE_LABEL,
     paths: [],
+  },
+  {
+    label: ATTACHED_CRACK_SAMPLE_LABEL,
+    paths: [
+      'assets/wakppu-crack-clip-1.m4a',
+      'assets/wakppu-crack-clip-2.m4a',
+      'assets/wakppu-crack-clip-3.m4a',
+      'assets/wakppu-crack-clip-4.m4a',
+    ],
   },
   {
     label: 'Wax Ball Crunchy',
@@ -148,7 +158,7 @@ const fractureTuning = {
   waxColor: '#000000',
   contentColor: '#fcfcf8',
   backgroundColor: '#1b0000',
-  audioSample: 'Wax Ball Crunchy',
+  audioSample: ATTACHED_CRACK_SAMPLE_LABEL,
   audioVolume: 1,
   audioStatus: '샘플 미확인',
   loadAudio: () => openCrackSamplePicker(),
