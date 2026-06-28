@@ -79,6 +79,7 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matc
 const EPSILON = 0.0001;
 const SPHERE_RADIUS = 2.24;
 const WAX_THICKNESS = 0.026;
+const ZONE_BACKFACE_DOT = 0.12;
 
 const colors = {
   wax: new THREE.Color('#c7f06b'),
@@ -856,11 +857,10 @@ function findBreakableZone(normal: THREE.Vector3): BreakZone | null {
   let nearestDistance = Infinity;
 
   zones.forEach((zone) => {
-    const point = surfaceToZonePoint(zone, normal);
-    const localDistance = Math.hypot(point.x, point.y);
-    if (localDistance < zone.radius * 1.04 && localDistance < nearestDistance) {
+    const surfaceDistance = zoneSurfaceDistance(zone, normal);
+    if (surfaceDistance < zone.radius * 1.04 && surfaceDistance < nearestDistance) {
       nearest = zone;
-      nearestDistance = localDistance;
+      nearestDistance = surfaceDistance;
     }
   });
 
@@ -869,7 +869,7 @@ function findBreakableZone(normal: THREE.Vector3): BreakZone | null {
 
 function shouldCreateTrailZone(zone: BreakZone, normal: THREE.Vector3, impact: ImpactFootprint): boolean {
   const localPoint = surfaceToZonePoint(zone, normal);
-  const localDistance = Math.hypot(localPoint.x, localPoint.y);
+  const localDistance = zoneSurfaceDistance(zone, normal);
   const direction = normalizePoint(impact.direction);
   const along = Math.abs(localPoint.x * direction.x + localPoint.y * direction.y);
   return localDistance > zone.radius * 0.62 || along > zone.radius * 0.56;
@@ -882,6 +882,8 @@ function fractureExistingZone(
   fromHold: boolean,
   impact?: ImpactFootprint,
 ): void {
+  if (!Number.isFinite(zoneSurfaceDistance(zone, normal))) return;
+
   const localPoint = surfaceToZonePoint(zone, normal);
   const forceScale = Math.min(2.6, Math.max(0.5, force));
   const seed = zone.seed + zone.fractureCount * 4099 + Math.floor(performance.now());
@@ -984,6 +986,8 @@ function splitShard(
 }
 
 function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: number, amount: number): void {
+  if (!Number.isFinite(zoneSurfaceDistance(zone, normal))) return;
+
   const localPoint = surfaceToZonePoint(zone, normal);
   const forceScale = Math.min(2.4, Math.max(0.5, force));
   zone.pressure = Math.min(1, zone.pressure + amount * (3.6 + forceScale * 0.9));
@@ -1235,6 +1239,12 @@ function surfaceToZonePoint(zone: BreakZone, normal: THREE.Vector3): Point {
   };
 }
 
+function zoneSurfaceDistance(zone: BreakZone, normal: THREE.Vector3): number {
+  const dot = clamp(normal.clone().normalize().dot(zone.normal), -1, 1);
+  if (dot < ZONE_BACKFACE_DOT) return Infinity;
+  return Math.acos(dot) * SPHERE_RADIUS;
+}
+
 function createStrokeSamples(previousHit: SurfaceHit, hit: SurfaceHit, pixelTravel: number): SurfaceHit[] {
   const count = Math.min(4, Math.max(1, Math.floor(pixelTravel / 14) + 1));
   const samples: SurfaceHit[] = [];
@@ -1308,11 +1318,10 @@ function deformSphereGeometry(
     let pressDepression = 0;
     let carveDepression = 0;
     zones.forEach((zone) => {
-      const localPoint = surfaceToZonePoint(zone, normal);
-      const localDistance = Math.hypot(localPoint.x, localPoint.y);
+      const surfaceDistance = zoneSurfaceDistance(zone, normal);
       const pressRadius = zone.radius * (1.02 + zone.damage * 0.05);
-      if (localDistance <= pressRadius) {
-        const falloff = smoothstep(1 - localDistance / pressRadius);
+      if (surfaceDistance <= pressRadius) {
+        const falloff = smoothstep(1 - surfaceDistance / pressRadius);
         pressDepression += (
           0.008
           + zone.pressure * 0.09
@@ -1322,8 +1331,9 @@ function deformSphereGeometry(
 
       if (options.carveStrength <= 0 || zone.shards.length === 0) return;
       const carveRadius = zone.radius * (1.72 + Math.min(0.18, zone.fractureCount * 0.018));
-      if (localDistance > carveRadius) return;
+      if (surfaceDistance > carveRadius) return;
 
+      const localPoint = surfaceToZonePoint(zone, normal);
       const footprintMask = shardFootprintMask(zone, localPoint, zone.radius * 0.08);
       if (footprintMask <= 0) return;
 
@@ -1940,6 +1950,10 @@ function strokeDistance(focus: Point, point: Point, impact: ImpactFootprint, len
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function smoothstep(value: number): number {
