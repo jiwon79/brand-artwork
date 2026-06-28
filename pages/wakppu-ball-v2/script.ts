@@ -55,6 +55,12 @@ type SurfaceHit = {
   point: THREE.Vector3;
 };
 
+type SurfaceDeformOptions = {
+  pressStrength: number;
+  carveStrength: number;
+  carveDepth: number;
+};
+
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const resetButton = document.querySelector('.reset-button') as HTMLButtonElement;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -512,7 +518,7 @@ function updateShardMesh(
     const centerSink = splitProgress * pressure * (
       0.004 + (1 - Math.min(1, shardDistance / Math.max(zone.radius, EPSILON))) * 0.004
     );
-    const lift = Math.max(0.003, surfaceLift - pressedIn - centerSink + tilt + wobble);
+    const lift = Math.max(-0.002, surfaceLift - pressedIn - centerSink + tilt + wobble);
     rotatedPoints.push(separated);
     topOffsets.push(lift);
     const surfacePoint = tangentToSurface(zone, separated, lift);
@@ -584,27 +590,30 @@ function updateGelMesh(zone: BreakZone, progress: number): void {
 
   zone.gelMesh.visible = true;
   const pressure = smoothstep(zone.pressure);
-  const radius = zone.radius * (0.62 + pressure * 0.08);
-  const sides = 30;
   const positions: number[] = [];
   const indices: number[] = [];
-  const center = tangentToSurface(zone, { x: 0, y: 0 }, -0.028 - pressure * 0.006);
-  positions.push(center.x, center.y, center.z);
+  const bedOffset = -WAX_THICKNESS * (
+    1.18
+    + pressure * 0.34
+    + Math.min(0.42, zone.fractureCount * 0.035)
+  );
 
-  for (let i = 0; i < sides; i += 1) {
-    const angle = (i / sides) * Math.PI * 2;
-    const pulse = 0.82 + noise(zone.seed + i * 71) * 0.2;
-    const point = {
-      x: Math.cos(angle) * radius * pulse,
-      y: Math.sin(angle) * radius * (0.86 + noise(zone.seed + i * 43) * 0.18),
-    };
-    const surfacePoint = tangentToSurface(zone, point, -0.026 - pressure * 0.006);
-    positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
-  }
+  zone.shards.forEach((shard, shardIndex) => {
+    const baseIndex = positions.length / 3;
+    const settle = Math.min(0.012, smoothstep(shard.consumed) * 0.008 + shard.split * 0.0008);
+    const center = tangentToSurface(zone, shard.center, bedOffset - settle);
+    positions.push(center.x, center.y, center.z);
 
-  for (let i = 1; i <= sides; i += 1) {
-    indices.push(0, i, i === sides ? 1 : i + 1);
-  }
+    shard.polygon.forEach((point, pointIndex) => {
+      const uneven = noise(zone.seed + shardIndex * 191 + pointIndex * 37) * 0.004;
+      const surfacePoint = tangentToSurface(zone, point, bedOffset - settle - uneven);
+      positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
+    });
+
+    for (let i = 1; i <= shard.polygon.length; i += 1) {
+      indices.push(baseIndex, baseIndex + i, baseIndex + (i === shard.polygon.length ? 1 : i + 1));
+    }
+  });
 
   const geometry = zone.gelMesh.geometry;
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -615,8 +624,8 @@ function updateGelMesh(zone: BreakZone, progress: number): void {
   zone.gelMesh.material.transparent = true;
   zone.gelMesh.material.depthTest = false;
   zone.gelMesh.material.depthWrite = false;
-  zone.gelMesh.material.color.copy(colors.waxCut).lerp(colors.coreDeep, 0.58);
-  zone.gelMesh.material.opacity = Math.min(0.3, (0.14 + pressure * 0.12) * progress);
+  zone.gelMesh.material.color.copy(colors.waxCut).lerp(colors.waxDark, 0.18 + pressure * 0.08);
+  zone.gelMesh.material.opacity = Math.min(0.46, (0.24 + pressure * 0.14) * progress);
 }
 
 function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: ImpactFootprint): void {
@@ -1061,15 +1070,27 @@ function createStrokeFootprint(
 }
 
 function deformSphereSurfaces(): void {
-  deformSphereGeometry(shellMesh, shellBasePositions, 0.28);
-  deformSphereGeometry(rubberMesh, rubberBasePositions, 0.42);
-  deformSphereGeometry(coreMesh, coreBasePositions, 0.72);
+  deformSphereGeometry(shellMesh, shellBasePositions, {
+    pressStrength: 0.16,
+    carveStrength: 1,
+    carveDepth: WAX_THICKNESS * 2.55,
+  });
+  deformSphereGeometry(rubberMesh, rubberBasePositions, {
+    pressStrength: 0.32,
+    carveStrength: 0.9,
+    carveDepth: WAX_THICKNESS * 2.25,
+  });
+  deformSphereGeometry(coreMesh, coreBasePositions, {
+    pressStrength: 0.72,
+    carveStrength: 0,
+    carveDepth: 0,
+  });
 }
 
 function deformSphereGeometry(
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>,
   basePositions: Float32Array,
-  strength: number,
+  options: SurfaceDeformOptions,
 ): void {
   const position = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
   const array = position.array as Float32Array;
@@ -1080,21 +1101,41 @@ function deformSphereGeometry(
     const radius = normal.length();
     normal.normalize();
 
-    let depression = 0;
+    let pressDepression = 0;
+    let carveDepression = 0;
     zones.forEach((zone) => {
       const localPoint = surfaceToZonePoint(zone, normal);
       const localDistance = Math.hypot(localPoint.x, localPoint.y);
       const pressRadius = zone.radius * (1.02 + zone.damage * 0.05);
-      if (localDistance > pressRadius) return;
-      const falloff = smoothstep(1 - localDistance / pressRadius);
-      depression += (
-        0.008
-        + zone.pressure * 0.09
+      if (localDistance <= pressRadius) {
+        const falloff = smoothstep(1 - localDistance / pressRadius);
+        pressDepression += (
+          0.008
+          + zone.pressure * 0.09
+          + zone.damage * 0.006
+        ) * zone.progress * falloff;
+      }
+
+      if (options.carveStrength <= 0 || zone.shards.length === 0) return;
+      const carveRadius = zone.radius * (1.72 + Math.min(0.18, zone.fractureCount * 0.018));
+      if (localDistance > carveRadius) return;
+
+      const footprintMask = shardFootprintMask(zone, localPoint, zone.radius * 0.08);
+      if (footprintMask <= 0) return;
+
+      const pressure = smoothstep(zone.pressure);
+      const fractureDepth = Math.min(0.032, zone.fractureCount * 0.0038);
+      carveDepression += (
+        options.carveDepth
         + zone.damage * 0.006
-      ) * zone.progress * falloff;
+        + pressure * 0.018
+        + fractureDepth
+      ) * zone.progress * footprintMask;
     });
 
-    const nextRadius = radius - depression * strength;
+    const nextRadius = radius
+      - pressDepression * options.pressStrength
+      - carveDepression * options.carveStrength;
     array[i] = normal.x * nextRadius;
     array[i + 1] = normal.y * nextRadius;
     array[i + 2] = normal.z * nextRadius;
@@ -1103,6 +1144,18 @@ function deformSphereGeometry(
   position.needsUpdate = true;
   mesh.geometry.computeVertexNormals();
   mesh.geometry.computeBoundingSphere();
+}
+
+function shardFootprintMask(zone: BreakZone, localPoint: Point, softness: number): number {
+  let nearestEdge = Infinity;
+
+  for (const shard of zone.shards) {
+    if (pointInPolygon(localPoint, shard.polygon)) return 1;
+    nearestEdge = Math.min(nearestEdge, polygonEdgeDistance(localPoint, shard.polygon));
+  }
+
+  if (!Number.isFinite(nearestEdge)) return 0;
+  return smoothstep(1 - nearestEdge / Math.max(softness, EPSILON)) * 0.48;
 }
 
 function waxColor(tint: number, consumed: number, mix: number): THREE.Color {
@@ -1390,6 +1443,30 @@ function pointInPolygon(point: Point, polygon: Point[]): boolean {
     if (intersects) inside = !inside;
   }
   return inside;
+}
+
+function polygonEdgeDistance(point: Point, polygon: Point[]): number {
+  let nearest = Infinity;
+  for (let i = 0; i < polygon.length; i += 1) {
+    nearest = Math.min(nearest, pointToSegmentDistance(point, polygon[i], polygon[(i + 1) % polygon.length]));
+  }
+  return nearest;
+}
+
+function pointToSegmentDistance(point: Point, a: Point, b: Point): number {
+  const segment = sub(b, a);
+  const lengthSquared = segment.x * segment.x + segment.y * segment.y;
+  if (lengthSquared < EPSILON) return distance(point, a);
+
+  const t = Math.max(0, Math.min(1, (
+    (point.x - a.x) * segment.x
+    + (point.y - a.y) * segment.y
+  ) / lengthSquared));
+
+  return distance(point, {
+    x: a.x + segment.x * t,
+    y: a.y + segment.y * t,
+  });
 }
 
 function ensureAudioContext(): AudioContext | null {
