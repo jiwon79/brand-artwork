@@ -16,10 +16,7 @@ body {
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(255, 245, 217, 0.1), transparent 30%),
-    radial-gradient(circle at 50% 105%, rgba(111, 74, 71, 0.34), transparent 38%),
-    linear-gradient(180deg, #21191b 0%, var(--table) 54%, var(--table-deep) 100%);
+  background: #121212;
   color: var(--berry);
   font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
   touch-action: none;

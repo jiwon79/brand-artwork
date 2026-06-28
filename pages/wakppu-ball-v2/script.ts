@@ -150,7 +150,7 @@ const colors = {
   coreDeep: new THREE.Color('#dce1db'),
   gel: new THREE.Color('#ffffff'),
   rubber: new THREE.Color('#dff8f5'),
-  background: new THREE.Color('#1b0000'),
+  background: new THREE.Color('#121212'),
 };
 
 const fractureTuning = {
@@ -159,7 +159,7 @@ const fractureTuning = {
   shardCullArea: DEFAULT_MIN_VISIBLE_SHARD_AREA,
   waxColor: '#000000',
   contentColor: '#fcfcf8',
-  backgroundColor: '#1b0000',
+  backgroundColor: '#121212',
   audioSample: ATTACHED_CRACK_SAMPLE_LABEL,
   audioVolume: 1,
   audioStatus: '샘플 미확인',
@@ -249,8 +249,6 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
   depthWrite: false,
 });
 
-let floorMaterial: THREE.MeshBasicMaterial | null = null;
-
 function applyTuningColors(): void {
   colors.wax.set(fractureTuning.waxColor);
   colors.waxLight.copy(colors.wax).offsetHSL(0, -0.06, 0.2);
@@ -265,10 +263,6 @@ function applyTuningColors(): void {
   coreMaterial.color.copy(colors.core);
   gelMaterial.color.copy(colors.core);
   scene.background = colors.background;
-
-  if (floorMaterial) {
-    floorMaterial.color.copy(colors.background).lerp(new THREE.Color(0x000000), 0.42);
-  }
 }
 
 applyTuningColors();
@@ -321,17 +315,6 @@ const rimLight = new THREE.DirectionalLight(0xdffcff, 1.5);
 rimLight.position.set(3.6, 1.8, 3.4);
 scene.add(rimLight);
 
-floorMaterial = new THREE.MeshBasicMaterial({
-  color: 0x0b0709,
-  transparent: true,
-  opacity: 0.42,
-  depthWrite: false,
-});
-const floor = new THREE.Mesh(new THREE.CircleGeometry(3.3, 96), floorMaterial);
-floor.rotation.x = -Math.PI / 2;
-floor.position.set(0, -SPHERE_RADIUS * 1.08, -0.55);
-floor.scale.set(1.25, 0.22, 1);
-scene.add(floor);
 applyTuningColors();
 
 const raycaster = new THREE.Raycaster();
