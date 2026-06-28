@@ -79,6 +79,11 @@ type OverlapHit = {
   score: number;
 };
 
+type CrackSamplePreset = {
+  label: string;
+  paths: string[];
+};
+
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const resetButton = document.querySelector('.reset-button') as HTMLButtonElement;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -92,10 +97,36 @@ const SHARD_SETTLE_SPEED = 2.4;
 const TOUCH_BREAK_DELAY_MS = 180;
 const DEFAULT_MIN_VISIBLE_SHARD_AREA = 0.01;
 const BASE_MAX_SHARDS_PER_ZONE = 52;
-const CRACK_SAMPLE_PATHS = [
-  'assets/wakppu-crack.mp3',
-  'assets/wakppu-crack.m4a',
-  'assets/wakppu-crack.wav',
+const LOCAL_CRACK_SAMPLE_LABEL = '업로드한 소리';
+const CRACK_SAMPLE_PRESETS: CrackSamplePreset[] = [
+  {
+    label: LOCAL_CRACK_SAMPLE_LABEL,
+    paths: [],
+  },
+  {
+    label: 'Wax Ball Crunchy',
+    paths: [
+      'assets/wakppu-crack-crunchy.mp3',
+      'assets/wakppu-crack-crunchy.m4a',
+      'assets/wakppu-crack-crunchy.wav',
+    ],
+  },
+  {
+    label: 'Wax Ball Relaxation',
+    paths: [
+      'assets/wakppu-crack-relaxation.mp3',
+      'assets/wakppu-crack-relaxation.m4a',
+      'assets/wakppu-crack-relaxation.wav',
+    ],
+  },
+  {
+    label: 'Wax Cracking Compilation',
+    paths: [
+      'assets/wakppu-crack-compilation.mp3',
+      'assets/wakppu-crack-compilation.m4a',
+      'assets/wakppu-crack-compilation.wav',
+    ],
+  },
 ];
 
 const colors = {
@@ -117,8 +148,13 @@ const fractureTuning = {
   waxColor: '#000000',
   contentColor: '#fcfcf8',
   backgroundColor: '#1b0000',
+  audioSample: 'Wax Ball Crunchy',
+  audioVolume: 1,
+  loadAudio: () => openCrackSamplePicker(),
   reset: () => resetArtwork(),
 };
+
+let audioSampleController: { updateDisplay: () => void } | null = null;
 
 const gui = new GUI({ title: 'Wakppu tuning' });
 const fractureFolder = gui.addFolder('Fracture');
@@ -130,6 +166,13 @@ const colorFolder = gui.addFolder('Color');
 colorFolder.addColor(fractureTuning, 'waxColor').name('왁스 색').onChange(applyTuningColors);
 colorFolder.addColor(fractureTuning, 'contentColor').name('내용물 색').onChange(applyTuningColors);
 colorFolder.addColor(fractureTuning, 'backgroundColor').name('배경 색').onChange(applyTuningColors);
+const audioFolder = gui.addFolder('Audio');
+audioSampleController = audioFolder
+  .add(fractureTuning, 'audioSample', CRACK_SAMPLE_PRESETS.map((preset) => preset.label))
+  .name('소리 샘플')
+  .onChange(resetCrackSamples);
+audioFolder.add(fractureTuning, 'audioVolume', 0, 1.5, 0.01).name('소리 볼륨');
+audioFolder.add(fractureTuning, 'loadAudio').name('로컬 소리 선택');
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -302,6 +345,9 @@ let zones: BreakZone[] = [];
 let audioContext: AudioContext | null = null;
 let crackSamplePromise: Promise<void> | null = null;
 const crackSampleBuffers: AudioBuffer[] = [];
+const uploadedCrackSampleBuffers: AudioBuffer[] = [];
+let crackSampleKey = '';
+let crackFileInput: HTMLInputElement | null = null;
 let spinVelocity = new THREE.Vector2(0, 0);
 let debugFrame = 0;
 
@@ -2236,25 +2282,45 @@ function ensureAudioContext(): AudioContext | null {
 function playCrack(force: number, density = 1): void {
   const context = ensureAudioContext();
   if (!context) return;
-  void loadCrackSamples(context).then(() => {
-    if (crackSampleBuffers.length === 0) return;
+  void loadCrackSamples(context).then((buffers) => {
+    if (buffers.length === 0) return;
 
     const source = context.createBufferSource();
     const gain = context.createGain();
-    const sampleIndex = Math.floor(noise(zoneId * 421 + performance.now()) * crackSampleBuffers.length);
-    source.buffer = crackSampleBuffers[sampleIndex];
+    const sampleIndex = Math.floor(noise(zoneId * 421 + performance.now()) * buffers.length);
+    source.buffer = buffers[sampleIndex];
     source.playbackRate.value = clamp(0.94 + (force - 1) * 0.035 + (density - 1) * 0.018, 0.9, 1.08);
-    gain.gain.value = Math.min(0.95, 0.42 + force * 0.2 + density * 0.08);
+    gain.gain.value = Math.min(0.95, 0.42 + force * 0.2 + density * 0.08) * fractureTuning.audioVolume;
     source.connect(gain);
     gain.connect(context.destination);
     source.start();
   });
 }
 
-async function loadCrackSamples(context: AudioContext): Promise<void> {
-  if (crackSampleBuffers.length > 0) return;
+function resetCrackSamples(): void {
+  crackSampleBuffers.length = 0;
+  crackSamplePromise = null;
+  crackSampleKey = '';
+}
 
-  crackSamplePromise ??= Promise.all(CRACK_SAMPLE_PATHS.map(async (path) => {
+function selectedCrackPreset(): CrackSamplePreset {
+  return CRACK_SAMPLE_PRESETS.find((preset) => preset.label === fractureTuning.audioSample)
+    ?? CRACK_SAMPLE_PRESETS[0];
+}
+
+async function loadCrackSamples(context: AudioContext): Promise<AudioBuffer[]> {
+  if (fractureTuning.audioSample === LOCAL_CRACK_SAMPLE_LABEL) {
+    return uploadedCrackSampleBuffers;
+  }
+
+  const preset = selectedCrackPreset();
+  if (crackSampleKey !== preset.label) {
+    resetCrackSamples();
+    crackSampleKey = preset.label;
+  }
+  if (crackSampleBuffers.length > 0) return crackSampleBuffers;
+
+  crackSamplePromise ??= Promise.all(preset.paths.map(async (path) => {
     try {
       const response = await fetch(path);
       if (!response.ok) return;
@@ -2266,6 +2332,42 @@ async function loadCrackSamples(context: AudioContext): Promise<void> {
   })).then(() => undefined);
 
   await crackSamplePromise;
+  return crackSampleBuffers;
+}
+
+function openCrackSamplePicker(): void {
+  crackFileInput ??= document.createElement('input');
+  crackFileInput.type = 'file';
+  crackFileInput.accept = 'audio/*';
+  crackFileInput.multiple = true;
+  crackFileInput.onchange = () => {
+    void loadUploadedCrackSamples(crackFileInput?.files ?? null);
+    if (crackFileInput) crackFileInput.value = '';
+  };
+  crackFileInput.click();
+}
+
+async function loadUploadedCrackSamples(files: FileList | null): Promise<void> {
+  if (!files || files.length === 0) return;
+
+  const context = ensureAudioContext();
+  if (!context) return;
+
+  uploadedCrackSampleBuffers.length = 0;
+  const fileList = Array.from(files);
+  await Promise.all(fileList.map(async (file) => {
+    try {
+      uploadedCrackSampleBuffers.push(await context.decodeAudioData(await file.arrayBuffer()));
+    } catch {
+      // Ignore unsupported local files and keep any successfully decoded samples.
+    }
+  }));
+
+  if (uploadedCrackSampleBuffers.length > 0) {
+    fractureTuning.audioSample = LOCAL_CRACK_SAMPLE_LABEL;
+    resetCrackSamples();
+    audioSampleController?.updateDisplay();
+  }
 }
 
 function randomSphereNormal(seed: number): THREE.Vector3 {
