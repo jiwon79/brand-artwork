@@ -48,6 +48,7 @@ type BreakZone = {
   gelMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
   shards: Shard[];
   edges: CrackEdge[];
+  outline: Point[][];
 };
 
 type SurfaceHit = {
@@ -328,11 +329,8 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
 
   cells.forEach((cell) => {
     const overlap = findOverlappingBreakCell(normal, basis.tangent, basis.bitangent, cell);
-    if (overlap) {
-      overlapHits.push(overlap);
-    } else {
-      availableCells.push(cell);
-    }
+    if (overlap) overlapHits.push(overlap);
+    availableCells.push(...subtractExistingOutlinesFromCell(normal, basis.tangent, basis.bitangent, cell));
   });
 
   const fracturedOverlap = fractureOverlappingBreakCells(overlapHits, forceScale, footprint, seed);
@@ -366,6 +364,7 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     gelMesh,
     shards: [],
     edges: [],
+    outline: availableCells.map((cell) => clonePolygon(cell)),
   };
 
   availableCells.forEach((cell, index) => {
@@ -403,7 +402,7 @@ function findOverlappingBreakCell(
       const localDistance = Math.hypot(localPoint.x, localPoint.y);
       if (localDistance > zone.radius * (1.12 + Math.min(0.22, zone.fractureCount * 0.018))) return;
 
-      const overlap = shardFootprintMask(zone, localPoint, zone.radius * 0.05);
+      const overlap = zoneOutlineMask(zone, localPoint, zone.radius * 0.05);
       if (overlap <= 0) return;
 
       const score = overlap * (index === 0 ? 1.2 : 1) * facing;
@@ -418,6 +417,52 @@ function findOverlappingBreakCell(
   });
 
   return bestHit;
+}
+
+function subtractExistingOutlinesFromCell(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  cell: Point[],
+): Point[][] {
+  const minArea = Math.max(0.0009, Math.abs(polygonArea(cell)) * 0.08);
+  let pieces = [cell];
+
+  zones.forEach((zone) => {
+    if (normal.dot(zone.normal) < 0.68 || zone.outline.length === 0 || pieces.length === 0) return;
+
+    const nextPieces: Point[][] = [];
+    pieces.forEach((piece) => {
+      const zonePieces = subtractZoneOutlinesFromCell(normal, tangent, bitangent, piece, zone)
+        .filter((candidate) => candidate.length >= 3 && Math.abs(polygonArea(candidate)) > minArea);
+      nextPieces.push(...zonePieces);
+    });
+    pieces = nextPieces;
+  });
+
+  return pieces.filter((piece) => piece.length >= 3 && Math.abs(polygonArea(piece)) > minArea);
+}
+
+function subtractZoneOutlinesFromCell(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  cell: Point[],
+  zone: BreakZone,
+): Point[][] {
+  let zonePieces = [cell.map((point) => basisPointToZonePoint(normal, tangent, bitangent, point, zone))];
+
+  zone.outline.forEach((outline) => {
+    const nextPieces: Point[][] = [];
+    zonePieces.forEach((piece) => {
+      nextPieces.push(...subtractConvexPolygon(piece, outline));
+    });
+    zonePieces = nextPieces;
+  });
+
+  return zonePieces.map((piece) => (
+    piece.map((point) => zonePointToBasisPoint(point, zone, normal, tangent, bitangent))
+  ));
 }
 
 function fractureOverlappingBreakCells(
@@ -466,6 +511,32 @@ function tangentBasisPointToNormal(
     .addScaledVector(tangent, point.x)
     .addScaledVector(bitangent, point.y)
     .normalize();
+}
+
+function basisPointToZonePoint(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  point: Point,
+  zone: BreakZone,
+): Point {
+  return surfaceToZonePoint(zone, tangentBasisPointToNormal(normal, tangent, bitangent, point));
+}
+
+function zonePointToBasisPoint(
+  point: Point,
+  zone: BreakZone,
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+): Point {
+  const sampleNormal = tangentBasisPointToNormal(zone.normal, zone.tangent, zone.bitangent, point);
+  const delta = sampleNormal.multiplyScalar(SPHERE_RADIUS)
+    .sub(normal.clone().normalize().multiplyScalar(SPHERE_RADIUS));
+  return {
+    x: delta.dot(tangent),
+    y: delta.dot(bitangent),
+  };
 }
 
 function addShard(
@@ -1283,6 +1354,18 @@ function shardFootprintMask(zone: BreakZone, localPoint: Point, softness: number
   return smoothstep(1 - nearestEdge / Math.max(softness, EPSILON)) * 0.48;
 }
 
+function zoneOutlineMask(zone: BreakZone, localPoint: Point, softness: number): number {
+  let nearestEdge = Infinity;
+
+  for (const outline of zone.outline) {
+    if (pointInPolygon(localPoint, outline)) return 1;
+    nearestEdge = Math.min(nearestEdge, polygonEdgeDistance(localPoint, outline));
+  }
+
+  if (!Number.isFinite(nearestEdge)) return 0;
+  return smoothstep(1 - nearestEdge / Math.max(softness, EPSILON)) * 0.42;
+}
+
 function waxColor(tint: number, consumed: number, mix: number): THREE.Color {
   const target = tint > 0 ? colors.waxLight : colors.waxDark;
   const color = colors.wax.clone().lerp(target, Math.abs(tint) * 0.34);
@@ -1478,6 +1561,61 @@ function clipPolygonToConvex(subject: Point[], clip: Point[]): Point[] {
   return dedupePoints(output);
 }
 
+function subtractConvexPolygon(subject: Point[], clip: Point[]): Point[][] {
+  if (subject.length < 3 || clip.length < 3) return [];
+
+  let remaining: Point[][] = [dedupePoints(subject)];
+  const outsidePieces: Point[][] = [];
+  const clipSign = Math.sign(polygonArea(clip)) || 1;
+
+  for (let i = 0; i < clip.length; i += 1) {
+    const a = clip[i];
+    const b = clip[(i + 1) % clip.length];
+    const nextRemaining: Point[][] = [];
+
+    remaining.forEach((piece) => {
+      const inside = clipPolygonToHalfPlane(piece, a, b, clipSign, true);
+      const outside = clipPolygonToHalfPlane(piece, a, b, clipSign, false);
+      if (isUsablePolygon(outside, 0.0006)) outsidePieces.push(outside);
+      if (isUsablePolygon(inside, 0.0006)) nextRemaining.push(inside);
+    });
+
+    remaining = nextRemaining;
+    if (remaining.length === 0) break;
+  }
+
+  return outsidePieces.filter((piece) => isUsablePolygon(piece, 0.0006));
+}
+
+function clipPolygonToHalfPlane(
+  subject: Point[],
+  a: Point,
+  b: Point,
+  sign: number,
+  keepInside: boolean,
+): Point[] {
+  const output: Point[] = [];
+  if (subject.length === 0) return output;
+
+  let start = subject[subject.length - 1];
+  for (const end of subject) {
+    const endInside = isInsideClip(end, a, b, sign);
+    const startInside = isInsideClip(start, a, b, sign);
+    const endKeep = keepInside ? endInside : !endInside;
+    const startKeep = keepInside ? startInside : !startInside;
+
+    if (endKeep) {
+      if (!startKeep) output.push(lineIntersection(start, end, a, b));
+      output.push(end);
+    } else if (startKeep) {
+      output.push(lineIntersection(start, end, a, b));
+    }
+    start = end;
+  }
+
+  return dedupePoints(output);
+}
+
 function isInsideClip(point: Point, a: Point, b: Point, sign: number): boolean {
   const value = cross(sub(b, a), sub(point, a));
   return sign >= 0 ? value >= -EPSILON : value <= EPSILON;
@@ -1505,6 +1643,14 @@ function dedupePoints(points: Point[]): Point[] {
     deduped.pop();
   }
   return deduped;
+}
+
+function clonePolygon(points: Point[]): Point[] {
+  return points.map((point) => ({ x: point.x, y: point.y }));
+}
+
+function isUsablePolygon(points: Point[], minArea: number): boolean {
+  return points.length >= 3 && Math.abs(polygonArea(points)) > minArea;
 }
 
 function boundsFromPolygon(polygon: Point[], padding: number): [number, number, number, number] {
