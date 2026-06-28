@@ -14,6 +14,7 @@ type Shard = {
   twist: number;
   split: number;
   consumed: number;
+  settle: number;
   phase: number;
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial | THREE.MeshPhysicalMaterial[]>;
 };
@@ -79,6 +80,7 @@ const CORE_RADIUS = SPHERE_RADIUS * 0.93;
 const WAX_THICKNESS = 0.026;
 const CORE_EXPOSURE_DEPTH = SPHERE_RADIUS - CORE_RADIUS + WAX_THICKNESS * 0.8;
 const ZONE_BACKFACE_DOT = 0.12;
+const SHARD_SETTLE_SPEED = 2.4;
 
 const colors = {
   wax: new THREE.Color('#c7f06b'),
@@ -598,6 +600,7 @@ function addShard(
     twist: (noise(seed + 27) - 0.5) * (0.055 + split * 0.01),
     split,
     consumed: 0,
+    settle: 0,
     phase: noise(seed + 38) * Math.PI * 2,
     mesh,
   };
@@ -653,6 +656,7 @@ function updateZone(zone: BreakZone, dt: number, elapsed: number): void {
   const progress = smoothstep(zone.progress);
 
   zone.shards.forEach((shard) => {
+    shard.settle = Math.min(1, shard.settle + dt * SHARD_SETTLE_SPEED);
     updateShardMesh(zone, shard, progress, elapsed);
   });
 
@@ -669,7 +673,8 @@ function updateShardMesh(
   const positions: number[] = [];
   const indices: number[] = [];
   const consumed = smoothstep(shard.consumed);
-  const wobble = reducedMotion ? 0 : Math.sin(elapsed * 4.3 + shard.phase) * 0.0015 * shard.split;
+  const wobbleFade = 1 - smoothstep(shard.settle);
+  const wobble = reducedMotion ? 0 : Math.sin(elapsed * 4.3 + shard.phase) * 0.0009 * shard.split * wobbleFade;
   const topOffsets: number[] = [];
   const rotatedPoints: Point[] = [];
   const shardDistance = Math.hypot(shard.center.x, shard.center.y);
