@@ -90,28 +90,33 @@ const CORE_EXPOSURE_DEPTH = SPHERE_RADIUS - CORE_RADIUS + WAX_THICKNESS * 0.8;
 const ZONE_BACKFACE_DOT = 0.12;
 const SHARD_SETTLE_SPEED = 2.4;
 const TOUCH_BREAK_DELAY_MS = 180;
-const DEFAULT_MIN_VISIBLE_SHARD_AREA = 0.0052;
+const DEFAULT_MIN_VISIBLE_SHARD_AREA = 0.01;
 const BASE_MAX_SHARDS_PER_ZONE = 52;
+const CRACK_SAMPLE_PATHS = [
+  'assets/wakppu-crack.mp3',
+  'assets/wakppu-crack.m4a',
+  'assets/wakppu-crack.wav',
+];
 
 const colors = {
-  wax: new THREE.Color('#c7f06b'),
-  waxLight: new THREE.Color('#eefca4'),
-  waxDark: new THREE.Color('#7d9a26'),
-  waxCut: new THREE.Color('#9fbd45'),
+  wax: new THREE.Color('#000000'),
+  waxLight: new THREE.Color('#333333'),
+  waxDark: new THREE.Color('#000000'),
+  waxCut: new THREE.Color('#111111'),
   core: new THREE.Color('#fcfcf8'),
   coreDeep: new THREE.Color('#dce1db'),
   gel: new THREE.Color('#ffffff'),
   rubber: new THREE.Color('#dff8f5'),
-  background: new THREE.Color('#171214'),
+  background: new THREE.Color('#1b0000'),
 };
 
 const fractureTuning = {
-  shardCount: 1,
+  shardCount: 0.7,
   crackRange: 1,
   shardCullArea: DEFAULT_MIN_VISIBLE_SHARD_AREA,
-  waxColor: '#c7f06b',
+  waxColor: '#000000',
   contentColor: '#fcfcf8',
-  backgroundColor: '#171214',
+  backgroundColor: '#1b0000',
   reset: () => resetArtwork(),
 };
 
@@ -295,6 +300,8 @@ let pendingTouchBreak: PendingTouchBreak | null = null;
 let zoneId = 1;
 let zones: BreakZone[] = [];
 let audioContext: AudioContext | null = null;
+let crackSamplePromise: Promise<void> | null = null;
+const crackSampleBuffers: AudioBuffer[] = [];
 let spinVelocity = new THREE.Vector2(0, 0);
 let debugFrame = 0;
 
@@ -2215,7 +2222,11 @@ function pointToSegmentDistance(point: Point, a: Point, b: Point): number {
 }
 
 function ensureAudioContext(): AudioContext | null {
-  audioContext ??= new AudioContext();
+  const AudioContextCtor = window.AudioContext
+    || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return null;
+
+  audioContext ??= new AudioContextCtor();
   if (audioContext.state === 'suspended') {
     void audioContext.resume();
   }
@@ -2225,83 +2236,36 @@ function ensureAudioContext(): AudioContext | null {
 function playCrack(force: number, density = 1): void {
   const context = ensureAudioContext();
   if (!context) return;
+  void loadCrackSamples(context).then(() => {
+    if (crackSampleBuffers.length === 0) return;
 
-  const now = context.currentTime + 0.004;
-  const master = context.createGain();
-  master.gain.setValueAtTime(Math.min(0.34, 0.12 + force * 0.075), now);
-  master.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-  master.connect(context.destination);
-
-  const burstCount = Math.max(4, Math.round(4 + force * 2.2 + density * 2));
-  for (let i = 0; i < burstCount; i += 1) {
-    const start = now + i * (0.009 + noise(zoneId * 97 + i) * 0.012);
-    const duration = 0.026 + noise(zoneId * 131 + i) * 0.035;
     const source = context.createBufferSource();
-    const filter = context.createBiquadFilter();
     const gain = context.createGain();
-
-    source.buffer = createCrackleBuffer(context, duration, zoneId * 199 + i * 37);
-    filter.type = i % 3 === 0 ? 'bandpass' : 'highpass';
-    filter.frequency.setValueAtTime(1900 + noise(zoneId * 17 + i) * 5200, start);
-    filter.Q.value = 0.7 + noise(zoneId * 23 + i) * 4.2;
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime((0.05 + noise(zoneId * 29 + i) * 0.07) * force, start + 0.004);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(master);
-    source.start(start);
-    source.stop(start + duration + 0.01);
-  }
-
-  const click = context.createOscillator();
-  const clickGain = context.createGain();
-  const clickFilter = context.createBiquadFilter();
-  click.type = 'square';
-  click.frequency.setValueAtTime(2600 + noise(zoneId * 43) * 2300, now);
-  click.frequency.exponentialRampToValueAtTime(620 + noise(zoneId * 47) * 260, now + 0.045);
-  clickFilter.type = 'highpass';
-  clickFilter.frequency.value = 1300;
-  clickGain.gain.setValueAtTime(0.0001, now);
-  clickGain.gain.exponentialRampToValueAtTime(0.08 * force, now + 0.004);
-  clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.062);
-  click.connect(clickFilter);
-  clickFilter.connect(clickGain);
-  clickGain.connect(master);
-  click.start(now);
-  click.stop(now + 0.07);
-
-  const thump = context.createOscillator();
-  const thumpGain = context.createGain();
-  thump.type = 'sine';
-  thump.frequency.setValueAtTime(116 + force * 18, now);
-  thump.frequency.exponentialRampToValueAtTime(52, now + 0.09);
-  thumpGain.gain.setValueAtTime(0.0001, now);
-  thumpGain.gain.exponentialRampToValueAtTime(0.035 * force, now + 0.012);
-  thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-  thump.connect(thumpGain);
-  thumpGain.connect(master);
-  thump.start(now);
-  thump.stop(now + 0.14);
+    const sampleIndex = Math.floor(noise(zoneId * 421 + performance.now()) * crackSampleBuffers.length);
+    source.buffer = crackSampleBuffers[sampleIndex];
+    source.playbackRate.value = clamp(0.94 + (force - 1) * 0.035 + (density - 1) * 0.018, 0.9, 1.08);
+    gain.gain.value = Math.min(0.95, 0.42 + force * 0.2 + density * 0.08);
+    source.connect(gain);
+    gain.connect(context.destination);
+    source.start();
+  });
 }
 
-function createCrackleBuffer(context: AudioContext, duration: number, seed: number): AudioBuffer {
-  const length = Math.max(1, Math.floor(context.sampleRate * duration));
-  const buffer = context.createBuffer(1, length, context.sampleRate);
-  const data = buffer.getChannelData(0);
-  const rng = mulberry32(seed);
-  let snap = 0;
+async function loadCrackSamples(context: AudioContext): Promise<void> {
+  if (crackSampleBuffers.length > 0) return;
 
-  for (let i = 0; i < length; i += 1) {
-    const t = i / Math.max(1, length - 1);
-    const envelope = Math.pow(1 - t, 2.7);
-    const grain = rng() < 0.18 ? (rng() * 2 - 1) * 1.8 : rng() * 2 - 1;
-    snap = snap * 0.34 + grain * 0.66;
-    data[i] = snap * envelope;
-  }
+  crackSamplePromise ??= Promise.all(CRACK_SAMPLE_PATHS.map(async (path) => {
+    try {
+      const response = await fetch(path);
+      if (!response.ok) return;
+      const arrayBuffer = await response.arrayBuffer();
+      crackSampleBuffers.push(await context.decodeAudioData(arrayBuffer));
+    } catch {
+      // Recorded samples are optional local assets; missing files should not break the artwork.
+    }
+  })).then(() => undefined);
 
-  return buffer;
+  await crackSamplePromise;
 }
 
 function randomSphereNormal(seed: number): THREE.Vector3 {
