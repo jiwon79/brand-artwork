@@ -90,7 +90,7 @@ const CORE_EXPOSURE_DEPTH = SPHERE_RADIUS - CORE_RADIUS + WAX_THICKNESS * 0.8;
 const ZONE_BACKFACE_DOT = 0.12;
 const SHARD_SETTLE_SPEED = 2.4;
 const TOUCH_BREAK_DELAY_MS = 180;
-const MIN_VISIBLE_SHARD_AREA = 0.0052;
+const DEFAULT_MIN_VISIBLE_SHARD_AREA = 0.0052;
 
 const colors = {
   wax: new THREE.Color('#c7f06b'),
@@ -107,8 +107,10 @@ const colors = {
 const fractureTuning = {
   shardCount: 1,
   crackRange: 1,
+  shardCullArea: DEFAULT_MIN_VISIBLE_SHARD_AREA,
   waxColor: '#c7f06b',
   contentColor: '#fcfcf8',
+  backgroundColor: '#171214',
   reset: () => resetArtwork(),
 };
 
@@ -116,10 +118,12 @@ const gui = new GUI({ title: 'Wakppu tuning' });
 const fractureFolder = gui.addFolder('Fracture');
 fractureFolder.add(fractureTuning, 'shardCount', 0.35, 2.2, 0.01).name('조각 수');
 fractureFolder.add(fractureTuning, 'crackRange', 0.55, 2.25, 0.01).name('크랙 범위');
+fractureFolder.add(fractureTuning, 'shardCullArea', 0.0015, 0.018, 0.0001).name('사라짐 기준');
 fractureFolder.add(fractureTuning, 'reset').name('크랙 리셋');
 const colorFolder = gui.addFolder('Color');
 colorFolder.addColor(fractureTuning, 'waxColor').name('왁스 색').onChange(applyTuningColors);
 colorFolder.addColor(fractureTuning, 'contentColor').name('내용물 색').onChange(applyTuningColors);
+colorFolder.addColor(fractureTuning, 'backgroundColor').name('배경 색').onChange(applyTuningColors);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -181,6 +185,8 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
   depthWrite: false,
 });
 
+let floorMaterial: THREE.MeshBasicMaterial | null = null;
+
 function applyTuningColors(): void {
   colors.wax.set(fractureTuning.waxColor);
   colors.waxLight.copy(colors.wax).offsetHSL(0, -0.06, 0.2);
@@ -189,10 +195,16 @@ function applyTuningColors(): void {
   colors.core.set(fractureTuning.contentColor);
   colors.coreDeep.copy(colors.core).offsetHSL(0, -0.04, -0.16);
   colors.gel.copy(colors.core);
+  colors.background.set(fractureTuning.backgroundColor);
 
   waxMaterial.color.copy(colors.wax);
   coreMaterial.color.copy(colors.core);
   gelMaterial.color.copy(colors.core);
+  scene.background = colors.background;
+
+  if (floorMaterial) {
+    floorMaterial.color.copy(colors.background).lerp(new THREE.Color(0x000000), 0.42);
+  }
 }
 
 applyTuningColors();
@@ -245,19 +257,18 @@ const rimLight = new THREE.DirectionalLight(0xdffcff, 1.5);
 rimLight.position.set(3.6, 1.8, 3.4);
 scene.add(rimLight);
 
-const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(3.3, 96),
-  new THREE.MeshBasicMaterial({
-    color: 0x0b0709,
-    transparent: true,
-    opacity: 0.42,
-    depthWrite: false,
-  }),
-);
+floorMaterial = new THREE.MeshBasicMaterial({
+  color: 0x0b0709,
+  transparent: true,
+  opacity: 0.42,
+  depthWrite: false,
+});
+const floor = new THREE.Mesh(new THREE.CircleGeometry(3.3, 96), floorMaterial);
 floor.rotation.x = -Math.PI / 2;
 floor.position.set(0, -SPHERE_RADIUS * 1.08, -0.55);
 floor.scale.set(1.25, 0.22, 1);
 scene.add(floor);
+applyTuningColors();
 
 const raycaster = new THREE.Raycaster();
 const pointerNdc = new THREE.Vector2();
@@ -343,8 +354,12 @@ function shardArea(shard: Shard): number {
   return Math.abs(polygonArea(shard.polygon));
 }
 
+function minVisibleShardArea(): number {
+  return Math.max(0.0004, fractureTuning.shardCullArea);
+}
+
 function shouldCullShard(shard: Shard): boolean {
-  return shardArea(shard) < MIN_VISIBLE_SHARD_AREA;
+  return shardArea(shard) < minVisibleShardArea();
 }
 
 function disposeShard(zone: BreakZone, shard: Shard): void {
@@ -390,9 +405,10 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
   const radiusBase = isStroke ? 0.34 + rng() * 0.08 : 0.58 + rng() * 0.15;
   const radius = radiusBase * (isStroke ? 0.98 + forceScale * 0.12 : 0.96 + forceScale * 0.1) * rangeScale;
   const impactPolygon = createImpactPolygon(radius, 13 + Math.floor(rng() * 5), rng, footprint);
+  const minShardArea = minVisibleShardArea();
   const baseCellMinArea = isStroke
     ? Math.max(0.012, radius * radius * 0.047)
-    : Math.max(MIN_VISIBLE_SHARD_AREA, radius * radius * 0.022);
+    : Math.max(minShardArea, radius * radius * 0.022);
   const cellMinArea = baseCellMinArea / shardScale;
   const basePointCount = (isStroke ? 6 : 8.5) + forceScale * (isStroke ? 1.25 : 1.8) + rng() * (isStroke ? 1.2 : 2);
   const points = createImpactPoints(
@@ -446,7 +462,7 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
 
   const baseShardMinArea = isStroke
     ? Math.max(0.011, radius * radius * 0.04)
-    : Math.max(MIN_VISIBLE_SHARD_AREA * 1.08, radius * radius * 0.018);
+    : Math.max(minShardArea * 1.08, radius * radius * 0.018);
   const shardMinArea = baseShardMinArea / shardScale;
   availableCells.forEach((cell, index) => {
     addShard(zone, cell, edgeMap, seed + index * 41, 0, shardMinArea);
@@ -637,7 +653,7 @@ function addShard(
   split = 0,
   minArea = 0.0035,
 ): void {
-  if (Math.abs(polygonArea(polygon)) < Math.max(minArea, MIN_VISIBLE_SHARD_AREA)) return;
+  if (Math.abs(polygonArea(polygon)) < Math.max(minArea, minVisibleShardArea())) return;
 
   const topMaterial = new THREE.MeshPhysicalMaterial({
     color: colors.wax,
@@ -1037,7 +1053,7 @@ function splitShard(
   impact?: ImpactFootprint,
 ): Shard[] {
   const area = Math.abs(polygonArea(shard.polygon));
-  if (area < MIN_VISIBLE_SHARD_AREA) return [];
+  if (area < minVisibleShardArea()) return [];
   if (shard.split > 7) return [shard];
 
   const rng = mulberry32(seed);
