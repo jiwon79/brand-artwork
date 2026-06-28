@@ -358,14 +358,39 @@ function minVisibleShardArea(): number {
   return Math.max(0.0004, fractureTuning.shardCullArea);
 }
 
+function shouldCullPolygon(polygon: Point[], minArea = minVisibleShardArea()): boolean {
+  const area = Math.abs(polygonArea(polygon));
+  if (area < minArea) return true;
+
+  const longestEdge = polygonLongestEdge(polygon);
+  const apparentWidth = area / Math.max(longestEdge, EPSILON);
+  const compactness = polygonCompactness(polygon);
+  return area < minArea * 5.5 && (apparentWidth < 0.032 || compactness < 0.065);
+}
+
 function shouldCullShard(shard: Shard): boolean {
-  return shardArea(shard) < minVisibleShardArea();
+  return shouldCullPolygon(shard.polygon);
+}
+
+function shouldCullDirectHitShard(shard: Shard): boolean {
+  const area = shardArea(shard);
+  const minArea = minVisibleShardArea();
+  if (area < minArea * 1.8) return true;
+
+  const longestEdge = polygonLongestEdge(shard.polygon);
+  const apparentWidth = area / Math.max(longestEdge, EPSILON);
+  const compactness = polygonCompactness(shard.polygon);
+  return area < minArea * 7.5 && (shard.split > 4 || apparentWidth < 0.04 || compactness < 0.085);
 }
 
 function disposeShard(zone: BreakZone, shard: Shard): void {
   zone.shardGroup.remove(shard.mesh);
   shard.mesh.geometry.dispose();
   disposeMaterial(shard.mesh.material);
+}
+
+function refreshZoneOutline(zone: BreakZone): void {
+  zone.outline = zone.shards.map((shard) => clonePolygon(shard.polygon));
 }
 
 function clonePositions(geometry: THREE.BufferGeometry): Float32Array {
@@ -467,7 +492,7 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
   availableCells.forEach((cell, index) => {
     addShard(zone, cell, edgeMap, seed + index * 41, 0, shardMinArea);
   });
-  zone.outline = zone.shards.map((shard) => clonePolygon(shard.polygon));
+  refreshZoneOutline(zone);
 
   if (zone.shards.length === 0) {
     sphereGroup.remove(group);
@@ -653,7 +678,7 @@ function addShard(
   split = 0,
   minArea = 0.0035,
 ): void {
-  if (Math.abs(polygonArea(polygon)) < Math.max(minArea, minVisibleShardArea())) return;
+  if (shouldCullPolygon(polygon, Math.max(minArea, minVisibleShardArea()))) return;
 
   const topMaterial = new THREE.MeshPhysicalMaterial({
     color: colors.wax,
@@ -938,13 +963,21 @@ function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: Imp
 
 function findBreakableZone(normal: THREE.Vector3): BreakZone | null {
   let nearest: BreakZone | null = null;
-  let nearestDistance = Infinity;
+  let nearestScore = Infinity;
 
   zones.forEach((zone) => {
     const surfaceDistance = zoneSurfaceDistance(zone, normal);
-    if (surfaceDistance < zone.radius * 1.04 && surfaceDistance < nearestDistance) {
+    if (surfaceDistance > zone.radius * 1.28) return;
+
+    const localPoint = surfaceToZonePoint(zone, normal);
+    const shardDistance = zoneShardHitDistance(zone, localPoint);
+    const score = shardDistance < zone.radius * 0.13
+      ? shardDistance - zone.radius * 0.24
+      : surfaceDistance;
+
+    if (score < nearestScore && (surfaceDistance < zone.radius * 1.04 || shardDistance < zone.radius * 0.13)) {
       nearest = zone;
-      nearestDistance = surfaceDistance;
+      nearestScore = score;
     }
   });
 
@@ -980,21 +1013,29 @@ function fractureExistingZone(
       ? 0.28 + forceScale * 0.08
       : 0.2 + forceScale * 0.06
   ) * rangeScale;
+  const directHitRadius = zone.radius * (isStroke ? 0.08 : 0.12);
   const candidates = zone.shards
-    .map((shard, index) => ({
-      shard,
-      index,
-      contains: pointInPolygon(localPoint, shard.polygon),
-      distance: impact?.kind === 'stroke'
+    .map((shard, index) => {
+      const hitDistance = shardHitDistance(zone, shard, localPoint);
+      const centerDistance = impact?.kind === 'stroke'
         ? strokeDistance(localPoint, shard.center, impact, breakRadius * impact.stretch)
-        : distance(localPoint, shard.center),
-    }))
+        : distance(localPoint, shard.center);
+      return {
+        shard,
+        index,
+        contains: hitDistance <= EPSILON,
+        distance: Math.min(hitDistance, centerDistance),
+        hitDistance,
+      };
+    })
     .filter((candidate) => (
       candidate.contains
+      || candidate.hitDistance < directHitRadius
       || candidate.distance < breakRadius * (1 + candidate.shard.consumed * 0.35)
     ))
     .sort((a, b) => {
       if (a.contains !== b.contains) return a.contains ? -1 : 1;
+      if (Math.abs(a.hitDistance - b.hitDistance) > EPSILON) return a.hitDistance - b.hitDistance;
       return a.distance - b.distance;
     });
 
@@ -1006,7 +1047,7 @@ function fractureExistingZone(
     candidates.length,
     Math.max(1, Math.round((selectionBase + forceScale * selectionForce) * shardScale)),
   );
-  const selectedIndexes = new Set(candidates.slice(0, selectedCount).map((candidate) => candidate.index));
+  const selectedCandidates = new Map(candidates.slice(0, selectedCount).map((candidate) => [candidate.index, candidate]));
   const nextShards: Shard[] = [];
 
   zone.shards.forEach((shard, index) => {
@@ -1015,8 +1056,14 @@ function fractureExistingZone(
       return;
     }
 
-    if (!selectedIndexes.has(index)) {
+    const selectedCandidate = selectedCandidates.get(index);
+    if (!selectedCandidate) {
       nextShards.push(shard);
+      return;
+    }
+
+    if (selectedCandidate.hitDistance < directHitRadius * 0.72 && shouldCullDirectHitShard(shard)) {
+      disposeShard(zone, shard);
       return;
     }
 
@@ -1041,6 +1088,7 @@ function fractureExistingZone(
 
   zone.fractureCount += 1;
   zone.damage = Math.min(4.4, zone.damage + forceScale * 0.16);
+  refreshZoneOutline(zone);
   rebuildAllZoneEdges(zone, seed);
 }
 
@@ -1560,6 +1608,45 @@ function shardFootprintMask(zone: BreakZone, localPoint: Point, softness: number
   return smoothstep(1 - nearestEdge / Math.max(softness, EPSILON)) * 0.48;
 }
 
+function zoneShardHitDistance(zone: BreakZone, localPoint: Point): number {
+  return zone.shards.reduce((nearest, shard) => (
+    Math.min(nearest, shardHitDistance(zone, shard, localPoint))
+  ), Infinity);
+}
+
+function shardHitDistance(zone: BreakZone, shard: Shard, localPoint: Point): number {
+  if (pointInPolygon(localPoint, shard.polygon)) return 0;
+
+  const visiblePolygon = visibleShardPolygon(zone, shard);
+  if (pointInPolygon(localPoint, visiblePolygon)) return 0;
+
+  return Math.min(
+    polygonEdgeDistance(localPoint, shard.polygon),
+    polygonEdgeDistance(localPoint, visiblePolygon),
+  );
+}
+
+function visibleShardPolygon(zone: BreakZone, shard: Shard): Point[] {
+  const progress = smoothstep(zone.progress);
+  const consumed = smoothstep(shard.consumed);
+  const splitProgress = progress * 0.68;
+  const shardDistance = Math.hypot(shard.center.x, shard.center.y);
+  const shardDirection = shardDistance > EPSILON
+    ? { x: shard.center.x / shardDistance, y: shard.center.y / shardDistance }
+    : { x: Math.cos(shard.phase), y: Math.sin(shard.phase) };
+  const gap = splitProgress * (0.028 + zone.fractureCount * 0.006) * (1 - consumed * 0.15);
+  const inset = Math.min(0.16, splitProgress * (0.048 + zone.fractureCount * 0.006));
+  const shiftedCenter = {
+    x: shard.center.x + shardDirection.x * gap,
+    y: shard.center.y + shardDirection.y * gap,
+  };
+
+  return shard.polygon.map((point) => ({
+    x: shiftedCenter.x + (point.x - shard.center.x) * (1 - inset),
+    y: shiftedCenter.y + (point.y - shard.center.y) * (1 - inset),
+  }));
+}
+
 function zoneOutlineMask(zone: BreakZone, localPoint: Point, softness: number): number {
   let nearestEdge = Infinity;
 
@@ -1881,6 +1968,28 @@ function polygonArea(points: Point[]): number {
     area += a.x * b.y - b.x * a.y;
   }
   return area * 0.5;
+}
+
+function polygonPerimeter(points: Point[]): number {
+  let perimeter = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    perimeter += distance(points[i], points[(i + 1) % points.length]);
+  }
+  return perimeter;
+}
+
+function polygonLongestEdge(points: Point[]): number {
+  let longest = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    longest = Math.max(longest, distance(points[i], points[(i + 1) % points.length]));
+  }
+  return longest;
+}
+
+function polygonCompactness(points: Point[]): number {
+  const perimeter = polygonPerimeter(points);
+  if (perimeter <= EPSILON) return 0;
+  return (4 * Math.PI * Math.abs(polygonArea(points))) / (perimeter * perimeter);
 }
 
 function polygonCentroid(points: Point[]): Point {
