@@ -39,8 +39,6 @@ type BreakZone = {
   bitangent: THREE.Vector3;
   radius: number;
   damage: number;
-  mix: number;
-  pressure: number;
   progress: number;
   fractureCount: number;
   group: THREE.Group;
@@ -57,7 +55,6 @@ type SurfaceHit = {
 };
 
 type SurfaceDeformOptions = {
-  pressStrength: number;
   carveStrength: number;
   carveDepth: number;
 };
@@ -78,7 +75,9 @@ const resetButton = document.querySelector('.reset-button') as HTMLButtonElement
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const EPSILON = 0.0001;
 const SPHERE_RADIUS = 2.24;
+const CORE_RADIUS = SPHERE_RADIUS * 0.93;
 const WAX_THICKNESS = 0.026;
+const CORE_EXPOSURE_DEPTH = SPHERE_RADIUS - CORE_RADIUS + WAX_THICKNESS * 0.8;
 const ZONE_BACKFACE_DOT = 0.12;
 
 const colors = {
@@ -153,7 +152,7 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
 });
 
 const coreMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(SPHERE_RADIUS * 0.93, 96, 48),
+  new THREE.SphereGeometry(CORE_RADIUS, 96, 48),
   coreMaterial,
 );
 coreMesh.castShadow = true;
@@ -356,8 +355,6 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     bitangent: basis.bitangent,
     radius,
     damage: forceScale,
-    mix: 0,
-    pressure: 0,
     progress: 0,
     fractureCount: 0,
     group,
@@ -653,10 +650,9 @@ function rebuildAllZoneEdges(zone: BreakZone, seed: number): void {
 function updateZone(zone: BreakZone, dt: number, elapsed: number): void {
   zone.progress += (1 - zone.progress) * (reducedMotion ? 0.5 : Math.min(0.16, dt * 7.2));
   const progress = smoothstep(zone.progress);
-  const ooze = 0;
 
   zone.shards.forEach((shard) => {
-    updateShardMesh(zone, shard, progress, ooze, elapsed);
+    updateShardMesh(zone, shard, progress, elapsed);
   });
 
   updateGelMesh(zone, progress);
@@ -666,24 +662,22 @@ function updateShardMesh(
   zone: BreakZone,
   shard: Shard,
   progress: number,
-  mix: number,
   elapsed: number,
 ): void {
   const points = [shard.center, ...shard.polygon];
   const positions: number[] = [];
   const indices: number[] = [];
   const consumed = smoothstep(shard.consumed);
-  const pressure = smoothstep(zone.pressure);
-  const wobble = reducedMotion ? 0 : Math.sin(elapsed * 4.3 + shard.phase) * 0.0015 * shard.split * (1 - pressure);
+  const wobble = reducedMotion ? 0 : Math.sin(elapsed * 4.3 + shard.phase) * 0.0015 * shard.split;
   const topOffsets: number[] = [];
   const rotatedPoints: Point[] = [];
   const shardDistance = Math.hypot(shard.center.x, shard.center.y);
   const shardDirection = shardDistance > EPSILON
     ? { x: shard.center.x / shardDistance, y: shard.center.y / shardDistance }
     : { x: Math.cos(shard.phase), y: Math.sin(shard.phase) };
-  const splitProgress = progress * (0.68 + pressure * 0.32);
-  const gap = splitProgress * (0.028 + pressure * 0.044 + zone.fractureCount * 0.006) * (1 - consumed * 0.15);
-  const inset = Math.min(0.16, splitProgress * (0.048 + pressure * 0.048 + zone.fractureCount * 0.006));
+  const splitProgress = progress * 0.68;
+  const gap = splitProgress * (0.028 + zone.fractureCount * 0.006) * (1 - consumed * 0.15);
+  const inset = Math.min(0.16, splitProgress * (0.048 + zone.fractureCount * 0.006));
   const shiftedCenter = {
     x: shard.center.x + shardDirection.x * gap,
     y: shard.center.y + shardDirection.y * gap,
@@ -697,11 +691,6 @@ function updateShardMesh(
     const outward = Math.min(1, Math.hypot(point.x, point.y) / zone.radius);
     const anchor = 1 - smoothstep(Math.max(0, outward - 0.72) / 0.28);
     const surfaceLift = shard.lift * (0.05 + anchor * 0.16) * progress * (1 - consumed * 0.72);
-    const pressedIn = (
-      pressure * (0.06 + zone.damage * 0.008)
-      + consumed * 0.028
-      + mix * 0.028
-    ) * (0.2 + anchor * 0.8);
     const twist = shard.twist * progress * anchor * (1 - consumed * 0.5);
     const local = {
       x: (point.x - shard.center.x) * (1 - inset),
@@ -715,11 +704,8 @@ function updateShardMesh(
     const tilt = (
       (rotatedLocal.x * tiltAxis.x + rotatedLocal.y * tiltAxis.y)
       / Math.max(zone.radius, EPSILON)
-    ) * splitProgress * (0.026 + pressure * 0.032);
-    const centerSink = splitProgress * pressure * (
-      0.004 + (1 - Math.min(1, shardDistance / Math.max(zone.radius, EPSILON))) * 0.004
-    );
-    const lift = Math.max(-0.002, surfaceLift - pressedIn - centerSink + tilt + wobble);
+    ) * splitProgress * 0.026;
+    const lift = Math.max(-0.002, surfaceLift + tilt + wobble);
     rotatedPoints.push(separated);
     topOffsets.push(lift);
     const surfacePoint = tangentToSurface(zone, separated, lift);
@@ -727,7 +713,7 @@ function updateShardMesh(
   });
 
   points.forEach((_, index) => {
-    const bottomOffset = topOffsets[index] - WAX_THICKNESS * (0.95 + progress * 0.38 + pressure * 0.18);
+    const bottomOffset = topOffsets[index] - WAX_THICKNESS * (0.95 + progress * 0.38);
     const surfacePoint = tangentToSurface(zone, rotatedPoints[index], bottomOffset);
     positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
   });
@@ -762,7 +748,7 @@ function updateShardMesh(
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 
-  const color = waxColor(shard.tint, consumed, mix);
+  const color = waxColor(shard.tint, consumed);
   const materials = Array.isArray(shard.mesh.material) ? shard.mesh.material : [shard.mesh.material];
   const [topMaterial, undersideMaterial, edgeMaterial] = materials;
   topMaterial.color.copy(color);
@@ -790,14 +776,9 @@ function updateGelMesh(zone: BreakZone, progress: number): void {
   }
 
   zone.gelMesh.visible = true;
-  const pressure = smoothstep(zone.pressure);
   const positions: number[] = [];
   const indices: number[] = [];
-  const bedOffset = -WAX_THICKNESS * (
-    1.18
-    + pressure * 0.34
-    + Math.min(0.42, zone.fractureCount * 0.035)
-  );
+  const bedOffset = CORE_RADIUS - SPHERE_RADIUS + WAX_THICKNESS * 0.14;
 
   zone.shards.forEach((shard, shardIndex) => {
     const baseIndex = positions.length / 3;
@@ -825,8 +806,8 @@ function updateGelMesh(zone: BreakZone, progress: number): void {
   zone.gelMesh.material.transparent = true;
   zone.gelMesh.material.depthTest = false;
   zone.gelMesh.material.depthWrite = false;
-  zone.gelMesh.material.color.copy(colors.waxCut).lerp(colors.waxDark, 0.18 + pressure * 0.08);
-  zone.gelMesh.material.opacity = Math.min(0.46, (0.24 + pressure * 0.14) * progress);
+  zone.gelMesh.material.color.copy(colors.core).lerp(colors.coreDeep, 0.12);
+  zone.gelMesh.material.opacity = Math.min(0.94, 0.82 * progress);
 }
 
 function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: ImpactFootprint): void {
@@ -941,8 +922,6 @@ function fractureExistingZone(
   zone.shards = nextShards;
   zone.fractureCount += 1;
   zone.damage = Math.min(4.4, zone.damage + forceScale * 0.16);
-  zone.pressure = Math.min(1, zone.pressure + (fromHold ? 0.04 : 0.065) * forceScale);
-  zone.mix = 0;
   rebuildAllZoneEdges(zone, seed);
 }
 
@@ -990,14 +969,11 @@ function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: numbe
 
   const localPoint = surfaceToZonePoint(zone, normal);
   const forceScale = Math.min(2.4, Math.max(0.5, force));
-  zone.pressure = Math.min(1, zone.pressure + amount * (3.6 + forceScale * 0.9));
-  zone.mix = 0;
-  const ooze = 0;
 
   zone.shards.forEach((shard) => {
     const falloff = Math.max(0, 1 - distance(localPoint, shard.center) / (zone.radius * 0.34));
     if (falloff <= 0) return;
-    shard.consumed = Math.min(1, shard.consumed + amount * falloff * (0.18 + forceScale * 0.07 + ooze * 0.8));
+    shard.consumed = Math.min(1, shard.consumed + amount * falloff * (0.18 + forceScale * 0.07));
     shard.lift = Math.max(0.001, shard.lift - amount * falloff * 0.018);
   });
 }
@@ -1285,17 +1261,14 @@ function createStrokeFootprint(
 
 function deformSphereSurfaces(): void {
   deformSphereGeometry(shellMesh, shellBasePositions, {
-    pressStrength: 0.16,
     carveStrength: 1,
-    carveDepth: WAX_THICKNESS * 2.55,
+    carveDepth: CORE_EXPOSURE_DEPTH,
   });
   deformSphereGeometry(rubberMesh, rubberBasePositions, {
-    pressStrength: 0.32,
-    carveStrength: 0.9,
-    carveDepth: WAX_THICKNESS * 2.25,
+    carveStrength: 0,
+    carveDepth: 0,
   });
   deformSphereGeometry(coreMesh, coreBasePositions, {
-    pressStrength: 0.72,
     carveStrength: 0,
     carveDepth: 0,
   });
@@ -1315,20 +1288,9 @@ function deformSphereGeometry(
     const radius = normal.length();
     normal.normalize();
 
-    let pressDepression = 0;
     let carveDepression = 0;
     zones.forEach((zone) => {
       const surfaceDistance = zoneSurfaceDistance(zone, normal);
-      const pressRadius = zone.radius * (1.02 + zone.damage * 0.05);
-      if (surfaceDistance <= pressRadius) {
-        const falloff = smoothstep(1 - surfaceDistance / pressRadius);
-        pressDepression += (
-          0.008
-          + zone.pressure * 0.09
-          + zone.damage * 0.006
-        ) * zone.progress * falloff;
-      }
-
       if (options.carveStrength <= 0 || zone.shards.length === 0) return;
       const carveRadius = zone.radius * (1.72 + Math.min(0.18, zone.fractureCount * 0.018));
       if (surfaceDistance > carveRadius) return;
@@ -1337,18 +1299,15 @@ function deformSphereGeometry(
       const footprintMask = shardFootprintMask(zone, localPoint, zone.radius * 0.08);
       if (footprintMask <= 0) return;
 
-      const pressure = smoothstep(zone.pressure);
       const fractureDepth = Math.min(0.032, zone.fractureCount * 0.0038);
       carveDepression += (
         options.carveDepth
-        + zone.damage * 0.006
-        + pressure * 0.018
+        + zone.damage * 0.004
         + fractureDepth
       ) * zone.progress * footprintMask;
     });
 
     const nextRadius = radius
-      - pressDepression * options.pressStrength
       - carveDepression * options.carveStrength;
     array[i] = normal.x * nextRadius;
     array[i + 1] = normal.y * nextRadius;
@@ -1384,12 +1343,10 @@ function zoneOutlineMask(zone: BreakZone, localPoint: Point, softness: number): 
   return smoothstep(1 - nearestEdge / Math.max(softness, EPSILON)) * 0.42;
 }
 
-function waxColor(tint: number, consumed: number, mix: number): THREE.Color {
+function waxColor(tint: number, consumed: number): THREE.Color {
   const target = tint > 0 ? colors.waxLight : colors.waxDark;
   const color = colors.wax.clone().lerp(target, Math.abs(tint) * 0.34);
-  return color
-    .lerp(colors.waxCut, Math.min(0.2, consumed * 0.1))
-    .lerp(colors.waxDark, Math.min(0.12, mix * 0.04));
+  return color.lerp(colors.waxCut, Math.min(0.2, consumed * 0.1));
 }
 
 function createImpactPolygon(
