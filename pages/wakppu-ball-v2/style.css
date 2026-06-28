@@ -87,6 +87,28 @@ body {
   outline-offset: 4px;
 }
 
+.lil-gui.root {
+  --background-color: rgba(24, 18, 20, 0.86);
+  --text-color: #f7ffe1;
+  --title-background-color: rgba(39, 31, 34, 0.94);
+  --widget-color: rgba(58, 51, 54, 0.92);
+  --hover-color: rgba(86, 78, 80, 0.9);
+  --focus-color: rgba(199, 240, 107, 0.72);
+  --number-color: #dfffa8;
+  --string-color: #dfffa8;
+  top: max(16px, env(safe-area-inset-top));
+  right: auto;
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 8;
+  backdrop-filter: blur(14px);
+}
+
+@media (max-width: 520px) {
+  .lil-gui.root {
+    width: min(300px, calc(100vw - 88px));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #stage {
     cursor: default;

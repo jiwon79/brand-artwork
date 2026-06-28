@@ -1,4 +1,5 @@
 import { Delaunay } from 'd3-delaunay';
+import GUI from 'lil-gui';
 import * as THREE from 'three';
 
 type Point = {
@@ -101,6 +102,18 @@ const colors = {
   rubber: new THREE.Color('#dff8f5'),
   background: new THREE.Color('#171214'),
 };
+
+const fractureTuning = {
+  shardCount: 1,
+  crackRange: 1,
+  reset: () => resetArtwork(),
+};
+
+const gui = new GUI({ title: 'Wakppu tuning' });
+const fractureFolder = gui.addFolder('Fracture');
+fractureFolder.add(fractureTuning, 'shardCount', 0.35, 2.2, 0.01).name('조각 수');
+fractureFolder.add(fractureTuning, 'crackRange', 0.55, 1.85, 0.01).name('크랙 범위');
+fractureFolder.add(fractureTuning, 'reset').name('크랙 리셋');
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -329,14 +342,18 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     width: 0.92,
   };
   const isStroke = footprint.kind === 'stroke';
+  const shardScale = Math.max(0.35, fractureTuning.shardCount);
+  const rangeScale = Math.max(0.55, fractureTuning.crackRange);
   const radiusBase = isStroke ? 0.34 + rng() * 0.08 : 0.46 + rng() * 0.12;
-  const radius = radiusBase * (isStroke ? 0.98 + forceScale * 0.12 : 0.9 + forceScale * 0.08);
+  const radius = radiusBase * (isStroke ? 0.98 + forceScale * 0.12 : 0.9 + forceScale * 0.08) * rangeScale;
   const impactPolygon = createImpactPolygon(radius, 13 + Math.floor(rng() * 5), rng, footprint);
-  const cellMinArea = isStroke ? Math.max(0.012, radius * radius * 0.047) : 0.005;
+  const baseCellMinArea = isStroke ? Math.max(0.012, radius * radius * 0.047) : 0.005;
+  const cellMinArea = baseCellMinArea / shardScale;
+  const basePointCount = (isStroke ? 6 : 11) + forceScale * (isStroke ? 1.25 : 3) + rng() * (isStroke ? 1.2 : 3);
   const points = createImpactPoints(
     radius,
     impactPolygon,
-    Math.round((isStroke ? 6 : 11) + forceScale * (isStroke ? 1.25 : 3) + rng() * (isStroke ? 1.2 : 3)),
+    Math.max(isStroke ? 4 : 7, Math.round(basePointCount * shardScale)),
     rng,
     footprint,
   );
@@ -382,7 +399,8 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     outline: availableCells.map((cell) => clonePolygon(cell)),
   };
 
-  const shardMinArea = isStroke ? Math.max(0.011, radius * radius * 0.04) : 0.0035;
+  const baseShardMinArea = isStroke ? Math.max(0.011, radius * radius * 0.04) : 0.0035;
+  const shardMinArea = baseShardMinArea / shardScale;
   availableCells.forEach((cell, index) => {
     addShard(zone, cell, edgeMap, seed + index * 41, 0, shardMinArea);
   });
@@ -890,11 +908,13 @@ function fractureExistingZone(
   const forceScale = Math.min(2.6, Math.max(0.5, force));
   const seed = zone.seed + zone.fractureCount * 4099 + Math.floor(performance.now());
   const isStroke = impact?.kind === 'stroke';
+  const shardScale = Math.max(0.35, fractureTuning.shardCount);
+  const rangeScale = Math.max(0.55, fractureTuning.crackRange);
   const breakRadius = zone.radius * (
     isStroke
       ? 0.28 + forceScale * 0.08
       : 0.2 + forceScale * 0.06
-  );
+  ) * rangeScale;
   const candidates = zone.shards
     .map((shard, index) => ({
       shard,
@@ -919,7 +939,7 @@ function fractureExistingZone(
   const selectionForce = isStroke ? 0.95 : 0.75;
   const selectedCount = Math.min(
     candidates.length,
-    Math.max(1, Math.round(selectionBase + forceScale * selectionForce)),
+    Math.max(1, Math.round((selectionBase + forceScale * selectionForce) * shardScale)),
   );
   const selectedIndexes = new Set(candidates.slice(0, selectedCount).map((candidate) => candidate.index));
   const nextShards: Shard[] = [];
@@ -963,11 +983,15 @@ function splitShard(
   const rng = mulberry32(seed);
   const focus = pointInPolygon(point, shard.polygon) ? point : shard.center;
   const isStroke = impact?.kind === 'stroke';
-  const splitCount = isStroke
+  const shardScale = Math.max(0.35, fractureTuning.shardCount);
+  const splitLimit = Math.max(isStroke ? 2 : 3, Math.round((isStroke ? 4 : 7) * shardScale));
+  const baseSplitCount = isStroke
     ? Math.min(4, Math.round(2 + forceScale * 0.72 + rng() * 0.95 + shard.split * 0.08))
     : Math.min(7, Math.round(2 + forceScale * 1.3 + rng() * 1.8 + shard.split * 0.25));
+  const splitCount = Math.max(2, Math.min(splitLimit, Math.round(baseSplitCount * shardScale)));
   const splitPoints = createShardSplitPoints(shard.polygon, focus, splitCount, rng, impact);
-  const cellMinArea = isStroke ? Math.max(0.0024, area / (splitCount * 5.8)) : Math.max(0.0009, area / (splitCount * 12));
+  const baseCellMinArea = isStroke ? Math.max(0.0024, area / (splitCount * 5.8)) : Math.max(0.0009, area / (splitCount * 12));
+  const cellMinArea = baseCellMinArea / shardScale;
   const cells = createVoronoiCells(
     splitPoints,
     shard.polygon,
@@ -986,7 +1010,7 @@ function splitShard(
       edgeMap,
       seed + index * 53,
       shard.split + 1,
-      isStroke ? Math.max(0.0022, area / (splitCount * 7)) : Math.max(0.0008, area / (splitCount * 16)),
+      (isStroke ? Math.max(0.0022, area / (splitCount * 7)) : Math.max(0.0008, area / (splitCount * 16))) / shardScale,
     );
     const created = zone.shards.pop();
     if (!created || zone.shards.length !== before) return;
