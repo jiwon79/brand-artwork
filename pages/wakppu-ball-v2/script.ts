@@ -60,6 +60,13 @@ type SurfaceDeformOptions = {
   carveDepth: number;
 };
 
+type PendingTouchBreak = {
+  pointerId: number;
+  hit: SurfaceHit;
+  force: number;
+  timeoutId: number;
+};
+
 type BreakZoneCreation = {
   zone: BreakZone | null;
   fracturedOverlap: boolean;
@@ -81,6 +88,7 @@ const WAX_THICKNESS = 0.026;
 const CORE_EXPOSURE_DEPTH = SPHERE_RADIUS - CORE_RADIUS + WAX_THICKNESS * 0.8;
 const ZONE_BACKFACE_DOT = 0.12;
 const SHARD_SETTLE_SPEED = 2.4;
+const TOUCH_BREAK_DELAY_MS = 180;
 
 const colors = {
   wax: new THREE.Color('#c7f06b'),
@@ -225,6 +233,7 @@ let height = 1;
 const activePointers = new Map<number, THREE.Vector2>();
 let isDown = false;
 let isRotating = false;
+let multiTouchGestureActive = false;
 let pointerTravel = 0;
 let lastPointer = new THREE.Vector2();
 let lastGestureAt = performance.now();
@@ -235,6 +244,7 @@ let lastHoldBreakAt = 0;
 let lastStrokeBreakAt = 0;
 let suppressClickUntil = 0;
 let inputForce = 1;
+let pendingTouchBreak: PendingTouchBreak | null = null;
 let zoneId = 1;
 let zones: BreakZone[] = [];
 let audioContext: AudioContext | null = null;
@@ -253,6 +263,7 @@ function resize(): void {
 }
 
 function resetArtwork(): void {
+  cancelPendingTouchBreak();
   zones.forEach((zone) => {
     disposeObject3D(zone.group);
     sphereGroup.remove(zone.group);
@@ -263,6 +274,7 @@ function resetArtwork(): void {
   pointerTravel = 0;
   activePointers.clear();
   isRotating = false;
+  multiTouchGestureActive = false;
   suppressClickUntil = 0;
   spinVelocity.set(0, 0);
   sphereGroup.quaternion.identity();
@@ -1050,6 +1062,43 @@ function rotateFromDrag(previous: THREE.Vector2, next: THREE.Vector2, dt: number
   }
 }
 
+function cancelPendingTouchBreak(): void {
+  if (!pendingTouchBreak) return;
+  window.clearTimeout(pendingTouchBreak.timeoutId);
+  pendingTouchBreak = null;
+}
+
+function completePendingTouchBreak(pointerId?: number): boolean {
+  if (!pendingTouchBreak) return false;
+  if (pointerId !== undefined && pendingTouchBreak.pointerId !== pointerId) return false;
+
+  const pending = pendingTouchBreak;
+  cancelPendingTouchBreak();
+  triggerBreak(pending.hit, pending.force);
+  lastHoldBreakAt = performance.now();
+  lastStrokeBreakAt = lastHoldBreakAt;
+  return true;
+}
+
+function queuePendingTouchBreak(pointerId: number, hit: SurfaceHit, force: number): void {
+  cancelPendingTouchBreak();
+  const timeoutId = window.setTimeout(() => {
+    if (!pendingTouchBreak || pendingTouchBreak.pointerId !== pointerId) return;
+    if (!isDown || isRotating || activePointers.size !== 1 || !activePointers.has(pointerId)) {
+      cancelPendingTouchBreak();
+      return;
+    }
+    completePendingTouchBreak(pointerId);
+  }, TOUCH_BREAK_DELAY_MS);
+
+  pendingTouchBreak = {
+    pointerId,
+    hit,
+    force,
+    timeoutId,
+  };
+}
+
 function animate(): void {
   const dt = Math.min(0.04, clock.getDelta());
   const elapsed = clock.elapsedTime;
@@ -1063,7 +1112,13 @@ function animate(): void {
     spinVelocity.multiplyScalar(reducedMotion ? 0.78 : Math.pow(0.02, dt));
   }
 
-  if (isDown && activePointers.size === 1 && currentHit) {
+  if (
+    isDown
+    && activePointers.size === 1
+    && currentHit
+    && !pendingTouchBreak
+    && !multiTouchGestureActive
+  ) {
     holdDuration += dt;
     const holdForce = Math.min(2.55, inputForce + holdDuration * 0.72);
     const touchedZone = findBreakableZone(currentHit.normal);
@@ -1094,6 +1149,7 @@ function onPointerDown(event: PointerEvent): void {
 
   if (activePointers.size === 1) {
     isRotating = false;
+    multiTouchGestureActive = false;
     pointerTravel = 0;
     holdDuration = 0;
     spinVelocity.set(0, 0);
@@ -1101,7 +1157,9 @@ function onPointerDown(event: PointerEvent): void {
     lastGestureAt = performance.now();
     currentHit = getSurfaceHit(event);
   } else {
+    cancelPendingTouchBreak();
     isRotating = true;
+    multiTouchGestureActive = true;
     currentHit = null;
     holdDuration = 0;
     pointerTravel = 0;
@@ -1111,9 +1169,13 @@ function onPointerDown(event: PointerEvent): void {
   }
 
   if (activePointers.size === 1 && currentHit) {
-    triggerBreak(currentHit, inputForce);
-    lastHoldBreakAt = performance.now();
-    lastStrokeBreakAt = lastHoldBreakAt;
+    if (event.pointerType === 'touch') {
+      queuePendingTouchBreak(event.pointerId, currentHit, inputForce);
+    } else {
+      triggerBreak(currentHit, inputForce);
+      lastHoldBreakAt = performance.now();
+      lastStrokeBreakAt = lastHoldBreakAt;
+    }
   }
 }
 
@@ -1127,6 +1189,8 @@ function onPointerMove(event: PointerEvent): void {
   inputForce = pointerForce(event);
 
   if (activePointers.size >= 2) {
+    cancelPendingTouchBreak();
+    multiTouchGestureActive = true;
     const center = activePointerCenter();
     pointerTravel += center.distanceTo(lastPointer);
     isRotating = true;
@@ -1140,11 +1204,29 @@ function onPointerMove(event: PointerEvent): void {
 
   const travel = next.distanceTo(previous);
   pointerTravel += travel;
+
+  if (multiTouchGestureActive) {
+    isRotating = true;
+    currentHit = null;
+    lastPointer.copy(next);
+    lastGestureAt = now;
+    suppressClickUntil = now + 260;
+    return;
+  }
+
   isRotating = false;
   const previousHit = currentHit;
   currentHit = getSurfaceHit(event);
   lastPointer.copy(next);
   lastGestureAt = now;
+
+  if (pendingTouchBreak?.pointerId === event.pointerId) {
+    if (currentHit) {
+      pendingTouchBreak.hit = currentHit;
+      pendingTouchBreak.force = inputForce;
+    }
+    return;
+  }
 
   if (isDown && currentHit) {
     continueSingleFingerBreak(currentHit, inputForce, travel, previousHit);
@@ -1152,14 +1234,24 @@ function onPointerMove(event: PointerEvent): void {
 }
 
 function onPointerUp(event: PointerEvent): void {
+  if (pendingTouchBreak?.pointerId === event.pointerId) {
+    if (!isRotating && pointerTravel <= 7) {
+      completePendingTouchBreak(event.pointerId);
+    } else {
+      cancelPendingTouchBreak();
+    }
+  }
+
   activePointers.delete(event.pointerId);
   if (canvas.hasPointerCapture(event.pointerId)) {
     canvas.releasePointerCapture(event.pointerId);
   }
 
   if (activePointers.size >= 2) {
+    cancelPendingTouchBreak();
     isDown = true;
     isRotating = true;
+    multiTouchGestureActive = true;
     currentHit = null;
     lastPointer.copy(activePointerCenter());
     lastGestureAt = performance.now();
@@ -1167,8 +1259,18 @@ function onPointerUp(event: PointerEvent): void {
   }
 
   if (activePointers.size === 1) {
+    cancelPendingTouchBreak();
     const [, remainingPoint] = Array.from(activePointers.entries())[0];
     isDown = true;
+    if (multiTouchGestureActive) {
+      isRotating = true;
+      holdDuration = 0;
+      lastPointer.copy(remainingPoint);
+      currentHit = null;
+      lastGestureAt = performance.now();
+      suppressClickUntil = performance.now() + 260;
+      return;
+    }
     isRotating = false;
     pointerTravel = 0;
     holdDuration = 0;
@@ -1179,8 +1281,9 @@ function onPointerUp(event: PointerEvent): void {
   }
 
   isDown = false;
-  if (pointerTravel > 7 || isRotating) suppressClickUntil = performance.now() + 260;
+  if (pointerTravel > 7 || isRotating || multiTouchGestureActive) suppressClickUntil = performance.now() + 260;
   isRotating = false;
+  multiTouchGestureActive = false;
   holdDuration = 0;
   currentHit = null;
 }
