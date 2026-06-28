@@ -328,17 +328,19 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     stretch: 1,
     width: 0.92,
   };
-  const radiusBase = footprint.kind === 'stroke' ? 0.2 + rng() * 0.05 : 0.46 + rng() * 0.12;
-  const radius = radiusBase * (0.9 + forceScale * 0.08);
+  const isStroke = footprint.kind === 'stroke';
+  const radiusBase = isStroke ? 0.34 + rng() * 0.08 : 0.46 + rng() * 0.12;
+  const radius = radiusBase * (isStroke ? 0.98 + forceScale * 0.12 : 0.9 + forceScale * 0.08);
   const impactPolygon = createImpactPolygon(radius, 13 + Math.floor(rng() * 5), rng, footprint);
+  const cellMinArea = isStroke ? Math.max(0.012, radius * radius * 0.047) : 0.005;
   const points = createImpactPoints(
     radius,
     impactPolygon,
-    Math.round((footprint.kind === 'stroke' ? 6 : 11) + forceScale * 3 + rng() * 3),
+    Math.round((isStroke ? 6 : 11) + forceScale * (isStroke ? 1.25 : 3) + rng() * (isStroke ? 1.2 : 3)),
     rng,
     footprint,
   );
-  const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, radius * 0.55));
+  const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, radius * 0.55), cellMinArea);
   const availableCells: Point[][] = [];
   const overlapHits: OverlapHit[] = [];
 
@@ -380,8 +382,9 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     outline: availableCells.map((cell) => clonePolygon(cell)),
   };
 
+  const shardMinArea = isStroke ? Math.max(0.011, radius * radius * 0.04) : 0.0035;
   availableCells.forEach((cell, index) => {
-    addShard(zone, cell, edgeMap, seed + index * 41);
+    addShard(zone, cell, edgeMap, seed + index * 41, 0, shardMinArea);
   });
 
   if (zone.shards.length === 0) {
@@ -886,9 +889,10 @@ function fractureExistingZone(
   const localPoint = surfaceToZonePoint(zone, normal);
   const forceScale = Math.min(2.6, Math.max(0.5, force));
   const seed = zone.seed + zone.fractureCount * 4099 + Math.floor(performance.now());
+  const isStroke = impact?.kind === 'stroke';
   const breakRadius = zone.radius * (
-    impact?.kind === 'stroke'
-      ? 0.16 + forceScale * 0.04
+    isStroke
+      ? 0.28 + forceScale * 0.08
       : 0.2 + forceScale * 0.06
   );
   const candidates = zone.shards
@@ -911,9 +915,11 @@ function fractureExistingZone(
 
   if (candidates.length === 0) return;
 
+  const selectionBase = isStroke ? 1.8 : fromHold ? 1 : 1.35;
+  const selectionForce = isStroke ? 0.95 : 0.75;
   const selectedCount = Math.min(
     candidates.length,
-    Math.max(1, Math.round((fromHold ? 1 : 1.35) + forceScale * 0.75)),
+    Math.max(1, Math.round(selectionBase + forceScale * selectionForce)),
   );
   const selectedIndexes = new Set(candidates.slice(0, selectedCount).map((candidate) => candidate.index));
   const nextShards: Shard[] = [];
@@ -956,13 +962,17 @@ function splitShard(
 
   const rng = mulberry32(seed);
   const focus = pointInPolygon(point, shard.polygon) ? point : shard.center;
-  const splitCount = Math.min(7, Math.round(2 + forceScale * 1.3 + rng() * 1.8 + shard.split * 0.25));
+  const isStroke = impact?.kind === 'stroke';
+  const splitCount = isStroke
+    ? Math.min(4, Math.round(2 + forceScale * 0.72 + rng() * 0.95 + shard.split * 0.08))
+    : Math.min(7, Math.round(2 + forceScale * 1.3 + rng() * 1.8 + shard.split * 0.25));
   const splitPoints = createShardSplitPoints(shard.polygon, focus, splitCount, rng, impact);
+  const cellMinArea = isStroke ? Math.max(0.0024, area / (splitCount * 5.8)) : Math.max(0.0009, area / (splitCount * 12));
   const cells = createVoronoiCells(
     splitPoints,
     shard.polygon,
     boundsFromPolygon(shard.polygon, 0.08),
-    Math.max(0.0009, area / (splitCount * 12)),
+    cellMinArea,
   );
   if (cells.length < 2) return [shard];
 
@@ -970,7 +980,14 @@ function splitShard(
   const pieces: Shard[] = [];
   cells.forEach((cell, index) => {
     const before = zone.shards.length;
-    addShard(zone, cell, edgeMap, seed + index * 53, shard.split + 1, Math.max(0.0008, area / (splitCount * 16)));
+    addShard(
+      zone,
+      cell,
+      edgeMap,
+      seed + index * 53,
+      shard.split + 1,
+      isStroke ? Math.max(0.0022, area / (splitCount * 7)) : Math.max(0.0008, area / (splitCount * 16)),
+    );
     const created = zone.shards.pop();
     if (!created || zone.shards.length !== before) return;
     created.tint = created.tint * 0.62 + shard.tint * 0.38;
@@ -1003,12 +1020,12 @@ function continueSingleFingerBreak(hit: SurfaceHit, force: number, travel: numbe
   }
 
   const now = performance.now();
-  if (travel > 2.5 && now - lastStrokeBreakAt > Math.max(36, 104 - force * 20)) {
+  if (travel > 4.5 && now - lastStrokeBreakAt > Math.max(54, 138 - force * 24)) {
     if (previousHit) {
       createStrokeSamples(previousHit, hit, travel).forEach((sample, index) => {
         triggerBreak(
           sample,
-          Math.max(0.64, force * (0.64 + index * 0.04)),
+          Math.max(0.76, force * (0.76 + index * 0.05)),
           true,
           createStrokeFootprint(previousHit, hit, travel, index),
         );
@@ -1331,7 +1348,7 @@ function zoneSurfaceDistance(zone: BreakZone, normal: THREE.Vector3): number {
 }
 
 function createStrokeSamples(previousHit: SurfaceHit, hit: SurfaceHit, pixelTravel: number): SurfaceHit[] {
-  const count = Math.min(4, Math.max(1, Math.floor(pixelTravel / 14) + 1));
+  const count = Math.min(3, Math.max(1, Math.floor(pixelTravel / 24) + 1));
   const samples: SurfaceHit[] = [];
 
   for (let i = 0; i < count; i += 1) {
@@ -1359,12 +1376,12 @@ function createStrokeFootprint(
     y: delta.dot(basis.bitangent),
   });
   const surfaceTravel = Math.max(0.04, Math.hypot(delta.dot(basis.tangent), delta.dot(basis.bitangent)));
-  const jitter = sampleIndex % 2 === 0 ? 0.18 : -0.16;
+  const jitter = sampleIndex % 2 === 0 ? 0.12 : -0.1;
   return {
     kind: 'stroke',
     direction: rotatePoint(direction, jitter),
-    stretch: Math.min(1.55, 0.96 + surfaceTravel * 0.88 + pixelTravel * 0.0028),
-    width: Math.max(0.38, 0.56 - Math.min(0.14, surfaceTravel * 0.18)),
+    stretch: Math.min(2.35, 1.28 + surfaceTravel * 1.08 + pixelTravel * 0.004),
+    width: Math.min(1.02, 0.76 + surfaceTravel * 0.16 + pixelTravel * 0.0018),
   };
 }
 
