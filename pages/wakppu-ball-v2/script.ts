@@ -61,6 +61,17 @@ type SurfaceDeformOptions = {
   carveDepth: number;
 };
 
+type BreakZoneCreation = {
+  zone: BreakZone | null;
+  fracturedOverlap: boolean;
+};
+
+type OverlapHit = {
+  zone: BreakZone;
+  normal: THREE.Vector3;
+  score: number;
+};
+
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const resetButton = document.querySelector('.reset-button') as HTMLButtonElement;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -290,7 +301,7 @@ function buildSpecks(): void {
   }
 }
 
-function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootprint): BreakZone {
+function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootprint): BreakZoneCreation {
   const seed = Math.floor(Math.random() * 1_000_000_000) + zoneId * 1009;
   const rng = mulberry32(seed);
   const basis = createBasis(normal);
@@ -312,6 +323,23 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     footprint,
   );
   const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, radius * 0.55));
+  const availableCells: Point[][] = [];
+  const overlapHits: OverlapHit[] = [];
+
+  cells.forEach((cell) => {
+    const overlap = findOverlappingBreakCell(normal, basis.tangent, basis.bitangent, cell);
+    if (overlap) {
+      overlapHits.push(overlap);
+    } else {
+      availableCells.push(cell);
+    }
+  });
+
+  const fracturedOverlap = fractureOverlappingBreakCells(overlapHits, forceScale, footprint, seed);
+  if (availableCells.length === 0) {
+    return { zone: null, fracturedOverlap };
+  }
+
   const edgeMap = new Map<string, CrackEdge & { count: number }>();
   const shardGroup = new THREE.Group();
   const group = new THREE.Group();
@@ -340,11 +368,104 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     edges: [],
   };
 
-  cells.forEach((cell, index) => {
+  availableCells.forEach((cell, index) => {
     addShard(zone, cell, edgeMap, seed + index * 41);
   });
+
+  if (zone.shards.length === 0) {
+    sphereGroup.remove(group);
+    disposeObject3D(group);
+    return { zone: null, fracturedOverlap };
+  }
+
   rebuildZoneEdges(zone, edgeMap);
-  return zone;
+  return { zone, fracturedOverlap };
+}
+
+function findOverlappingBreakCell(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  cell: Point[],
+): OverlapHit | null {
+  if (zones.length === 0) return null;
+
+  const samples = [polygonCentroid(cell), ...cell];
+  let bestHit: OverlapHit | null = null;
+
+  samples.forEach((sample, index) => {
+    const sampleNormal = tangentBasisPointToNormal(normal, tangent, bitangent, sample);
+    zones.forEach((zone) => {
+      const facing = sampleNormal.dot(zone.normal);
+      if (facing < 0.68) return;
+
+      const localPoint = surfaceToZonePoint(zone, sampleNormal);
+      const localDistance = Math.hypot(localPoint.x, localPoint.y);
+      if (localDistance > zone.radius * (1.12 + Math.min(0.22, zone.fractureCount * 0.018))) return;
+
+      const overlap = shardFootprintMask(zone, localPoint, zone.radius * 0.05);
+      if (overlap <= 0) return;
+
+      const score = overlap * (index === 0 ? 1.2 : 1) * facing;
+      if (!bestHit || score > bestHit.score) {
+        bestHit = {
+          zone,
+          normal: sampleNormal,
+          score,
+        };
+      }
+    });
+  });
+
+  return bestHit;
+}
+
+function fractureOverlappingBreakCells(
+  overlapHits: OverlapHit[],
+  forceScale: number,
+  impact: ImpactFootprint,
+  seed: number,
+): boolean {
+  if (overlapHits.length === 0) return false;
+
+  const groupedHits = new Map<number, OverlapHit[]>();
+  overlapHits.forEach((hit) => {
+    groupedHits.set(hit.zone.id, [...(groupedHits.get(hit.zone.id) ?? []), hit]);
+  });
+
+  const selectedHits: OverlapHit[] = [];
+  groupedHits.forEach((hits) => {
+    selectedHits.push(...hits.sort((a, b) => b.score - a.score).slice(0, 2));
+  });
+
+  selectedHits
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .forEach((hit, index) => {
+      fractureExistingZone(
+        hit.zone,
+        hit.normal,
+        forceScale * (0.82 + Math.min(0.22, hit.score * 0.14)),
+        true,
+        impact,
+      );
+      hit.zone.damage = Math.min(4.4, hit.zone.damage + 0.025 + index * 0.004 + noise(seed + index * 31) * 0.01);
+    });
+
+  return true;
+}
+
+function tangentBasisPointToNormal(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  point: Point,
+): THREE.Vector3 {
+  return normal.clone()
+    .multiplyScalar(SPHERE_RADIUS)
+    .addScaledVector(tangent, point.x)
+    .addScaledVector(bitangent, point.y)
+    .normalize();
 }
 
 function addShard(
@@ -641,10 +762,14 @@ function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: Imp
     return;
   }
 
-  const zone = createBreakZone(hit.normal, force, impact);
-  zones.push(zone);
-  consumeTouchedZone(zone, hit.normal, force, fromHold ? 0.026 : 0.014);
-  playCrack(force, impact?.kind === 'stroke' ? 1.35 : 1);
+  const creation = createBreakZone(hit.normal, force, impact);
+  if (creation.zone) {
+    zones.push(creation.zone);
+    consumeTouchedZone(creation.zone, hit.normal, force, fromHold ? 0.026 : 0.014);
+  }
+  if (creation.zone || creation.fracturedOverlap) {
+    playCrack(force, impact?.kind === 'stroke' ? 1.35 : 1);
+  }
 }
 
 function findBreakableZone(normal: THREE.Vector3): BreakZone | null {
