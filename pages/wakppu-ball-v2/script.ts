@@ -451,14 +451,22 @@ function subtractZoneOutlinesFromCell(
   zone: BreakZone,
 ): Point[][] {
   let zonePieces = [cell.map((point) => basisPointToZonePoint(normal, tangent, bitangent, point, zone))];
+  let clipped = false;
 
   zone.outline.forEach((outline) => {
     const nextPieces: Point[][] = [];
     zonePieces.forEach((piece) => {
-      nextPieces.push(...subtractConvexPolygon(piece, outline));
+      if (polygonsIntersect(piece, outline)) {
+        clipped = true;
+        nextPieces.push(...subtractConvexPolygon(piece, outline));
+      } else {
+        nextPieces.push(piece);
+      }
     });
     zonePieces = nextPieces;
   });
+
+  if (!clipped) return [cell];
 
   return zonePieces.map((piece) => (
     piece.map((point) => zonePointToBasisPoint(point, zone, normal, tangent, bitangent))
@@ -1714,6 +1722,55 @@ function pointInPolygon(point: Point, polygon: Point[]): boolean {
     if (intersects) inside = !inside;
   }
   return inside;
+}
+
+function polygonsIntersect(a: Point[], b: Point[]): boolean {
+  if (a.some((point) => pointInPolygon(point, b)) || b.some((point) => pointInPolygon(point, a))) {
+    return true;
+  }
+
+  for (let i = 0; i < a.length; i += 1) {
+    const a1 = a[i];
+    const a2 = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j += 1) {
+      if (segmentsIntersect(a1, a2, b[j], b[(j + 1) % b.length])) return true;
+    }
+  }
+
+  return false;
+}
+
+function segmentsIntersect(a: Point, b: Point, c: Point, d: Point): boolean {
+  const ab = sub(b, a);
+  const ac = sub(c, a);
+  const ad = sub(d, a);
+  const cd = sub(d, c);
+  const ca = sub(a, c);
+  const cb = sub(b, c);
+  const d1 = cross(ab, ac);
+  const d2 = cross(ab, ad);
+  const d3 = cross(cd, ca);
+  const d4 = cross(cd, cb);
+
+  if (
+    ((d1 > EPSILON && d2 < -EPSILON) || (d1 < -EPSILON && d2 > EPSILON))
+    && ((d3 > EPSILON && d4 < -EPSILON) || (d3 < -EPSILON && d4 > EPSILON))
+  ) {
+    return true;
+  }
+
+  return isPointOnSegment(c, a, b)
+    || isPointOnSegment(d, a, b)
+    || isPointOnSegment(a, c, d)
+    || isPointOnSegment(b, c, d);
+}
+
+function isPointOnSegment(point: Point, a: Point, b: Point): boolean {
+  return Math.abs(cross(sub(b, a), sub(point, a))) <= EPSILON
+    && point.x >= Math.min(a.x, b.x) - EPSILON
+    && point.x <= Math.max(a.x, b.x) + EPSILON
+    && point.y >= Math.min(a.y, b.y) - EPSILON
+    && point.y <= Math.max(a.y, b.y) + EPSILON;
 }
 
 function polygonEdgeDistance(point: Point, polygon: Point[]): number {
