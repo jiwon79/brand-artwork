@@ -148,6 +148,7 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
   clearcoatRoughness: 0.52,
   transparent: false,
   opacity: 0.82,
+  depthTest: true,
   depthWrite: false,
 });
 
@@ -778,7 +779,7 @@ function updateGelMesh(zone: BreakZone, progress: number): void {
   zone.gelMesh.visible = true;
   const positions: number[] = [];
   const indices: number[] = [];
-  const bedOffset = CORE_RADIUS - SPHERE_RADIUS + WAX_THICKNESS * 0.14;
+  const bedOffset = CORE_RADIUS - SPHERE_RADIUS - WAX_THICKNESS * 0.12;
 
   zone.shards.forEach((shard, shardIndex) => {
     const baseIndex = positions.length / 3;
@@ -804,7 +805,7 @@ function updateGelMesh(zone: BreakZone, progress: number): void {
   geometry.computeBoundingSphere();
 
   zone.gelMesh.material.transparent = true;
-  zone.gelMesh.material.depthTest = false;
+  zone.gelMesh.material.depthTest = true;
   zone.gelMesh.material.depthWrite = false;
   zone.gelMesh.material.color.copy(colors.core).lerp(colors.coreDeep, 0.12);
   zone.gelMesh.material.opacity = Math.min(0.94, 0.82 * progress);
