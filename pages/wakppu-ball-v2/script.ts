@@ -85,10 +85,12 @@ type CrackSamplePreset = {
 };
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
-const resetButton = document.querySelector('.reset-button') as HTMLButtonElement;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const EPSILON = 0.0001;
 const SPHERE_RADIUS = 2.24;
+const CAMERA_FOV = 34;
+const MIN_CAMERA_DISTANCE = 8.15;
+const CAMERA_FRAME_RADIUS = SPHERE_RADIUS * 1.16;
 const CORE_RADIUS = SPHERE_RADIUS * 0.93;
 const WAX_THICKNESS = 0.026;
 const CORE_EXPOSURE_DEPTH = SPHERE_RADIUS - CORE_RADIUS + WAX_THICKNESS * 0.8;
@@ -202,8 +204,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 scene.background = colors.background;
 
-const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 80);
-camera.position.set(0, 0.16, 7.2);
+const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 80);
+camera.position.set(0, 0, MIN_CAMERA_DISTANCE);
 
 const sphereGroup = new THREE.Group();
 scene.add(sphereGroup);
@@ -364,14 +366,30 @@ let crackFileInput: HTMLInputElement | null = null;
 let spinVelocity = new THREE.Vector2(0, 0);
 let debugFrame = 0;
 
+function viewportSize(): { width: number; height: number } {
+  const viewport = window.visualViewport;
+  return {
+    width: Math.max(1, Math.round(viewport?.width ?? window.innerWidth)),
+    height: Math.max(1, Math.round(viewport?.height ?? window.innerHeight)),
+  };
+}
+
 function resize(): void {
-  width = window.innerWidth;
-  height = window.innerHeight;
+  const viewport = viewportSize();
+  width = viewport.width;
+  height = viewport.height;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
   renderer.setPixelRatio(dpr);
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
-  camera.position.z = width < 720 ? 9.6 : 8.15;
+  const limitingAspect = Math.min(1, camera.aspect);
+  const halfFov = THREE.MathUtils.degToRad(camera.fov) * 0.5;
+  const fitDistance = CAMERA_FRAME_RADIUS / (Math.tan(halfFov) * limitingAspect);
+  camera.position.set(0, 0, Math.max(MIN_CAMERA_DISTANCE, fitDistance));
+  camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
 }
 
@@ -1473,7 +1491,6 @@ function animate(): void {
 }
 
 function onPointerDown(event: PointerEvent): void {
-  if (event.target === resetButton) return;
   canvas.setPointerCapture(event.pointerId);
   activePointers.set(event.pointerId, pointerPosition(event));
   isDown = true;
@@ -2587,8 +2604,9 @@ canvas.addEventListener('pointermove', onPointerMove);
 canvas.addEventListener('pointerup', onPointerUp);
 canvas.addEventListener('pointerleave', onPointerUp);
 canvas.addEventListener('click', onClick);
-resetButton.addEventListener('click', resetArtwork);
 window.addEventListener('resize', resize);
+window.visualViewport?.addEventListener('resize', resize);
+window.visualViewport?.addEventListener('scroll', resize);
 
 resize();
 buildSpecks();
