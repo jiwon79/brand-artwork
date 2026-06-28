@@ -1,5 +1,5 @@
 import { Delaunay } from 'd3-delaunay';
-import GUI from 'lil-gui';
+import GUI, { type Controller } from 'lil-gui';
 import * as THREE from 'three';
 
 type Point = {
@@ -150,11 +150,13 @@ const fractureTuning = {
   backgroundColor: '#1b0000',
   audioSample: 'Wax Ball Crunchy',
   audioVolume: 1,
+  audioStatus: '샘플 미확인',
   loadAudio: () => openCrackSamplePicker(),
   reset: () => resetArtwork(),
 };
 
-let audioSampleController: { updateDisplay: () => void } | null = null;
+let audioSampleController: Controller | null = null;
+let audioStatusController: Controller | null = null;
 
 const gui = new GUI({ title: 'Wakppu tuning' });
 const fractureFolder = gui.addFolder('Fracture');
@@ -172,6 +174,7 @@ audioSampleController = audioFolder
   .name('소리 샘플')
   .onChange(resetCrackSamples);
 audioFolder.add(fractureTuning, 'audioVolume', 0, 1.5, 0.01).name('소리 볼륨');
+audioStatusController = audioFolder.add(fractureTuning, 'audioStatus').name('소리 상태').listen().disable();
 audioFolder.add(fractureTuning, 'loadAudio').name('로컬 소리 선택');
 
 const renderer = new THREE.WebGLRenderer({
@@ -2270,7 +2273,10 @@ function pointToSegmentDistance(point: Point, a: Point, b: Point): number {
 function ensureAudioContext(): AudioContext | null {
   const AudioContextCtor = window.AudioContext
     || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) return null;
+  if (!AudioContextCtor) {
+    setAudioStatus('오디오 지원 안 됨');
+    return null;
+  }
 
   audioContext ??= new AudioContextCtor();
   if (audioContext.state === 'suspended') {
@@ -2301,6 +2307,7 @@ function resetCrackSamples(): void {
   crackSampleBuffers.length = 0;
   crackSamplePromise = null;
   crackSampleKey = '';
+  refreshAudioStatus();
 }
 
 function selectedCrackPreset(): CrackSamplePreset {
@@ -2308,8 +2315,31 @@ function selectedCrackPreset(): CrackSamplePreset {
     ?? CRACK_SAMPLE_PRESETS[0];
 }
 
+function setAudioStatus(status: string): void {
+  fractureTuning.audioStatus = status;
+  audioStatusController?.updateDisplay();
+}
+
+function formatSampleStatus(count: number, prefix = '샘플'): string {
+  return `${prefix} ${count}개 준비`;
+}
+
+function refreshAudioStatus(): void {
+  if (fractureTuning.audioSample === LOCAL_CRACK_SAMPLE_LABEL) {
+    setAudioStatus(uploadedCrackSampleBuffers.length > 0
+      ? formatSampleStatus(uploadedCrackSampleBuffers.length, '로컬 샘플')
+      : '로컬 파일 필요');
+    return;
+  }
+
+  setAudioStatus(crackSampleBuffers.length > 0
+    ? formatSampleStatus(crackSampleBuffers.length)
+    : '샘플 미확인');
+}
+
 async function loadCrackSamples(context: AudioContext): Promise<AudioBuffer[]> {
   if (fractureTuning.audioSample === LOCAL_CRACK_SAMPLE_LABEL) {
+    refreshAudioStatus();
     return uploadedCrackSampleBuffers;
   }
 
@@ -2320,10 +2350,12 @@ async function loadCrackSamples(context: AudioContext): Promise<AudioBuffer[]> {
   }
   if (crackSampleBuffers.length > 0) return crackSampleBuffers;
 
+  setAudioStatus('샘플 로드 중');
   crackSamplePromise ??= Promise.all(preset.paths.map(async (path) => {
     try {
       const response = await fetch(path);
-      if (!response.ok) return;
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!response.ok || contentType.includes('text/html')) return;
       const arrayBuffer = await response.arrayBuffer();
       crackSampleBuffers.push(await context.decodeAudioData(arrayBuffer));
     } catch {
@@ -2332,6 +2364,7 @@ async function loadCrackSamples(context: AudioContext): Promise<AudioBuffer[]> {
   })).then(() => undefined);
 
   await crackSamplePromise;
+  setAudioStatus(crackSampleBuffers.length > 0 ? formatSampleStatus(crackSampleBuffers.length) : '샘플 파일 없음');
   return crackSampleBuffers;
 }
 
@@ -2353,6 +2386,7 @@ async function loadUploadedCrackSamples(files: FileList | null): Promise<void> {
   const context = ensureAudioContext();
   if (!context) return;
 
+  setAudioStatus('로컬 파일 로드 중');
   uploadedCrackSampleBuffers.length = 0;
   const fileList = Array.from(files);
   await Promise.all(fileList.map(async (file) => {
@@ -2367,6 +2401,8 @@ async function loadUploadedCrackSamples(files: FileList | null): Promise<void> {
     fractureTuning.audioSample = LOCAL_CRACK_SAMPLE_LABEL;
     resetCrackSamples();
     audioSampleController?.updateDisplay();
+  } else {
+    setAudioStatus('오디오 파일 오류');
   }
 }
 
