@@ -90,6 +90,7 @@ const CORE_EXPOSURE_DEPTH = SPHERE_RADIUS - CORE_RADIUS + WAX_THICKNESS * 0.8;
 const ZONE_BACKFACE_DOT = 0.12;
 const SHARD_SETTLE_SPEED = 2.4;
 const TOUCH_BREAK_DELAY_MS = 180;
+const MIN_VISIBLE_SHARD_AREA = 0.0052;
 
 const colors = {
   wax: new THREE.Color('#c7f06b'),
@@ -106,14 +107,19 @@ const colors = {
 const fractureTuning = {
   shardCount: 1,
   crackRange: 1,
+  waxColor: '#c7f06b',
+  contentColor: '#fcfcf8',
   reset: () => resetArtwork(),
 };
 
 const gui = new GUI({ title: 'Wakppu tuning' });
 const fractureFolder = gui.addFolder('Fracture');
 fractureFolder.add(fractureTuning, 'shardCount', 0.35, 2.2, 0.01).name('조각 수');
-fractureFolder.add(fractureTuning, 'crackRange', 0.55, 1.85, 0.01).name('크랙 범위');
+fractureFolder.add(fractureTuning, 'crackRange', 0.55, 2.25, 0.01).name('크랙 범위');
 fractureFolder.add(fractureTuning, 'reset').name('크랙 리셋');
+const colorFolder = gui.addFolder('Color');
+colorFolder.addColor(fractureTuning, 'waxColor').name('왁스 색').onChange(applyTuningColors);
+colorFolder.addColor(fractureTuning, 'contentColor').name('내용물 색').onChange(applyTuningColors);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -174,6 +180,22 @@ const gelMaterial = new THREE.MeshPhysicalMaterial({
   depthTest: true,
   depthWrite: false,
 });
+
+function applyTuningColors(): void {
+  colors.wax.set(fractureTuning.waxColor);
+  colors.waxLight.copy(colors.wax).offsetHSL(0, -0.06, 0.2);
+  colors.waxDark.copy(colors.wax).offsetHSL(0, 0.08, -0.28);
+  colors.waxCut.copy(colors.wax).offsetHSL(0, -0.03, -0.12);
+  colors.core.set(fractureTuning.contentColor);
+  colors.coreDeep.copy(colors.core).offsetHSL(0, -0.04, -0.16);
+  colors.gel.copy(colors.core);
+
+  waxMaterial.color.copy(colors.wax);
+  coreMaterial.color.copy(colors.core);
+  gelMaterial.color.copy(colors.core);
+}
+
+applyTuningColors();
 
 const coreMesh = new THREE.Mesh(
   new THREE.SphereGeometry(CORE_RADIUS, 96, 48),
@@ -293,6 +315,13 @@ function resetArtwork(): void {
   sphereGroup.quaternion.identity();
 }
 
+function removeZone(zone: BreakZone): void {
+  const index = zones.indexOf(zone);
+  if (index >= 0) zones.splice(index, 1);
+  sphereGroup.remove(zone.group);
+  disposeObject3D(zone.group);
+}
+
 function disposeObject3D(root: THREE.Object3D): void {
   root.traverse((child) => {
     const mesh = child as THREE.Mesh;
@@ -308,6 +337,20 @@ function disposeMaterial(material: THREE.Material | THREE.Material[] | undefined
   } else if (material) {
     material.dispose();
   }
+}
+
+function shardArea(shard: Shard): number {
+  return Math.abs(polygonArea(shard.polygon));
+}
+
+function shouldCullShard(shard: Shard): boolean {
+  return shardArea(shard) < MIN_VISIBLE_SHARD_AREA;
+}
+
+function disposeShard(zone: BreakZone, shard: Shard): void {
+  zone.shardGroup.remove(shard.mesh);
+  shard.mesh.geometry.dispose();
+  disposeMaterial(shard.mesh.material);
 }
 
 function clonePositions(geometry: THREE.BufferGeometry): Float32Array {
@@ -344,12 +387,14 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
   const isStroke = footprint.kind === 'stroke';
   const shardScale = Math.max(0.35, fractureTuning.shardCount);
   const rangeScale = Math.max(0.55, fractureTuning.crackRange);
-  const radiusBase = isStroke ? 0.34 + rng() * 0.08 : 0.46 + rng() * 0.12;
-  const radius = radiusBase * (isStroke ? 0.98 + forceScale * 0.12 : 0.9 + forceScale * 0.08) * rangeScale;
+  const radiusBase = isStroke ? 0.34 + rng() * 0.08 : 0.58 + rng() * 0.15;
+  const radius = radiusBase * (isStroke ? 0.98 + forceScale * 0.12 : 0.96 + forceScale * 0.1) * rangeScale;
   const impactPolygon = createImpactPolygon(radius, 13 + Math.floor(rng() * 5), rng, footprint);
-  const baseCellMinArea = isStroke ? Math.max(0.012, radius * radius * 0.047) : 0.005;
+  const baseCellMinArea = isStroke
+    ? Math.max(0.012, radius * radius * 0.047)
+    : Math.max(MIN_VISIBLE_SHARD_AREA, radius * radius * 0.022);
   const cellMinArea = baseCellMinArea / shardScale;
-  const basePointCount = (isStroke ? 6 : 11) + forceScale * (isStroke ? 1.25 : 3) + rng() * (isStroke ? 1.2 : 3);
+  const basePointCount = (isStroke ? 6 : 8.5) + forceScale * (isStroke ? 1.25 : 1.8) + rng() * (isStroke ? 1.2 : 2);
   const points = createImpactPoints(
     radius,
     impactPolygon,
@@ -399,11 +444,14 @@ function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootpr
     outline: availableCells.map((cell) => clonePolygon(cell)),
   };
 
-  const baseShardMinArea = isStroke ? Math.max(0.011, radius * radius * 0.04) : 0.0035;
+  const baseShardMinArea = isStroke
+    ? Math.max(0.011, radius * radius * 0.04)
+    : Math.max(MIN_VISIBLE_SHARD_AREA * 1.08, radius * radius * 0.018);
   const shardMinArea = baseShardMinArea / shardScale;
   availableCells.forEach((cell, index) => {
     addShard(zone, cell, edgeMap, seed + index * 41, 0, shardMinArea);
   });
+  zone.outline = zone.shards.map((shard) => clonePolygon(shard.polygon));
 
   if (zone.shards.length === 0) {
     sphereGroup.remove(group);
@@ -589,7 +637,7 @@ function addShard(
   split = 0,
   minArea = 0.0035,
 ): void {
-  if (Math.abs(polygonArea(polygon)) < minArea) return;
+  if (Math.abs(polygonArea(polygon)) < Math.max(minArea, MIN_VISIBLE_SHARD_AREA)) return;
 
   const topMaterial = new THREE.MeshPhysicalMaterial({
     color: colors.wax,
@@ -902,6 +950,7 @@ function fractureExistingZone(
   fromHold: boolean,
   impact?: ImpactFootprint,
 ): void {
+  if (!zones.includes(zone)) return;
   if (!Number.isFinite(zoneSurfaceDistance(zone, normal))) return;
 
   const localPoint = surfaceToZonePoint(zone, normal);
@@ -945,6 +994,11 @@ function fractureExistingZone(
   const nextShards: Shard[] = [];
 
   zone.shards.forEach((shard, index) => {
+    if (shouldCullShard(shard)) {
+      disposeShard(zone, shard);
+      return;
+    }
+
     if (!selectedIndexes.has(index)) {
       nextShards.push(shard);
       return;
@@ -952,10 +1006,10 @@ function fractureExistingZone(
 
     const pieces = splitShard(zone, shard, localPoint, forceScale, seed + index * 83, impact);
     if (pieces.length > 1) {
-      zone.shardGroup.remove(shard.mesh);
-      shard.mesh.geometry.dispose();
-      disposeMaterial(shard.mesh.material);
+      disposeShard(zone, shard);
       nextShards.push(...pieces);
+    } else if (pieces.length === 0) {
+      disposeShard(zone, shard);
     } else {
       shard.lift = Math.max(0, shard.lift - forceScale * 0.002);
       shard.twist += (noise(seed + index) - 0.5) * 0.04;
@@ -964,6 +1018,11 @@ function fractureExistingZone(
   });
 
   zone.shards = nextShards;
+  if (zone.shards.length === 0) {
+    removeZone(zone);
+    return;
+  }
+
   zone.fractureCount += 1;
   zone.damage = Math.min(4.4, zone.damage + forceScale * 0.16);
   rebuildAllZoneEdges(zone, seed);
@@ -978,7 +1037,8 @@ function splitShard(
   impact?: ImpactFootprint,
 ): Shard[] {
   const area = Math.abs(polygonArea(shard.polygon));
-  if (area < 0.0022 || shard.split > 7) return [shard];
+  if (area < MIN_VISIBLE_SHARD_AREA) return [];
+  if (shard.split > 7) return [shard];
 
   const rng = mulberry32(seed);
   const focus = pointInPolygon(point, shard.polygon) ? point : shard.center;
@@ -1012,6 +1072,7 @@ function splitShard(
       shard.split + 1,
       (isStroke ? Math.max(0.0022, area / (splitCount * 7)) : Math.max(0.0008, area / (splitCount * 16))) / shardScale,
     );
+    if (zone.shards.length === before) return;
     const created = zone.shards.pop();
     if (!created || zone.shards.length !== before) return;
     created.tint = created.tint * 0.62 + shard.tint * 0.38;
@@ -1020,7 +1081,9 @@ function splitShard(
     created.consumed = Math.min(1, shard.consumed + 0.02);
     pieces.push(created);
   });
-  return pieces.length > 1 ? pieces : [shard];
+  if (pieces.length > 1) return pieces;
+  pieces.forEach((piece) => disposeShard(zone, piece));
+  return [shard];
 }
 
 function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: number, amount: number): void {
