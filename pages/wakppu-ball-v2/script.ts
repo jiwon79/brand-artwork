@@ -91,6 +91,7 @@ const ZONE_BACKFACE_DOT = 0.12;
 const SHARD_SETTLE_SPEED = 2.4;
 const TOUCH_BREAK_DELAY_MS = 180;
 const DEFAULT_MIN_VISIBLE_SHARD_AREA = 0.0052;
+const BASE_MAX_SHARDS_PER_ZONE = 52;
 
 const colors = {
   wax: new THREE.Color('#c7f06b'),
@@ -359,13 +360,12 @@ function minVisibleShardArea(): number {
 }
 
 function shouldCullPolygon(polygon: Point[], minArea = minVisibleShardArea()): boolean {
-  const area = Math.abs(polygonArea(polygon));
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(polygon);
   if (area < minArea) return true;
 
-  const longestEdge = polygonLongestEdge(polygon);
-  const apparentWidth = area / Math.max(longestEdge, EPSILON);
-  const compactness = polygonCompactness(polygon);
-  return area < minArea * 5.5 && (apparentWidth < 0.032 || compactness < 0.065);
+  const fineSliver = area < minArea * 18 && (apparentWidth < 0.022 || compactness < 0.038);
+  const awkwardFragment = area < minArea * 6.6 && (apparentWidth < 0.038 || compactness < 0.085);
+  return fineSliver || awkwardFragment;
 }
 
 function shouldCullShard(shard: Shard): boolean {
@@ -373,14 +373,11 @@ function shouldCullShard(shard: Shard): boolean {
 }
 
 function shouldCullDirectHitShard(shard: Shard): boolean {
-  const area = shardArea(shard);
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(shard.polygon);
   const minArea = minVisibleShardArea();
   if (area < minArea * 1.8) return true;
 
-  const longestEdge = polygonLongestEdge(shard.polygon);
-  const apparentWidth = area / Math.max(longestEdge, EPSILON);
-  const compactness = polygonCompactness(shard.polygon);
-  return area < minArea * 7.5 && (shard.split > 4 || apparentWidth < 0.04 || compactness < 0.085);
+  return area < minArea * 12 && (shard.split > 3 || apparentWidth < 0.06 || compactness < 0.14);
 }
 
 function disposeShard(zone: BreakZone, shard: Shard): void {
@@ -391,6 +388,90 @@ function disposeShard(zone: BreakZone, shard: Shard): void {
 
 function refreshZoneOutline(zone: BreakZone): void {
   zone.outline = zone.shards.map((shard) => clonePolygon(shard.polygon));
+}
+
+function cleanupZoneArtifacts(zone: BreakZone): boolean {
+  const before = zone.shards.length;
+  const survivors: Shard[] = [];
+
+  zone.shards.forEach((shard) => {
+    if (shouldCullOverworkedShard(zone, shard)) {
+      disposeShard(zone, shard);
+    } else {
+      survivors.push(shard);
+    }
+  });
+
+  const maxShards = maxShardsPerZone();
+  if (survivors.length > maxShards) {
+    const ranked = survivors
+      .map((shard) => ({ shard, score: shardArtifactScore(shard) }))
+      .sort((a, b) => b.score - a.score);
+    const dropSet = new Set(ranked.slice(0, survivors.length - maxShards).map((item) => item.shard));
+    zone.shards = survivors.filter((shard) => {
+      if (!dropSet.has(shard)) return true;
+      disposeShard(zone, shard);
+      return false;
+    });
+  } else {
+    zone.shards = survivors;
+  }
+
+  return zone.shards.length !== before;
+}
+
+function shouldCullOverworkedShard(zone: BreakZone, shard: Shard): boolean {
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(shard.polygon);
+  const minArea = minVisibleShardArea();
+  const pressure = Math.max(0, zone.fractureCount - 3);
+  const crowded = zone.shards.length > maxShardsPerZone() * 0.78;
+
+  if (shard.split > 6 && (area < minArea * 22 || compactness < 0.18 || apparentWidth < 0.08)) return true;
+  if (pressure > 0 && area < minArea * (7 + pressure * 2.6) && (compactness < 0.13 || apparentWidth < 0.062)) return true;
+  if (crowded && area < minArea * 12 && (compactness < 0.16 || apparentWidth < 0.072 || shard.split > 4)) return true;
+  return false;
+}
+
+function shouldCullTouchedShard(zone: BreakZone, shard: Shard, localPoint: Point, forceScale: number): boolean {
+  const hitDistance = shardHitDistance(zone, shard, localPoint);
+  if (hitDistance > zone.radius * (0.13 + forceScale * 0.025)) return false;
+  if (shouldCullOverworkedShard(zone, shard)) return true;
+
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(shard.polygon);
+  const minArea = minVisibleShardArea();
+  return area < minArea * (10 + forceScale * 3)
+    && (shard.split > 3 || apparentWidth < 0.07 || compactness < 0.16);
+}
+
+function cleanupTouchedArtifacts(zone: BreakZone, localPoint: Point, forceScale: number): boolean {
+  const before = zone.shards.length;
+  const survivors: Shard[] = [];
+
+  zone.shards.forEach((shard) => {
+    if (shouldCullTouchedShard(zone, shard, localPoint, forceScale)) {
+      disposeShard(zone, shard);
+    } else {
+      survivors.push(shard);
+    }
+  });
+
+  zone.shards = survivors;
+  return zone.shards.length !== before;
+}
+
+function shardArtifactScore(shard: Shard): number {
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(shard.polygon);
+  const minArea = minVisibleShardArea();
+  return (
+    (minArea * 10) / Math.max(area, EPSILON)
+    + 0.08 / Math.max(apparentWidth, EPSILON)
+    + 0.2 / Math.max(compactness, EPSILON)
+    + shard.split * 0.42
+  );
+}
+
+function maxShardsPerZone(): number {
+  return Math.round(BASE_MAX_SHARDS_PER_ZONE * Math.max(0.75, fractureTuning.shardCount));
 }
 
 function clonePositions(geometry: THREE.BufferGeometry): Float32Array {
@@ -1088,6 +1169,12 @@ function fractureExistingZone(
 
   zone.fractureCount += 1;
   zone.damage = Math.min(4.4, zone.damage + forceScale * 0.16);
+  cleanupZoneArtifacts(zone);
+  if (zone.shards.length === 0) {
+    removeZone(zone);
+    return;
+  }
+
   refreshZoneOutline(zone);
   rebuildAllZoneEdges(zone, seed);
 }
@@ -1102,7 +1189,8 @@ function splitShard(
 ): Shard[] {
   const area = Math.abs(polygonArea(shard.polygon));
   if (area < minVisibleShardArea()) return [];
-  if (shard.split > 7) return [shard];
+  if (shouldCullOverworkedShard(zone, shard)) return [];
+  if (shard.split > 7) return area < minVisibleShardArea() * 28 ? [] : [shard];
 
   const rng = mulberry32(seed);
   const focus = pointInPolygon(point, shard.polygon) ? point : shard.center;
@@ -1151,6 +1239,7 @@ function splitShard(
 }
 
 function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: number, amount: number): void {
+  if (!zones.includes(zone)) return;
   if (!Number.isFinite(zoneSurfaceDistance(zone, normal))) return;
 
   const localPoint = surfaceToZonePoint(zone, normal);
@@ -1162,6 +1251,15 @@ function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: numbe
     shard.consumed = Math.min(1, shard.consumed + amount * falloff * (0.18 + forceScale * 0.07));
     shard.lift = Math.max(0.001, shard.lift - amount * falloff * 0.018);
   });
+
+  if (!cleanupTouchedArtifacts(zone, localPoint, forceScale)) return;
+  if (zone.shards.length === 0) {
+    removeZone(zone);
+    return;
+  }
+
+  refreshZoneOutline(zone);
+  rebuildAllZoneEdges(zone, zone.seed + zone.fractureCount * 701 + Math.floor(performance.now()));
 }
 
 function continueSingleFingerBreak(hit: SurfaceHit, force: number, travel: number, previousHit: SurfaceHit | null): void {
@@ -1990,6 +2088,20 @@ function polygonCompactness(points: Point[]): number {
   const perimeter = polygonPerimeter(points);
   if (perimeter <= EPSILON) return 0;
   return (4 * Math.PI * Math.abs(polygonArea(points))) / (perimeter * perimeter);
+}
+
+function polygonShapeMetrics(points: Point[]): {
+  area: number;
+  apparentWidth: number;
+  compactness: number;
+} {
+  const area = Math.abs(polygonArea(points));
+  const longestEdge = polygonLongestEdge(points);
+  return {
+    area,
+    apparentWidth: area / Math.max(longestEdge, EPSILON),
+    compactness: polygonCompactness(points),
+  };
 }
 
 function polygonCentroid(points: Point[]): Point {
