@@ -73,11 +73,10 @@ const layerControls = {
   inwardPower: 1.75,
   inwardStrength: 0.045,
   contactPower: 2.15,
-  contactInwardStrength: 0.36,
+  contactInwardStrength: 0.76,
   contactWidth: 0.12,
   contactProbeRadius: 0.93,
   contactRadiusScale: 1.08,
-  contactSharpness: 1.8,
   tangentPower: 1.45,
   tangentStrength: 0.14,
   tangentYScale: 0.58,
@@ -187,7 +186,6 @@ function setupGui(): void {
   displacement.add(layerControls, 'contactWidth', 0.01, 0.35, 0.001).name('contact width');
   displacement.add(layerControls, 'contactProbeRadius', 0.7, 1, 0.001).name('contact probe');
   displacement.add(layerControls, 'contactRadiusScale', 0.5, 1.8, 0.01).name('contact radius');
-  displacement.add(layerControls, 'contactSharpness', 0.3, 4, 0.01).name('contact sharp');
   displacement.add(layerControls, 'tangentPower', 0.1, 4, 0.01).name('tangent power');
   displacement.add(layerControls, 'tangentStrength', 0, 0.5, 0.01).name('tangent amount');
   displacement.add(layerControls, 'tangentYScale', 0, 1.5, 0.01).name('tangent y');
@@ -361,7 +359,7 @@ function contactGateForDirection(dirX: number, dirY: number): number {
     contact = Math.max(contact, circleContact);
   }
 
-  return contact ** layerControls.contactSharpness;
+  return contact ** layerControls.contactPower;
 }
 
 function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
@@ -377,8 +375,10 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const idleFold = layerControls.displacementEnabled
     ? edgeT ** layerControls.inwardPower * radius * layerControls.inwardStrength
     : 0;
+  const edgeBandDistance = Math.max(0, radial - edgeStart);
+  const contactCompression = clamp(layerControls.contactInwardStrength, 0, 0.96) * contact;
   const contactFold = layerControls.displacementEnabled
-    ? edgeT ** layerControls.contactPower * radius * layerControls.contactInwardStrength * contact
+    ? edgeBandDistance * radius * contactCompression
     : 0;
   const edgeFold = idleFold + contactFold;
   const tangentSlip = layerControls.displacementEnabled
