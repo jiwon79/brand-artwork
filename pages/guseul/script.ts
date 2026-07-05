@@ -1,4 +1,4 @@
-type Circle = {
+type PlaneBlob = {
   x: number;
   y: number;
   rx: number;
@@ -27,14 +27,10 @@ if (!ctx) {
   throw new Error('2D canvas is not supported.');
 }
 
-const contentWidth = 1440;
-const contentHeight = 920;
-const contentCanvas = document.createElement('canvas');
-contentCanvas.width = contentWidth;
-contentCanvas.height = contentHeight;
-const contentCtx = contentCanvas.getContext('2d');
+const sourceCanvas = document.createElement('canvas');
+const sourceCtx = sourceCanvas.getContext('2d', { alpha: false });
 
-if (!contentCtx) {
+if (!sourceCtx) {
   throw new Error('2D canvas is not supported.');
 }
 
@@ -45,25 +41,22 @@ if (!ballCtx) {
   throw new Error('2D canvas is not supported.');
 }
 
-const circles: Circle[] = [
-  { x: 195, y: 165, rx: 138, ry: 92, color: '#f05a2c', rotation: -0.34 },
-  { x: 425, y: 135, rx: 94, ry: 82, color: '#ffe15d', rotation: 0.16 },
-  { x: 665, y: 145, rx: 156, ry: 104, color: '#a8174a', rotation: 0.46 },
-  { x: 1020, y: 130, rx: 122, ry: 76, color: '#ff8a25', rotation: -0.2 },
-  { x: 1235, y: 218, rx: 78, ry: 108, color: '#2a53b7', rotation: 0.55 },
-  { x: 305, y: 375, rx: 172, ry: 118, color: '#071c3a', rotation: -0.45 },
-  { x: 555, y: 415, rx: 220, ry: 124, color: '#71d84f', rotation: -0.06 },
-  { x: 840, y: 392, rx: 178, ry: 112, color: '#ff702b', rotation: 0.14 },
-  { x: 1120, y: 430, rx: 170, ry: 124, color: '#ff4332', rotation: -0.22 },
-  { x: 210, y: 650, rx: 130, ry: 94, color: '#2e97d2', rotation: 0.3 },
-  { x: 445, y: 700, rx: 210, ry: 140, color: '#143a69', rotation: -0.48 },
-  { x: 720, y: 690, rx: 152, ry: 106, color: '#f56a7a', rotation: 0.28 },
-  { x: 985, y: 675, rx: 136, ry: 106, color: '#179b80', rotation: -0.34 },
-  { x: 1220, y: 725, rx: 124, ry: 94, color: '#ffc642', rotation: 0.18 },
-  { x: 1320, y: 520, rx: 84, ry: 84, color: '#8fd85e', rotation: 0.44 },
+const planeBlobs: PlaneBlob[] = [
+  { x: -1.2, y: -0.64, rx: 0.58, ry: 0.34, color: '#f15b2e', rotation: -0.34 },
+  { x: -0.35, y: -0.76, rx: 0.42, ry: 0.3, color: '#ffe25f', rotation: 0.22 },
+  { x: 0.48, y: -0.68, rx: 0.62, ry: 0.38, color: '#a51b4e', rotation: 0.42 },
+  { x: 1.28, y: -0.38, rx: 0.48, ry: 0.34, color: '#ff8d24', rotation: -0.18 },
+  { x: -1.02, y: 0.1, rx: 0.68, ry: 0.4, color: '#0c2241', rotation: -0.5 },
+  { x: -0.22, y: 0.36, rx: 0.74, ry: 0.45, color: '#76d650', rotation: -0.05 },
+  { x: 0.74, y: 0.12, rx: 0.68, ry: 0.42, color: '#ff6d2b', rotation: 0.12 },
+  { x: 1.42, y: 0.36, rx: 0.5, ry: 0.4, color: '#ff4434', rotation: -0.24 },
+  { x: -0.85, y: 0.92, rx: 0.54, ry: 0.36, color: '#2d98d1', rotation: 0.34 },
+  { x: -0.05, y: 1.08, rx: 0.78, ry: 0.48, color: '#153f6a', rotation: -0.46 },
+  { x: 0.86, y: 0.96, rx: 0.56, ry: 0.38, color: '#f66a7c', rotation: 0.28 },
+  { x: 1.52, y: 1.0, rx: 0.5, ry: 0.34, color: '#159b80', rotation: -0.34 },
 ];
 
-let contentData: ImageData;
+let sourceData: ImageData | null = null;
 let view: View = {
   width: 1,
   height: 1,
@@ -75,10 +68,10 @@ let view: View = {
   radius: 1,
 };
 
-let offsetX = -70;
-let offsetY = -18;
-let targetOffsetX = -70;
-let targetOffsetY = -18;
+let offsetX = -34;
+let offsetY = -12;
+let targetOffsetX = -34;
+let targetOffsetY = -12;
 let velocityX = 18;
 let velocityY = 0;
 let pointerId: number | null = null;
@@ -105,92 +98,133 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function wrap(value: number, max: number): number {
-  return ((value % max) + max) % max;
+function drawBlob(context: CanvasRenderingContext2D, blob: PlaneBlob, originX: number, originY: number): void {
+  const radius = view.radius;
+
+  context.save();
+  context.translate(originX + blob.x * radius, originY + blob.y * radius);
+  context.rotate(blob.rotation);
+  context.fillStyle = blob.color;
+  context.beginPath();
+  context.ellipse(0, 0, blob.rx * radius, blob.ry * radius, 0, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
 }
 
-function hexToRgb(hex: string): RGB {
-  const value = Number.parseInt(hex.slice(1), 16);
-  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+function drawNegativeSpace(context: CanvasRenderingContext2D, originX: number, originY: number): void {
+  const radius = view.radius;
+
+  context.save();
+  context.translate(originX, originY);
+  context.strokeStyle = '#fffefb';
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+
+  context.lineWidth = radius * 0.34;
+  context.beginPath();
+  context.moveTo(-1.72 * radius, -0.02 * radius);
+  context.bezierCurveTo(-1.08 * radius, -0.64 * radius, -0.38 * radius, -0.82 * radius, 0.36 * radius, -0.24 * radius);
+  context.bezierCurveTo(0.96 * radius, 0.22 * radius, 1.46 * radius, -0.08 * radius, 1.86 * radius, -0.52 * radius);
+  context.stroke();
+
+  context.lineWidth = radius * 0.22;
+  context.beginPath();
+  context.moveTo(-0.9 * radius, 1.28 * radius);
+  context.bezierCurveTo(-0.42 * radius, 0.46 * radius, 0.28 * radius, 0.44 * radius, 0.84 * radius, 1.22 * radius);
+  context.stroke();
+
+  context.lineWidth = radius * 0.14;
+  context.strokeStyle = 'rgba(255, 254, 251, 0.76)';
+  context.beginPath();
+  context.moveTo(-1.64 * radius, -0.88 * radius);
+  context.bezierCurveTo(-0.86 * radius, -0.62 * radius, -0.1 * radius, -0.86 * radius, 0.7 * radius, -0.7 * radius);
+  context.bezierCurveTo(1.18 * radius, -0.62 * radius, 1.54 * radius, -0.72 * radius, 1.92 * radius, -1.0 * radius);
+  context.stroke();
+  context.restore();
 }
 
-function drawContent(): void {
-  contentCtx.fillStyle = '#fbfbf8';
-  contentCtx.fillRect(0, 0, contentWidth, contentHeight);
-
-  for (const circle of circles) {
-    contentCtx.save();
-    contentCtx.translate(circle.x, circle.y);
-    contentCtx.rotate(circle.rotation);
-    contentCtx.fillStyle = circle.color;
-    contentCtx.beginPath();
-    contentCtx.ellipse(0, 0, circle.rx, circle.ry, 0, 0, Math.PI * 2);
-    contentCtx.fill();
-
-    const [r, g, b] = hexToRgb(circle.color);
-    contentCtx.globalCompositeOperation = 'multiply';
-    contentCtx.fillStyle = `rgba(${Math.max(0, r - 55)}, ${Math.max(0, g - 55)}, ${Math.max(0, b - 55)}, 0.16)`;
-    contentCtx.beginPath();
-    contentCtx.ellipse(circle.rx * 0.18, circle.ry * 0.18, circle.rx * 0.86, circle.ry * 0.72, 0, 0, Math.PI * 2);
-    contentCtx.fill();
-    contentCtx.restore();
+function drawPlaneMotif(context: CanvasRenderingContext2D, originX: number, originY: number): void {
+  for (const blob of planeBlobs) {
+    drawBlob(context, blob, originX, originY);
   }
 
-  contentCtx.save();
-  contentCtx.strokeStyle = '#fbfbf8';
-  contentCtx.lineCap = 'round';
-  contentCtx.lineJoin = 'round';
-  contentCtx.lineWidth = 92;
-  contentCtx.beginPath();
-  contentCtx.moveTo(105, 505);
-  contentCtx.bezierCurveTo(330, 382, 500, 272, 745, 438);
-  contentCtx.bezierCurveTo(965, 590, 1085, 390, 1345, 330);
-  contentCtx.stroke();
-  contentCtx.lineWidth = 56;
-  contentCtx.beginPath();
-  contentCtx.moveTo(330, 850);
-  contentCtx.bezierCurveTo(450, 610, 685, 590, 850, 835);
-  contentCtx.stroke();
-  contentCtx.restore();
-
-  contentCtx.strokeStyle = 'rgba(18, 25, 30, 0.16)';
-  contentCtx.lineWidth = 8;
-  contentCtx.beginPath();
-  contentCtx.moveTo(75, 575);
-  contentCtx.bezierCurveTo(310, 735, 565, 375, 820, 595);
-  contentCtx.bezierCurveTo(955, 710, 1110, 500, 1365, 610);
-  contentCtx.stroke();
-
-  contentCtx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
-  contentCtx.lineWidth = 14;
-  contentCtx.beginPath();
-  contentCtx.moveTo(55, 290);
-  contentCtx.bezierCurveTo(330, 320, 600, 255, 900, 300);
-  contentCtx.bezierCurveTo(1060, 326, 1220, 300, 1400, 242);
-  contentCtx.stroke();
-
-  contentData = contentCtx.getImageData(0, 0, contentWidth, contentHeight);
+  drawNegativeSpace(context, originX, originY);
 }
 
-function sampleContent(x: number, y: number): RGB {
-  const wrappedX = wrap(x, contentWidth);
-  const wrappedY = wrap(y, contentHeight);
-  const x0 = Math.floor(wrappedX);
-  const y0 = Math.floor(wrappedY);
-  const x1 = (x0 + 1) % contentWidth;
-  const y1 = (y0 + 1) % contentHeight;
-  const fx = wrappedX - x0;
-  const fy = wrappedY - y0;
+function drawSourcePlane(): void {
+  const repeatX = view.radius * 7.6;
+  const repeatY = view.radius * 4.2;
+  const shiftX = Math.sin(offsetX / (view.radius * 2.4)) * view.radius * 0.86;
+  const shiftY = Math.sin(offsetY / (view.radius * 2.1)) * view.radius * 0.42;
 
-  const i00 = (y0 * contentWidth + x0) * 4;
-  const i10 = (y0 * contentWidth + x1) * 4;
-  const i01 = (y1 * contentWidth + x0) * 4;
-  const i11 = (y1 * contentWidth + x1) * 4;
+  sourceCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  sourceCtx.fillStyle = '#000000';
+  sourceCtx.fillRect(0, 0, view.width, view.height);
+  sourceCtx.fillStyle = '#fffefb';
+  sourceCtx.fillRect(0, view.bandY, view.width, view.bandHeight);
+
+  sourceCtx.save();
+  sourceCtx.beginPath();
+  sourceCtx.rect(0, view.bandY, view.width, view.bandHeight);
+  sourceCtx.clip();
+
+  const startX = view.cx + shiftX - repeatX * 2;
+  const endX = view.width + repeatX * 2;
+  const startY = view.cy + shiftY - repeatY * 2;
+  const endY = view.height + repeatY * 2;
+
+  for (let y = startY; y < endY; y += repeatY) {
+    for (let x = startX; x < endX; x += repeatX) {
+      drawPlaneMotif(sourceCtx, x, y);
+    }
+  }
+
+  sourceCtx.globalCompositeOperation = 'multiply';
+  sourceCtx.strokeStyle = 'rgba(21, 31, 40, 0.12)';
+  sourceCtx.lineWidth = view.radius * 0.048;
+  sourceCtx.beginPath();
+  sourceCtx.moveTo(view.cx - view.radius * 2.0 + shiftX * 0.2, view.cy + view.radius * 0.32 + shiftY * 0.1);
+  sourceCtx.bezierCurveTo(
+    view.cx - view.radius * 1.0,
+    view.cy + view.radius * 1.0,
+    view.cx + view.radius * 0.24,
+    view.cy - view.radius * 0.38,
+    view.cx + view.radius * 1.68,
+    view.cy + view.radius * 0.58,
+  );
+  sourceCtx.stroke();
+  sourceCtx.restore();
+
+  sourceData = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+}
+
+function sampleSourcePlane(x: number, y: number): RGB {
+  if (!sourceData) {
+    return [255, 255, 255];
+  }
+
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  const minY = (view.bandY + 2) * view.dpr;
+  const maxY = (view.bandY + view.bandHeight - 2) * view.dpr;
+  const sampleX = clamp(x * view.dpr, 0, width - 1.001);
+  const sampleY = clamp(y * view.dpr, minY, Math.min(maxY, height - 1.001));
+  const x0 = Math.floor(sampleX);
+  const y0 = Math.floor(sampleY);
+  const x1 = Math.min(x0 + 1, width - 1);
+  const y1 = Math.min(y0 + 1, height - 1);
+  const fx = sampleX - x0;
+  const fy = sampleY - y0;
+
+  const i00 = (y0 * width + x0) * 4;
+  const i10 = (y0 * width + x1) * 4;
+  const i01 = (y1 * width + x0) * 4;
+  const i11 = (y1 * width + x1) * 4;
   const rgb: RGB = [0, 0, 0];
 
   for (let channel = 0; channel < 3; channel += 1) {
-    const top = mix(contentData.data[i00 + channel], contentData.data[i10 + channel], fx);
-    const bottom = mix(contentData.data[i01 + channel], contentData.data[i11 + channel], fx);
+    const top = mix(sourceData.data[i00 + channel], sourceData.data[i10 + channel], fx);
+    const bottom = mix(sourceData.data[i01 + channel], sourceData.data[i11 + channel], fx);
     rgb[channel] = mix(top, bottom, fy);
   }
 
@@ -211,7 +245,7 @@ function resize(): void {
     bandY: (height - bandHeight) / 2,
     bandHeight,
     cx: width / 2,
-    cy: height / 2 + radius * 0.1,
+    cy: height / 2 + radius * 0.06,
     radius,
   };
 
@@ -219,49 +253,52 @@ function resize(): void {
   canvas.height = Math.round(height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+  sourceCanvas.width = canvas.width;
+  sourceCanvas.height = canvas.height;
+
   const ballSize = Math.max(2, Math.round(radius * 2 * dpr));
   ballCanvas.width = ballSize;
   ballCanvas.height = ballSize;
 }
 
-function sampleLensContent(nx: number, ny: number, nz: number, edge: number, radiusPx: number): RGB {
-  const radial = Math.hypot(nx, ny);
+function sampleLensContent(nx: number, ny: number, nz: number, radial: number): RGB {
   const dirX = radial > 0.001 ? nx / radial : 0;
   const dirY = radial > 0.001 ? ny / radial : 0;
-  const edgePull = edge ** 1.45;
-  const radialGain = 0.18 + radial ** 1.72 * 0.98;
-  const fold = edgePull * radiusPx * 0.78;
-  const sourceScale = 1.72;
-  const bendX = dirX * fold - ny * edgePull * radiusPx * 0.26;
-  const bendY = dirY * fold + nx * edgePull * radiusPx * 0.16;
-  const sourceX = contentWidth * 0.5 + offsetX + nx * radiusPx * sourceScale * radialGain + bendX;
-  const sourceY = contentHeight * 0.5 + offsetY + ny * radiusPx * sourceScale * radialGain + bendY;
-  const blur = edgePull * radiusPx * 0.3;
-  const aberration = edgePull * 11;
-
-  const red = sampleContent(sourceX + dirX * (aberration + blur), sourceY + dirY * blur);
-  const green = sampleContent(sourceX, sourceY);
-  const blue = sampleContent(sourceX - dirX * aberration, sourceY - dirY * aberration);
-  const smear = sampleContent(sourceX + dirX * blur * 1.75, sourceY + dirY * blur * 1.75);
-  const inverseSmear = sampleContent(sourceX - dirX * blur * 0.7, sourceY - dirY * blur * 0.7);
   const tangentX = -dirY;
   const tangentY = dirX;
-  const tangentSmearA = sampleContent(sourceX + tangentX * blur * 1.05, sourceY + tangentY * blur * 1.05);
-  const tangentSmearB = sampleContent(sourceX - tangentX * blur * 0.9, sourceY - tangentY * blur * 0.9);
-  const smearMix = edgePull * 0.58;
+  const screenX = view.cx + nx * view.radius;
+  const screenY = view.cy + ny * view.radius;
+  const edgeT = smoothstep(0.54, 1, radial);
+  const glassBend = (1 - nz) * view.radius * 0.16;
+  const rimPull = edgeT ** 1.75 * view.radius * 0.86;
+  const radialPull = radial ** 2.2 * view.radius * 0.12;
+  const swirl = edgeT ** 1.55 * view.radius * 0.19;
+  const sourceX = screenX + dirX * (glassBend + rimPull + radialPull) + tangentX * swirl;
+  const sourceY = screenY + dirY * (glassBend + rimPull * 0.74 + radialPull) + tangentY * swirl * 0.52;
+  const smear = edgeT ** 1.35 * view.radius * 0.42;
+  const aberration = edgeT ** 1.45 * view.radius * 0.055;
 
-  let r = mix(red[0], smear[0] * 0.72 + tangentSmearA[0] * 0.28, smearMix);
-  let g = mix(green[1], smear[1] * 0.68 + tangentSmearB[1] * 0.32, smearMix * 0.78);
-  let b = mix(blue[2], inverseSmear[2] * 0.72 + tangentSmearA[2] * 0.28, smearMix);
+  const red = sampleSourcePlane(sourceX + dirX * aberration + tangentX * aberration * 0.35, sourceY + dirY * aberration);
+  const green = sampleSourcePlane(sourceX, sourceY);
+  const blue = sampleSourcePlane(sourceX - dirX * aberration, sourceY - dirY * aberration + tangentY * aberration * 0.28);
+  const radialFar = sampleSourcePlane(sourceX + dirX * smear * 1.38, sourceY + dirY * smear * 1.08);
+  const radialNear = sampleSourcePlane(sourceX - dirX * smear * 0.68, sourceY - dirY * smear * 0.52);
+  const tangentA = sampleSourcePlane(sourceX + tangentX * smear * 0.72, sourceY + tangentY * smear * 0.52);
+  const tangentB = sampleSourcePlane(sourceX - tangentX * smear * 0.64, sourceY - tangentY * smear * 0.5);
+  const smearMix = edgeT * 0.66;
 
-  const centerLift = smoothstep(1, 0, radial) * 12;
-  const glassMilk = 0.05 + edgePull * 0.27 + smoothstep(0.9, 1, radial) * 0.2;
+  let r = mix(red[0], radialFar[0] * 0.66 + tangentA[0] * 0.34, smearMix);
+  let g = mix(green[1], radialFar[1] * 0.44 + radialNear[1] * 0.28 + tangentB[1] * 0.28, smearMix * 0.82);
+  let b = mix(blue[2], radialNear[2] * 0.58 + tangentA[2] * 0.42, smearMix);
+
+  const centerLift = smoothstep(0.88, 0, radial) * 10;
+  const glassMilk = 0.04 + edgeT * 0.26 + smoothstep(0.86, 1, radial) * 0.2;
   r = mix(r + centerLift, 255, glassMilk);
   g = mix(g + centerLift, 255, glassMilk);
-  b = mix(b + centerLift, 255, glassMilk * 0.88);
+  b = mix(b + centerLift, 255, glassMilk * 0.9);
 
   const directionalLight = Math.max(0, nx * -0.36 + ny * -0.48 + nz * 0.88);
-  const innerShade = 0.84 + nz * 0.18 + directionalLight * 0.1 - edgePull * 0.16;
+  const innerShade = 0.86 + nz * 0.16 + directionalLight * 0.08 - edgeT * 0.12;
   return [
     clamp(r * innerShade, 0, 255),
     clamp(g * innerShade, 0, 255),
@@ -289,8 +326,7 @@ function renderGlassBall(): void {
 
       const radial = Math.sqrt(radialSq);
       const nz = Math.sqrt(1 - radialSq);
-      const edge = 1 - nz;
-      const [sampleR, sampleG, sampleB] = sampleLensContent(nx, ny, nz, edge, radiusPx);
+      const [sampleR, sampleG, sampleB] = sampleLensContent(nx, ny, nz, radial);
       const rim = smoothstep(0.7, 1, radial);
       const hardRim = smoothstep(0.9, 1, radial);
       const topWash = smoothstep(0.2, -0.82, ny) * smoothstep(0.98, 0.18, radial);
@@ -301,9 +337,9 @@ function renderGlassBall(): void {
       const specC = Math.max(0, 1 - Math.hypot(nx + 0.04, ny + 0.28) / 0.48) ** 5.8;
       const specD = Math.max(0, 1 - Math.hypot(nx - 0.1, ny + 0.46) / 0.17) ** 4.2;
       const pointerSpec = Math.max(0, 1 - Math.hypot(nx - glintX, ny - glintY) / 0.2) ** 3.6 * glintAlpha;
-      const shell = specA * 155 + specB * 92 + specC * 16 + specD * 118 + pointerSpec * 150;
+      const shell = specA * 150 + specB * 88 + specC * 16 + specD * 112 + pointerSpec * 150;
 
-      let r = sampleR + shell + topWash * 20 + rim * 18 - hardRim * 8 + caRim * 14;
+      let r = sampleR + shell + topWash * 20 + rim * 18 - hardRim * 8 + caRim * 13;
       let g = sampleG + shell + topWash * 22 + rim * 20 - hardRim * 10;
       let b = sampleB + shell + topWash * 30 + rim * 38 + sideCool * 12 - hardRim * 2;
 
@@ -319,11 +355,9 @@ function renderGlassBall(): void {
 }
 
 function drawScene(): void {
+  drawSourcePlane();
   ctx.clearRect(0, 0, view.width, view.height);
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, view.width, view.height);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, view.bandY, view.width, view.bandHeight);
+  ctx.drawImage(sourceCanvas, 0, 0, view.width, view.height);
 
   const shadow = ctx.createRadialGradient(
     view.cx,
@@ -368,7 +402,7 @@ function drawScene(): void {
     view.cx + view.radius,
     view.cy + view.radius,
   );
-  rim.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
+  rim.addColorStop(0, 'rgba(255, 255, 255, 0.74)');
   rim.addColorStop(0.36, 'rgba(255, 255, 255, 0.1)');
   rim.addColorStop(0.68, 'rgba(84, 90, 126, 0.28)');
   rim.addColorStop(1, 'rgba(255, 255, 255, 0.58)');
@@ -497,6 +531,5 @@ canvas.addEventListener('pointerleave', () => {
 
 window.addEventListener('resize', resize);
 
-drawContent();
 resize();
 requestAnimationFrame(tick);
