@@ -473,9 +473,15 @@ function tick(now: number): void {
 
   offsetX = targetOffsetX;
   offsetY = targetOffsetY;
-  glintX = mix(glintX, targetGlintX, 0.18);
-  glintY = mix(glintY, targetGlintY, 0.18);
-  glintAlpha = mix(glintAlpha, targetGlintAlpha, 0.16);
+  if (pointerId === null) {
+    glintX = mix(glintX, targetGlintX, 0.18);
+    glintY = mix(glintY, targetGlintY, 0.18);
+    glintAlpha = mix(glintAlpha, targetGlintAlpha, 0.16);
+  } else {
+    glintX = targetGlintX;
+    glintY = targetGlintY;
+    glintAlpha = targetGlintAlpha;
+  }
 
   drawScene();
   requestAnimationFrame(tick);
