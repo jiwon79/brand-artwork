@@ -20,6 +20,7 @@ type RGBA = [number, number, number, number];
 
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: false });
+const stage = document.getElementById('stage');
 
 if (!ctx) {
   throw new Error('2D canvas is not supported.');
@@ -57,6 +58,8 @@ const marbleCircles: MarbleCircle[] = [
 ];
 
 const layerControls = {
+  backgroundColor: '#fffefb',
+  shadowEnabled: true,
   displacementEnabled: true,
   edgeStart: 0.56,
   edgeEnd: 1,
@@ -76,6 +79,17 @@ const layerControls = {
   tangentSmearAY: 0.56,
   tangentSmearBX: 0.62,
   tangentSmearBY: 0.46,
+  innerShadeEnabled: true,
+  glassMilkEnabled: true,
+  topWashEnabled: true,
+  rimEnabled: true,
+  hardRimEnabled: true,
+  caRimEnabled: true,
+  specAEnabled: true,
+  specBEnabled: true,
+  specCEnabled: true,
+  pointerSpecEnabled: true,
+  outerStrokeEnabled: true,
 };
 
 let contentData: ImageData | null = null;
@@ -131,11 +145,22 @@ function scaleFromNormalDot(dot: number): number {
   return mix(0.2, 1.02, dot ** 0.72);
 }
 
+function applyBackgroundColor(): void {
+  document.documentElement.style.backgroundColor = layerControls.backgroundColor;
+  document.body.style.backgroundColor = layerControls.backgroundColor;
+  canvas.style.backgroundColor = layerControls.backgroundColor;
+  stage?.style.setProperty('background', layerControls.backgroundColor);
+}
+
 function setupGui(): void {
   const gui = new GUI({ title: 'Guseul layers' });
   gui.domElement.addEventListener('pointerdown', (event) => {
     event.stopPropagation();
   });
+
+  const background = gui.addFolder('background');
+  background.addColor(layerControls, 'backgroundColor').name('color').onChange(applyBackgroundColor);
+  background.add(layerControls, 'shadowEnabled').name('shadow');
 
   const displacement = gui.addFolder('5 sampling / displacement');
   displacement.add(layerControls, 'displacementEnabled').name('on');
@@ -161,6 +186,19 @@ function setupGui(): void {
   smear.add(layerControls, 'tangentSmearAY', 0, 1.5, 0.01).name('tangent A y');
   smear.add(layerControls, 'tangentSmearBX', 0, 1.5, 0.01).name('tangent B x');
   smear.add(layerControls, 'tangentSmearBY', 0, 1.5, 0.01).name('tangent B y');
+
+  const shell = gui.addFolder('8 glass shell');
+  shell.add(layerControls, 'innerShadeEnabled').name('innerShade');
+  shell.add(layerControls, 'glassMilkEnabled').name('glassMilk');
+  shell.add(layerControls, 'topWashEnabled').name('topWash');
+  shell.add(layerControls, 'rimEnabled').name('rim');
+  shell.add(layerControls, 'hardRimEnabled').name('hardRim');
+  shell.add(layerControls, 'caRimEnabled').name('ca rim');
+  shell.add(layerControls, 'specAEnabled').name('spec A');
+  shell.add(layerControls, 'specBEnabled').name('spec B');
+  shell.add(layerControls, 'specCEnabled').name('spec C');
+  shell.add(layerControls, 'pointerSpecEnabled').name('pointerSpec');
+  shell.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 }
 
 function resize(): void {
@@ -214,7 +252,7 @@ function drawContentLayer(): void {
   contentCtx.clearRect(0, 0, contentCanvas.width, contentCanvas.height);
   contentCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
 
-  contentCtx.fillStyle = '#fffefb';
+  contentCtx.fillStyle = layerControls.backgroundColor;
   contentCtx.fillRect(0, 0, size, size);
 
   contentCtx.save();
@@ -349,16 +387,30 @@ function renderGlassBall(): void {
       const edgeT = smoothstep(0.68, 1, radial);
       const [sampleR, sampleG, sampleB] = sampleLiquidGlass(nx, ny, radial);
       const directionalLight = Math.max(0, nx * -0.36 + ny * -0.48 + nz * 0.88);
-      const innerShade = 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08;
-      const glassMilk = 0.025 + edgeT * 0.22 + smoothstep(0.92, 1, radial) * 0.18;
-      const topWash = smoothstep(0.18, -0.82, ny) * smoothstep(0.98, 0.16, radial);
-      const rim = smoothstep(0.72, 1, radial);
-      const hardRim = smoothstep(0.93, 1, radial);
-      const caRim = smoothstep(0.8, 1, radial);
-      const specA = Math.max(0, 1 - Math.hypot(nx + 0.42, ny + 0.52) / 0.2) ** 3.8;
-      const specB = Math.max(0, 1 - Math.hypot(nx - 0.35, ny + 0.22) / 0.28) ** 4.6;
-      const specC = Math.max(0, 1 - Math.hypot(nx + 0.04, ny + 0.28) / 0.48) ** 5.8;
-      const pointerSpec = Math.max(0, 1 - Math.hypot(nx - glintX, ny - glintY) / 0.2) ** 3.6 * glintAlpha;
+      const innerShade = layerControls.innerShadeEnabled
+        ? 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08
+        : 1;
+      const glassMilk = layerControls.glassMilkEnabled
+        ? 0.025 + edgeT * 0.22 + smoothstep(0.92, 1, radial) * 0.18
+        : 0;
+      const topWash = layerControls.topWashEnabled
+        ? smoothstep(0.18, -0.82, ny) * smoothstep(0.98, 0.16, radial)
+        : 0;
+      const rim = layerControls.rimEnabled ? smoothstep(0.72, 1, radial) : 0;
+      const hardRim = layerControls.hardRimEnabled ? smoothstep(0.93, 1, radial) : 0;
+      const caRim = layerControls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
+      const specA = layerControls.specAEnabled
+        ? Math.max(0, 1 - Math.hypot(nx + 0.42, ny + 0.52) / 0.2) ** 3.8
+        : 0;
+      const specB = layerControls.specBEnabled
+        ? Math.max(0, 1 - Math.hypot(nx - 0.35, ny + 0.22) / 0.28) ** 4.6
+        : 0;
+      const specC = layerControls.specCEnabled
+        ? Math.max(0, 1 - Math.hypot(nx + 0.04, ny + 0.28) / 0.48) ** 5.8
+        : 0;
+      const pointerSpec = layerControls.pointerSpecEnabled
+        ? Math.max(0, 1 - Math.hypot(nx - glintX, ny - glintY) / 0.2) ** 3.6 * glintAlpha
+        : 0;
       const shell = specA * 136 + specB * 74 + specC * 14 + pointerSpec * 132;
 
       let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 12 - hardRim * 6 + caRim * 10;
@@ -378,36 +430,38 @@ function renderGlassBall(): void {
 
 function drawScene(): void {
   ctx.clearRect(0, 0, view.width, view.height);
-  ctx.fillStyle = '#fffefb';
+  ctx.fillStyle = layerControls.backgroundColor;
   ctx.fillRect(0, 0, view.width, view.height);
 
-  const shadow = ctx.createRadialGradient(
-    view.cx,
-    view.cy + view.radius * 0.94,
-    view.radius * 0.08,
-    view.cx,
-    view.cy + view.radius * 0.94,
-    view.radius * 0.96,
-  );
-  shadow.addColorStop(0, 'rgba(0, 0, 0, 0.22)');
-  shadow.addColorStop(0.5, 'rgba(0, 0, 0, 0.08)');
-  shadow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  if (layerControls.shadowEnabled) {
+    const shadow = ctx.createRadialGradient(
+      view.cx,
+      view.cy + view.radius * 0.94,
+      view.radius * 0.08,
+      view.cx,
+      view.cy + view.radius * 0.94,
+      view.radius * 0.96,
+    );
+    shadow.addColorStop(0, 'rgba(0, 0, 0, 0.22)');
+    shadow.addColorStop(0.5, 'rgba(0, 0, 0, 0.08)');
+    shadow.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
-  ctx.save();
-  ctx.scale(1, 0.22);
-  ctx.fillStyle = shadow;
-  ctx.beginPath();
-  ctx.ellipse(
-    view.cx,
-    (view.cy + view.radius * 0.94) / 0.22,
-    view.radius * 0.9,
-    view.radius * 0.52,
-    0,
-    0,
-    Math.PI * 2,
-  );
-  ctx.fill();
-  ctx.restore();
+    ctx.save();
+    ctx.scale(1, 0.22);
+    ctx.fillStyle = shadow;
+    ctx.beginPath();
+    ctx.ellipse(
+      view.cx,
+      (view.cy + view.radius * 0.94) / 0.22,
+      view.radius * 0.9,
+      view.radius * 0.52,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.restore();
+  }
 
   renderGlassBall();
   ctx.drawImage(
@@ -418,22 +472,24 @@ function drawScene(): void {
     view.radius * 2,
   );
 
-  const rim = ctx.createLinearGradient(
-    view.cx - view.radius,
-    view.cy - view.radius,
-    view.cx + view.radius,
-    view.cy + view.radius,
-  );
-  rim.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
-  rim.addColorStop(0.36, 'rgba(255, 255, 255, 0.1)');
-  rim.addColorStop(0.68, 'rgba(84, 90, 126, 0.24)');
-  rim.addColorStop(1, 'rgba(255, 255, 255, 0.58)');
+  if (layerControls.outerStrokeEnabled) {
+    const rim = ctx.createLinearGradient(
+      view.cx - view.radius,
+      view.cy - view.radius,
+      view.cx + view.radius,
+      view.cy + view.radius,
+    );
+    rim.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
+    rim.addColorStop(0.36, 'rgba(255, 255, 255, 0.1)');
+    rim.addColorStop(0.68, 'rgba(84, 90, 126, 0.24)');
+    rim.addColorStop(1, 'rgba(255, 255, 255, 0.58)');
 
-  ctx.lineWidth = Math.max(1.2, view.radius * 0.025);
-  ctx.strokeStyle = rim;
-  ctx.beginPath();
-  ctx.arc(view.cx, view.cy, view.radius - ctx.lineWidth * 0.5, 0, Math.PI * 2);
-  ctx.stroke();
+    ctx.lineWidth = Math.max(1.2, view.radius * 0.025);
+    ctx.strokeStyle = rim;
+    ctx.beginPath();
+    ctx.arc(view.cx, view.cy, view.radius - ctx.lineWidth * 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 function updateGlintFromPointer(clientX: number, clientY: number, active: boolean): void {
@@ -567,5 +623,6 @@ document.addEventListener('contextmenu', (event) => {
 window.addEventListener('resize', resize);
 
 setupGui();
+applyBackgroundColor();
 resize();
 requestAnimationFrame(tick);
