@@ -413,9 +413,9 @@ function renderGlassBall(): void {
         : 0;
       const shell = specA * 136 + specB * 74 + specC * 14 + pointerSpec * 132;
 
-      let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 12 - hardRim * 6 + caRim * 10;
-      let g = mix(sampleG * innerShade, 255, glassMilk) + shell + topWash * 20 + rim * 14 - hardRim * 8;
-      let b = mix(sampleB * innerShade, 255, glassMilk * 0.9) + shell + topWash * 28 + rim * 30 - hardRim * 1;
+      let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
+      let g = mix(sampleG * innerShade, 255, glassMilk) + shell + topWash * 19 + rim * 11 - hardRim * 6;
+      let b = mix(sampleB * innerShade, 255, glassMilk * 0.94) + shell + topWash * 21 + rim * 15 - hardRim * 2;
 
       data[index] = clamp(r, 0, 255);
       data[index + 1] = clamp(g, 0, 255);
@@ -479,12 +479,12 @@ function drawScene(): void {
       view.cx + view.radius,
       view.cy + view.radius,
     );
-    rim.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
-    rim.addColorStop(0.36, 'rgba(255, 255, 255, 0.1)');
-    rim.addColorStop(0.68, 'rgba(84, 90, 126, 0.24)');
-    rim.addColorStop(1, 'rgba(255, 255, 255, 0.58)');
+    rim.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+    rim.addColorStop(0.36, 'rgba(255, 255, 255, 0.08)');
+    rim.addColorStop(0.68, 'rgba(214, 205, 190, 0.1)');
+    rim.addColorStop(1, 'rgba(255, 255, 255, 0.34)');
 
-    ctx.lineWidth = Math.max(1.2, view.radius * 0.025);
+    ctx.lineWidth = Math.max(0.8, view.radius * 0.012);
     ctx.strokeStyle = rim;
     ctx.beginPath();
     ctx.arc(view.cx, view.cy, view.radius - ctx.lineWidth * 0.5, 0, Math.PI * 2);
