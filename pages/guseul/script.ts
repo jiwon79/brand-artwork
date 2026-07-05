@@ -1,3 +1,5 @@
+import GUI from 'lil-gui';
+
 type MarbleCircle = {
   x: number;
   y: number;
@@ -54,6 +56,28 @@ const marbleCircles: MarbleCircle[] = [
   { x: 0.58, y: 0.7, radius: 0.25, color: '#f66a7c' },
 ];
 
+const layerControls = {
+  displacementEnabled: true,
+  edgeStart: 0.56,
+  edgeEnd: 1,
+  inwardPower: 1.75,
+  inwardStrength: 0.34,
+  tangentPower: 1.45,
+  tangentStrength: 0.14,
+  tangentYScale: 0.58,
+  chromaticEnabled: true,
+  chromaticPower: 1.4,
+  chromaticStrength: 0.045,
+  smearEnabled: true,
+  smearPower: 1.3,
+  smearStrength: 0.18,
+  smearMixStrength: 0.52,
+  tangentSmearAX: 0.74,
+  tangentSmearAY: 0.56,
+  tangentSmearBX: 0.62,
+  tangentSmearBY: 0.46,
+};
+
 let contentData: ImageData | null = null;
 let view: View = {
   width: 1,
@@ -105,6 +129,38 @@ function normalDotCamera(x: number, y: number): number {
 
 function scaleFromNormalDot(dot: number): number {
   return mix(0.2, 1.02, dot ** 0.72);
+}
+
+function setupGui(): void {
+  const gui = new GUI({ title: 'Guseul layers' });
+  gui.domElement.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+  });
+
+  const displacement = gui.addFolder('5 sampling / displacement');
+  displacement.add(layerControls, 'displacementEnabled').name('on');
+  displacement.add(layerControls, 'edgeStart', 0, 0.98, 0.01).name('edge start');
+  displacement.add(layerControls, 'edgeEnd', 0.02, 1, 0.01).name('edge end');
+  displacement.add(layerControls, 'inwardPower', 0.1, 4, 0.01).name('inward power');
+  displacement.add(layerControls, 'inwardStrength', 0, 0.9, 0.01).name('inward amount');
+  displacement.add(layerControls, 'tangentPower', 0.1, 4, 0.01).name('tangent power');
+  displacement.add(layerControls, 'tangentStrength', 0, 0.5, 0.01).name('tangent amount');
+  displacement.add(layerControls, 'tangentYScale', 0, 1.5, 0.01).name('tangent y');
+
+  const chromatic = gui.addFolder('6 chromatic');
+  chromatic.add(layerControls, 'chromaticEnabled').name('on');
+  chromatic.add(layerControls, 'chromaticPower', 0.1, 4, 0.01).name('power');
+  chromatic.add(layerControls, 'chromaticStrength', 0, 0.2, 0.001).name('amount');
+
+  const smear = gui.addFolder('7 smear / stretch');
+  smear.add(layerControls, 'smearEnabled').name('on');
+  smear.add(layerControls, 'smearPower', 0.1, 4, 0.01).name('power');
+  smear.add(layerControls, 'smearStrength', 0, 0.7, 0.01).name('distance');
+  smear.add(layerControls, 'smearMixStrength', 0, 1, 0.01).name('mix');
+  smear.add(layerControls, 'tangentSmearAX', 0, 1.5, 0.01).name('tangent A x');
+  smear.add(layerControls, 'tangentSmearAY', 0, 1.5, 0.01).name('tangent A y');
+  smear.add(layerControls, 'tangentSmearBX', 0, 1.5, 0.01).name('tangent B x');
+  smear.add(layerControls, 'tangentSmearBY', 0, 1.5, 0.01).name('tangent B y');
 }
 
 function resize(): void {
@@ -222,27 +278,43 @@ function sampleContent(x: number, y: number): RGBA {
   return rgba;
 }
 
-function sampleLiquidGlass(nx: number, ny: number, nz: number, radial: number): RGBA {
+function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const radius = view.radius;
   const dirX = radial > 0.001 ? nx / radial : 0;
   const dirY = radial > 0.001 ? ny / radial : 0;
   const tangentX = -dirY;
   const tangentY = dirX;
-  const edgeT = smoothstep(0.56, 1, radial);
-  const edgeFold = edgeT ** 1.75 * radius * 0.34;
-  const tangentSlip = edgeT ** 1.45 * radius * 0.14;
+  const edgeStart = Math.min(layerControls.edgeStart, layerControls.edgeEnd - 0.001);
+  const edgeEnd = Math.max(layerControls.edgeEnd, edgeStart + 0.001);
+  const edgeT = smoothstep(edgeStart, edgeEnd, radial);
+  const edgeFold = layerControls.displacementEnabled
+    ? edgeT ** layerControls.inwardPower * radius * layerControls.inwardStrength
+    : 0;
+  const tangentSlip = layerControls.displacementEnabled
+    ? edgeT ** layerControls.tangentPower * radius * layerControls.tangentStrength
+    : 0;
   const sourceX = radius + nx * radius - dirX * edgeFold + tangentX * tangentSlip;
-  const sourceY = radius + ny * radius - dirY * edgeFold + tangentY * tangentSlip * 0.58;
-  const smear = edgeT ** 1.3 * radius * 0.18;
-  const aberration = edgeT ** 1.4 * radius * 0.045;
+  const sourceY = radius + ny * radius - dirY * edgeFold + tangentY * tangentSlip * layerControls.tangentYScale;
+  const smear = layerControls.smearEnabled
+    ? edgeT ** layerControls.smearPower * radius * layerControls.smearStrength
+    : 0;
+  const aberration = layerControls.chromaticEnabled
+    ? edgeT ** layerControls.chromaticPower * radius * layerControls.chromaticStrength
+    : 0;
 
   const red = sampleContent(sourceX + dirX * aberration, sourceY + dirY * aberration);
   const green = sampleContent(sourceX, sourceY);
   const blue = sampleContent(sourceX - dirX * aberration, sourceY - dirY * aberration);
   const radialSmear = sampleContent(sourceX - dirX * smear, sourceY - dirY * smear);
-  const tangentSmearA = sampleContent(sourceX + tangentX * smear * 0.74, sourceY + tangentY * smear * 0.56);
-  const tangentSmearB = sampleContent(sourceX - tangentX * smear * 0.62, sourceY - tangentY * smear * 0.46);
-  const smearMix = edgeT * 0.52;
+  const tangentSmearA = sampleContent(
+    sourceX + tangentX * smear * layerControls.tangentSmearAX,
+    sourceY + tangentY * smear * layerControls.tangentSmearAY,
+  );
+  const tangentSmearB = sampleContent(
+    sourceX - tangentX * smear * layerControls.tangentSmearBX,
+    sourceY - tangentY * smear * layerControls.tangentSmearBY,
+  );
+  const smearMix = layerControls.smearEnabled ? edgeT * layerControls.smearMixStrength : 0;
 
   return [
     mix(red[0], radialSmear[0] * 0.64 + tangentSmearA[0] * 0.36, smearMix),
@@ -275,7 +347,7 @@ function renderGlassBall(): void {
       const radial = Math.sqrt(radialSq);
       const nz = Math.sqrt(1 - radialSq);
       const edgeT = smoothstep(0.68, 1, radial);
-      const [sampleR, sampleG, sampleB] = sampleLiquidGlass(nx, ny, nz, radial);
+      const [sampleR, sampleG, sampleB] = sampleLiquidGlass(nx, ny, radial);
       const directionalLight = Math.max(0, nx * -0.36 + ny * -0.48 + nz * 0.88);
       const innerShade = 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08;
       const glassMilk = 0.025 + edgeT * 0.22 + smoothstep(0.92, 1, radial) * 0.18;
@@ -486,5 +558,6 @@ document.addEventListener('contextmenu', (event) => {
 
 window.addEventListener('resize', resize);
 
+setupGui();
 resize();
 requestAnimationFrame(tick);
