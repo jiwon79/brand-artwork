@@ -9,8 +9,6 @@ type View = {
   width: number;
   height: number;
   dpr: number;
-  bandY: number;
-  bandHeight: number;
   cx: number;
   cy: number;
   radius: number;
@@ -61,8 +59,6 @@ let view: View = {
   width: 1,
   height: 1,
   dpr: 1,
-  bandY: 0,
-  bandHeight: 1,
   cx: 0,
   cy: 0,
   radius: 1,
@@ -115,17 +111,14 @@ function resize(): void {
   const width = window.innerWidth;
   const height = window.innerHeight;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const bandHeight = clamp(height * 0.26, 260, 360);
-  const radius = clamp(Math.min(width * 0.18, bandHeight * 0.34), 82, 148);
+  const radius = clamp(Math.min(width, height) * 0.18, 82, 148);
 
   view = {
     width,
     height,
     dpr,
-    bandY: (height - bandHeight) / 2,
-    bandHeight,
     cx: width / 2,
-    cy: height / 2 + radius * 0.06,
+    cy: height / 2,
     radius,
   };
 
@@ -313,10 +306,8 @@ function renderGlassBall(): void {
 
 function drawScene(): void {
   ctx.clearRect(0, 0, view.width, view.height);
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, view.width, view.height);
   ctx.fillStyle = '#fffefb';
-  ctx.fillRect(0, view.bandY, view.width, view.bandHeight);
+  ctx.fillRect(0, 0, view.width, view.height);
 
   const shadow = ctx.createRadialGradient(
     view.cx,
@@ -427,6 +418,7 @@ canvas.addEventListener('pointerdown', (event) => {
   }
 
   pointerId = event.pointerId;
+  event.preventDefault();
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
   velocityX = 0;
@@ -442,6 +434,7 @@ canvas.addEventListener('pointermove', (event) => {
     return;
   }
 
+  event.preventDefault();
   const dx = event.clientX - lastPointerX;
   const dy = event.clientY - lastPointerY;
   lastPointerX = event.clientX;
@@ -458,6 +451,7 @@ canvas.addEventListener('pointerup', (event) => {
   }
 
   pointerId = null;
+  event.preventDefault();
   targetGlintAlpha = 0.28;
   canvas.releasePointerCapture(event.pointerId);
 });
@@ -468,6 +462,7 @@ canvas.addEventListener('pointercancel', (event) => {
   }
 
   pointerId = null;
+  event.preventDefault();
   targetGlintAlpha = 0.18;
 });
 
@@ -475,6 +470,18 @@ canvas.addEventListener('pointerleave', () => {
   if (pointerId === null) {
     targetGlintAlpha = 0.18;
   }
+});
+
+document.addEventListener('selectstart', (event) => {
+  event.preventDefault();
+});
+
+document.addEventListener('dragstart', (event) => {
+  event.preventDefault();
+});
+
+document.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
 });
 
 window.addEventListener('resize', resize);
