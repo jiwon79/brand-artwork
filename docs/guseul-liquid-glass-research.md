@@ -69,14 +69,23 @@ For the current prototype:
 
 The next fidelity step after the placeholder circles is replacing the source plane with photo/image cards. The same displacement model should remain unchanged.
 
-## Applied Prototype Structure
+## Current Prototype Structure
+
+After comparing the first implementation with the reference, the page changed away from a visible outside source-plane model. The colored placeholder circles should live inside the marble, while the outside remains mostly a white stage.
 
 The Guseul page now follows this order:
 
-1. Render the visible black background, white band, and colored placeholder circles into an offscreen `sourceCanvas`.
-2. Draw that exact source plane to the main canvas.
-3. Render the glass ball into `ballCanvas`.
-4. For each ball pixel, convert its local circle coordinate back to screen coordinates and sample `sourceCanvas` with nonlinear displacement.
-5. Add shell-only lighting: rim, fresnel wash, chromatic edge offset, and specular highlights.
+1. Draw the black background and plain white band.
+2. Render the glass ball into `ballCanvas`.
+3. Clip all colored placeholder circles to the ball interior.
+4. Move the internal circle layout with drag offset.
+5. For each circle center, calculate the sphere normal's camera-facing component:
 
-The important implementation detail is that the colored circles outside the ball and the distorted colors inside the ball come from the same `sourceCanvas`. This is what creates the visible "connected plane being dragged through glass" effect.
+```ts
+const normalDotCamera = sqrt(1 - x * x - y * y);
+```
+
+6. Reduce the circle size as `normalDotCamera` approaches `0`, because that means the surface normal is becoming perpendicular to the camera vector.
+7. Add shell-only lighting: rim, fresnel wash, glass haze, and specular highlights.
+
+The important implementation detail is that the colored circles are not visible outside the ball. The drag interaction adjusts their internal positions, and edge proximity is suggested mostly by scale reduction rather than full sphere projection.
