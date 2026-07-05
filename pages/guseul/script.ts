@@ -71,9 +71,9 @@ const layerControls = {
   edgeStart: 0.56,
   edgeEnd: 1,
   inwardPower: 1.75,
-  inwardStrength: 0.045,
+  inwardStrength: 0.34,
+  inwardFarScale: 0.13,
   contactPower: 2.15,
-  contactInwardStrength: 0.76,
   contactWidth: 0.12,
   contactProbeRadius: 0.93,
   contactRadiusScale: 1.08,
@@ -180,9 +180,9 @@ function setupGui(): void {
   displacement.add(layerControls, 'edgeStart', 0, 0.98, 0.01).name('edge start');
   displacement.add(layerControls, 'edgeEnd', 0.02, 1, 0.01).name('edge end');
   displacement.add(layerControls, 'inwardPower', 0.1, 4, 0.01).name('inward power');
-  displacement.add(layerControls, 'inwardStrength', 0, 0.3, 0.001).name('idle amount');
+  displacement.add(layerControls, 'inwardStrength', 0, 0.9, 0.01).name('inward amount');
+  displacement.add(layerControls, 'inwardFarScale', 0, 1, 0.001).name('far scale');
   displacement.add(layerControls, 'contactPower', 0.1, 5, 0.01).name('contact power');
-  displacement.add(layerControls, 'contactInwardStrength', 0, 0.9, 0.01).name('contact amount');
   displacement.add(layerControls, 'contactWidth', 0.01, 0.35, 0.001).name('contact width');
   displacement.add(layerControls, 'contactProbeRadius', 0.7, 1, 0.001).name('contact probe');
   displacement.add(layerControls, 'contactRadiusScale', 0.5, 1.8, 0.01).name('contact radius');
@@ -372,15 +372,10 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const edgeEnd = Math.max(layerControls.edgeEnd, edgeStart + 0.001);
   const edgeT = smoothstep(edgeStart, edgeEnd, radial);
   const contact = layerControls.displacementEnabled && edgeT > 0 ? contactGateForDirection(dirX, dirY) : 0;
-  const idleFold = layerControls.displacementEnabled
-    ? edgeT ** layerControls.inwardPower * radius * layerControls.inwardStrength
+  const contactScale = mix(layerControls.inwardFarScale, 1, contact);
+  const edgeFold = layerControls.displacementEnabled
+    ? edgeT ** layerControls.inwardPower * radius * layerControls.inwardStrength * contactScale
     : 0;
-  const edgeBandDistance = Math.max(0, radial - edgeStart);
-  const contactCompression = clamp(layerControls.contactInwardStrength, 0, 0.96) * contact;
-  const contactFold = layerControls.displacementEnabled
-    ? edgeBandDistance * radius * contactCompression
-    : 0;
-  const edgeFold = idleFold + contactFold;
   const tangentSlip = layerControls.displacementEnabled
     ? edgeT ** layerControls.tangentPower * radius * layerControls.tangentStrength
     : 0;
