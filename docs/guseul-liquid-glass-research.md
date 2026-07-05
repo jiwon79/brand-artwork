@@ -76,16 +76,17 @@ After comparing the first implementation with the reference, the page changed aw
 The Guseul page now follows this order:
 
 1. Draw the black background and plain white band.
-2. Render the glass ball into `ballCanvas`.
-3. Clip all colored placeholder circles to the ball interior.
-4. Move the internal circle layout with drag offset.
-5. For each circle center, calculate the sphere normal's camera-facing component:
+2. Draw a ball-sized offscreen content layer with only complete colored circles. No ellipse scaling or decorative curved cuts are used.
+3. Move that internal circle layout with drag offset.
+4. For each circle center, calculate the sphere normal's camera-facing component:
 
 ```ts
 const normalDotCamera = sqrt(1 - x * x - y * y);
 ```
 
-6. Reduce the circle size as `normalDotCamera` approaches `0`, because that means the surface normal is becoming perpendicular to the camera vector.
-7. Add shell-only lighting: rim, fresnel wash, glass haze, and specular highlights.
+5. Reduce the circle size as `normalDotCamera` approaches `0`, because that means the surface normal is becoming perpendicular to the camera vector.
+6. Render the glass ball by resampling that internal content layer through an edge displacement field.
+7. Near the rim, sample inward and add tangent smear/chromatic offsets so content appears squeezed and pulled by the glass edge.
+8. Add shell-only lighting: rim, fresnel wash, glass haze, and specular highlights.
 
-The important implementation detail is that the colored circles are not visible outside the ball. The drag interaction adjusts their internal positions, and edge proximity is suggested mostly by scale reduction rather than full sphere projection.
+The important implementation detail is that the colored circles are not visible outside the ball. The drag interaction adjusts their internal positions. Edge proximity is suggested by circle scale reduction, then reinforced by a Liquid Glass-style resampling pass that bends the internal content strongest in the rim annulus.
