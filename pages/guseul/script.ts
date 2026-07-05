@@ -471,8 +471,8 @@ function tick(now: number): void {
     }
   }
 
-  offsetX = mix(offsetX, targetOffsetX, 0.18);
-  offsetY = mix(offsetY, targetOffsetY, 0.18);
+  offsetX = targetOffsetX;
+  offsetY = targetOffsetY;
   glintX = mix(glintX, targetGlintX, 0.18);
   glintY = mix(glintY, targetGlintY, 0.18);
   glintAlpha = mix(glintAlpha, targetGlintAlpha, 0.16);
@@ -513,6 +513,8 @@ canvas.addEventListener('pointermove', (event) => {
   lastPointerY = event.clientY;
   targetOffsetX += (dx / view.radius) * 0.52;
   targetOffsetY += (dy / view.radius) * 0.52;
+  offsetX = targetOffsetX;
+  offsetY = targetOffsetY;
   velocityX = (dx / view.radius) * 5.5;
   velocityY = (dy / view.radius) * 5.5;
 });
