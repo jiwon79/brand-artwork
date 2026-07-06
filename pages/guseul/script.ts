@@ -87,19 +87,8 @@ const layerControls = {
   displacementFactor: 1,
   displacementBlur: 7,
   ior: 1.5,
-  tangentPower: 1.45,
-  tangentStrength: 0,
-  tangentYScale: 0.58,
   chromaticEnabled: true,
   dispersion: 0.035,
-  smearEnabled: false,
-  smearPower: 1.3,
-  smearStrength: 0.18,
-  smearMixStrength: 0.52,
-  tangentSmearAX: 0.74,
-  tangentSmearAY: 0.56,
-  tangentSmearBX: 0.62,
-  tangentSmearBY: 0.46,
   innerShadeEnabled: true,
   glassMilkEnabled: true,
   topWashEnabled: true,
@@ -321,21 +310,8 @@ function setupGui(): void {
   refraction.add(layerControls, 'ior', 1.01, 2.4, 0.01).name('ior');
   refraction.add(layerControls, 'chromaticEnabled').name('chromatic');
   refraction.add(layerControls, 'dispersion', 0, 0.14, 0.001).name('dispersion');
-  refraction.add(layerControls, 'tangentPower', 0.1, 4, 0.01).name('tangent power');
-  refraction.add(layerControls, 'tangentStrength', 0, 0.5, 0.01).name('tangent amount');
-  refraction.add(layerControls, 'tangentYScale', 0, 1.5, 0.01).name('tangent y');
 
-  const smear = gui.addFolder('5 edge smear');
-  smear.add(layerControls, 'smearEnabled').name('on');
-  smear.add(layerControls, 'smearPower', 0.1, 4, 0.01).name('power');
-  smear.add(layerControls, 'smearStrength', 0, 0.7, 0.01).name('distance');
-  smear.add(layerControls, 'smearMixStrength', 0, 1, 0.01).name('mix');
-  smear.add(layerControls, 'tangentSmearAX', 0, 1.5, 0.01).name('tangent A x');
-  smear.add(layerControls, 'tangentSmearAY', 0, 1.5, 0.01).name('tangent A y');
-  smear.add(layerControls, 'tangentSmearBX', 0, 1.5, 0.01).name('tangent B x');
-  smear.add(layerControls, 'tangentSmearBY', 0, 1.5, 0.01).name('tangent B y');
-
-  const shell = gui.addFolder('6 glass shell');
+  const shell = gui.addFolder('5 glass shell');
   shell.add(layerControls, 'innerShadeEnabled').name('innerShade');
   shell.add(layerControls, 'glassMilkEnabled').name('glassMilk');
   shell.add(layerControls, 'topWashEnabled').name('topWash');
@@ -347,7 +323,7 @@ function setupGui(): void {
   shell.add(layerControls, 'specCEnabled').name('spec C');
   shell.add(layerControls, 'pointerSpecEnabled').name('pointerSpec');
 
-  const composite = gui.addFolder('7 final composite');
+  const composite = gui.addFolder('6 final composite');
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 }
 
@@ -672,19 +648,9 @@ function sampleSurfaceField(nx: number, ny: number, radial: number): SurfaceSamp
 
 function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const radius = view.radius;
-  const dirX = radial > 0.001 ? nx / radial : 0;
-  const dirY = radial > 0.001 ? ny / radial : 0;
-  const tangentX = -dirY;
-  const tangentY = dirX;
   const surface = sampleSurfaceField(nx, ny, radial);
   const baseRay = refractCameraRay(surface.slopeX, surface.slopeY, layerControls.ior);
   const [baseOffsetX, baseOffsetY] = rayToDisplacement(baseRay, surface.height);
-  const tangentSlip = surface.rim ** layerControls.tangentPower * layerControls.tangentStrength * radius;
-  const sourceX = radius + nx * radius + baseOffsetX + tangentX * tangentSlip;
-  const sourceY = radius + ny * radius + baseOffsetY + tangentY * tangentSlip * layerControls.tangentYScale;
-  const smear = layerControls.smearEnabled
-    ? surface.rim ** layerControls.smearPower * radius * layerControls.smearStrength
-    : 0;
   const redSource = layerControls.chromaticEnabled
     ? rayToDisplacement(
       refractCameraRay(surface.slopeX, surface.slopeY, layerControls.ior + layerControls.dispersion),
@@ -698,30 +664,18 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
     )
     : [baseOffsetX, baseOffsetY];
 
-  const red = sampleContent(
-    radius + nx * radius + redSource[0] + tangentX * tangentSlip,
-    radius + ny * radius + redSource[1] + tangentY * tangentSlip * layerControls.tangentYScale,
+  const sampleAtOffset = ([offsetX, offsetY]: number[]): RGBA => sampleContent(
+    radius + nx * radius + offsetX,
+    radius + ny * radius + offsetY,
   );
-  const green = sampleContent(sourceX, sourceY);
-  const blue = sampleContent(
-    radius + nx * radius + blueSource[0] + tangentX * tangentSlip,
-    radius + ny * radius + blueSource[1] + tangentY * tangentSlip * layerControls.tangentYScale,
-  );
-  const radialSmear = sampleContent(sourceX - dirX * smear, sourceY - dirY * smear);
-  const tangentSmearA = sampleContent(
-    sourceX + tangentX * smear * layerControls.tangentSmearAX,
-    sourceY + tangentY * smear * layerControls.tangentSmearAY,
-  );
-  const tangentSmearB = sampleContent(
-    sourceX - tangentX * smear * layerControls.tangentSmearBX,
-    sourceY - tangentY * smear * layerControls.tangentSmearBY,
-  );
-  const smearMix = layerControls.smearEnabled ? surface.rim * layerControls.smearMixStrength : 0;
+  const red = sampleAtOffset(redSource);
+  const green = sampleAtOffset([baseOffsetX, baseOffsetY]);
+  const blue = sampleAtOffset(blueSource);
 
   return [
-    mix(red[0], radialSmear[0] * 0.64 + tangentSmearA[0] * 0.36, smearMix),
-    mix(green[1], radialSmear[1] * 0.5 + tangentSmearB[1] * 0.5, smearMix * 0.86),
-    mix(blue[2], radialSmear[2] * 0.56 + tangentSmearA[2] * 0.44, smearMix),
+    red[0],
+    green[1],
+    blue[2],
     255,
   ];
 }

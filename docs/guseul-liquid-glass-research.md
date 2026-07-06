@@ -376,6 +376,23 @@ The Guseul source layer now uses a larger internal content plane with overscan:
 - colored circles are drawn beyond the visible marble silhouette into an offscreen guard band.
 - the final glass ball alpha still clips the visible result to a perfect circle.
 - `sampleContent()` returns the background color when sampling outside the overscan plane instead of clamping to the texture edge.
-- GUI folders are reorganized by pipeline stage: scene, source content, surface field, refraction, edge smear, glass shell, final composite.
+- GUI folders are reorganized by pipeline stage: scene, source content, surface field, refraction, glass shell, final composite.
 
 This does not remove every possible fold from extreme optical settings. A very high `thickness`, high `displacementFactor`, or narrow `bezelWidth` can still make the inverse mapping non-monotonic. But the visible one-sided kink from the reference screenshot should be reduced because the sampler no longer runs into a pre-clipped content edge.
+
+## 2026-07-07 Experimental Smear/Tangent Removal
+
+The live prototype no longer has the separate `edge smear` or tangent-slip sampling layers. Those controls were local experiments for forcing edge-following color spread, but they are not part of the `liquid-dom`-style structure.
+
+Current live sampling is:
+
+```text
+source content
+  -> SDF surface field with blur
+  -> refracted source coordinate
+  -> optional chromatic dispersion from the same refracted field
+  -> glass shell overlays
+  -> final circular composite
+```
+
+This keeps the edge behavior tied to one optical field. If the edge needs more stretch later, tune the surface field (`bezelWidth`, `profilePower`, `displacementBlur`, `thickness`, `displacementFactor`) instead of adding extra tangent or smear samples that create multiple competing directions.
