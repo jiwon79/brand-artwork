@@ -11,8 +11,6 @@ type VisibleMarbleCircle = MarbleCircle & {
   cx: number;
   cy: number;
   dot: number;
-  scaledRadius: number;
-  edgeContact: number;
 };
 
 type View = {
@@ -73,10 +71,6 @@ const layerControls = {
   edgeEnd: 1,
   inwardPower: 1.75,
   inwardStrength: 0.34,
-  inwardFarScale: 0.13,
-  contactPower: 2.15,
-  contactWidth: 0.12,
-  contactRadiusScale: 1.08,
   tangentPower: 1.45,
   tangentStrength: 0.14,
   tangentYScale: 0.58,
@@ -181,10 +175,6 @@ function setupGui(): void {
   displacement.add(layerControls, 'edgeEnd', 0.02, 1, 0.01).name('edge end');
   displacement.add(layerControls, 'inwardPower', 0.1, 4, 0.01).name('inward power');
   displacement.add(layerControls, 'inwardStrength', 0, 0.9, 0.01).name('inward amount');
-  displacement.add(layerControls, 'inwardFarScale', 0, 1, 0.001).name('far scale');
-  displacement.add(layerControls, 'contactPower', 0.1, 5, 0.01).name('contact power');
-  displacement.add(layerControls, 'contactWidth', 0.01, 0.35, 0.001).name('contact width');
-  displacement.add(layerControls, 'contactRadiusScale', 0.5, 1.8, 0.01).name('contact radius');
   displacement.add(layerControls, 'tangentPower', 0.1, 4, 0.01).name('tangent power');
   displacement.add(layerControls, 'tangentStrength', 0, 0.5, 0.01).name('tangent amount');
   displacement.add(layerControls, 'tangentYScale', 0, 1.5, 0.01).name('tangent y');
@@ -269,18 +259,13 @@ function collectVisibleCircles(): VisibleMarbleCircle[] {
         const cx = circle.x + wrappedX + tileX * motifWidth;
         const cy = circle.y + wrappedY + tileY * motifHeight;
         const dot = normalDotCamera(cx, cy);
-        const scaledRadius = circle.radius * scaleFromNormalDot(dot);
-        const contactRadius = scaledRadius * layerControls.contactRadiusScale;
-        const contactWidth = Math.max(0.001, layerControls.contactWidth);
-        const edgeGap = 1 - (Math.hypot(cx, cy) + contactRadius);
-        const edgeContact = (1 - smoothstep(0, contactWidth, edgeGap)) ** layerControls.contactPower;
-        const reach = Math.max(circle.radius, contactRadius) + contactWidth;
+        const reach = circle.radius * 1.15;
 
         if (Math.hypot(cx, cy) > 1 + reach) {
           continue;
         }
 
-        items.push({ ...circle, cx, cy, dot, scaledRadius, edgeContact });
+        items.push({ ...circle, cx, cy, dot });
       }
     }
   }
@@ -344,24 +329,6 @@ function sampleContent(x: number, y: number): RGBA {
   return rgba;
 }
 
-function contactGateAtPoint(x: number, y: number): number {
-  if (visibleCircles.length === 0) {
-    return 0;
-  }
-
-  const contactWidth = Math.max(0.001, layerControls.contactWidth);
-  let contact = 0;
-
-  for (const circle of visibleCircles) {
-    const radius = circle.scaledRadius * layerControls.contactRadiusScale;
-    const distance = Math.hypot(x - circle.cx, y - circle.cy);
-    const ownership = 1 - smoothstep(radius, radius + contactWidth, distance);
-    contact = Math.max(contact, circle.edgeContact * ownership);
-  }
-
-  return contact;
-}
-
 function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const radius = view.radius;
   const dirX = radial > 0.001 ? nx / radial : 0;
@@ -371,17 +338,8 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const edgeStart = Math.min(layerControls.edgeStart, layerControls.edgeEnd - 0.001);
   const edgeEnd = Math.max(layerControls.edgeEnd, edgeStart + 0.001);
   const edgeT = smoothstep(edgeStart, edgeEnd, radial);
-  const fullFold = layerControls.displacementEnabled
-    ? edgeT ** layerControls.inwardPower * radius * layerControls.inwardStrength
-    : 0;
-  const farScale = clamp(layerControls.inwardFarScale, 0, 1);
-  const farFold = fullFold * farScale;
-  const farSourceX = nx - dirX * (farFold / radius);
-  const farSourceY = ny - dirY * (farFold / radius);
-  const contact = fullFold > 0 ? contactGateAtPoint(farSourceX, farSourceY) : 0;
-  const contactScale = mix(farScale, 1, contact);
   const edgeFold = layerControls.displacementEnabled
-    ? fullFold * contactScale
+    ? edgeT ** layerControls.inwardPower * radius * layerControls.inwardStrength
     : 0;
   const tangentSlip = layerControls.displacementEnabled
     ? edgeT ** layerControls.tangentPower * radius * layerControls.tangentStrength
