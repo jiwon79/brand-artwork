@@ -90,3 +90,39 @@ const normalDotCamera = sqrt(1 - x * x - y * y);
 8. Add shell-only lighting: rim, fresnel wash, glass haze, and specular highlights.
 
 The important implementation detail is that the colored circles are not visible outside the ball. The drag interaction adjusts their internal positions. Edge proximity is suggested by circle scale reduction, then reinforced by a Liquid Glass-style resampling pass that bends the internal content strongest in the rim annulus.
+
+## 2026-07-06 Edge-Following Distortion Notes
+
+The current Guseul baseline is intentionally simple again: each output pixel near the marble rim samples a point farther inward from the same internal content plane. This is stable, but it only creates radial compression:
+
+```ts
+const edgeT = smoothstep(edgeStart, edgeEnd, radial);
+const edgeFold = edgeT ** inwardPower * radius * inwardStrength;
+const source = p - normal * edgeFold;
+```
+
+That is not the full Liquid Glass look. Apple describes the material as lensing: it bends and concentrates light through the glass shape. Public web implementations approximate that by building a displacement field from the glass boundary, usually through an SDF or an authored displacement map:
+
+- Apple: Liquid Glass is identified by lensing, with light bending around the material and stronger refraction when the material feels thicker.
+  - https://developer.apple.com/videos/play/wwdc2025/219/
+- Kube.io: the web prototype uses SVG displacement maps and says the field comes from a rounded bezel profile; pixels are pushed along the profile gradient.
+  - https://kube.io/blog/liquid-glass-css-svg/
+- childrentime/liquid-glass: generates an SVG displacement map from a distance-to-edge function; red and green encode x/y pixel movement.
+  - https://github.com/childrentime/liquid-glass/blob/main/LIQUID_GLASS_EFFECT_EN.md
+- rdev/liquid-glass-react: exposes modes for edge bending/refraction, chromatic aberration, and elasticity around an SVG displacement-map implementation.
+  - https://github.com/rdev/liquid-glass-react
+
+For Guseul, the next useful model should stay analytic instead of returning to per-circle contact gates:
+
+1. Treat the marble boundary as the SDF: `distanceToEdge = 1 - radial`.
+2. Build a rim band: `rimT = 1 - smoothstep(0, rimWidth, distanceToEdge)`.
+3. Use the SDF gradient as the glass edge normal: `normal = normalize(p)`.
+4. Use the perpendicular vector as tangent: `tangent = vec2(-normal.y, normal.x)`.
+5. Apply two coordinated offsets:
+   - normal pull: samples deeper inside the plane near the rim.
+   - tangent magnification: compresses source coordinates along tangent inside the rim band, so the output appears stretched along the marble edge.
+6. Keep chromatic and specular layers on top of this sampling field.
+
+In inverse-sampling terms, tangent magnification means the output covers a wider arc than the source sample interval. The code should not smear arbitrary extra samples; it should calculate a single source coordinate in the rim's local normal/tangent basis, then optionally add chromatic offsets from that same field.
+
+This should address the reference behavior more directly: when a colored plane approaches the rim, it should broaden and flow along the glass edge instead of only being pulled inward.

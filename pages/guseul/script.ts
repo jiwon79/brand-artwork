@@ -238,12 +238,16 @@ function drawContentCircle(circle: MarbleCircle, x: number, y: number, dot: numb
   const radius = view.radius;
   const size = circle.radius * radius * scaleFromNormalDot(dot);
   const alpha = mix(0.76, 1, smoothstep(0, 0.86, dot));
+  const strokeWidth = Math.min(size * 0.34, clamp(radius * 0.048, 4, 8));
 
   contentCtx.save();
   contentCtx.globalAlpha = alpha;
-  contentCtx.fillStyle = circle.color;
   contentCtx.beginPath();
   contentCtx.arc(radius + x * radius, radius + y * radius, size, 0, Math.PI * 2);
+  contentCtx.lineWidth = strokeWidth;
+  contentCtx.strokeStyle = '#ffffff';
+  contentCtx.stroke();
+  contentCtx.fillStyle = circle.color;
   contentCtx.fill();
   contentCtx.restore();
 }
