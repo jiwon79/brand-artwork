@@ -396,3 +396,14 @@ source content
 ```
 
 This keeps the edge behavior tied to one optical field. If the edge needs more stretch later, tune the surface field (`bezelWidth`, `profilePower`, `displacementBlur`, `thickness`, `displacementFactor`) instead of adding extra tangent or smear samples that create multiple competing directions.
+
+## 2026-07-07 Outer Edge Displacement Fade
+
+The prototype now fades source displacement down at the absolute outer rim with `edgeFadeWidth`. This is applied after the surface field is sampled and before RGB refraction offsets are calculated:
+
+```text
+refractionHeight = surfaceHeight * smoothFadeFromOuterRim
+source = outputPixel + refractedRay.xy * refractionHeight
+```
+
+The glass shell layers still draw to the full circular silhouette. Only the internal source-image displacement is faded, which reduces the small reverse bend that can appear when a highly displaced source coordinate meets the final circular mask.
