@@ -71,6 +71,8 @@ const layerControls = {
   edgeEnd: 1,
   inwardPower: 1.75,
   inwardStrength: 0.34,
+  edgeStretchPower: 1.18,
+  edgeStretchStrength: 0.16,
   tangentPower: 1.45,
   tangentStrength: 0,
   tangentYScale: 0.58,
@@ -175,6 +177,8 @@ function setupGui(): void {
   displacement.add(layerControls, 'edgeEnd', 0.02, 1, 0.01).name('edge end');
   displacement.add(layerControls, 'inwardPower', 0.1, 4, 0.01).name('inward power');
   displacement.add(layerControls, 'inwardStrength', 0, 0.9, 0.01).name('inward amount');
+  displacement.add(layerControls, 'edgeStretchPower', 0.1, 4, 0.01).name('stretch power');
+  displacement.add(layerControls, 'edgeStretchStrength', 0, 0.7, 0.01).name('edge stretch');
   displacement.add(layerControls, 'tangentPower', 0.1, 4, 0.01).name('tangent power');
   displacement.add(layerControls, 'tangentStrength', 0, 0.5, 0.01).name('tangent amount');
   displacement.add(layerControls, 'tangentYScale', 0, 1.5, 0.01).name('tangent y');
@@ -342,14 +346,18 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const edgeStart = Math.min(layerControls.edgeStart, layerControls.edgeEnd - 0.001);
   const edgeEnd = Math.max(layerControls.edgeEnd, edgeStart + 0.001);
   const edgeT = smoothstep(edgeStart, edgeEnd, radial);
-  const edgeFold = layerControls.displacementEnabled
-    ? edgeT ** layerControls.inwardPower * radius * layerControls.inwardStrength
+  const normalPull = layerControls.displacementEnabled
+    ? edgeT ** layerControls.inwardPower * layerControls.inwardStrength
     : 0;
+  const edgeStretch = layerControls.displacementEnabled
+    ? edgeT ** layerControls.edgeStretchPower * layerControls.edgeStretchStrength
+    : 0;
+  const edgeScale = clamp(1 - edgeStretch, 0.24, 1);
   const tangentSlip = layerControls.displacementEnabled
-    ? edgeT ** layerControls.tangentPower * radius * layerControls.tangentStrength
+    ? edgeT ** layerControls.tangentPower * layerControls.tangentStrength
     : 0;
-  const sourceX = radius + nx * radius - dirX * edgeFold + tangentX * tangentSlip;
-  const sourceY = radius + ny * radius - dirY * edgeFold + tangentY * tangentSlip * layerControls.tangentYScale;
+  const sourceX = radius + (nx * edgeScale - dirX * normalPull + tangentX * tangentSlip) * radius;
+  const sourceY = radius + (ny * edgeScale - dirY * normalPull + tangentY * tangentSlip * layerControls.tangentYScale) * radius;
   const smear = layerControls.smearEnabled
     ? edgeT ** layerControls.smearPower * radius * layerControls.smearStrength
     : 0;

@@ -126,3 +126,18 @@ For Guseul, the next useful model should stay analytic instead of returning to p
 In inverse-sampling terms, tangent magnification means the output covers a wider arc than the source sample interval. The code should not smear arbitrary extra samples; it should calculate a single source coordinate in the rim's local normal/tangent basis, then optionally add chromatic offsets from that same field.
 
 This should address the reference behavior more directly: when a colored plane approaches the rim, it should broaden and flow along the glass edge instead of only being pulled inward.
+
+## 2026-07-06 Implementation Update
+
+The Guseul sampler now implements that model directly in canvas instead of generating an SVG displacement map:
+
+```ts
+const normalPull = edgeT ** inwardPower * inwardAmount;
+const edgeStretch = edgeT ** edgeStretchPower * edgeStretchAmount;
+const edgeScale = 1 - edgeStretch;
+const source = p * edgeScale - normal * normalPull;
+```
+
+This keeps the old inward pull as the normal-axis refraction, then adds Liquid Glass-style coordinate scaling in the rim band. The scaling is the important part for the edge-following look: near the marble boundary, a wider output arc samples a smaller source arc, so colored circles and their white strokes appear broadened along the edge.
+
+The implementation is still analytic and marble-level. It does not inspect per-circle pixels or reintroduce contact gates, so every colored plane follows the same continuous glass field.
