@@ -397,13 +397,16 @@ source content
 
 This keeps the edge behavior tied to one optical field. If the edge needs more stretch later, tune the surface field (`bezelWidth`, `profilePower`, `displacementBlur`, `thickness`, `displacementFactor`) instead of adding extra tangent or smear samples that create multiple competing directions.
 
-## 2026-07-07 Outer Edge Displacement Fade
+## 2026-07-07 Outer Edge Profile Continuity
 
-The prototype now fades source displacement down at the absolute outer rim with `edgeFadeWidth`. This is applied after the surface field is sampled and before RGB refraction offsets are calculated:
+The short-lived `edgeFadeWidth` approach was removed because it faded the source displacement to zero at the outer rim. That reduced the reverse bend, but it also made colored planes look disconnected from the glass-edge distortion.
+
+The current prototype keeps source displacement connected all the way to the circular edge and instead removes the singular edge slope from the surface profile:
 
 ```text
-refractionHeight = surfaceHeight * smoothFadeFromOuterRim
-source = outputPixel + refractedRay.xy * refractionHeight
+height = 1 - (1 - progress) ^ profilePower
+slope = profilePower * (1 - progress) ^ (profilePower - 1)
+source = outputPixel + refractedRay.xy * surfaceHeight
 ```
 
-The glass shell layers still draw to the full circular silhouette. Only the internal source-image displacement is faded, which reduces the small reverse bend that can appear when a highly displaced source coordinate meets the final circular mask.
+This makes the rim field finite and continuous instead of clamping an effectively infinite derivative. `profilePower` now controls how quickly the surface rises from the edge: higher values create stronger edge pull, while lower values keep the mapping smoother and reduce folds.
