@@ -76,6 +76,7 @@ const marbleCircles: MarbleCircle[] = [
 const layerControls = {
   backgroundColor: '#fffefb',
   shadowEnabled: true,
+  marbleScale: 1.22,
   contentOverscan: 0.46,
   circleStrokeEnabled: true,
   circleStrokeScale: 1,
@@ -301,6 +302,7 @@ function setupGui(): void {
   const scene = gui.addFolder('1 scene');
   scene.addColor(layerControls, 'backgroundColor').name('background').onChange(applyBackgroundColor);
   scene.add(layerControls, 'shadowEnabled').name('shadow');
+  scene.add(layerControls, 'marbleScale', 0.7, 1.8, 0.01).name('marble scale').onChange(resize);
 
   const source = gui.addFolder('2 source content');
   source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
@@ -353,7 +355,9 @@ function resize(): void {
   const width = window.innerWidth;
   const height = window.innerHeight;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const radius = clamp(Math.min(width, height) * 0.18, 82, 148);
+  const baseRadius = clamp(Math.min(width, height) * 0.18, 82, 148);
+  const maxRadius = Math.max(82, Math.min(width, height) * 0.34);
+  const radius = clamp(baseRadius * layerControls.marbleScale, 82, maxRadius);
 
   view = {
     width,
