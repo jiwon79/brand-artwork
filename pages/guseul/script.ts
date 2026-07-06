@@ -83,9 +83,9 @@ const layerControls = {
   displacementEnabled: true,
   surfaceProfile: 'convex' as SurfaceProfile,
   bezelWidth: 0.2,
-  profilePower: 2.6,
   thickness: 0.34,
   displacementFactor: 1,
+  edgeFadeWidth: 0.045,
   displacementBlur: 7,
   ior: 1.5,
   chromaticEnabled: true,
@@ -174,11 +174,10 @@ function smootherstepDerivative(value: number): number {
 }
 
 function convexSurfaceProfile(progress: number): [number, number] {
-  const p = clamp(progress, 0, 1);
-  const power = Math.max(layerControls.profilePower, 1.01);
-  const inverse = 1 - p;
-  const height = 1 - inverse ** power;
-  const derivative = power * inverse ** (power - 1);
+  const u = 1 - clamp(progress, 0, 1);
+  const inside = Math.max(1 - u ** 4, 0.0001);
+  const height = Math.sqrt(inside);
+  const derivative = (2 * u ** 3) / Math.sqrt(inside);
 
   return [height, derivative];
 }
@@ -228,6 +227,16 @@ function getContentCenter(): number {
 
 function getRimInfluence(radial: number): number {
   return 1 - smoothstep(0, getBezelWidth(), Math.max(1 - radial, 0));
+}
+
+function getDisplacementEdgeFade(radial: number): number {
+  const width = Math.max(layerControls.edgeFadeWidth, 0);
+
+  if (width <= 0.0001) {
+    return 1;
+  }
+
+  return smoothstep(0, width, Math.max(1 - radial, 0));
 }
 
 function getSurfaceHeight(radial: number): number {
@@ -304,12 +313,12 @@ function setupGui(): void {
   surface.add(layerControls, 'displacementEnabled').name('on');
   surface.add(layerControls, 'surfaceProfile', ['convex', 'concave', 'lip']).name('profile');
   surface.add(layerControls, 'bezelWidth', 0.04, 0.55, 0.01).name('bezel width');
-  surface.add(layerControls, 'profilePower', 1.05, 5, 0.01).name('profile power');
   surface.add(layerControls, 'displacementBlur', 0, 18, 0.5).name('field blur');
 
   const refraction = gui.addFolder('4 refraction');
   refraction.add(layerControls, 'thickness', 0, 0.9, 0.01).name('thickness');
   refraction.add(layerControls, 'displacementFactor', 0, 2, 0.01).name('displace factor');
+  refraction.add(layerControls, 'edgeFadeWidth', 0, 0.18, 0.001).name('edge fade');
   refraction.add(layerControls, 'ior', 1.01, 2.4, 0.01).name('ior');
   refraction.add(layerControls, 'chromaticEnabled').name('chromatic');
   refraction.add(layerControls, 'dispersion', 0, 0.14, 0.001).name('dispersion');
@@ -486,7 +495,6 @@ function getSurfaceFieldSignature(): string {
     layerControls.displacementEnabled,
     layerControls.surfaceProfile,
     layerControls.bezelWidth,
-    layerControls.profilePower,
     layerControls.displacementBlur,
   ].join('|');
 }
@@ -653,18 +661,19 @@ function sampleSurfaceField(nx: number, ny: number, radial: number): SurfaceSamp
 function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const radius = view.radius;
   const surface = sampleSurfaceField(nx, ny, radial);
+  const refractionHeight = surface.height * getDisplacementEdgeFade(radial);
   const baseRay = refractCameraRay(surface.slopeX, surface.slopeY, layerControls.ior);
-  const [baseOffsetX, baseOffsetY] = rayToDisplacement(baseRay, surface.height);
+  const [baseOffsetX, baseOffsetY] = rayToDisplacement(baseRay, refractionHeight);
   const redSource = layerControls.chromaticEnabled
     ? rayToDisplacement(
       refractCameraRay(surface.slopeX, surface.slopeY, layerControls.ior + layerControls.dispersion),
-      surface.height,
+      refractionHeight,
     )
     : [baseOffsetX, baseOffsetY];
   const blueSource = layerControls.chromaticEnabled
     ? rayToDisplacement(
       refractCameraRay(surface.slopeX, surface.slopeY, Math.max(layerControls.ior - layerControls.dispersion, 1.0001)),
-      surface.height,
+      refractionHeight,
     )
     : [baseOffsetX, baseOffsetY];
 
