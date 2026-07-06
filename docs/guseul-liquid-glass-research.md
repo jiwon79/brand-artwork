@@ -357,3 +357,25 @@ This is still not a full `liquid-dom` port:
 - The internal colored circles are still generated directly into an offscreen canvas instead of packed into an atlas.
 
 The important structural change is that Guseul now has a separate surface-field prepass. Future tuning should happen by shaping `bezelWidth`, `surfaceProfile`, `thickness`, `displacementFactor`, and `displacementBlur`, not by reintroducing a fixed `edgeStart` threshold.
+
+## 2026-07-06 Edge Kink Follow-Up
+
+The sharp bend seen on colored circles near the marble edge was not an unavoidable glass artifact. It came from an artificial source-texture boundary:
+
+```text
+content texture was clipped to a circle first
+  -> refraction sampled that already-clipped texture
+  -> near the rim, source coordinates hit the clip boundary or texture clamp
+  -> colored planes appeared to kink or flatten at the edge
+```
+
+That is different from the `liquid-dom` model. In `liquid-dom`, source/backdrop textures exist as larger planes, and the glass shape masks the final composite. The source texture is not pre-cut to the exact glass silhouette before refraction.
+
+The Guseul source layer now uses a larger internal content plane with overscan:
+
+- colored circles are drawn beyond the visible marble silhouette into an offscreen guard band.
+- the final glass ball alpha still clips the visible result to a perfect circle.
+- `sampleContent()` returns the background color when sampling outside the overscan plane instead of clamping to the texture edge.
+- GUI folders are reorganized by pipeline stage: scene, source content, surface field, refraction, edge smear, glass shell, final composite.
+
+This does not remove every possible fold from extreme optical settings. A very high `thickness`, high `displacementFactor`, or narrow `bezelWidth` can still make the inverse mapping non-monotonic. But the visible one-sided kink from the reference screenshot should be reduced because the sampler no longer runs into a pre-clipped content edge.

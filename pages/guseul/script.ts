@@ -76,6 +76,9 @@ const marbleCircles: MarbleCircle[] = [
 const layerControls = {
   backgroundColor: '#fffefb',
   shadowEnabled: true,
+  contentOverscan: 0.46,
+  circleStrokeEnabled: true,
+  circleStrokeScale: 1,
   displacementEnabled: true,
   surfaceProfile: 'convex' as SurfaceProfile,
   bezelWidth: 0.2,
@@ -152,6 +155,18 @@ function mix(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+function backgroundSample(): RGBA {
+  const hex = layerControls.backgroundColor.trim();
+  const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : 'fffefb';
+
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+    255,
+  ];
+}
+
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
   return t * t * (3 - 2 * t);
@@ -205,6 +220,18 @@ function evaluateSurfaceProfile(progress: number): [number, number] {
 
 function getBezelWidth(): number {
   return Math.max(layerControls.bezelWidth, 0.001);
+}
+
+function getContentOverscan(): number {
+  return Math.max(layerControls.contentOverscan, 0);
+}
+
+function getContentSize(): number {
+  return view.radius * 2 * (1 + getContentOverscan() * 2);
+}
+
+function getContentCenter(): number {
+  return view.radius * (1 + getContentOverscan());
 }
 
 function getRimInfluence(radial: number): number {
@@ -271,27 +298,32 @@ function setupGui(): void {
     event.stopPropagation();
   });
 
-  const background = gui.addFolder('background');
-  background.addColor(layerControls, 'backgroundColor').name('color').onChange(applyBackgroundColor);
-  background.add(layerControls, 'shadowEnabled').name('shadow');
+  const scene = gui.addFolder('1 scene');
+  scene.addColor(layerControls, 'backgroundColor').name('background').onChange(applyBackgroundColor);
+  scene.add(layerControls, 'shadowEnabled').name('shadow');
 
-  const displacement = gui.addFolder('5 liquid-dom surface');
-  displacement.add(layerControls, 'displacementEnabled').name('on');
-  displacement.add(layerControls, 'surfaceProfile', ['convex', 'concave', 'lip']).name('profile');
-  displacement.add(layerControls, 'bezelWidth', 0.04, 0.55, 0.01).name('bezel width');
-  displacement.add(layerControls, 'thickness', 0, 0.9, 0.01).name('thickness');
-  displacement.add(layerControls, 'displacementFactor', 0, 2, 0.01).name('displace factor');
-  displacement.add(layerControls, 'displacementBlur', 0, 18, 0.5).name('field blur');
-  displacement.add(layerControls, 'ior', 1.01, 2.4, 0.01).name('ior');
-  displacement.add(layerControls, 'tangentPower', 0.1, 4, 0.01).name('tangent power');
-  displacement.add(layerControls, 'tangentStrength', 0, 0.5, 0.01).name('tangent amount');
-  displacement.add(layerControls, 'tangentYScale', 0, 1.5, 0.01).name('tangent y');
+  const source = gui.addFolder('2 source content');
+  source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
+  source.add(layerControls, 'circleStrokeEnabled').name('white stroke');
+  source.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
-  const chromatic = gui.addFolder('6 chromatic');
-  chromatic.add(layerControls, 'chromaticEnabled').name('on');
-  chromatic.add(layerControls, 'dispersion', 0, 0.14, 0.001).name('dispersion');
+  const surface = gui.addFolder('3 surface field');
+  surface.add(layerControls, 'displacementEnabled').name('on');
+  surface.add(layerControls, 'surfaceProfile', ['convex', 'concave', 'lip']).name('profile');
+  surface.add(layerControls, 'bezelWidth', 0.04, 0.55, 0.01).name('bezel width');
+  surface.add(layerControls, 'displacementBlur', 0, 18, 0.5).name('field blur');
 
-  const smear = gui.addFolder('7 smear / stretch');
+  const refraction = gui.addFolder('4 refraction');
+  refraction.add(layerControls, 'thickness', 0, 0.9, 0.01).name('thickness');
+  refraction.add(layerControls, 'displacementFactor', 0, 2, 0.01).name('displace factor');
+  refraction.add(layerControls, 'ior', 1.01, 2.4, 0.01).name('ior');
+  refraction.add(layerControls, 'chromaticEnabled').name('chromatic');
+  refraction.add(layerControls, 'dispersion', 0, 0.14, 0.001).name('dispersion');
+  refraction.add(layerControls, 'tangentPower', 0.1, 4, 0.01).name('tangent power');
+  refraction.add(layerControls, 'tangentStrength', 0, 0.5, 0.01).name('tangent amount');
+  refraction.add(layerControls, 'tangentYScale', 0, 1.5, 0.01).name('tangent y');
+
+  const smear = gui.addFolder('5 edge smear');
   smear.add(layerControls, 'smearEnabled').name('on');
   smear.add(layerControls, 'smearPower', 0.1, 4, 0.01).name('power');
   smear.add(layerControls, 'smearStrength', 0, 0.7, 0.01).name('distance');
@@ -301,7 +333,7 @@ function setupGui(): void {
   smear.add(layerControls, 'tangentSmearBX', 0, 1.5, 0.01).name('tangent B x');
   smear.add(layerControls, 'tangentSmearBY', 0, 1.5, 0.01).name('tangent B y');
 
-  const shell = gui.addFolder('8 glass shell');
+  const shell = gui.addFolder('6 glass shell');
   shell.add(layerControls, 'innerShadeEnabled').name('innerShade');
   shell.add(layerControls, 'glassMilkEnabled').name('glassMilk');
   shell.add(layerControls, 'topWashEnabled').name('topWash');
@@ -312,7 +344,9 @@ function setupGui(): void {
   shell.add(layerControls, 'specBEnabled').name('spec B');
   shell.add(layerControls, 'specCEnabled').name('spec C');
   shell.add(layerControls, 'pointerSpecEnabled').name('pointerSpec');
-  shell.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
+
+  const composite = gui.addFolder('7 final composite');
+  composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 }
 
 function resize(): void {
@@ -335,26 +369,32 @@ function resize(): void {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const ballSize = Math.max(2, Math.round(radius * 2 * dpr));
+  const contentSize = Math.max(2, Math.round(getContentSize() * dpr));
   ballCanvas.width = ballSize;
   ballCanvas.height = ballSize;
-  contentCanvas.width = ballSize;
-  contentCanvas.height = ballSize;
+  contentCanvas.width = contentSize;
+  contentCanvas.height = contentSize;
   surfaceFieldSignature = '';
 }
 
 function drawContentCircle(circle: MarbleCircle, x: number, y: number, dot: number): void {
   const radius = view.radius;
+  const center = getContentCenter();
   const size = circle.radius * radius * scaleFromNormalDot(dot);
   const alpha = mix(0.76, 1, smoothstep(0, 0.86, dot));
-  const strokeWidth = Math.min(size * 0.34, clamp(radius * 0.048, 4, 8));
+  const strokeWidth = layerControls.circleStrokeEnabled
+    ? Math.min(size * 0.34, clamp(radius * 0.048, 4, 8)) * layerControls.circleStrokeScale
+    : 0;
 
   contentCtx.save();
   contentCtx.globalAlpha = alpha;
   contentCtx.beginPath();
-  contentCtx.arc(radius + x * radius, radius + y * radius, size, 0, Math.PI * 2);
-  contentCtx.lineWidth = strokeWidth;
-  contentCtx.strokeStyle = '#ffffff';
-  contentCtx.stroke();
+  contentCtx.arc(center + x * radius, center + y * radius, size, 0, Math.PI * 2);
+  if (strokeWidth > 0) {
+    contentCtx.lineWidth = strokeWidth;
+    contentCtx.strokeStyle = '#ffffff';
+    contentCtx.stroke();
+  }
   contentCtx.fillStyle = circle.color;
   contentCtx.fill();
   contentCtx.restore();
@@ -373,7 +413,7 @@ function collectVisibleCircles(): VisibleMarbleCircle[] {
         const dot = normalDotCamera(cx, cy);
         const reach = circle.radius * 1.15;
 
-        if (Math.hypot(cx, cy) > 1 + reach) {
+        if (Math.hypot(cx, cy) > 1 + getContentOverscan() + reach) {
           continue;
         }
 
@@ -386,8 +426,7 @@ function collectVisibleCircles(): VisibleMarbleCircle[] {
 }
 
 function drawContentLayer(): void {
-  const radius = view.radius;
-  const size = radius * 2;
+  const size = getContentSize();
 
   contentCtx.setTransform(1, 0, 0, 1, 0, 0);
   contentCtx.clearRect(0, 0, contentCanvas.width, contentCanvas.height);
@@ -396,30 +435,29 @@ function drawContentLayer(): void {
   contentCtx.fillStyle = layerControls.backgroundColor;
   contentCtx.fillRect(0, 0, size, size);
 
-  contentCtx.save();
-  contentCtx.beginPath();
-  contentCtx.arc(radius, radius, radius, 0, Math.PI * 2);
-  contentCtx.clip();
-
   visibleCircles = collectVisibleCircles();
 
   for (const item of visibleCircles) {
     drawContentCircle(item, item.cx, item.cy, item.dot);
   }
 
-  contentCtx.restore();
   contentData = contentCtx.getImageData(0, 0, contentCanvas.width, contentCanvas.height);
 }
 
 function sampleContent(x: number, y: number): RGBA {
   if (!contentData) {
-    return [255, 254, 251, 255];
+    return backgroundSample();
   }
 
   const width = contentCanvas.width;
   const height = contentCanvas.height;
-  const sampleX = clamp(x * view.dpr, 0, width - 1.001);
-  const sampleY = clamp(y * view.dpr, 0, height - 1.001);
+  const sampleX = (x + getContentOverscan() * view.radius) * view.dpr;
+  const sampleY = (y + getContentOverscan() * view.radius) * view.dpr;
+
+  if (sampleX < 0 || sampleY < 0 || sampleX > width - 1.001 || sampleY > height - 1.001) {
+    return backgroundSample();
+  }
+
   const x0 = Math.floor(sampleX);
   const y0 = Math.floor(sampleY);
   const x1 = Math.min(x0 + 1, width - 1);
