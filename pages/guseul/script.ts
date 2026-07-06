@@ -337,6 +337,32 @@ function sampleContent(x: number, y: number): RGBA {
   return rgba;
 }
 
+function sampleTangentStretchedContent(
+  x: number,
+  y: number,
+  tangentX: number,
+  tangentY: number,
+  stretch: number,
+  amount: number,
+): RGBA {
+  const center = sampleContent(x, y);
+
+  if (stretch <= 0.001 || amount <= 0.001) {
+    return center;
+  }
+
+  const sideA = sampleContent(x + tangentX * stretch, y + tangentY * stretch);
+  const sideB = sampleContent(x - tangentX * stretch, y - tangentY * stretch);
+  const mixAmount = clamp(amount, 0, 1);
+
+  return [
+    mix(center[0], center[0] * 0.48 + sideA[0] * 0.26 + sideB[0] * 0.26, mixAmount),
+    mix(center[1], center[1] * 0.48 + sideA[1] * 0.26 + sideB[1] * 0.26, mixAmount),
+    mix(center[2], center[2] * 0.48 + sideA[2] * 0.26 + sideB[2] * 0.26, mixAmount),
+    255,
+  ];
+}
+
 function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const radius = view.radius;
   const dirX = radial > 0.001 ? nx / radial : 0;
@@ -346,18 +372,19 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const edgeStart = Math.min(layerControls.edgeStart, layerControls.edgeEnd - 0.001);
   const edgeEnd = Math.max(layerControls.edgeEnd, edgeStart + 0.001);
   const edgeT = smoothstep(edgeStart, edgeEnd, radial);
+  const rimDepth = Math.max(0, radial - edgeStart);
   const normalPull = layerControls.displacementEnabled
-    ? edgeT ** layerControls.inwardPower * layerControls.inwardStrength
+    ? rimDepth * edgeT ** layerControls.inwardPower * layerControls.inwardStrength
     : 0;
-  const edgeStretch = layerControls.displacementEnabled
-    ? edgeT ** layerControls.edgeStretchPower * layerControls.edgeStretchStrength
-    : 0;
-  const edgeScale = clamp(1 - edgeStretch, 0.24, 1);
   const tangentSlip = layerControls.displacementEnabled
     ? edgeT ** layerControls.tangentPower * layerControls.tangentStrength
     : 0;
-  const sourceX = radius + (nx * edgeScale - dirX * normalPull + tangentX * tangentSlip) * radius;
-  const sourceY = radius + (ny * edgeScale - dirY * normalPull + tangentY * tangentSlip * layerControls.tangentYScale) * radius;
+  const sourceX = radius + (nx - dirX * normalPull + tangentX * tangentSlip) * radius;
+  const sourceY = radius + (ny - dirY * normalPull + tangentY * tangentSlip * layerControls.tangentYScale) * radius;
+  const edgeStretch = layerControls.displacementEnabled
+    ? edgeT ** layerControls.edgeStretchPower * radius * layerControls.edgeStretchStrength
+    : 0;
+  const edgeStretchMix = layerControls.displacementEnabled ? edgeT * 0.72 : 0;
   const smear = layerControls.smearEnabled
     ? edgeT ** layerControls.smearPower * radius * layerControls.smearStrength
     : 0;
@@ -365,9 +392,23 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
     ? edgeT ** layerControls.chromaticPower * radius * layerControls.chromaticStrength
     : 0;
 
-  const red = sampleContent(sourceX + dirX * aberration, sourceY + dirY * aberration);
-  const green = sampleContent(sourceX, sourceY);
-  const blue = sampleContent(sourceX - dirX * aberration, sourceY - dirY * aberration);
+  const red = sampleTangentStretchedContent(
+    sourceX + dirX * aberration,
+    sourceY + dirY * aberration,
+    tangentX,
+    tangentY,
+    edgeStretch,
+    edgeStretchMix,
+  );
+  const green = sampleTangentStretchedContent(sourceX, sourceY, tangentX, tangentY, edgeStretch, edgeStretchMix);
+  const blue = sampleTangentStretchedContent(
+    sourceX - dirX * aberration,
+    sourceY - dirY * aberration,
+    tangentX,
+    tangentY,
+    edgeStretch,
+    edgeStretchMix,
+  );
   const radialSmear = sampleContent(sourceX - dirX * smear, sourceY - dirY * smear);
   const tangentSmearA = sampleContent(
     sourceX + tangentX * smear * layerControls.tangentSmearAX,
