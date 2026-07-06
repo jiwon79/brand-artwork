@@ -135,9 +135,9 @@ The Guseul sampler now implements that model directly in canvas instead of gener
 const normalPull = rimDepth * edgeT ** inwardPower * inwardAmount;
 const source = p - normal * normalPull;
 const edgeStretch = edgeT ** edgeStretchPower * edgeStretchAmount;
-const sample = pullStrongestPlaneSampleAlongTangent(source, edgeStretch);
+const sample = blend(source, source + tangent * edgeStretch, source - tangent * edgeStretch);
 ```
 
-This keeps the inward pull as a bounded normal-axis refraction, then adds Liquid Glass-style tangent sampling in the rim band. The split is important: normal pull no longer scales the full coordinate toward the marble center, and edge stretch no longer changes radial thickness. Near the marble boundary, each output pixel checks nearby samples along the local tangent and pulls the strongest non-background plane sample into the current pixel, so colored circles and their white strokes broaden along the edge without folding sharply toward the center.
+This keeps the inward pull as a bounded normal-axis refraction, then adds Liquid Glass-style tangent sampling in the rim band. The split is important: normal pull no longer scales the full coordinate toward the marble center, and edge stretch no longer changes radial thickness. Near the marble boundary, each output pixel blends nearby samples along the local tangent, so colored circles and their white strokes broaden along the edge without folding sharply toward the center.
 
 The implementation is still analytic and marble-level. It does not inspect per-circle pixels or reintroduce contact gates, so every colored plane follows the same continuous glass field.

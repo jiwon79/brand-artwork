@@ -337,12 +337,6 @@ function sampleContent(x: number, y: number): RGBA {
   return rgba;
 }
 
-function contentContrast([r, g, b]: RGBA): number {
-  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-  const bgDistance = Math.abs(255 - r) + Math.abs(254 - g) + Math.abs(251 - b);
-  return bgDistance + chroma * 0.35;
-}
-
 function sampleTangentStretchedContent(
   x: number,
   y: number,
@@ -357,34 +351,14 @@ function sampleTangentStretchedContent(
     return center;
   }
 
-  const candidates = [
-    sampleContent(x + tangentX * stretch * 0.5, y + tangentY * stretch * 0.5),
-    sampleContent(x - tangentX * stretch * 0.5, y - tangentY * stretch * 0.5),
-    sampleContent(x + tangentX * stretch * 1.1, y + tangentY * stretch * 1.1),
-    sampleContent(x - tangentX * stretch * 1.1, y - tangentY * stretch * 1.1),
-    sampleContent(x + tangentX * stretch * 1.75, y + tangentY * stretch * 1.75),
-    sampleContent(x - tangentX * stretch * 1.75, y - tangentY * stretch * 1.75),
-  ];
-  let pulled = center;
-  let pulledContrast = contentContrast(center);
-
-  for (const candidate of candidates) {
-    const contrast = contentContrast(candidate);
-
-    if (contrast > pulledContrast) {
-      pulled = candidate;
-      pulledContrast = contrast;
-    }
-  }
-
-  const centerContrast = contentContrast(center);
-  const pullGain = smoothstep(8, 96, pulledContrast - centerContrast);
-  const mixAmount = clamp(amount * (0.72 + pullGain * 0.28), 0, 1);
+  const sideA = sampleContent(x + tangentX * stretch, y + tangentY * stretch);
+  const sideB = sampleContent(x - tangentX * stretch, y - tangentY * stretch);
+  const mixAmount = clamp(amount, 0, 1);
 
   return [
-    mix(center[0], pulled[0], mixAmount),
-    mix(center[1], pulled[1], mixAmount),
-    mix(center[2], pulled[2], mixAmount),
+    mix(center[0], center[0] * 0.48 + sideA[0] * 0.26 + sideB[0] * 0.26, mixAmount),
+    mix(center[1], center[1] * 0.48 + sideA[1] * 0.26 + sideB[1] * 0.26, mixAmount),
+    mix(center[2], center[2] * 0.48 + sideA[2] * 0.26 + sideB[2] * 0.26, mixAmount),
     255,
   ];
 }
@@ -407,11 +381,10 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
     : 0;
   const sourceX = radius + (nx - dirX * normalPull + tangentX * tangentSlip) * radius;
   const sourceY = radius + (ny - dirY * normalPull + tangentY * tangentSlip * layerControls.tangentYScale) * radius;
-  const tangentStretchT = edgeT ** Math.max(0.1, layerControls.edgeStretchPower * 0.45);
   const edgeStretch = layerControls.displacementEnabled
-    ? tangentStretchT * radius * layerControls.edgeStretchStrength * 3.2
+    ? edgeT ** layerControls.edgeStretchPower * radius * layerControls.edgeStretchStrength
     : 0;
-  const edgeStretchMix = layerControls.displacementEnabled ? tangentStretchT : 0;
+  const edgeStretchMix = layerControls.displacementEnabled ? edgeT * 0.72 : 0;
   const smear = layerControls.smearEnabled
     ? edgeT ** layerControls.smearPower * radius * layerControls.smearStrength
     : 0;
