@@ -14,6 +14,9 @@
   - https://github.com/rdev/liquid-glass-react
 - iyinchao/liquid-glass-studio: Uses WebGL2/WebGPU and lists the higher fidelity ingredients: refraction, dispersion, Fresnel reflection, SDF shapes, blur masking, anti-aliasing, and multipass rendering.
   - https://github.com/iyinchao/liquid-glass-studio
+- AndrewPrifer/liquid-dom: Uses WebGPU plus the experimental HTML-in-Canvas API. The important reference point is that it does not use a single hard `edgeStart` threshold; it builds an SDF-derived surface-slope field, blurs that field, then computes refraction from IOR, thickness, dispersion, and a continuous bevel profile.
+  - https://github.com/AndrewPrifer/liquid-dom
+  - Inspected source snapshot: `5232ed5` (`2026-06-16`, "Adjust blending app layout spacing")
 
 ## Common Implementation Model
 
@@ -141,3 +144,162 @@ const source = p * edgeScale - normal * normalPull;
 This keeps the old inward pull as the normal-axis refraction, then adds Liquid Glass-style coordinate scaling in the rim band. The scaling is the important part for the edge-following look: near the marble boundary, a wider output arc samples a smaller source arc, so colored circles and their white strokes appear broadened along the edge.
 
 The implementation is still analytic and marble-level. It does not inspect per-circle pixels or reintroduce contact gates, so every colored plane follows the same continuous glass field.
+
+## 2026-07-06 AndrewPrifer/liquid-dom Implementation Notes
+
+`liquid-dom` is the closest inspected reference for HTML-in-Canvas Liquid Glass. It is a WebGPU renderer, not a CSS-only filter. Its repo is split into:
+
+- `@liquid-dom/core`: imperative scene graph, DOM-backed content capture, WebGPU render core, shaders, and layout bridge.
+- `@liquid-dom/react`: React components over the same scene/layout objects.
+- `@liquid-dom/three` and `@liquid-dom/r3f`: adapters that composite the same WebGPU glass pass over a Three WebGPU scene.
+- `@liquid-dom/layout`: renderer-agnostic layout engine.
+
+The scene graph has three important node levels:
+
+```text
+Scene
+  Html        -> normal scene/backdrop DOM layers
+  Container   -> one optical material / one fused SDF field
+    Glass     -> one or more glass shapes inside the container
+      Html    -> DOM content sampled through that glass
+```
+
+A `Container` owns the optical constants shared by its child glass shapes: `blur`, `bezelWidth`, `thickness`, `displacementFactor`, `displacementBlur`, `ior`, `contentIor`, `contentDepth`, `dispersion`, `surfaceProfile`, tint, shadow, reflection, and specular controls. A `Glass` owns geometry: width, height, corner radius, smoothing, transform, pointer behavior, and z order.
+
+### DOM Capture Pipeline
+
+`liquid-dom` uses Chrome's experimental HTML-in-Canvas API for real DOM content:
+
+1. The renderer canvas is marked with `layoutsubtree="true"`.
+2. Each `Html` node owns a real `HTMLElement` host.
+3. The renderer keeps those hosts mounted under the canvas and synchronizes CSS transforms/z-index to match the scene graph.
+4. Canvas `paint` events identify changed DOM hosts.
+5. `GPUQueue.copyElementImageToTexture()` copies each host into a GPU texture.
+6. Scene-level HTML uses individual textures; HTML inside glass is packed into a shared atlas.
+7. Optional `Html.blur` is not CSS blur. It is applied by the WebGPU adaptive blur pipeline after the DOM texture copy.
+
+That means the glass pass works from textures, but the source content can still be live DOM. For Guseul, our colored-circle offscreen canvas is equivalent to a much simpler glass-content texture source.
+
+### Render Order
+
+The core frame loop is a multipass ping-pong compositor:
+
+1. Start from an optional external backdrop texture.
+2. Composite scene-level `Html` layers in z order.
+3. For each `Container`:
+   - pack active `Glass` shapes into a shape buffer.
+   - upload container optical uniforms.
+   - blur the current scene texture into a backdrop-blur target.
+   - render a displacement/surface field from the fused SDF.
+   - blur that displacement field by `displacementBlur`.
+   - render and blur the shadow mask.
+   - run the main glass shader over the current scene.
+4. Blit the final ping-pong texture to the canvas/output texture.
+
+The key part for edge behavior is that the displacement field is a separate intermediate texture. It is not calculated as a one-off offset inside the final color shader only.
+
+### SDF And Surface Profile
+
+`liquid-dom` builds the glass boundary from SDF samples:
+
+- Each `Glass` is evaluated as a smooth rounded rectangle / squircle SDF in local space.
+- Multiple glass shapes inside one `Container` are fused with a smooth union.
+- Normal gating and blend-support gating suppress invalid smoothing when shapes overlap or are nested.
+- The SDF sample returns both distance and gradient. The gradient is the edge normal used for rim, refraction, and specular.
+
+For the displacement field, the shader computes:
+
+```ts
+inwardDistance = max(-distance, 0)
+bezelProgress = clamp(inwardDistance / bezelWidth, 0, 1)
+surfaceDerivative = derivative(surfaceProfile, bezelProgress)
+surfaceSlope = sdfGradient * surfaceDerivative
+```
+
+This is the major difference from our current Guseul `edgeStart` control. `liquid-dom` does not say "start all distortion at normalized radius 0.85." It defines a physical bevel width in pixels, evaluates a continuous surface-height profile inside that bevel, and uses the profile derivative as the slope field. The effective edge region is therefore continuous and tied to the glass SDF.
+
+Supported `surfaceProfile` modes are:
+
+- `convex`: outward dome-like bevel.
+- `concave`: inverted curve.
+- `lip`: blends convex and concave for a raised rim/lip.
+
+The displacement prepass writes the slope field premultiplied by the fill mask, then blurs it. Blurring the field lets the edge influence spread smoothly without creating an abrupt bend where a hard annulus begins.
+
+### Refraction Shader
+
+The main glass shader samples the blurred surface-slope field and rebuilds a 3D-ish normal:
+
+```ts
+surfaceNormal = normalize(vec3(surfaceSlope.x, surfaceSlope.y, 1))
+```
+
+It then uses `refract()` with the configured IOR to bend a camera ray through the surface. Red, green, and blue use slightly different IOR values when `dispersion` is enabled, which creates chromatic separation. The resulting ray direction is projected into screen-pixel displacement:
+
+```ts
+displacementPx = refractedRay.xy / -refractedRay.z * surfaceHeight * displacementFactor
+refractedUv = uv + displacementPx / canvasSize
+```
+
+Backdrop color is sampled from the blurred backdrop texture at three channel-specific UVs. This gives the "background/content is pulled through glass" look.
+
+Glass-attached HTML content is handled separately:
+
+- content uses `contentIor` and `contentDepth` instead of the container's main `ior`/`thickness`.
+- content layers are sampled from the glass content atlas.
+- red/green/blue local positions are offset independently if dispersion is enabled.
+- the sampled content is composited over the tinted refracted backdrop before specular highlights.
+
+### Lighting And Shell
+
+After refraction and content compositing, the shader adds shell effects:
+
+- tint over the refracted glass interior.
+- reflection color sampled from the blurred backdrop along the rim normal.
+- reflection is gated by backdrop/refraction luminance, so it appears when reflected content is bright and the refracted interior can accept it.
+- white rim specular is a separate band based on SDF distance in screen pixels and normal-light alignment.
+- opposite-side specular can be added with its own strength/falloff.
+
+Specular width is resolved in device pixels, and derivative-scaled SDF distance is used so hairline highlights do not become wider when SDF blending changes the distance scale.
+
+### What This Means For Guseul
+
+The current Guseul prototype is simpler:
+
+```ts
+edgeT = smoothstep(edgeStart, edgeEnd, radial)
+normalPull = edgeT ** inwardPower * inwardAmount
+edgeStretch = edgeT ** edgeStretchPower * edgeStretchAmount
+source = p * (1 - edgeStretch) - normal * normalPull
+```
+
+This can create a readable rim stretch, but it has two structural weaknesses:
+
+1. `edgeStart` creates a normalized annulus with a visible behavioral boundary. When `edgeStart` is high, the distortion is squeezed into a very thin band, so overlapping colored planes can appear to kink or fold abruptly near the rim.
+2. `edgeStretch` directly scales coordinates in the final sampler. It does not model a surface slope field, blur that field, then derive refraction from a normal. So it can look like 2D coordinate compression instead of light bending through a glass shell.
+
+A closer canvas implementation should replace the hard annulus with the same conceptual steps as `liquid-dom`, adapted to a circular marble:
+
+```ts
+distance = radial - 1
+inwardDistance = max(-distance, 0)
+bezelProgress = clamp(inwardDistance / bezelWidth, 0, 1)
+slope = profileDerivative(bezelProgress)
+surfaceSlope = normal * slope
+```
+
+Then either:
+
+- approximate field blur analytically or with a small offscreen texture pass; and
+- use the slope to compute a single refraction displacement, with chromatic offsets derived from the same field.
+
+For tuning, the Guseul controls should eventually map closer to:
+
+- `bezelWidth`: how far the rim profile reaches inward.
+- `surfaceProfile`: convex/concave/lip-like curve choice.
+- `thickness`: how much refraction displacement the surface height can produce.
+- `displacementFactor`: overall multiplier after the optical model.
+- `displacementBlur`: how softly the rim influence spreads.
+- `ior` / `dispersion`: base bending and chromatic separation.
+
+This is why the reference implementations feel less like a thresholded edge band: the edge is an SDF-derived bevel profile plus a blurred slope field, not a fixed normalized radius cutoff.
