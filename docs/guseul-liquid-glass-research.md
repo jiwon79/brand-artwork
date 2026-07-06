@@ -303,3 +303,57 @@ For tuning, the Guseul controls should eventually map closer to:
 - `ior` / `dispersion`: base bending and chromatic separation.
 
 This is why the reference implementations feel less like a thresholded edge band: the edge is an SDF-derived bevel profile plus a blurred slope field, not a fixed normalized radius cutoff.
+
+## 2026-07-06 Guseul Liquid-DOM-Inspired Refactor
+
+The Guseul canvas implementation now mirrors the useful parts of `liquid-dom` without moving the page to WebGPU:
+
+```text
+draw content texture
+  -> render circular SDF surface field
+  -> blur surface field
+  -> sample content through refracted ray offsets
+  -> add shell lighting
+```
+
+The old hard annulus controls were removed from the live sampler:
+
+- removed from code path: `edgeStart`, `edgeEnd`, `inwardStrength`, `edgeStretchStrength`.
+- new live controls: `surfaceProfile`, `bezelWidth`, `thickness`, `displacementFactor`, `displacementBlur`, `ior`, `dispersion`.
+
+The new intermediate field stores:
+
+- `slopeX`
+- `slopeY`
+- `fillMask`
+
+It is premultiplied by `fillMask` before blur, matching the `liquid-dom` pattern where the displacement field can blur across the edge without leaking invalid vectors. When the final sampler reads the field, it divides the blurred slope by the blurred mask.
+
+The circular marble is treated as the SDF:
+
+```ts
+distance = radial - 1
+inwardDistance = max(1 - radial, 0)
+bezelProgress = clamp(inwardDistance / bezelWidth, 0, 1)
+slope = derivative(surfaceProfile, bezelProgress)
+surfaceSlope = normal * slope
+```
+
+The final color sampler now rebuilds a surface normal and computes refraction:
+
+```ts
+surfaceNormal = normalize(vec3(surfaceSlope.x, surfaceSlope.y, 1))
+ray = refract(cameraRay, surfaceNormal, 1 / ior)
+source = outputPixel + ray.xy / -ray.z * surfaceHeight * displacementFactor
+```
+
+Chromatic separation now follows the same optical path by evaluating the red and blue rays with `ior + dispersion` and `ior - dispersion`. This is closer to `liquid-dom` than the previous radial `aberration` offset because the color split comes from the same slope field as the main refraction.
+
+This is still not a full `liquid-dom` port:
+
+- There is no DOM-to-texture capture path.
+- There is no WebGPU adaptive blur pyramid.
+- There is only one circular SDF shape, so smooth-union, normal gating, and blend-support gating are unnecessary.
+- The internal colored circles are still generated directly into an offscreen canvas instead of packed into an atlas.
+
+The important structural change is that Guseul now has a separate surface-field prepass. Future tuning should happen by shaping `bezelWidth`, `surfaceProfile`, `thickness`, `displacementFactor`, and `displacementBlur`, not by reintroducing a fixed `edgeStart` threshold.
