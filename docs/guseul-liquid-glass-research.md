@@ -132,12 +132,12 @@ This should address the reference behavior more directly: when a colored plane a
 The Guseul sampler now implements that model directly in canvas instead of generating an SVG displacement map:
 
 ```ts
-const normalPull = rimDepth * edgeT ** inwardPower * inwardAmount;
-const source = p - normal * normalPull;
+const normalPull = edgeT ** inwardPower * inwardAmount;
 const edgeStretch = edgeT ** edgeStretchPower * edgeStretchAmount;
-const sample = blend(source, source + tangent * edgeStretch, source - tangent * edgeStretch);
+const edgeScale = 1 - edgeStretch;
+const source = p * edgeScale - normal * normalPull;
 ```
 
-This keeps the inward pull as a bounded normal-axis refraction, then adds Liquid Glass-style tangent sampling in the rim band. The split is important: normal pull no longer scales the full coordinate toward the marble center, and edge stretch no longer changes radial thickness. Near the marble boundary, each output pixel blends nearby samples along the local tangent, so colored circles and their white strokes broaden along the edge without folding sharply toward the center.
+This keeps the old inward pull as the normal-axis refraction, then adds Liquid Glass-style coordinate scaling in the rim band. The scaling is the important part for the edge-following look: near the marble boundary, a wider output arc samples a smaller source arc, so colored circles and their white strokes appear broadened along the edge.
 
 The implementation is still analytic and marble-level. It does not inspect per-circle pixels or reintroduce contact gates, so every colored plane follows the same continuous glass field.
