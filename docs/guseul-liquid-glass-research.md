@@ -395,7 +395,7 @@ source content
   -> final circular composite
 ```
 
-This keeps the edge behavior tied to one optical field. If the edge needs more stretch later, tune the surface field (`bezelWidth`, `profilePower`, `displacementBlur`, `thickness`, `displacementFactor`) instead of adding extra tangent or smear samples that create multiple competing directions.
+This keeps the edge behavior tied to one optical field. If the edge needs more stretch later, tune the surface field (`bezelWidth`, `displacementBlur`, `thickness`, `displacementFactor`) instead of adding extra tangent or smear samples that create multiple competing directions.
 
 ## 2026-07-07 Outer Edge Displacement Fade
 
@@ -407,3 +407,12 @@ source = outputPixel + refractedRay.xy * refractionHeight
 ```
 
 The glass shell layers still draw to the full circular silhouette. Only the internal source-image displacement is faded, which reduces the small reverse bend that can appear when a highly displaced source coordinate meets the final circular mask.
+
+## 2026-07-07 Surface/Refraction Toggles
+
+The GUI now separates the optical debug switches:
+
+- `3 surface field > on` controls whether the rim slope field is generated.
+- `4 refraction > on` controls whether the source content is sampled through that field.
+
+This makes it possible to keep shell lighting visible while comparing raw source content, the generated surface field, and final refraction independently. Current tuning defaults are `bezelWidth: 0.2`, `fieldBlur: 3`, `thickness: 0.4`, `displacementFactor: 0.75`, `edgeFadeWidth: 0`, `ior: 1.5`, and `dispersion: 0.14`.

@@ -83,13 +83,14 @@ const layerControls = {
   displacementEnabled: true,
   surfaceProfile: 'convex' as SurfaceProfile,
   bezelWidth: 0.2,
-  thickness: 0.34,
-  displacementFactor: 1,
-  edgeFadeWidth: 0.045,
-  displacementBlur: 7,
+  thickness: 0.4,
+  displacementFactor: 0.75,
+  edgeFadeWidth: 0,
+  displacementBlur: 3,
   ior: 1.5,
+  refractionEnabled: true,
   chromaticEnabled: true,
-  dispersion: 0.035,
+  dispersion: 0.14,
   innerShadeEnabled: true,
   glassMilkEnabled: true,
   topWashEnabled: true,
@@ -316,6 +317,7 @@ function setupGui(): void {
   surface.add(layerControls, 'displacementBlur', 0, 18, 0.5).name('field blur');
 
   const refraction = gui.addFolder('4 refraction');
+  refraction.add(layerControls, 'refractionEnabled').name('on');
   refraction.add(layerControls, 'thickness', 0, 0.9, 0.01).name('thickness');
   refraction.add(layerControls, 'displacementFactor', 0, 2, 0.01).name('displace factor');
   refraction.add(layerControls, 'edgeFadeWidth', 0, 0.18, 0.001).name('edge fade');
@@ -660,6 +662,11 @@ function sampleSurfaceField(nx: number, ny: number, radial: number): SurfaceSamp
 
 function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const radius = view.radius;
+
+  if (!layerControls.refractionEnabled) {
+    return sampleContent(radius + nx * radius, radius + ny * radius);
+  }
+
   const surface = sampleSurfaceField(nx, ny, radial);
   const refractionHeight = surface.height * getDisplacementEdgeFade(radial);
   const baseRay = refractCameraRay(surface.slopeX, surface.slopeY, layerControls.ior);
