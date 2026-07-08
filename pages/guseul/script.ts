@@ -41,6 +41,24 @@ type SurfaceSample = {
   rim: number;
 };
 
+type GlintState = {
+  x: number;
+  y: number;
+  alpha: number;
+};
+
+type RenderParams = {
+  view: View;
+  controls: LayerControls;
+  orientation: Matrix3;
+  glint: GlintState;
+};
+
+type Renderer = {
+  resize: (params: RenderParams) => void;
+  render: (params: RenderParams) => void;
+};
+
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: false });
 const stage = document.getElementById('stage');
@@ -120,6 +138,18 @@ const layerControls = {
   outerStrokeEnabled: true,
 };
 
+type LayerControls = typeof layerControls;
+
+class CanvasRenderer implements Renderer {
+  resize(params: RenderParams): void {
+    resizeRenderTargets(params);
+  }
+
+  render(params: RenderParams): void {
+    drawScene(params);
+  }
+}
+
 let contentData: ImageData | null = null;
 let rawSurfaceField = new Float32Array();
 let blurredSurfaceField = new Float32Array();
@@ -155,6 +185,20 @@ let targetGlintY = -0.38;
 let glintAlpha = 0.18;
 let targetGlintAlpha = 0.18;
 let lastFrame = 0;
+const renderer: Renderer = new CanvasRenderer();
+
+function getRenderParams(): RenderParams {
+  return {
+    view,
+    controls: layerControls,
+    orientation: sphereOrientation,
+    glint: {
+      x: glintX,
+      y: glintY,
+      alpha: glintAlpha,
+    },
+  };
+}
 
 function pseudoRandom(index: number, salt: number): number {
   const value = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
@@ -189,8 +233,8 @@ function mix(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-function backgroundSample(): RGBA {
-  const hex = layerControls.backgroundColor.trim();
+function backgroundSample(controls: LayerControls = layerControls): RGBA {
+  const hex = controls.backgroundColor.trim();
   const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : 'fffefb';
 
   return [
@@ -231,12 +275,12 @@ function concaveSurfaceProfile(progress: number): [number, number] {
   return [1 - height, -derivative];
 }
 
-function evaluateSurfaceProfile(progress: number): [number, number] {
-  if (layerControls.surfaceProfile === 'convex') {
+function evaluateSurfaceProfile(progress: number, controls: LayerControls = layerControls): [number, number] {
+  if (controls.surfaceProfile === 'convex') {
     return convexSurfaceProfile(progress);
   }
 
-  if (layerControls.surfaceProfile === 'concave') {
+  if (controls.surfaceProfile === 'concave') {
     return concaveSurfaceProfile(progress);
   }
 
@@ -252,28 +296,28 @@ function evaluateSurfaceProfile(progress: number): [number, number] {
   return [height, derivative];
 }
 
-function getBezelWidth(): number {
-  return Math.max(layerControls.bezelWidth, 0.001);
+function getBezelWidth(controls: LayerControls): number {
+  return Math.max(controls.bezelWidth, 0.001);
 }
 
-function getContentOverscan(): number {
-  return Math.max(layerControls.contentOverscan, 0);
+function getContentOverscan(controls: LayerControls): number {
+  return Math.max(controls.contentOverscan, 0);
 }
 
-function getContentSize(): number {
-  return view.radius * 2 * (1 + getContentOverscan() * 2);
+function getContentSize(params: RenderParams): number {
+  return params.view.radius * 2 * (1 + getContentOverscan(params.controls) * 2);
 }
 
-function getContentCenter(): number {
-  return view.radius * (1 + getContentOverscan());
+function getContentCenter(params: RenderParams): number {
+  return params.view.radius * (1 + getContentOverscan(params.controls));
 }
 
-function getRimInfluence(radial: number): number {
-  return 1 - smoothstep(0, getBezelWidth(), Math.max(1 - radial, 0));
+function getRimInfluence(radial: number, controls: LayerControls): number {
+  return 1 - smoothstep(0, getBezelWidth(controls), Math.max(1 - radial, 0));
 }
 
-function getDisplacementEdgeFade(radial: number): number {
-  const width = Math.max(layerControls.edgeFadeWidth, 0);
+function getDisplacementEdgeFade(radial: number, controls: LayerControls): number {
+  const width = Math.max(controls.edgeFadeWidth, 0);
 
   if (width <= 0.0001) {
     return 1;
@@ -282,15 +326,15 @@ function getDisplacementEdgeFade(radial: number): number {
   return smoothstep(0, width, Math.max(1 - radial, 0));
 }
 
-function getSurfaceHeight(radial: number): number {
-  const bezelWidth = getBezelWidth();
+function getSurfaceHeight(radial: number, params: RenderParams): number {
+  const bezelWidth = getBezelWidth(params.controls);
   const inwardDistance = Math.max(1 - radial, 0);
   const progress = clamp(inwardDistance / bezelWidth, 0, 1);
-  const [profileHeight] = evaluateSurfaceProfile(progress);
-  const [flatHeight] = evaluateSurfaceProfile(1);
+  const [profileHeight] = evaluateSurfaceProfile(progress, params.controls);
+  const [flatHeight] = evaluateSurfaceProfile(1, params.controls);
   const bevelHeight = (inwardDistance > bezelWidth ? flatHeight : profileHeight) * bezelWidth;
 
-  return (layerControls.thickness + bevelHeight) * view.radius * layerControls.displacementFactor;
+  return (params.controls.thickness + bevelHeight) * params.view.radius * params.controls.displacementFactor;
 }
 
 function refractCameraRay(slopeX: number, slopeY: number, ior: number): [number, number, number] {
@@ -385,19 +429,19 @@ function applyBackgroundColor(): void {
   stage?.style.setProperty('background', layerControls.backgroundColor);
 }
 
-function rotateSpherePoint(x: number, y: number, z: number): Vec3 {
-  return applyMatrix3(sphereOrientation, normalizeVec3([x, y, z]));
+function rotateSpherePoint(orientation: Matrix3, x: number, y: number, z: number): Vec3 {
+  return applyMatrix3(orientation, normalizeVec3([x, y, z]));
 }
 
-function projectMarbleCircle(circle: MarbleCircle): VisibleMarbleCircle {
-  const [x, y, z] = rotateSpherePoint(circle.x, circle.y, circle.z);
-  const portalWidth = Math.max(layerControls.edgePortalWidth, 0.001);
-  const edgeScaleFloor = layerControls.edgeScaleFloor;
+function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): VisibleMarbleCircle {
+  const [x, y, z] = rotateSpherePoint(params.orientation, circle.x, circle.y, circle.z);
+  const portalWidth = Math.max(params.controls.edgePortalWidth, 0.001);
+  const edgeScaleFloor = params.controls.edgeScaleFloor;
 
   if (z < 0) {
     const depth = smoothstep(0, 1, -z);
     const portalProgress = smoothstep(0, portalWidth, -z);
-    const inset = mix(0.94, layerControls.portalInset, portalProgress);
+    const inset = mix(0.94, params.controls.portalInset, portalProgress);
 
     return {
       ...circle,
@@ -484,6 +528,22 @@ function setupGui(): void {
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 }
 
+function resizeRenderTargets(params: RenderParams): void {
+  const renderView = params.view;
+
+  canvas.width = Math.round(renderView.width * renderView.dpr);
+  canvas.height = Math.round(renderView.height * renderView.dpr);
+  ctx.setTransform(renderView.dpr, 0, 0, renderView.dpr, 0, 0);
+
+  const ballSize = Math.max(2, Math.round(renderView.radius * 2 * renderView.dpr));
+  const contentSize = Math.max(2, Math.round(getContentSize(params) * renderView.dpr));
+  ballCanvas.width = ballSize;
+  ballCanvas.height = ballSize;
+  contentCanvas.width = contentSize;
+  contentCanvas.height = contentSize;
+  surfaceFieldSignature = '';
+}
+
 function resize(): void {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -501,25 +561,15 @@ function resize(): void {
     radius,
   };
 
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  const ballSize = Math.max(2, Math.round(radius * 2 * dpr));
-  const contentSize = Math.max(2, Math.round(getContentSize() * dpr));
-  ballCanvas.width = ballSize;
-  ballCanvas.height = ballSize;
-  contentCanvas.width = contentSize;
-  contentCanvas.height = contentSize;
-  surfaceFieldSignature = '';
+  renderer.resize(getRenderParams());
 }
 
-function drawContentCircle(circle: VisibleMarbleCircle): void {
-  const radius = view.radius;
-  const center = getContentCenter();
-  const size = circle.radius * layerControls.circleSizeScale * radius * circle.scale;
-  const strokeWidth = layerControls.circleStrokeEnabled
-    ? Math.min(size * 0.34, clamp(radius * 0.048, 4, 8)) * layerControls.circleStrokeScale
+function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): void {
+  const radius = params.view.radius;
+  const center = getContentCenter(params);
+  const size = circle.radius * params.controls.circleSizeScale * radius * circle.scale;
+  const strokeWidth = params.controls.circleStrokeEnabled
+    ? Math.min(size * 0.34, clamp(radius * 0.048, 4, 8)) * params.controls.circleStrokeScale
     : 0;
 
   contentCtx.save();
@@ -538,13 +588,13 @@ function drawContentCircle(circle: VisibleMarbleCircle): void {
   contentCtx.restore();
 }
 
-function collectVisibleCircles(): VisibleMarbleCircle[] {
+function collectVisibleCircles(params: RenderParams): VisibleMarbleCircle[] {
   const items: VisibleMarbleCircle[] = [];
-  const count = clamp(Math.round(layerControls.circleCount), 1, maxMarbleCircleCount);
+  const count = clamp(Math.round(params.controls.circleCount), 1, maxMarbleCircleCount);
   const circles = createMarbleCircles(count);
 
   for (const circle of circles) {
-    items.push(projectMarbleCircle(circle));
+    items.push(projectMarbleCircle(circle, params));
   }
 
   return items.sort((a, b) => {
@@ -556,37 +606,37 @@ function collectVisibleCircles(): VisibleMarbleCircle[] {
   });
 }
 
-function drawContentLayer(): void {
-  const size = getContentSize();
+function drawContentLayer(params: RenderParams): void {
+  const size = getContentSize(params);
 
   contentCtx.setTransform(1, 0, 0, 1, 0, 0);
   contentCtx.clearRect(0, 0, contentCanvas.width, contentCanvas.height);
-  contentCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  contentCtx.setTransform(params.view.dpr, 0, 0, params.view.dpr, 0, 0);
 
-  contentCtx.fillStyle = layerControls.backgroundColor;
+  contentCtx.fillStyle = params.controls.backgroundColor;
   contentCtx.fillRect(0, 0, size, size);
 
-  visibleCircles = collectVisibleCircles();
+  visibleCircles = collectVisibleCircles(params);
 
   for (const item of visibleCircles) {
-    drawContentCircle(item);
+    drawContentCircle(item, params);
   }
 
   contentData = contentCtx.getImageData(0, 0, contentCanvas.width, contentCanvas.height);
 }
 
-function sampleContent(x: number, y: number): RGBA {
+function sampleContent(x: number, y: number, params: RenderParams): RGBA {
   if (!contentData) {
-    return backgroundSample();
+    return backgroundSample(params.controls);
   }
 
   const width = contentCanvas.width;
   const height = contentCanvas.height;
-  const sampleX = (x + getContentOverscan() * view.radius) * view.dpr;
-  const sampleY = (y + getContentOverscan() * view.radius) * view.dpr;
+  const sampleX = (x + getContentOverscan(params.controls) * params.view.radius) * params.view.dpr;
+  const sampleY = (y + getContentOverscan(params.controls) * params.view.radius) * params.view.dpr;
 
   if (sampleX < 0 || sampleY < 0 || sampleX > width - 1.001 || sampleY > height - 1.001) {
-    return backgroundSample();
+    return backgroundSample(params.controls);
   }
 
   const x0 = Math.floor(sampleX);
@@ -626,27 +676,27 @@ function ensureSurfaceFieldSize(width: number, height: number): void {
   surfaceFieldSignature = '';
 }
 
-function getSurfaceFieldSignature(): string {
+function getSurfaceFieldSignature(params: RenderParams): string {
   return [
     ballCanvas.width,
     ballCanvas.height,
-    view.dpr,
-    layerControls.displacementEnabled,
-    layerControls.surfaceProfile,
-    layerControls.bezelWidth,
-    layerControls.displacementBlur,
+    params.view.dpr,
+    params.controls.displacementEnabled,
+    params.controls.surfaceProfile,
+    params.controls.bezelWidth,
+    params.controls.displacementBlur,
   ].join('|');
 }
 
-function writeRawSurfaceField(): void {
+function writeRawSurfaceField(params: RenderParams): void {
   const width = surfaceFieldWidth;
   const height = surfaceFieldHeight;
   const radiusPx = width * 0.5;
-  const bezelWidth = getBezelWidth();
+  const bezelWidth = getBezelWidth(params.controls);
 
   rawSurfaceField.fill(0);
 
-  if (!layerControls.displacementEnabled) {
+  if (!params.controls.displacementEnabled) {
     return;
   }
 
@@ -668,7 +718,7 @@ function writeRawSurfaceField(): void {
       }
 
       const progress = clamp(inwardDistance / bezelWidth, 0, 1);
-      const [, derivative] = evaluateSurfaceProfile(progress);
+      const [, derivative] = evaluateSurfaceProfile(progress, params.controls);
       const clampedSlope = clamp(derivative, -maxSurfaceSlope, maxSurfaceSlope);
       const dirX = radial > 0.001 ? nx / radial : 0;
       const dirY = radial > 0.001 ? ny / radial : 0;
@@ -745,22 +795,22 @@ function blurSurfaceField(radius: number): void {
   activeSurfaceField = blurredSurfaceField;
 }
 
-function renderSurfaceField(): void {
+function renderSurfaceField(params: RenderParams): void {
   ensureSurfaceFieldSize(ballCanvas.width, ballCanvas.height);
 
-  const signature = getSurfaceFieldSignature();
+  const signature = getSurfaceFieldSignature(params);
 
   if (signature === surfaceFieldSignature) {
     return;
   }
 
-  writeRawSurfaceField();
-  blurSurfaceField(Math.min(Math.round(layerControls.displacementBlur * view.dpr), 18));
+  writeRawSurfaceField(params);
+  blurSurfaceField(Math.min(Math.round(params.controls.displacementBlur * params.view.dpr), 18));
   surfaceFieldSignature = signature;
 }
 
-function sampleSurfaceField(nx: number, ny: number, radial: number): SurfaceSample {
-  if (!layerControls.displacementEnabled || surfaceFieldWidth <= 0 || surfaceFieldHeight <= 0) {
+function sampleSurfaceField(nx: number, ny: number, radial: number, params: RenderParams): SurfaceSample {
+  if (!params.controls.displacementEnabled || surfaceFieldWidth <= 0 || surfaceFieldHeight <= 0) {
     return { slopeX: 0, slopeY: 0, height: 0, rim: 0 };
   }
 
@@ -792,17 +842,17 @@ function sampleSurfaceField(nx: number, ny: number, radial: number): SurfaceSamp
   return {
     slopeX,
     slopeY,
-    height: getSurfaceHeight(radial),
-    rim: getRimInfluence(radial),
+    height: getSurfaceHeight(radial, params),
+    rim: getRimInfluence(radial, params.controls),
   };
 }
 
-function sampleSurfaceFieldPreview(nx: number, ny: number, radial: number): RGBA {
-  const surface = sampleSurfaceField(nx, ny, radial);
+function sampleSurfaceFieldPreview(nx: number, ny: number, radial: number, params: RenderParams): RGBA {
+  const surface = sampleSurfaceField(nx, ny, radial, params);
   const rim = surface.rim;
   const slopeX = clamp(surface.slopeX / maxSurfaceSlope, -1, 1);
   const slopeY = clamp(surface.slopeY / maxSurfaceSlope, -1, 1);
-  const height = clamp(surface.height / (view.radius * 0.8), 0, 1);
+  const height = clamp(surface.height / (params.view.radius * 0.8), 0, 1);
 
   return [
     mix(248, 128 + slopeX * 96, rim),
@@ -812,26 +862,26 @@ function sampleSurfaceFieldPreview(nx: number, ny: number, radial: number): RGBA
   ];
 }
 
-function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
-  const radius = view.radius;
+function sampleLiquidGlass(nx: number, ny: number, radial: number, params: RenderParams): RGBA {
+  const radius = params.view.radius;
 
-  if (!layerControls.refractionEnabled) {
-    return sampleContent(radius + nx * radius, radius + ny * radius);
+  if (!params.controls.refractionEnabled) {
+    return sampleContent(radius + nx * radius, radius + ny * radius, params);
   }
 
-  const surface = sampleSurfaceField(nx, ny, radial);
-  const refractionHeight = surface.height * getDisplacementEdgeFade(radial);
-  const baseRay = refractCameraRay(surface.slopeX, surface.slopeY, layerControls.ior);
+  const surface = sampleSurfaceField(nx, ny, radial, params);
+  const refractionHeight = surface.height * getDisplacementEdgeFade(radial, params.controls);
+  const baseRay = refractCameraRay(surface.slopeX, surface.slopeY, params.controls.ior);
   const [baseOffsetX, baseOffsetY] = rayToDisplacement(baseRay, refractionHeight);
-  const redSource = layerControls.chromaticEnabled
+  const redSource = params.controls.chromaticEnabled
     ? rayToDisplacement(
-      refractCameraRay(surface.slopeX, surface.slopeY, layerControls.ior + layerControls.dispersion),
+      refractCameraRay(surface.slopeX, surface.slopeY, params.controls.ior + params.controls.dispersion),
       refractionHeight,
     )
     : [baseOffsetX, baseOffsetY];
-  const blueSource = layerControls.chromaticEnabled
+  const blueSource = params.controls.chromaticEnabled
     ? rayToDisplacement(
-      refractCameraRay(surface.slopeX, surface.slopeY, Math.max(layerControls.ior - layerControls.dispersion, 1.0001)),
+      refractCameraRay(surface.slopeX, surface.slopeY, Math.max(params.controls.ior - params.controls.dispersion, 1.0001)),
       refractionHeight,
     )
     : [baseOffsetX, baseOffsetY];
@@ -839,6 +889,7 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const sampleAtOffset = ([offsetX, offsetY]: number[]): RGBA => sampleContent(
     radius + nx * radius + offsetX,
     radius + ny * radius + offsetY,
+    params,
   );
   const red = sampleAtOffset(redSource);
   const green = sampleAtOffset([baseOffsetX, baseOffsetY]);
@@ -852,9 +903,9 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   ];
 }
 
-function renderGlassBall(): void {
-  drawContentLayer();
-  renderSurfaceField();
+function renderGlassBall(params: RenderParams): void {
+  drawContentLayer(params);
+  renderSurfaceField(params);
 
   const size = ballCanvas.width;
   const image = ballCtx.createImageData(size, size);
@@ -876,34 +927,34 @@ function renderGlassBall(): void {
       const radial = Math.sqrt(radialSq);
       const nz = Math.sqrt(1 - radialSq);
       const edgeT = smoothstep(0.68, 1, radial);
-      const previewSurface = layerControls.surfacePreviewEnabled;
+      const previewSurface = params.controls.surfacePreviewEnabled;
       const [sampleR, sampleG, sampleB] = previewSurface
-        ? sampleSurfaceFieldPreview(nx, ny, radial)
-        : sampleLiquidGlass(nx, ny, radial);
+        ? sampleSurfaceFieldPreview(nx, ny, radial, params)
+        : sampleLiquidGlass(nx, ny, radial, params);
       const directionalLight = Math.max(0, nx * -0.36 + ny * -0.48 + nz * 0.88);
-      const innerShade = !previewSurface && layerControls.innerShadeEnabled
+      const innerShade = !previewSurface && params.controls.innerShadeEnabled
         ? 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08
         : 1;
-      const glassMilk = !previewSurface && layerControls.glassMilkEnabled
+      const glassMilk = !previewSurface && params.controls.glassMilkEnabled
         ? 0.025 + edgeT * 0.22 + smoothstep(0.92, 1, radial) * 0.18
         : 0;
-      const topWash = !previewSurface && layerControls.topWashEnabled
+      const topWash = !previewSurface && params.controls.topWashEnabled
         ? smoothstep(0.18, -0.82, ny) * smoothstep(0.98, 0.16, radial)
         : 0;
-      const rim = !previewSurface && layerControls.rimEnabled ? smoothstep(0.72, 1, radial) : 0;
-      const hardRim = !previewSurface && layerControls.hardRimEnabled ? smoothstep(0.93, 1, radial) : 0;
-      const caRim = !previewSurface && layerControls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
-      const specA = !previewSurface && layerControls.specAEnabled
+      const rim = !previewSurface && params.controls.rimEnabled ? smoothstep(0.72, 1, radial) : 0;
+      const hardRim = !previewSurface && params.controls.hardRimEnabled ? smoothstep(0.93, 1, radial) : 0;
+      const caRim = !previewSurface && params.controls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
+      const specA = !previewSurface && params.controls.specAEnabled
         ? Math.max(0, 1 - Math.hypot(nx + 0.42, ny + 0.52) / 0.2) ** 3.8
         : 0;
-      const specB = !previewSurface && layerControls.specBEnabled
+      const specB = !previewSurface && params.controls.specBEnabled
         ? Math.max(0, 1 - Math.hypot(nx - 0.35, ny + 0.22) / 0.28) ** 4.6
         : 0;
-      const specC = !previewSurface && layerControls.specCEnabled
+      const specC = !previewSurface && params.controls.specCEnabled
         ? Math.max(0, 1 - Math.hypot(nx + 0.04, ny + 0.28) / 0.48) ** 5.8
         : 0;
-      const pointerSpec = !previewSurface && layerControls.pointerSpecEnabled
-        ? Math.max(0, 1 - Math.hypot(nx - glintX, ny - glintY) / 0.2) ** 3.6 * glintAlpha
+      const pointerSpec = !previewSurface && params.controls.pointerSpecEnabled
+        ? Math.max(0, 1 - Math.hypot(nx - params.glint.x, ny - params.glint.y) / 0.2) ** 3.6 * params.glint.alpha
         : 0;
       const shell = specA * 136 + specB * 74 + specC * 14 + pointerSpec * 132;
 
@@ -922,19 +973,21 @@ function renderGlassBall(): void {
   ballCtx.putImageData(image, 0, 0);
 }
 
-function drawScene(): void {
-  ctx.clearRect(0, 0, view.width, view.height);
-  ctx.fillStyle = layerControls.backgroundColor;
-  ctx.fillRect(0, 0, view.width, view.height);
+function drawScene(params: RenderParams): void {
+  const renderView = params.view;
 
-  if (layerControls.shadowEnabled) {
+  ctx.clearRect(0, 0, renderView.width, renderView.height);
+  ctx.fillStyle = params.controls.backgroundColor;
+  ctx.fillRect(0, 0, renderView.width, renderView.height);
+
+  if (params.controls.shadowEnabled) {
     const shadow = ctx.createRadialGradient(
-      view.cx,
-      view.cy + view.radius * 0.94,
-      view.radius * 0.08,
-      view.cx,
-      view.cy + view.radius * 0.94,
-      view.radius * 0.96,
+      renderView.cx,
+      renderView.cy + renderView.radius * 0.94,
+      renderView.radius * 0.08,
+      renderView.cx,
+      renderView.cy + renderView.radius * 0.94,
+      renderView.radius * 0.96,
     );
     shadow.addColorStop(0, 'rgba(0, 0, 0, 0.22)');
     shadow.addColorStop(0.5, 'rgba(0, 0, 0, 0.08)');
@@ -945,10 +998,10 @@ function drawScene(): void {
     ctx.fillStyle = shadow;
     ctx.beginPath();
     ctx.ellipse(
-      view.cx,
-      (view.cy + view.radius * 0.94) / 0.22,
-      view.radius * 0.9,
-      view.radius * 0.52,
+      renderView.cx,
+      (renderView.cy + renderView.radius * 0.94) / 0.22,
+      renderView.radius * 0.9,
+      renderView.radius * 0.52,
       0,
       0,
       Math.PI * 2,
@@ -957,31 +1010,31 @@ function drawScene(): void {
     ctx.restore();
   }
 
-  renderGlassBall();
+  renderGlassBall(params);
   ctx.drawImage(
     ballCanvas,
-    view.cx - view.radius,
-    view.cy - view.radius,
-    view.radius * 2,
-    view.radius * 2,
+    renderView.cx - renderView.radius,
+    renderView.cy - renderView.radius,
+    renderView.radius * 2,
+    renderView.radius * 2,
   );
 
-  if (layerControls.outerStrokeEnabled) {
+  if (params.controls.outerStrokeEnabled) {
     const rim = ctx.createLinearGradient(
-      view.cx - view.radius,
-      view.cy - view.radius,
-      view.cx + view.radius,
-      view.cy + view.radius,
+      renderView.cx - renderView.radius,
+      renderView.cy - renderView.radius,
+      renderView.cx + renderView.radius,
+      renderView.cy + renderView.radius,
     );
     rim.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
     rim.addColorStop(0.36, 'rgba(255, 255, 255, 0.08)');
     rim.addColorStop(0.68, 'rgba(214, 205, 190, 0.1)');
     rim.addColorStop(1, 'rgba(255, 255, 255, 0.34)');
 
-    ctx.lineWidth = Math.max(0.8, view.radius * 0.012);
+    ctx.lineWidth = Math.max(0.8, renderView.radius * 0.012);
     ctx.strokeStyle = rim;
     ctx.beginPath();
-    ctx.arc(view.cx, view.cy, view.radius - ctx.lineWidth * 0.5, 0, Math.PI * 2);
+    ctx.arc(renderView.cx, renderView.cy, renderView.radius - ctx.lineWidth * 0.5, 0, Math.PI * 2);
     ctx.stroke();
   }
 }
@@ -1027,7 +1080,7 @@ function tick(now: number): void {
     glintAlpha = targetGlintAlpha;
   }
 
-  drawScene();
+  renderer.render(getRenderParams());
   requestAnimationFrame(tick);
 }
 
