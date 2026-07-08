@@ -81,7 +81,6 @@ const marbleCirclePalette = [
   '#f66a7c',
   '#35c7d2',
 ];
-const marbleCircles = createMarbleCircles(maxMarbleCircleCount);
 
 const layerControls = {
   backgroundColor: '#fffefb',
@@ -91,6 +90,7 @@ const layerControls = {
   contentOverscan: 0.46,
   circleCount: 10,
   circleSizeScale: 0.94,
+  edgeScaleFloor: 0.16,
   edgePortalWidth: 0.18,
   portalInset: 0.68,
   circleStrokeEnabled: true,
@@ -392,6 +392,7 @@ function rotateSpherePoint(x: number, y: number, z: number): Vec3 {
 function projectMarbleCircle(circle: MarbleCircle): VisibleMarbleCircle {
   const [x, y, z] = rotateSpherePoint(circle.x, circle.y, circle.z);
   const portalWidth = Math.max(layerControls.edgePortalWidth, 0.001);
+  const edgeScaleFloor = layerControls.edgeScaleFloor;
 
   if (z < 0 && -z < portalWidth) {
     const progress = smoothstep(0, portalWidth, -z);
@@ -403,7 +404,7 @@ function projectMarbleCircle(circle: MarbleCircle): VisibleMarbleCircle {
       cy: y * inset,
       dot: progress,
       z: -progress,
-      scale: mix(0.12, 0.52, progress ** 0.68),
+      scale: mix(edgeScaleFloor * 0.78, Math.max(0.52, edgeScaleFloor), progress ** 0.68),
       alpha: mix(0.08, 0.48, progress ** 0.72),
       blur: mix(1.8, 0.5, progress),
       back: true,
@@ -418,8 +419,8 @@ function projectMarbleCircle(circle: MarbleCircle): VisibleMarbleCircle {
     : clamp(z, 0, 1);
   const inset = folded ? mix(layerControls.portalInset, 1, foldProgress) : 1;
   const scale = folded
-    ? mix(0.46, 1.04, foldProgress ** 0.82)
-    : mix(0.045, 1.04, displayDepth ** 1.7);
+    ? mix(Math.max(0.46, edgeScaleFloor), 1.04, foldProgress ** 0.82)
+    : mix(edgeScaleFloor, 1.04, displayDepth ** 1.7);
   const alpha = folded
     ? mix(0.48, 1, foldProgress)
     : mix(0.42, 1, smoothstep(0, 0.86, displayDepth));
@@ -455,6 +456,7 @@ function setupGui(): void {
   source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
   source.add(layerControls, 'circleCount', 4, maxMarbleCircleCount, 1).name('circle count');
   source.add(layerControls, 'circleSizeScale', 0.45, 1.8, 0.01).name('circle size');
+  source.add(layerControls, 'edgeScaleFloor', 0.04, 0.5, 0.01).name('edge min size');
   source.add(layerControls, 'edgePortalWidth', 0.06, 0.6, 0.01).name('edge portal');
   source.add(layerControls, 'portalInset', 0.3, 0.9, 0.01).name('portal inset');
   source.add(layerControls, 'circleStrokeEnabled').name('white stroke');
@@ -547,13 +549,11 @@ function drawContentCircle(circle: VisibleMarbleCircle): void {
 
 function collectVisibleCircles(): VisibleMarbleCircle[] {
   const items: VisibleMarbleCircle[] = [];
-  const count = clamp(Math.round(layerControls.circleCount), 1, marbleCircles.length);
+  const count = clamp(Math.round(layerControls.circleCount), 1, maxMarbleCircleCount);
+  const circles = createMarbleCircles(count);
 
-  for (let index = 0; index < count; index += 1) {
-    const sourceIndex = count === 1
-      ? 0
-      : Math.round((index / (count - 1)) * (marbleCircles.length - 1));
-    items.push(projectMarbleCircle(marbleCircles[sourceIndex]));
+  for (const circle of circles) {
+    items.push(projectMarbleCircle(circle));
   }
 
   return items.sort((a, b) => {

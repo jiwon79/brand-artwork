@@ -485,3 +485,9 @@ z <= -edgePortalWidth
 ```
 
 This is intentionally not a physically exact sphere projection. It is a visual model for the reference behavior: edge crossings should feel like a short front/back handoff instead of a long trip around the hidden back hemisphere. The live controls are `edge portal` for the transition width and `portal inset` for how aggressively the crossing decal is pulled inward.
+
+## 2026-07-08 Edge Size And Count Distribution Controls
+
+The edge shrink amount is now tunable with `edge min size`. This replaces the previous hard-coded near-edge scale floor, so decals can remain larger while crossing the rim without changing their center/front size.
+
+`circleCount` now regenerates a Fibonacci sphere for the requested count instead of selecting a subset from a fixed larger set. This keeps low counts distributed over the whole sphere rather than clustering on one side of the precomputed candidate list.
