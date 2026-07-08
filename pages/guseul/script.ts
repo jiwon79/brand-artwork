@@ -41,17 +41,10 @@ type SurfaceSample = {
   rim: number;
 };
 
-type GlintState = {
-  x: number;
-  y: number;
-  alpha: number;
-};
-
 type RenderParams = {
   view: View;
   controls: LayerControls;
   orientation: Matrix3;
-  glint: GlintState;
 };
 
 type Renderer = {
@@ -134,7 +127,6 @@ const layerControls = {
   specAEnabled: true,
   specBEnabled: true,
   specCEnabled: true,
-  pointerSpecEnabled: true,
   outerStrokeEnabled: true,
 };
 
@@ -178,12 +170,6 @@ let pointerId: number | null = null;
 let lastPointerX = 0;
 let lastPointerY = 0;
 let lastPointerTime = 0;
-let glintX = -0.34;
-let glintY = -0.38;
-let targetGlintX = -0.34;
-let targetGlintY = -0.38;
-let glintAlpha = 0.18;
-let targetGlintAlpha = 0.18;
 let lastFrame = 0;
 const renderer: Renderer = new CanvasRenderer();
 
@@ -192,11 +178,6 @@ function getRenderParams(): RenderParams {
     view,
     controls: layerControls,
     orientation: sphereOrientation,
-    glint: {
-      x: glintX,
-      y: glintY,
-      alpha: glintAlpha,
-    },
   };
 }
 
@@ -442,13 +423,8 @@ function applyMatrix3(matrix: Matrix3, [x, y, z]: Vec3): Vec3 {
 function getSpecularReflection(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
   const normal: Vec3 = [nx, ny, nz];
   const screenReflection = reflectVec3([0, 0, -1], normal);
-  const localReflection = applyMatrix3(inverseOrientation, screenReflection);
 
-  return normalizeVec3([
-    mix(screenReflection[0], localReflection[0], 0.36),
-    mix(screenReflection[1], localReflection[1], 0.36),
-    screenReflection[2],
-  ]);
+  return normalizeVec3(applyMatrix3(inverseOrientation, screenReflection));
 }
 
 function areaWindowSpecular(
@@ -576,7 +552,6 @@ function setupGui(): void {
   shell.add(layerControls, 'specAEnabled').name('spec A');
   shell.add(layerControls, 'specBEnabled').name('spec B');
   shell.add(layerControls, 'specCEnabled').name('spec C');
-  shell.add(layerControls, 'pointerSpecEnabled').name('pointerSpec');
 
   const composite = gui.addFolder('6 final composite');
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
@@ -1012,10 +987,7 @@ function renderGlassBall(params: RenderParams): void {
       const specC = !previewSurface && params.controls.specCEnabled
         ? areaWindowSpecular(specReflection, -0.06, -0.42, 0.46, 0.14, 0.48, 1.25)
         : 0;
-      const pointerSpec = !previewSurface && params.controls.pointerSpecEnabled
-        ? Math.max(0, 1 - Math.hypot(nx - params.glint.x, ny - params.glint.y) / 0.2) ** 3.6 * params.glint.alpha
-        : 0;
-      const shell = specA * 136 + specB * 74 + specC * 14 + pointerSpec * 132;
+      const shell = specA * 136 + specB * 74 + specC * 14;
 
       let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
       let g = mix(sampleG * innerShade, 255, glassMilk) + shell + topWash * 19 + rim * 11 - hardRim * 6;
@@ -1098,22 +1070,6 @@ function drawScene(params: RenderParams): void {
   }
 }
 
-function updateGlintFromPointer(clientX: number, clientY: number, active: boolean): void {
-  const dx = (clientX - view.cx) / view.radius;
-  const dy = (clientY - view.cy) / view.radius;
-  const inside = dx * dx + dy * dy <= 1.12;
-
-  if (inside) {
-    targetGlintX = clamp(dx, -0.82, 0.82);
-    targetGlintY = clamp(dy, -0.82, 0.82);
-    targetGlintAlpha = active ? 1 : 0.42;
-  } else {
-    targetGlintX = -0.34;
-    targetGlintY = -0.38;
-    targetGlintAlpha = 0.18;
-  }
-}
-
 function tick(now: number): void {
   const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000 || 0.016));
   lastFrame = now;
@@ -1127,16 +1083,6 @@ function tick(now: number): void {
     if (spinVelocity < 0.01) {
       spinVelocity = 0;
     }
-  }
-
-  if (pointerId === null) {
-    glintX = mix(glintX, targetGlintX, 0.18);
-    glintY = mix(glintY, targetGlintY, 0.18);
-    glintAlpha = mix(glintAlpha, targetGlintAlpha, 0.16);
-  } else {
-    glintX = targetGlintX;
-    glintY = targetGlintY;
-    glintAlpha = targetGlintAlpha;
   }
 
   renderer.render(getRenderParams());
@@ -1158,12 +1104,9 @@ canvas.addEventListener('pointerdown', (event) => {
   lastPointerTime = event.timeStamp || performance.now();
   spinVelocity = 0;
   canvas.setPointerCapture(event.pointerId);
-  updateGlintFromPointer(event.clientX, event.clientY, true);
 });
 
 canvas.addEventListener('pointermove', (event) => {
-  updateGlintFromPointer(event.clientX, event.clientY, pointerId === event.pointerId);
-
   if (pointerId !== event.pointerId) {
     return;
   }
@@ -1196,7 +1139,6 @@ canvas.addEventListener('pointerup', (event) => {
 
   pointerId = null;
   event.preventDefault();
-  targetGlintAlpha = 0.28;
   canvas.releasePointerCapture(event.pointerId);
 });
 
@@ -1207,13 +1149,6 @@ canvas.addEventListener('pointercancel', (event) => {
 
   pointerId = null;
   event.preventDefault();
-  targetGlintAlpha = 0.18;
-});
-
-canvas.addEventListener('pointerleave', () => {
-  if (pointerId === null) {
-    targetGlintAlpha = 0.18;
-  }
 });
 
 document.addEventListener('selectstart', (event) => {
