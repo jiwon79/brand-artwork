@@ -142,7 +142,8 @@ let sphereOrientation = multiplyMatrix3(
 let spinAxis: Vec3 = [0, 0, 0];
 let spinVelocity = 0;
 let pointerId: number | null = null;
-let lastPointerVector: Vec3 = [0, 0, 1];
+let lastPointerX = 0;
+let lastPointerY = 0;
 let lastPointerTime = 0;
 let glintX = -0.34;
 let glintY = -0.38;
@@ -324,18 +325,6 @@ function normalizeVec3(vector: Vec3): Vec3 {
   }
 
   return [vector[0] / length, vector[1] / length, vector[2] / length];
-}
-
-function crossVec3(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ];
-}
-
-function dotVec3(a: Vec3, b: Vec3): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
 function multiplyMatrix3(a: Matrix3, b: Matrix3): Matrix3 {
@@ -988,20 +977,6 @@ function updateGlintFromPointer(clientX: number, clientY: number, active: boolea
   }
 }
 
-function pointerToSphere(clientX: number, clientY: number): Vec3 {
-  const x = (clientX - view.cx) / view.radius;
-  const y = (clientY - view.cy) / view.radius;
-  const distanceSq = x * x + y * y;
-
-  if (distanceSq <= 1) {
-    return [x, y, Math.sqrt(1 - distanceSq)];
-  }
-
-  const distance = Math.sqrt(distanceSq);
-
-  return [x / distance, y / distance, 0];
-}
-
 function tick(now: number): void {
   const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000 || 0.016));
   lastFrame = now;
@@ -1041,7 +1016,8 @@ canvas.addEventListener('pointerdown', (event) => {
 
   pointerId = event.pointerId;
   event.preventDefault();
-  lastPointerVector = pointerToSphere(event.clientX, event.clientY);
+  lastPointerX = event.clientX;
+  lastPointerY = event.clientY;
   lastPointerTime = event.timeStamp || performance.now();
   spinVelocity = 0;
   canvas.setPointerCapture(event.pointerId);
@@ -1056,19 +1032,13 @@ canvas.addEventListener('pointermove', (event) => {
   }
 
   event.preventDefault();
-  const nextPointerVector = pointerToSphere(event.clientX, event.clientY);
-  const axis = crossVec3(lastPointerVector, nextPointerVector);
-  const axisLength = vectorLength(axis);
+  const dx = event.clientX - lastPointerX;
+  const dy = event.clientY - lastPointerY;
+  const distance = Math.hypot(dx, dy);
 
-  if (axisLength > 0.0001) {
-    const normalizedAxis: Vec3 = [
-      axis[0] / axisLength,
-      axis[1] / axisLength,
-      axis[2] / axisLength,
-    ];
-    const angle =
-      Math.atan2(axisLength, clamp(dotVec3(lastPointerVector, nextPointerVector), -1, 1)) *
-      layerControls.dragSensitivity;
+  if (distance > 0.001) {
+    const normalizedAxis: Vec3 = [-dy / distance, dx / distance, 0];
+    const angle = (distance / view.radius) * layerControls.dragSensitivity;
     const now = event.timeStamp || performance.now();
     const dt = Math.max((now - lastPointerTime) / 1000, 0.016);
 
@@ -1078,7 +1048,8 @@ canvas.addEventListener('pointermove', (event) => {
     lastPointerTime = now;
   }
 
-  lastPointerVector = nextPointerVector;
+  lastPointerX = event.clientX;
+  lastPointerY = event.clientY;
 });
 
 canvas.addEventListener('pointerup', (event) => {

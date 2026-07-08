@@ -422,13 +422,12 @@ The surface field is still generated for refraction when the preview is off. Thi
 The source content is no longer a flat 2D plane translated under the glass. Each colored circle is treated as a decal anchored to a point on a unit sphere:
 
 ```text
-base circle x/y
-  -> recover sphere z from x/y
-  -> rotate the sphere by drag-controlled rotationX/rotationY
+base circle x/y/z on a unit sphere
+  -> rotate the sphere by the current orientation matrix
   -> project rotated x/y/z back into the source-content canvas
 ```
 
-This changes the drag model from `offsetX/offsetY` to `rotationX/rotationY`. Drag now immediately updates the target rotation and the current rotation, then stores angular velocity for inertial motion after release.
+This changes the content model from `offsetX/offsetY` plane translation to a persistent sphere orientation matrix. Drag immediately pre-multiplies a small screen-space rotation into that orientation, then stores angular velocity for inertial motion after release.
 
 The visible circle pass is split by depth:
 
@@ -438,7 +437,7 @@ The visible circle pass is split by depth:
 
 The current implementation is still a 2D canvas renderer, not a true 3D mesh or ray-traced glass sphere. The important behavioral change is that source content now rotates around a spherical coordinate field before the existing liquid-dom-inspired refraction pass samples it. That should reduce the "flat plane sliding under glass" read and create the front/back visibility needed for a glass marble.
 
-## 2026-07-08 Sphere Distribution And Arcball Drag
+## 2026-07-08 Sphere Distribution And Continuous Drag
 
 The first spherical decal pass still looked front-heavy because each decal only stored `x/y`; `z` was recovered with `sqrt(1 - x*x - y*y)`, which forces every base decal onto the front hemisphere. Rotation could move decals behind the glass after interaction, but the initial source set was still a single visible face.
 
@@ -453,14 +452,15 @@ rotationX -= dy
 
 That feels natural only near the initial orientation. Once the sphere is already rotated, screen axes and object axes diverge, so the next drag can appear to move in an unexpected direction.
 
-The current implementation uses an arcball mapping:
+An intermediate arcball implementation improved directionality but introduced another problem: pointer positions outside the visible marble had to be clamped to the virtual sphere edge. After the pointer moved far enough in one direction, consecutive clamped vectors became nearly identical, so continued dragging stopped producing rotation.
+
+The current implementation uses delta-based screen-space rotation:
 
 ```text
-previous pointer position -> sphere vector A
-current pointer position  -> sphere vector B
-axis = cross(A, B)
-angle = atan2(length(axis), dot(A, B))
+dx/dy = current pointer - previous pointer
+axis = normalize(vec3(-dy, dx, 0))
+angle = length(dx/dy) / marbleRadius * dragSensitivity
 orientation = rotation(axis, angle) * orientation
 ```
 
-The incremental rotation is applied in screen space, so dragging right/down maps to the local surface motion the pointer implies, instead of directly editing global Euler angles.
+The incremental rotation is still applied in screen space, so dragging right/down maps to the local surface motion the pointer implies. Because it depends on pointer movement delta rather than the absolute pointer position on a clamped virtual sphere, rotation can continue indefinitely while the user keeps dragging.
