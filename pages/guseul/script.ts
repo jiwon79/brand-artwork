@@ -17,6 +17,7 @@ type VisibleMarbleCircle = MarbleCircle & {
   alpha: number;
   blur: number;
   back: boolean;
+  strokeAlpha: number;
 };
 
 type View = {
@@ -88,8 +89,10 @@ const layerControls = {
   marbleScale: 1.22,
   dragSensitivity: 1,
   contentOverscan: 0.46,
-  circleCount: 18,
+  circleCount: 10,
   circleSizeScale: 0.94,
+  edgePortalWidth: 0.18,
+  portalInset: 0.68,
   circleStrokeEnabled: true,
   circleStrokeScale: 1,
   displacementEnabled: true,
@@ -173,7 +176,7 @@ function createMarbleCircles(count: number): MarbleCircle[] {
       y,
       z: Math.sin(theta) * radial,
       radius: size,
-      color: marbleCirclePalette[index % marbleCirclePalette.length],
+      color: marbleCirclePalette[Math.floor(pseudoRandom(index, 3) * marbleCirclePalette.length)],
     };
   });
 }
@@ -388,26 +391,51 @@ function rotateSpherePoint(x: number, y: number, z: number): Vec3 {
 
 function projectMarbleCircle(circle: MarbleCircle): VisibleMarbleCircle {
   const [x, y, z] = rotateSpherePoint(circle.x, circle.y, circle.z);
-  const back = z < 0;
-  const depth = back ? clamp(-z, 0, 1) : clamp(z, 0, 1);
-  const scale = back
-    ? mix(0.08, 0.48, depth ** 0.82)
-    : mix(0.045, 1.04, depth ** 1.7);
-  const alpha = back
-    ? mix(0.08, 0.32, depth ** 0.72)
-    : mix(0.42, 1, smoothstep(0, 0.86, depth));
-  const inset = back ? 0.84 : 1;
+  const portalWidth = Math.max(layerControls.edgePortalWidth, 0.001);
+
+  if (z < 0 && -z < portalWidth) {
+    const progress = smoothstep(0, portalWidth, -z);
+    const inset = mix(0.94, layerControls.portalInset, progress);
+
+    return {
+      ...circle,
+      cx: x * inset,
+      cy: y * inset,
+      dot: progress,
+      z: -progress,
+      scale: mix(0.12, 0.52, progress ** 0.68),
+      alpha: mix(0.08, 0.48, progress ** 0.72),
+      blur: mix(1.8, 0.5, progress),
+      back: true,
+      strokeAlpha: 0,
+    };
+  }
+
+  const folded = z < 0;
+  const foldProgress = folded ? smoothstep(portalWidth, 1, -z) : 0;
+  const displayDepth = folded
+    ? mix(0.42, 1, foldProgress)
+    : clamp(z, 0, 1);
+  const inset = folded ? mix(layerControls.portalInset, 1, foldProgress) : 1;
+  const scale = folded
+    ? mix(0.46, 1.04, foldProgress ** 0.82)
+    : mix(0.045, 1.04, displayDepth ** 1.7);
+  const alpha = folded
+    ? mix(0.48, 1, foldProgress)
+    : mix(0.42, 1, smoothstep(0, 0.86, displayDepth));
+  const strokeAlpha = folded ? mix(0.18, 1, foldProgress) : 1;
 
   return {
     ...circle,
     cx: x * inset,
     cy: y * inset,
-    dot: depth,
-    z,
+    dot: displayDepth,
+    z: displayDepth,
     scale,
     alpha,
-    blur: back ? mix(2.4, 0.7, depth) : 0,
-    back,
+    blur: 0,
+    back: false,
+    strokeAlpha,
   };
 }
 
@@ -427,6 +455,8 @@ function setupGui(): void {
   source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
   source.add(layerControls, 'circleCount', 4, maxMarbleCircleCount, 1).name('circle count');
   source.add(layerControls, 'circleSizeScale', 0.45, 1.8, 0.01).name('circle size');
+  source.add(layerControls, 'edgePortalWidth', 0.06, 0.6, 0.01).name('edge portal');
+  source.add(layerControls, 'portalInset', 0.3, 0.9, 0.01).name('portal inset');
   source.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   source.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
@@ -500,15 +530,16 @@ function drawContentCircle(circle: VisibleMarbleCircle): void {
     : 0;
 
   contentCtx.save();
-  contentCtx.globalAlpha = circle.alpha;
   contentCtx.filter = circle.blur > 0 ? `blur(${circle.blur}px)` : 'none';
   contentCtx.beginPath();
   contentCtx.arc(center + circle.cx * radius, center + circle.cy * radius, size, 0, Math.PI * 2);
-  if (strokeWidth > 0 && !circle.back) {
+  if (strokeWidth > 0 && !circle.back && circle.strokeAlpha > 0) {
+    contentCtx.globalAlpha = circle.alpha * circle.strokeAlpha;
     contentCtx.lineWidth = strokeWidth;
     contentCtx.strokeStyle = '#ffffff';
     contentCtx.stroke();
   }
+  contentCtx.globalAlpha = circle.alpha;
   contentCtx.fillStyle = circle.color;
   contentCtx.fill();
   contentCtx.restore();
@@ -519,7 +550,10 @@ function collectVisibleCircles(): VisibleMarbleCircle[] {
   const count = clamp(Math.round(layerControls.circleCount), 1, marbleCircles.length);
 
   for (let index = 0; index < count; index += 1) {
-    items.push(projectMarbleCircle(marbleCircles[index]));
+    const sourceIndex = count === 1
+      ? 0
+      : Math.round((index / (count - 1)) * (marbleCircles.length - 1));
+    items.push(projectMarbleCircle(marbleCircles[sourceIndex]));
   }
 
   return items.sort((a, b) => {
@@ -527,7 +561,7 @@ function collectVisibleCircles(): VisibleMarbleCircle[] {
       return a.back ? -1 : 1;
     }
 
-    return a.z - b.z;
+    return a.dot - b.dot;
   });
 }
 

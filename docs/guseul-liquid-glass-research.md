@@ -464,3 +464,24 @@ orientation = rotation(axis, angle) * orientation
 ```
 
 The incremental rotation is still applied in screen space, so dragging right/down maps to the local surface motion the pointer implies. Because it depends on pointer movement delta rather than the absolute pointer position on a clamped virtual sphere, rotation can continue indefinitely while the user keeps dragging.
+
+## 2026-07-08 Compressed Back-Hemisphere Display
+
+The reference marble does not read like a fully physical sphere where a decal spends half of the rotation hidden on the far side. When content reaches the edge, it appears to pass through a short edge/back transition and then quickly returns into the visible volume.
+
+The Guseul renderer now keeps the real sphere orientation for motion, but remaps depth for display:
+
+```text
+z >= 0
+  -> normal front decal projection
+
+0 > z > -edgePortalWidth
+  -> short back-transition layer
+  -> smaller, blurred, lower alpha, pulled inward by portalInset
+
+z <= -edgePortalWidth
+  -> folded-front layer
+  -> drawn as front content again, with display depth remapped from the compressed back range
+```
+
+This is intentionally not a physically exact sphere projection. It is a visual model for the reference behavior: edge crossings should feel like a short front/back handoff instead of a long trip around the hidden back hemisphere. The live controls are `edge portal` for the transition width and `portal inset` for how aggressively the crossing decal is pulled inward.
