@@ -360,6 +360,16 @@ function rayToDisplacement(ray: [number, number, number], height: number): [numb
   return [(ray[0] / z) * height, (ray[1] / z) * height];
 }
 
+function reflectVec3(incident: Vec3, normal: Vec3): Vec3 {
+  const dot = incident[0] * normal[0] + incident[1] * normal[1] + incident[2] * normal[2];
+
+  return [
+    incident[0] - 2 * dot * normal[0],
+    incident[1] - 2 * dot * normal[1],
+    incident[2] - 2 * dot * normal[2],
+  ];
+}
+
 function vectorLength([x, y, z]: Vec3): number {
   return Math.hypot(x, y, z);
 }
@@ -388,6 +398,20 @@ function multiplyMatrix3(a: Matrix3, b: Matrix3): Matrix3 {
   ];
 }
 
+function transposeMatrix3(matrix: Matrix3): Matrix3 {
+  return [
+    matrix[0],
+    matrix[3],
+    matrix[6],
+    matrix[1],
+    matrix[4],
+    matrix[7],
+    matrix[2],
+    matrix[5],
+    matrix[8],
+  ];
+}
+
 function rotationMatrixFromAxisAngle(axis: Vec3, angle: number): Matrix3 {
   const [x, y, z] = normalizeVec3(axis);
   const cosine = Math.cos(angle);
@@ -413,6 +437,36 @@ function applyMatrix3(matrix: Matrix3, [x, y, z]: Vec3): Vec3 {
     matrix[3] * x + matrix[4] * y + matrix[5] * z,
     matrix[6] * x + matrix[7] * y + matrix[8] * z,
   ];
+}
+
+function getSpecularReflection(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
+  const normal: Vec3 = [nx, ny, nz];
+  const screenReflection = reflectVec3([0, 0, -1], normal);
+  const localReflection = applyMatrix3(inverseOrientation, screenReflection);
+
+  return normalizeVec3([
+    mix(screenReflection[0], localReflection[0], 0.36),
+    mix(screenReflection[1], localReflection[1], 0.36),
+    screenReflection[2],
+  ]);
+}
+
+function areaWindowSpecular(
+  reflection: Vec3,
+  centerX: number,
+  centerY: number,
+  halfWidth: number,
+  halfHeight: number,
+  softness: number,
+  power: number,
+): number {
+  const dx = Math.abs((reflection[0] - centerX) / halfWidth);
+  const dy = Math.abs((reflection[1] - centerY) / halfHeight);
+  const boxDistance = Math.max(dx, dy);
+  const box = 1 - smoothstep(1 - softness, 1 + softness, boxDistance);
+  const facing = smoothstep(-0.08, 0.36, reflection[2]);
+
+  return Math.max(0, box) ** power * facing;
 }
 
 function applyScreenAxisRotation(axis: Vec3, angle: number): void {
@@ -911,6 +965,7 @@ function renderGlassBall(params: RenderParams): void {
   const image = ballCtx.createImageData(size, size);
   const data = image.data;
   const radiusPx = size * 0.5;
+  const inverseOrientation = transposeMatrix3(params.orientation);
 
   for (let y = 0; y < size; y += 1) {
     const ny = (y + 0.5) / radiusPx - 1;
@@ -944,14 +999,18 @@ function renderGlassBall(params: RenderParams): void {
       const rim = !previewSurface && params.controls.rimEnabled ? smoothstep(0.72, 1, radial) : 0;
       const hardRim = !previewSurface && params.controls.hardRimEnabled ? smoothstep(0.93, 1, radial) : 0;
       const caRim = !previewSurface && params.controls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
+      const hasAreaSpec =
+        !previewSurface &&
+        (params.controls.specAEnabled || params.controls.specBEnabled || params.controls.specCEnabled);
+      const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz, inverseOrientation) : [0, 0, 1];
       const specA = !previewSurface && params.controls.specAEnabled
-        ? Math.max(0, 1 - Math.hypot(nx + 0.42, ny + 0.52) / 0.2) ** 3.8
+        ? areaWindowSpecular(specReflection, -0.58, -0.62, 0.24, 0.11, 0.36, 1.45)
         : 0;
       const specB = !previewSurface && params.controls.specBEnabled
-        ? Math.max(0, 1 - Math.hypot(nx - 0.35, ny + 0.22) / 0.28) ** 4.6
+        ? areaWindowSpecular(specReflection, 0.5, -0.2, 0.12, 0.18, 0.42, 1.65)
         : 0;
       const specC = !previewSurface && params.controls.specCEnabled
-        ? Math.max(0, 1 - Math.hypot(nx + 0.04, ny + 0.28) / 0.48) ** 5.8
+        ? areaWindowSpecular(specReflection, -0.06, -0.42, 0.46, 0.14, 0.48, 1.25)
         : 0;
       const pointerSpec = !previewSurface && params.controls.pointerSpecEnabled
         ? Math.max(0, 1 - Math.hypot(nx - params.glint.x, ny - params.glint.y) / 0.2) ** 3.6 * params.glint.alpha
