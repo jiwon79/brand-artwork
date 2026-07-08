@@ -408,11 +408,11 @@ source = outputPixel + refractedRay.xy * refractionHeight
 
 The glass shell layers still draw to the full circular silhouette. Only the internal source-image displacement is faded, which reduces the small reverse bend that can appear when a highly displaced source coordinate meets the final circular mask.
 
-## 2026-07-07 Surface/Refraction Toggles
+## 2026-07-07 Surface Preview / Refraction Apply
 
-The GUI now separates the optical debug switches:
+The GUI now separates the optical pipeline stages more like a renderer debug view:
 
-- `3 surface field > on` controls whether the rim slope field is generated.
+- `3 surface field debug > on` shows the generated rim slope/height field directly.
 - `4 refraction > on` controls whether the source content is sampled through that field.
 
-This makes it possible to keep shell lighting visible while comparing raw source content, the generated surface field, and final refraction independently. Current tuning defaults are `bezelWidth: 0.2`, `fieldBlur: 3`, `thickness: 0.4`, `displacementFactor: 0.75`, `edgeFadeWidth: 0`, `ior: 1.5`, and `dispersion: 0.14`.
+The surface field is still generated for refraction when the preview is off. This avoids treating the field as a removable visual layer; it is an internal prepass that can be previewed separately. Current tuning defaults are `bezelWidth: 0.2`, `fieldBlur: 3`, `thickness: 0.4`, `displacementFactor: 0.75`, `edgeFadeWidth: 0`, `ior: 1.5`, and `dispersion: 0.14`.

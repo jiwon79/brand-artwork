@@ -81,6 +81,7 @@ const layerControls = {
   circleStrokeEnabled: true,
   circleStrokeScale: 1,
   displacementEnabled: true,
+  surfacePreviewEnabled: false,
   surfaceProfile: 'convex' as SurfaceProfile,
   bezelWidth: 0.2,
   thickness: 0.4,
@@ -310,13 +311,13 @@ function setupGui(): void {
   source.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   source.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
-  const surface = gui.addFolder('3 surface field');
-  surface.add(layerControls, 'displacementEnabled').name('on');
+  const surface = gui.addFolder('3 surface field debug');
+  surface.add(layerControls, 'surfacePreviewEnabled').name('on');
   surface.add(layerControls, 'surfaceProfile', ['convex', 'concave', 'lip']).name('profile');
   surface.add(layerControls, 'bezelWidth', 0.04, 0.55, 0.01).name('bezel width');
   surface.add(layerControls, 'displacementBlur', 0, 18, 0.5).name('field blur');
 
-  const refraction = gui.addFolder('4 refraction');
+  const refraction = gui.addFolder('4 refraction apply');
   refraction.add(layerControls, 'refractionEnabled').name('on');
   refraction.add(layerControls, 'thickness', 0, 0.9, 0.01).name('thickness');
   refraction.add(layerControls, 'displacementFactor', 0, 2, 0.01).name('displace factor');
@@ -660,6 +661,21 @@ function sampleSurfaceField(nx: number, ny: number, radial: number): SurfaceSamp
   };
 }
 
+function sampleSurfaceFieldPreview(nx: number, ny: number, radial: number): RGBA {
+  const surface = sampleSurfaceField(nx, ny, radial);
+  const rim = surface.rim;
+  const slopeX = clamp(surface.slopeX / maxSurfaceSlope, -1, 1);
+  const slopeY = clamp(surface.slopeY / maxSurfaceSlope, -1, 1);
+  const height = clamp(surface.height / (view.radius * 0.8), 0, 1);
+
+  return [
+    mix(248, 128 + slopeX * 96, rim),
+    mix(248, 128 + slopeY * 96, rim),
+    mix(248, 126 + height * 104, rim),
+    255,
+  ];
+}
+
 function sampleLiquidGlass(nx: number, ny: number, radial: number): RGBA {
   const radius = view.radius;
 
@@ -724,30 +740,33 @@ function renderGlassBall(): void {
       const radial = Math.sqrt(radialSq);
       const nz = Math.sqrt(1 - radialSq);
       const edgeT = smoothstep(0.68, 1, radial);
-      const [sampleR, sampleG, sampleB] = sampleLiquidGlass(nx, ny, radial);
+      const previewSurface = layerControls.surfacePreviewEnabled;
+      const [sampleR, sampleG, sampleB] = previewSurface
+        ? sampleSurfaceFieldPreview(nx, ny, radial)
+        : sampleLiquidGlass(nx, ny, radial);
       const directionalLight = Math.max(0, nx * -0.36 + ny * -0.48 + nz * 0.88);
-      const innerShade = layerControls.innerShadeEnabled
+      const innerShade = !previewSurface && layerControls.innerShadeEnabled
         ? 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08
         : 1;
-      const glassMilk = layerControls.glassMilkEnabled
+      const glassMilk = !previewSurface && layerControls.glassMilkEnabled
         ? 0.025 + edgeT * 0.22 + smoothstep(0.92, 1, radial) * 0.18
         : 0;
-      const topWash = layerControls.topWashEnabled
+      const topWash = !previewSurface && layerControls.topWashEnabled
         ? smoothstep(0.18, -0.82, ny) * smoothstep(0.98, 0.16, radial)
         : 0;
-      const rim = layerControls.rimEnabled ? smoothstep(0.72, 1, radial) : 0;
-      const hardRim = layerControls.hardRimEnabled ? smoothstep(0.93, 1, radial) : 0;
-      const caRim = layerControls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
-      const specA = layerControls.specAEnabled
+      const rim = !previewSurface && layerControls.rimEnabled ? smoothstep(0.72, 1, radial) : 0;
+      const hardRim = !previewSurface && layerControls.hardRimEnabled ? smoothstep(0.93, 1, radial) : 0;
+      const caRim = !previewSurface && layerControls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
+      const specA = !previewSurface && layerControls.specAEnabled
         ? Math.max(0, 1 - Math.hypot(nx + 0.42, ny + 0.52) / 0.2) ** 3.8
         : 0;
-      const specB = layerControls.specBEnabled
+      const specB = !previewSurface && layerControls.specBEnabled
         ? Math.max(0, 1 - Math.hypot(nx - 0.35, ny + 0.22) / 0.28) ** 4.6
         : 0;
-      const specC = layerControls.specCEnabled
+      const specC = !previewSurface && layerControls.specCEnabled
         ? Math.max(0, 1 - Math.hypot(nx + 0.04, ny + 0.28) / 0.48) ** 5.8
         : 0;
-      const pointerSpec = layerControls.pointerSpecEnabled
+      const pointerSpec = !previewSurface && layerControls.pointerSpecEnabled
         ? Math.max(0, 1 - Math.hypot(nx - glintX, ny - glintY) / 0.2) ** 3.6 * glintAlpha
         : 0;
       const shell = specA * 136 + specB * 74 + specC * 14 + pointerSpec * 132;
