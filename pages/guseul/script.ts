@@ -394,49 +394,40 @@ function projectMarbleCircle(circle: MarbleCircle): VisibleMarbleCircle {
   const portalWidth = Math.max(layerControls.edgePortalWidth, 0.001);
   const edgeScaleFloor = layerControls.edgeScaleFloor;
 
-  if (z < 0 && -z < portalWidth) {
-    const progress = smoothstep(0, portalWidth, -z);
-    const inset = mix(0.94, layerControls.portalInset, progress);
+  if (z < 0) {
+    const depth = smoothstep(0, 1, -z);
+    const portalProgress = smoothstep(0, portalWidth, -z);
+    const inset = mix(0.94, layerControls.portalInset, portalProgress);
 
     return {
       ...circle,
       cx: x * inset,
       cy: y * inset,
-      dot: progress,
-      z: -progress,
-      scale: mix(edgeScaleFloor * 0.78, Math.max(0.52, edgeScaleFloor), progress ** 0.68),
-      alpha: mix(0.08, 0.48, progress ** 0.72),
-      blur: mix(1.8, 0.5, progress),
+      dot: depth,
+      z: -depth,
+      scale: mix(edgeScaleFloor * 0.9, Math.max(0.58, edgeScaleFloor), depth ** 0.58),
+      alpha: mix(0.1, 0.36, depth ** 0.68),
+      blur: mix(1.8, 0.65, depth),
       back: true,
       strokeAlpha: 0,
     };
   }
 
-  const folded = z < 0;
-  const foldProgress = folded ? smoothstep(portalWidth, 1, -z) : 0;
-  const displayDepth = folded
-    ? mix(0.42, 1, foldProgress)
-    : clamp(z, 0, 1);
-  const inset = folded ? mix(layerControls.portalInset, 1, foldProgress) : 1;
-  const scale = folded
-    ? mix(Math.max(0.46, edgeScaleFloor), 1.04, foldProgress ** 0.82)
-    : mix(edgeScaleFloor, 1.04, displayDepth ** 1.7);
-  const alpha = folded
-    ? mix(0.48, 1, foldProgress)
-    : mix(0.42, 1, smoothstep(0, 0.86, displayDepth));
-  const strokeAlpha = folded ? mix(0.18, 1, foldProgress) : 1;
+  const displayDepth = clamp(z, 0, 1);
+  const scale = mix(edgeScaleFloor, 1.04, displayDepth ** 1.7);
+  const alpha = mix(0.42, 1, smoothstep(0, 0.86, displayDepth));
 
   return {
     ...circle,
-    cx: x * inset,
-    cy: y * inset,
+    cx: x,
+    cy: y,
     dot: displayDepth,
     z: displayDepth,
     scale,
     alpha,
     blur: 0,
     back: false,
-    strokeAlpha,
+    strokeAlpha: 1,
   };
 }
 

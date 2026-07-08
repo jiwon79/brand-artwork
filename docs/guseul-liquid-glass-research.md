@@ -469,22 +469,22 @@ The incremental rotation is still applied in screen space, so dragging right/dow
 
 The reference marble does not read like a fully physical sphere where a decal spends half of the rotation hidden on the far side. When content reaches the edge, it appears to pass through a short edge/back transition and then quickly returns into the visible volume.
 
-The Guseul renderer now keeps the real sphere orientation for motion, but remaps depth for display:
+The first compressed pass tried to achieve that by folding deep back-hemisphere decals into the front layer again. That made the back side feel missing: only a thin transition band still looked like back content, and each decal crossed the fold threshold independently, so dragging could look like separate planes were moving in different directions.
+
+The Guseul renderer now keeps the real sphere orientation for motion, but keeps the front/back layer split stable:
 
 ```text
 z >= 0
   -> normal front decal projection
 
-0 > z > -edgePortalWidth
-  -> short back-transition layer
-  -> smaller, blurred, lower alpha, pulled inward by portalInset
-
-z <= -edgePortalWidth
-  -> folded-front layer
-  -> drawn as front content again, with display depth remapped from the compressed back range
+z < 0
+  -> back decal projection
+  -> no white stroke
+  -> lower alpha and slight blur
+  -> pulled inward by portalInset after crossing the rim
 ```
 
-This is intentionally not a physically exact sphere projection. It is a visual model for the reference behavior: edge crossings should feel like a short front/back handoff instead of a long trip around the hidden back hemisphere. The live controls are `edge portal` for the transition width and `portal inset` for how aggressively the crossing decal is pulled inward.
+This is intentionally not a physically exact sphere projection. It is a visual model for the reference behavior: edge crossings should feel shorter than a long hidden trip around a physical back hemisphere, while still preserving a visible back layer. The live controls are `edge portal` for how quickly the back decal starts compressing inward after crossing the rim and `portal inset` for how aggressively that back projection is pulled toward the marble center.
 
 ## 2026-07-08 Edge Size And Count Distribution Controls
 
