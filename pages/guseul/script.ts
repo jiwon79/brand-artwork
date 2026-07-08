@@ -11,6 +11,11 @@ type VisibleMarbleCircle = MarbleCircle & {
   cx: number;
   cy: number;
   dot: number;
+  z: number;
+  scale: number;
+  alpha: number;
+  blur: number;
+  back: boolean;
 };
 
 type View = {
@@ -54,8 +59,6 @@ if (!ballCtx) {
   throw new Error('2D canvas is not supported.');
 }
 
-const motifWidth = 2.22;
-const motifHeight = 2.02;
 const surfaceFieldChannels = 3;
 const maxSurfaceSlope = Math.tan((85 * Math.PI) / 180);
 
@@ -123,12 +126,12 @@ let view: View = {
   radius: 1,
 };
 
-let offsetX = 0.08;
-let offsetY = -0.08;
-let targetOffsetX = 0.08;
-let targetOffsetY = -0.08;
-let velocityX = 0;
-let velocityY = 0;
+let rotationX = -0.1;
+let rotationY = 0.14;
+let targetRotationX = -0.1;
+let targetRotationY = 0.14;
+let angularVelocityX = 0;
+let angularVelocityY = 0;
 let pointerId: number | null = null;
 let lastPointerX = 0;
 let lastPointerY = 0;
@@ -275,24 +278,54 @@ function rayToDisplacement(ray: [number, number, number], height: number): [numb
   return [(ray[0] / z) * height, (ray[1] / z) * height];
 }
 
-function wrapCentered(value: number, period: number): number {
-  return (((value + period * 0.5) % period) + period) % period - period * 0.5;
-}
-
-function normalDotCamera(x: number, y: number): number {
-  const radial = clamp(Math.hypot(x, y), 0, 0.999);
-  return Math.sqrt(1 - radial * radial);
-}
-
-function scaleFromNormalDot(dot: number): number {
-  return mix(0.2, 1.02, dot ** 0.72);
-}
-
 function applyBackgroundColor(): void {
   document.documentElement.style.backgroundColor = layerControls.backgroundColor;
   document.body.style.backgroundColor = layerControls.backgroundColor;
   canvas.style.backgroundColor = layerControls.backgroundColor;
   stage?.style.setProperty('background', layerControls.backgroundColor);
+}
+
+function rotateSpherePoint(x: number, y: number): [number, number, number] {
+  const radial = Math.hypot(x, y);
+  const scale = radial > 0.96 ? 0.96 / radial : 1;
+  const baseX = x * scale;
+  const baseY = y * scale;
+  const baseZ = Math.sqrt(Math.max(1 - baseX * baseX - baseY * baseY, 0));
+  const cosX = Math.cos(rotationX);
+  const sinX = Math.sin(rotationX);
+  const cosY = Math.cos(rotationY);
+  const sinY = Math.sin(rotationY);
+  const y1 = baseY * cosX - baseZ * sinX;
+  const z1 = baseY * sinX + baseZ * cosX;
+  const x2 = baseX * cosY + z1 * sinY;
+  const z2 = -baseX * sinY + z1 * cosY;
+
+  return [x2, y1, z2];
+}
+
+function projectMarbleCircle(circle: MarbleCircle): VisibleMarbleCircle {
+  const [x, y, z] = rotateSpherePoint(circle.x, circle.y);
+  const back = z < 0;
+  const depth = back ? clamp(-z, 0, 1) : clamp(z, 0, 1);
+  const scale = back
+    ? mix(0.08, 0.48, depth ** 0.82)
+    : mix(0.045, 1.04, depth ** 1.7);
+  const alpha = back
+    ? mix(0.08, 0.32, depth ** 0.72)
+    : mix(0.42, 1, smoothstep(0, 0.86, depth));
+  const inset = back ? 0.84 : 1;
+
+  return {
+    ...circle,
+    cx: x * inset,
+    cy: y * inset,
+    dot: depth,
+    z,
+    scale,
+    alpha,
+    blur: back ? mix(2.4, 0.7, depth) : 0,
+    back,
+  };
 }
 
 function setupGui(): void {
@@ -372,20 +405,20 @@ function resize(): void {
   surfaceFieldSignature = '';
 }
 
-function drawContentCircle(circle: MarbleCircle, x: number, y: number, dot: number): void {
+function drawContentCircle(circle: VisibleMarbleCircle): void {
   const radius = view.radius;
   const center = getContentCenter();
-  const size = circle.radius * radius * scaleFromNormalDot(dot);
-  const alpha = mix(0.76, 1, smoothstep(0, 0.86, dot));
+  const size = circle.radius * radius * circle.scale;
   const strokeWidth = layerControls.circleStrokeEnabled
     ? Math.min(size * 0.34, clamp(radius * 0.048, 4, 8)) * layerControls.circleStrokeScale
     : 0;
 
   contentCtx.save();
-  contentCtx.globalAlpha = alpha;
+  contentCtx.globalAlpha = circle.alpha;
+  contentCtx.filter = circle.blur > 0 ? `blur(${circle.blur}px)` : 'none';
   contentCtx.beginPath();
-  contentCtx.arc(center + x * radius, center + y * radius, size, 0, Math.PI * 2);
-  if (strokeWidth > 0) {
+  contentCtx.arc(center + circle.cx * radius, center + circle.cy * radius, size, 0, Math.PI * 2);
+  if (strokeWidth > 0 && !circle.back) {
     contentCtx.lineWidth = strokeWidth;
     contentCtx.strokeStyle = '#ffffff';
     contentCtx.stroke();
@@ -396,28 +429,19 @@ function drawContentCircle(circle: MarbleCircle, x: number, y: number, dot: numb
 }
 
 function collectVisibleCircles(): VisibleMarbleCircle[] {
-  const wrappedX = wrapCentered(offsetX, motifWidth);
-  const wrappedY = wrapCentered(offsetY, motifHeight);
   const items: VisibleMarbleCircle[] = [];
 
-  for (let tileY = -1; tileY <= 1; tileY += 1) {
-    for (let tileX = -1; tileX <= 1; tileX += 1) {
-      for (const circle of marbleCircles) {
-        const cx = circle.x + wrappedX + tileX * motifWidth;
-        const cy = circle.y + wrappedY + tileY * motifHeight;
-        const dot = normalDotCamera(cx, cy);
-        const reach = circle.radius * 1.15;
-
-        if (Math.hypot(cx, cy) > 1 + getContentOverscan() + reach) {
-          continue;
-        }
-
-        items.push({ ...circle, cx, cy, dot });
-      }
-    }
+  for (const circle of marbleCircles) {
+    items.push(projectMarbleCircle(circle));
   }
 
-  return items.sort((a, b) => a.dot - b.dot);
+  return items.sort((a, b) => {
+    if (a.back !== b.back) {
+      return a.back ? -1 : 1;
+    }
+
+    return a.z - b.z;
+  });
 }
 
 function drawContentLayer(): void {
@@ -433,7 +457,7 @@ function drawContentLayer(): void {
   visibleCircles = collectVisibleCircles();
 
   for (const item of visibleCircles) {
-    drawContentCircle(item, item.cx, item.cy, item.dot);
+    drawContentCircle(item);
   }
 
   contentData = contentCtx.getImageData(0, 0, contentCanvas.width, contentCanvas.height);
@@ -871,22 +895,22 @@ function tick(now: number): void {
   lastFrame = now;
 
   if (pointerId === null) {
-    targetOffsetX += velocityX * dt;
-    targetOffsetY += velocityY * dt;
-    velocityX *= 0.92;
-    velocityY *= 0.92;
+    targetRotationX += angularVelocityX * dt;
+    targetRotationY += angularVelocityY * dt;
+    angularVelocityX *= 0.92;
+    angularVelocityY *= 0.92;
 
-    if (Math.abs(velocityX) < 0.01) {
-      velocityX = 0;
+    if (Math.abs(angularVelocityX) < 0.01) {
+      angularVelocityX = 0;
     }
 
-    if (Math.abs(velocityY) < 0.01) {
-      velocityY = 0;
+    if (Math.abs(angularVelocityY) < 0.01) {
+      angularVelocityY = 0;
     }
   }
 
-  offsetX = targetOffsetX;
-  offsetY = targetOffsetY;
+  rotationX = targetRotationX;
+  rotationY = targetRotationY;
   if (pointerId === null) {
     glintX = mix(glintX, targetGlintX, 0.18);
     glintY = mix(glintY, targetGlintY, 0.18);
@@ -913,8 +937,8 @@ canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
-  velocityX = 0;
-  velocityY = 0;
+  angularVelocityX = 0;
+  angularVelocityY = 0;
   canvas.setPointerCapture(event.pointerId);
   updateGlintFromPointer(event.clientX, event.clientY, true);
 });
@@ -931,12 +955,12 @@ canvas.addEventListener('pointermove', (event) => {
   const dy = event.clientY - lastPointerY;
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
-  targetOffsetX += (dx / view.radius) * 0.52;
-  targetOffsetY += (dy / view.radius) * 0.52;
-  offsetX = targetOffsetX;
-  offsetY = targetOffsetY;
-  velocityX = (dx / view.radius) * 5.5;
-  velocityY = (dy / view.radius) * 5.5;
+  targetRotationY += (dx / view.radius) * 1.45;
+  targetRotationX -= (dy / view.radius) * 1.45;
+  rotationX = targetRotationX;
+  rotationY = targetRotationY;
+  angularVelocityY = (dx / view.radius) * 13;
+  angularVelocityX = -(dy / view.radius) * 13;
 });
 
 canvas.addEventListener('pointerup', (event) => {

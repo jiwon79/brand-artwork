@@ -416,3 +416,24 @@ The GUI now separates the optical pipeline stages more like a renderer debug vie
 - `4 refraction > on` controls whether the source content is sampled through that field.
 
 The surface field is still generated for refraction when the preview is off. This avoids treating the field as a removable visual layer; it is an internal prepass that can be previewed separately. Current tuning defaults are `bezelWidth: 0.2`, `fieldBlur: 3`, `thickness: 0.4`, `displacementFactor: 0.75`, `edgeFadeWidth: 0`, `ior: 1.5`, and `dispersion: 0.14`.
+
+## 2026-07-08 Spherical Decal Source Pass
+
+The source content is no longer a flat 2D plane translated under the glass. Each colored circle is treated as a decal anchored to a point on a unit sphere:
+
+```text
+base circle x/y
+  -> recover sphere z from x/y
+  -> rotate the sphere by drag-controlled rotationX/rotationY
+  -> project rotated x/y/z back into the source-content canvas
+```
+
+This changes the drag model from `offsetX/offsetY` to `rotationX/rotationY`. Drag now immediately updates the target rotation and the current rotation, then stores angular velocity for inertial motion after release.
+
+The visible circle pass is split by depth:
+
+- front decals (`z >= 0`) draw normally, with size falling faster as `z` approaches `0` so circles shrink more aggressively near the silhouette.
+- back decals (`z < 0`) draw first, inset toward the marble center, smaller, lower alpha, and blurred.
+- front decals keep the white circle stroke; back decals skip it so they read as content seen through the glass volume rather than foreground marks.
+
+The current implementation is still a 2D canvas renderer, not a true 3D mesh or ray-traced glass sphere. The important behavioral change is that source content now rotates around a spherical coordinate field before the existing liquid-dom-inspired refraction pass samples it. That should reduce the "flat plane sliding under glass" read and create the front/back visibility needed for a glass marble.
