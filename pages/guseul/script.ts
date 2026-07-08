@@ -90,9 +90,9 @@ const layerControls = {
   contentOverscan: 0.46,
   circleCount: 10,
   circleSizeScale: 0.94,
-  edgeScaleFloor: 0.16,
-  edgePortalWidth: 0.18,
-  portalInset: 0.68,
+  edgeScaleFloor: 0.5,
+  edgePortalWidth: 0.06,
+  portalInset: 0.9,
   circleStrokeEnabled: true,
   circleStrokeScale: 1,
   displacementEnabled: true,
@@ -447,9 +447,9 @@ function setupGui(): void {
   source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
   source.add(layerControls, 'circleCount', 4, maxMarbleCircleCount, 1).name('circle count');
   source.add(layerControls, 'circleSizeScale', 0.45, 1.8, 0.01).name('circle size');
-  source.add(layerControls, 'edgeScaleFloor', 0.04, 0.5, 0.01).name('edge min size');
-  source.add(layerControls, 'edgePortalWidth', 0.06, 0.6, 0.01).name('edge portal');
-  source.add(layerControls, 'portalInset', 0.3, 0.9, 0.01).name('portal inset');
+  source.add(layerControls, 'edgeScaleFloor', 0.08, 0.8, 0.01).name('edge min size');
+  source.add(layerControls, 'edgePortalWidth', 0.01, 0.3, 0.01).name('edge portal');
+  source.add(layerControls, 'portalInset', 0.5, 1, 0.01).name('portal inset');
   source.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   source.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
