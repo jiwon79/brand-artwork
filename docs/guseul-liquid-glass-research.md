@@ -437,3 +437,30 @@ The visible circle pass is split by depth:
 - front decals keep the white circle stroke; back decals skip it so they read as content seen through the glass volume rather than foreground marks.
 
 The current implementation is still a 2D canvas renderer, not a true 3D mesh or ray-traced glass sphere. The important behavioral change is that source content now rotates around a spherical coordinate field before the existing liquid-dom-inspired refraction pass samples it. That should reduce the "flat plane sliding under glass" read and create the front/back visibility needed for a glass marble.
+
+## 2026-07-08 Sphere Distribution And Arcball Drag
+
+The first spherical decal pass still looked front-heavy because each decal only stored `x/y`; `z` was recovered with `sqrt(1 - x*x - y*y)`, which forces every base decal onto the front hemisphere. Rotation could move decals behind the glass after interaction, but the initial source set was still a single visible face.
+
+The source decal set now stores real `x/y/z` unit-sphere coordinates generated with a Fibonacci sphere distribution. `circleCount` controls how many generated decals are active, and `circleSizeScale` controls their shared size multiplier.
+
+The drag model also changed. The previous implementation accumulated Euler angles:
+
+```ts
+rotationY += dx
+rotationX -= dy
+```
+
+That feels natural only near the initial orientation. Once the sphere is already rotated, screen axes and object axes diverge, so the next drag can appear to move in an unexpected direction.
+
+The current implementation uses an arcball mapping:
+
+```text
+previous pointer position -> sphere vector A
+current pointer position  -> sphere vector B
+axis = cross(A, B)
+angle = atan2(length(axis), dot(A, B))
+orientation = rotation(axis, angle) * orientation
+```
+
+The incremental rotation is applied in screen space, so dragging right/down maps to the local surface motion the pointer implies, instead of directly editing global Euler angles.

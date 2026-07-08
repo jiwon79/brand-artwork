@@ -3,6 +3,7 @@ import GUI from 'lil-gui';
 type MarbleCircle = {
   x: number;
   y: number;
+  z: number;
   radius: number;
   color: string;
 };
@@ -28,6 +29,8 @@ type View = {
 };
 
 type RGBA = [number, number, number, number];
+type Vec3 = [number, number, number];
+type Matrix3 = [number, number, number, number, number, number, number, number, number];
 type SurfaceProfile = 'convex' | 'concave' | 'lip';
 
 type SurfaceSample = {
@@ -62,25 +65,31 @@ if (!ballCtx) {
 const surfaceFieldChannels = 3;
 const maxSurfaceSlope = Math.tan((85 * Math.PI) / 180);
 
-const marbleCircles: MarbleCircle[] = [
-  { x: -0.7, y: -0.6, radius: 0.26, color: '#f15b2e' },
-  { x: -0.2, y: -0.72, radius: 0.2, color: '#ffe25f' },
-  { x: 0.36, y: -0.66, radius: 0.28, color: '#a51b4e' },
-  { x: 0.82, y: -0.23, radius: 0.3, color: '#ff8d24' },
-  { x: -0.68, y: -0.03, radius: 0.34, color: '#0c2241' },
-  { x: -0.1, y: 0.2, radius: 0.36, color: '#76d650' },
-  { x: 0.42, y: 0.08, radius: 0.34, color: '#ff6d2b' },
-  { x: 0.84, y: 0.42, radius: 0.28, color: '#159b80' },
-  { x: -0.48, y: 0.54, radius: 0.28, color: '#4b9fd1' },
-  { x: 0.1, y: 0.74, radius: 0.34, color: '#153f6a' },
-  { x: 0.58, y: 0.7, radius: 0.25, color: '#f66a7c' },
+const maxMarbleCircleCount = 28;
+const marbleCirclePalette = [
+  '#f15b2e',
+  '#ffe25f',
+  '#a51b4e',
+  '#ff8d24',
+  '#0c2241',
+  '#76d650',
+  '#ff6d2b',
+  '#159b80',
+  '#4b9fd1',
+  '#153f6a',
+  '#f66a7c',
+  '#35c7d2',
 ];
+const marbleCircles = createMarbleCircles(maxMarbleCircleCount);
 
 const layerControls = {
   backgroundColor: '#fffefb',
   shadowEnabled: true,
   marbleScale: 1.22,
+  dragSensitivity: 1,
   contentOverscan: 0.46,
+  circleCount: 18,
+  circleSizeScale: 0.94,
   circleStrokeEnabled: true,
   circleStrokeScale: 1,
   displacementEnabled: true,
@@ -126,15 +135,15 @@ let view: View = {
   radius: 1,
 };
 
-let rotationX = -0.1;
-let rotationY = 0.14;
-let targetRotationX = -0.1;
-let targetRotationY = 0.14;
-let angularVelocityX = 0;
-let angularVelocityY = 0;
+let sphereOrientation = multiplyMatrix3(
+  rotationMatrixFromAxisAngle([0, 1, 0], 0.14),
+  rotationMatrixFromAxisAngle([1, 0, 0], -0.1),
+);
+let spinAxis: Vec3 = [0, 0, 0];
+let spinVelocity = 0;
 let pointerId: number | null = null;
-let lastPointerX = 0;
-let lastPointerY = 0;
+let lastPointerVector: Vec3 = [0, 0, 1];
+let lastPointerTime = 0;
 let glintX = -0.34;
 let glintY = -0.38;
 let targetGlintX = -0.34;
@@ -142,6 +151,31 @@ let targetGlintY = -0.38;
 let glintAlpha = 0.18;
 let targetGlintAlpha = 0.18;
 let lastFrame = 0;
+
+function pseudoRandom(index: number, salt: number): number {
+  const value = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+
+  return value - Math.floor(value);
+}
+
+function createMarbleCircles(count: number): MarbleCircle[] {
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+
+  return Array.from({ length: count }, (_, index) => {
+    const y = 1 - (2 * (index + 0.5)) / count;
+    const radial = Math.sqrt(Math.max(1 - y * y, 0));
+    const theta = index * goldenAngle + pseudoRandom(index, 1) * 0.42;
+    const size = 0.17 + pseudoRandom(index, 2) * 0.16;
+
+    return {
+      x: Math.cos(theta) * radial,
+      y,
+      z: Math.sin(theta) * radial,
+      radius: size,
+      color: marbleCirclePalette[index % marbleCirclePalette.length],
+    };
+  });
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -278,6 +312,80 @@ function rayToDisplacement(ray: [number, number, number], height: number): [numb
   return [(ray[0] / z) * height, (ray[1] / z) * height];
 }
 
+function vectorLength([x, y, z]: Vec3): number {
+  return Math.hypot(x, y, z);
+}
+
+function normalizeVec3(vector: Vec3): Vec3 {
+  const length = vectorLength(vector);
+
+  if (length <= 0.000001) {
+    return [0, 0, 1];
+  }
+
+  return [vector[0] / length, vector[1] / length, vector[2] / length];
+}
+
+function crossVec3(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+function dotVec3(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function multiplyMatrix3(a: Matrix3, b: Matrix3): Matrix3 {
+  return [
+    a[0] * b[0] + a[1] * b[3] + a[2] * b[6],
+    a[0] * b[1] + a[1] * b[4] + a[2] * b[7],
+    a[0] * b[2] + a[1] * b[5] + a[2] * b[8],
+    a[3] * b[0] + a[4] * b[3] + a[5] * b[6],
+    a[3] * b[1] + a[4] * b[4] + a[5] * b[7],
+    a[3] * b[2] + a[4] * b[5] + a[5] * b[8],
+    a[6] * b[0] + a[7] * b[3] + a[8] * b[6],
+    a[6] * b[1] + a[7] * b[4] + a[8] * b[7],
+    a[6] * b[2] + a[7] * b[5] + a[8] * b[8],
+  ];
+}
+
+function rotationMatrixFromAxisAngle(axis: Vec3, angle: number): Matrix3 {
+  const [x, y, z] = normalizeVec3(axis);
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const t = 1 - cosine;
+
+  return [
+    t * x * x + cosine,
+    t * x * y - sine * z,
+    t * x * z + sine * y,
+    t * x * y + sine * z,
+    t * y * y + cosine,
+    t * y * z - sine * x,
+    t * x * z - sine * y,
+    t * y * z + sine * x,
+    t * z * z + cosine,
+  ];
+}
+
+function applyMatrix3(matrix: Matrix3, [x, y, z]: Vec3): Vec3 {
+  return [
+    matrix[0] * x + matrix[1] * y + matrix[2] * z,
+    matrix[3] * x + matrix[4] * y + matrix[5] * z,
+    matrix[6] * x + matrix[7] * y + matrix[8] * z,
+  ];
+}
+
+function applyScreenAxisRotation(axis: Vec3, angle: number): void {
+  sphereOrientation = multiplyMatrix3(
+    rotationMatrixFromAxisAngle(axis, angle),
+    sphereOrientation,
+  );
+}
+
 function applyBackgroundColor(): void {
   document.documentElement.style.backgroundColor = layerControls.backgroundColor;
   document.body.style.backgroundColor = layerControls.backgroundColor;
@@ -285,26 +393,12 @@ function applyBackgroundColor(): void {
   stage?.style.setProperty('background', layerControls.backgroundColor);
 }
 
-function rotateSpherePoint(x: number, y: number): [number, number, number] {
-  const radial = Math.hypot(x, y);
-  const scale = radial > 0.96 ? 0.96 / radial : 1;
-  const baseX = x * scale;
-  const baseY = y * scale;
-  const baseZ = Math.sqrt(Math.max(1 - baseX * baseX - baseY * baseY, 0));
-  const cosX = Math.cos(rotationX);
-  const sinX = Math.sin(rotationX);
-  const cosY = Math.cos(rotationY);
-  const sinY = Math.sin(rotationY);
-  const y1 = baseY * cosX - baseZ * sinX;
-  const z1 = baseY * sinX + baseZ * cosX;
-  const x2 = baseX * cosY + z1 * sinY;
-  const z2 = -baseX * sinY + z1 * cosY;
-
-  return [x2, y1, z2];
+function rotateSpherePoint(x: number, y: number, z: number): Vec3 {
+  return applyMatrix3(sphereOrientation, normalizeVec3([x, y, z]));
 }
 
 function projectMarbleCircle(circle: MarbleCircle): VisibleMarbleCircle {
-  const [x, y, z] = rotateSpherePoint(circle.x, circle.y);
+  const [x, y, z] = rotateSpherePoint(circle.x, circle.y, circle.z);
   const back = z < 0;
   const depth = back ? clamp(-z, 0, 1) : clamp(z, 0, 1);
   const scale = back
@@ -338,9 +432,12 @@ function setupGui(): void {
   scene.addColor(layerControls, 'backgroundColor').name('background').onChange(applyBackgroundColor);
   scene.add(layerControls, 'shadowEnabled').name('shadow');
   scene.add(layerControls, 'marbleScale', 0.7, 1.8, 0.01).name('marble scale').onChange(resize);
+  scene.add(layerControls, 'dragSensitivity', 0.4, 1.8, 0.01).name('drag sensitivity');
 
   const source = gui.addFolder('2 source content');
   source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
+  source.add(layerControls, 'circleCount', 4, maxMarbleCircleCount, 1).name('circle count');
+  source.add(layerControls, 'circleSizeScale', 0.45, 1.8, 0.01).name('circle size');
   source.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   source.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
@@ -408,7 +505,7 @@ function resize(): void {
 function drawContentCircle(circle: VisibleMarbleCircle): void {
   const radius = view.radius;
   const center = getContentCenter();
-  const size = circle.radius * radius * circle.scale;
+  const size = circle.radius * layerControls.circleSizeScale * radius * circle.scale;
   const strokeWidth = layerControls.circleStrokeEnabled
     ? Math.min(size * 0.34, clamp(radius * 0.048, 4, 8)) * layerControls.circleStrokeScale
     : 0;
@@ -430,9 +527,10 @@ function drawContentCircle(circle: VisibleMarbleCircle): void {
 
 function collectVisibleCircles(): VisibleMarbleCircle[] {
   const items: VisibleMarbleCircle[] = [];
+  const count = clamp(Math.round(layerControls.circleCount), 1, marbleCircles.length);
 
-  for (const circle of marbleCircles) {
-    items.push(projectMarbleCircle(circle));
+  for (let index = 0; index < count; index += 1) {
+    items.push(projectMarbleCircle(marbleCircles[index]));
   }
 
   return items.sort((a, b) => {
@@ -890,27 +988,35 @@ function updateGlintFromPointer(clientX: number, clientY: number, active: boolea
   }
 }
 
+function pointerToSphere(clientX: number, clientY: number): Vec3 {
+  const x = (clientX - view.cx) / view.radius;
+  const y = (clientY - view.cy) / view.radius;
+  const distanceSq = x * x + y * y;
+
+  if (distanceSq <= 1) {
+    return [x, y, Math.sqrt(1 - distanceSq)];
+  }
+
+  const distance = Math.sqrt(distanceSq);
+
+  return [x / distance, y / distance, 0];
+}
+
 function tick(now: number): void {
   const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000 || 0.016));
   lastFrame = now;
 
   if (pointerId === null) {
-    targetRotationX += angularVelocityX * dt;
-    targetRotationY += angularVelocityY * dt;
-    angularVelocityX *= 0.92;
-    angularVelocityY *= 0.92;
-
-    if (Math.abs(angularVelocityX) < 0.01) {
-      angularVelocityX = 0;
+    if (spinVelocity > 0) {
+      applyScreenAxisRotation(spinAxis, spinVelocity * dt);
+      spinVelocity *= 0.92;
     }
 
-    if (Math.abs(angularVelocityY) < 0.01) {
-      angularVelocityY = 0;
+    if (spinVelocity < 0.01) {
+      spinVelocity = 0;
     }
   }
 
-  rotationX = targetRotationX;
-  rotationY = targetRotationY;
   if (pointerId === null) {
     glintX = mix(glintX, targetGlintX, 0.18);
     glintY = mix(glintY, targetGlintY, 0.18);
@@ -935,10 +1041,9 @@ canvas.addEventListener('pointerdown', (event) => {
 
   pointerId = event.pointerId;
   event.preventDefault();
-  lastPointerX = event.clientX;
-  lastPointerY = event.clientY;
-  angularVelocityX = 0;
-  angularVelocityY = 0;
+  lastPointerVector = pointerToSphere(event.clientX, event.clientY);
+  lastPointerTime = event.timeStamp || performance.now();
+  spinVelocity = 0;
   canvas.setPointerCapture(event.pointerId);
   updateGlintFromPointer(event.clientX, event.clientY, true);
 });
@@ -951,16 +1056,29 @@ canvas.addEventListener('pointermove', (event) => {
   }
 
   event.preventDefault();
-  const dx = event.clientX - lastPointerX;
-  const dy = event.clientY - lastPointerY;
-  lastPointerX = event.clientX;
-  lastPointerY = event.clientY;
-  targetRotationY += (dx / view.radius) * 1.45;
-  targetRotationX -= (dy / view.radius) * 1.45;
-  rotationX = targetRotationX;
-  rotationY = targetRotationY;
-  angularVelocityY = (dx / view.radius) * 13;
-  angularVelocityX = -(dy / view.radius) * 13;
+  const nextPointerVector = pointerToSphere(event.clientX, event.clientY);
+  const axis = crossVec3(lastPointerVector, nextPointerVector);
+  const axisLength = vectorLength(axis);
+
+  if (axisLength > 0.0001) {
+    const normalizedAxis: Vec3 = [
+      axis[0] / axisLength,
+      axis[1] / axisLength,
+      axis[2] / axisLength,
+    ];
+    const angle =
+      Math.atan2(axisLength, clamp(dotVec3(lastPointerVector, nextPointerVector), -1, 1)) *
+      layerControls.dragSensitivity;
+    const now = event.timeStamp || performance.now();
+    const dt = Math.max((now - lastPointerTime) / 1000, 0.016);
+
+    applyScreenAxisRotation(normalizedAxis, angle);
+    spinAxis = normalizedAxis;
+    spinVelocity = Math.min(angle / dt, 9);
+    lastPointerTime = now;
+  }
+
+  lastPointerVector = nextPointerVector;
 });
 
 canvas.addEventListener('pointerup', (event) => {
