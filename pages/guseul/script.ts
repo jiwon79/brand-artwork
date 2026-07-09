@@ -100,7 +100,8 @@ const layerControls = {
   dragSensitivity: 1,
   contentOverscan: 0.46,
   circleCount: 10,
-  circleSizeScale: 0.94,
+  circleSizeScale: 1.75,
+  circleSizeVariance: 1,
   edgeScaleFloor: 0.5,
   edgePortalWidth: 0.06,
   portalInset: 0.9,
@@ -189,14 +190,16 @@ function pseudoRandom(index: number, salt: number): number {
   return value - Math.floor(value);
 }
 
-function createMarbleCircles(count: number): MarbleCircle[] {
+function createMarbleCircles(count: number, controls: LayerControls = layerControls): MarbleCircle[] {
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
 
   return Array.from({ length: count }, (_, index) => {
     const y = 1 - (2 * (index + 0.5)) / count;
     const radial = Math.sqrt(Math.max(1 - y * y, 0));
     const theta = index * goldenAngle + pseudoRandom(index, 1) * 0.42;
-    const size = 0.17 + pseudoRandom(index, 2) * 0.16;
+    const baseSize = 0.25;
+    const variance = (pseudoRandom(index, 2) - 0.5) * 0.16 * controls.circleSizeVariance;
+    const size = clamp(baseSize + variance, 0.05, 0.5);
 
     return {
       x: Math.cos(theta) * radial,
@@ -524,7 +527,8 @@ function setupGui(): void {
 
   const circles = source.addFolder('circles');
   circles.add(layerControls, 'circleCount', 4, maxMarbleCircleCount, 1).name('count');
-  circles.add(layerControls, 'circleSizeScale', 0.45, 1.8, 0.01).name('size');
+  circles.add(layerControls, 'circleSizeScale', 0.45, 2.6, 0.01).name('size');
+  circles.add(layerControls, 'circleSizeVariance', 0, 2.5, 0.01).name('size variance');
   circles.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   circles.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
@@ -546,9 +550,9 @@ function setupGui(): void {
   refraction.add(layerControls, 'edgeFadeWidth', 0, 0.18, 0.001).name('edge fade');
   refraction.add(layerControls, 'ior', 1.01, 2.4, 0.01).name('ior');
   refraction.add(layerControls, 'chromaticEnabled').name('chromatic');
-  refraction.add(layerControls, 'dispersion', 0, 0.14, 0.001).name('dispersion');
-  refraction.add(layerControls, 'chromaticEdgeStrength', 0, 2, 0.01).name('edge chroma');
-  refraction.add(layerControls, 'chromaticEdgeWidth', 0, 5, 0.1).name('edge width');
+  refraction.add(layerControls, 'dispersion', 0, 0.5, 0.001).name('dispersion');
+  refraction.add(layerControls, 'chromaticEdgeStrength', 0, 4, 0.01).name('edge chroma');
+  refraction.add(layerControls, 'chromaticEdgeWidth', 0, 12, 0.1).name('edge width');
 
   const shell = gui.addFolder('5 glass shell');
   shell.add(layerControls, 'innerShadeEnabled').name('innerShade');
@@ -640,7 +644,7 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
 function collectVisibleCircles(params: RenderParams): VisibleMarbleCircle[] {
   const items: VisibleMarbleCircle[] = [];
   const count = clamp(Math.round(params.controls.circleCount), 1, maxMarbleCircleCount);
-  const circles = createMarbleCircles(count);
+  const circles = createMarbleCircles(count, params.controls);
 
   for (const circle of circles) {
     items.push(projectMarbleCircle(circle, params));
