@@ -593,10 +593,132 @@ function resize(): void {
   renderer.resize(getRenderParams());
 }
 
+function drawRoundedRectPath(
+  targetCtx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+): void {
+  const corner = Math.min(radius, width * 0.5, height * 0.5);
+
+  targetCtx.beginPath();
+  targetCtx.moveTo(x + corner, y);
+  targetCtx.lineTo(x + width - corner, y);
+  targetCtx.quadraticCurveTo(x + width, y, x + width, y + corner);
+  targetCtx.lineTo(x + width, y + height - corner);
+  targetCtx.quadraticCurveTo(x + width, y + height, x + width - corner, y + height);
+  targetCtx.lineTo(x + corner, y + height);
+  targetCtx.quadraticCurveTo(x, y + height, x, y + height - corner);
+  targetCtx.lineTo(x, y + corner);
+  targetCtx.quadraticCurveTo(x, y, x + corner, y);
+  targetCtx.closePath();
+}
+
+function drawLocalSpecRect(
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number,
+  rotation: number,
+  alpha: number,
+): void {
+  contentCtx.save();
+  contentCtx.translate(centerX, centerY);
+  contentCtx.rotate(rotation);
+  contentCtx.shadowColor = 'rgba(255, 255, 255, 0.62)';
+  contentCtx.shadowBlur = height * 0.65;
+  contentCtx.globalAlpha = alpha;
+  contentCtx.fillStyle = '#ffffff';
+  drawRoundedRectPath(contentCtx, -width * 0.5, -height * 0.5, width, height, height * 0.5);
+  contentCtx.fill();
+  contentCtx.restore();
+}
+
+function drawLocalSpecEllipse(
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number,
+  rotation: number,
+  alpha: number,
+): void {
+  contentCtx.save();
+  contentCtx.translate(centerX, centerY);
+  contentCtx.rotate(rotation);
+  contentCtx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+  contentCtx.shadowBlur = Math.max(width, height) * 0.45;
+  contentCtx.globalAlpha = alpha;
+  contentCtx.fillStyle = '#ffffff';
+  contentCtx.beginPath();
+  contentCtx.ellipse(0, 0, width * 0.5, height * 0.5, 0, 0, Math.PI * 2);
+  contentCtx.fill();
+  contentCtx.restore();
+}
+
+function drawContentSpecHighlights(
+  circle: VisibleMarbleCircle,
+  params: RenderParams,
+  centerX: number,
+  centerY: number,
+  size: number,
+): void {
+  if (circle.back) {
+    return;
+  }
+
+  const alpha = circle.alpha * smoothstep(0.02, 0.78, circle.dot);
+  contentCtx.globalAlpha = 1;
+
+  if (params.controls.specCEnabled) {
+    const gradient = contentCtx.createRadialGradient(
+      centerX - size * 0.2,
+      centerY - size * 0.28,
+      size * 0.04,
+      centerX - size * 0.2,
+      centerY - size * 0.28,
+      size * 0.72,
+    );
+    gradient.addColorStop(0, `rgba(255, 255, 255, ${0.2 * alpha})`);
+    gradient.addColorStop(0.48, `rgba(255, 255, 255, ${0.08 * alpha})`);
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+    contentCtx.fillStyle = gradient;
+    contentCtx.beginPath();
+    contentCtx.arc(centerX, centerY, size, 0, Math.PI * 2);
+    contentCtx.fill();
+  }
+
+  if (params.controls.specAEnabled) {
+    drawLocalSpecRect(
+      centerX - size * 0.22,
+      centerY - size * 0.32,
+      size * 0.54,
+      size * 0.14,
+      -0.16,
+      0.52 * alpha,
+    );
+  }
+
+  if (params.controls.specBEnabled) {
+    drawLocalSpecEllipse(
+      centerX + size * 0.18,
+      centerY - size * 0.16,
+      size * 0.16,
+      size * 0.1,
+      -0.2,
+      0.42 * alpha,
+    );
+  }
+}
+
 function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): void {
   const radius = params.view.radius;
   const center = getContentCenter(params);
   const size = circle.radius * params.controls.circleSizeScale * radius * circle.scale;
+  const centerX = center + circle.cx * radius;
+  const centerY = center + circle.cy * radius;
   const strokeWidth = params.controls.circleStrokeEnabled
     ? Math.min(size * 0.34, clamp(radius * 0.048, 4, 8)) * params.controls.circleStrokeScale
     : 0;
@@ -604,7 +726,7 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
   contentCtx.save();
   contentCtx.filter = circle.blur > 0 ? `blur(${circle.blur}px)` : 'none';
   contentCtx.beginPath();
-  contentCtx.arc(center + circle.cx * radius, center + circle.cy * radius, size, 0, Math.PI * 2);
+  contentCtx.arc(centerX, centerY, size, 0, Math.PI * 2);
   if (strokeWidth > 0 && !circle.back && circle.strokeAlpha > 0) {
     contentCtx.globalAlpha = circle.alpha * circle.strokeAlpha;
     contentCtx.lineWidth = strokeWidth;
@@ -614,6 +736,10 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
   contentCtx.globalAlpha = circle.alpha;
   contentCtx.fillStyle = circle.color;
   contentCtx.fill();
+  contentCtx.save();
+  contentCtx.clip();
+  drawContentSpecHighlights(circle, params, centerX, centerY, size);
+  contentCtx.restore();
   contentCtx.restore();
 }
 
@@ -987,7 +1113,7 @@ function renderGlassBall(params: RenderParams): void {
       const specC = !previewSurface && params.controls.specCEnabled
         ? areaWindowSpecular(specReflection, -0.06, -0.42, 0.46, 0.14, 0.48, 1.25)
         : 0;
-      const shell = specA * 136 + specB * 74 + specC * 14;
+      const shell = specA * 34 + specB * 22 + specC * 6;
 
       let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
       let g = mix(sampleG * innerShade, 255, glassMilk) + shell + topWash * 19 + rim * 11 - hardRim * 6;
