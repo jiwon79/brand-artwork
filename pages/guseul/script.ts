@@ -45,6 +45,8 @@ type SurfaceSample = {
 type SourceEdgeSample = {
   edge: number;
   fill: number;
+  alpha: number;
+  signedDistance: number;
   normalX: number;
   normalY: number;
   color: RGBA;
@@ -950,13 +952,6 @@ function colorDistance(a: RGBA, b: RGBA): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
-function colorSaturation([r, g, b]: RGBA): number {
-  const maxChannel = Math.max(r, g, b);
-  const minChannel = Math.min(r, g, b);
-
-  return maxChannel <= 0 ? 0 : (maxChannel - minChannel) / maxChannel;
-}
-
 function mixRgba(a: RGBA, b: RGBA, t: number): RGBA {
   return [
     mix(a[0], b[0], t),
@@ -966,23 +961,8 @@ function mixRgba(a: RGBA, b: RGBA, t: number): RGBA {
   ];
 }
 
-function averageRgba(samples: RGBA[]): RGBA {
-  const sum = samples.reduce<RGBA>(
-    (total, sample) => [
-      total[0] + sample[0],
-      total[1] + sample[1],
-      total[2] + sample[2],
-      total[3] + sample[3],
-    ],
-    [0, 0, 0, 0],
-  );
-
-  return [
-    sum[0] / samples.length,
-    sum[1] / samples.length,
-    sum[2] / samples.length,
-    sum[3] / samples.length,
-  ];
+function coverageFromSignedDistance(signedDistance: number, feather: number): number {
+  return smoothstep(feather, -feather, signedDistance);
 }
 
 function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): SourceEdgeSample {
@@ -991,6 +971,8 @@ function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): Sou
   const empty: SourceEdgeSample = {
     edge: 0,
     fill: 0,
+    alpha: 0,
+    signedDistance: 0,
     normalX: 0,
     normalY: 0,
     color: backgroundSample(params.controls),
@@ -1009,13 +991,16 @@ function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): Sou
     const dx = x - centerX;
     const dy = y - centerY;
     const distance = Math.hypot(dx, dy);
-    const edgeDistance = Math.abs(distance - circleRadius);
+    const signedDistance = distance - circleRadius;
+    const edgeDistance = Math.abs(signedDistance);
     const edge = (1 - smoothstep(boundaryWidth * 0.2, boundaryWidth, edgeDistance)) * circle.fillAlpha;
     const fill = smoothstep(circleRadius + boundaryWidth, circleRadius - boundaryWidth, distance) * circle.fillAlpha;
 
     if (edge > empty.edge) {
       empty.edge = edge;
       empty.fill = fill;
+      empty.alpha = circle.fillAlpha;
+      empty.signedDistance = signedDistance;
       empty.normalX = distance > 0.001 ? dx / distance : 0;
       empty.normalY = distance > 0.001 ? dy / distance : 0;
       empty.color = colorToRgba(circle.color);
@@ -1071,15 +1056,14 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
       params.controls.chromaticBoundaryStrength *
       smoothstep(0.42, 0.98, radial) *
       (0.48 + surface.rim * 0.52);
-    const sourceSaturation = colorSaturation(sourceEdge.color);
-    const dispersionBlur = clamp(
+    const dispersionMix = clamp(
       params.controls.dispersion * (surface.rim * 1.2 + sourceEdgeGate * 0.85),
       0,
-      0.46,
+      0.54,
     );
-    const spectralBlur = averageRgba([red, base, base, blue]);
+    const spectralSplit: RGBA = [red[0], base[1], blue[2], 255];
 
-    sample = mixRgba(sample, spectralBlur, dispersionBlur);
+    sample = mixRgba(sample, spectralSplit, dispersionMix);
 
     const sourceContrast = Math.max(colorDistance(red, base), colorDistance(blue, base)) / 441.672;
     const refractedEdgeGate =
@@ -1109,18 +1093,24 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
         baseOffsetX + (blueSource[0] - baseOffsetX) * boost + directionX * spread * 0.35,
         baseOffsetY + (blueSource[1] - baseOffsetY) * boost + directionY * spread * 0.35,
       ]);
-      const wideBlur = averageRgba([redWide, base, blueWide]);
-      const colorFollow = mixRgba(wideBlur, sourceEdge.color, clamp(sourceEdgeGate * sourceSaturation * 0.5, 0, 0.46));
-      const wideMix = clamp(strength * 0.85 + sourceEdgeGate * 0.32, 0, 0.94);
-      const splitMix = clamp(strength * 0.2 + sourceEdgeGate * 0.1, 0, 0.34);
-
-      sample = mixRgba(sample, colorFollow, wideMix);
-      sample = [
-        mix(sample[0], redWide[0], splitMix),
-        mix(sample[1], colorFollow[1], splitMix * 0.62),
-        mix(sample[2], blueWide[2], splitMix),
+      const refractedSplit: RGBA = [redWide[0], sample[1], blueWide[2], 255];
+      const refractedSplitMix = clamp(strength * 0.28, 0, 0.46);
+      const channelFeather = clamp(params.controls.chromaticBoundaryWidth * 0.22, 0.75, 2.4);
+      const sourceShift = params.controls.chromaticEdgeWidth * clamp(0.35 + sourceEdgeGate * 0.9, 0, 1.8);
+      const redCoverage = coverageFromSignedDistance(sourceEdge.signedDistance - sourceShift, channelFeather) * sourceEdge.alpha;
+      const greenCoverage = coverageFromSignedDistance(sourceEdge.signedDistance, channelFeather) * sourceEdge.alpha;
+      const blueCoverage = coverageFromSignedDistance(sourceEdge.signedDistance + sourceShift, channelFeather) * sourceEdge.alpha;
+      const background = backgroundSample(params.controls);
+      const sourceSplit: RGBA = [
+        mix(background[0], sourceEdge.color[0], redCoverage),
+        mix(background[1], sourceEdge.color[1], greenCoverage),
+        mix(background[2], sourceEdge.color[2], blueCoverage),
         255,
       ];
+      const sourceSplitMix = clamp(sourceEdgeGate * 0.72, 0, 0.86);
+
+      sample = mixRgba(sample, refractedSplit, refractedSplitMix);
+      sample = mixRgba(sample, sourceSplit, sourceSplitMix);
     }
   }
 
