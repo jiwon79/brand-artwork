@@ -118,6 +118,8 @@ const layerControls = {
   refractionEnabled: true,
   chromaticEnabled: true,
   dispersion: 0.14,
+  chromaticEdgeStrength: 1.12,
+  chromaticEdgeWidth: 2.6,
   innerShadeEnabled: true,
   glassMilkEnabled: true,
   topWashEnabled: true,
@@ -545,6 +547,8 @@ function setupGui(): void {
   refraction.add(layerControls, 'ior', 1.01, 2.4, 0.01).name('ior');
   refraction.add(layerControls, 'chromaticEnabled').name('chromatic');
   refraction.add(layerControls, 'dispersion', 0, 0.14, 0.001).name('dispersion');
+  refraction.add(layerControls, 'chromaticEdgeStrength', 0, 2, 0.01).name('edge chroma');
+  refraction.add(layerControls, 'chromaticEdgeWidth', 0, 5, 0.1).name('edge width');
 
   const shell = gui.addFolder('5 glass shell');
   shell.add(layerControls, 'innerShadeEnabled').name('innerShade');
@@ -907,6 +911,10 @@ function sampleSurfaceFieldPreview(nx: number, ny: number, radial: number, param
   ];
 }
 
+function colorDistance(a: RGBA, b: RGBA): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
 function sampleLiquidGlass(nx: number, ny: number, radial: number, params: RenderParams): RGBA {
   const radius = params.view.radius;
 
@@ -939,11 +947,46 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
   const red = sampleAtOffset(redSource);
   const green = sampleAtOffset([baseOffsetX, baseOffsetY]);
   const blue = sampleAtOffset(blueSource);
+  let sampleR = red[0];
+  const sampleG = green[1];
+  let sampleB = blue[2];
+
+  if (params.controls.chromaticEnabled && params.controls.chromaticEdgeStrength > 0) {
+    const separationX = blueSource[0] - redSource[0];
+    const separationY = blueSource[1] - redSource[1];
+    const separation = Math.hypot(separationX, separationY);
+    const sourceContrast = Math.max(colorDistance(red, green), colorDistance(blue, green)) / 441.672;
+    const edgeGate =
+      smoothstep(0.04, 0.24, sourceContrast) *
+      smoothstep(0.25, 2.6, separation) *
+      smoothstep(0.56, 1, radial) *
+      surface.rim;
+
+    if (edgeGate > 0.001) {
+      const directionX = separation > 0.0001 ? separationX / separation : 0;
+      const directionY = separation > 0.0001 ? separationY / separation : 0;
+      const strength = params.controls.chromaticEdgeStrength * edgeGate;
+      const boost = 1 + strength * 1.8;
+      const spread = params.controls.chromaticEdgeWidth * strength;
+      const redWide = sampleAtOffset([
+        baseOffsetX + (redSource[0] - baseOffsetX) * boost - directionX * spread * 0.35,
+        baseOffsetY + (redSource[1] - baseOffsetY) * boost - directionY * spread * 0.35,
+      ]);
+      const blueWide = sampleAtOffset([
+        baseOffsetX + (blueSource[0] - baseOffsetX) * boost + directionX * spread * 0.35,
+        baseOffsetY + (blueSource[1] - baseOffsetY) * boost + directionY * spread * 0.35,
+      ]);
+      const wideMix = clamp(strength, 0, 0.98);
+
+      sampleR = mix(sampleR, redWide[0], wideMix);
+      sampleB = mix(sampleB, blueWide[2], wideMix);
+    }
+  }
 
   return [
-    red[0],
-    green[1],
-    blue[2],
+    sampleR,
+    sampleG,
+    sampleB,
     255,
   ];
 }

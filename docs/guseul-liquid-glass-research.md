@@ -505,11 +505,26 @@ source/backdrop texture
   -> shell specular/reflection is added as a separate lighting pass
 ```
 
-For Guseul, colored circles and source highlights should therefore be sibling marks in one source texture, not parent/child marks where every circle owns a highlight. The current canvas implementation follows that rule:
+For Guseul, colored circles and any future source highlights should therefore be sibling marks in one source texture, not parent/child marks where every circle owns a highlight. The source-spec experiment was removed because the placeholder shapes made the highlight read as an artificial decoration rather than as real image content. If a future version needs richer reference-like glints, add or texture a single source layer, not per-circle highlight drawing.
 
-- colored circles are drawn as sphere-anchored decals.
-- source spec patches are drawn once as a separate global source layer, also sphere-anchored.
-- the liquid-glass sampler reads the combined source texture through the same refraction/chromatic field.
-- shell `spec A/B/C` remains a weak surface-lighting pass, not the source of every bright patch.
+## 2026-07-09 Edge-Gated Chromatic Halo
 
-This means changing `circleCount` must not change the number of source spec highlights. If a future version needs richer reference-like glints, add or texture a single source-spec layer, not per-circle highlight drawing.
+Reference-frame crops show that chromatic aberration is not a full rainbow outline around the marble. The strongest color separation appears where high-contrast source content is refracted near the glass edge:
+
+- cyan/blue is pushed toward the stronger refraction direction.
+- red/magenta remains on the opposite side of the same source edge.
+- the fringe is several soft pixels wide, not a one-pixel RGB offset.
+- the outer glass rim itself stays mostly gray/white and only lightly tinted.
+
+The live sampler already evaluates separate red, green, and blue refraction rays with `ior + dispersion`, `ior`, and `ior - dispersion`. That is physically plausible, but too clean for the reference because it only creates a thin channel split.
+
+The new pass keeps that model and adds a content-edge gate:
+
+```text
+red/green/blue samples from normal dispersion
+  -> compare sampled colors to detect high source contrast
+  -> require rim/surface-field influence and non-trivial RGB separation
+  -> only then widen the red/blue sample distance
+```
+
+This means flat white glass and uniform colored areas stay stable, while source edges that fold through the rim get a wider cyan/magenta halo. The tunable controls are `edge chroma` and `edge width` under `4 refraction apply`.
