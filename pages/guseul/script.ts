@@ -8,17 +8,6 @@ type MarbleCircle = {
   color: string;
 };
 
-type SourceSpecPatch = {
-  x: number;
-  y: number;
-  z: number;
-  tangent: Vec3;
-  width: number;
-  height: number;
-  rotation: number;
-  alpha: number;
-};
-
 type VisibleMarbleCircle = MarbleCircle & {
   cx: number;
   cy: number;
@@ -112,8 +101,6 @@ const layerControls = {
   contentOverscan: 0.46,
   circleCount: 10,
   circleSizeScale: 0.94,
-  sourceSpecEnabled: true,
-  sourceSpecStrength: 0.72,
   edgeScaleFloor: 0.5,
   edgePortalWidth: 0.06,
   portalInset: 0.9,
@@ -185,38 +172,6 @@ let lastPointerY = 0;
 let lastPointerTime = 0;
 let lastFrame = 0;
 const renderer: Renderer = new CanvasRenderer();
-const sourceSpecPatches: SourceSpecPatch[] = [
-  {
-    x: -0.34,
-    y: -0.34,
-    z: 0.88,
-    tangent: [0.96, -0.15, -0.22],
-    width: 0.3,
-    height: 0.068,
-    rotation: -0.06,
-    alpha: 0.56,
-  },
-  {
-    x: 0.08,
-    y: -0.2,
-    z: 0.98,
-    tangent: [0.92, -0.22, -0.1],
-    width: 0.12,
-    height: 0.04,
-    rotation: 0,
-    alpha: 0.34,
-  },
-  {
-    x: 0.44,
-    y: -0.32,
-    z: 0.82,
-    tangent: [0.92, 0.08, -0.38],
-    width: 0.36,
-    height: 0.075,
-    rotation: 0.12,
-    alpha: 0.24,
-  },
-];
 
 function getRenderParams(): RenderParams {
   return {
@@ -571,10 +526,6 @@ function setupGui(): void {
   circles.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   circles.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
-  const sourceSpec = source.addFolder('source spec');
-  sourceSpec.add(layerControls, 'sourceSpecEnabled').name('on');
-  sourceSpec.add(layerControls, 'sourceSpecStrength', 0, 1.4, 0.01).name('power');
-
   const edgeProjection = source.addFolder('edge projection');
   edgeProjection.add(layerControls, 'edgeScaleFloor', 0.08, 0.8, 0.01).name('edge min size');
   edgeProjection.add(layerControls, 'edgePortalWidth', 0.01, 0.3, 0.01).name('edge portal');
@@ -610,7 +561,6 @@ function setupGui(): void {
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 
   circles.close();
-  sourceSpec.close();
   edgeProjection.close();
   scene.close();
   source.close();
@@ -657,68 +607,6 @@ function resize(): void {
   renderer.resize(getRenderParams());
 }
 
-function drawRoundedRectPath(
-  targetCtx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  const corner = Math.min(radius, width * 0.5, height * 0.5);
-
-  targetCtx.beginPath();
-  targetCtx.moveTo(x + corner, y);
-  targetCtx.lineTo(x + width - corner, y);
-  targetCtx.quadraticCurveTo(x + width, y, x + width, y + corner);
-  targetCtx.lineTo(x + width, y + height - corner);
-  targetCtx.quadraticCurveTo(x + width, y + height, x + width - corner, y + height);
-  targetCtx.lineTo(x + corner, y + height);
-  targetCtx.quadraticCurveTo(x, y + height, x, y + height - corner);
-  targetCtx.lineTo(x, y + corner);
-  targetCtx.quadraticCurveTo(x, y, x + corner, y);
-  targetCtx.closePath();
-}
-
-function drawSoftSpecRect(
-  centerX: number,
-  centerY: number,
-  width: number,
-  height: number,
-  rotation: number,
-  alpha: number,
-): void {
-  const corner = height * 0.48;
-
-  contentCtx.save();
-  contentCtx.translate(centerX, centerY);
-  contentCtx.rotate(rotation);
-
-  contentCtx.shadowColor = `rgba(255, 255, 255, ${0.48 * alpha})`;
-  contentCtx.shadowBlur = height * 1.35;
-  contentCtx.fillStyle = `rgba(255, 255, 255, ${0.42 * alpha})`;
-  drawRoundedRectPath(contentCtx, -width * 0.5, -height * 0.5, width, height, corner);
-  contentCtx.fill();
-
-  contentCtx.shadowBlur = 0;
-  contentCtx.strokeStyle = `rgba(255, 255, 255, ${0.26 * alpha})`;
-  contentCtx.lineWidth = Math.max(0.8, height * 0.28);
-  drawRoundedRectPath(contentCtx, -width * 0.5, -height * 0.5, width, height, corner);
-  contentCtx.stroke();
-
-  contentCtx.fillStyle = `rgba(255, 255, 255, ${0.62 * alpha})`;
-  drawRoundedRectPath(
-    contentCtx,
-    -width * 0.35,
-    -height * 0.26,
-    width * 0.7,
-    height * 0.52,
-    height * 0.24,
-  );
-  contentCtx.fill();
-  contentCtx.restore();
-}
-
 function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): void {
   const radius = params.view.radius;
   const center = getContentCenter(params);
@@ -743,35 +631,6 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
   contentCtx.fillStyle = circle.color;
   contentCtx.fill();
   contentCtx.restore();
-}
-
-function drawSourceSpecPlane(params: RenderParams): void {
-  if (!params.controls.sourceSpecEnabled || params.controls.sourceSpecStrength <= 0) {
-    return;
-  }
-
-  const radius = params.view.radius;
-  const center = getContentCenter(params);
-
-  for (const patch of sourceSpecPatches) {
-    const [x, y, z] = rotateSpherePoint(params.orientation, patch.x, patch.y, patch.z);
-
-    if (z < -0.18) {
-      continue;
-    }
-
-    const tangent = normalizeVec3(applyMatrix3(params.orientation, patch.tangent));
-    const visibility = smoothstep(-0.12, 0.62, z);
-    const edgeScale = mix(0.5, 1, smoothstep(-0.04, 0.94, z));
-    const alpha = patch.alpha * visibility * params.controls.sourceSpecStrength;
-    const width = patch.width * radius * edgeScale;
-    const height = patch.height * radius * edgeScale;
-    const centerX = center + x * radius;
-    const centerY = center + y * radius;
-    const rotation = Math.atan2(tangent[1], tangent[0]) + patch.rotation;
-
-    drawSoftSpecRect(centerX, centerY, width, height, rotation, alpha);
-  }
 }
 
 function collectVisibleCircles(params: RenderParams): VisibleMarbleCircle[] {
@@ -807,8 +666,6 @@ function drawContentLayer(params: RenderParams): void {
   for (const item of visibleCircles) {
     drawContentCircle(item, params);
   }
-
-  drawSourceSpecPlane(params);
 
   contentData = contentCtx.getImageData(0, 0, contentCanvas.width, contentCanvas.height);
 }
