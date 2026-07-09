@@ -8,6 +8,18 @@ type MarbleCircle = {
   color: string;
 };
 
+type SourceSpecPatch = {
+  x: number;
+  y: number;
+  z: number;
+  tangent: Vec3;
+  kind: 'ellipse' | 'rect';
+  width: number;
+  height: number;
+  rotation: number;
+  alpha: number;
+};
+
 type VisibleMarbleCircle = MarbleCircle & {
   cx: number;
   cy: number;
@@ -101,6 +113,8 @@ const layerControls = {
   contentOverscan: 0.46,
   circleCount: 10,
   circleSizeScale: 0.94,
+  sourceSpecEnabled: true,
+  sourceSpecStrength: 0.72,
   edgeScaleFloor: 0.5,
   edgePortalWidth: 0.06,
   portalInset: 0.9,
@@ -172,6 +186,41 @@ let lastPointerY = 0;
 let lastPointerTime = 0;
 let lastFrame = 0;
 const renderer: Renderer = new CanvasRenderer();
+const sourceSpecPatches: SourceSpecPatch[] = [
+  {
+    x: -0.34,
+    y: -0.34,
+    z: 0.88,
+    tangent: [0.96, -0.15, -0.22],
+    kind: 'rect',
+    width: 0.25,
+    height: 0.055,
+    rotation: -0.06,
+    alpha: 0.56,
+  },
+  {
+    x: 0.08,
+    y: -0.2,
+    z: 0.98,
+    tangent: [0.92, -0.22, -0.1],
+    kind: 'ellipse',
+    width: 0.09,
+    height: 0.052,
+    rotation: 0,
+    alpha: 0.36,
+  },
+  {
+    x: 0.44,
+    y: -0.32,
+    z: 0.82,
+    tangent: [0.92, 0.08, -0.38],
+    kind: 'ellipse',
+    width: 0.4,
+    height: 0.12,
+    rotation: 0.12,
+    alpha: 0.2,
+  },
+];
 
 function getRenderParams(): RenderParams {
   return {
@@ -521,6 +570,8 @@ function setupGui(): void {
   source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
   source.add(layerControls, 'circleCount', 4, maxMarbleCircleCount, 1).name('circle count');
   source.add(layerControls, 'circleSizeScale', 0.45, 1.8, 0.01).name('circle size');
+  source.add(layerControls, 'sourceSpecEnabled').name('source spec');
+  source.add(layerControls, 'sourceSpecStrength', 0, 1.4, 0.01).name('source spec power');
   source.add(layerControls, 'edgeScaleFloor', 0.08, 0.8, 0.01).name('edge min size');
   source.add(layerControls, 'edgePortalWidth', 0.01, 0.3, 0.01).name('edge portal');
   source.add(layerControls, 'portalInset', 0.5, 1, 0.01).name('portal inset');
@@ -657,62 +708,6 @@ function drawLocalSpecEllipse(
   contentCtx.restore();
 }
 
-function drawContentSpecHighlights(
-  circle: VisibleMarbleCircle,
-  params: RenderParams,
-  centerX: number,
-  centerY: number,
-  size: number,
-): void {
-  if (circle.back) {
-    return;
-  }
-
-  const alpha = circle.alpha * smoothstep(0.02, 0.78, circle.dot);
-  contentCtx.globalAlpha = 1;
-
-  if (params.controls.specCEnabled) {
-    const gradient = contentCtx.createRadialGradient(
-      centerX - size * 0.2,
-      centerY - size * 0.28,
-      size * 0.04,
-      centerX - size * 0.2,
-      centerY - size * 0.28,
-      size * 0.72,
-    );
-    gradient.addColorStop(0, `rgba(255, 255, 255, ${0.2 * alpha})`);
-    gradient.addColorStop(0.48, `rgba(255, 255, 255, ${0.08 * alpha})`);
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-    contentCtx.fillStyle = gradient;
-    contentCtx.beginPath();
-    contentCtx.arc(centerX, centerY, size, 0, Math.PI * 2);
-    contentCtx.fill();
-  }
-
-  if (params.controls.specAEnabled) {
-    drawLocalSpecRect(
-      centerX - size * 0.22,
-      centerY - size * 0.32,
-      size * 0.54,
-      size * 0.14,
-      -0.16,
-      0.52 * alpha,
-    );
-  }
-
-  if (params.controls.specBEnabled) {
-    drawLocalSpecEllipse(
-      centerX + size * 0.18,
-      centerY - size * 0.16,
-      size * 0.16,
-      size * 0.1,
-      -0.2,
-      0.42 * alpha,
-    );
-  }
-}
-
 function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): void {
   const radius = params.view.radius;
   const center = getContentCenter(params);
@@ -736,11 +731,40 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
   contentCtx.globalAlpha = circle.alpha;
   contentCtx.fillStyle = circle.color;
   contentCtx.fill();
-  contentCtx.save();
-  contentCtx.clip();
-  drawContentSpecHighlights(circle, params, centerX, centerY, size);
   contentCtx.restore();
-  contentCtx.restore();
+}
+
+function drawSourceSpecPlane(params: RenderParams): void {
+  if (!params.controls.sourceSpecEnabled || params.controls.sourceSpecStrength <= 0) {
+    return;
+  }
+
+  const radius = params.view.radius;
+  const center = getContentCenter(params);
+
+  for (const patch of sourceSpecPatches) {
+    const [x, y, z] = rotateSpherePoint(params.orientation, patch.x, patch.y, patch.z);
+
+    if (z < -0.18) {
+      continue;
+    }
+
+    const tangent = normalizeVec3(applyMatrix3(params.orientation, patch.tangent));
+    const visibility = smoothstep(-0.12, 0.62, z);
+    const edgeScale = mix(0.5, 1, smoothstep(-0.04, 0.94, z));
+    const alpha = patch.alpha * visibility * params.controls.sourceSpecStrength;
+    const width = patch.width * radius * edgeScale;
+    const height = patch.height * radius * edgeScale;
+    const centerX = center + x * radius;
+    const centerY = center + y * radius;
+    const rotation = Math.atan2(tangent[1], tangent[0]) + patch.rotation;
+
+    if (patch.kind === 'rect') {
+      drawLocalSpecRect(centerX, centerY, width, height, rotation, alpha);
+    } else {
+      drawLocalSpecEllipse(centerX, centerY, width, height, rotation, alpha);
+    }
+  }
 }
 
 function collectVisibleCircles(params: RenderParams): VisibleMarbleCircle[] {
@@ -776,6 +800,8 @@ function drawContentLayer(params: RenderParams): void {
   for (const item of visibleCircles) {
     drawContentCircle(item, params);
   }
+
+  drawSourceSpecPlane(params);
 
   contentData = contentCtx.getImageData(0, 0, contentCanvas.width, contentCanvas.height);
 }

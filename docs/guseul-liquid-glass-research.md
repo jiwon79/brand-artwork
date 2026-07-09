@@ -491,3 +491,25 @@ This is intentionally not a physically exact sphere projection. It is a visual m
 The edge shrink amount is now tunable with `edge min size`. This replaces the previous hard-coded near-edge scale floor, so decals can remain larger while crossing the rim without changing their center/front size.
 
 `circleCount` now regenerates a Fibonacci sphere for the requested count instead of selecting a subset from a fixed larger set. This keeps low counts distributed over the whole sphere rather than clustering on one side of the precomputed candidate list.
+
+## 2026-07-09 Source Spec Sampling Correction
+
+The first source-spec attempt drew the same rectangular/elliptical highlight inside every colored circle. That was the wrong ownership model: it made specular detail look like a repeated decal printed on each circle, not like one image/content plane being sampled by glass.
+
+The reference video and `liquid-dom` structure point to a different split:
+
+```text
+source/backdrop texture
+  -> glass refraction samples that texture once
+  -> glass content texture is composited through the same optical field
+  -> shell specular/reflection is added as a separate lighting pass
+```
+
+For Guseul, colored circles and source highlights should therefore be sibling marks in one source texture, not parent/child marks where every circle owns a highlight. The current canvas implementation follows that rule:
+
+- colored circles are drawn as sphere-anchored decals.
+- source spec patches are drawn once as a separate global source layer, also sphere-anchored.
+- the liquid-glass sampler reads the combined source texture through the same refraction/chromatic field.
+- shell `spec A/B/C` remains a weak surface-lighting pass, not the source of every bright patch.
+
+This means changing `circleCount` must not change the number of source spec highlights. If a future version needs richer reference-like glints, add or texture a single source-spec layer, not per-circle highlight drawing.
