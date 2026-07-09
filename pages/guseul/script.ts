@@ -968,7 +968,7 @@ function coverageFromSignedDistance(signedDistance: number, feather: number): nu
 function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): SourceEdgeSample {
   const radius = params.view.radius;
   const boundaryWidth = Math.max(params.controls.chromaticBoundaryWidth, 0.001);
-  const empty: SourceEdgeSample = {
+  const createEmptySample = (): SourceEdgeSample => ({
     edge: 0,
     fill: 0,
     alpha: 0,
@@ -976,8 +976,12 @@ function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): Sou
     normalX: 0,
     normalY: 0,
     color: backgroundSample(params.controls),
-  };
+  });
+  const empty = createEmptySample();
 
+  // Match the source canvas paint order: later circles visually sit on top.
+  // Once a top circle covers this pixel, lower circles must not contribute
+  // chromatic fringes through it.
   for (let index = visibleCircles.length - 1; index >= 0; index -= 1) {
     const circle = visibleCircles[index];
     const circleRadius = circle.radius * params.controls.circleSizeScale * radius * circle.scale;
@@ -996,15 +1000,19 @@ function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): Sou
     const edge = (1 - smoothstep(boundaryWidth * 0.2, boundaryWidth, edgeDistance)) * circle.fillAlpha;
     const fill = smoothstep(circleRadius + boundaryWidth, circleRadius - boundaryWidth, distance) * circle.fillAlpha;
 
-    if (edge > empty.edge) {
-      empty.edge = edge;
-      empty.fill = fill;
-      empty.alpha = circle.fillAlpha;
-      empty.signedDistance = signedDistance;
-      empty.normalX = distance > 0.001 ? dx / distance : 0;
-      empty.normalY = distance > 0.001 ? dy / distance : 0;
-      empty.color = colorToRgba(circle.color);
+    if (edge <= 0.001 && fill <= 0.04) {
+      continue;
     }
+
+    return {
+      edge,
+      fill,
+      alpha: circle.fillAlpha,
+      signedDistance,
+      normalX: distance > 0.001 ? dx / distance : 0,
+      normalY: distance > 0.001 ? dy / distance : 0,
+      color: colorToRgba(circle.color),
+    };
   }
 
   return empty;
