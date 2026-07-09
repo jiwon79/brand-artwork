@@ -14,7 +14,8 @@ type VisibleMarbleCircle = MarbleCircle & {
   dot: number;
   z: number;
   scale: number;
-  alpha: number;
+  fillAlpha: number;
+  hazeAlpha: number;
   blur: number;
   back: boolean;
   strokeAlpha: number;
@@ -485,8 +486,9 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
       dot: depth,
       z: -depth,
       scale: mix(edgeScaleFloor * 0.9, Math.max(0.58, edgeScaleFloor), depth ** 0.58),
-      alpha: mix(0.1, 0.36, depth ** 0.68),
-      blur: mix(1.8, 0.65, depth),
+      fillAlpha: mix(0.54, 0.76, depth ** 0.68),
+      hazeAlpha: mix(0.18, 0.08, depth),
+      blur: mix(1.35, 0.52, depth),
       back: true,
       strokeAlpha: 0,
     };
@@ -494,7 +496,7 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
 
   const displayDepth = clamp(z, 0, 1);
   const scale = mix(edgeScaleFloor, 1.04, displayDepth ** 1.7);
-  const alpha = mix(0.42, 1, smoothstep(0, 0.86, displayDepth));
+  const frontDepth = smoothstep(0, 0.86, displayDepth);
 
   return {
     ...circle,
@@ -503,10 +505,11 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
     dot: displayDepth,
     z: displayDepth,
     scale,
-    alpha,
+    fillAlpha: mix(0.94, 1, frontDepth),
+    hazeAlpha: mix(0.035, 0, frontDepth),
     blur: 0,
     back: false,
-    strokeAlpha: 1,
+    strokeAlpha: mix(0.65, 1, frontDepth),
   };
 }
 
@@ -630,14 +633,19 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
   contentCtx.beginPath();
   contentCtx.arc(centerX, centerY, size, 0, Math.PI * 2);
   if (strokeWidth > 0 && !circle.back && circle.strokeAlpha > 0) {
-    contentCtx.globalAlpha = circle.alpha * circle.strokeAlpha;
+    contentCtx.globalAlpha = circle.fillAlpha * circle.strokeAlpha;
     contentCtx.lineWidth = strokeWidth;
     contentCtx.strokeStyle = '#ffffff';
     contentCtx.stroke();
   }
-  contentCtx.globalAlpha = circle.alpha;
+  contentCtx.globalAlpha = circle.fillAlpha;
   contentCtx.fillStyle = circle.color;
   contentCtx.fill();
+  if (circle.hazeAlpha > 0) {
+    contentCtx.globalAlpha = circle.hazeAlpha;
+    contentCtx.fillStyle = params.controls.backgroundColor;
+    contentCtx.fill();
+  }
   contentCtx.restore();
 }
 
@@ -919,6 +927,34 @@ function colorDistance(a: RGBA, b: RGBA): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
+function mixRgba(a: RGBA, b: RGBA, t: number): RGBA {
+  return [
+    mix(a[0], b[0], t),
+    mix(a[1], b[1], t),
+    mix(a[2], b[2], t),
+    mix(a[3], b[3], t),
+  ];
+}
+
+function averageRgba(samples: RGBA[]): RGBA {
+  const sum = samples.reduce<RGBA>(
+    (total, sample) => [
+      total[0] + sample[0],
+      total[1] + sample[1],
+      total[2] + sample[2],
+      total[3] + sample[3],
+    ],
+    [0, 0, 0, 0],
+  );
+
+  return [
+    sum[0] / samples.length,
+    sum[1] / samples.length,
+    sum[2] / samples.length,
+    sum[3] / samples.length,
+  ];
+}
+
 function sampleLiquidGlass(nx: number, ny: number, radial: number, params: RenderParams): RGBA {
   const radius = params.view.radius;
 
@@ -949,24 +985,27 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
     params,
   );
   const red = sampleAtOffset(redSource);
-  const green = sampleAtOffset([baseOffsetX, baseOffsetY]);
+  const base = sampleAtOffset([baseOffsetX, baseOffsetY]);
   const blue = sampleAtOffset(blueSource);
-  let sampleR = red[0];
-  const sampleG = green[1];
-  let sampleB = blue[2];
+  let sample = base;
 
-  if (params.controls.chromaticEnabled && params.controls.chromaticEdgeStrength > 0) {
+  if (params.controls.chromaticEnabled) {
     const separationX = blueSource[0] - redSource[0];
     const separationY = blueSource[1] - redSource[1];
     const separation = Math.hypot(separationX, separationY);
-    const sourceContrast = Math.max(colorDistance(red, green), colorDistance(blue, green)) / 441.672;
+    const dispersionBlur = clamp(params.controls.dispersion * surface.rim * 1.6, 0, 0.38);
+    const spectralBlur = averageRgba([red, base, base, blue]);
+
+    sample = mixRgba(sample, spectralBlur, dispersionBlur);
+
+    const sourceContrast = Math.max(colorDistance(red, base), colorDistance(blue, base)) / 441.672;
     const edgeGate =
       smoothstep(0.04, 0.24, sourceContrast) *
       smoothstep(0.25, 2.6, separation) *
       smoothstep(0.56, 1, radial) *
       surface.rim;
 
-    if (edgeGate > 0.001) {
+    if (edgeGate > 0.001 && params.controls.chromaticEdgeStrength > 0) {
       const directionX = separation > 0.0001 ? separationX / separation : 0;
       const directionY = separation > 0.0001 ? separationY / separation : 0;
       const strength = params.controls.chromaticEdgeStrength * edgeGate;
@@ -980,17 +1019,24 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
         baseOffsetX + (blueSource[0] - baseOffsetX) * boost + directionX * spread * 0.35,
         baseOffsetY + (blueSource[1] - baseOffsetY) * boost + directionY * spread * 0.35,
       ]);
-      const wideMix = clamp(strength, 0, 0.98);
+      const wideBlur = averageRgba([redWide, base, blueWide]);
+      const wideMix = clamp(strength * 0.72, 0, 0.82);
+      const splitMix = clamp(strength * 0.12, 0, 0.18);
 
-      sampleR = mix(sampleR, redWide[0], wideMix);
-      sampleB = mix(sampleB, blueWide[2], wideMix);
+      sample = mixRgba(sample, wideBlur, wideMix);
+      sample = [
+        mix(sample[0], redWide[0], splitMix),
+        sample[1],
+        mix(sample[2], blueWide[2], splitMix),
+        255,
+      ];
     }
   }
 
   return [
-    sampleR,
-    sampleG,
-    sampleB,
+    sample[0],
+    sample[1],
+    sample[2],
     255,
   ];
 }
