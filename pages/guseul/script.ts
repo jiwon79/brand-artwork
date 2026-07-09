@@ -42,6 +42,14 @@ type SurfaceSample = {
   rim: number;
 };
 
+type SourceEdgeSample = {
+  edge: number;
+  fill: number;
+  normalX: number;
+  normalY: number;
+  color: RGBA;
+};
+
 type RenderParams = {
   view: View;
   controls: LayerControls;
@@ -122,6 +130,8 @@ const layerControls = {
   dispersion: 0.14,
   chromaticEdgeStrength: 1.12,
   chromaticEdgeWidth: 2.6,
+  chromaticBoundaryStrength: 1.25,
+  chromaticBoundaryWidth: 6.5,
   innerShadeEnabled: true,
   glassMilkEnabled: true,
   topWashEnabled: true,
@@ -223,6 +233,17 @@ function mix(a: number, b: number, t: number): number {
 function backgroundSample(controls: LayerControls = layerControls): RGBA {
   const hex = controls.backgroundColor.trim();
   const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : 'fffefb';
+
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+    255,
+  ];
+}
+
+function colorToRgba(color: string): RGBA {
+  const normalized = /^#[0-9a-f]{6}$/i.test(color) ? color.slice(1) : 'ffffff';
 
   return [
     Number.parseInt(normalized.slice(0, 2), 16),
@@ -556,6 +577,8 @@ function setupGui(): void {
   refraction.add(layerControls, 'dispersion', 0, 0.5, 0.001).name('dispersion');
   refraction.add(layerControls, 'chromaticEdgeStrength', 0, 4, 0.01).name('edge chroma');
   refraction.add(layerControls, 'chromaticEdgeWidth', 0, 12, 0.1).name('edge width');
+  refraction.add(layerControls, 'chromaticBoundaryStrength', 0, 3, 0.01).name('source edge');
+  refraction.add(layerControls, 'chromaticBoundaryWidth', 0.5, 14, 0.1).name('source feather');
 
   const shell = gui.addFolder('5 glass shell');
   shell.add(layerControls, 'innerShadeEnabled').name('innerShade');
@@ -927,6 +950,13 @@ function colorDistance(a: RGBA, b: RGBA): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
+function colorSaturation([r, g, b]: RGBA): number {
+  const maxChannel = Math.max(r, g, b);
+  const minChannel = Math.min(r, g, b);
+
+  return maxChannel <= 0 ? 0 : (maxChannel - minChannel) / maxChannel;
+}
+
 function mixRgba(a: RGBA, b: RGBA, t: number): RGBA {
   return [
     mix(a[0], b[0], t),
@@ -953,6 +983,46 @@ function averageRgba(samples: RGBA[]): RGBA {
     sum[2] / samples.length,
     sum[3] / samples.length,
   ];
+}
+
+function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): SourceEdgeSample {
+  const radius = params.view.radius;
+  const boundaryWidth = Math.max(params.controls.chromaticBoundaryWidth, 0.001);
+  const empty: SourceEdgeSample = {
+    edge: 0,
+    fill: 0,
+    normalX: 0,
+    normalY: 0,
+    color: backgroundSample(params.controls),
+  };
+
+  for (let index = visibleCircles.length - 1; index >= 0; index -= 1) {
+    const circle = visibleCircles[index];
+    const circleRadius = circle.radius * params.controls.circleSizeScale * radius * circle.scale;
+
+    if (circleRadius <= 0.001 || circle.fillAlpha <= 0.001) {
+      continue;
+    }
+
+    const centerX = radius + circle.cx * radius;
+    const centerY = radius + circle.cy * radius;
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const distance = Math.hypot(dx, dy);
+    const edgeDistance = Math.abs(distance - circleRadius);
+    const edge = (1 - smoothstep(boundaryWidth * 0.2, boundaryWidth, edgeDistance)) * circle.fillAlpha;
+    const fill = smoothstep(circleRadius + boundaryWidth, circleRadius - boundaryWidth, distance) * circle.fillAlpha;
+
+    if (edge > empty.edge) {
+      empty.edge = edge;
+      empty.fill = fill;
+      empty.normalX = distance > 0.001 ? dx / distance : 0;
+      empty.normalY = distance > 0.001 ? dy / distance : 0;
+      empty.color = colorToRgba(circle.color);
+    }
+  }
+
+  return empty;
 }
 
 function sampleLiquidGlass(nx: number, ny: number, radial: number, params: RenderParams): RGBA {
@@ -993,24 +1063,44 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
     const separationX = blueSource[0] - redSource[0];
     const separationY = blueSource[1] - redSource[1];
     const separation = Math.hypot(separationX, separationY);
-    const dispersionBlur = clamp(params.controls.dispersion * surface.rim * 1.6, 0, 0.38);
+    const baseSourceX = radius + nx * radius + baseOffsetX;
+    const baseSourceY = radius + ny * radius + baseOffsetY;
+    const sourceEdge = sampleSourceCircleEdge(baseSourceX, baseSourceY, params);
+    const sourceEdgeGate =
+      sourceEdge.edge *
+      params.controls.chromaticBoundaryStrength *
+      smoothstep(0.42, 0.98, radial) *
+      (0.48 + surface.rim * 0.52);
+    const sourceSaturation = colorSaturation(sourceEdge.color);
+    const dispersionBlur = clamp(
+      params.controls.dispersion * (surface.rim * 1.2 + sourceEdgeGate * 0.85),
+      0,
+      0.46,
+    );
     const spectralBlur = averageRgba([red, base, base, blue]);
 
     sample = mixRgba(sample, spectralBlur, dispersionBlur);
 
     const sourceContrast = Math.max(colorDistance(red, base), colorDistance(blue, base)) / 441.672;
-    const edgeGate =
+    const refractedEdgeGate =
       smoothstep(0.04, 0.24, sourceContrast) *
       smoothstep(0.25, 2.6, separation) *
       smoothstep(0.56, 1, radial) *
       surface.rim;
+    const edgeGate = Math.max(refractedEdgeGate, sourceEdgeGate);
 
     if (edgeGate > 0.001 && params.controls.chromaticEdgeStrength > 0) {
-      const directionX = separation > 0.0001 ? separationX / separation : 0;
-      const directionY = separation > 0.0001 ? separationY / separation : 0;
+      const refractDirectionX = separation > 0.0001 ? separationX / separation : sourceEdge.normalX;
+      const refractDirectionY = separation > 0.0001 ? separationY / separation : sourceEdge.normalY;
+      const boundaryDirectionMix = clamp(sourceEdgeGate / (sourceEdgeGate + refractedEdgeGate + 0.001), 0, 1);
+      const mixedDirectionX = mix(refractDirectionX, sourceEdge.normalX, boundaryDirectionMix * 0.9);
+      const mixedDirectionY = mix(refractDirectionY, sourceEdge.normalY, boundaryDirectionMix * 0.9);
+      const mixedDirectionLength = Math.hypot(mixedDirectionX, mixedDirectionY);
+      const directionX = mixedDirectionLength > 0.0001 ? mixedDirectionX / mixedDirectionLength : refractDirectionX;
+      const directionY = mixedDirectionLength > 0.0001 ? mixedDirectionY / mixedDirectionLength : refractDirectionY;
       const strength = params.controls.chromaticEdgeStrength * edgeGate;
       const boost = 1 + strength * 1.8;
-      const spread = params.controls.chromaticEdgeWidth * strength;
+      const spread = params.controls.chromaticEdgeWidth * (0.32 + strength);
       const redWide = sampleAtOffset([
         baseOffsetX + (redSource[0] - baseOffsetX) * boost - directionX * spread * 0.35,
         baseOffsetY + (redSource[1] - baseOffsetY) * boost - directionY * spread * 0.35,
@@ -1020,13 +1110,14 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
         baseOffsetY + (blueSource[1] - baseOffsetY) * boost + directionY * spread * 0.35,
       ]);
       const wideBlur = averageRgba([redWide, base, blueWide]);
-      const wideMix = clamp(strength * 0.72, 0, 0.82);
-      const splitMix = clamp(strength * 0.12, 0, 0.18);
+      const colorFollow = mixRgba(wideBlur, sourceEdge.color, clamp(sourceEdgeGate * sourceSaturation * 0.5, 0, 0.46));
+      const wideMix = clamp(strength * 0.85 + sourceEdgeGate * 0.32, 0, 0.94);
+      const splitMix = clamp(strength * 0.2 + sourceEdgeGate * 0.1, 0, 0.34);
 
-      sample = mixRgba(sample, wideBlur, wideMix);
+      sample = mixRgba(sample, colorFollow, wideMix);
       sample = [
         mix(sample[0], redWide[0], splitMix),
-        sample[1],
+        mix(sample[1], colorFollow[1], splitMix * 0.62),
         mix(sample[2], blueWide[2], splitMix),
         255,
       ];
