@@ -74,8 +74,6 @@ type RenderParams = {
   view: View;
   controls: LayerControls;
   orientation: Matrix3;
-  specOffsetX: number;
-  specOffsetY: number;
 };
 
 type Renderer = {
@@ -107,7 +105,6 @@ if (!ballCtx) {
 
 const surfaceFieldChannels = 3;
 const maxSurfaceSlope = Math.tan((85 * Math.PI) / 180);
-const specPlaneHalfSpan = 1.35;
 
 const maxMarbleCircleCount = 28;
 const marbleCirclePalette = [
@@ -229,8 +226,6 @@ let sphereOrientation = multiplyMatrix3(
 );
 let spinAxis: Vec3 = [0, 0, 0];
 let spinVelocity = 0;
-let specOffsetX = 0;
-let specOffsetY = 0;
 let pointerId: number | null = null;
 let lastPointerX = 0;
 let lastPointerY = 0;
@@ -243,8 +238,6 @@ function getRenderParams(): RenderParams {
     view,
     controls: layerControls,
     orientation: sphereOrientation,
-    specOffsetX,
-    specOffsetY,
   };
 }
 
@@ -309,16 +302,6 @@ function colorToRgba(color: string): RGBA {
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
   return t * t * (3 - 2 * t);
-}
-
-function wrapCentered(value: number, halfSpan: number): number {
-  const span = halfSpan * 2;
-
-  return ((((value + halfSpan) % span) + span) % span) - halfSpan;
-}
-
-function wrappedDelta(value: number, center: number, halfSpan: number): number {
-  return wrapCentered(value - center, halfSpan);
 }
 
 function smootherstep(value: number): number {
@@ -510,39 +493,33 @@ function applyMatrix3(matrix: Matrix3, [x, y, z]: Vec3): Vec3 {
   ];
 }
 
-function getSpecularReflection(nx: number, ny: number, nz: number): Vec3 {
-  const normal: Vec3 = [nx, ny, nz];
-
-  return normalizeVec3(reflectVec3([0, 0, -1], normal));
+function getSpecularSurfacePoint(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
+  return normalizeVec3(applyMatrix3(inverseOrientation, [nx, ny, nz]));
 }
 
 function areaWindowSpecular(
-  reflection: Vec3,
+  surfacePoint: Vec3,
   spec: SpecHighlight,
   softness: number,
-  offsetX: number,
-  offsetY: number,
 ): number {
-  const dx = Math.abs(wrappedDelta(reflection[0], spec.centerX + offsetX, specPlaneHalfSpan) / spec.halfWidth);
-  const dy = Math.abs(wrappedDelta(reflection[1], spec.centerY + offsetY, specPlaneHalfSpan) / spec.halfHeight);
+  const dx = Math.abs((surfacePoint[0] - spec.centerX) / spec.halfWidth);
+  const dy = Math.abs((surfacePoint[1] - spec.centerY) / spec.halfHeight);
   const distance = spec.shape === 'circle' ? Math.hypot(dx, dy) : Math.max(dx, dy);
   const box = 1 - smoothstep(1 - softness, 1 + softness, distance);
-  const facing = smoothstep(-0.08, 0.36, reflection[2]);
+  const facing = smoothstep(-0.02, 0.28, surfacePoint[2]);
 
   return Math.max(0, box) ** spec.power * facing;
 }
 
-function sampleSpecHighlights(reflection: Vec3, params: RenderParams): SpecSample {
+function sampleSpecHighlights(surfacePoint: Vec3, params: RenderParams): SpecSample {
   let shell = 0;
   let debugMask = 0;
 
   const addSpec = (spec: SpecHighlight, intensityScale: number, softnessScale: number): void => {
     const specValue = areaWindowSpecular(
-      reflection,
+      surfacePoint,
       spec,
       clamp(spec.softness * softnessScale, 0.08, 1.8),
-      params.specOffsetX,
-      params.specOffsetY,
     );
 
     shell += specValue * spec.intensity * intensityScale;
@@ -575,8 +552,6 @@ function applyScreenAxisRotation(axis: Vec3, angle: number): void {
     rotationMatrixFromAxisAngle(axis, angle),
     sphereOrientation,
   );
-  specOffsetX = wrapCentered(specOffsetX + axis[1] * angle, specPlaneHalfSpan);
-  specOffsetY = wrapCentered(specOffsetY - axis[0] * angle, specPlaneHalfSpan);
 }
 
 function applyBackgroundColor(): void {
@@ -1256,6 +1231,7 @@ function renderGlassBall(params: RenderParams): void {
   const image = ballCtx.createImageData(size, size);
   const data = image.data;
   const radiusPx = size * 0.5;
+  const inverseOrientation = transposeMatrix3(params.orientation);
 
   for (let y = 0; y < size; y += 1) {
     const ny = (y + 0.5) / radiusPx - 1;
@@ -1294,8 +1270,8 @@ function renderGlassBall(params: RenderParams): void {
         ((params.controls.specLargeEnabled && params.controls.specLargeIntensity > 0) ||
           (params.controls.specMediumEnabled && params.controls.specMediumIntensity > 0) ||
           (params.controls.specStripEnabled && params.controls.specStripIntensity > 0));
-      const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz) : [0, 0, 1];
-      const specSample = hasAreaSpec ? sampleSpecHighlights(specReflection, params) : { shell: 0, debugMask: 0 };
+      const specSurfacePoint: Vec3 = hasAreaSpec ? getSpecularSurfacePoint(nx, ny, nz, inverseOrientation) : [0, 0, 1];
+      const specSample = hasAreaSpec ? sampleSpecHighlights(specSurfacePoint, params) : { shell: 0, debugMask: 0 };
       const shell = params.controls.specDebugEnabled ? 0 : specSample.shell;
 
       let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
