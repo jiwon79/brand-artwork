@@ -74,6 +74,8 @@ type RenderParams = {
   view: View;
   controls: LayerControls;
   orientation: Matrix3;
+  sourceOffsetX: number;
+  sourceOffsetY: number;
 };
 
 type Renderer = {
@@ -148,9 +150,6 @@ const layerControls = {
   circleCount: 10,
   circleSizeScale: 1.75,
   circleSizeVariance: 1,
-  edgeScaleFloor: 0.32,
-  edgePortalWidth: 0.06,
-  portalInset: 0.9,
   circleStrokeEnabled: true,
   circleStrokeScale: 1,
   displacementEnabled: true,
@@ -224,13 +223,11 @@ let sphereOrientation = multiplyMatrix3(
   rotationMatrixFromAxisAngle([0, 1, 0], 0.14),
   rotationMatrixFromAxisAngle([1, 0, 0], -0.1),
 );
-let spinAxis: Vec3 = [0, 0, 0];
-let spinVelocity = 0;
+let sourceOffsetX = 0;
+let sourceOffsetY = 0;
 let pointerId: number | null = null;
 let lastPointerX = 0;
 let lastPointerY = 0;
-let lastPointerTime = 0;
-let lastFrame = 0;
 const renderer: Renderer = new CanvasRenderer();
 
 function getRenderParams(): RenderParams {
@@ -238,6 +235,8 @@ function getRenderParams(): RenderParams {
     view,
     controls: layerControls,
     orientation: sphereOrientation,
+    sourceOffsetX,
+    sourceOffsetY,
   };
 }
 
@@ -248,20 +247,24 @@ function pseudoRandom(index: number, salt: number): number {
 }
 
 function createMarbleCircles(count: number, controls: LayerControls = layerControls): MarbleCircle[] {
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const columns = Math.ceil(Math.sqrt(count * 1.18));
+  const rows = Math.ceil(count / columns);
+  const cellWidth = 2 / columns;
+  const cellHeight = 2 / rows;
 
   return Array.from({ length: count }, (_, index) => {
-    const y = 1 - (2 * (index + 0.5)) / count;
-    const radial = Math.sqrt(Math.max(1 - y * y, 0));
-    const theta = index * goldenAngle + pseudoRandom(index, 1) * 0.42;
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const jitterX = (pseudoRandom(index, 1) - 0.5) * 0.46;
+    const jitterY = (pseudoRandom(index, 4) - 0.5) * 0.46;
     const baseSize = 0.25;
     const variance = (pseudoRandom(index, 2) - 0.5) * 0.16 * controls.circleSizeVariance;
     const size = clamp(baseSize + variance, 0.05, 0.5);
 
     return {
-      x: Math.cos(theta) * radial,
-      y,
-      z: Math.sin(theta) * radial,
+      x: -1 + (column + 0.5 + jitterX) * cellWidth,
+      y: -1 + (row + 0.5 + jitterY) * cellHeight,
+      z: 0,
       radius: size,
       color: marbleCirclePalette[Math.floor(pseudoRandom(index, 3) * marbleCirclePalette.length)],
     };
@@ -550,11 +553,14 @@ function sampleSpecHighlights(reflection: Vec3, params: RenderParams): SpecSampl
   return { shell, debugMask };
 }
 
-function applyScreenAxisRotation(axis: Vec3, angle: number): void {
-  sphereOrientation = multiplyMatrix3(
-    rotationMatrixFromAxisAngle(axis, angle),
-    sphereOrientation,
-  );
+function wrapCentered(value: number, halfSpan: number): number {
+  const span = halfSpan * 2;
+
+  return ((((value + halfSpan) % span) + span) % span) - halfSpan;
+}
+
+function getPlaneWrapHalfSpan(params: RenderParams): number {
+  return 1 + getContentOverscan(params.controls);
 }
 
 function applyBackgroundColor(): void {
@@ -564,51 +570,29 @@ function applyBackgroundColor(): void {
   stage?.style.setProperty('background', layerControls.backgroundColor);
 }
 
-function rotateSpherePoint(orientation: Matrix3, x: number, y: number, z: number): Vec3 {
-  return applyMatrix3(orientation, normalizeVec3([x, y, z]));
-}
-
-function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): VisibleMarbleCircle {
-  const [x, y, z] = rotateSpherePoint(params.orientation, circle.x, circle.y, circle.z);
-  const portalWidth = Math.max(params.controls.edgePortalWidth, 0.001);
-  const edgeScaleFloor = params.controls.edgeScaleFloor;
-
-  if (z < 0) {
-    const depth = smoothstep(0, 1, -z);
-    const portalProgress = smoothstep(0, portalWidth, -z);
-    const inset = mix(0.94, params.controls.portalInset, portalProgress);
-
-    return {
-      ...circle,
-      cx: x * inset,
-      cy: y * inset,
-      dot: depth,
-      z: -depth,
-      scale: mix(edgeScaleFloor * 0.9, Math.max(0.58, edgeScaleFloor), depth ** 0.58),
-      fillAlpha: mix(0.54, 0.76, depth ** 0.68),
-      hazeAlpha: mix(0.18, 0.08, depth),
-      blur: mix(1.35, 0.52, depth),
-      back: true,
-      strokeAlpha: 0,
-    };
-  }
-
-  const displayDepth = clamp(z, 0, 1);
-  const scale = mix(edgeScaleFloor, 1.04, displayDepth ** 1.7);
-  const frontDepth = smoothstep(0, 0.86, displayDepth);
+function projectMarbleCircle(
+  circle: MarbleCircle,
+  params: RenderParams,
+  tileX = 0,
+  tileY = 0,
+): VisibleMarbleCircle {
+  const halfSpan = getPlaneWrapHalfSpan(params);
+  const span = halfSpan * 2;
+  const x = circle.x + params.sourceOffsetX + tileX * span;
+  const y = circle.y + params.sourceOffsetY + tileY * span;
 
   return {
     ...circle,
     cx: x,
     cy: y,
-    dot: displayDepth,
-    z: displayDepth,
-    scale,
-    fillAlpha: mix(0.94, 1, frontDepth),
-    hazeAlpha: mix(0.035, 0, frontDepth),
+    dot: 1,
+    z: 0,
+    scale: 1,
+    fillAlpha: 1,
+    hazeAlpha: 0,
     blur: 0,
     back: false,
-    strokeAlpha: mix(0.65, 1, frontDepth),
+    strokeAlpha: 1,
   };
 }
 
@@ -633,11 +617,6 @@ function setupGui(): void {
   circles.add(layerControls, 'circleSizeVariance', 0, 2.5, 0.01).name('size variance');
   circles.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   circles.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
-
-  const edgeProjection = source.addFolder('edge projection');
-  edgeProjection.add(layerControls, 'edgeScaleFloor', 0.08, 0.8, 0.01).name('edge min size');
-  edgeProjection.add(layerControls, 'edgePortalWidth', 0.01, 0.3, 0.01).name('edge portal');
-  edgeProjection.add(layerControls, 'portalInset', 0.5, 1, 0.01).name('portal inset');
 
   const surface = gui.addFolder('3 surface field debug');
   surface.add(layerControls, 'surfacePreviewEnabled').name('on');
@@ -690,7 +669,6 @@ function setupGui(): void {
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 
   circles.close();
-  edgeProjection.close();
   largeSpec.close();
   mediumSpec.close();
   stripSpec.close();
@@ -774,9 +752,23 @@ function collectVisibleCircles(params: RenderParams): VisibleMarbleCircle[] {
   const items: VisibleMarbleCircle[] = [];
   const count = clamp(Math.round(params.controls.circleCount), 1, maxMarbleCircleCount);
   const circles = createMarbleCircles(count, params.controls);
+  const halfSpan = getPlaneWrapHalfSpan(params);
 
   for (const circle of circles) {
-    items.push(projectMarbleCircle(circle, params));
+    const circleRadius = circle.radius * params.controls.circleSizeScale;
+
+    for (let tileY = -1; tileY <= 1; tileY += 1) {
+      for (let tileX = -1; tileX <= 1; tileX += 1) {
+        const item = projectMarbleCircle(circle, params, tileX, tileY);
+
+        if (
+          Math.abs(item.cx) <= halfSpan + circleRadius &&
+          Math.abs(item.cy) <= halfSpan + circleRadius
+        ) {
+          items.push(item);
+        }
+      }
+    }
   }
 
   return items.sort((a, b) => {
@@ -1369,21 +1361,7 @@ function drawScene(params: RenderParams): void {
   }
 }
 
-function tick(now: number): void {
-  const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000 || 0.016));
-  lastFrame = now;
-
-  if (pointerId === null) {
-    if (spinVelocity > 0) {
-      applyScreenAxisRotation(spinAxis, spinVelocity * dt);
-      spinVelocity *= 0.92;
-    }
-
-    if (spinVelocity < 0.01) {
-      spinVelocity = 0;
-    }
-  }
-
+function tick(): void {
   renderer.render(getRenderParams());
   requestAnimationFrame(tick);
 }
@@ -1400,8 +1378,6 @@ canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
-  lastPointerTime = event.timeStamp || performance.now();
-  spinVelocity = 0;
   canvas.setPointerCapture(event.pointerId);
 });
 
@@ -1413,19 +1389,15 @@ canvas.addEventListener('pointermove', (event) => {
   event.preventDefault();
   const dx = event.clientX - lastPointerX;
   const dy = event.clientY - lastPointerY;
-  const distance = Math.hypot(dx, dy);
 
-  if (distance > 0.001) {
-    const normalizedAxis: Vec3 = [-dy / distance, dx / distance, 0];
-    const angle = (distance / view.radius) * layerControls.dragSensitivity;
-    const now = event.timeStamp || performance.now();
-    const dt = Math.max((now - lastPointerTime) / 1000, 0.016);
-
-    applyScreenAxisRotation(normalizedAxis, angle);
-    spinAxis = normalizedAxis;
-    spinVelocity = Math.min(angle / dt, 9);
-    lastPointerTime = now;
-  }
+  sourceOffsetX = wrapCentered(
+    sourceOffsetX + (dx / view.radius) * layerControls.dragSensitivity,
+    getPlaneWrapHalfSpan(getRenderParams()),
+  );
+  sourceOffsetY = wrapCentered(
+    sourceOffsetY + (dy / view.radius) * layerControls.dragSensitivity,
+    getPlaneWrapHalfSpan(getRenderParams()),
+  );
 
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
