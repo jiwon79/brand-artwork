@@ -113,7 +113,7 @@ const layerControls = {
   circleCount: 10,
   circleSizeScale: 1.75,
   circleSizeVariance: 1,
-  edgeScaleFloor: 0.5,
+  edgeScaleFloor: 0.32,
   edgePortalWidth: 0.06,
   portalInset: 0.9,
   circleStrokeEnabled: true,
