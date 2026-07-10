@@ -126,17 +126,17 @@ const urlParams = new URLSearchParams(window.location.search);
 const initialSpecDebugColor: SpecDebugColor = urlParams.get('specDebugColor') === 'black' ? 'black' : 'red';
 
 const largeWindowSpecs: SpecHighlight[] = [
-  { shape: 'rect', centerX: -0.86, centerY: -0.7, halfWidth: 0.24, halfHeight: 0.095, softness: 0.4, power: 1.42, intensity: 38 },
-  { shape: 'circle', centerX: 0.88, centerY: -0.1, halfWidth: 0.18, halfHeight: 0.18, softness: 0.56, power: 1.46, intensity: 32 },
+  { shape: 'rect', centerX: -0.48, centerY: -0.38, halfWidth: 0.28, halfHeight: 0.105, softness: 0.14, power: 1.5, intensity: 38 },
+  { shape: 'circle', centerX: 0.64, centerY: -0.24, halfWidth: 0.17, halfHeight: 0.17, softness: 0.54, power: 1.46, intensity: 32 },
 ];
 
 const mediumWindowSpecs: SpecHighlight[] = [
-  { shape: 'circle', centerX: -0.82, centerY: 0.58, halfWidth: 0.125, halfHeight: 0.125, softness: 0.68, power: 1.34, intensity: 22 },
-  { shape: 'circle', centerX: 0.34, centerY: -0.9, halfWidth: 0.11, halfHeight: 0.11, softness: 0.7, power: 1.4, intensity: 20 },
+  { shape: 'circle', centerX: -0.56, centerY: 0.52, halfWidth: 0.12, halfHeight: 0.12, softness: 0.66, power: 1.34, intensity: 22 },
+  { shape: 'circle', centerX: 0.22, centerY: -0.68, halfWidth: 0.11, halfHeight: 0.11, softness: 0.68, power: 1.4, intensity: 20 },
 ];
 
 const thinStripSpecs: SpecHighlight[] = [
-  { shape: 'rect', centerX: 0.08, centerY: 0.86, halfWidth: 0.27, halfHeight: 0.02, softness: 0.86, power: 1.28, intensity: 5 },
+  { shape: 'rect', centerX: 0.52, centerY: 0.5, halfWidth: 0.26, halfHeight: 0.02, softness: 0.72, power: 1.28, intensity: 5 },
 ];
 
 const layerControls = {
