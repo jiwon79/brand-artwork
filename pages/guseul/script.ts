@@ -63,6 +63,13 @@ type SpecHighlight = {
   intensity: number;
 };
 
+type SpecDebugColor = 'red' | 'black';
+
+type SpecSample = {
+  shell: number;
+  debugMask: number;
+};
+
 type RenderParams = {
   view: View;
   controls: LayerControls;
@@ -115,27 +122,21 @@ const marbleCirclePalette = [
   '#35c7d2',
 ];
 
+const urlParams = new URLSearchParams(window.location.search);
+const initialSpecDebugColor: SpecDebugColor = urlParams.get('specDebugColor') === 'black' ? 'black' : 'red';
+
 const largeWindowSpecs: SpecHighlight[] = [
-  { shape: 'rect', centerX: -0.62, centerY: -0.58, halfWidth: 0.27, halfHeight: 0.105, softness: 0.38, power: 1.42, intensity: 34 },
-  { shape: 'rect', centerX: 0.58, centerY: -0.28, halfWidth: 0.22, halfHeight: 0.085, softness: 0.44, power: 1.5, intensity: 28 },
+  { shape: 'rect', centerX: -0.86, centerY: -0.7, halfWidth: 0.24, halfHeight: 0.095, softness: 0.4, power: 1.42, intensity: 38 },
+  { shape: 'circle', centerX: 0.88, centerY: -0.1, halfWidth: 0.18, halfHeight: 0.18, softness: 0.56, power: 1.46, intensity: 32 },
 ];
 
 const mediumWindowSpecs: SpecHighlight[] = [
-  { shape: 'circle', centerX: -0.32, centerY: 0.18, halfWidth: 0.12, halfHeight: 0.12, softness: 0.7, power: 1.34, intensity: 17 },
-  { shape: 'circle', centerX: 0.18, centerY: -0.64, halfWidth: 0.1, halfHeight: 0.1, softness: 0.68, power: 1.42, intensity: 15 },
-];
-
-const smallWindowSpecs: SpecHighlight[] = [
-  { shape: 'rect', centerX: 0.7, centerY: 0.12, halfWidth: 0.102, halfHeight: 0.044, softness: 0.78, power: 1.32, intensity: 11 },
-  { shape: 'rect', centerX: -0.74, centerY: -0.04, halfWidth: 0.078, halfHeight: 0.028, softness: 0.9, power: 1.42, intensity: 7 },
-  { shape: 'rect', centerX: 0.02, centerY: 0.5, halfWidth: 0.06, halfHeight: 0.025, softness: 0.96, power: 1.52, intensity: 5 },
-  { shape: 'rect', centerX: -0.08, centerY: -0.78, halfWidth: 0.084, halfHeight: 0.036, softness: 0.82, power: 1.28, intensity: 8 },
-  { shape: 'rect', centerX: 0.4, centerY: -0.58, halfWidth: 0.068, halfHeight: 0.028, softness: 0.9, power: 1.22, intensity: 6 },
+  { shape: 'circle', centerX: -0.82, centerY: 0.58, halfWidth: 0.125, halfHeight: 0.125, softness: 0.68, power: 1.34, intensity: 22 },
+  { shape: 'circle', centerX: 0.34, centerY: -0.9, halfWidth: 0.11, halfHeight: 0.11, softness: 0.7, power: 1.4, intensity: 20 },
 ];
 
 const thinStripSpecs: SpecHighlight[] = [
-  { shape: 'rect', centerX: -0.18, centerY: -0.42, halfWidth: 0.34, halfHeight: 0.032, softness: 0.72, power: 1.24, intensity: 7 },
-  { shape: 'rect', centerX: 0.48, centerY: 0.14, halfWidth: 0.2, halfHeight: 0.018, softness: 0.92, power: 1.38, intensity: 5 },
+  { shape: 'rect', centerX: 0.08, centerY: 0.86, halfWidth: 0.27, halfHeight: 0.02, softness: 0.86, power: 1.28, intensity: 5 },
 ];
 
 const layerControls = {
@@ -176,15 +177,14 @@ const layerControls = {
   caRimEnabled: true,
   specLargeEnabled: true,
   specMediumEnabled: true,
-  specSmallEnabled: true,
-  specStripEnabled: true,
+  specStripEnabled: false,
+  specDebugEnabled: urlParams.get('specDebug') === '1',
+  specDebugColor: initialSpecDebugColor,
+  specDebugOpacity: 0.82,
   specLargeIntensity: 1.45,
   specLargeSoftness: 1,
   specMediumIntensity: 1.35,
   specMediumSoftness: 1,
-  specSmallIntensity: 1.55,
-  specSmallSoftness: 1,
-  specSmallCount: 5,
   specStripIntensity: 1.25,
   specStripSoftness: 1,
   outerStrokeEnabled: true,
@@ -514,15 +514,19 @@ function areaWindowSpecular(
   return Math.max(0, box) ** spec.power * facing;
 }
 
-function sampleSpecHighlights(reflection: Vec3, params: RenderParams): number {
+function sampleSpecHighlights(reflection: Vec3, params: RenderParams): SpecSample {
   let shell = 0;
+  let debugMask = 0;
 
   const addSpec = (spec: SpecHighlight, intensityScale: number, softnessScale: number): void => {
-    shell += areaWindowSpecular(
+    const specValue = areaWindowSpecular(
       reflection,
       spec,
       clamp(spec.softness * softnessScale, 0.08, 1.8),
-    ) * spec.intensity * intensityScale;
+    );
+
+    shell += specValue * spec.intensity * intensityScale;
+    debugMask = Math.max(debugMask, specValue);
   };
 
   if (params.controls.specLargeEnabled) {
@@ -537,21 +541,13 @@ function sampleSpecHighlights(reflection: Vec3, params: RenderParams): number {
     }
   }
 
-  if (params.controls.specSmallEnabled) {
-    const count = clamp(Math.round(params.controls.specSmallCount), 0, smallWindowSpecs.length);
-
-    for (let index = 0; index < count; index += 1) {
-      addSpec(smallWindowSpecs[index], params.controls.specSmallIntensity, params.controls.specSmallSoftness);
-    }
-  }
-
   if (params.controls.specStripEnabled) {
     for (const spec of thinStripSpecs) {
       addSpec(spec, params.controls.specStripIntensity, params.controls.specStripSoftness);
     }
   }
 
-  return shell;
+  return { shell, debugMask };
 }
 
 function applyScreenAxisRotation(axis: Vec3, angle: number): void {
@@ -671,6 +667,10 @@ function setupGui(): void {
   shell.add(layerControls, 'caRimEnabled').name('ca rim');
 
   const spec = shell.addFolder('spec highlights');
+  spec.add(layerControls, 'specDebugEnabled').name('debug fill');
+  spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
+  spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
+
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
   largeSpec.add(layerControls, 'specLargeIntensity', 0, 4, 0.01).name('intensity');
@@ -680,12 +680,6 @@ function setupGui(): void {
   mediumSpec.add(layerControls, 'specMediumEnabled').name('on');
   mediumSpec.add(layerControls, 'specMediumIntensity', 0, 4, 0.01).name('intensity');
   mediumSpec.add(layerControls, 'specMediumSoftness', 0.45, 2.2, 0.01).name('softness');
-
-  const smallSpec = spec.addFolder('small');
-  smallSpec.add(layerControls, 'specSmallEnabled').name('on');
-  smallSpec.add(layerControls, 'specSmallIntensity', 0, 4, 0.01).name('intensity');
-  smallSpec.add(layerControls, 'specSmallSoftness', 0.45, 2.2, 0.01).name('softness');
-  smallSpec.add(layerControls, 'specSmallCount', 0, smallWindowSpecs.length, 1).name('count');
 
   const stripSpec = spec.addFolder('thin');
   stripSpec.add(layerControls, 'specStripEnabled').name('on');
@@ -699,7 +693,6 @@ function setupGui(): void {
   edgeProjection.close();
   largeSpec.close();
   mediumSpec.close();
-  smallSpec.close();
   stripSpec.close();
   spec.close();
   scene.close();
@@ -1279,14 +1272,25 @@ function renderGlassBall(params: RenderParams): void {
         !previewSurface &&
         ((params.controls.specLargeEnabled && params.controls.specLargeIntensity > 0) ||
           (params.controls.specMediumEnabled && params.controls.specMediumIntensity > 0) ||
-          (params.controls.specSmallEnabled && params.controls.specSmallIntensity > 0 && params.controls.specSmallCount > 0) ||
           (params.controls.specStripEnabled && params.controls.specStripIntensity > 0));
       const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz, inverseOrientation) : [0, 0, 1];
-      const shell = hasAreaSpec ? sampleSpecHighlights(specReflection, params) : 0;
+      const specSample = hasAreaSpec ? sampleSpecHighlights(specReflection, params) : { shell: 0, debugMask: 0 };
+      const shell = params.controls.specDebugEnabled ? 0 : specSample.shell;
 
       let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
       let g = mix(sampleG * innerShade, 255, glassMilk) + shell + topWash * 19 + rim * 11 - hardRim * 6;
       let b = mix(sampleB * innerShade, 255, glassMilk * 0.94) + shell + topWash * 21 + rim * 15 - hardRim * 2;
+
+      if (params.controls.specDebugEnabled && specSample.debugMask > 0.01) {
+        const debugAlpha = clamp(specSample.debugMask * params.controls.specDebugOpacity * 1.35, 0, 1);
+        const debugR = params.controls.specDebugColor === 'red' ? 255 : 0;
+        const debugG = 0;
+        const debugB = 0;
+
+        r = mix(r, debugR, debugAlpha);
+        g = mix(g, debugG, debugAlpha);
+        b = mix(b, debugB, debugAlpha);
+      }
 
       data[index] = clamp(r, 0, 255);
       data[index + 1] = clamp(g, 0, 255);
