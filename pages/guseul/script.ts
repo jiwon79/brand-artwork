@@ -604,7 +604,6 @@ function setupGui(): void {
   refraction.close();
   shell.close();
   composite.close();
-  gui.close();
 }
 
 function resizeRenderTargets(params: RenderParams): void {
