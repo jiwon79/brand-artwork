@@ -53,6 +53,7 @@ type SourceEdgeSample = {
 };
 
 type SpecHighlight = {
+  shape: 'rect' | 'circle';
   centerX: number;
   centerY: number;
   halfWidth: number;
@@ -115,20 +116,26 @@ const marbleCirclePalette = [
 ];
 
 const largeWindowSpecs: SpecHighlight[] = [
-  { centerX: -0.52, centerY: -0.6, halfWidth: 0.25, halfHeight: 0.1, softness: 0.38, power: 1.45, intensity: 29 },
+  { shape: 'rect', centerX: -0.62, centerY: -0.58, halfWidth: 0.27, halfHeight: 0.105, softness: 0.38, power: 1.42, intensity: 34 },
+  { shape: 'rect', centerX: 0.58, centerY: -0.28, halfWidth: 0.22, halfHeight: 0.085, softness: 0.44, power: 1.5, intensity: 28 },
+];
+
+const mediumWindowSpecs: SpecHighlight[] = [
+  { shape: 'circle', centerX: -0.32, centerY: 0.18, halfWidth: 0.12, halfHeight: 0.12, softness: 0.7, power: 1.34, intensity: 17 },
+  { shape: 'circle', centerX: 0.18, centerY: -0.64, halfWidth: 0.1, halfHeight: 0.1, softness: 0.68, power: 1.42, intensity: 15 },
 ];
 
 const smallWindowSpecs: SpecHighlight[] = [
-  { centerX: 0.54, centerY: -0.16, halfWidth: 0.084, halfHeight: 0.036, softness: 0.76, power: 1.32, intensity: 8 },
-  { centerX: -0.66, centerY: 0.04, halfWidth: 0.062, halfHeight: 0.022, softness: 0.9, power: 1.42, intensity: 4 },
-  { centerX: 0.06, centerY: 0.3, halfWidth: 0.048, halfHeight: 0.019, softness: 0.96, power: 1.52, intensity: 3 },
-  { centerX: -0.22, centerY: -0.52, halfWidth: 0.067, halfHeight: 0.029, softness: 0.8, power: 1.28, intensity: 6 },
-  { centerX: 0.28, centerY: -0.64, halfWidth: 0.053, halfHeight: 0.022, softness: 0.88, power: 1.22, intensity: 4 },
+  { shape: 'rect', centerX: 0.7, centerY: 0.12, halfWidth: 0.102, halfHeight: 0.044, softness: 0.78, power: 1.32, intensity: 11 },
+  { shape: 'rect', centerX: -0.74, centerY: -0.04, halfWidth: 0.078, halfHeight: 0.028, softness: 0.9, power: 1.42, intensity: 7 },
+  { shape: 'rect', centerX: 0.02, centerY: 0.5, halfWidth: 0.06, halfHeight: 0.025, softness: 0.96, power: 1.52, intensity: 5 },
+  { shape: 'rect', centerX: -0.08, centerY: -0.78, halfWidth: 0.084, halfHeight: 0.036, softness: 0.82, power: 1.28, intensity: 8 },
+  { shape: 'rect', centerX: 0.4, centerY: -0.58, halfWidth: 0.068, halfHeight: 0.028, softness: 0.9, power: 1.22, intensity: 6 },
 ];
 
 const thinStripSpecs: SpecHighlight[] = [
-  { centerX: -0.18, centerY: -0.42, halfWidth: 0.34, halfHeight: 0.032, softness: 0.72, power: 1.24, intensity: 6 },
-  { centerX: 0.48, centerY: 0.14, halfWidth: 0.2, halfHeight: 0.018, softness: 0.92, power: 1.38, intensity: 4 },
+  { shape: 'rect', centerX: -0.18, centerY: -0.42, halfWidth: 0.34, halfHeight: 0.032, softness: 0.72, power: 1.24, intensity: 7 },
+  { shape: 'rect', centerX: 0.48, centerY: 0.14, halfWidth: 0.2, halfHeight: 0.018, softness: 0.92, power: 1.38, intensity: 5 },
 ];
 
 const layerControls = {
@@ -168,14 +175,17 @@ const layerControls = {
   hardRimEnabled: true,
   caRimEnabled: true,
   specLargeEnabled: true,
+  specMediumEnabled: true,
   specSmallEnabled: true,
   specStripEnabled: true,
-  specLargeIntensity: 1.25,
+  specLargeIntensity: 1.45,
   specLargeSoftness: 1,
-  specSmallIntensity: 1.35,
+  specMediumIntensity: 1.35,
+  specMediumSoftness: 1,
+  specSmallIntensity: 1.55,
   specSmallSoftness: 1,
-  specSmallCount: 4,
-  specStripIntensity: 1.15,
+  specSmallCount: 5,
+  specStripIntensity: 1.25,
   specStripSoftness: 1,
   outerStrokeEnabled: true,
 };
@@ -492,20 +502,16 @@ function getSpecularReflection(nx: number, ny: number, nz: number, inverseOrient
 
 function areaWindowSpecular(
   reflection: Vec3,
-  centerX: number,
-  centerY: number,
-  halfWidth: number,
-  halfHeight: number,
+  spec: SpecHighlight,
   softness: number,
-  power: number,
 ): number {
-  const dx = Math.abs((reflection[0] - centerX) / halfWidth);
-  const dy = Math.abs((reflection[1] - centerY) / halfHeight);
-  const boxDistance = Math.max(dx, dy);
-  const box = 1 - smoothstep(1 - softness, 1 + softness, boxDistance);
+  const dx = Math.abs((reflection[0] - spec.centerX) / spec.halfWidth);
+  const dy = Math.abs((reflection[1] - spec.centerY) / spec.halfHeight);
+  const distance = spec.shape === 'circle' ? Math.hypot(dx, dy) : Math.max(dx, dy);
+  const box = 1 - smoothstep(1 - softness, 1 + softness, distance);
   const facing = smoothstep(-0.08, 0.36, reflection[2]);
 
-  return Math.max(0, box) ** power * facing;
+  return Math.max(0, box) ** spec.power * facing;
 }
 
 function sampleSpecHighlights(reflection: Vec3, params: RenderParams): number {
@@ -514,18 +520,20 @@ function sampleSpecHighlights(reflection: Vec3, params: RenderParams): number {
   const addSpec = (spec: SpecHighlight, intensityScale: number, softnessScale: number): void => {
     shell += areaWindowSpecular(
       reflection,
-      spec.centerX,
-      spec.centerY,
-      spec.halfWidth,
-      spec.halfHeight,
+      spec,
       clamp(spec.softness * softnessScale, 0.08, 1.8),
-      spec.power,
     ) * spec.intensity * intensityScale;
   };
 
   if (params.controls.specLargeEnabled) {
     for (const spec of largeWindowSpecs) {
       addSpec(spec, params.controls.specLargeIntensity, params.controls.specLargeSoftness);
+    }
+  }
+
+  if (params.controls.specMediumEnabled) {
+    for (const spec of mediumWindowSpecs) {
+      addSpec(spec, params.controls.specMediumIntensity, params.controls.specMediumSoftness);
     }
   }
 
@@ -668,6 +676,11 @@ function setupGui(): void {
   largeSpec.add(layerControls, 'specLargeIntensity', 0, 4, 0.01).name('intensity');
   largeSpec.add(layerControls, 'specLargeSoftness', 0.45, 2.2, 0.01).name('softness');
 
+  const mediumSpec = spec.addFolder('medium');
+  mediumSpec.add(layerControls, 'specMediumEnabled').name('on');
+  mediumSpec.add(layerControls, 'specMediumIntensity', 0, 4, 0.01).name('intensity');
+  mediumSpec.add(layerControls, 'specMediumSoftness', 0.45, 2.2, 0.01).name('softness');
+
   const smallSpec = spec.addFolder('small');
   smallSpec.add(layerControls, 'specSmallEnabled').name('on');
   smallSpec.add(layerControls, 'specSmallIntensity', 0, 4, 0.01).name('intensity');
@@ -685,6 +698,7 @@ function setupGui(): void {
   circles.close();
   edgeProjection.close();
   largeSpec.close();
+  mediumSpec.close();
   smallSpec.close();
   stripSpec.close();
   spec.close();
@@ -1264,6 +1278,7 @@ function renderGlassBall(params: RenderParams): void {
       const hasAreaSpec =
         !previewSurface &&
         ((params.controls.specLargeEnabled && params.controls.specLargeIntensity > 0) ||
+          (params.controls.specMediumEnabled && params.controls.specMediumIntensity > 0) ||
           (params.controls.specSmallEnabled && params.controls.specSmallIntensity > 0 && params.controls.specSmallCount > 0) ||
           (params.controls.specStripEnabled && params.controls.specStripIntensity > 0));
       const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz, inverseOrientation) : [0, 0, 1];
