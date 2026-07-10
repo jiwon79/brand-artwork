@@ -52,6 +52,16 @@ type SourceEdgeSample = {
   color: RGBA;
 };
 
+type SpecHighlight = {
+  centerX: number;
+  centerY: number;
+  halfWidth: number;
+  halfHeight: number;
+  softness: number;
+  power: number;
+  intensity: number;
+};
+
 type RenderParams = {
   view: View;
   controls: LayerControls;
@@ -104,6 +114,23 @@ const marbleCirclePalette = [
   '#35c7d2',
 ];
 
+const largeWindowSpecs: SpecHighlight[] = [
+  { centerX: -0.58, centerY: -0.62, halfWidth: 0.24, halfHeight: 0.11, softness: 0.36, power: 1.45, intensity: 30 },
+];
+
+const smallWindowSpecs: SpecHighlight[] = [
+  { centerX: 0.46, centerY: -0.2, halfWidth: 0.08, halfHeight: 0.036, softness: 0.72, power: 1.3, intensity: 9 },
+  { centerX: -0.24, centerY: -0.5, halfWidth: 0.06, halfHeight: 0.026, softness: 0.78, power: 1.28, intensity: 7 },
+  { centerX: 0.18, centerY: -0.48, halfWidth: 0.045, halfHeight: 0.02, softness: 0.86, power: 1.2, intensity: 5 },
+  { centerX: -0.66, centerY: 0.03, halfWidth: 0.052, halfHeight: 0.018, softness: 0.9, power: 1.42, intensity: 4 },
+  { centerX: 0.12, centerY: 0.24, halfWidth: 0.036, halfHeight: 0.016, softness: 0.96, power: 1.52, intensity: 3 },
+];
+
+const thinStripSpecs: SpecHighlight[] = [
+  { centerX: -0.08, centerY: -0.42, halfWidth: 0.44, halfHeight: 0.036, softness: 0.7, power: 1.22, intensity: 7 },
+  { centerX: 0.34, centerY: -0.62, halfWidth: 0.19, halfHeight: 0.018, softness: 0.9, power: 1.4, intensity: 4 },
+];
+
 const layerControls = {
   backgroundColor: '#fffefb',
   shadowEnabled: true,
@@ -140,9 +167,12 @@ const layerControls = {
   rimEnabled: true,
   hardRimEnabled: true,
   caRimEnabled: true,
-  specAEnabled: true,
-  specBEnabled: true,
-  specCEnabled: true,
+  specLargeEnabled: true,
+  specSmallEnabled: true,
+  specStripEnabled: true,
+  specIntensity: 1,
+  specSoftness: 1,
+  specSmallCount: 3,
   outerStrokeEnabled: true,
 };
 
@@ -474,6 +504,46 @@ function areaWindowSpecular(
   return Math.max(0, box) ** power * facing;
 }
 
+function sampleSpecHighlights(reflection: Vec3, params: RenderParams): number {
+  const softnessScale = params.controls.specSoftness;
+  const intensityScale = params.controls.specIntensity;
+  let shell = 0;
+
+  const addSpec = (spec: SpecHighlight): void => {
+    shell += areaWindowSpecular(
+      reflection,
+      spec.centerX,
+      spec.centerY,
+      spec.halfWidth,
+      spec.halfHeight,
+      clamp(spec.softness * softnessScale, 0.08, 1.8),
+      spec.power,
+    ) * spec.intensity * intensityScale;
+  };
+
+  if (params.controls.specLargeEnabled) {
+    for (const spec of largeWindowSpecs) {
+      addSpec(spec);
+    }
+  }
+
+  if (params.controls.specSmallEnabled) {
+    const count = clamp(Math.round(params.controls.specSmallCount), 0, smallWindowSpecs.length);
+
+    for (let index = 0; index < count; index += 1) {
+      addSpec(smallWindowSpecs[index]);
+    }
+  }
+
+  if (params.controls.specStripEnabled) {
+    for (const spec of thinStripSpecs) {
+      addSpec(spec);
+    }
+  }
+
+  return shell;
+}
+
 function applyScreenAxisRotation(axis: Vec3, angle: number): void {
   sphereOrientation = multiplyMatrix3(
     rotationMatrixFromAxisAngle(axis, angle),
@@ -589,15 +659,21 @@ function setupGui(): void {
   shell.add(layerControls, 'rimEnabled').name('rim');
   shell.add(layerControls, 'hardRimEnabled').name('hardRim');
   shell.add(layerControls, 'caRimEnabled').name('ca rim');
-  shell.add(layerControls, 'specAEnabled').name('spec A');
-  shell.add(layerControls, 'specBEnabled').name('spec B');
-  shell.add(layerControls, 'specCEnabled').name('spec C');
+
+  const spec = shell.addFolder('spec highlights');
+  spec.add(layerControls, 'specLargeEnabled').name('large window');
+  spec.add(layerControls, 'specSmallEnabled').name('small windows');
+  spec.add(layerControls, 'specStripEnabled').name('thin strips');
+  spec.add(layerControls, 'specIntensity', 0, 2, 0.01).name('intensity');
+  spec.add(layerControls, 'specSoftness', 0.45, 2.2, 0.01).name('softness');
+  spec.add(layerControls, 'specSmallCount', 0, smallWindowSpecs.length, 1).name('small count');
 
   const composite = gui.addFolder('6 final composite');
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 
   circles.close();
   edgeProjection.close();
+  spec.close();
   scene.close();
   source.close();
   surface.close();
@@ -1173,18 +1249,10 @@ function renderGlassBall(params: RenderParams): void {
       const caRim = !previewSurface && params.controls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
       const hasAreaSpec =
         !previewSurface &&
-        (params.controls.specAEnabled || params.controls.specBEnabled || params.controls.specCEnabled);
+        params.controls.specIntensity > 0 &&
+        (params.controls.specLargeEnabled || params.controls.specSmallEnabled || params.controls.specStripEnabled);
       const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz, inverseOrientation) : [0, 0, 1];
-      const specA = !previewSurface && params.controls.specAEnabled
-        ? areaWindowSpecular(specReflection, -0.58, -0.62, 0.24, 0.11, 0.36, 1.45)
-        : 0;
-      const specB = !previewSurface && params.controls.specBEnabled
-        ? areaWindowSpecular(specReflection, 0.5, -0.2, 0.12, 0.18, 0.42, 1.65)
-        : 0;
-      const specC = !previewSurface && params.controls.specCEnabled
-        ? areaWindowSpecular(specReflection, -0.06, -0.42, 0.46, 0.14, 0.48, 1.25)
-        : 0;
-      const shell = specA * 34 + specB * 22 + specC * 6;
+      const shell = hasAreaSpec ? sampleSpecHighlights(specReflection, params) : 0;
 
       let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
       let g = mix(sampleG * innerShade, 255, glassMilk) + shell + topWash * 19 + rim * 11 - hardRim * 6;
