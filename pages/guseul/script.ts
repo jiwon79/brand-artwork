@@ -119,11 +119,11 @@ const largeWindowSpecs: SpecHighlight[] = [
 ];
 
 const smallWindowSpecs: SpecHighlight[] = [
-  { centerX: 0.54, centerY: -0.16, halfWidth: 0.07, halfHeight: 0.03, softness: 0.76, power: 1.32, intensity: 8 },
-  { centerX: -0.66, centerY: 0.04, halfWidth: 0.052, halfHeight: 0.018, softness: 0.9, power: 1.42, intensity: 4 },
-  { centerX: 0.06, centerY: 0.3, halfWidth: 0.04, halfHeight: 0.016, softness: 0.96, power: 1.52, intensity: 3 },
-  { centerX: -0.22, centerY: -0.52, halfWidth: 0.056, halfHeight: 0.024, softness: 0.8, power: 1.28, intensity: 6 },
-  { centerX: 0.28, centerY: -0.64, halfWidth: 0.044, halfHeight: 0.018, softness: 0.88, power: 1.22, intensity: 4 },
+  { centerX: 0.54, centerY: -0.16, halfWidth: 0.084, halfHeight: 0.036, softness: 0.76, power: 1.32, intensity: 8 },
+  { centerX: -0.66, centerY: 0.04, halfWidth: 0.062, halfHeight: 0.022, softness: 0.9, power: 1.42, intensity: 4 },
+  { centerX: 0.06, centerY: 0.3, halfWidth: 0.048, halfHeight: 0.019, softness: 0.96, power: 1.52, intensity: 3 },
+  { centerX: -0.22, centerY: -0.52, halfWidth: 0.067, halfHeight: 0.029, softness: 0.8, power: 1.28, intensity: 6 },
+  { centerX: 0.28, centerY: -0.64, halfWidth: 0.053, halfHeight: 0.022, softness: 0.88, power: 1.22, intensity: 4 },
 ];
 
 const thinStripSpecs: SpecHighlight[] = [
@@ -170,12 +170,12 @@ const layerControls = {
   specLargeEnabled: true,
   specSmallEnabled: true,
   specStripEnabled: true,
-  specLargeIntensity: 1,
+  specLargeIntensity: 1.25,
   specLargeSoftness: 1,
-  specSmallIntensity: 1,
+  specSmallIntensity: 1.35,
   specSmallSoftness: 1,
   specSmallCount: 4,
-  specStripIntensity: 0.85,
+  specStripIntensity: 1.15,
   specStripSoftness: 1,
   outerStrokeEnabled: true,
 };
@@ -665,18 +665,18 @@ function setupGui(): void {
   const spec = shell.addFolder('spec highlights');
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
-  largeSpec.add(layerControls, 'specLargeIntensity', 0, 2, 0.01).name('intensity');
+  largeSpec.add(layerControls, 'specLargeIntensity', 0, 4, 0.01).name('intensity');
   largeSpec.add(layerControls, 'specLargeSoftness', 0.45, 2.2, 0.01).name('softness');
 
   const smallSpec = spec.addFolder('small');
   smallSpec.add(layerControls, 'specSmallEnabled').name('on');
-  smallSpec.add(layerControls, 'specSmallIntensity', 0, 2, 0.01).name('intensity');
+  smallSpec.add(layerControls, 'specSmallIntensity', 0, 4, 0.01).name('intensity');
   smallSpec.add(layerControls, 'specSmallSoftness', 0.45, 2.2, 0.01).name('softness');
   smallSpec.add(layerControls, 'specSmallCount', 0, smallWindowSpecs.length, 1).name('count');
 
   const stripSpec = spec.addFolder('thin');
   stripSpec.add(layerControls, 'specStripEnabled').name('on');
-  stripSpec.add(layerControls, 'specStripIntensity', 0, 2, 0.01).name('intensity');
+  stripSpec.add(layerControls, 'specStripIntensity', 0, 4, 0.01).name('intensity');
   stripSpec.add(layerControls, 'specStripSoftness', 0.45, 2.2, 0.01).name('softness');
 
   const composite = gui.addFolder('6 final composite');
