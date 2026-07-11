@@ -72,7 +72,7 @@ type ActiveSpecHighlight = {
   spec: SpecHighlight;
   intensityScale: number;
   softnessScale: number;
-  centerFacing: number;
+  visibility: number;
 };
 
 type SpecDebugColor = 'red' | 'black';
@@ -538,6 +538,10 @@ function applyMatrix3(matrix: Matrix3, [x, y, z]: Vec3): Vec3 {
   ];
 }
 
+function getSpecularSurfacePoint(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
+  return normalizeVec3(applyMatrix3(inverseOrientation, [nx, ny, nz]));
+}
+
 function getSpecularReflectionPoint(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
   const normal: Vec3 = [nx, ny, nz];
   const screenReflection = reflectVec3([0, 0, -1], normal);
@@ -549,25 +553,39 @@ function specWindowDistance(spec: SpecHighlight, dx: number, dy: number): number
   return spec.shape === 'circle' ? Math.hypot(dx, dy) : Math.max(Math.abs(dx), Math.abs(dy));
 }
 
+function projectPointToSpecFrame(point: Vec3, spec: SpecHighlight): [number, number] {
+  const offset = subtractVec3(point, spec.center);
+
+  return [
+    dotVec3(offset, spec.right) / spec.halfWidth,
+    dotVec3(offset, spec.up) / spec.halfHeight,
+  ];
+}
+
 function areaWindowSpecular(
+  surfacePoint: Vec3,
   reflectionPoint: Vec3,
   radial: number,
   activeSpec: ActiveSpecHighlight,
   softness: number,
 ): number {
   const { spec } = activeSpec;
-  const sampleOffset = subtractVec3(reflectionPoint, spec.center);
-  const dx = dotVec3(sampleOffset, spec.right) / spec.halfWidth;
-  const dy = dotVec3(sampleOffset, spec.up) / spec.halfHeight;
+  const [surfaceDx, surfaceDy] = projectPointToSpecFrame(surfacePoint, spec);
+  const [reflectionDx, reflectionDy] = projectPointToSpecFrame(reflectionPoint, spec);
+  const edgeWarp = smoothstep(0.52, 0.98, radial) * 0.78;
+  const dx = mix(surfaceDx, reflectionDx, edgeWarp);
+  const dy = mix(surfaceDy, reflectionDy, edgeWarp);
+  const surfaceDistance = specWindowDistance(spec, surfaceDx, surfaceDy);
   const distance = specWindowDistance(spec, dx, dy);
-  const sameHemisphereGate = smoothstep(0.08, 0.36, dotVec3(reflectionPoint, spec.center));
+  const anchorGate = 1 - smoothstep(1.45, 2.75, surfaceDistance);
+  const surfaceDirectionGate = smoothstep(0.04, 0.3, dotVec3(surfacePoint, spec.center));
   const box = 1 - smoothstep(1 - softness, 1 + softness, distance);
-  const cameraFacing = smoothstep(0.01, 0.18, Math.sqrt(Math.max(0, 1 - radial * radial)));
 
-  return Math.max(0, box) ** spec.power * sameHemisphereGate * cameraFacing * activeSpec.centerFacing;
+  return Math.max(0, box) ** spec.power * anchorGate * surfaceDirectionGate * activeSpec.visibility;
 }
 
 function sampleSpecHighlights(
+  surfacePoint: Vec3,
   reflectionPoint: Vec3,
   radial: number,
   activeSpecs: ActiveSpecHighlight[],
@@ -578,6 +596,7 @@ function sampleSpecHighlights(
   const addSpec = (activeSpec: ActiveSpecHighlight): void => {
     const { spec } = activeSpec;
     const specValue = areaWindowSpecular(
+      surfacePoint,
       reflectionPoint,
       radial,
       activeSpec,
@@ -610,9 +629,9 @@ function getActiveSpecHighlights(params: RenderParams): ActiveSpecHighlight[] {
 
     for (const spec of specs) {
       const screenCenter = applyMatrix3(params.orientation, spec.center);
-      const centerFacing = smoothstep(-0.14, 0.2, screenCenter[2]);
+      const visibility = smoothstep(-0.52, -0.08, screenCenter[2]);
 
-      if (centerFacing <= 0.001) {
+      if (visibility <= 0.001) {
         continue;
       }
 
@@ -620,7 +639,7 @@ function getActiveSpecHighlights(params: RenderParams): ActiveSpecHighlight[] {
         spec,
         intensityScale,
         softnessScale,
-        centerFacing,
+        visibility,
       });
     }
   };
@@ -1367,9 +1386,10 @@ function renderGlassBall(params: RenderParams): void {
       const rim = !previewSurface && params.controls.rimEnabled ? smoothstep(0.72, 1, radial) : 0;
       const hardRim = !previewSurface && params.controls.hardRimEnabled ? smoothstep(0.93, 1, radial) : 0;
       const caRim = !previewSurface && params.controls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
+      const specSurfacePoint: Vec3 = hasAreaSpec ? getSpecularSurfacePoint(nx, ny, nz, inverseOrientation) : [0, 0, 1];
       const specReflectionPoint: Vec3 = hasAreaSpec ? getSpecularReflectionPoint(nx, ny, nz, inverseOrientation) : [0, 0, 1];
       const specSample = hasAreaSpec
-        ? sampleSpecHighlights(specReflectionPoint, radial, activeSpecs)
+        ? sampleSpecHighlights(specSurfacePoint, specReflectionPoint, radial, activeSpecs)
         : { shell: 0, debugMask: 0 };
       const shell = params.controls.specDebugEnabled ? 0 : specSample.shell;
 
