@@ -493,53 +493,29 @@ function applyMatrix3(matrix: Matrix3, [x, y, z]: Vec3): Vec3 {
   ];
 }
 
-function getSpecularSurfacePoint(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
-  return normalizeVec3(applyMatrix3(inverseOrientation, [nx, ny, nz]));
-}
-
-function getSpecularReflectionPoint(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
+function getSpecularReflection(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
   const normal: Vec3 = [nx, ny, nz];
   const screenReflection = reflectVec3([0, 0, -1], normal);
 
   return normalizeVec3(applyMatrix3(inverseOrientation, screenReflection));
 }
 
-function specWindowDistance(spec: SpecHighlight, dx: number, dy: number): number {
-  return spec.shape === 'circle' ? Math.hypot(dx, dy) : Math.max(Math.abs(dx), Math.abs(dy));
-}
-
 function areaWindowSpecular(
-  surfacePoint: Vec3,
-  reflectionPoint: Vec3,
-  radial: number,
+  reflection: Vec3,
   spec: SpecHighlight,
   softness: number,
 ): number {
-  const surfaceDx = (surfacePoint[0] - spec.centerX) / spec.halfWidth;
-  const surfaceDy = (surfacePoint[1] - spec.centerY) / spec.halfHeight;
-  const reflectionDx = (reflectionPoint[0] - spec.centerX) / spec.halfWidth;
-  const reflectionDy = (reflectionPoint[1] - spec.centerY) / spec.halfHeight;
-  const edgeWarp = clamp(
-    smoothstep(0.52, 0.98, radial) * 0.62 +
-      smoothstep(0.42, 0.04, surfacePoint[2]) * 0.28,
-    0,
-    0.78,
-  );
-  const dx = mix(surfaceDx, reflectionDx, edgeWarp);
-  const dy = mix(surfaceDy, reflectionDy, edgeWarp);
-  const surfaceDistance = specWindowDistance(spec, surfaceDx, surfaceDy);
-  const distance = specWindowDistance(spec, dx, dy);
-  const anchorGate = 1 - smoothstep(1.45, 2.75, surfaceDistance);
+  const dx = Math.abs((reflection[0] - spec.centerX) / spec.halfWidth);
+  const dy = Math.abs((reflection[1] - spec.centerY) / spec.halfHeight);
+  const distance = spec.shape === 'circle' ? Math.hypot(dx, dy) : Math.max(dx, dy);
   const box = 1 - smoothstep(1 - softness, 1 + softness, distance);
-  const facing = smoothstep(-0.02, 0.28, surfacePoint[2]);
+  const facing = smoothstep(-0.08, 0.36, reflection[2]);
 
-  return Math.max(0, box) ** spec.power * facing * anchorGate;
+  return Math.max(0, box) ** spec.power * facing;
 }
 
 function sampleSpecHighlights(
-  surfacePoint: Vec3,
-  reflectionPoint: Vec3,
-  radial: number,
+  reflection: Vec3,
   params: RenderParams,
 ): SpecSample {
   let shell = 0;
@@ -547,9 +523,7 @@ function sampleSpecHighlights(
 
   const addSpec = (spec: SpecHighlight, intensityScale: number, softnessScale: number): void => {
     const specValue = areaWindowSpecular(
-      surfacePoint,
-      reflectionPoint,
-      radial,
+      reflection,
       spec,
       clamp(spec.softness * softnessScale, 0.08, 1.8),
     );
@@ -1302,11 +1276,8 @@ function renderGlassBall(params: RenderParams): void {
         ((params.controls.specLargeEnabled && params.controls.specLargeIntensity > 0) ||
           (params.controls.specMediumEnabled && params.controls.specMediumIntensity > 0) ||
           (params.controls.specStripEnabled && params.controls.specStripIntensity > 0));
-      const specSurfacePoint: Vec3 = hasAreaSpec ? getSpecularSurfacePoint(nx, ny, nz, inverseOrientation) : [0, 0, 1];
-      const specReflectionPoint: Vec3 = hasAreaSpec ? getSpecularReflectionPoint(nx, ny, nz, inverseOrientation) : [0, 0, 1];
-      const specSample = hasAreaSpec
-        ? sampleSpecHighlights(specSurfacePoint, specReflectionPoint, radial, params)
-        : { shell: 0, debugMask: 0 };
+      const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz, inverseOrientation) : [0, 0, 1];
+      const specSample = hasAreaSpec ? sampleSpecHighlights(specReflection, params) : { shell: 0, debugMask: 0 };
       const shell = params.controls.specDebugEnabled ? 0 : specSample.shell;
 
       let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
