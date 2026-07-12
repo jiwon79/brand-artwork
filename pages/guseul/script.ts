@@ -1,4 +1,8 @@
 import GUI from 'lil-gui';
+import {
+  GuseulWebGLRenderer,
+  type GpuGlassFrame,
+} from './webgl-renderer';
 
 type MarbleCircle = {
   x: number;
@@ -99,6 +103,7 @@ type RenderParams = {
 };
 
 type Renderer = {
+  kind: 'canvas' | 'webgl2';
   resize: (params: RenderParams) => void;
   render: (params: RenderParams) => void;
 };
@@ -261,12 +266,89 @@ const layerControls = {
 type LayerControls = typeof layerControls;
 
 class CanvasRenderer implements Renderer {
+  readonly kind = 'canvas';
+
   resize(params: RenderParams): void {
     resizeRenderTargets(params);
   }
 
   render(params: RenderParams): void {
     drawScene(params);
+  }
+}
+
+class WebGLRenderer implements Renderer {
+  readonly kind = 'webgl2';
+  private readonly glass = new GuseulWebGLRenderer();
+
+  resize(params: RenderParams): void {
+    resizeRenderTargets(params);
+    this.glass.resize(ballCanvas.width);
+  }
+
+  render(params: RenderParams): void {
+    drawContentLayer(params, false);
+    renderSurfaceField(params);
+
+    const preparedSpecs = prepareSpecHighlights(params);
+    const background = backgroundSample(params.controls);
+    const frame: GpuGlassFrame = {
+      contentCanvas,
+      surfaceField: activeSurfaceField,
+      surfaceWidth: surfaceFieldWidth,
+      surfaceHeight: surfaceFieldHeight,
+      surfaceSignature: surfaceFieldSignature,
+      radiusCss: params.view.radius,
+      circles: visibleCircles.map((circle) => ({
+        centerX: circle.cx,
+        centerY: circle.cy,
+        radius: circle.radius * params.controls.circleSizeScale * circle.scale,
+        alpha: circle.fillAlpha,
+      })),
+      specs: preparedSpecs.map((spec) => ({
+        sourceDirection: spec.sourceDirection,
+        axisX: spec.axisX,
+        axisY: spec.axisY,
+        halfWidth: spec.halfWidth,
+        halfHeight: spec.halfHeight,
+        softness: clamp(spec.softness * spec.softnessScale, 0.08, 1.8),
+        shape: spec.shape,
+        power: spec.power,
+        intensity: spec.intensity * spec.intensityScale,
+        visibility: spec.visibility,
+      })),
+      controls: {
+        background: [background[0] / 255, background[1] / 255, background[2] / 255],
+        contentOverscan: params.controls.contentOverscan,
+        displacementEnabled: params.controls.displacementEnabled,
+        surfacePreviewEnabled: params.controls.surfacePreviewEnabled,
+        surfaceProfile: params.controls.surfaceProfile,
+        bezelWidth: params.controls.bezelWidth,
+        thickness: params.controls.thickness,
+        displacementFactor: params.controls.displacementFactor,
+        edgeFadeWidth: params.controls.edgeFadeWidth,
+        ior: params.controls.ior,
+        refractionEnabled: params.controls.refractionEnabled,
+        chromaticEnabled: params.controls.chromaticEnabled,
+        dispersion: params.controls.dispersion,
+        chromaticEdgeStrength: params.controls.chromaticEdgeStrength,
+        chromaticEdgeWidth: params.controls.chromaticEdgeWidth,
+        chromaticBoundaryStrength: params.controls.chromaticBoundaryStrength,
+        chromaticBoundaryWidth: params.controls.chromaticBoundaryWidth,
+        innerShadeEnabled: params.controls.innerShadeEnabled,
+        glassMilkEnabled: params.controls.glassMilkEnabled,
+        topWashEnabled: params.controls.topWashEnabled,
+        rimEnabled: params.controls.rimEnabled,
+        hardRimEnabled: params.controls.hardRimEnabled,
+        caRimEnabled: params.controls.caRimEnabled,
+        specDebugEnabled: params.controls.specDebugEnabled,
+        specDebugColor: params.controls.specDebugColor,
+        specDebugOpacity: params.controls.specDebugOpacity,
+      },
+    };
+
+    this.glass.render(frame);
+    compositeScene(params, this.glass.canvas);
   }
 }
 
@@ -305,7 +387,25 @@ let lastPointerY = 0;
 let lastPointerTime = 0;
 let lastFrame = 0;
 let idleResumeAt = 0;
-const renderer: Renderer = new CanvasRenderer();
+let renderTimeTotal = 0;
+let renderTimeSamples = 0;
+const renderTimingEnabled = urlParams.get('perf') === '1';
+
+function createRenderer(): Renderer {
+  if (urlParams.get('renderer') === 'canvas') {
+    return new CanvasRenderer();
+  }
+
+  try {
+    return new WebGLRenderer();
+  } catch (error) {
+    console.warn('WebGL2 renderer unavailable; using Canvas2D fallback.', error);
+    return new CanvasRenderer();
+  }
+}
+
+const renderer: Renderer = createRenderer();
+canvas.dataset.renderer = renderer.kind;
 
 function getRenderParams(): RenderParams {
   return {
@@ -977,7 +1077,7 @@ function collectVisibleCircles(params: RenderParams): VisibleMarbleCircle[] {
   });
 }
 
-function drawContentLayer(params: RenderParams): void {
+function drawContentLayer(params: RenderParams, readPixels = true): void {
   const size = getContentSize(params);
 
   contentCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -993,7 +1093,9 @@ function drawContentLayer(params: RenderParams): void {
     drawContentCircle(item, params);
   }
 
-  contentData = contentCtx.getImageData(0, 0, contentCanvas.width, contentCanvas.height);
+  if (readPixels) {
+    contentData = contentCtx.getImageData(0, 0, contentCanvas.width, contentCanvas.height);
+  }
 }
 
 function sampleContent(x: number, y: number, params: RenderParams): RGBA {
@@ -1496,7 +1598,7 @@ function renderGlassBall(params: RenderParams): void {
   ballCtx.putImageData(image, 0, 0);
 }
 
-function drawScene(params: RenderParams): void {
+function compositeScene(params: RenderParams, ballSource: CanvasImageSource): void {
   const renderView = params.view;
 
   ctx.clearRect(0, 0, renderView.width, renderView.height);
@@ -1533,9 +1635,8 @@ function drawScene(params: RenderParams): void {
     ctx.restore();
   }
 
-  renderGlassBall(params);
   ctx.drawImage(
-    ballCanvas,
+    ballSource,
     renderView.cx - renderView.radius,
     renderView.cy - renderView.radius,
     renderView.radius * 2,
@@ -1560,6 +1661,11 @@ function drawScene(params: RenderParams): void {
     ctx.arc(renderView.cx, renderView.cy, renderView.radius - ctx.lineWidth * 0.5, 0, Math.PI * 2);
     ctx.stroke();
   }
+}
+
+function drawScene(params: RenderParams): void {
+  renderGlassBall(params);
+  compositeScene(params, ballCanvas);
 }
 
 function tick(now: number): void {
@@ -1587,7 +1693,20 @@ function tick(now: number): void {
     }
   }
 
+  const renderStartedAt = renderTimingEnabled ? performance.now() : 0;
   renderer.render(getRenderParams());
+
+  if (renderTimingEnabled) {
+    renderTimeTotal += performance.now() - renderStartedAt;
+    renderTimeSamples += 1;
+
+    if (renderTimeSamples >= 15) {
+      canvas.dataset.renderMs = (renderTimeTotal / renderTimeSamples).toFixed(2);
+      renderTimeTotal = 0;
+      renderTimeSamples = 0;
+    }
+  }
+
   requestAnimationFrame(tick);
 }
 
