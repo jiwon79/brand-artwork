@@ -54,8 +54,7 @@ type SourceEdgeSample = {
 
 type SpecHighlight = {
   shape: 'rect' | 'circle';
-  centerX: number;
-  centerY: number;
+  carrier: Vec3;
   halfWidth: number;
   halfHeight: number;
   softness: number;
@@ -136,17 +135,16 @@ const urlParams = new URLSearchParams(window.location.search);
 const initialSpecDebugColor: SpecDebugColor = urlParams.get('specDebugColor') === 'black' ? 'black' : 'red';
 
 const largeWindowSpecs: SpecHighlight[] = [
-  { shape: 'rect', centerX: -0.58, centerY: -0.46, halfWidth: 0.28, halfHeight: 0.105, softness: 0.4, power: 1.5, intensity: 38 },
-  { shape: 'circle', centerX: 0.58, centerY: -0.44, halfWidth: 0.17, halfHeight: 0.17, softness: 0.54, power: 1.46, intensity: 32 },
+  { shape: 'rect', carrier: [0.515, 0, 0.857], halfWidth: 0.42, halfHeight: 0.158, softness: 0.4, power: 1.5, intensity: 38 },
+  { shape: 'rect', carrier: [-0.944, -0.167, -0.286], halfWidth: 0.36, halfHeight: 0.135, softness: 0.44, power: 1.48, intensity: 34 },
+  { shape: 'circle', carrier: [-0.605, 0.554, 0.571], halfWidth: 0.255, halfHeight: 0.255, softness: 0.54, power: 1.46, intensity: 32 },
+  { shape: 'circle', carrier: [0.694, -0.44, -0.571], halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
 ];
 
 const mediumWindowSpecs: SpecHighlight[] = [
-  { shape: 'circle', centerX: -0.56, centerY: 0.54, halfWidth: 0.12, halfHeight: 0.12, softness: 0.66, power: 1.34, intensity: 22 },
-  { shape: 'circle', centerX: 0.5, centerY: 0.58, halfWidth: 0.11, halfHeight: 0.11, softness: 0.68, power: 1.4, intensity: 20 },
-];
-
-const thinStripSpecs: SpecHighlight[] = [
-  { shape: 'rect', centerX: 0.52, centerY: 0.5, halfWidth: 0.26, halfHeight: 0.02, softness: 0.72, power: 1.28, intensity: 5 },
+  { shape: 'circle', carrier: [0.084, -0.954, 0.286], halfWidth: 0.18, halfHeight: 0.18, softness: 0.66, power: 1.34, intensity: 22 },
+  { shape: 'circle', carrier: [0.608, 0.794, 0], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
+  { shape: 'circle', carrier: [-0.134, 0.498, -0.857], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
 ];
 
 const layerControls = {
@@ -155,6 +153,8 @@ const layerControls = {
   marbleScale: 1.22,
   dragSensitivity: 1,
   specRotationGain: 1.8,
+  specEdgeDwell: 1.55,
+  specEdgeFade: 0.18,
   contentOverscan: 0.46,
   circleCount: 10,
   circleSizeScale: 1.75,
@@ -188,7 +188,6 @@ const layerControls = {
   caRimEnabled: true,
   specLargeEnabled: true,
   specMediumEnabled: true,
-  specStripEnabled: false,
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
@@ -196,8 +195,6 @@ const layerControls = {
   specLargeSoftness: 1,
   specMediumIntensity: 1.35,
   specMediumSoftness: 1,
-  specStripIntensity: 1.25,
-  specStripSoftness: 1,
   outerStrokeEnabled: true,
 };
 
@@ -529,21 +526,34 @@ function reflectionDerivative(carrier: Vec3, tangent: Vec3): Vec3 {
   ];
 }
 
+function applySpecEdgeDwell(carrier: Vec3, power: number): Vec3 {
+  const xyLength = Math.hypot(carrier[0], carrier[1]);
+
+  if (xyLength <= 0.000001) {
+    return carrier;
+  }
+
+  const z = Math.sign(carrier[2]) * Math.abs(carrier[2]) ** power;
+  const xyScale = Math.sqrt(Math.max(1 - z * z, 0)) / xyLength;
+
+  return [carrier[0] * xyScale, carrier[1] * xyScale, z];
+}
+
 function prepareSpecHighlight(
   spec: SpecHighlight,
   orientation: Matrix3,
+  controls: LayerControls,
   intensityScale: number,
   softnessScale: number,
 ): PreparedSpecHighlight {
   // The carrier owns the orbit; its reflected source and tangent frame preserve the glass distortion.
-  const sourceZ = Math.sqrt(Math.max(1 - spec.centerX * spec.centerX - spec.centerY * spec.centerY, 0.001));
-  const baseSource = normalizeVec3([spec.centerX, spec.centerY, sourceZ]);
-  const baseCarrier = normalizeVec3([baseSource[0], baseSource[1], baseSource[2] + 1]);
+  const baseCarrier = normalizeVec3(spec.carrier);
   const baseAxisX = projectOntoTangent([1, 0, 0], baseCarrier);
   const baseAxisY = normalizeVec3(crossVec3(baseCarrier, baseAxisX));
-  const carrier = normalizeVec3(applyMatrix3(orientation, baseCarrier));
-  const carrierAxisX = normalizeVec3(applyMatrix3(orientation, baseAxisX));
-  const carrierAxisY = normalizeVec3(applyMatrix3(orientation, baseAxisY));
+  const orbitCarrier = normalizeVec3(applyMatrix3(orientation, baseCarrier));
+  const carrier = applySpecEdgeDwell(orbitCarrier, controls.specEdgeDwell);
+  const carrierAxisX = projectOntoTangent(applyMatrix3(orientation, baseAxisX), carrier);
+  const carrierAxisY = projectOntoTangent(applyMatrix3(orientation, baseAxisY), carrier);
   const sourceDirection = normalizeVec3(reflectVec3([0, 0, -1], carrier));
   const axisX = projectOntoTangent(reflectionDerivative(carrier, carrierAxisX), sourceDirection);
   const rawAxisY = projectOntoTangent(reflectionDerivative(carrier, carrierAxisY), sourceDirection);
@@ -560,7 +570,7 @@ function prepareSpecHighlight(
     sourceDirection,
     axisX,
     axisY,
-    visibility: carrier[2] <= 0 ? 0 : smoothstep(0, 0.08, carrier[2]),
+    visibility: orbitCarrier[2] <= 0 ? 0 : smoothstep(0, controls.specEdgeFade, orbitCarrier[2]),
     intensityScale,
     softnessScale,
   };
@@ -574,7 +584,7 @@ function prepareSpecHighlights(params: RenderParams): PreparedSpecHighlight[] {
     }
 
     for (const spec of source) {
-      const prepared = prepareSpecHighlight(spec, params.specOrientation, intensityScale, softnessScale);
+      const prepared = prepareSpecHighlight(spec, params.specOrientation, params.controls, intensityScale, softnessScale);
 
       if (prepared.visibility > 0) {
         specs.push(prepared);
@@ -584,7 +594,6 @@ function prepareSpecHighlights(params: RenderParams): PreparedSpecHighlight[] {
 
   addSpecs(largeWindowSpecs, params.controls.specLargeEnabled, params.controls.specLargeIntensity, params.controls.specLargeSoftness);
   addSpecs(mediumWindowSpecs, params.controls.specMediumEnabled, params.controls.specMediumIntensity, params.controls.specMediumSoftness);
-  addSpecs(thinStripSpecs, params.controls.specStripEnabled, params.controls.specStripIntensity, params.controls.specStripSoftness);
 
   return specs;
 }
@@ -742,6 +751,8 @@ function setupGui(): void {
 
   const spec = shell.addFolder('spec highlights');
   spec.add(layerControls, 'specRotationGain', 0.5, 2.5, 0.01).name('rotation gain');
+  spec.add(layerControls, 'specEdgeDwell', 1, 3, 0.01).name('edge dwell');
+  spec.add(layerControls, 'specEdgeFade', 0.02, 0.4, 0.01).name('edge fade');
   spec.add(layerControls, 'specDebugEnabled').name('debug fill');
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
@@ -756,11 +767,6 @@ function setupGui(): void {
   mediumSpec.add(layerControls, 'specMediumIntensity', 0, 4, 0.01).name('intensity');
   mediumSpec.add(layerControls, 'specMediumSoftness', 0.45, 2.2, 0.01).name('softness');
 
-  const stripSpec = spec.addFolder('thin');
-  stripSpec.add(layerControls, 'specStripEnabled').name('on');
-  stripSpec.add(layerControls, 'specStripIntensity', 0, 4, 0.01).name('intensity');
-  stripSpec.add(layerControls, 'specStripSoftness', 0.45, 2.2, 0.01).name('softness');
-
   const composite = gui.addFolder('6 final composite');
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 
@@ -768,7 +774,6 @@ function setupGui(): void {
   edgeProjection.close();
   largeSpec.close();
   mediumSpec.close();
-  stripSpec.close();
   spec.close();
   scene.close();
   source.close();
