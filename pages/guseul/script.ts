@@ -126,7 +126,7 @@ if (!ballCtx) {
 const surfaceFieldChannels = 3;
 const maxSurfaceSlope = Math.tan((85 * Math.PI) / 180);
 
-const maxMarbleCircleCount = 28;
+const maxMarbleCircleCount = 10;
 const marbleCirclePalette = [
   '#f15b2e',
   '#ffe25f',
@@ -147,8 +147,10 @@ const circleArtworkSources = [
   { src: new URL('./assets/photos/spectrum-flow.webp', import.meta.url).href, focalX: 0.5, focalY: 0.5, zoom: 1.02 },
   { src: new URL('./assets/photos/geometric-shadows.webp', import.meta.url).href, focalX: 0.53, focalY: 0.48, zoom: 1.08 },
   { src: new URL('./assets/photos/blue-waves.webp', import.meta.url).href, focalX: 0.5, focalY: 0.54, zoom: 1.04 },
+  { src: new URL('./assets/photos/teal-rings.webp', import.meta.url).href, focalX: 0.52, focalY: 0.5, zoom: 1.06 },
   { src: new URL('./assets/photos/pink-orange-light.webp', import.meta.url).href, focalX: 0.5, focalY: 0.48, zoom: 1.05 },
   { src: new URL('./assets/photos/pink-waves.webp', import.meta.url).href, focalX: 0.52, focalY: 0.64, zoom: 1.06 },
+  { src: new URL('./assets/photos/peach-squares.webp', import.meta.url).href, focalX: 0.5, focalY: 0.52, zoom: 1.04 },
   { src: new URL('./assets/photos/orange-petals.webp', import.meta.url).href, focalX: 0.48, focalY: 0.22, zoom: 1.2 },
   { src: new URL('./assets/photos/green-leaf.webp', import.meta.url).href, focalX: 0.78, focalY: 0.54, zoom: 1.6 },
 ];
@@ -209,8 +211,8 @@ const layerControls = {
   specEdgeFade: 0.18,
   contentOverscan: 0.46,
   circleCount: 10,
-  circleSizeScale: 1.85,
-  circleSizeVariance: 1,
+  circleSizeScale: 2,
+  circleSizeVariance: 0,
   idleMotionEnabled: true,
   idleSpeed: 0.045,
   idleAxisDrift: 0.16,
@@ -328,7 +330,7 @@ function createMarbleCircles(count: number, controls: LayerControls = layerContr
     const baseSize = 0.25;
     const variance = (pseudoRandom(index, 2) - 0.5) * 0.16 * controls.circleSizeVariance;
     const size = clamp(baseSize + variance, 0.05, 0.5);
-    const artworkIndex = (index * 5) % circleArtworks.length;
+    const artworkIndex = (index * 7) % circleArtworks.length;
     const artwork = circleArtworks[artworkIndex];
 
     return {
