@@ -133,18 +133,32 @@ const marbleCirclePalette = [
 
 const urlParams = new URLSearchParams(window.location.search);
 const initialSpecDebugColor: SpecDebugColor = urlParams.get('specDebugColor') === 'black' ? 'black' : 'red';
+const specCount = 11;
+
+function createSpecCarrier(index: number): Vec3 {
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const z = 1 - (2 * (index + 0.5)) / specCount;
+  const radial = Math.sqrt(Math.max(1 - z * z, 0));
+  const theta = index * goldenAngle;
+
+  return [Math.cos(theta) * radial, Math.sin(theta) * radial, z];
+}
 
 const largeWindowSpecs: SpecHighlight[] = [
-  { shape: 'rect', carrier: [0.515, 0, 0.857], halfWidth: 0.42, halfHeight: 0.158, softness: 0.4, power: 1.5, intensity: 38 },
-  { shape: 'rect', carrier: [-0.944, -0.167, -0.286], halfWidth: 0.36, halfHeight: 0.135, softness: 0.44, power: 1.48, intensity: 34 },
-  { shape: 'circle', carrier: [-0.605, 0.554, 0.571], halfWidth: 0.255, halfHeight: 0.255, softness: 0.54, power: 1.46, intensity: 32 },
-  { shape: 'circle', carrier: [0.694, -0.44, -0.571], halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
+  { shape: 'rect', carrier: createSpecCarrier(0), halfWidth: 0.42, halfHeight: 0.158, softness: 0.8, power: 1.5, intensity: 38 },
+  { shape: 'rect', carrier: createSpecCarrier(4), halfWidth: 0.36, halfHeight: 0.135, softness: 0.88, power: 1.48, intensity: 34 },
+  { shape: 'rect', carrier: createSpecCarrier(8), halfWidth: 0.39, halfHeight: 0.145, softness: 0.84, power: 1.49, intensity: 36 },
+  { shape: 'circle', carrier: createSpecCarrier(1), halfWidth: 0.255, halfHeight: 0.255, softness: 0.54, power: 1.46, intensity: 32 },
+  { shape: 'circle', carrier: createSpecCarrier(5), halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
+  { shape: 'circle', carrier: createSpecCarrier(9), halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
 ];
 
 const mediumWindowSpecs: SpecHighlight[] = [
-  { shape: 'circle', carrier: [0.084, -0.954, 0.286], halfWidth: 0.18, halfHeight: 0.18, softness: 0.66, power: 1.34, intensity: 22 },
-  { shape: 'circle', carrier: [0.608, 0.794, 0], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
-  { shape: 'circle', carrier: [-0.134, 0.498, -0.857], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
+  { shape: 'circle', carrier: createSpecCarrier(2), halfWidth: 0.18, halfHeight: 0.18, softness: 0.66, power: 1.34, intensity: 22 },
+  { shape: 'circle', carrier: createSpecCarrier(3), halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
+  { shape: 'circle', carrier: createSpecCarrier(6), halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
+  { shape: 'circle', carrier: createSpecCarrier(7), halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
+  { shape: 'circle', carrier: createSpecCarrier(10), halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
 ];
 
 const layerControls = {
@@ -191,9 +205,9 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
-  specLargeIntensity: 1.45,
+  specLargeIntensity: 2.9,
   specLargeSoftness: 1,
-  specMediumIntensity: 1.35,
+  specMediumIntensity: 2.7,
   specMediumSoftness: 1,
   outerStrokeEnabled: true,
 };
@@ -759,12 +773,12 @@ function setupGui(): void {
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
-  largeSpec.add(layerControls, 'specLargeIntensity', 0, 4, 0.01).name('intensity');
+  largeSpec.add(layerControls, 'specLargeIntensity', 0, 8, 0.01).name('intensity');
   largeSpec.add(layerControls, 'specLargeSoftness', 0.45, 2.2, 0.01).name('softness');
 
   const mediumSpec = spec.addFolder('medium');
   mediumSpec.add(layerControls, 'specMediumEnabled').name('on');
-  mediumSpec.add(layerControls, 'specMediumIntensity', 0, 4, 0.01).name('intensity');
+  mediumSpec.add(layerControls, 'specMediumIntensity', 0, 8, 0.01).name('intensity');
   mediumSpec.add(layerControls, 'specMediumSoftness', 0.45, 2.2, 0.01).name('softness');
 
   const composite = gui.addFolder('6 final composite');
