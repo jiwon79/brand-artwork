@@ -150,7 +150,7 @@ const circleArtworkSources = [
   { src: new URL('./assets/photos/teal-rings.webp', import.meta.url).href, focalX: 0.52, focalY: 0.5, zoom: 1.06 },
   { src: new URL('./assets/photos/pink-orange-light.webp', import.meta.url).href, focalX: 0.5, focalY: 0.48, zoom: 1.05 },
   { src: new URL('./assets/photos/pink-waves.webp', import.meta.url).href, focalX: 0.52, focalY: 0.64, zoom: 1.06 },
-  { src: new URL('./assets/photos/peach-squares.webp', import.meta.url).href, focalX: 0.5, focalY: 0.52, zoom: 1.04 },
+  { src: new URL('./assets/photos/green-yellow-gradient.webp', import.meta.url).href, focalX: 0.5, focalY: 0.5, zoom: 1.02 },
   { src: new URL('./assets/photos/orange-petals.webp', import.meta.url).href, focalX: 0.48, focalY: 0.22, zoom: 1.2 },
   { src: new URL('./assets/photos/green-leaf.webp', import.meta.url).href, focalX: 0.78, focalY: 0.54, zoom: 1.6 },
 ];
