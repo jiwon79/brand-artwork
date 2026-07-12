@@ -63,6 +63,15 @@ type SpecHighlight = {
   intensity: number;
 };
 
+type PreparedSpecHighlight = SpecHighlight & {
+  sourceDirection: Vec3;
+  axisX: Vec3;
+  axisY: Vec3;
+  visibility: number;
+  intensityScale: number;
+  softnessScale: number;
+};
+
 type SpecDebugColor = 'red' | 'black';
 
 type SpecSample = {
@@ -460,20 +469,6 @@ function multiplyMatrix3(a: Matrix3, b: Matrix3): Matrix3 {
   ];
 }
 
-function transposeMatrix3(matrix: Matrix3): Matrix3 {
-  return [
-    matrix[0],
-    matrix[3],
-    matrix[6],
-    matrix[1],
-    matrix[4],
-    matrix[7],
-    matrix[2],
-    matrix[5],
-    matrix[8],
-  ];
-}
-
 function rotationMatrixFromAxisAngle(axis: Vec3, angle: number): Matrix3 {
   const [x, y, z] = normalizeVec3(axis);
   const cosine = Math.cos(angle);
@@ -501,61 +496,125 @@ function applyMatrix3(matrix: Matrix3, [x, y, z]: Vec3): Vec3 {
   ];
 }
 
-function getSpecularReflection(nx: number, ny: number, nz: number, inverseOrientation: Matrix3): Vec3 {
-  const normal: Vec3 = [nx, ny, nz];
-  const screenReflection = reflectVec3([0, 0, -1], normal);
+function dotVec3(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
 
-  return normalizeVec3(applyMatrix3(inverseOrientation, screenReflection));
+function crossVec3(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+function projectOntoTangent(vector: Vec3, normal: Vec3): Vec3 {
+  const normalAmount = dotVec3(vector, normal);
+
+  return normalizeVec3([
+    vector[0] - normal[0] * normalAmount,
+    vector[1] - normal[1] * normalAmount,
+    vector[2] - normal[2] * normalAmount,
+  ]);
+}
+
+function reflectionDerivative(carrier: Vec3, tangent: Vec3): Vec3 {
+  const carrierZ = carrier[2];
+  const tangentZ = tangent[2];
+
+  return [
+    2 * (tangentZ * carrier[0] + carrierZ * tangent[0]),
+    2 * (tangentZ * carrier[1] + carrierZ * tangent[1]),
+    2 * (tangentZ * carrier[2] + carrierZ * tangent[2]),
+  ];
+}
+
+function prepareSpecHighlight(
+  spec: SpecHighlight,
+  orientation: Matrix3,
+  intensityScale: number,
+  softnessScale: number,
+): PreparedSpecHighlight {
+  // The carrier owns the orbit; its reflected source and tangent frame preserve the glass distortion.
+  const sourceZ = Math.sqrt(Math.max(1 - spec.centerX * spec.centerX - spec.centerY * spec.centerY, 0.001));
+  const baseSource = normalizeVec3([spec.centerX, spec.centerY, sourceZ]);
+  const baseCarrier = normalizeVec3([baseSource[0], baseSource[1], baseSource[2] + 1]);
+  const baseAxisX = projectOntoTangent([1, 0, 0], baseCarrier);
+  const baseAxisY = normalizeVec3(crossVec3(baseCarrier, baseAxisX));
+  const carrier = normalizeVec3(applyMatrix3(orientation, baseCarrier));
+  const carrierAxisX = normalizeVec3(applyMatrix3(orientation, baseAxisX));
+  const carrierAxisY = normalizeVec3(applyMatrix3(orientation, baseAxisY));
+  const sourceDirection = normalizeVec3(reflectVec3([0, 0, -1], carrier));
+  const axisX = projectOntoTangent(reflectionDerivative(carrier, carrierAxisX), sourceDirection);
+  const rawAxisY = projectOntoTangent(reflectionDerivative(carrier, carrierAxisY), sourceDirection);
+  const axisY = normalizeVec3(crossVec3(sourceDirection, axisX));
+
+  if (dotVec3(axisY, rawAxisY) < 0) {
+    axisY[0] *= -1;
+    axisY[1] *= -1;
+    axisY[2] *= -1;
+  }
+
+  return {
+    ...spec,
+    sourceDirection,
+    axisX,
+    axisY,
+    visibility: carrier[2] <= 0 ? 0 : smoothstep(0, 0.08, carrier[2]),
+    intensityScale,
+    softnessScale,
+  };
+}
+
+function prepareSpecHighlights(params: RenderParams): PreparedSpecHighlight[] {
+  const specs: PreparedSpecHighlight[] = [];
+  const addSpecs = (source: SpecHighlight[], enabled: boolean, intensityScale: number, softnessScale: number): void => {
+    if (!enabled) {
+      return;
+    }
+
+    for (const spec of source) {
+      const prepared = prepareSpecHighlight(spec, params.specOrientation, intensityScale, softnessScale);
+
+      if (prepared.visibility > 0) {
+        specs.push(prepared);
+      }
+    }
+  };
+
+  addSpecs(largeWindowSpecs, params.controls.specLargeEnabled, params.controls.specLargeIntensity, params.controls.specLargeSoftness);
+  addSpecs(mediumWindowSpecs, params.controls.specMediumEnabled, params.controls.specMediumIntensity, params.controls.specMediumSoftness);
+  addSpecs(thinStripSpecs, params.controls.specStripEnabled, params.controls.specStripIntensity, params.controls.specStripSoftness);
+
+  return specs;
 }
 
 function areaWindowSpecular(
   reflection: Vec3,
-  spec: SpecHighlight,
-  softness: number,
+  spec: PreparedSpecHighlight,
 ): number {
-  const dx = Math.abs((reflection[0] - spec.centerX) / spec.halfWidth);
-  const dy = Math.abs((reflection[1] - spec.centerY) / spec.halfHeight);
+  const dx = Math.abs(dotVec3(reflection, spec.axisX) / spec.halfWidth);
+  const dy = Math.abs(dotVec3(reflection, spec.axisY) / spec.halfHeight);
   const distance = spec.shape === 'circle' ? Math.hypot(dx, dy) : Math.max(dx, dy);
+  const softness = clamp(spec.softness * spec.softnessScale, 0.08, 1.8);
   const box = 1 - smoothstep(1 - softness, 1 + softness, distance);
-  const facing = smoothstep(-0.08, 0.36, reflection[2]);
+  const sourceFacing = smoothstep(-0.04, 0.24, dotVec3(reflection, spec.sourceDirection));
 
-  return Math.max(0, box) ** spec.power * facing;
+  return Math.max(0, box) ** spec.power * sourceFacing * spec.visibility;
 }
 
 function sampleSpecHighlights(
   reflection: Vec3,
-  params: RenderParams,
+  specs: PreparedSpecHighlight[],
 ): SpecSample {
   let shell = 0;
   let debugMask = 0;
 
-  const addSpec = (spec: SpecHighlight, intensityScale: number, softnessScale: number): void => {
-    const specValue = areaWindowSpecular(
-      reflection,
-      spec,
-      clamp(spec.softness * softnessScale, 0.08, 1.8),
-    );
+  for (const spec of specs) {
+    const specValue = areaWindowSpecular(reflection, spec);
 
-    shell += specValue * spec.intensity * intensityScale;
+    shell += specValue * spec.intensity * spec.intensityScale;
     debugMask = Math.max(debugMask, specValue);
-  };
-
-  if (params.controls.specLargeEnabled) {
-    for (const spec of largeWindowSpecs) {
-      addSpec(spec, params.controls.specLargeIntensity, params.controls.specLargeSoftness);
-    }
-  }
-
-  if (params.controls.specMediumEnabled) {
-    for (const spec of mediumWindowSpecs) {
-      addSpec(spec, params.controls.specMediumIntensity, params.controls.specMediumSoftness);
-    }
-  }
-
-  if (params.controls.specStripEnabled) {
-    for (const spec of thinStripSpecs) {
-      addSpec(spec, params.controls.specStripIntensity, params.controls.specStripSoftness);
-    }
   }
 
   return { shell, debugMask };
@@ -1250,7 +1309,8 @@ function renderGlassBall(params: RenderParams): void {
   const image = ballCtx.createImageData(size, size);
   const data = image.data;
   const radiusPx = size * 0.5;
-  const inverseSpecOrientation = transposeMatrix3(params.specOrientation);
+  const preparedSpecs = prepareSpecHighlights(params);
+  const hasAreaSpec = !params.controls.surfacePreviewEnabled && preparedSpecs.length > 0;
 
   for (let y = 0; y < size; y += 1) {
     const ny = (y + 0.5) / radiusPx - 1;
@@ -1284,13 +1344,8 @@ function renderGlassBall(params: RenderParams): void {
       const rim = !previewSurface && params.controls.rimEnabled ? smoothstep(0.72, 1, radial) : 0;
       const hardRim = !previewSurface && params.controls.hardRimEnabled ? smoothstep(0.93, 1, radial) : 0;
       const caRim = !previewSurface && params.controls.caRimEnabled ? smoothstep(0.8, 1, radial) : 0;
-      const hasAreaSpec =
-        !previewSurface &&
-        ((params.controls.specLargeEnabled && params.controls.specLargeIntensity > 0) ||
-          (params.controls.specMediumEnabled && params.controls.specMediumIntensity > 0) ||
-          (params.controls.specStripEnabled && params.controls.specStripIntensity > 0));
-      const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz, inverseSpecOrientation) : [0, 0, 1];
-      const specSample = hasAreaSpec ? sampleSpecHighlights(specReflection, params) : { shell: 0, debugMask: 0 };
+      const specReflection: Vec3 = hasAreaSpec ? normalizeVec3(reflectVec3([0, 0, -1], [nx, ny, nz])) : [0, 0, 1];
+      const specSample = hasAreaSpec ? sampleSpecHighlights(specReflection, preparedSpecs) : { shell: 0, debugMask: 0 };
       const shell = params.controls.specDebugEnabled ? 0 : specSample.shell;
 
       let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
