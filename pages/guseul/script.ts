@@ -133,32 +133,35 @@ const marbleCirclePalette = [
 
 const urlParams = new URLSearchParams(window.location.search);
 const initialSpecDebugColor: SpecDebugColor = urlParams.get('specDebugColor') === 'black' ? 'black' : 'red';
-const specCount = 11;
-
-function createSpecCarrier(index: number): Vec3 {
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const z = 1 - (2 * (index + 0.5)) / specCount;
-  const radial = Math.sqrt(Math.max(1 - z * z, 0));
-  const theta = index * goldenAngle;
-
-  return [Math.cos(theta) * radial, Math.sin(theta) * radial, z];
-}
+const specCarrierPositions: Vec3[] = [
+  [0.2, -0.22, 0.96],
+  [0.43, -0.28, 0.86],
+  [0.08, 0.86, 0.5],
+  [-0.93, -0.12, 0.35],
+  [-0.68, 0.35, 0.64],
+  [0.1, -0.5, 0.86],
+  [0.76, 0.18, -0.62],
+  [0.08, -0.9, -0.42],
+  [-0.42, -0.28, -0.86],
+  [-0.62, -0.2, -0.76],
+  [-0.18, 0.72, -0.67],
+];
 
 const largeWindowSpecs: SpecHighlight[] = [
-  { shape: 'rect', carrier: createSpecCarrier(0), halfWidth: 0.42, halfHeight: 0.158, softness: 0.8, power: 1.5, intensity: 38 },
-  { shape: 'rect', carrier: createSpecCarrier(4), halfWidth: 0.36, halfHeight: 0.135, softness: 0.88, power: 1.48, intensity: 34 },
-  { shape: 'rect', carrier: createSpecCarrier(8), halfWidth: 0.39, halfHeight: 0.145, softness: 0.84, power: 1.49, intensity: 36 },
-  { shape: 'circle', carrier: createSpecCarrier(1), halfWidth: 0.255, halfHeight: 0.255, softness: 0.54, power: 1.46, intensity: 32 },
-  { shape: 'circle', carrier: createSpecCarrier(5), halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
-  { shape: 'circle', carrier: createSpecCarrier(9), halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
+  { shape: 'rect', carrier: specCarrierPositions[0], halfWidth: 0.42, halfHeight: 0.158, softness: 0.4, power: 1.5, intensity: 38 },
+  { shape: 'rect', carrier: specCarrierPositions[4], halfWidth: 0.36, halfHeight: 0.135, softness: 0.44, power: 1.48, intensity: 34 },
+  { shape: 'rect', carrier: specCarrierPositions[8], halfWidth: 0.39, halfHeight: 0.145, softness: 0.42, power: 1.49, intensity: 36 },
+  { shape: 'circle', carrier: specCarrierPositions[1], halfWidth: 0.255, halfHeight: 0.255, softness: 0.54, power: 1.46, intensity: 32 },
+  { shape: 'circle', carrier: specCarrierPositions[5], halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
+  { shape: 'circle', carrier: specCarrierPositions[9], halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
 ];
 
 const mediumWindowSpecs: SpecHighlight[] = [
-  { shape: 'circle', carrier: createSpecCarrier(2), halfWidth: 0.18, halfHeight: 0.18, softness: 0.66, power: 1.34, intensity: 22 },
-  { shape: 'circle', carrier: createSpecCarrier(3), halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
-  { shape: 'circle', carrier: createSpecCarrier(6), halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
-  { shape: 'circle', carrier: createSpecCarrier(7), halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
-  { shape: 'circle', carrier: createSpecCarrier(10), halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
+  { shape: 'circle', carrier: specCarrierPositions[2], halfWidth: 0.18, halfHeight: 0.18, softness: 0.66, power: 1.34, intensity: 22 },
+  { shape: 'circle', carrier: specCarrierPositions[3], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
+  { shape: 'circle', carrier: specCarrierPositions[6], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
+  { shape: 'circle', carrier: specCarrierPositions[7], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
+  { shape: 'circle', carrier: specCarrierPositions[10], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
 ];
 
 const layerControls = {
@@ -205,9 +208,9 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
-  specLargeIntensity: 2.9,
+  specLargeIntensity: 2.175,
   specLargeSoftness: 1,
-  specMediumIntensity: 2.7,
+  specMediumIntensity: 2.025,
   specMediumSoftness: 1,
   outerStrokeEnabled: true,
 };
@@ -773,12 +776,12 @@ function setupGui(): void {
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
-  largeSpec.add(layerControls, 'specLargeIntensity', 0, 8, 0.01).name('intensity');
+  largeSpec.add(layerControls, 'specLargeIntensity', 0, 8, 0.005).name('intensity');
   largeSpec.add(layerControls, 'specLargeSoftness', 0.45, 2.2, 0.01).name('softness');
 
   const mediumSpec = spec.addFolder('medium');
   mediumSpec.add(layerControls, 'specMediumEnabled').name('on');
-  mediumSpec.add(layerControls, 'specMediumIntensity', 0, 8, 0.01).name('intensity');
+  mediumSpec.add(layerControls, 'specMediumIntensity', 0, 8, 0.005).name('intensity');
   mediumSpec.add(layerControls, 'specMediumSoftness', 0.45, 2.2, 0.01).name('softness');
 
   const composite = gui.addFolder('6 final composite');
