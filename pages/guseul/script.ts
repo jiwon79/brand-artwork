@@ -230,6 +230,7 @@ const layerControls = {
   pinchSensitivity: 0.85,
   minCompression: 0.72,
   maxStretch: 1.35,
+  pinchSourceFollow: clamp(Number(urlParams.get('sourceFollow')) || 0, 0, 1),
   springFrequency: 3,
   springDamping: 0.28,
   specRotationGain: 1.8,
@@ -311,6 +312,7 @@ class WebGLRenderer implements Renderer {
 
     const preparedSpecs = prepareSpecHighlights(params);
     const background = backgroundSample(params.controls);
+    const deformationScales = getDeformationScales();
     const frame: GpuGlassFrame = {
       contentCanvas,
       surfaceField: activeSurfaceField,
@@ -339,6 +341,9 @@ class WebGLRenderer implements Renderer {
       controls: {
         background: [background[0] / 255, background[1] / 255, background[2] / 255],
         contentOverscan: params.controls.contentOverscan,
+        deformationAxis,
+        deformationScales,
+        sourceFollow: params.controls.pinchSourceFollow,
         displacementEnabled: params.controls.displacementEnabled,
         surfacePreviewEnabled: params.controls.surfacePreviewEnabled,
         surfaceProfile: params.controls.surfaceProfile,
@@ -461,6 +466,20 @@ function getDeformationScales(): [number, number] {
   const perpendicularScale = 1 / Math.sqrt(axisScale);
 
   return [axisScale, perpendicularScale];
+}
+
+function transformSourcePoint(x: number, y: number): [number, number] {
+  const [axisX, axisY] = deformationAxis;
+  const perpendicularX = -axisY;
+  const perpendicularY = axisX;
+  const [axisScale, perpendicularScale] = getDeformationScales();
+  const alongAxis = x * axisX + y * axisY;
+  const acrossAxis = x * perpendicularX + y * perpendicularY;
+  const deformedX = axisX * alongAxis * axisScale + perpendicularX * acrossAxis * perpendicularScale;
+  const deformedY = axisY * alongAxis * axisScale + perpendicularY * acrossAxis * perpendicularScale;
+  const follow = clamp(layerControls.pinchSourceFollow, 0, 1);
+
+  return [mix(deformedX, x, follow), mix(deformedY, y, follow)];
 }
 
 function isInsideDeformedMarble(x: number, y: number): boolean {
@@ -1042,6 +1061,7 @@ function setupGui(): void {
   elasticPinch.add(layerControls, 'pinchSensitivity', 0.2, 1.8, 0.01).name('sensitivity');
   elasticPinch.add(layerControls, 'minCompression', 0.5, 0.95, 0.01).name('min compression');
   elasticPinch.add(layerControls, 'maxStretch', 1.05, 1.7, 0.01).name('max stretch');
+  elasticPinch.add(layerControls, 'pinchSourceFollow', 0, 1, 0.01).name('source follow');
   elasticPinch.add(layerControls, 'springFrequency', 1, 6, 0.05).name('spring frequency');
   elasticPinch.add(layerControls, 'springDamping', 0.05, 0.95, 0.01).name('spring damping');
 
@@ -1587,44 +1607,46 @@ function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): Sou
 
 function sampleLiquidGlass(nx: number, ny: number, radial: number, params: RenderParams): RGBA {
   const radius = params.view.radius;
+  const sampleAtPoint = ([sourceX, sourceY]: [number, number]): RGBA => sampleContent(
+    radius + sourceX * radius,
+    radius + sourceY * radius,
+    params,
+  );
 
   if (!params.controls.refractionEnabled) {
-    return sampleContent(radius + nx * radius, radius + ny * radius, params);
+    return sampleAtPoint(transformSourcePoint(nx, ny));
   }
 
   const surface = sampleSurfaceField(nx, ny, radial, params);
   const refractionHeight = surface.height * getDisplacementEdgeFade(radial, params.controls);
   const baseRay = refractCameraRay(surface.slopeX, surface.slopeY, params.controls.ior);
   const [baseOffsetX, baseOffsetY] = rayToDisplacement(baseRay, refractionHeight);
-  const redSource = params.controls.chromaticEnabled
+  const redSource: [number, number] = params.controls.chromaticEnabled
     ? rayToDisplacement(
       refractCameraRay(surface.slopeX, surface.slopeY, params.controls.ior + params.controls.dispersion),
       refractionHeight,
     )
     : [baseOffsetX, baseOffsetY];
-  const blueSource = params.controls.chromaticEnabled
+  const blueSource: [number, number] = params.controls.chromaticEnabled
     ? rayToDisplacement(
       refractCameraRay(surface.slopeX, surface.slopeY, Math.max(params.controls.ior - params.controls.dispersion, 1.0001)),
       refractionHeight,
     )
     : [baseOffsetX, baseOffsetY];
-
-  const sampleAtOffset = ([offsetX, offsetY]: number[]): RGBA => sampleContent(
-    radius + nx * radius + offsetX,
-    radius + ny * radius + offsetY,
-    params,
-  );
-  const red = sampleAtOffset(redSource);
-  const base = sampleAtOffset([baseOffsetX, baseOffsetY]);
-  const blue = sampleAtOffset(blueSource);
+  const redPoint = transformSourcePoint(nx + redSource[0] / radius, ny + redSource[1] / radius);
+  const basePoint = transformSourcePoint(nx + baseOffsetX / radius, ny + baseOffsetY / radius);
+  const bluePoint = transformSourcePoint(nx + blueSource[0] / radius, ny + blueSource[1] / radius);
+  const red = sampleAtPoint(redPoint);
+  const base = sampleAtPoint(basePoint);
+  const blue = sampleAtPoint(bluePoint);
   let sample = base;
 
   if (params.controls.chromaticEnabled) {
-    const separationX = blueSource[0] - redSource[0];
-    const separationY = blueSource[1] - redSource[1];
+    const separationX = (bluePoint[0] - redPoint[0]) * radius;
+    const separationY = (bluePoint[1] - redPoint[1]) * radius;
     const separation = Math.hypot(separationX, separationY);
-    const baseSourceX = radius + nx * radius + baseOffsetX;
-    const baseSourceY = radius + ny * radius + baseOffsetY;
+    const baseSourceX = radius + basePoint[0] * radius;
+    const baseSourceY = radius + basePoint[1] * radius;
     const sourceEdge = sampleSourceCircleEdge(baseSourceX, baseSourceY, params);
     const sourceEdgeGate =
       sourceEdge.edge *
@@ -1660,13 +1682,13 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
       const strength = params.controls.chromaticEdgeStrength * edgeGate;
       const boost = 1 + strength * 1.8;
       const spread = params.controls.chromaticEdgeWidth * (0.32 + strength);
-      const redWide = sampleAtOffset([
-        baseOffsetX + (redSource[0] - baseOffsetX) * boost - directionX * spread * 0.35,
-        baseOffsetY + (redSource[1] - baseOffsetY) * boost - directionY * spread * 0.35,
+      const redWide = sampleAtPoint([
+        basePoint[0] + (redPoint[0] - basePoint[0]) * boost - directionX * spread / radius * 0.35,
+        basePoint[1] + (redPoint[1] - basePoint[1]) * boost - directionY * spread / radius * 0.35,
       ]);
-      const blueWide = sampleAtOffset([
-        baseOffsetX + (blueSource[0] - baseOffsetX) * boost + directionX * spread * 0.35,
-        baseOffsetY + (blueSource[1] - baseOffsetY) * boost + directionY * spread * 0.35,
+      const blueWide = sampleAtPoint([
+        basePoint[0] + (bluePoint[0] - basePoint[0]) * boost + directionX * spread / radius * 0.35,
+        basePoint[1] + (bluePoint[1] - basePoint[1]) * boost + directionY * spread / radius * 0.35,
       ]);
       const refractedSplit: RGBA = [redWide[0], sample[1], blueWide[2], 255];
       const refractedSplitMix = clamp(strength * 0.28, 0, 0.46);

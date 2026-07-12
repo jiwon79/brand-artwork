@@ -24,6 +24,9 @@ export type GpuSpec = {
 export type GpuGlassControls = {
   background: [number, number, number];
   contentOverscan: number;
+  deformationAxis: [number, number];
+  deformationScales: [number, number];
+  sourceFollow: number;
   displacementEnabled: boolean;
   surfacePreviewEnabled: boolean;
   surfaceProfile: 'convex' | 'concave' | 'lip';
@@ -95,6 +98,9 @@ uniform vec2 uSurfaceSize;
 uniform float uRadiusCss;
 uniform vec3 uBackground;
 uniform float uOverscan;
+uniform vec2 uDeformationAxis;
+uniform vec2 uDeformationScales;
+uniform float uSourceFollow;
 uniform int uDisplacementEnabled;
 uniform int uSurfacePreviewEnabled;
 uniform int uSurfaceProfile;
@@ -246,6 +252,16 @@ vec4 sampleContent(vec2 sourcePoint) {
   return texture(uContent, uv);
 }
 
+vec2 transformSourcePoint(vec2 point) {
+  vec2 axis = normalize(uDeformationAxis);
+  vec2 perpendicular = vec2(-axis.y, axis.x);
+  vec2 deformed =
+    axis * dot(point, axis) * uDeformationScales.x +
+    perpendicular * dot(point, perpendicular) * uDeformationScales.y;
+
+  return mix(deformed, point, clamp(uSourceFollow, 0.0, 1.0));
+}
+
 struct SourceEdge {
   float edge;
   float alpha;
@@ -303,7 +319,7 @@ float coverageFromSignedDistance(float signedDistance, float feather) {
 
 vec3 sampleLiquidGlass(vec2 point, float radial, vec3 surface, float rim) {
   if (uRefractionEnabled == 0) {
-    return sampleContent(point).rgb;
+    return sampleContent(transformSourcePoint(point)).rgb;
   }
 
   float height = surface.z * displacementEdgeFade(radial);
@@ -316,15 +332,18 @@ vec3 sampleLiquidGlass(vec2 point, float radial, vec3 surface, float rim) {
     blueOffset = rayDisplacement(refractCameraRay(surface.xy, max(uIor - uDispersion, 1.0001)), height);
   }
 
-  vec3 red = sampleContent(point + redOffset).rgb;
-  vec3 base = sampleContent(point + baseOffset).rgb;
-  vec3 blue = sampleContent(point + blueOffset).rgb;
+  vec2 redPoint = transformSourcePoint(point + redOffset);
+  vec2 basePoint = transformSourcePoint(point + baseOffset);
+  vec2 bluePoint = transformSourcePoint(point + blueOffset);
+  vec3 red = sampleContent(redPoint).rgb;
+  vec3 base = sampleContent(basePoint).rgb;
+  vec3 blue = sampleContent(bluePoint).rgb;
   vec3 sampleColor = base;
 
   if (uChromaticEnabled == 1) {
-    vec2 separationVector = blueOffset - redOffset;
+    vec2 separationVector = bluePoint - redPoint;
     float separationPixels = length(separationVector) * uRadiusCss;
-    SourceEdge sourceEdge = sampleSourceEdge(point + baseOffset);
+    SourceEdge sourceEdge = sampleSourceEdge(basePoint);
     float sourceEdgeGate = sourceEdge.edge * uChromaticBoundaryStrength
       * smoothRange(0.42, 0.98, radial) * (0.48 + rim * 0.52);
     float dispersionMix = clamp(uDispersion * (rim * 1.2 + sourceEdgeGate * 0.85), 0.0, 0.54);
@@ -347,8 +366,8 @@ vec3 sampleLiquidGlass(vec2 point, float radial, vec3 surface, float rim) {
       float strength = uChromaticEdgeStrength * edgeGate;
       float boost = 1.0 + strength * 1.8;
       float spread = (uChromaticEdgeWidth / uRadiusCss) * (0.32 + strength);
-      vec3 redWide = sampleContent(point + baseOffset + (redOffset - baseOffset) * boost - direction * spread * 0.35).rgb;
-      vec3 blueWide = sampleContent(point + baseOffset + (blueOffset - baseOffset) * boost + direction * spread * 0.35).rgb;
+      vec3 redWide = sampleContent(basePoint + (redPoint - basePoint) * boost - direction * spread * 0.35).rgb;
+      vec3 blueWide = sampleContent(basePoint + (bluePoint - basePoint) * boost + direction * spread * 0.35).rgb;
       vec3 refractedSplit = vec3(redWide.r, sampleColor.g, blueWide.b);
       sampleColor = mix(sampleColor, refractedSplit, clamp(strength * 0.28, 0.0, 0.46));
 
@@ -564,6 +583,7 @@ export class GuseulWebGLRenderer {
     this.surfaceTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
       'uContent', 'uSurface', 'uSurfaceSize', 'uRadiusCss', 'uBackground', 'uOverscan',
+      'uDeformationAxis', 'uDeformationScales', 'uSourceFollow',
       'uDisplacementEnabled', 'uSurfacePreviewEnabled', 'uSurfaceProfile', 'uBezelWidth',
       'uThickness', 'uDisplacementFactor', 'uEdgeFadeWidth', 'uIor', 'uRefractionEnabled',
       'uChromaticEnabled', 'uDispersion', 'uChromaticEdgeStrength', 'uChromaticEdgeWidth',
@@ -709,6 +729,9 @@ export class GuseulWebGLRenderer {
     gl.uniform1f(this.uniforms.uRadiusCss, frame.radiusCss);
     gl.uniform3fv(this.uniforms.uBackground, controls.background);
     gl.uniform1f(this.uniforms.uOverscan, controls.contentOverscan);
+    gl.uniform2fv(this.uniforms.uDeformationAxis, controls.deformationAxis);
+    gl.uniform2fv(this.uniforms.uDeformationScales, controls.deformationScales);
+    gl.uniform1f(this.uniforms.uSourceFollow, controls.sourceFollow);
     gl.uniform1i(this.uniforms.uDisplacementEnabled, Number(controls.displacementEnabled));
     gl.uniform1i(this.uniforms.uSurfacePreviewEnabled, Number(controls.surfacePreviewEnabled));
     gl.uniform1i(this.uniforms.uSurfaceProfile, profileIndex(controls.surfaceProfile));
