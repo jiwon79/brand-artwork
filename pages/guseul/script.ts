@@ -95,6 +95,20 @@ type SpecSample = {
   debugMask: number;
 };
 
+type PointerPosition = {
+  x: number;
+  y: number;
+};
+
+type PinchGesture = {
+  pointerIds: [number, number];
+  initialDistance: number;
+  initialDeformation: number;
+  lastDeformation: number;
+  lastTime: number;
+  lastMoveTime: number;
+};
+
 type RenderParams = {
   view: View;
   controls: LayerControls;
@@ -213,6 +227,11 @@ const layerControls = {
   shadowEnabled: true,
   marbleScale: 1.22,
   dragSensitivity: 1,
+  pinchSensitivity: 0.85,
+  minCompression: 0.72,
+  maxStretch: 1.35,
+  springFrequency: 3,
+  springDamping: 0.28,
   specRotationGain: 1.8,
   specEdgeDwell: 1.55,
   specEdgeFade: 0.18,
@@ -381,10 +400,24 @@ let sphereOrientation = createInitialOrientation();
 let specOrientation = createInitialOrientation();
 let spinAxis: Vec3 = [0, 0, 0];
 let spinVelocity = 0;
+const activePointers = new Map<number, PointerPosition>();
 let pointerId: number | null = null;
 let lastPointerX = 0;
 let lastPointerY = 0;
 let lastPointerTime = 0;
+let pinchGesture: PinchGesture | null = null;
+let suppressRotationUntilRelease = false;
+const previewDeformationScale = Number(urlParams.get('deformPreview'));
+const previewDeformationAngle = Number(urlParams.get('deformAngle'));
+let deformation = Number.isFinite(previewDeformationScale) && previewDeformationScale > 0
+  ? Math.log(clamp(previewDeformationScale, 0.5, 1.7))
+  : 0;
+let deformationVelocity = 0;
+let deformationAxis: [number, number] = Number.isFinite(previewDeformationAngle)
+  ? [Math.cos(previewDeformationAngle), Math.sin(previewDeformationAngle)]
+  : [1, 0];
+let springActive = urlParams.get('springPreview') === '1' && Math.abs(deformation) > 0.0001;
+let springPending = false;
 let lastFrame = 0;
 let idleResumeAt = 0;
 let renderTimeTotal = 0;
@@ -414,6 +447,137 @@ function getRenderParams(): RenderParams {
     orientation: sphereOrientation,
     specOrientation,
   };
+}
+
+function getDeformationLimits(): [number, number] {
+  const minimum = Math.log(clamp(layerControls.minCompression, 0.5, 0.99));
+  const maximum = Math.log(Math.max(layerControls.maxStretch, 1.01));
+
+  return [minimum, maximum];
+}
+
+function getDeformationScales(): [number, number] {
+  const axisScale = Math.exp(deformation);
+  const perpendicularScale = 1 / Math.sqrt(axisScale);
+
+  return [axisScale, perpendicularScale];
+}
+
+function isInsideDeformedMarble(x: number, y: number): boolean {
+  const dx = x - view.cx;
+  const dy = y - view.cy;
+  const [axisX, axisY] = deformationAxis;
+  const [axisScale, perpendicularScale] = getDeformationScales();
+  const alongAxis = (dx * axisX + dy * axisY) / axisScale;
+  const acrossAxis = (-dx * axisY + dy * axisX) / perpendicularScale;
+
+  return alongAxis * alongAxis + acrossAxis * acrossAxis <= view.radius * view.radius * 1.28;
+}
+
+function getPinchPoints(gesture: PinchGesture): [PointerPosition, PointerPosition] | null {
+  const first = activePointers.get(gesture.pointerIds[0]);
+  const second = activePointers.get(gesture.pointerIds[1]);
+
+  return first && second ? [first, second] : null;
+}
+
+function beginPinch(now: number): void {
+  const pointerIds = Array.from(activePointers.keys()).slice(0, 2) as [number, number];
+  const first = activePointers.get(pointerIds[0]);
+  const second = activePointers.get(pointerIds[1]);
+
+  if (!first || !second) {
+    return;
+  }
+
+  const dx = second.x - first.x;
+  const dy = second.y - first.y;
+  const distance = Math.max(Math.hypot(dx, dy), 1);
+
+  deformationAxis = [dx / distance, dy / distance];
+  deformationVelocity = 0;
+  springActive = false;
+  springPending = false;
+  spinVelocity = 0;
+  pointerId = null;
+  suppressRotationUntilRelease = true;
+  pinchGesture = {
+    pointerIds,
+    initialDistance: distance,
+    initialDeformation: deformation,
+    lastDeformation: deformation,
+    lastTime: now,
+    lastMoveTime: now,
+  };
+}
+
+function updatePinch(now: number): void {
+  if (!pinchGesture) {
+    return;
+  }
+
+  const points = getPinchPoints(pinchGesture);
+  if (!points) {
+    return;
+  }
+
+  const [first, second] = points;
+  const dx = second.x - first.x;
+  const dy = second.y - first.y;
+  const distance = Math.max(Math.hypot(dx, dy), 1);
+  const [minimum, maximum] = getDeformationLimits();
+  const target = clamp(
+    pinchGesture.initialDeformation +
+      Math.log(distance / pinchGesture.initialDistance) * layerControls.pinchSensitivity,
+    minimum,
+    maximum,
+  );
+  const elapsed = Math.max((now - pinchGesture.lastTime) / 1000, 0.008);
+  const instantaneousVelocity = (target - pinchGesture.lastDeformation) / elapsed;
+
+  deformation = target;
+  deformationVelocity = mix(deformationVelocity, clamp(instantaneousVelocity, -4, 4), 0.45);
+  deformationAxis = [dx / distance, dy / distance];
+  pinchGesture.lastDeformation = target;
+  pinchGesture.lastTime = now;
+  pinchGesture.lastMoveTime = now;
+}
+
+function activateSpring(now: number): void {
+  springPending = false;
+  springActive = Math.abs(deformation) > 0.0001 || Math.abs(deformationVelocity) > 0.001;
+  idleResumeAt = springActive
+    ? Number.POSITIVE_INFINITY
+    : now + layerControls.idleResumeDelay * 1000;
+}
+
+function updateSpring(dt: number, now: number): void {
+  if (!springActive || pinchGesture) {
+    return;
+  }
+
+  const frequency = clamp(layerControls.springFrequency, 0.5, 8);
+  const damping = clamp(layerControls.springDamping, 0.01, 1.5);
+  const angularFrequency = Math.PI * 2 * frequency;
+  const stepCount = Math.max(1, Math.ceil(dt / 0.008));
+  const step = dt / stepCount;
+  const [minimum, maximum] = getDeformationLimits();
+
+  for (let index = 0; index < stepCount; index += 1) {
+    const acceleration =
+      -angularFrequency * angularFrequency * deformation -
+      2 * damping * angularFrequency * deformationVelocity;
+    deformationVelocity += acceleration * step;
+    deformation += deformationVelocity * step;
+    deformation = clamp(deformation, minimum * 1.2, maximum * 1.2);
+  }
+
+  if (Math.abs(deformation) < 0.0015 && Math.abs(deformationVelocity) < 0.01) {
+    deformation = 0;
+    deformationVelocity = 0;
+    springActive = false;
+    idleResumeAt = now + layerControls.idleResumeDelay * 1000;
+  }
 }
 
 function pseudoRandom(index: number, salt: number): number {
@@ -874,6 +1038,13 @@ function setupGui(): void {
   scene.add(layerControls, 'marbleScale', 0.7, 1.8, 0.01).name('marble scale').onChange(resize);
   scene.add(layerControls, 'dragSensitivity', 0.4, 1.8, 0.01).name('drag sensitivity');
 
+  const elasticPinch = scene.addFolder('elastic pinch');
+  elasticPinch.add(layerControls, 'pinchSensitivity', 0.2, 1.8, 0.01).name('sensitivity');
+  elasticPinch.add(layerControls, 'minCompression', 0.5, 0.95, 0.01).name('min compression');
+  elasticPinch.add(layerControls, 'maxStretch', 1.05, 1.7, 0.01).name('max stretch');
+  elasticPinch.add(layerControls, 'springFrequency', 1, 6, 0.05).name('spring frequency');
+  elasticPinch.add(layerControls, 'springDamping', 0.05, 0.95, 0.01).name('spring damping');
+
   const source = gui.addFolder('2 source content');
   source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
 
@@ -944,6 +1115,7 @@ function setupGui(): void {
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 
   circles.close();
+  elasticPinch.close();
   idleMotion.close();
   edgeProjection.close();
   largeSpec.close();
@@ -1598,12 +1770,25 @@ function renderGlassBall(params: RenderParams): void {
   ballCtx.putImageData(image, 0, 0);
 }
 
+function applyMarbleDeformation(context: CanvasRenderingContext2D, renderView: View): void {
+  const [axisScale, perpendicularScale] = getDeformationScales();
+  const angle = Math.atan2(deformationAxis[1], deformationAxis[0]);
+
+  context.translate(renderView.cx, renderView.cy);
+  context.rotate(angle);
+  context.scale(axisScale, perpendicularScale);
+  context.rotate(-angle);
+  context.translate(-renderView.cx, -renderView.cy);
+}
+
 function compositeScene(params: RenderParams, ballSource: CanvasImageSource): void {
   const renderView = params.view;
 
   ctx.clearRect(0, 0, renderView.width, renderView.height);
   ctx.fillStyle = params.controls.backgroundColor;
   ctx.fillRect(0, 0, renderView.width, renderView.height);
+  ctx.save();
+  applyMarbleDeformation(ctx, renderView);
 
   if (params.controls.shadowEnabled) {
     const shadow = ctx.createRadialGradient(
@@ -1661,6 +1846,8 @@ function compositeScene(params: RenderParams, ballSource: CanvasImageSource): vo
     ctx.arc(renderView.cx, renderView.cy, renderView.radius - ctx.lineWidth * 0.5, 0, Math.PI * 2);
     ctx.stroke();
   }
+
+  ctx.restore();
 }
 
 function drawScene(params: RenderParams): void {
@@ -1671,8 +1858,9 @@ function drawScene(params: RenderParams): void {
 function tick(now: number): void {
   const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000 || 0.016));
   lastFrame = now;
+  updateSpring(dt, now);
 
-  if (pointerId === null) {
+  if (activePointers.size === 0 && !springActive && !springPending) {
     if (spinVelocity > 0) {
       applyScreenAxisRotation(spinAxis, spinVelocity * dt);
       spinVelocity *= 0.92;
@@ -1711,29 +1899,56 @@ function tick(now: number): void {
 }
 
 canvas.addEventListener('pointerdown', (event) => {
-  const dx = event.clientX - view.cx;
-  const dy = event.clientY - view.cy;
-
-  if (dx * dx + dy * dy > view.radius * view.radius * 1.28) {
+  if (activePointers.size >= 2 || !isInsideDeformedMarble(event.clientX, event.clientY)) {
     return;
   }
 
-  pointerId = event.pointerId;
   event.preventDefault();
-  lastPointerX = event.clientX;
-  lastPointerY = event.clientY;
-  lastPointerTime = event.timeStamp || performance.now();
+  const now = event.timeStamp || performance.now();
+
+  if (activePointers.size === 0) {
+    suppressRotationUntilRelease = false;
+  }
+
+  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (!canvas.hasPointerCapture(event.pointerId)) {
+    canvas.setPointerCapture(event.pointerId);
+  }
+
   spinVelocity = 0;
   idleResumeAt = Number.POSITIVE_INFINITY;
-  canvas.setPointerCapture(event.pointerId);
+
+  if (activePointers.size === 2) {
+    beginPinch(now);
+    return;
+  }
+
+  if (!suppressRotationUntilRelease) {
+    pointerId = event.pointerId;
+    lastPointerX = event.clientX;
+    lastPointerY = event.clientY;
+    lastPointerTime = now;
+  }
 });
 
 canvas.addEventListener('pointermove', (event) => {
-  if (pointerId !== event.pointerId) {
+  if (!activePointers.has(event.pointerId)) {
     return;
   }
 
   event.preventDefault();
+  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  const now = event.timeStamp || performance.now();
+
+  if (pinchGesture) {
+    updatePinch(now);
+    return;
+  }
+
+  if (pointerId !== event.pointerId || suppressRotationUntilRelease) {
+    return;
+  }
+
   const dx = event.clientX - lastPointerX;
   const dy = event.clientY - lastPointerY;
   const distance = Math.hypot(dx, dy);
@@ -1741,7 +1956,6 @@ canvas.addEventListener('pointermove', (event) => {
   if (distance > 0.001) {
     const normalizedAxis: Vec3 = [-dy / distance, dx / distance, 0];
     const angle = (distance / view.radius) * layerControls.dragSensitivity;
-    const now = event.timeStamp || performance.now();
     const dt = Math.max((now - lastPointerTime) / 1000, 0.016);
 
     applyScreenAxisRotation(normalizedAxis, angle);
@@ -1754,25 +1968,53 @@ canvas.addEventListener('pointermove', (event) => {
   lastPointerY = event.clientY;
 });
 
-canvas.addEventListener('pointerup', (event) => {
-  if (pointerId !== event.pointerId) {
+function releasePointer(event: PointerEvent, cancelled: boolean): void {
+  if (!activePointers.has(event.pointerId)) {
     return;
   }
 
-  pointerId = null;
-  idleResumeAt = performance.now() + layerControls.idleResumeDelay * 1000;
   event.preventDefault();
-  canvas.releasePointerCapture(event.pointerId);
+  const now = event.timeStamp || performance.now();
+  const wasPinching = pinchGesture?.pointerIds.includes(event.pointerId) ?? false;
+
+  if (wasPinching && pinchGesture) {
+    const stillTime = Math.max((now - pinchGesture.lastMoveTime) / 1000, 0);
+    deformationVelocity = cancelled ? 0 : deformationVelocity * Math.exp(-stillTime * 14);
+    pinchGesture = null;
+    springActive = false;
+    springPending = true;
+    suppressRotationUntilRelease = true;
+    pointerId = null;
+    spinVelocity = 0;
+  } else if (pointerId === event.pointerId) {
+    pointerId = null;
+  }
+
+  activePointers.delete(event.pointerId);
+
+  if (canvas.hasPointerCapture(event.pointerId)) {
+    canvas.releasePointerCapture(event.pointerId);
+  }
+
+  if (activePointers.size === 0) {
+    suppressRotationUntilRelease = false;
+
+    if (springPending) {
+      activateSpring(now);
+    } else if (!springActive) {
+      idleResumeAt = now + layerControls.idleResumeDelay * 1000;
+    }
+  } else {
+    idleResumeAt = Number.POSITIVE_INFINITY;
+  }
+}
+
+canvas.addEventListener('pointerup', (event) => {
+  releasePointer(event, false);
 });
 
 canvas.addEventListener('pointercancel', (event) => {
-  if (pointerId !== event.pointerId) {
-    return;
-  }
-
-  pointerId = null;
-  idleResumeAt = performance.now() + layerControls.idleResumeDelay * 1000;
-  event.preventDefault();
+  releasePointer(event, true);
 });
 
 document.addEventListener('selectstart', (event) => {
