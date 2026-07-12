@@ -6,6 +6,17 @@ type MarbleCircle = {
   z: number;
   radius: number;
   color: string;
+  artworkIndex: number;
+  cropX: number;
+  cropY: number;
+  imageZoom: number;
+};
+
+type CircleArtwork = {
+  image: HTMLImageElement;
+  focalX: number;
+  focalY: number;
+  zoom: number;
 };
 
 type VisibleMarbleCircle = MarbleCircle & {
@@ -131,6 +142,30 @@ const marbleCirclePalette = [
   '#35c7d2',
 ];
 
+const circleArtworkSources = [
+  { src: new URL('./assets/photos/liquid-reflection.webp', import.meta.url).href, focalX: 0.55, focalY: 0.48, zoom: 1.08 },
+  { src: new URL('./assets/photos/liquid-contrast.webp', import.meta.url).href, focalX: 0.56, focalY: 0.54, zoom: 1.12 },
+  { src: new URL('./assets/photos/liquid-bubbles.webp', import.meta.url).href, focalX: 0.52, focalY: 0.52, zoom: 1.08 },
+  { src: new URL('./assets/photos/rainbow-bubbles.webp', import.meta.url).href, focalX: 0.58, focalY: 0.54, zoom: 1.12 },
+  { src: new URL('./assets/photos/floral-motion.webp', import.meta.url).href, focalX: 0.56, focalY: 0.48, zoom: 1.14 },
+  { src: new URL('./assets/photos/orange-petals.webp', import.meta.url).href, focalX: 0.46, focalY: 0.46, zoom: 1.1 },
+  { src: new URL('./assets/photos/red-flowers.webp', import.meta.url).href, focalX: 0.46, focalY: 0.58, zoom: 1.16 },
+  { src: new URL('./assets/photos/turquoise-river.webp', import.meta.url).href, focalX: 0.5, focalY: 0.5, zoom: 1.04 },
+];
+
+const circleArtworks: CircleArtwork[] = circleArtworkSources.map((source) => {
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = source.src;
+
+  return {
+    image,
+    focalX: source.focalX,
+    focalY: source.focalY,
+    zoom: source.zoom,
+  };
+});
+
 const urlParams = new URLSearchParams(window.location.search);
 const initialSpecDebugColor: SpecDebugColor = urlParams.get('specDebugColor') === 'black' ? 'black' : 'red';
 const specCarrierPositions: Vec3[] = [
@@ -176,6 +211,10 @@ const layerControls = {
   circleCount: 10,
   circleSizeScale: 1.85,
   circleSizeVariance: 1,
+  idleMotionEnabled: true,
+  idleSpeed: 0.045,
+  idleAxisDrift: 0.16,
+  idleResumeDelay: 0.9,
   edgeScaleFloor: 0.32,
   edgePortalWidth: 0.06,
   portalInset: 0.9,
@@ -261,6 +300,7 @@ let lastPointerX = 0;
 let lastPointerY = 0;
 let lastPointerTime = 0;
 let lastFrame = 0;
+let idleResumeAt = 0;
 const renderer: Renderer = new CanvasRenderer();
 
 function getRenderParams(): RenderParams {
@@ -288,6 +328,8 @@ function createMarbleCircles(count: number, controls: LayerControls = layerContr
     const baseSize = 0.25;
     const variance = (pseudoRandom(index, 2) - 0.5) * 0.16 * controls.circleSizeVariance;
     const size = clamp(baseSize + variance, 0.05, 0.5);
+    const artworkIndex = (index * 5) % circleArtworks.length;
+    const artwork = circleArtworks[artworkIndex];
 
     return {
       x: Math.cos(theta) * radial,
@@ -295,6 +337,10 @@ function createMarbleCircles(count: number, controls: LayerControls = layerContr
       z: Math.sin(theta) * radial,
       radius: size,
       color: marbleCirclePalette[Math.floor(pseudoRandom(index, 3) * marbleCirclePalette.length)],
+      artworkIndex,
+      cropX: clamp(artwork.focalX + (pseudoRandom(index, 4) - 0.5) * 0.12, 0.08, 0.92),
+      cropY: clamp(artwork.focalY + (pseudoRandom(index, 5) - 0.5) * 0.12, 0.08, 0.92),
+      imageZoom: artwork.zoom * mix(0.94, 1.12, pseudoRandom(index, 6)),
     };
   });
 }
@@ -310,17 +356,6 @@ function mix(a: number, b: number, t: number): number {
 function backgroundSample(controls: LayerControls = layerControls): RGBA {
   const hex = controls.backgroundColor.trim();
   const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : 'fffefb';
-
-  return [
-    Number.parseInt(normalized.slice(0, 2), 16),
-    Number.parseInt(normalized.slice(2, 4), 16),
-    Number.parseInt(normalized.slice(4, 6), 16),
-    255,
-  ];
-}
-
-function colorToRgba(color: string): RGBA {
-  const normalized = /^#[0-9a-f]{6}$/i.test(color) ? color.slice(1) : 'ffffff';
 
   return [
     Number.parseInt(normalized.slice(0, 2), 16),
@@ -657,6 +692,13 @@ function applyScreenAxisRotation(axis: Vec3, angle: number): void {
   );
 }
 
+function applyContentAxisRotation(axis: Vec3, angle: number): void {
+  sphereOrientation = multiplyMatrix3(
+    rotationMatrixFromAxisAngle(axis, angle),
+    sphereOrientation,
+  );
+}
+
 function applyBackgroundColor(): void {
   document.documentElement.style.backgroundColor = layerControls.backgroundColor;
   document.body.style.backgroundColor = layerControls.backgroundColor;
@@ -734,6 +776,12 @@ function setupGui(): void {
   circles.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   circles.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
+  const idleMotion = source.addFolder('idle motion');
+  idleMotion.add(layerControls, 'idleMotionEnabled').name('on');
+  idleMotion.add(layerControls, 'idleSpeed', 0, 0.15, 0.001).name('speed');
+  idleMotion.add(layerControls, 'idleAxisDrift', 0, 0.5, 0.01).name('axis drift');
+  idleMotion.add(layerControls, 'idleResumeDelay', 0, 3, 0.05).name('resume delay');
+
   const edgeProjection = source.addFolder('edge projection');
   edgeProjection.add(layerControls, 'edgeScaleFloor', 0.08, 0.8, 0.01).name('edge min size');
   edgeProjection.add(layerControls, 'edgePortalWidth', 0.01, 0.3, 0.01).name('edge portal');
@@ -788,6 +836,7 @@ function setupGui(): void {
   composite.add(layerControls, 'outerStrokeEnabled').name('outer stroke');
 
   circles.close();
+  idleMotion.close();
   edgeProjection.close();
   largeSpec.close();
   mediumSpec.close();
@@ -836,6 +885,34 @@ function resize(): void {
   renderer.resize(getRenderParams());
 }
 
+function drawCircleArtwork(circle: VisibleMarbleCircle, centerX: number, centerY: number, size: number): void {
+  const artwork = circleArtworks[circle.artworkIndex];
+  const image = artwork.image;
+
+  if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+    return;
+  }
+
+  const diameter = size * 2;
+  const coverScale = Math.max(diameter / image.naturalWidth, diameter / image.naturalHeight) * circle.imageZoom;
+  const sourceWidth = Math.min(image.naturalWidth, diameter / coverScale);
+  const sourceHeight = Math.min(image.naturalHeight, diameter / coverScale);
+  const sourceX = clamp(circle.cropX * image.naturalWidth - sourceWidth * 0.5, 0, image.naturalWidth - sourceWidth);
+  const sourceY = clamp(circle.cropY * image.naturalHeight - sourceHeight * 0.5, 0, image.naturalHeight - sourceHeight);
+
+  contentCtx.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    centerX - size,
+    centerY - size,
+    diameter,
+    diameter,
+  );
+}
+
 function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): void {
   const radius = params.view.radius;
   const center = getContentCenter(params);
@@ -850,21 +927,28 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
   contentCtx.filter = circle.blur > 0 ? `blur(${circle.blur}px)` : 'none';
   contentCtx.beginPath();
   contentCtx.arc(centerX, centerY, size, 0, Math.PI * 2);
-  if (strokeWidth > 0 && !circle.back && circle.strokeAlpha > 0) {
-    contentCtx.globalAlpha = circle.fillAlpha * circle.strokeAlpha;
-    contentCtx.lineWidth = strokeWidth;
-    contentCtx.strokeStyle = '#ffffff';
-    contentCtx.stroke();
-  }
+  contentCtx.clip();
   contentCtx.globalAlpha = circle.fillAlpha;
   contentCtx.fillStyle = circle.color;
-  contentCtx.fill();
+  contentCtx.fillRect(centerX - size, centerY - size, size * 2, size * 2);
+  drawCircleArtwork(circle, centerX, centerY, size);
   if (circle.hazeAlpha > 0) {
     contentCtx.globalAlpha = circle.hazeAlpha;
     contentCtx.fillStyle = params.controls.backgroundColor;
-    contentCtx.fill();
+    contentCtx.fillRect(centerX - size, centerY - size, size * 2, size * 2);
   }
   contentCtx.restore();
+
+  if (strokeWidth > 0 && !circle.back && circle.strokeAlpha > 0) {
+    contentCtx.save();
+    contentCtx.globalAlpha = circle.fillAlpha * circle.strokeAlpha;
+    contentCtx.lineWidth = strokeWidth;
+    contentCtx.strokeStyle = '#ffffff';
+    contentCtx.beginPath();
+    contentCtx.arc(centerX, centerY, size, 0, Math.PI * 2);
+    contentCtx.stroke();
+    contentCtx.restore();
+  }
 }
 
 function collectVisibleCircles(params: RenderParams): VisibleMarbleCircle[] {
@@ -1192,19 +1276,27 @@ function sampleSourceCircleEdge(x: number, y: number, params: RenderParams): Sou
     const edgeDistance = Math.abs(signedDistance);
     const edge = (1 - smoothstep(boundaryWidth * 0.2, boundaryWidth, edgeDistance)) * circle.fillAlpha;
     const fill = smoothstep(circleRadius + boundaryWidth, circleRadius - boundaryWidth, distance) * circle.fillAlpha;
+    const normalX = distance > 0.001 ? dx / distance : 0;
+    const normalY = distance > 0.001 ? dy / distance : 0;
 
     if (edge <= 0.001 && fill <= 0.04) {
       continue;
     }
+
+    const sampledColor = sampleContent(
+      x - normalX * boundaryWidth,
+      y - normalY * boundaryWidth,
+      params,
+    );
 
     return {
       edge,
       fill,
       alpha: circle.fillAlpha,
       signedDistance,
-      normalX: distance > 0.001 ? dx / distance : 0,
-      normalY: distance > 0.001 ? dy / distance : 0,
-      color: colorToRgba(circle.color),
+      normalX,
+      normalY,
+      color: sampledColor,
     };
   }
 
@@ -1470,6 +1562,16 @@ function tick(now: number): void {
     if (spinVelocity > 0) {
       applyScreenAxisRotation(spinAxis, spinVelocity * dt);
       spinVelocity *= 0.92;
+    } else if (layerControls.idleMotionEnabled && now >= idleResumeAt) {
+      const phase = now * 0.00009;
+      const drift = layerControls.idleAxisDrift;
+      const idleAxis = normalizeVec3([
+        Math.sin(phase) * drift,
+        1,
+        Math.cos(phase * 0.83) * drift * 0.55,
+      ]);
+
+      applyContentAxisRotation(idleAxis, layerControls.idleSpeed * dt);
     }
 
     if (spinVelocity < 0.01) {
@@ -1495,6 +1597,7 @@ canvas.addEventListener('pointerdown', (event) => {
   lastPointerY = event.clientY;
   lastPointerTime = event.timeStamp || performance.now();
   spinVelocity = 0;
+  idleResumeAt = Number.POSITIVE_INFINITY;
   canvas.setPointerCapture(event.pointerId);
 });
 
@@ -1530,6 +1633,7 @@ canvas.addEventListener('pointerup', (event) => {
   }
 
   pointerId = null;
+  idleResumeAt = performance.now() + layerControls.idleResumeDelay * 1000;
   event.preventDefault();
   canvas.releasePointerCapture(event.pointerId);
 });
@@ -1540,6 +1644,7 @@ canvas.addEventListener('pointercancel', (event) => {
   }
 
   pointerId = null;
+  idleResumeAt = performance.now() + layerControls.idleResumeDelay * 1000;
   event.preventDefault();
 });
 
