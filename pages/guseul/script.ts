@@ -208,10 +208,10 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
-  specLargeIntensity: 2.175,
-  specLargeSoftness: 1,
-  specMediumIntensity: 2.025,
-  specMediumSoftness: 1,
+  specLargeIntensity: 3.2625,
+  specLargeSoftness: 2 / 3,
+  specMediumIntensity: 3.0375,
+  specMediumSoftness: 2 / 3,
   outerStrokeEnabled: true,
 };
 
@@ -776,12 +776,12 @@ function setupGui(): void {
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
-  largeSpec.add(layerControls, 'specLargeIntensity', 0, 8, 0.005).name('intensity');
+  largeSpec.add(layerControls, 'specLargeIntensity', 0, 8, 0.0025).name('intensity');
   largeSpec.add(layerControls, 'specLargeSoftness', 0.45, 2.2, 0.01).name('softness');
 
   const mediumSpec = spec.addFolder('medium');
   mediumSpec.add(layerControls, 'specMediumEnabled').name('on');
-  mediumSpec.add(layerControls, 'specMediumIntensity', 0, 8, 0.005).name('intensity');
+  mediumSpec.add(layerControls, 'specMediumIntensity', 0, 8, 0.0025).name('intensity');
   mediumSpec.add(layerControls, 'specMediumSoftness', 0.45, 2.2, 0.01).name('softness');
 
   const composite = gui.addFolder('6 final composite');
