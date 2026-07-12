@@ -528,38 +528,3 @@ red/green/blue samples from normal dispersion
 ```
 
 This means flat white glass and uniform colored areas stay stable, while source edges that fold through the rim get a wider cyan/magenta halo. The tunable controls are `edge chroma` and `edge width` under `4 refraction apply`.
-
-## 2026-07-12 Monotonic Edge Lens Remap
-
-The reference edge behaves more like a wide optical lens than a uniformly enlarged decal. A connected strip of source pixels is compressed into the marble's outer band, so a nearby image stretches along the edge while an image farther from the edge does not appear there.
-
-The physical SDF refraction pass already produces a strong displacement, but its radial source coordinate can reverse direction near the outer edge:
-
-```text
-output radius increases
-  -> source radius moves inward
-  -> source radius briefly reverses
-  -> neighboring output pixels sample disconnected source regions
-```
-
-That reversal reads as a fold or a separate layer. Increasing `thickness`, `ior`, or `displace factor` makes the reversal stronger rather than producing a longer connected stretch.
-
-The renderer now builds a one-dimensional radial lookup table after the SDF field has been blurred. Inside the configurable edge-lens band, the table enforces a positive minimum derivative:
-
-```text
-correctedSource[i] = max(
-  physicalSource[i],
-  correctedSource[i - 1] + minimumDerivative * radialStep
-)
-```
-
-`stretch` lowers the allowed derivative, which packs a longer connected section of the source into the visible edge band. `fold guard` is the lowest derivative allowed at maximum stretch. The source coordinate therefore remains monotonic: it may move slowly enough to look stretched, but it cannot turn backward and split the image into multiple branches.
-
-Only the radial base offset is corrected. The red/blue dispersion deltas and any small tangential component from the blurred field are preserved, and each RGB channel is still sampled once. This is not a smear, tangent trail, or multi-direction accumulation pass.
-
-The controls under `4 refraction apply > edge lens` are:
-
-- `on`: compare the guarded edge lens with the raw physical refraction.
-- `lens width`: how far inward from the marble edge the monotonic correction begins.
-- `stretch`: how strongly source pixels are compressed into the edge band.
-- `fold guard`: the minimum source-coordinate slope at maximum stretch; lower values permit a longer stretch.

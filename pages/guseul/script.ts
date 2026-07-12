@@ -234,10 +234,6 @@ const layerControls = {
   displacementBlur: 3,
   ior: 1.65,
   refractionEnabled: true,
-  edgeLensEnabled: true,
-  edgeLensWidth: 0.2,
-  edgeLensStretch: 0.8,
-  edgeLensFoldGuard: 0.08,
   chromaticEnabled: true,
   dispersion: 0.24,
   chromaticEdgeStrength: 2,
@@ -282,8 +278,6 @@ let activeSurfaceField = rawSurfaceField;
 let surfaceFieldWidth = 0;
 let surfaceFieldHeight = 0;
 let surfaceFieldSignature = '';
-let edgeLensSourceRadii = new Float32Array();
-let edgeLensSignature = '';
 let visibleCircles: VisibleMarbleCircle[] = [];
 let view: View = {
   width: 1,
@@ -813,13 +807,6 @@ function setupGui(): void {
   refraction.add(layerControls, 'displacementFactor', 0, 2, 0.01).name('displace factor');
   refraction.add(layerControls, 'edgeFadeWidth', 0, 0.18, 0.001).name('edge fade');
   refraction.add(layerControls, 'ior', 1.01, 2.4, 0.01).name('ior');
-
-  const edgeLens = refraction.addFolder('edge lens');
-  edgeLens.add(layerControls, 'edgeLensEnabled').name('on');
-  edgeLens.add(layerControls, 'edgeLensWidth', 0.06, 0.4, 0.01).name('lens width');
-  edgeLens.add(layerControls, 'edgeLensStretch', 0, 1, 0.01).name('stretch');
-  edgeLens.add(layerControls, 'edgeLensFoldGuard', 0.01, 0.5, 0.01).name('fold guard');
-
   refraction.add(layerControls, 'chromaticEnabled').name('chromatic');
   refraction.add(layerControls, 'dispersion', 0, 0.5, 0.001).name('dispersion');
   refraction.add(layerControls, 'chromaticEdgeStrength', 0, 4, 0.01).name('edge chroma');
@@ -865,7 +852,6 @@ function setupGui(): void {
   scene.close();
   source.close();
   surface.close();
-  edgeLens.close();
   refraction.close();
   shell.close();
   composite.close();
@@ -1232,131 +1218,6 @@ function sampleSurfaceField(nx: number, ny: number, radial: number, params: Rend
   };
 }
 
-function getPhysicalSourceRadius(radial: number, params: RenderParams): number {
-  if (!params.controls.refractionEnabled || radial <= 0.0001) {
-    return radial;
-  }
-
-  const surface = sampleSurfaceField(radial, 0, radial, params);
-  const refractionHeight = surface.height * getDisplacementEdgeFade(radial, params.controls);
-  const ray = refractCameraRay(surface.slopeX, surface.slopeY, params.controls.ior);
-  const [offsetX] = rayToDisplacement(ray, refractionHeight);
-
-  return clamp(radial + offsetX / params.view.radius, 0, radial);
-}
-
-function renderEdgeLensMap(params: RenderParams): void {
-  const sampleCount = Math.max(Math.ceil(ballCanvas.width * 0.5) + 1, 2);
-  const controls = params.controls;
-  const signature = [
-    surfaceFieldSignature,
-    sampleCount,
-    controls.refractionEnabled,
-    controls.thickness,
-    controls.displacementFactor,
-    controls.edgeFadeWidth,
-    controls.ior,
-    controls.edgeLensEnabled,
-    controls.edgeLensWidth,
-    controls.edgeLensStretch,
-    controls.edgeLensFoldGuard,
-  ].join(':');
-
-  if (signature === edgeLensSignature) {
-    return;
-  }
-
-  if (edgeLensSourceRadii.length !== sampleCount) {
-    edgeLensSourceRadii = new Float32Array(sampleCount);
-  }
-
-  const maxIndex = sampleCount - 1;
-
-  for (let index = 0; index < sampleCount; index += 1) {
-    edgeLensSourceRadii[index] = getPhysicalSourceRadius(index / maxIndex, params);
-  }
-
-  if (controls.edgeLensEnabled && controls.refractionEnabled) {
-    const lensStart = clamp(1 - controls.edgeLensWidth, 0, 1);
-    const startIndex = Math.ceil(lensStart * maxIndex);
-    const radialStep = 1 / maxIndex;
-    const minimumDerivative = mix(
-      1,
-      clamp(controls.edgeLensFoldGuard, 0.001, 1),
-      clamp(controls.edgeLensStretch, 0, 1),
-    );
-
-    for (let index = startIndex + 1; index < sampleCount; index += 1) {
-      const radial = index / maxIndex;
-      const minimumSourceRadius = edgeLensSourceRadii[index - 1] + minimumDerivative * radialStep;
-
-      edgeLensSourceRadii[index] = Math.min(
-        radial,
-        Math.max(edgeLensSourceRadii[index], minimumSourceRadius),
-      );
-    }
-  }
-
-  edgeLensSignature = signature;
-}
-
-function sampleEdgeLensSourceRadius(radial: number): number {
-  const maxIndex = edgeLensSourceRadii.length - 1;
-
-  if (maxIndex <= 0) {
-    return radial;
-  }
-
-  const position = clamp(radial, 0, 1) * maxIndex;
-  const index = Math.floor(position);
-  const nextIndex = Math.min(index + 1, maxIndex);
-
-  return mix(edgeLensSourceRadii[index], edgeLensSourceRadii[nextIndex], position - index);
-}
-
-function remapEdgeLensOffsets(
-  nx: number,
-  ny: number,
-  radial: number,
-  radius: number,
-  baseOffset: [number, number],
-  redOffset: [number, number],
-  blueOffset: [number, number],
-  controls: LayerControls,
-): {
-  base: [number, number];
-  red: [number, number];
-  blue: [number, number];
-} {
-  const lensStart = 1 - controls.edgeLensWidth;
-
-  if (!controls.edgeLensEnabled || radial <= lensStart || radial <= 0.0001) {
-    return { base: baseOffset, red: redOffset, blue: blueOffset };
-  }
-
-  const normalX = nx / radial;
-  const normalY = ny / radial;
-  const baseRadialOffset = baseOffset[0] * normalX + baseOffset[1] * normalY;
-  const correctedRadialOffset = (sampleEdgeLensSourceRadius(radial) - radial) * radius;
-  const remap = (offset: [number, number]): [number, number] => {
-    const radialOffset = offset[0] * normalX + offset[1] * normalY;
-    const tangentX = offset[0] - normalX * radialOffset;
-    const tangentY = offset[1] - normalY * radialOffset;
-    const correctedChannelOffset = correctedRadialOffset + radialOffset - baseRadialOffset;
-
-    return [
-      normalX * correctedChannelOffset + tangentX,
-      normalY * correctedChannelOffset + tangentY,
-    ];
-  };
-
-  return {
-    base: remap(baseOffset),
-    red: remap(redOffset),
-    blue: remap(blueOffset),
-  };
-}
-
 function sampleSurfaceFieldPreview(nx: number, ny: number, radial: number, params: RenderParams): RGBA {
   const surface = sampleSurfaceField(nx, ny, radial, params);
   const rim = surface.rim;
@@ -1460,32 +1321,19 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
   const surface = sampleSurfaceField(nx, ny, radial, params);
   const refractionHeight = surface.height * getDisplacementEdgeFade(radial, params.controls);
   const baseRay = refractCameraRay(surface.slopeX, surface.slopeY, params.controls.ior);
-  const physicalBaseOffset = rayToDisplacement(baseRay, refractionHeight);
-  const physicalRedOffset: [number, number] = params.controls.chromaticEnabled
+  const [baseOffsetX, baseOffsetY] = rayToDisplacement(baseRay, refractionHeight);
+  const redSource = params.controls.chromaticEnabled
     ? rayToDisplacement(
       refractCameraRay(surface.slopeX, surface.slopeY, params.controls.ior + params.controls.dispersion),
       refractionHeight,
     )
-    : physicalBaseOffset;
-  const physicalBlueOffset: [number, number] = params.controls.chromaticEnabled
+    : [baseOffsetX, baseOffsetY];
+  const blueSource = params.controls.chromaticEnabled
     ? rayToDisplacement(
       refractCameraRay(surface.slopeX, surface.slopeY, Math.max(params.controls.ior - params.controls.dispersion, 1.0001)),
       refractionHeight,
     )
-    : physicalBaseOffset;
-  const remappedOffsets = remapEdgeLensOffsets(
-    nx,
-    ny,
-    radial,
-    radius,
-    physicalBaseOffset,
-    physicalRedOffset,
-    physicalBlueOffset,
-    params.controls,
-  );
-  const [baseOffsetX, baseOffsetY] = remappedOffsets.base;
-  const redSource = remappedOffsets.red;
-  const blueSource = remappedOffsets.blue;
+    : [baseOffsetX, baseOffsetY];
 
   const sampleAtOffset = ([offsetX, offsetY]: number[]): RGBA => sampleContent(
     radius + nx * radius + offsetX,
@@ -1578,7 +1426,6 @@ function sampleLiquidGlass(nx: number, ny: number, radial: number, params: Rende
 function renderGlassBall(params: RenderParams): void {
   drawContentLayer(params);
   renderSurfaceField(params);
-  renderEdgeLensMap(params);
 
   const size = ballCanvas.width;
   const image = ballCtx.createImageData(size, size);
