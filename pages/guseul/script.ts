@@ -28,6 +28,8 @@ type VisibleMarbleCircle = MarbleCircle & {
   fillAlpha: number;
   hazeAlpha: number;
   blur: number;
+  saturation: number;
+  brightness: number;
   back: boolean;
   strokeAlpha: number;
 };
@@ -729,9 +731,11 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
       dot: depth,
       z: -depth,
       scale: mix(edgeScaleFloor * 0.9, Math.max(0.58, edgeScaleFloor), depth ** 0.58),
-      fillAlpha: mix(0.54, 0.76, depth ** 0.68),
-      hazeAlpha: mix(0.18, 0.08, depth),
-      blur: mix(1.35, 0.52, depth),
+      fillAlpha: mix(0.82, 0.92, depth ** 0.68),
+      hazeAlpha: mix(0.03, 0, depth),
+      blur: mix(0.45, 0.15, depth),
+      saturation: mix(0.9, 0.95, depth),
+      brightness: mix(0.92, 0.96, depth),
       back: true,
       strokeAlpha: 0,
     };
@@ -751,6 +755,8 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
     fillAlpha: mix(0.94, 1, frontDepth),
     hazeAlpha: mix(0.035, 0, frontDepth),
     blur: 0,
+    saturation: 1,
+    brightness: 1,
     back: false,
     strokeAlpha: mix(0.65, 1, frontDepth),
   };
@@ -926,7 +932,7 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
     : 0;
 
   contentCtx.save();
-  contentCtx.filter = circle.blur > 0 ? `blur(${circle.blur}px)` : 'none';
+  contentCtx.filter = `blur(${circle.blur}px) saturate(${circle.saturation}) brightness(${circle.brightness})`;
   contentCtx.beginPath();
   contentCtx.arc(centerX, centerY, size, 0, Math.PI * 2);
   contentCtx.clip();
@@ -1452,7 +1458,7 @@ function renderGlassBall(params: RenderParams): void {
         ? 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08
         : 1;
       const glassMilk = !previewSurface && params.controls.glassMilkEnabled
-        ? 0.025 + edgeT * 0.22 + smoothstep(0.92, 1, radial) * 0.18
+        ? 0.005 + edgeT * 0.1 + smoothstep(0.92, 1, radial) * 0.08
         : 0;
       const topWash = !previewSurface && params.controls.topWashEnabled
         ? smoothstep(0.18, -0.82, ny) * smoothstep(0.98, 0.16, radial)
@@ -1464,9 +1470,9 @@ function renderGlassBall(params: RenderParams): void {
       const specSample = hasAreaSpec ? sampleSpecHighlights(specReflection, preparedSpecs) : { shell: 0, debugMask: 0 };
       const shell = params.controls.specDebugEnabled ? 0 : specSample.shell;
 
-      let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 18 + rim * 10 - hardRim * 5 + caRim * 6;
-      let g = mix(sampleG * innerShade, 255, glassMilk) + shell + topWash * 19 + rim * 11 - hardRim * 6;
-      let b = mix(sampleB * innerShade, 255, glassMilk * 0.94) + shell + topWash * 21 + rim * 15 - hardRim * 2;
+      let r = mix(sampleR * innerShade, 255, glassMilk) + shell + topWash * 8 + rim * 10 - hardRim * 5 + caRim * 6;
+      let g = mix(sampleG * innerShade, 255, glassMilk) + shell + topWash * 9 + rim * 11 - hardRim * 6;
+      let b = mix(sampleB * innerShade, 255, glassMilk * 0.94) + shell + topWash * 10 + rim * 15 - hardRim * 2;
 
       if (params.controls.specDebugEnabled && specSample.debugMask > 0.01) {
         const debugAlpha = clamp(specSample.debugMask * params.controls.specDebugOpacity * 1.35, 0, 1);
