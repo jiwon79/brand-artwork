@@ -134,16 +134,16 @@ const marbleCirclePalette = [
 const urlParams = new URLSearchParams(window.location.search);
 const initialSpecDebugColor: SpecDebugColor = urlParams.get('specDebugColor') === 'black' ? 'black' : 'red';
 const specCarrierPositions: Vec3[] = [
-  [0.2, -0.22, 0.96],
-  [0.43, -0.28, 0.86],
+  [0.1747, -0.1603, 0.9715],
+  [0.5061, -0.2492, 0.8257],
   [0.08, 0.86, 0.5],
   [-0.93, -0.12, 0.35],
   [-0.68, 0.35, 0.64],
-  [0.1, -0.5, 0.86],
+  [0.0338, -0.563, 0.8258],
   [0.76, 0.18, -0.62],
   [0.08, -0.9, -0.42],
-  [-0.42, -0.28, -0.86],
-  [-0.62, -0.2, -0.76],
+  [-0.3695, -0.2981, -0.8801],
+  [-0.6622, -0.1785, -0.7278],
   [-0.18, 0.72, -0.67],
 ];
 
