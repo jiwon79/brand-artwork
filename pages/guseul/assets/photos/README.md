@@ -4,8 +4,8 @@ The WebP files in this directory are resized derivatives used inside the Guseul 
 
 - `soft-glass.webp`: [Unsplash Yc6Ik-48C18](https://unsplash.com/photos/abstract-pastel-colors-and-flowing-shapes-Yc6Ik-48C18)
 - `spectrum-flow.webp`: [Unsplash UmflEuFW7Cg](https://unsplash.com/photos/a-colorful-abstract-background-with-gradient-hues-UmflEuFW7Cg)
-- `geometric-shadows.webp`: [Pexels 33860174](https://www.pexels.com/photo/colorful-geometric-abstract-design-with-shadows-33860174/)
-- `blue-waves.webp`: [Unsplash dYksH3vHorc](https://unsplash.com/photos/blue-waves-form-a-soft-abstract-gradient-dYksH3vHorc)
+- `peach-gradient.webp`: [Unsplash L09ANH0Ppwg](https://unsplash.com/photos/soft-gradient-of-orange-pink-and-yellow-hues-L09ANH0Ppwg)
+- `blue-teal-gradient.webp`: [Unsplash Srgu49rAgDI](https://unsplash.com/photos/abstract-background-with-blue-teal-and-purple-gradients-Srgu49rAgDI)
 - `teal-rings.webp`: [Unsplash Vp-QJCdP1V8](https://unsplash.com/photos/abstract-swirling-waves-of-teal-pink-and-gold-colors-Vp-QJCdP1V8)
 - `pink-orange-light.webp`: [Unsplash fq1t-jpinwI](https://unsplash.com/photos/pink-and-orange-light-digital-wallpaper-fq1t-jpinwI)
 - `pink-waves.webp`: [Unsplash ReQUxBhCZD8](https://unsplash.com/photos/a-pink-and-blue-abstract-background-with-waves-ReQUxBhCZD8)

@@ -145,8 +145,8 @@ const marbleCirclePalette = [
 const circleArtworkSources = [
   { src: new URL('./assets/photos/soft-glass.webp', import.meta.url).href, focalX: 0.54, focalY: 0.52, zoom: 1.04 },
   { src: new URL('./assets/photos/spectrum-flow.webp', import.meta.url).href, focalX: 0.5, focalY: 0.5, zoom: 1.02 },
-  { src: new URL('./assets/photos/geometric-shadows.webp', import.meta.url).href, focalX: 0.53, focalY: 0.48, zoom: 1.08 },
-  { src: new URL('./assets/photos/blue-waves.webp', import.meta.url).href, focalX: 0.5, focalY: 0.54, zoom: 1.04 },
+  { src: new URL('./assets/photos/peach-gradient.webp', import.meta.url).href, focalX: 0.5, focalY: 0.5, zoom: 1.02 },
+  { src: new URL('./assets/photos/blue-teal-gradient.webp', import.meta.url).href, focalX: 0.5, focalY: 0.5, zoom: 1.02 },
   { src: new URL('./assets/photos/teal-rings.webp', import.meta.url).href, focalX: 0.52, focalY: 0.5, zoom: 1.06 },
   { src: new URL('./assets/photos/pink-orange-light.webp', import.meta.url).href, focalX: 0.5, focalY: 0.48, zoom: 1.05 },
   { src: new URL('./assets/photos/pink-waves.webp', import.meta.url).href, focalX: 0.52, focalY: 0.64, zoom: 1.06 },
