@@ -39,7 +39,7 @@ type View = {
   radius: number;
 };
 
-type DemoMode = 'none' | 'two' | 'three';
+type DemoMode = 'none' | 'two' | 'three' | 'transition';
 
 const maxDeformers = 10;
 const identityMatrix: Mat2 = [1, 0, 0, 1];
@@ -61,9 +61,11 @@ const query = new URLSearchParams(window.location.search);
 const requestedDemo = query.get('demo');
 const initialDemo: DemoMode = requestedDemo === '2'
   ? 'two'
-  : requestedDemo === '3' || requestedDemo === '1'
-    ? 'three'
-    : 'none';
+  : requestedDemo === 'transition'
+    ? 'transition'
+    : requestedDemo === '3' || requestedDemo === '1'
+      ? 'three'
+      : 'none';
 
 const controls = {
   minCompression: 0.5,
@@ -72,6 +74,8 @@ const controls = {
   globalRigidity: 2,
   influenceRadius: 1.12,
   residualStrength: 1.3,
+  maxLocalWarp: 0.42,
+  minThickness: 0.48,
   springFrequency: 3.1,
   springDamping: 0.34,
   baseColor: '#d8eff0',
@@ -284,6 +288,8 @@ let shapeState: ShapeState = {
 let previousTime = performance.now();
 let demoTime = 0;
 let demoNeedsSetup = controls.demoMode !== 'none' && !prefersReducedMotion;
+let multiReferenceMatrix: Mat2 = identityMatrix;
+let transitionThirdStart: Vec2 | null = null;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -338,7 +344,10 @@ function twoPointTransform(items: Deformer[]): { matrix: Mat2; translation: Vec2
   const restDistance = Math.max(length(restAxis), 0.08);
   const currentDistance = Math.max(length(currentAxis), 0.02);
   const majorScale = clamp(currentDistance / restDistance, controls.minCompression, controls.maxStretch);
-  const minorScale = Math.pow(majorScale, -controls.transverseExponent);
+  const minorScale = Math.max(
+    Math.pow(majorScale, -controls.transverseExponent),
+    controls.minThickness,
+  );
   const restAngle = Math.atan2(restAxis.y, restAxis.x);
   const currentAngle = Math.atan2(currentAxis.y, currentAxis.x);
   const restCosine = Math.cos(restAngle);
@@ -379,10 +388,10 @@ function multiPointTransform(items: Deformer[]): { matrix: Mat2; translation: Ve
   let sxx = controls.globalRigidity;
   let sxy = 0;
   let syy = controls.globalRigidity;
-  let cxx = controls.globalRigidity;
-  let cxy = 0;
-  let cyx = 0;
-  let cyy = controls.globalRigidity;
+  let cxx = controls.globalRigidity * multiReferenceMatrix[0];
+  let cxy = controls.globalRigidity * multiReferenceMatrix[1];
+  let cyx = controls.globalRigidity * multiReferenceMatrix[2];
+  let cyy = controls.globalRigidity * multiReferenceMatrix[3];
 
   for (const item of items) {
     const rest = subtract(item.anchor, restMean);
@@ -447,12 +456,27 @@ function computeShapeState(): ShapeState {
   const transform = items.length === 2
     ? twoPointTransform(items)
     : multiPointTransform(items);
-  const residuals = items.length < 3
+  let residuals = items.length < 3
     ? []
     : items.map((item) => {
       const mapped = add(applyMatrix(transform.matrix, item.anchor), transform.translation);
       return { anchor: item.anchor, displacement: subtract(item.position, mapped) };
     });
+
+  const maximumResidual = residuals.reduce(
+    (maximum, residual) => Math.max(maximum, length(residual.displacement)),
+    0,
+  );
+  const safeResidual = controls.influenceRadius * controls.maxLocalWarp;
+  const effectiveMaximum = maximumResidual * controls.residualStrength;
+  if (effectiveMaximum > 0.0001 && safeResidual > 0.0001) {
+    const limitedResidual = Math.tanh(effectiveMaximum / safeResidual) * safeResidual;
+    const residualScale = limitedResidual / effectiveMaximum;
+    residuals = residuals.map((residual) => ({
+      anchor: residual.anchor,
+      displacement: scale(residual.displacement, residualScale),
+    }));
+  }
 
   return {
     matrix: transform.matrix,
@@ -492,6 +516,20 @@ function inverseDeform(position: Vec2, state: ShapeState): Vec2 {
   return restPosition;
 }
 
+function forwardDeform(restPosition: Vec2, state: ShapeState): Vec2 {
+  return add(
+    add(applyMatrix(state.matrix, restPosition), state.translation),
+    residualAt(restPosition, state),
+  );
+}
+
+function updateTopologyReference(previousCount: number, nextCount: number): void {
+  if (previousCount === nextCount) return;
+  multiReferenceMatrix = nextCount >= 3
+    ? [...shapeState.matrix] as Mat2
+    : identityMatrix;
+}
+
 function resize(): void {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -529,10 +567,14 @@ function stopDemo(): void {
   for (const id of [...deformers.keys()]) {
     if (id < 0) deformers.delete(id);
   }
+  multiReferenceMatrix = identityMatrix;
+  transitionThirdStart = null;
 }
 
 function clearDeformers(): void {
   deformers.clear();
+  multiReferenceMatrix = identityMatrix;
+  transitionThirdStart = null;
   demoNeedsSetup = controls.demoMode !== 'none' && !prefersReducedMotion;
 }
 
@@ -553,7 +595,7 @@ function setupDemo(): void {
   deformers.clear();
   demoTime = 0;
 
-  if (controls.demoMode === 'two') {
+  if (controls.demoMode === 'two' || controls.demoMode === 'transition') {
     createDemoDeformer(-1, { x: -0.52, y: 0 }, 0);
     createDemoDeformer(-2, { x: 0.52, y: 0 }, Math.PI);
   } else if (controls.demoMode === 'three') {
@@ -575,6 +617,16 @@ function updateDemo(delta: number): void {
     const radialLength = Math.max(length(item.anchor), 0.01);
     const radial = scale(item.anchor, 1 / radialLength);
     const tangent = { x: -radial.y, y: radial.x };
+
+    if (controls.demoMode === 'transition') {
+      if (item.id === -1 || item.id === -2) {
+        const direction = Math.sign(item.anchor.x);
+        item.target = { x: item.anchor.x + direction * 0.42, y: item.anchor.y };
+        item.position = { ...item.target };
+      }
+      continue;
+    }
+
     const threePointBase = item.id === -1 ? 0.66 : item.id === -2 ? 0.38 : 0.56;
     const outward = controls.demoMode === 'two'
       ? 0.28 + Math.sin(demoTime * 1.25) * 0.2
@@ -585,12 +637,40 @@ function updateDemo(delta: number): void {
     item.target = add(item.anchor, add(scale(radial, outward), scale(tangent, sway)));
     item.position = { ...item.target };
   }
+
+  if (controls.demoMode === 'transition' && demoTime >= 1.5) {
+    let third = deformers.get(-3);
+    if (!third) {
+      const previousCount = deformers.size;
+      const anchor = { x: 0, y: 0.56 };
+      transitionThirdStart = forwardDeform(anchor, shapeState);
+      createDemoDeformer(-3, anchor, 0);
+      third = deformers.get(-3);
+      if (third && transitionThirdStart) {
+        third.position = { ...transitionThirdStart };
+        third.target = { ...transitionThirdStart };
+      }
+      updateTopologyReference(previousCount, deformers.size);
+    }
+
+    if (third && transitionThirdStart) {
+      const progress = clamp((demoTime - 1.5) / 1.2, 0, 1);
+      const easedProgress = progress * progress * (3 - 2 * progress);
+      const destination = { x: 0.06, y: 1.16 };
+      third.target = add(
+        scale(transitionThirdStart, 1 - easedProgress),
+        scale(destination, easedProgress),
+      );
+      third.position = { ...third.target };
+    }
+  }
 }
 
 function updateSprings(delta: number): void {
   const angularFrequency = Math.PI * 2 * controls.springFrequency;
   const damping = 2 * controls.springDamping * angularFrequency;
   const stiffness = angularFrequency * angularFrequency;
+  const previousCount = deformers.size;
 
   for (const [id, item] of deformers) {
     if (item.active) {
@@ -608,6 +688,7 @@ function updateSprings(delta: number): void {
       deformers.delete(id);
     }
   }
+  updateTopologyReference(previousCount, deformers.size);
 }
 
 function hexToRgb(color: string): [number, number, number] {
@@ -676,6 +757,7 @@ canvas.addEventListener('pointerdown', (event) => {
   if (!isInsideShape(position)) return;
   const anchor = inverseDeform(position, shapeState);
   const persistent = event.pointerType === 'mouse' && event.shiftKey;
+  const previousCount = deformers.size;
   deformers.set(event.pointerId, {
     id: event.pointerId,
     anchor,
@@ -686,6 +768,7 @@ canvas.addEventListener('pointerdown', (event) => {
     persistent,
     demoPhase: 0,
   });
+  updateTopologyReference(previousCount, deformers.size);
   canvas.setPointerCapture(event.pointerId);
   event.preventDefault();
 });
@@ -726,6 +809,7 @@ function setupGui(): void {
   const actions = {
     demo2Point: () => startDemo('two'),
     demo3Point: () => startDemo('three'),
+    demoTransition: () => startDemo('transition'),
     reset: () => {
       controls.demoMode = 'none';
       clearDeformers();
@@ -734,15 +818,18 @@ function setupGui(): void {
 
   gui.add(actions, 'demo2Point').name('2-point ellipse');
   gui.add(actions, 'demo3Point').name('3-point RBF');
+  gui.add(actions, 'demoTransition').name('2 + add third');
   gui.add(actions, 'reset').name('reset');
 
   const shape = gui.addFolder('1 shape field');
   shape.add(controls, 'minCompression', 0.25, 1, 0.01).name('min compression');
   shape.add(controls, 'maxStretch', 1.2, 4, 0.05).name('max stretch');
   shape.add(controls, 'transverseExponent', 0, 1, 0.01).name('area preservation');
+  shape.add(controls, 'minThickness', 0.2, 1, 0.01).name('min thickness');
   shape.add(controls, 'globalRigidity', 0.02, 4, 0.01).name('global rigidity');
   shape.add(controls, 'influenceRadius', 0.2, 1.5, 0.01).name('RBF radius');
   shape.add(controls, 'residualStrength', 0, 1.8, 0.01).name('RBF strength');
+  shape.add(controls, 'maxLocalWarp', 0.1, 0.8, 0.01).name('fold limit');
   shape.close();
 
   const spring = gui.addFolder('2 release spring');

@@ -32,6 +32,19 @@ screen pixel through the affine and RBF fields before sampling the rest circle.
 The RBF has continuous derivatives at the end of its support, preventing the
 visible kinks created by independently constrained boundary vertices.
 
+RBF residuals are globally saturated before rendering so their displacement
+cannot exceed a safe fraction of the support radius. This keeps the inverse
+map contractive and prevents folds or split-looking interiors during extreme
+pulls. The two-point ellipse also has a minimum transverse thickness.
+
+## Contact-count continuity
+
+When a third contact is added, the current two-point ellipse matrix becomes the
+regularization reference for the new multi-point solve. At the insertion frame,
+all three contact pairs therefore reproduce the existing ellipse. New RBF
+deformation starts from movement after that frame instead of solving a new
+shape from the undeformed identity circle.
+
 ## Rendering
 
 - A full-screen WebGL2 triangle runs the implicit field fragment shader.
@@ -46,7 +59,8 @@ visible kinks created by independently constrained boundary vertices.
 - Releasing one contact springs only that control point back to rest.
 - Shift-drag leaves a desktop contact fixed for multi-contact testing.
 - `2-point ellipse` and `3-point RBF` provide automated comparison modes.
-- `?demo=2` and `?demo=3` start those modes on page load.
+- `2 + add third` specifically verifies contact-count continuity.
+- `?demo=2`, `?demo=3`, and `?demo=transition` start those modes on page load.
 
 ## Glass integration
 
