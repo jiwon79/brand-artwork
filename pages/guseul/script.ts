@@ -74,6 +74,7 @@ type RenderParams = {
   view: View;
   controls: LayerControls;
   orientation: Matrix3;
+  specOrientation: Matrix3;
 };
 
 type Renderer = {
@@ -144,6 +145,7 @@ const layerControls = {
   shadowEnabled: true,
   marbleScale: 1.22,
   dragSensitivity: 1,
+  specRotationGain: 1.8,
   contentOverscan: 0.46,
   circleCount: 10,
   circleSizeScale: 1.75,
@@ -220,10 +222,15 @@ let view: View = {
   radius: 1,
 };
 
-let sphereOrientation = multiplyMatrix3(
-  rotationMatrixFromAxisAngle([0, 1, 0], 0.14),
-  rotationMatrixFromAxisAngle([1, 0, 0], -0.1),
-);
+function createInitialOrientation(): Matrix3 {
+  return multiplyMatrix3(
+    rotationMatrixFromAxisAngle([0, 1, 0], 0.14),
+    rotationMatrixFromAxisAngle([1, 0, 0], -0.1),
+  );
+}
+
+let sphereOrientation = createInitialOrientation();
+let specOrientation = createInitialOrientation();
 let spinAxis: Vec3 = [0, 0, 0];
 let spinVelocity = 0;
 let pointerId: number | null = null;
@@ -238,6 +245,7 @@ function getRenderParams(): RenderParams {
     view,
     controls: layerControls,
     orientation: sphereOrientation,
+    specOrientation,
   };
 }
 
@@ -558,6 +566,10 @@ function applyScreenAxisRotation(axis: Vec3, angle: number): void {
     rotationMatrixFromAxisAngle(axis, angle),
     sphereOrientation,
   );
+  specOrientation = multiplyMatrix3(
+    rotationMatrixFromAxisAngle(axis, angle * layerControls.specRotationGain),
+    specOrientation,
+  );
 }
 
 function applyBackgroundColor(): void {
@@ -670,6 +682,7 @@ function setupGui(): void {
   shell.add(layerControls, 'caRimEnabled').name('ca rim');
 
   const spec = shell.addFolder('spec highlights');
+  spec.add(layerControls, 'specRotationGain', 0.5, 2.5, 0.01).name('rotation gain');
   spec.add(layerControls, 'specDebugEnabled').name('debug fill');
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
@@ -1237,7 +1250,7 @@ function renderGlassBall(params: RenderParams): void {
   const image = ballCtx.createImageData(size, size);
   const data = image.data;
   const radiusPx = size * 0.5;
-  const inverseOrientation = transposeMatrix3(params.orientation);
+  const inverseSpecOrientation = transposeMatrix3(params.specOrientation);
 
   for (let y = 0; y < size; y += 1) {
     const ny = (y + 0.5) / radiusPx - 1;
@@ -1276,7 +1289,7 @@ function renderGlassBall(params: RenderParams): void {
         ((params.controls.specLargeEnabled && params.controls.specLargeIntensity > 0) ||
           (params.controls.specMediumEnabled && params.controls.specMediumIntensity > 0) ||
           (params.controls.specStripEnabled && params.controls.specStripIntensity > 0));
-      const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz, inverseOrientation) : [0, 0, 1];
+      const specReflection: Vec3 = hasAreaSpec ? getSpecularReflection(nx, ny, nz, inverseSpecOrientation) : [0, 0, 1];
       const specSample = hasAreaSpec ? sampleSpecHighlights(specReflection, params) : { shell: 0, debugMask: 0 };
       const shell = params.controls.specDebugEnabled ? 0 : specSample.shell;
 
