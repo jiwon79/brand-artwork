@@ -45,7 +45,7 @@ following source: sourcePoint = q + refractionOffset
 
 Because the later composite maps `q` to `D * q`, the fixed-source equation cancels the visual stretching of the photos. The deformed glass surface still controls clipping, normal direction, refraction, chromatic separation, and shell lighting.
 
-`source follow` interpolates between the two coordinate systems. Its default is `0`, so source photos remain fixed while the glass deforms. A value of `1` reproduces the previous whole-image stretch.
+`source follow` interpolates between the two coordinate systems. Its default is `0.3`, so source photos respond slightly without looking printed onto the elastic glass. A value of `0` keeps the source completely fixed, while `1` reproduces the previous whole-image stretch.
 
 ## Spring Model
 
@@ -80,7 +80,7 @@ Defaults:
 sensitivity       0.85
 min compression   0.72
 max stretch       1.35
-source follow      0.0
+source follow      0.3
 spring frequency  3.0 Hz
 spring damping    0.28
 ```

@@ -190,6 +190,10 @@ const circleArtworks: CircleArtwork[] = circleArtworkSources.map((source) => {
 });
 
 const urlParams = new URLSearchParams(window.location.search);
+const sourceFollowParam = urlParams.get('sourceFollow');
+const initialSourceFollow = sourceFollowParam === null
+  ? 0.3
+  : clamp(Number(sourceFollowParam) || 0, 0, 1);
 const initialSpecDebugColor: SpecDebugColor = urlParams.get('specDebugColor') === 'black' ? 'black' : 'red';
 const specCarrierPositions: Vec3[] = [
   [0.1039, 0.0024, 0.9946],
@@ -230,7 +234,7 @@ const layerControls = {
   pinchSensitivity: 0.85,
   minCompression: 0.72,
   maxStretch: 1.35,
-  pinchSourceFollow: clamp(Number(urlParams.get('sourceFollow')) || 0, 0, 1),
+  pinchSourceFollow: initialSourceFollow,
   springFrequency: 3,
   springDamping: 0.28,
   specRotationGain: 1.8,
