@@ -7,27 +7,18 @@ without a visible or simulated triangle mesh. WebGL2 evaluates the shape as an
 implicit signed distance field for every pixel, so the silhouette does not have
 polygon corners or constraint bands.
 
-## Touch models
+## Unified touch model
 
-### One contact
+Every contact count uses the same center-anchored least-squares affine and RBF
+field. There are no separate translation, exact ellipse, or three-point modes.
+The affine translation is always zero, and the RBF displacement is smoothly
+gated to zero around the origin. Together these act as a permanent virtual
+contact at the center of the ball.
 
-One pointer translates the circle. On release, its control point returns to its
-rest position with a damped spring.
-
-### Two contacts
-
-The line between the two rest contacts becomes the ellipse's major axis. The
-current contact distance controls major-axis scale, while the perpendicular
-axis uses `majorScale ^ -areaPreservation`. Rotation and midpoint translation
-come directly from the two contact pairs. This maps both fingers exactly and
-recreates the earlier directional ellipse behavior.
-
-### Three or more contacts
-
-A regularized least-squares affine transform captures the global translation,
-rotation, scale, and shear. The remaining error at every contact becomes a
-compact Wendland RBF displacement. The shader iteratively inverse-maps each
-screen pixel through the affine and RBF fields before sampling the rest circle.
+The affine captures stable global scale, rotation, and shear. The remaining
+error at every pointer becomes a compact Wendland RBF displacement. The shader
+iteratively inverse-maps each screen pixel through both fields before sampling
+the rest circle.
 
 The RBF has continuous derivatives at the end of its support, preventing the
 visible kinks created by independently constrained boundary vertices.
@@ -35,15 +26,18 @@ visible kinks created by independently constrained boundary vertices.
 RBF residuals are globally saturated before rendering so their displacement
 cannot exceed a safe fraction of the support radius. This keeps the inverse
 map contractive and prevents folds or split-looking interiors during extreme
-pulls. The two-point ellipse also has a minimum transverse thickness.
+pulls.
 
 ## Contact-count continuity
 
-When a third contact is added, the current two-point ellipse matrix becomes the
-regularization reference for the new multi-point solve. At the insertion frame,
-all three contact pairs therefore reproduce the existing ellipse. New RBF
-deformation starts from movement after that frame instead of solving a new
-shape from the undeformed identity circle.
+New contacts start with zero solver influence and ramp to full influence over a
+short interval. Their anchor is sampled through the current inverse field, so
+the existing shape remains unchanged on the insertion frame.
+
+Released contacts return to their anchors but remain in the same solver set.
+They are cleared as one batch only after every active contact is released and
+every spring has settled. This avoids count-driven `3 -> 2 -> 1 -> 0` formula
+changes during release.
 
 ## Rendering
 
@@ -58,9 +52,12 @@ shape from the undeformed identity circle.
 - Pointer Events support up to ten simultaneous contacts.
 - Releasing one contact springs only that control point back to rest.
 - Shift-drag leaves a desktop contact fixed for multi-contact testing.
-- `2-point ellipse` and `3-point RBF` provide automated comparison modes.
+- `2-point anchored` and `3-point RBF` provide automated comparison modes.
 - `2 + add third` specifically verifies contact-count continuity.
-- `?demo=2`, `?demo=3`, and `?demo=transition` start those modes on page load.
+- `regression: release all` reproduces a three-contact simultaneous release.
+- `regression: re-entry` adds a new contact while an earlier one is returning.
+- Query demos use `?demo=2`, `?demo=3`, `?demo=transition`,
+  `?demo=release-all`, and `?demo=single-reentry`.
 
 ## Glass integration
 

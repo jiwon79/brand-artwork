@@ -13,6 +13,7 @@ type Deformer = {
   position: Vec2;
   target: Vec2;
   velocity: Vec2;
+  influence: number;
   active: boolean;
   persistent: boolean;
   demoPhase: number;
@@ -39,7 +40,7 @@ type View = {
   radius: number;
 };
 
-type DemoMode = 'none' | 'two' | 'three' | 'transition';
+type DemoMode = 'none' | 'two' | 'three' | 'transition' | 'releaseAll' | 'singleReentry';
 
 const maxDeformers = 10;
 const identityMatrix: Mat2 = [1, 0, 0, 1];
@@ -63,19 +64,22 @@ const initialDemo: DemoMode = requestedDemo === '2'
   ? 'two'
   : requestedDemo === 'transition'
     ? 'transition'
+    : requestedDemo === 'release-all'
+      ? 'releaseAll'
+      : requestedDemo === 'single-reentry'
+        ? 'singleReentry'
     : requestedDemo === '3' || requestedDemo === '1'
       ? 'three'
       : 'none';
 
 const controls = {
-  minCompression: 0.5,
   maxStretch: 2.8,
-  transverseExponent: 0.5,
   globalRigidity: 2,
   influenceRadius: 1.12,
   residualStrength: 1.3,
   maxLocalWarp: 0.42,
-  minThickness: 0.48,
+  centerLockRadius: 0.34,
+  contactBlendDuration: 0.16,
   springFrequency: 3.1,
   springDamping: 0.34,
   baseColor: '#d8eff0',
@@ -87,6 +91,13 @@ const controls = {
   showContacts: false,
   normalDebug: false,
   demoMode: initialDemo,
+};
+
+const debugStats = {
+  activeContacts: 0,
+  returningContacts: 0,
+  solverContacts: 0,
+  solver: 'center anchored',
 };
 
 const vertexShaderSource = `#version 300 es
@@ -120,6 +131,7 @@ uniform int uHandleCount;
 uniform vec2 uHandles[MAX_DEFORMERS];
 uniform float uInfluenceRadius;
 uniform float uResidualStrength;
+uniform float uCenterLockRadius;
 uniform vec3 uBaseColor;
 uniform vec3 uCoolTint;
 uniform vec3 uWarmTint;
@@ -148,7 +160,8 @@ vec2 residualAt(vec2 restPosition) {
     weightSum += weight;
   }
 
-  return displacement * uResidualStrength / max(1.0, weightSum);
+  float centerGate = smoothstep(0.0, uCenterLockRadius, length(restPosition));
+  return displacement * uResidualStrength * centerGate / max(1.0, weightSum);
 }
 
 vec2 inverseDeform(vec2 screenPosition) {
@@ -211,6 +224,12 @@ void main() {
       color = mix(color, vec3(0.06, 0.22, 0.23), dotMask * 0.82);
       color = mix(color, vec3(1.0), ringMask * 0.5);
     }
+
+    float centerDistance = length(position);
+    float centerDot = 1.0 - smoothstep(0.016, 0.026, centerDistance);
+    float centerRing = 1.0 - smoothstep(0.006, 0.014, abs(centerDistance - 0.078));
+    color = mix(color, vec3(0.03, 0.13, 0.14), centerDot * 0.92);
+    color = mix(color, vec3(0.35, 0.95, 0.88), centerRing * 0.72);
   }
 
   outputColor = vec4(color, 1.0);
@@ -266,6 +285,7 @@ const uniform = {
   handles: gl.getUniformLocation(program, 'uHandles[0]'),
   influenceRadius: gl.getUniformLocation(program, 'uInfluenceRadius'),
   residualStrength: gl.getUniformLocation(program, 'uResidualStrength'),
+  centerLockRadius: gl.getUniformLocation(program, 'uCenterLockRadius'),
   baseColor: gl.getUniformLocation(program, 'uBaseColor'),
   coolTint: gl.getUniformLocation(program, 'uCoolTint'),
   warmTint: gl.getUniformLocation(program, 'uWarmTint'),
@@ -288,8 +308,9 @@ let shapeState: ShapeState = {
 let previousTime = performance.now();
 let demoTime = 0;
 let demoNeedsSetup = controls.demoMode !== 'none' && !prefersReducedMotion;
-let multiReferenceMatrix: Mat2 = identityMatrix;
 let transitionThirdStart: Vec2 | null = null;
+let demoReleased = false;
+let demoAddedContact = false;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -330,51 +351,21 @@ function inverseMatrix(matrix: Mat2): Mat2 {
   ];
 }
 
-function average(points: Vec2[]): Vec2 {
-  if (points.length === 0) return { x: 0, y: 0 };
-  const total = points.reduce((sum, point) => add(sum, point), { x: 0, y: 0 });
-  return scale(total, 1 / points.length);
-}
-
-function twoPointTransform(items: Deformer[]): { matrix: Mat2; translation: Vec2 } {
-  const restMidpoint = scale(add(items[0].anchor, items[1].anchor), 0.5);
-  const currentMidpoint = scale(add(items[0].position, items[1].position), 0.5);
-  const restAxis = subtract(items[1].anchor, items[0].anchor);
-  const currentAxis = subtract(items[1].position, items[0].position);
-  const restDistance = Math.max(length(restAxis), 0.08);
-  const currentDistance = Math.max(length(currentAxis), 0.02);
-  const majorScale = clamp(currentDistance / restDistance, controls.minCompression, controls.maxStretch);
-  const minorScale = Math.max(
-    Math.pow(majorScale, -controls.transverseExponent),
-    controls.minThickness,
-  );
-  const restAngle = Math.atan2(restAxis.y, restAxis.x);
-  const currentAngle = Math.atan2(currentAxis.y, currentAxis.x);
-  const restCosine = Math.cos(restAngle);
-  const restSine = Math.sin(restAngle);
-  const currentCosine = Math.cos(currentAngle);
-  const currentSine = Math.sin(currentAngle);
-  const matrix: Mat2 = [
-    currentCosine * majorScale * restCosine + currentSine * minorScale * restSine,
-    currentCosine * majorScale * restSine - currentSine * minorScale * restCosine,
-    currentSine * majorScale * restCosine - currentCosine * minorScale * restSine,
-    currentSine * majorScale * restSine + currentCosine * minorScale * restCosine,
-  ];
-  const mappedMidpoint = applyMatrix(matrix, restMidpoint);
-  return { matrix, translation: subtract(currentMidpoint, mappedMidpoint) };
-}
-
-function similarityFallback(items: Deformer[], restMean: Vec2, currentMean: Vec2): Mat2 {
+function anchoredSimilarityFallback(items: Deformer[]): Mat2 {
   let dotSum = controls.globalRigidity;
   let crossSum = 0;
   let restEnergy = controls.globalRigidity;
 
   for (const item of items) {
-    const rest = subtract(item.anchor, restMean);
-    const current = subtract(item.position, currentMean);
-    dotSum += current.x * rest.x + current.y * rest.y;
-    crossSum += current.y * rest.x - current.x * rest.y;
-    restEnergy += rest.x * rest.x + rest.y * rest.y;
+    dotSum += item.influence * (
+      item.position.x * item.anchor.x + item.position.y * item.anchor.y
+    );
+    crossSum += item.influence * (
+      item.position.y * item.anchor.x - item.position.x * item.anchor.y
+    );
+    restEnergy += item.influence * (
+      item.anchor.x * item.anchor.x + item.anchor.y * item.anchor.y
+    );
   }
 
   const a = dotSum / restEnergy;
@@ -382,34 +373,31 @@ function similarityFallback(items: Deformer[], restMean: Vec2, currentMean: Vec2
   return [a, -b, b, a];
 }
 
-function multiPointTransform(items: Deformer[]): { matrix: Mat2; translation: Vec2 } {
-  const restMean = average(items.map((item) => item.anchor));
-  const currentMean = average(items.map((item) => item.position));
+function anchoredTransform(items: Deformer[]): Mat2 {
   let sxx = controls.globalRigidity;
   let sxy = 0;
   let syy = controls.globalRigidity;
-  let cxx = controls.globalRigidity * multiReferenceMatrix[0];
-  let cxy = controls.globalRigidity * multiReferenceMatrix[1];
-  let cyx = controls.globalRigidity * multiReferenceMatrix[2];
-  let cyy = controls.globalRigidity * multiReferenceMatrix[3];
+  let cxx = controls.globalRigidity;
+  let cxy = 0;
+  let cyx = 0;
+  let cyy = controls.globalRigidity;
 
   for (const item of items) {
-    const rest = subtract(item.anchor, restMean);
-    const current = subtract(item.position, currentMean);
-    sxx += rest.x * rest.x;
-    sxy += rest.x * rest.y;
-    syy += rest.y * rest.y;
-    cxx += current.x * rest.x;
-    cxy += current.x * rest.y;
-    cyx += current.y * rest.x;
-    cyy += current.y * rest.y;
+    const weight = item.influence;
+    sxx += weight * item.anchor.x * item.anchor.x;
+    sxy += weight * item.anchor.x * item.anchor.y;
+    syy += weight * item.anchor.y * item.anchor.y;
+    cxx += weight * item.position.x * item.anchor.x;
+    cxy += weight * item.position.x * item.anchor.y;
+    cyx += weight * item.position.y * item.anchor.x;
+    cyy += weight * item.position.y * item.anchor.y;
   }
 
   const determinant = sxx * syy - sxy * sxy;
   let matrix: Mat2;
 
   if (Math.abs(determinant) < 0.0001) {
-    matrix = similarityFallback(items, restMean, currentMean);
+    matrix = anchoredSimilarityFallback(items);
   } else {
     const inverseSxx = syy / determinant;
     const inverseSxy = -sxy / determinant;
@@ -424,7 +412,7 @@ function multiPointTransform(items: Deformer[]): { matrix: Mat2; translation: Ve
 
   const matrixDeterminant = matrix[0] * matrix[3] - matrix[1] * matrix[2];
   if (matrixDeterminant < 0.12) {
-    matrix = similarityFallback(items, restMean, currentMean);
+    matrix = anchoredSimilarityFallback(items);
   }
 
   const maxComponent = Math.max(...matrix.map((component) => Math.abs(component)));
@@ -438,8 +426,7 @@ function multiPointTransform(items: Deformer[]): { matrix: Mat2; translation: Ve
     ];
   }
 
-  const translation = subtract(currentMean, applyMatrix(matrix, restMean));
-  return { matrix, translation };
+  return matrix;
 }
 
 function computeShapeState(): ShapeState {
@@ -448,20 +435,14 @@ function computeShapeState(): ShapeState {
     return { matrix: identityMatrix, inverse: identityMatrix, translation: zeroVector, residuals: [] };
   }
 
-  if (items.length === 1) {
-    const translation = subtract(items[0].position, items[0].anchor);
-    return { matrix: identityMatrix, inverse: identityMatrix, translation, residuals: [] };
-  }
-
-  const transform = items.length === 2
-    ? twoPointTransform(items)
-    : multiPointTransform(items);
-  let residuals = items.length < 3
-    ? []
-    : items.map((item) => {
-      const mapped = add(applyMatrix(transform.matrix, item.anchor), transform.translation);
-      return { anchor: item.anchor, displacement: subtract(item.position, mapped) };
-    });
+  const matrix = anchoredTransform(items);
+  let residuals = items.map((item) => ({
+    anchor: item.anchor,
+    displacement: scale(
+      subtract(item.position, applyMatrix(matrix, item.anchor)),
+      item.influence,
+    ),
+  }));
 
   const maximumResidual = residuals.reduce(
     (maximum, residual) => Math.max(maximum, length(residual.displacement)),
@@ -479,9 +460,9 @@ function computeShapeState(): ShapeState {
   }
 
   return {
-    matrix: transform.matrix,
-    inverse: inverseMatrix(transform.matrix),
-    translation: transform.translation,
+    matrix,
+    inverse: inverseMatrix(matrix),
+    translation: zeroVector,
     residuals,
   };
 }
@@ -502,7 +483,12 @@ function residualAt(restPosition: Vec2, state: ShapeState): Vec2 {
     weightSum += weight;
   }
 
-  return scale(total, controls.residualStrength / Math.max(1, weightSum));
+  const centerGate = clamp(length(restPosition) / controls.centerLockRadius, 0, 1);
+  const smoothCenterGate = centerGate * centerGate * (3 - 2 * centerGate);
+  return scale(
+    total,
+    controls.residualStrength * smoothCenterGate / Math.max(1, weightSum),
+  );
 }
 
 function inverseDeform(position: Vec2, state: ShapeState): Vec2 {
@@ -521,13 +507,6 @@ function forwardDeform(restPosition: Vec2, state: ShapeState): Vec2 {
     add(applyMatrix(state.matrix, restPosition), state.translation),
     residualAt(restPosition, state),
   );
-}
-
-function updateTopologyReference(previousCount: number, nextCount: number): void {
-  if (previousCount === nextCount) return;
-  multiReferenceMatrix = nextCount >= 3
-    ? [...shapeState.matrix] as Mat2
-    : identityMatrix;
 }
 
 function resize(): void {
@@ -567,24 +546,33 @@ function stopDemo(): void {
   for (const id of [...deformers.keys()]) {
     if (id < 0) deformers.delete(id);
   }
-  multiReferenceMatrix = identityMatrix;
   transitionThirdStart = null;
+  demoReleased = false;
+  demoAddedContact = false;
 }
 
 function clearDeformers(): void {
   deformers.clear();
-  multiReferenceMatrix = identityMatrix;
   transitionThirdStart = null;
+  demoReleased = false;
+  demoAddedContact = false;
   demoNeedsSetup = controls.demoMode !== 'none' && !prefersReducedMotion;
 }
 
-function createDemoDeformer(id: number, anchor: Vec2, phase: number): void {
+function createDemoDeformer(
+  id: number,
+  anchor: Vec2,
+  phase: number,
+  influence = 1,
+  position = anchor,
+): void {
   deformers.set(id, {
     id,
     anchor,
-    position: { ...anchor },
-    target: { ...anchor },
+    position: { ...position },
+    target: { ...position },
     velocity: { x: 0, y: 0 },
+    influence,
     active: true,
     persistent: true,
     demoPhase: phase,
@@ -594,17 +582,109 @@ function createDemoDeformer(id: number, anchor: Vec2, phase: number): void {
 function setupDemo(): void {
   deformers.clear();
   demoTime = 0;
+  demoReleased = false;
+  demoAddedContact = false;
+  transitionThirdStart = null;
 
-  if (controls.demoMode === 'two' || controls.demoMode === 'transition') {
+  if (
+    controls.demoMode === 'two'
+    || controls.demoMode === 'transition'
+    || controls.demoMode === 'releaseAll'
+  ) {
     createDemoDeformer(-1, { x: -0.52, y: 0 }, 0);
     createDemoDeformer(-2, { x: 0.52, y: 0 }, Math.PI);
   } else if (controls.demoMode === 'three') {
     createDemoDeformer(-1, { x: -0.48, y: -0.28 }, 0);
     createDemoDeformer(-2, { x: 0.48, y: -0.28 }, Math.PI * 0.67);
     createDemoDeformer(-3, { x: 0, y: 0.56 }, Math.PI * 1.34);
+  } else if (controls.demoMode === 'singleReentry') {
+    createDemoDeformer(-1, { x: 0.48, y: 0.02 }, 0);
   }
 
   demoNeedsSetup = false;
+}
+
+function addDemoContact(id: number, screenPosition: Vec2): Deformer {
+  const anchor = inverseDeform(screenPosition, shapeState);
+  createDemoDeformer(id, anchor, 0, 0, screenPosition);
+  const item = deformers.get(id);
+  if (!item) throw new Error('Unable to create demo contact.');
+  return item;
+}
+
+function releaseDemoContacts(): void {
+  for (const item of deformers.values()) {
+    item.active = false;
+    item.persistent = false;
+    item.target = { ...item.anchor };
+    item.velocity = { x: 0, y: 0 };
+  }
+  demoReleased = true;
+}
+
+function updateTransitionDemo(releaseAtEnd: boolean): void {
+  if (demoReleased) return;
+
+  for (const id of [-1, -2]) {
+    const item = deformers.get(id);
+    if (!item) continue;
+    const direction = Math.sign(item.anchor.x);
+    item.target = { x: item.anchor.x + direction * 0.42, y: item.anchor.y };
+    item.position = { ...item.target };
+  }
+
+  const addTime = releaseAtEnd ? 1.2 : 1.5;
+  if (demoTime >= addTime && !demoAddedContact) {
+    const anchor = { x: 0, y: 0.56 };
+    transitionThirdStart = forwardDeform(anchor, shapeState);
+    createDemoDeformer(-3, anchor, 0, 0, transitionThirdStart);
+    demoAddedContact = true;
+  }
+
+  const third = deformers.get(-3);
+  if (third && transitionThirdStart) {
+    const progress = clamp((demoTime - addTime) / 1.05, 0, 1);
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    const destination = { x: 0.06, y: 1.16 };
+    third.target = add(
+      scale(transitionThirdStart, 1 - easedProgress),
+      scale(destination, easedProgress),
+    );
+    third.position = { ...third.target };
+  }
+
+  if (releaseAtEnd && demoTime >= 2.75) releaseDemoContacts();
+}
+
+function updateSingleReentryDemo(): void {
+  if (demoReleased) return;
+  const first = deformers.get(-1);
+
+  if (first?.active && demoTime < 1) {
+    const progress = clamp(demoTime / 0.75, 0, 1);
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    first.target = add(first.anchor, scale({ x: 0.55, y: 0.18 }, easedProgress));
+    first.position = { ...first.target };
+  } else if (first?.active) {
+    first.active = false;
+    first.persistent = false;
+    first.target = { ...first.anchor };
+    first.velocity = { x: 0, y: 0 };
+  }
+
+  if (demoTime >= 1.35 && !demoAddedContact) {
+    addDemoContact(-2, { x: -0.48, y: -0.08 });
+    demoAddedContact = true;
+  }
+
+  const second = deformers.get(-2);
+  if (second?.active) {
+    const progress = clamp((demoTime - 1.35) / 0.9, 0, 1);
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    second.target = add(second.anchor, scale({ x: -0.46, y: -0.28 }, easedProgress));
+    second.position = { ...second.target };
+    if (demoTime >= 2.65) releaseDemoContacts();
+  }
 }
 
 function updateDemo(delta: number): void {
@@ -612,20 +692,24 @@ function updateDemo(delta: number): void {
   if (demoNeedsSetup) setupDemo();
   demoTime += delta;
 
+  if (controls.demoMode === 'transition') {
+    updateTransitionDemo(false);
+    return;
+  }
+  if (controls.demoMode === 'releaseAll') {
+    updateTransitionDemo(true);
+    return;
+  }
+  if (controls.demoMode === 'singleReentry') {
+    updateSingleReentryDemo();
+    return;
+  }
+
   for (const item of deformers.values()) {
     if (item.id >= 0) continue;
     const radialLength = Math.max(length(item.anchor), 0.01);
     const radial = scale(item.anchor, 1 / radialLength);
     const tangent = { x: -radial.y, y: radial.x };
-
-    if (controls.demoMode === 'transition') {
-      if (item.id === -1 || item.id === -2) {
-        const direction = Math.sign(item.anchor.x);
-        item.target = { x: item.anchor.x + direction * 0.42, y: item.anchor.y };
-        item.position = { ...item.target };
-      }
-      continue;
-    }
 
     const threePointBase = item.id === -1 ? 0.66 : item.id === -2 ? 0.38 : 0.56;
     const outward = controls.demoMode === 'two'
@@ -637,42 +721,18 @@ function updateDemo(delta: number): void {
     item.target = add(item.anchor, add(scale(radial, outward), scale(tangent, sway)));
     item.position = { ...item.target };
   }
-
-  if (controls.demoMode === 'transition' && demoTime >= 1.5) {
-    let third = deformers.get(-3);
-    if (!third) {
-      const previousCount = deformers.size;
-      const anchor = { x: 0, y: 0.56 };
-      transitionThirdStart = forwardDeform(anchor, shapeState);
-      createDemoDeformer(-3, anchor, 0);
-      third = deformers.get(-3);
-      if (third && transitionThirdStart) {
-        third.position = { ...transitionThirdStart };
-        third.target = { ...transitionThirdStart };
-      }
-      updateTopologyReference(previousCount, deformers.size);
-    }
-
-    if (third && transitionThirdStart) {
-      const progress = clamp((demoTime - 1.5) / 1.2, 0, 1);
-      const easedProgress = progress * progress * (3 - 2 * progress);
-      const destination = { x: 0.06, y: 1.16 };
-      third.target = add(
-        scale(transitionThirdStart, 1 - easedProgress),
-        scale(destination, easedProgress),
-      );
-      third.position = { ...third.target };
-    }
-  }
 }
 
 function updateSprings(delta: number): void {
   const angularFrequency = Math.PI * 2 * controls.springFrequency;
   const damping = 2 * controls.springDamping * angularFrequency;
   const stiffness = angularFrequency * angularFrequency;
-  const previousCount = deformers.size;
+  const blendStep = controls.contactBlendDuration <= 0
+    ? 1
+    : delta / controls.contactBlendDuration;
 
-  for (const [id, item] of deformers) {
+  for (const item of deformers.values()) {
+    item.influence = Math.min(1, item.influence + blendStep);
     if (item.active) {
       item.position = { ...item.target };
       continue;
@@ -683,12 +743,15 @@ function updateSprings(delta: number): void {
     item.velocity.y += (-stiffness * displacement.y - damping * item.velocity.y) * delta;
     item.position.x += item.velocity.x * delta;
     item.position.y += item.velocity.y * delta;
-
-    if (length(displacement) < 0.0015 && length(item.velocity) < 0.01) {
-      deformers.delete(id);
-    }
   }
-  updateTopologyReference(previousCount, deformers.size);
+
+  const items = [...deformers.values()];
+  const hasActiveContacts = items.some((item) => item.active);
+  const allContactsSettled = items.length > 0 && items.every((item) => (
+    length(subtract(item.position, item.anchor)) < 0.0015
+    && length(item.velocity) < 0.01
+  ));
+  if (!hasActiveContacts && allContactsSettled) deformers.clear();
 }
 
 function hexToRgb(color: string): [number, number, number] {
@@ -729,6 +792,7 @@ function render(): void {
   gl.uniform2fv(uniform.handles, packVectors(items.map((item) => item.position)));
   gl.uniform1f(uniform.influenceRadius, controls.influenceRadius);
   gl.uniform1f(uniform.residualStrength, controls.residualStrength);
+  gl.uniform1f(uniform.centerLockRadius, controls.centerLockRadius);
   gl.uniform3fv(uniform.baseColor, hexToRgb(controls.baseColor));
   gl.uniform3fv(uniform.coolTint, hexToRgb(controls.coolTint));
   gl.uniform3fv(uniform.warmTint, hexToRgb(controls.warmTint));
@@ -746,6 +810,10 @@ function animate(time: number): void {
   updateDemo(delta);
   updateSprings(delta);
   shapeState = computeShapeState();
+  const items = [...deformers.values()];
+  debugStats.activeContacts = items.filter((item) => item.active).length;
+  debugStats.returningContacts = items.filter((item) => !item.active).length;
+  debugStats.solverContacts = items.length + 1;
   render();
   requestAnimationFrame(animate);
 }
@@ -757,18 +825,17 @@ canvas.addEventListener('pointerdown', (event) => {
   if (!isInsideShape(position)) return;
   const anchor = inverseDeform(position, shapeState);
   const persistent = event.pointerType === 'mouse' && event.shiftKey;
-  const previousCount = deformers.size;
   deformers.set(event.pointerId, {
     id: event.pointerId,
     anchor,
     position: { ...position },
     target: { ...position },
     velocity: { x: 0, y: 0 },
+    influence: 0,
     active: true,
     persistent,
     demoPhase: 0,
   });
-  updateTopologyReference(previousCount, deformers.size);
   canvas.setPointerCapture(event.pointerId);
   event.preventDefault();
 });
@@ -810,26 +877,29 @@ function setupGui(): void {
     demo2Point: () => startDemo('two'),
     demo3Point: () => startDemo('three'),
     demoTransition: () => startDemo('transition'),
+    demoReleaseAll: () => startDemo('releaseAll'),
+    demoSingleReentry: () => startDemo('singleReentry'),
     reset: () => {
       controls.demoMode = 'none';
       clearDeformers();
     },
   };
 
-  gui.add(actions, 'demo2Point').name('2-point ellipse');
+  gui.add(actions, 'demo2Point').name('2-point anchored');
   gui.add(actions, 'demo3Point').name('3-point RBF');
   gui.add(actions, 'demoTransition').name('2 + add third');
+  gui.add(actions, 'demoReleaseAll').name('regression: release all');
+  gui.add(actions, 'demoSingleReentry').name('regression: re-entry');
   gui.add(actions, 'reset').name('reset');
 
   const shape = gui.addFolder('1 shape field');
-  shape.add(controls, 'minCompression', 0.25, 1, 0.01).name('min compression');
   shape.add(controls, 'maxStretch', 1.2, 4, 0.05).name('max stretch');
-  shape.add(controls, 'transverseExponent', 0, 1, 0.01).name('area preservation');
-  shape.add(controls, 'minThickness', 0.2, 1, 0.01).name('min thickness');
   shape.add(controls, 'globalRigidity', 0.02, 4, 0.01).name('global rigidity');
   shape.add(controls, 'influenceRadius', 0.2, 1.5, 0.01).name('RBF radius');
   shape.add(controls, 'residualStrength', 0, 1.8, 0.01).name('RBF strength');
   shape.add(controls, 'maxLocalWarp', 0.1, 0.8, 0.01).name('fold limit');
+  shape.add(controls, 'centerLockRadius', 0.05, 0.8, 0.01).name('center lock radius');
+  shape.add(controls, 'contactBlendDuration', 0, 0.5, 0.01).name('contact blend');
   shape.close();
 
   const spring = gui.addFolder('2 release spring');
@@ -849,6 +919,10 @@ function setupGui(): void {
   const debug = gui.addFolder('4 debug');
   debug.add(controls, 'showContacts').name('contacts');
   debug.add(controls, 'normalDebug').name('field normal');
+  debug.add(debugStats, 'activeContacts').name('active').listen().disable();
+  debug.add(debugStats, 'returningContacts').name('returning').listen().disable();
+  debug.add(debugStats, 'solverContacts').name('solver contacts').listen().disable();
+  debug.add(debugStats, 'solver').name('solver').listen().disable();
   debug.close();
   gui.close();
 }
