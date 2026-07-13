@@ -35,6 +35,12 @@ type AreaSolution = {
   minimumNeckLimited: boolean;
 };
 
+type ShapeMetrics = {
+  effectiveSeedCount: number;
+  seedRadius: number;
+  bridgeRadius: number;
+};
+
 type DemoMode = 'none' | 'two' | 'three' | 'transition' | 'releaseAll' | 'singleReentry';
 
 const maxContacts = 10;
@@ -68,8 +74,8 @@ const initialDemo: DemoMode = requestedDemo === '2'
           : 'none';
 
 const controls = {
-  contactRadius: 0.34,
-  bridgeRadius: 0.3,
+  seedRadiusScale: 1,
+  bridgeRadiusRatio: 0.54,
   fieldSmoothness: 0.2,
   contactBlendDuration: 0.12,
   areaPreservation: 0.92,
@@ -95,6 +101,9 @@ const debugStats = {
   activeContacts: 0,
   returningContacts: 0,
   fieldSeeds: 1,
+  effectiveSeeds: 1,
+  seedRadius: 1,
+  bridgeRadius: 0.54,
   areaRatio: 1,
   targetAreaRatio: 1,
   contourOffset: 0,
@@ -157,8 +166,8 @@ float distanceToSegment(vec2 point, vec2 start, vec2 end) {
 }
 
 float contactField(vec2 position) {
-  // The fixed center contact is the undeformed unit disc.
-  float distanceToShape = length(position) - 1.0;
+  // The center and pointer contacts share the same count-derived radius.
+  float distanceToShape = length(position) - uContactRadius;
 
   for (int index = 0; index < MAX_CONTACTS; index += 1) {
     if (index >= uContactCount) break;
@@ -361,17 +370,34 @@ function smoothInfluence(influence: number): number {
   return value * value * (3 - 2 * value);
 }
 
-function rawShapeDistance(position: Vec2, items: Contact[]): number {
-  let distanceToShape = length(position) - 1;
+function computeShapeMetrics(items: Contact[]): ShapeMetrics {
+  const effectiveSeedCount = 1 + items.reduce(
+    (total, item) => total + smoothInfluence(item.influence),
+    0,
+  );
+  const seedRadius = controls.seedRadiusScale / Math.sqrt(effectiveSeedCount);
+  return {
+    effectiveSeedCount,
+    seedRadius,
+    bridgeRadius: seedRadius * controls.bridgeRadiusRatio,
+  };
+}
+
+function rawShapeDistance(
+  position: Vec2,
+  items: Contact[],
+  metrics: ShapeMetrics,
+): number {
+  let distanceToShape = length(position) - metrics.seedRadius;
 
   for (const item of items) {
     const influence = smoothInfluence(item.influence);
-    const pointDistance = length(subtract(position, item.position)) - controls.contactRadius;
+    const pointDistance = length(subtract(position, item.position)) - metrics.seedRadius;
     const bridgeDistance = distanceToSegment(
       position,
       { x: 0, y: 0 },
       item.position,
-    ) - controls.bridgeRadius;
+    ) - metrics.bridgeRadius;
     const branchDistance = smoothMinimum(
       pointDistance,
       bridgeDistance,
@@ -396,12 +422,12 @@ function estimateArea(values: Float32Array, offset: number, cellArea: number): n
   return insideSamples * cellArea;
 }
 
-function solveAreaPressure(items: Contact[]): AreaSolution {
+function solveAreaPressure(items: Contact[], metrics: ShapeMetrics): AreaSolution {
   const farthestContact = items.reduce(
     (maximum, item) => Math.max(maximum, length(item.position)),
     0,
   );
-  const boundsRadius = Math.max(1.45, farthestContact + controls.contactRadius + 0.42);
+  const boundsRadius = Math.max(1.45, farthestContact + metrics.seedRadius + 0.42);
   const cellSize = (boundsRadius * 2) / areaSampleResolution;
   const cellArea = cellSize * cellSize;
   const values = new Float32Array(areaSampleResolution * areaSampleResolution);
@@ -411,7 +437,7 @@ function solveAreaPressure(items: Contact[]): AreaSolution {
     const y = -boundsRadius + (row + 0.5) * cellSize;
     for (let column = 0; column < areaSampleResolution; column += 1) {
       const x = -boundsRadius + (column + 0.5) * cellSize;
-      values[valueIndex] = rawShapeDistance({ x, y }, items);
+      values[valueIndex] = rawShapeDistance({ x, y }, items, metrics);
       valueIndex += 1;
     }
   }
@@ -420,7 +446,7 @@ function solveAreaPressure(items: Contact[]): AreaSolution {
   const expansion = Math.max(unconstrainedArea - baseArea, 0);
   const targetArea = baseArea + expansion * (1 - controls.areaPreservation);
   const minimumNeckRadius = controls.minimumNeckWidth * 0.5;
-  const minimumOffset = Math.min(minimumNeckRadius - controls.bridgeRadius, 0);
+  const minimumOffset = Math.min(minimumNeckRadius - metrics.bridgeRadius, 0);
   let low = minimumOffset;
   let high = 0.12;
   const minimumArea = estimateArea(values, low, cellArea);
@@ -482,7 +508,8 @@ function currentContacts(): Contact[] {
 }
 
 function isInsideShape(position: Vec2): boolean {
-  return rawShapeDistance(position, currentContacts()) <= contourOffset + 0.06;
+  const items = currentContacts();
+  return rawShapeDistance(position, items, computeShapeMetrics(items)) <= contourOffset + 0.06;
 }
 
 function stopDemo(): void {
@@ -724,7 +751,7 @@ function packScalars(items: number[]): Float32Array {
   return packed;
 }
 
-function render(items: Contact[]): void {
+function render(items: Contact[], metrics: ShapeMetrics): void {
   gl.useProgram(program);
   gl.uniform2f(uniform.resolution, canvas.width, canvas.height);
   gl.uniform2f(uniform.center, view.centerX * view.dpr, view.centerY * view.dpr);
@@ -732,8 +759,8 @@ function render(items: Contact[]): void {
   gl.uniform1i(uniform.contactCount, items.length);
   gl.uniform2fv(uniform.contacts, packVectors(items.map((item) => item.position)));
   gl.uniform1fv(uniform.influences, packScalars(items.map((item) => item.influence)));
-  gl.uniform1f(uniform.contactRadius, controls.contactRadius);
-  gl.uniform1f(uniform.bridgeRadius, controls.bridgeRadius);
+  gl.uniform1f(uniform.contactRadius, metrics.seedRadius);
+  gl.uniform1f(uniform.bridgeRadius, metrics.bridgeRadius);
   gl.uniform1f(uniform.fieldSmoothness, controls.fieldSmoothness);
   gl.uniform1f(uniform.contourOffset, contourOffset);
   gl.uniform3fv(uniform.baseColor, hexToRgb(controls.baseColor));
@@ -754,18 +781,22 @@ function animate(time: number): void {
   updateDemo(delta);
   updateContactDynamics(delta);
   const items = currentContacts();
-  latestAreaSolution = solveAreaPressure(items);
+  const metrics = computeShapeMetrics(items);
+  latestAreaSolution = solveAreaPressure(items, metrics);
   const pressureBlend = 1 - Math.exp(-controls.pressureResponse * delta);
   contourOffset += (latestAreaSolution.offset - contourOffset) * pressureBlend;
 
   debugStats.activeContacts = items.filter((item) => item.active).length;
   debugStats.returningContacts = items.filter((item) => !item.active).length;
   debugStats.fieldSeeds = items.length + 1;
+  debugStats.effectiveSeeds = metrics.effectiveSeedCount;
+  debugStats.seedRadius = metrics.seedRadius;
+  debugStats.bridgeRadius = metrics.bridgeRadius;
   debugStats.areaRatio = latestAreaSolution.actualArea / baseArea;
   debugStats.targetAreaRatio = latestAreaSolution.targetArea / baseArea;
   debugStats.contourOffset = contourOffset;
   debugStats.minimumNeckLimited = latestAreaSolution.minimumNeckLimited;
-  render(items);
+  render(items, metrics);
   requestAnimationFrame(animate);
 }
 
@@ -845,8 +876,8 @@ function setupGui(): void {
   gui.add(actions, 'reset').name('reset');
 
   const field = gui.addFolder('1 contact field');
-  field.add(controls, 'contactRadius', 0.12, 0.65, 0.01).name('contact radius');
-  field.add(controls, 'bridgeRadius', 0.12, 0.65, 0.01).name('bridge radius');
+  field.add(controls, 'seedRadiusScale', 0.7, 1.35, 0.01).name('seed radius scale');
+  field.add(controls, 'bridgeRadiusRatio', 0.2, 0.9, 0.01).name('bridge / seed');
   field.add(controls, 'fieldSmoothness', 0.02, 0.5, 0.01).name('smooth union');
   field.add(controls, 'contactBlendDuration', 0, 0.5, 0.01).name('contact blend');
   field.close();
@@ -880,6 +911,9 @@ function setupGui(): void {
   debug.add(debugStats, 'activeContacts').name('active').listen().disable();
   debug.add(debugStats, 'returningContacts').name('returning').listen().disable();
   debug.add(debugStats, 'fieldSeeds').name('field seeds').listen().disable();
+  debug.add(debugStats, 'effectiveSeeds').name('effective seeds').listen().decimals(2).disable();
+  debug.add(debugStats, 'seedRadius').name('seed radius').listen().decimals(3).disable();
+  debug.add(debugStats, 'bridgeRadius').name('bridge radius').listen().decimals(3).disable();
   debug.add(debugStats, 'areaRatio').name('area ratio').listen().decimals(3).disable();
   debug.add(debugStats, 'targetAreaRatio').name('target ratio').listen().decimals(3).disable();
   debug.add(debugStats, 'contourOffset').name('contour offset').listen().decimals(3).disable();
