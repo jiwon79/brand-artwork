@@ -25,11 +25,19 @@ type Residual = {
   displacement: Vec2;
 };
 
+type Valley = {
+  restDirection: Vec2;
+  screenDirection: Vec2;
+  strength: number;
+  width: number;
+};
+
 type ShapeState = {
   matrix: Mat2;
   inverse: Mat2;
   translation: Vec2;
   residuals: Residual[];
+  valleys: Valley[];
 };
 
 type View = {
@@ -81,6 +89,14 @@ const controls = {
   maxLocalWarp: 0.24,
   centerLockRadius: 0.58,
   contactBlendDuration: 0.16,
+  neckEnabled: true,
+  poissonExponent: 0.75,
+  neckStrength: 0.8,
+  neckWidth: 1.1,
+  neckTipScale: 0.48,
+  minimumWidth: 0.62,
+  valleyStrength: 0.62,
+  valleyWidth: 0.38,
   releaseHoldDuration: 0.16,
   releaseLifetime: 0.32,
   springFrequency: 3.1,
@@ -132,9 +148,21 @@ uniform vec2 uAnchors[MAX_DEFORMERS];
 uniform vec2 uResiduals[MAX_DEFORMERS];
 uniform int uHandleCount;
 uniform vec2 uHandles[MAX_DEFORMERS];
+uniform float uContactInfluences[MAX_DEFORMERS];
 uniform float uInfluenceRadius;
 uniform float uResidualStrength;
 uniform float uCenterLockRadius;
+uniform bool uNeckEnabled;
+uniform float uPoissonExponent;
+uniform float uNeckStrength;
+uniform float uNeckWidth;
+uniform float uNeckTipScale;
+uniform float uMinimumWidth;
+uniform int uValleyCount;
+uniform vec2 uValleyRestDirections[MAX_DEFORMERS];
+uniform vec2 uValleyScreenDirections[MAX_DEFORMERS];
+uniform float uValleyStrengths[MAX_DEFORMERS];
+uniform float uValleyWidths[MAX_DEFORMERS];
 uniform vec3 uBaseColor;
 uniform vec3 uCoolTint;
 uniform vec3 uWarmTint;
@@ -149,6 +177,11 @@ out vec4 outputColor;
 float wendland(float normalizedDistance) {
   float t = max(1.0 - normalizedDistance, 0.0);
   return t * t * t * t * (4.0 * normalizedDistance + 1.0);
+}
+
+float smoothMaximumOne(float value) {
+  float delta = value - 1.0;
+  return 0.5 * (1.0 + value + sqrt(delta * delta + 0.04));
 }
 
 vec2 residualAt(vec2 restPosition) {
@@ -166,15 +199,76 @@ vec2 residualAt(vec2 restPosition) {
   float centerDistanceSquared = dot(restPosition, restPosition);
   float lockRadiusSquared = uCenterLockRadius * uCenterLockRadius;
   float centerGate = centerDistanceSquared / max(centerDistanceSquared + lockRadiusSquared, 0.0001);
-  return displacement * uResidualStrength * centerGate / max(1.0, weightSum);
+  return displacement * uResidualStrength * centerGate / smoothMaximumOne(weightSum);
+}
+
+vec2 neckAt(vec2 restPosition) {
+  if (!uNeckEnabled) return vec2(0.0);
+  vec2 displacement = vec2(0.0);
+  float weightSum = 0.0;
+
+  for (int i = 0; i < MAX_DEFORMERS; i += 1) {
+    if (i >= uHandleCount) break;
+    vec2 anchor = uAnchors[i];
+    vec2 handle = uHandles[i];
+    float restLength = length(anchor);
+    float currentLength = length(handle);
+    if (restLength < 0.08 || currentLength <= restLength) continue;
+
+    vec2 restAxis = anchor / restLength;
+    vec2 restPerpendicular = vec2(-restAxis.y, restAxis.x);
+    vec2 currentAxis = handle / max(currentLength, 0.0001);
+    vec2 currentPerpendicular = vec2(-currentAxis.y, currentAxis.x);
+    float along = dot(restPosition, restAxis) / restLength;
+    float transverse = dot(restPosition, restPerpendicular);
+    float segmentWindow = smoothstep(-0.9, 0.0, along)
+      * (1.0 - smoothstep(1.8, 2.4, along));
+    float alongProgress = smoothstep(0.0, 1.0, clamp(along, 0.0, 1.0));
+    float neckProfile = mix(1.0, uNeckTipScale, alongProgress);
+    float width = max(uNeckWidth, 0.05);
+    float lateralWeight = exp(-0.5 * transverse * transverse / (width * width));
+    float stretch = currentLength / restLength;
+    float contraction = (1.0 - pow(stretch, -uPoissonExponent)) * uNeckStrength;
+    contraction = clamp(contraction, 0.0, 1.0 - uMinimumWidth);
+    float weight = segmentWindow * neckProfile * lateralWeight * uContactInfluences[i];
+    displacement -= currentPerpendicular * transverse * contraction * weight;
+    weightSum += weight;
+  }
+
+  return displacement / smoothMaximumOne(weightSum);
+}
+
+vec2 valleyAt(vec2 restPosition) {
+  float radius = length(restPosition);
+  if (radius < 0.0001) return vec2(0.0);
+  vec2 restDirection = restPosition / radius;
+  vec2 displacement = vec2(0.0);
+
+  for (int i = 0; i < MAX_DEFORMERS; i += 1) {
+    if (i >= uValleyCount) break;
+    float directionMatch = clamp(dot(restDirection, uValleyRestDirections[i]), -1.0, 1.0);
+    float width = max(uValleyWidths[i], 0.05);
+    float angularWeight = exp(-(1.0 - directionMatch) / (width * width));
+    float radialWeight = smoothstep(0.18, 0.92, radius);
+    displacement -= uValleyScreenDirections[i]
+      * uValleyStrengths[i]
+      * angularWeight
+      * radialWeight;
+  }
+
+  float magnitude = length(displacement);
+  float saturatedMagnitude = 0.42 * tanh(magnitude / 0.42);
+  return magnitude > 0.0001
+    ? displacement * (saturatedMagnitude / magnitude)
+    : displacement;
 }
 
 vec2 inverseDeform(vec2 screenPosition) {
   vec2 restPosition = uInverseMatrix * (screenPosition - uTranslation);
 
   for (int iteration = 0; iteration < 4; iteration += 1) {
-    vec2 localResidual = residualAt(restPosition);
-    restPosition = uInverseMatrix * (screenPosition - uTranslation - localResidual);
+    vec2 localDeformation = residualAt(restPosition) + neckAt(restPosition) + valleyAt(restPosition);
+    restPosition = uInverseMatrix * (screenPosition - uTranslation - localDeformation);
   }
 
   return restPosition;
@@ -288,9 +382,21 @@ const uniform = {
   residuals: gl.getUniformLocation(program, 'uResiduals[0]'),
   handleCount: gl.getUniformLocation(program, 'uHandleCount'),
   handles: gl.getUniformLocation(program, 'uHandles[0]'),
+  contactInfluences: gl.getUniformLocation(program, 'uContactInfluences[0]'),
   influenceRadius: gl.getUniformLocation(program, 'uInfluenceRadius'),
   residualStrength: gl.getUniformLocation(program, 'uResidualStrength'),
   centerLockRadius: gl.getUniformLocation(program, 'uCenterLockRadius'),
+  neckEnabled: gl.getUniformLocation(program, 'uNeckEnabled'),
+  poissonExponent: gl.getUniformLocation(program, 'uPoissonExponent'),
+  neckStrength: gl.getUniformLocation(program, 'uNeckStrength'),
+  neckWidth: gl.getUniformLocation(program, 'uNeckWidth'),
+  neckTipScale: gl.getUniformLocation(program, 'uNeckTipScale'),
+  minimumWidth: gl.getUniformLocation(program, 'uMinimumWidth'),
+  valleyCount: gl.getUniformLocation(program, 'uValleyCount'),
+  valleyRestDirections: gl.getUniformLocation(program, 'uValleyRestDirections[0]'),
+  valleyScreenDirections: gl.getUniformLocation(program, 'uValleyScreenDirections[0]'),
+  valleyStrengths: gl.getUniformLocation(program, 'uValleyStrengths[0]'),
+  valleyWidths: gl.getUniformLocation(program, 'uValleyWidths[0]'),
   baseColor: gl.getUniformLocation(program, 'uBaseColor'),
   coolTint: gl.getUniformLocation(program, 'uCoolTint'),
   warmTint: gl.getUniformLocation(program, 'uWarmTint'),
@@ -309,6 +415,7 @@ let shapeState: ShapeState = {
   inverse: identityMatrix,
   translation: zeroVector,
   residuals: [],
+  valleys: [],
 };
 let previousTime = performance.now();
 let demoTime = 0;
@@ -319,6 +426,11 @@ let demoAddedContact = false;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function smoothstep(min: number, max: number, value: number): number {
+  const progress = clamp((value - min) / Math.max(max - min, 0.0001), 0, 1);
+  return progress * progress * (3 - 2 * progress);
 }
 
 function add(a: Vec2, b: Vec2): Vec2 {
@@ -437,7 +549,13 @@ function anchoredTransform(items: Deformer[]): Mat2 {
 function computeShapeState(): ShapeState {
   const items = [...deformers.values()].slice(0, maxDeformers);
   if (items.length === 0) {
-    return { matrix: identityMatrix, inverse: identityMatrix, translation: zeroVector, residuals: [] };
+    return {
+      matrix: identityMatrix,
+      inverse: identityMatrix,
+      translation: zeroVector,
+      residuals: [],
+      valleys: [],
+    };
   }
 
   const matrix = anchoredTransform(items);
@@ -469,12 +587,68 @@ function computeShapeState(): ShapeState {
     inverse: inverseMatrix(matrix),
     translation: zeroVector,
     residuals,
+    valleys: computeValleys(items, matrix),
   };
+}
+
+function computeValleys(items: Deformer[], matrix: Mat2): Valley[] {
+  const stretched = items
+    .filter((item) => (
+      item.influence > 0.001
+      && length(item.anchor) > 0.08
+      && length(item.position) > length(item.anchor)
+    ))
+    .sort((a, b) => (
+      Math.atan2(a.anchor.y, a.anchor.x) - Math.atan2(b.anchor.y, b.anchor.x)
+    ));
+
+  // Two opposing pulls already form one smooth waist through the axial neck field.
+  if (stretched.length < 3) return [];
+
+  const valleys: Valley[] = [];
+  const fullTurn = Math.PI * 2;
+  const fieldInfluence = Math.min(...stretched.map((item) => item.influence));
+
+  for (let index = 0; index < stretched.length; index += 1) {
+    const current = stretched[index];
+    const next = stretched[(index + 1) % stretched.length];
+    const currentAngle = Math.atan2(current.anchor.y, current.anchor.x);
+    let angularGap = Math.atan2(next.anchor.y, next.anchor.x) - currentAngle;
+    if (angularGap <= 0) angularGap += fullTurn;
+    if (angularGap < 0.2) continue;
+
+    const middleAngle = currentAngle + angularGap * 0.5;
+    const restDirection = { x: Math.cos(middleAngle), y: Math.sin(middleAngle) };
+    const transformedDirection = applyMatrix(matrix, restDirection);
+    const transformedLength = Math.max(length(transformedDirection), 0.0001);
+    const currentStrain = Math.max(length(current.position) / length(current.anchor) - 1, 0);
+    const nextStrain = Math.max(length(next.position) / length(next.anchor) - 1, 0);
+    const sharedStrain = Math.min(currentStrain, nextStrain);
+
+    valleys.push({
+      restDirection,
+      screenDirection: scale(transformedDirection, 1 / transformedLength),
+      strength: Math.min(
+        sharedStrain
+          * controls.valleyStrength
+          * fieldInfluence,
+        0.38,
+      ),
+      width: Math.max(0.12, angularGap * controls.valleyWidth),
+    });
+  }
+
+  return valleys.slice(0, maxDeformers);
 }
 
 function wendland(normalizedDistance: number): number {
   const t = Math.max(1 - normalizedDistance, 0);
   return t * t * t * t * (4 * normalizedDistance + 1);
+}
+
+function smoothMaximumOne(value: number): number {
+  const delta = value - 1;
+  return 0.5 * (1 + value + Math.sqrt(delta * delta + 0.04));
 }
 
 function residualAt(restPosition: Vec2, state: ShapeState): Vec2 {
@@ -496,16 +670,93 @@ function residualAt(restPosition: Vec2, state: ShapeState): Vec2 {
   );
   return scale(
     total,
-    controls.residualStrength * centerGate / Math.max(1, weightSum),
+    controls.residualStrength * centerGate / smoothMaximumOne(weightSum),
   );
+}
+
+function neckAt(restPosition: Vec2): Vec2 {
+  if (!controls.neckEnabled) return { x: 0, y: 0 };
+  let displacement = { x: 0, y: 0 };
+  let weightSum = 0;
+
+  for (const item of deformers.values()) {
+    const restLength = length(item.anchor);
+    const currentLength = length(item.position);
+    if (restLength < 0.08 || currentLength <= restLength) continue;
+
+    const restAxis = scale(item.anchor, 1 / restLength);
+    const restPerpendicular = { x: -restAxis.y, y: restAxis.x };
+    const currentAxis = scale(item.position, 1 / Math.max(currentLength, 0.0001));
+    const currentPerpendicular = { x: -currentAxis.y, y: currentAxis.x };
+    const along = (
+      restPosition.x * restAxis.x + restPosition.y * restAxis.y
+    ) / restLength;
+    const transverse = (
+      restPosition.x * restPerpendicular.x + restPosition.y * restPerpendicular.y
+    );
+    const segmentWindow = smoothstep(-0.9, 0, along)
+      * (1 - smoothstep(1.8, 2.4, along));
+    const alongProgress = smoothstep(0, 1, clamp(along, 0, 1));
+    const neckProfile = 1 + (controls.neckTipScale - 1) * alongProgress;
+    const width = Math.max(controls.neckWidth, 0.05);
+    const lateralWeight = Math.exp(-0.5 * transverse * transverse / (width * width));
+    const stretch = currentLength / restLength;
+    const contraction = clamp(
+      (1 - Math.pow(stretch, -controls.poissonExponent)) * controls.neckStrength,
+      0,
+      1 - controls.minimumWidth,
+    );
+    const weight = segmentWindow * neckProfile * lateralWeight * item.influence;
+    displacement = add(
+      displacement,
+      scale(currentPerpendicular, -transverse * contraction * weight),
+    );
+    weightSum += weight;
+  }
+
+  return scale(displacement, 1 / smoothMaximumOne(weightSum));
+}
+
+function valleyAt(restPosition: Vec2, state: ShapeState): Vec2 {
+  const radius = length(restPosition);
+  if (radius < 0.0001) return { x: 0, y: 0 };
+  const restDirection = scale(restPosition, 1 / radius);
+  let displacement = { x: 0, y: 0 };
+
+  for (const valley of state.valleys) {
+    const directionMatch = clamp(
+      restDirection.x * valley.restDirection.x + restDirection.y * valley.restDirection.y,
+      -1,
+      1,
+    );
+    const width = Math.max(valley.width, 0.05);
+    const angularWeight = Math.exp(-(1 - directionMatch) / (width * width));
+    const radialWeight = smoothstep(0.18, 0.92, radius);
+    displacement = add(
+      displacement,
+      scale(valley.screenDirection, -valley.strength * angularWeight * radialWeight),
+    );
+  }
+
+  const magnitude = length(displacement);
+  const saturatedMagnitude = 0.42 * Math.tanh(magnitude / 0.42);
+  return magnitude > 0.0001
+    ? scale(displacement, saturatedMagnitude / magnitude)
+    : displacement;
 }
 
 function inverseDeform(position: Vec2, state: ShapeState): Vec2 {
   let restPosition = applyMatrix(state.inverse, subtract(position, state.translation));
 
   for (let iteration = 0; iteration < 4; iteration += 1) {
-    const localResidual = residualAt(restPosition, state);
-    restPosition = applyMatrix(state.inverse, subtract(subtract(position, state.translation), localResidual));
+    const localDeformation = add(
+      add(residualAt(restPosition, state), neckAt(restPosition)),
+      valleyAt(restPosition, state),
+    );
+    restPosition = applyMatrix(
+      state.inverse,
+      subtract(subtract(position, state.translation), localDeformation),
+    );
   }
 
   return restPosition;
@@ -514,7 +765,10 @@ function inverseDeform(position: Vec2, state: ShapeState): Vec2 {
 function forwardDeform(restPosition: Vec2, state: ShapeState): Vec2 {
   return add(
     add(applyMatrix(state.matrix, restPosition), state.translation),
-    residualAt(restPosition, state),
+    add(
+      add(residualAt(restPosition, state), neckAt(restPosition)),
+      valleyAt(restPosition, state),
+    ),
   );
 }
 
@@ -796,9 +1050,18 @@ function packVectors(items: Vec2[]): Float32Array {
   return packed;
 }
 
+function packScalars(items: number[]): Float32Array {
+  const packed = new Float32Array(maxDeformers);
+  for (let index = 0; index < Math.min(items.length, maxDeformers); index += 1) {
+    packed[index] = items[index];
+  }
+  return packed;
+}
+
 function render(): void {
   const items = [...deformers.values()].slice(0, maxDeformers);
   const residuals = shapeState.residuals.slice(0, maxDeformers);
+  const valleys = shapeState.valleys.slice(0, maxDeformers);
   const matrix = shapeState.inverse;
 
   gl.useProgram(program);
@@ -814,9 +1077,27 @@ function render(): void {
   gl.uniform2fv(uniform.residuals, packVectors(residuals.map((item) => item.displacement)));
   gl.uniform1i(uniform.handleCount, items.length);
   gl.uniform2fv(uniform.handles, packVectors(items.map((item) => item.position)));
+  gl.uniform1fv(uniform.contactInfluences, packScalars(items.map((item) => item.influence)));
   gl.uniform1f(uniform.influenceRadius, controls.influenceRadius);
   gl.uniform1f(uniform.residualStrength, controls.residualStrength);
   gl.uniform1f(uniform.centerLockRadius, controls.centerLockRadius);
+  gl.uniform1i(uniform.neckEnabled, controls.neckEnabled ? 1 : 0);
+  gl.uniform1f(uniform.poissonExponent, controls.poissonExponent);
+  gl.uniform1f(uniform.neckStrength, controls.neckStrength);
+  gl.uniform1f(uniform.neckWidth, controls.neckWidth);
+  gl.uniform1f(uniform.neckTipScale, controls.neckTipScale);
+  gl.uniform1f(uniform.minimumWidth, controls.minimumWidth);
+  gl.uniform1i(uniform.valleyCount, valleys.length);
+  gl.uniform2fv(
+    uniform.valleyRestDirections,
+    packVectors(valleys.map((valley) => valley.restDirection)),
+  );
+  gl.uniform2fv(
+    uniform.valleyScreenDirections,
+    packVectors(valleys.map((valley) => valley.screenDirection)),
+  );
+  gl.uniform1fv(uniform.valleyStrengths, packScalars(valleys.map((valley) => valley.strength)));
+  gl.uniform1fv(uniform.valleyWidths, packScalars(valleys.map((valley) => valley.width)));
   gl.uniform3fv(uniform.baseColor, hexToRgb(controls.baseColor));
   gl.uniform3fv(uniform.coolTint, hexToRgb(controls.coolTint));
   gl.uniform3fv(uniform.warmTint, hexToRgb(controls.warmTint));
@@ -928,14 +1209,25 @@ function setupGui(): void {
   shape.add(controls, 'contactBlendDuration', 0, 0.5, 0.01).name('contact blend');
   shape.close();
 
-  const spring = gui.addFolder('2 release spring');
+  const neck = gui.addFolder('2 tension neck');
+  neck.add(controls, 'neckEnabled').name('on');
+  neck.add(controls, 'poissonExponent', 0, 1.2, 0.01).name('poisson exponent');
+  neck.add(controls, 'neckStrength', 0, 2, 0.01).name('strength');
+  neck.add(controls, 'neckWidth', 0.1, 1.6, 0.01).name('width');
+  neck.add(controls, 'neckTipScale', 0, 1, 0.01).name('grip width');
+  neck.add(controls, 'minimumWidth', 0.2, 1, 0.01).name('minimum width');
+  neck.add(controls, 'valleyStrength', 0, 0.8, 0.01).name('valley strength');
+  neck.add(controls, 'valleyWidth', 0.1, 0.8, 0.01).name('valley width');
+  neck.close();
+
+  const spring = gui.addFolder('3 release spring');
   spring.add(controls, 'springFrequency', 0.5, 8, 0.1).name('frequency');
   spring.add(controls, 'springDamping', 0.05, 1.2, 0.01).name('damping');
   spring.add(controls, 'releaseHoldDuration', 0, 0.4, 0.01).name('contact hold');
   spring.add(controls, 'releaseLifetime', 0.1, 0.8, 0.01).name('contact lifetime');
   spring.close();
 
-  const material = gui.addFolder('3 material');
+  const material = gui.addFolder('4 material');
   material.addColor(controls, 'baseColor').name('base');
   material.addColor(controls, 'coolTint').name('cool tint');
   material.addColor(controls, 'warmTint').name('warm tint');
@@ -944,7 +1236,7 @@ function setupGui(): void {
   material.add(controls, 'shadowStrength', 0, 0.4, 0.01).name('shadow');
   material.close();
 
-  const debug = gui.addFolder('4 debug');
+  const debug = gui.addFolder('5 debug');
   debug.add(controls, 'showContacts').name('contacts');
   debug.add(controls, 'normalDebug').name('field normal');
   debug.add(debugStats, 'activeContacts').name('active').listen().disable();
