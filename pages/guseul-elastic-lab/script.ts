@@ -14,6 +14,7 @@ type Deformer = {
   target: Vec2;
   velocity: Vec2;
   influence: number;
+  releaseAge: number | null;
   active: boolean;
   persistent: boolean;
   demoPhase: number;
@@ -77,9 +78,11 @@ const controls = {
   globalRigidity: 2,
   influenceRadius: 1.12,
   residualStrength: 1.3,
-  maxLocalWarp: 0.42,
-  centerLockRadius: 0.34,
+  maxLocalWarp: 0.24,
+  centerLockRadius: 0.58,
   contactBlendDuration: 0.16,
+  releaseHoldDuration: 0.16,
+  releaseLifetime: 0.32,
   springFrequency: 3.1,
   springDamping: 0.34,
   baseColor: '#d8eff0',
@@ -160,14 +163,16 @@ vec2 residualAt(vec2 restPosition) {
     weightSum += weight;
   }
 
-  float centerGate = smoothstep(0.0, uCenterLockRadius, length(restPosition));
+  float centerDistanceSquared = dot(restPosition, restPosition);
+  float lockRadiusSquared = uCenterLockRadius * uCenterLockRadius;
+  float centerGate = centerDistanceSquared / max(centerDistanceSquared + lockRadiusSquared, 0.0001);
   return displacement * uResidualStrength * centerGate / max(1.0, weightSum);
 }
 
 vec2 inverseDeform(vec2 screenPosition) {
   vec2 restPosition = uInverseMatrix * (screenPosition - uTranslation);
 
-  for (int iteration = 0; iteration < 3; iteration += 1) {
+  for (int iteration = 0; iteration < 4; iteration += 1) {
     vec2 localResidual = residualAt(restPosition);
     restPosition = uInverseMatrix * (screenPosition - uTranslation - localResidual);
   }
@@ -182,7 +187,8 @@ float signedDistance(vec2 screenPosition) {
 void main() {
   vec2 pixel = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y);
   vec2 position = (pixel - uCenter) / uRadius;
-  float distanceToShape = signedDistance(position);
+  vec2 restPosition = inverseDeform(position);
+  float distanceToShape = length(restPosition) - 1.0;
   float antialiasWidth = max(fwidth(distanceToShape) * 1.25, 0.0015);
   float shapeMask = 1.0 - smoothstep(-antialiasWidth, antialiasWidth, distanceToShape);
 
@@ -195,7 +201,6 @@ void main() {
   vec2 gradient = length(gradientDerivative) > 0.0001
     ? normalize(gradientDerivative)
     : vec2(-0.55, -0.82);
-  vec2 restPosition = inverseDeform(position);
   float diagonal = clamp((restPosition.x + restPosition.y + 1.5) / 3.0, 0.0, 1.0);
   float surfaceHeight = sqrt(max(1.0 - dot(restPosition, restPosition), 0.001));
   vec3 surfaceNormal = normalize(vec3(-restPosition.x, -restPosition.y, surfaceHeight));
@@ -483,18 +488,22 @@ function residualAt(restPosition: Vec2, state: ShapeState): Vec2 {
     weightSum += weight;
   }
 
-  const centerGate = clamp(length(restPosition) / controls.centerLockRadius, 0, 1);
-  const smoothCenterGate = centerGate * centerGate * (3 - 2 * centerGate);
+  const centerDistanceSquared = restPosition.x * restPosition.x + restPosition.y * restPosition.y;
+  const lockRadiusSquared = controls.centerLockRadius * controls.centerLockRadius;
+  const centerGate = centerDistanceSquared / Math.max(
+    centerDistanceSquared + lockRadiusSquared,
+    0.0001,
+  );
   return scale(
     total,
-    controls.residualStrength * smoothCenterGate / Math.max(1, weightSum),
+    controls.residualStrength * centerGate / Math.max(1, weightSum),
   );
 }
 
 function inverseDeform(position: Vec2, state: ShapeState): Vec2 {
   let restPosition = applyMatrix(state.inverse, subtract(position, state.translation));
 
-  for (let iteration = 0; iteration < 3; iteration += 1) {
+  for (let iteration = 0; iteration < 4; iteration += 1) {
     const localResidual = residualAt(restPosition, state);
     restPosition = applyMatrix(state.inverse, subtract(subtract(position, state.translation), localResidual));
   }
@@ -573,6 +582,7 @@ function createDemoDeformer(
     target: { ...position },
     velocity: { x: 0, y: 0 },
     influence,
+    releaseAge: null,
     active: true,
     persistent: true,
     demoPhase: phase,
@@ -615,6 +625,7 @@ function addDemoContact(id: number, screenPosition: Vec2): Deformer {
 function releaseDemoContacts(): void {
   for (const item of deformers.values()) {
     item.active = false;
+    item.releaseAge = 0;
     item.persistent = false;
     item.target = { ...item.anchor };
     item.velocity = { x: 0, y: 0 };
@@ -667,23 +678,24 @@ function updateSingleReentryDemo(): void {
     first.position = { ...first.target };
   } else if (first?.active) {
     first.active = false;
+    first.releaseAge = 0;
     first.persistent = false;
     first.target = { ...first.anchor };
     first.velocity = { x: 0, y: 0 };
   }
 
-  if (demoTime >= 1.35 && !demoAddedContact) {
+  if (demoTime >= 1.18 && !demoAddedContact) {
     addDemoContact(-2, { x: -0.48, y: -0.08 });
     demoAddedContact = true;
   }
 
   const second = deformers.get(-2);
   if (second?.active) {
-    const progress = clamp((demoTime - 1.35) / 0.9, 0, 1);
+    const progress = clamp((demoTime - 1.18) / 0.9, 0, 1);
     const easedProgress = progress * progress * (3 - 2 * progress);
     second.target = add(second.anchor, scale({ x: -0.46, y: -0.28 }, easedProgress));
     second.position = { ...second.target };
-    if (demoTime >= 2.65) releaseDemoContacts();
+    if (demoTime >= 2.48) releaseDemoContacts();
   }
 }
 
@@ -730,28 +742,40 @@ function updateSprings(delta: number): void {
   const blendStep = controls.contactBlendDuration <= 0
     ? 1
     : delta / controls.contactBlendDuration;
+  const contactsToRemove: number[] = [];
 
-  for (const item of deformers.values()) {
-    item.influence = Math.min(1, item.influence + blendStep);
+  for (const [id, item] of deformers) {
     if (item.active) {
+      item.influence = Math.min(1, item.influence + blendStep);
       item.position = { ...item.target };
       continue;
     }
 
+    item.releaseAge = (item.releaseAge ?? 0) + delta;
     const displacement = subtract(item.position, item.anchor);
     item.velocity.x += (-stiffness * displacement.x - damping * item.velocity.x) * delta;
     item.velocity.y += (-stiffness * displacement.y - damping * item.velocity.y) * delta;
     item.position.x += item.velocity.x * delta;
     item.position.y += item.velocity.y * delta;
+
+    if (item.releaseAge > controls.releaseHoldDuration) {
+      const fadeDuration = Math.max(
+        controls.releaseLifetime - controls.releaseHoldDuration,
+        0.001,
+      );
+      const fadeProgress = clamp(
+        (item.releaseAge - controls.releaseHoldDuration) / fadeDuration,
+        0,
+        1,
+      );
+      const easedFade = fadeProgress * fadeProgress * (3 - 2 * fadeProgress);
+      item.influence = Math.min(item.influence, 1 - easedFade);
+    }
+
+    if (item.releaseAge >= controls.releaseLifetime) contactsToRemove.push(id);
   }
 
-  const items = [...deformers.values()];
-  const hasActiveContacts = items.some((item) => item.active);
-  const allContactsSettled = items.length > 0 && items.every((item) => (
-    length(subtract(item.position, item.anchor)) < 0.0015
-    && length(item.velocity) < 0.01
-  ));
-  if (!hasActiveContacts && allContactsSettled) deformers.clear();
+  for (const id of contactsToRemove) deformers.delete(id);
 }
 
 function hexToRgb(color: string): [number, number, number] {
@@ -832,6 +856,7 @@ canvas.addEventListener('pointerdown', (event) => {
     target: { ...position },
     velocity: { x: 0, y: 0 },
     influence: 0,
+    releaseAge: null,
     active: true,
     persistent,
     demoPhase: 0,
@@ -855,6 +880,7 @@ function releasePointer(event: PointerEvent): void {
   const item = deformers.get(event.pointerId);
   if (item && !item.persistent) {
     item.active = false;
+    item.releaseAge = 0;
     item.target = { ...item.anchor };
   }
   if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
@@ -905,6 +931,8 @@ function setupGui(): void {
   const spring = gui.addFolder('2 release spring');
   spring.add(controls, 'springFrequency', 0.5, 8, 0.1).name('frequency');
   spring.add(controls, 'springDamping', 0.05, 1.2, 0.01).name('damping');
+  spring.add(controls, 'releaseHoldDuration', 0, 0.4, 0.01).name('contact hold');
+  spring.add(controls, 'releaseLifetime', 0.1, 0.8, 0.01).name('contact lifetime');
   spring.close();
 
   const material = gui.addFolder('3 material');

@@ -28,16 +28,21 @@ cannot exceed a safe fraction of the support radius. This keeps the inverse
 map contractive and prevents folds or split-looking interiors during extreme
 pulls.
 
+The fixed-center gate uses a rational radial function instead of a narrow
+smoothstep band. Its bounded slope, a lower local-warp limit, and four inverse
+iterations prevent extra critical points from appearing between the center and
+pointer contacts in the normal field.
+
 ## Contact-count continuity
 
 New contacts start with zero solver influence and ramp to full influence over a
 short interval. Their anchor is sampled through the current inverse field, so
 the existing shape remains unchanged on the insertion frame.
 
-Released contacts return to their anchors but remain in the same solver set.
-They are cleared as one batch only after every active contact is released and
-every spring has settled. This avoids count-driven `3 -> 2 -> 1 -> 0` formula
-changes during release.
+Released contacts return to their anchors at full influence for 160 ms. Their
+influence then fades to zero and the contact is removed at 320 ms. Because every
+contact count uses the same solver, these timed removals do not reintroduce
+count-driven formula changes.
 
 ## Rendering
 
