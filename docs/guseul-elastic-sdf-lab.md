@@ -7,66 +7,56 @@ without a visible or simulated triangle mesh. WebGL2 evaluates the shape as an
 implicit signed distance field for every pixel, so the silhouette does not have
 polygon corners or constraint bands.
 
-## Unified touch model
+## Local capsule touch model
 
-Every contact count uses the same center-anchored least-squares affine and RBF
-field. There are no separate translation, exact ellipse, or three-point modes.
-The affine translation is always zero, and the RBF displacement is smoothly
-gated to zero around the origin. Together these act as a permanent virtual
-contact at the center of the ball.
+Every contact creates one compact deformation basis aligned from its rest
+anchor toward the outside of the ball. The basis rises smoothly from zero at
+the fixed center, stays broad around the grabbed material, and fades beyond the
+outer surface. A finite `grip radius` plateau moves a small contact area instead
+of pulling a single point into a cusp.
 
-The affine captures stable global scale, rotation, and shear. The remaining
-error at every pointer becomes a compact Wendland RBF displacement. The shader
-iteratively inverse-maps each screen pixel through both fields before sampling
-the rest circle.
+There is no global affine scale or shear. Moving one finger therefore changes
+only its capsule neighborhood instead of turning the entire ball into an
+ellipse or triangle. Multiple contacts use the same formula regardless of
+contact count.
 
-The RBF has continuous derivatives at the end of its support, preventing the
-visible kinks created by independently constrained boundary vertices.
+The capsule coefficients come from a small regularized weighted least-squares
+solve each frame. Rows and columns are multiplied by each contact's transition
+influence. An inserted contact starts as a zero column and zero-weight row, so
+the previous solution remains valid on the insertion frame. As its influence
+rises, the new material constraint enters continuously. This also keeps grabbed
+material close to the active handles without sacrificing stability when two
+capsules overlap. Two post-solve corrections evaluate the composed flow at each
+anchor and feed the remaining error back into its coefficient; the debug GUI
+reports the resulting maximum contact error.
 
-RBF residuals are globally saturated before rendering so their displacement
-cannot exceed a safe fraction of the support radius. This keeps the inverse
-map contractive and prevents folds or split-looking interiors during extreme
-pulls.
+## Continuous deformation flow
 
-The fixed-center gate uses a rational radial function instead of a narrow
-smoothstep band. Its bounded slope, a lower local-warp limit, and four inverse
-iterations prevent extra critical points from appearing between the center and
-pointer contacts in the normal field.
+A single large mapping `p + displacement(p)` can fold when a finger moves far
+enough. Instead, the renderer treats the local field as a velocity and composes
+sixteen small steps. The shader walks screen pixels backward through that flow;
+CPU hit testing and anchor placement use the same sixteen-step field. The
+composition stays smooth under stronger pulls and does not create the multiple
+inverse branches seen with a one-step warp.
 
-## Tension necking
+## Local volume response
 
-The affine and RBF fields place the contacts, but by themselves they keep the
-material inflated between those contacts. A separate tension field models the
-lateral contraction of stretched silicone.
+Each capsule derives its axial strain from the solved coefficient and applies a
+Poisson-style contraction only inside the same local support. The contraction
+is zero at the grip center, so it rounds the stretched arm without moving the
+held material point.
 
-For each outward-moving contact, the renderer measures the radial stretch from
-its fixed rest anchor to its current handle. It applies a Poisson-style
-contraction perpendicular to that bond. The contraction is strongest between
-the fixed center and the contact, fades smoothly outside that interval, and is
-reduced near the grip so the contact remains a rounded lobe instead of becoming
-a sharp point. `poisson exponent`, `strength`, `width`, `grip width`, and
-`minimum width` expose these terms in the `2 tension neck` GUI folder.
-
-With three or more stretched contacts, their rest-space polar angles are sorted
-and each neighboring pair creates one valley at its angular midpoint. The
-valley moves only the outer part of the field inward; its magnitude comes from
-the weaker strain of the two contacts. This makes the spans between grip lobes
-concave without moving the permanent center anchor. `valley strength` controls
-the indentation and `valley width` controls how much of the arc participates.
-Two-contact pulls omit this pairwise field because their opposing axial necks
-already form one continuous waist.
-
-CPU hit testing and the WebGL2 fragment shader evaluate the same residual,
-neck, and valley functions. Weight normalization uses a differentiable smooth
-maximum, and valley displacement uses a `tanh` saturation instead of a hard
-clamp. These avoid threshold contours that would otherwise appear as corners
-or bands in the field-normal debug view.
+A weaker outer-surface tension models area conservation. It begins outside the
+fixed core and pulls untouched outer arcs inward in proportion to average
+radial strain. This removes extra convex lobes between contacts while leaving
+the center stationary. The old angle-sorted pairwise valley field is no longer
+used.
 
 ## Contact-count continuity
 
-New contacts start with zero solver influence and ramp to full influence over a
-short interval. Their anchor is sampled through the current inverse field, so
-the existing shape remains unchanged on the insertion frame.
+New contacts start with zero least-squares influence and ramp to full influence
+over a short interval. Their anchor is sampled through the current inverse flow,
+so the existing shape remains unchanged on the insertion frame.
 
 Released contacts return to their anchors at full influence for 160 ms. Their
 influence then fades to zero and the contact is removed at 320 ms. Because every
@@ -86,7 +76,7 @@ count-driven formula changes.
 - Pointer Events support up to ten simultaneous contacts.
 - Releasing one contact springs only that control point back to rest.
 - Shift-drag leaves a desktop contact fixed for multi-contact testing.
-- `2-point anchored` and `3-point RBF` provide automated comparison modes.
+- `2-point anchored` and `3-point local pull` provide automated comparison modes.
 - `2 + add third` specifically verifies contact-count continuity.
 - `regression: release all` reproduces a three-contact simultaneous release.
 - `regression: re-entry` adds a new contact while an earlier one is returning.

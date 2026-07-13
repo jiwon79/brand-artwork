@@ -5,8 +5,6 @@ type Vec2 = {
   y: number;
 };
 
-type Mat2 = [number, number, number, number];
-
 type Deformer = {
   id: number;
   anchor: Vec2;
@@ -20,24 +18,14 @@ type Deformer = {
   demoPhase: number;
 };
 
-type Residual = {
+type Pull = {
   anchor: Vec2;
-  displacement: Vec2;
-};
-
-type Valley = {
-  restDirection: Vec2;
-  screenDirection: Vec2;
-  strength: number;
-  width: number;
+  coefficient: Vec2;
 };
 
 type ShapeState = {
-  matrix: Mat2;
-  inverse: Mat2;
-  translation: Vec2;
-  residuals: Residual[];
-  valleys: Valley[];
+  pulls: Pull[];
+  surfaceShrink: number;
 };
 
 type View = {
@@ -52,8 +40,6 @@ type View = {
 type DemoMode = 'none' | 'two' | 'three' | 'transition' | 'releaseAll' | 'singleReentry';
 
 const maxDeformers = 10;
-const identityMatrix: Mat2 = [1, 0, 0, 1];
-const zeroVector = { x: 0, y: 0 };
 const canvas = document.getElementById('elastic-canvas') as HTMLCanvasElement;
 const gl = canvas.getContext('webgl2', {
   alpha: false,
@@ -82,21 +68,23 @@ const initialDemo: DemoMode = requestedDemo === '2'
       : 'none';
 
 const controls = {
-  maxStretch: 2.8,
-  globalRigidity: 2,
-  influenceRadius: 1.12,
-  residualStrength: 1.3,
-  maxLocalWarp: 0.24,
-  centerLockRadius: 0.58,
+  pullWidth: 0.55,
+  gripRadius: 0.1,
+  coreBlend: 0.55,
+  tailStart: 2.2,
+  tailEnd: 4,
+  solverRegularization: 0.012,
   contactBlendDuration: 0.16,
-  neckEnabled: true,
-  poissonExponent: 0.75,
-  neckStrength: 0.8,
-  neckWidth: 1.1,
-  neckTipScale: 0.48,
-  minimumWidth: 0.62,
-  valleyStrength: 0.62,
-  valleyWidth: 0.38,
+  surfaceTension: 0.12,
+  surfaceStart: 0.64,
+  maximumSurfaceShrink: 0.16,
+  contractionEnabled: true,
+  poissonExponent: 0.48,
+  contractionStrength: 0.62,
+  contractionWidth: 0.54,
+  contractionStart: 0.08,
+  contractionEnd: 1.72,
+  minimumWidth: 0.7,
   releaseHoldDuration: 0.16,
   releaseLifetime: 0.32,
   springFrequency: 3.1,
@@ -116,7 +104,8 @@ const debugStats = {
   activeContacts: 0,
   returningContacts: 0,
   solverContacts: 0,
-  solver: 'center anchored',
+  maxContactError: 0,
+  solver: 'local capsule least squares',
 };
 
 const vertexShaderSource = `#version 300 es
@@ -141,28 +130,25 @@ precision highp float;
 uniform vec2 uResolution;
 uniform vec2 uCenter;
 uniform float uRadius;
-uniform mat2 uInverseMatrix;
-uniform vec2 uTranslation;
-uniform int uResidualCount;
+uniform int uPullCount;
 uniform vec2 uAnchors[MAX_DEFORMERS];
-uniform vec2 uResiduals[MAX_DEFORMERS];
+uniform vec2 uPullCoefficients[MAX_DEFORMERS];
 uniform int uHandleCount;
 uniform vec2 uHandles[MAX_DEFORMERS];
-uniform float uContactInfluences[MAX_DEFORMERS];
-uniform float uInfluenceRadius;
-uniform float uResidualStrength;
-uniform float uCenterLockRadius;
-uniform bool uNeckEnabled;
+uniform float uPullWidth;
+uniform float uGripRadius;
+uniform float uCoreBlend;
+uniform float uTailStart;
+uniform float uTailEnd;
+uniform float uSurfaceShrink;
+uniform float uSurfaceStart;
+uniform bool uContractionEnabled;
 uniform float uPoissonExponent;
-uniform float uNeckStrength;
-uniform float uNeckWidth;
-uniform float uNeckTipScale;
+uniform float uContractionStrength;
+uniform float uContractionWidth;
+uniform float uContractionStart;
+uniform float uContractionEnd;
 uniform float uMinimumWidth;
-uniform int uValleyCount;
-uniform vec2 uValleyRestDirections[MAX_DEFORMERS];
-uniform vec2 uValleyScreenDirections[MAX_DEFORMERS];
-uniform float uValleyStrengths[MAX_DEFORMERS];
-uniform float uValleyWidths[MAX_DEFORMERS];
 uniform vec3 uBaseColor;
 uniform vec3 uCoolTint;
 uniform vec3 uWarmTint;
@@ -184,53 +170,62 @@ float smoothMaximumOne(float value) {
   return 0.5 * (1.0 + value + sqrt(delta * delta + 0.04));
 }
 
-vec2 residualAt(vec2 restPosition) {
-  vec2 displacement = vec2(0.0);
-  float weightSum = 0.0;
-
-  for (int i = 0; i < MAX_DEFORMERS; i += 1) {
-    if (i >= uResidualCount) break;
-    float normalizedDistance = length(restPosition - uAnchors[i]) / uInfluenceRadius;
-    float weight = wendland(normalizedDistance);
-    displacement += uResiduals[i] * weight;
-    weightSum += weight;
-  }
-
-  float centerDistanceSquared = dot(restPosition, restPosition);
-  float lockRadiusSquared = uCenterLockRadius * uCenterLockRadius;
-  float centerGate = centerDistanceSquared / max(centerDistanceSquared + lockRadiusSquared, 0.0001);
-  return displacement * uResidualStrength * centerGate / smoothMaximumOne(weightSum);
+float capsuleWeight(vec2 restPosition, vec2 anchor) {
+  float restLength = length(anchor);
+  if (restLength < 0.08) return 0.0;
+  vec2 axis = anchor / restLength;
+  vec2 perpendicular = vec2(-axis.y, axis.x);
+  float along = dot(restPosition, axis) / restLength;
+  float transverse = dot(restPosition, perpendicular);
+  float centerRise = smoothstep(0.0, max(uCoreBlend, 0.05), along);
+  float outerTail = 1.0 - smoothstep(uTailStart, max(uTailEnd, uTailStart + 0.05), along);
+  float width = max(uPullWidth, 0.05);
+  float gripRadius = min(max(uGripRadius, 0.0), width - 0.01);
+  float lateral = 1.0 - smoothstep(gripRadius, width, abs(transverse));
+  return centerRise * outerTail * lateral;
 }
 
-vec2 neckAt(vec2 restPosition) {
-  if (!uNeckEnabled) return vec2(0.0);
+vec2 pullAt(vec2 restPosition) {
+  vec2 displacement = vec2(0.0);
+
+  for (int i = 0; i < MAX_DEFORMERS; i += 1) {
+    if (i >= uPullCount) break;
+    displacement += uPullCoefficients[i] * capsuleWeight(restPosition, uAnchors[i]);
+  }
+
+  return displacement;
+}
+
+vec2 contractionAt(vec2 restPosition) {
+  if (!uContractionEnabled) return vec2(0.0);
   vec2 displacement = vec2(0.0);
   float weightSum = 0.0;
 
   for (int i = 0; i < MAX_DEFORMERS; i += 1) {
-    if (i >= uHandleCount) break;
+    if (i >= uPullCount) break;
     vec2 anchor = uAnchors[i];
-    vec2 handle = uHandles[i];
+    vec2 coefficient = uPullCoefficients[i];
     float restLength = length(anchor);
-    float currentLength = length(handle);
-    if (restLength < 0.08 || currentLength <= restLength) continue;
+    if (restLength < 0.08) continue;
 
     vec2 restAxis = anchor / restLength;
     vec2 restPerpendicular = vec2(-restAxis.y, restAxis.x);
-    vec2 currentAxis = handle / max(currentLength, 0.0001);
+    float axialDelta = max(dot(coefficient, restAxis), 0.0);
+    if (axialDelta <= 0.0001) continue;
+    vec2 currentAxis = normalize(anchor + coefficient);
     vec2 currentPerpendicular = vec2(-currentAxis.y, currentAxis.x);
     float along = dot(restPosition, restAxis) / restLength;
     float transverse = dot(restPosition, restPerpendicular);
-    float segmentWindow = smoothstep(-0.9, 0.0, along)
-      * (1.0 - smoothstep(1.8, 2.4, along));
-    float alongProgress = smoothstep(0.0, 1.0, clamp(along, 0.0, 1.0));
-    float neckProfile = mix(1.0, uNeckTipScale, alongProgress);
-    float width = max(uNeckWidth, 0.05);
-    float lateralWeight = exp(-0.5 * transverse * transverse / (width * width));
-    float stretch = currentLength / restLength;
-    float contraction = (1.0 - pow(stretch, -uPoissonExponent)) * uNeckStrength;
+    float start = max(uContractionStart, 0.0);
+    float end = max(uContractionEnd, start + 0.1);
+    float segmentWindow = smoothstep(start, start + 0.28, along)
+      * (1.0 - smoothstep(end - 0.38, end, along));
+    float width = max(uContractionWidth, 0.05);
+    float lateralWeight = wendland(abs(transverse) / width);
+    float stretch = 1.0 + axialDelta / restLength;
+    float contraction = (1.0 - pow(stretch, -uPoissonExponent)) * uContractionStrength;
     contraction = clamp(contraction, 0.0, 1.0 - uMinimumWidth);
-    float weight = segmentWindow * neckProfile * lateralWeight * uContactInfluences[i];
+    float weight = segmentWindow * lateralWeight;
     displacement -= currentPerpendicular * transverse * contraction * weight;
     weightSum += weight;
   }
@@ -238,37 +233,24 @@ vec2 neckAt(vec2 restPosition) {
   return displacement / smoothMaximumOne(weightSum);
 }
 
-vec2 valleyAt(vec2 restPosition) {
+vec2 surfaceTensionAt(vec2 restPosition) {
   float radius = length(restPosition);
-  if (radius < 0.0001) return vec2(0.0);
-  vec2 restDirection = restPosition / radius;
-  vec2 displacement = vec2(0.0);
+  float surfaceWeight = smoothstep(uSurfaceStart, 1.0, radius);
+  return -restPosition * uSurfaceShrink * surfaceWeight;
+}
 
-  for (int i = 0; i < MAX_DEFORMERS; i += 1) {
-    if (i >= uValleyCount) break;
-    float directionMatch = clamp(dot(restDirection, uValleyRestDirections[i]), -1.0, 1.0);
-    float width = max(uValleyWidths[i], 0.05);
-    float angularWeight = exp(-(1.0 - directionMatch) / (width * width));
-    float radialWeight = smoothstep(0.18, 0.92, radius);
-    displacement -= uValleyScreenDirections[i]
-      * uValleyStrengths[i]
-      * angularWeight
-      * radialWeight;
-  }
-
-  float magnitude = length(displacement);
-  float saturatedMagnitude = 0.42 * tanh(magnitude / 0.42);
-  return magnitude > 0.0001
-    ? displacement * (saturatedMagnitude / magnitude)
-    : displacement;
+vec2 localDeformationAt(vec2 restPosition) {
+  return pullAt(restPosition)
+    + contractionAt(restPosition)
+    + surfaceTensionAt(restPosition);
 }
 
 vec2 inverseDeform(vec2 screenPosition) {
-  vec2 restPosition = uInverseMatrix * (screenPosition - uTranslation);
+  vec2 restPosition = screenPosition;
+  const float timeStep = 1.0 / 16.0;
 
-  for (int iteration = 0; iteration < 4; iteration += 1) {
-    vec2 localDeformation = residualAt(restPosition) + neckAt(restPosition) + valleyAt(restPosition);
-    restPosition = uInverseMatrix * (screenPosition - uTranslation - localDeformation);
+  for (int iteration = 0; iteration < 16; iteration += 1) {
+    restPosition -= localDeformationAt(restPosition) * timeStep;
   }
 
   return restPosition;
@@ -375,28 +357,25 @@ const uniform = {
   resolution: gl.getUniformLocation(program, 'uResolution'),
   center: gl.getUniformLocation(program, 'uCenter'),
   radius: gl.getUniformLocation(program, 'uRadius'),
-  inverseMatrix: gl.getUniformLocation(program, 'uInverseMatrix'),
-  translation: gl.getUniformLocation(program, 'uTranslation'),
-  residualCount: gl.getUniformLocation(program, 'uResidualCount'),
+  pullCount: gl.getUniformLocation(program, 'uPullCount'),
   anchors: gl.getUniformLocation(program, 'uAnchors[0]'),
-  residuals: gl.getUniformLocation(program, 'uResiduals[0]'),
+  pullCoefficients: gl.getUniformLocation(program, 'uPullCoefficients[0]'),
   handleCount: gl.getUniformLocation(program, 'uHandleCount'),
   handles: gl.getUniformLocation(program, 'uHandles[0]'),
-  contactInfluences: gl.getUniformLocation(program, 'uContactInfluences[0]'),
-  influenceRadius: gl.getUniformLocation(program, 'uInfluenceRadius'),
-  residualStrength: gl.getUniformLocation(program, 'uResidualStrength'),
-  centerLockRadius: gl.getUniformLocation(program, 'uCenterLockRadius'),
-  neckEnabled: gl.getUniformLocation(program, 'uNeckEnabled'),
+  pullWidth: gl.getUniformLocation(program, 'uPullWidth'),
+  gripRadius: gl.getUniformLocation(program, 'uGripRadius'),
+  coreBlend: gl.getUniformLocation(program, 'uCoreBlend'),
+  tailStart: gl.getUniformLocation(program, 'uTailStart'),
+  tailEnd: gl.getUniformLocation(program, 'uTailEnd'),
+  surfaceShrink: gl.getUniformLocation(program, 'uSurfaceShrink'),
+  surfaceStart: gl.getUniformLocation(program, 'uSurfaceStart'),
+  contractionEnabled: gl.getUniformLocation(program, 'uContractionEnabled'),
   poissonExponent: gl.getUniformLocation(program, 'uPoissonExponent'),
-  neckStrength: gl.getUniformLocation(program, 'uNeckStrength'),
-  neckWidth: gl.getUniformLocation(program, 'uNeckWidth'),
-  neckTipScale: gl.getUniformLocation(program, 'uNeckTipScale'),
+  contractionStrength: gl.getUniformLocation(program, 'uContractionStrength'),
+  contractionWidth: gl.getUniformLocation(program, 'uContractionWidth'),
+  contractionStart: gl.getUniformLocation(program, 'uContractionStart'),
+  contractionEnd: gl.getUniformLocation(program, 'uContractionEnd'),
   minimumWidth: gl.getUniformLocation(program, 'uMinimumWidth'),
-  valleyCount: gl.getUniformLocation(program, 'uValleyCount'),
-  valleyRestDirections: gl.getUniformLocation(program, 'uValleyRestDirections[0]'),
-  valleyScreenDirections: gl.getUniformLocation(program, 'uValleyScreenDirections[0]'),
-  valleyStrengths: gl.getUniformLocation(program, 'uValleyStrengths[0]'),
-  valleyWidths: gl.getUniformLocation(program, 'uValleyWidths[0]'),
   baseColor: gl.getUniformLocation(program, 'uBaseColor'),
   coolTint: gl.getUniformLocation(program, 'uCoolTint'),
   warmTint: gl.getUniformLocation(program, 'uWarmTint'),
@@ -410,13 +389,7 @@ const uniform = {
 const deformers = new Map<number, Deformer>();
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let view: View;
-let shapeState: ShapeState = {
-  matrix: identityMatrix,
-  inverse: identityMatrix,
-  translation: zeroVector,
-  residuals: [],
-  valleys: [],
-};
+let shapeState: ShapeState = { pulls: [], surfaceShrink: 0 };
 let previousTime = performance.now();
 let demoTime = 0;
 let demoNeedsSetup = controls.demoMode !== 'none' && !prefersReducedMotion;
@@ -449,198 +422,6 @@ function length(vector: Vec2): number {
   return Math.hypot(vector.x, vector.y);
 }
 
-function applyMatrix(matrix: Mat2, vector: Vec2): Vec2 {
-  return {
-    x: matrix[0] * vector.x + matrix[1] * vector.y,
-    y: matrix[2] * vector.x + matrix[3] * vector.y,
-  };
-}
-
-function inverseMatrix(matrix: Mat2): Mat2 {
-  const determinant = matrix[0] * matrix[3] - matrix[1] * matrix[2];
-  if (Math.abs(determinant) < 0.0001) return identityMatrix;
-  const inverseDeterminant = 1 / determinant;
-  return [
-    matrix[3] * inverseDeterminant,
-    -matrix[1] * inverseDeterminant,
-    -matrix[2] * inverseDeterminant,
-    matrix[0] * inverseDeterminant,
-  ];
-}
-
-function anchoredSimilarityFallback(items: Deformer[]): Mat2 {
-  let dotSum = controls.globalRigidity;
-  let crossSum = 0;
-  let restEnergy = controls.globalRigidity;
-
-  for (const item of items) {
-    dotSum += item.influence * (
-      item.position.x * item.anchor.x + item.position.y * item.anchor.y
-    );
-    crossSum += item.influence * (
-      item.position.y * item.anchor.x - item.position.x * item.anchor.y
-    );
-    restEnergy += item.influence * (
-      item.anchor.x * item.anchor.x + item.anchor.y * item.anchor.y
-    );
-  }
-
-  const a = dotSum / restEnergy;
-  const b = crossSum / restEnergy;
-  return [a, -b, b, a];
-}
-
-function anchoredTransform(items: Deformer[]): Mat2 {
-  let sxx = controls.globalRigidity;
-  let sxy = 0;
-  let syy = controls.globalRigidity;
-  let cxx = controls.globalRigidity;
-  let cxy = 0;
-  let cyx = 0;
-  let cyy = controls.globalRigidity;
-
-  for (const item of items) {
-    const weight = item.influence;
-    sxx += weight * item.anchor.x * item.anchor.x;
-    sxy += weight * item.anchor.x * item.anchor.y;
-    syy += weight * item.anchor.y * item.anchor.y;
-    cxx += weight * item.position.x * item.anchor.x;
-    cxy += weight * item.position.x * item.anchor.y;
-    cyx += weight * item.position.y * item.anchor.x;
-    cyy += weight * item.position.y * item.anchor.y;
-  }
-
-  const determinant = sxx * syy - sxy * sxy;
-  let matrix: Mat2;
-
-  if (Math.abs(determinant) < 0.0001) {
-    matrix = anchoredSimilarityFallback(items);
-  } else {
-    const inverseSxx = syy / determinant;
-    const inverseSxy = -sxy / determinant;
-    const inverseSyy = sxx / determinant;
-    matrix = [
-      cxx * inverseSxx + cxy * inverseSxy,
-      cxx * inverseSxy + cxy * inverseSyy,
-      cyx * inverseSxx + cyy * inverseSxy,
-      cyx * inverseSxy + cyy * inverseSyy,
-    ];
-  }
-
-  const matrixDeterminant = matrix[0] * matrix[3] - matrix[1] * matrix[2];
-  if (matrixDeterminant < 0.12) {
-    matrix = anchoredSimilarityFallback(items);
-  }
-
-  const maxComponent = Math.max(...matrix.map((component) => Math.abs(component)));
-  if (maxComponent > controls.maxStretch) {
-    const componentScale = controls.maxStretch / maxComponent;
-    matrix = [
-      1 + (matrix[0] - 1) * componentScale,
-      matrix[1] * componentScale,
-      matrix[2] * componentScale,
-      1 + (matrix[3] - 1) * componentScale,
-    ];
-  }
-
-  return matrix;
-}
-
-function computeShapeState(): ShapeState {
-  const items = [...deformers.values()].slice(0, maxDeformers);
-  if (items.length === 0) {
-    return {
-      matrix: identityMatrix,
-      inverse: identityMatrix,
-      translation: zeroVector,
-      residuals: [],
-      valleys: [],
-    };
-  }
-
-  const matrix = anchoredTransform(items);
-  let residuals = items.map((item) => ({
-    anchor: item.anchor,
-    displacement: scale(
-      subtract(item.position, applyMatrix(matrix, item.anchor)),
-      item.influence,
-    ),
-  }));
-
-  const maximumResidual = residuals.reduce(
-    (maximum, residual) => Math.max(maximum, length(residual.displacement)),
-    0,
-  );
-  const safeResidual = controls.influenceRadius * controls.maxLocalWarp;
-  const effectiveMaximum = maximumResidual * controls.residualStrength;
-  if (effectiveMaximum > 0.0001 && safeResidual > 0.0001) {
-    const limitedResidual = Math.tanh(effectiveMaximum / safeResidual) * safeResidual;
-    const residualScale = limitedResidual / effectiveMaximum;
-    residuals = residuals.map((residual) => ({
-      anchor: residual.anchor,
-      displacement: scale(residual.displacement, residualScale),
-    }));
-  }
-
-  return {
-    matrix,
-    inverse: inverseMatrix(matrix),
-    translation: zeroVector,
-    residuals,
-    valleys: computeValleys(items, matrix),
-  };
-}
-
-function computeValleys(items: Deformer[], matrix: Mat2): Valley[] {
-  const stretched = items
-    .filter((item) => (
-      item.influence > 0.001
-      && length(item.anchor) > 0.08
-      && length(item.position) > length(item.anchor)
-    ))
-    .sort((a, b) => (
-      Math.atan2(a.anchor.y, a.anchor.x) - Math.atan2(b.anchor.y, b.anchor.x)
-    ));
-
-  // Two opposing pulls already form one smooth waist through the axial neck field.
-  if (stretched.length < 3) return [];
-
-  const valleys: Valley[] = [];
-  const fullTurn = Math.PI * 2;
-  const fieldInfluence = Math.min(...stretched.map((item) => item.influence));
-
-  for (let index = 0; index < stretched.length; index += 1) {
-    const current = stretched[index];
-    const next = stretched[(index + 1) % stretched.length];
-    const currentAngle = Math.atan2(current.anchor.y, current.anchor.x);
-    let angularGap = Math.atan2(next.anchor.y, next.anchor.x) - currentAngle;
-    if (angularGap <= 0) angularGap += fullTurn;
-    if (angularGap < 0.2) continue;
-
-    const middleAngle = currentAngle + angularGap * 0.5;
-    const restDirection = { x: Math.cos(middleAngle), y: Math.sin(middleAngle) };
-    const transformedDirection = applyMatrix(matrix, restDirection);
-    const transformedLength = Math.max(length(transformedDirection), 0.0001);
-    const currentStrain = Math.max(length(current.position) / length(current.anchor) - 1, 0);
-    const nextStrain = Math.max(length(next.position) / length(next.anchor) - 1, 0);
-    const sharedStrain = Math.min(currentStrain, nextStrain);
-
-    valleys.push({
-      restDirection,
-      screenDirection: scale(transformedDirection, 1 / transformedLength),
-      strength: Math.min(
-        sharedStrain
-          * controls.valleyStrength
-          * fieldInfluence,
-        0.38,
-      ),
-      width: Math.max(0.12, angularGap * controls.valleyWidth),
-    });
-  }
-
-  return valleys.slice(0, maxDeformers);
-}
-
 function wendland(normalizedDistance: number): number {
   const t = Math.max(1 - normalizedDistance, 0);
   return t * t * t * t * (4 * normalizedDistance + 1);
@@ -651,42 +432,167 @@ function smoothMaximumOne(value: number): number {
   return 0.5 * (1 + value + Math.sqrt(delta * delta + 0.04));
 }
 
-function residualAt(restPosition: Vec2, state: ShapeState): Vec2 {
-  let total = { x: 0, y: 0 };
-  let weightSum = 0;
-
-  for (const residual of state.residuals) {
-    const normalizedDistance = length(subtract(restPosition, residual.anchor)) / controls.influenceRadius;
-    const weight = wendland(normalizedDistance);
-    total = add(total, scale(residual.displacement, weight));
-    weightSum += weight;
-  }
-
-  const centerDistanceSquared = restPosition.x * restPosition.x + restPosition.y * restPosition.y;
-  const lockRadiusSquared = controls.centerLockRadius * controls.centerLockRadius;
-  const centerGate = centerDistanceSquared / Math.max(
-    centerDistanceSquared + lockRadiusSquared,
-    0.0001,
+function capsuleWeight(restPosition: Vec2, anchor: Vec2): number {
+  const restLength = length(anchor);
+  if (restLength < 0.08) return 0;
+  const axis = scale(anchor, 1 / restLength);
+  const perpendicular = { x: -axis.y, y: axis.x };
+  const along = (
+    restPosition.x * axis.x + restPosition.y * axis.y
+  ) / restLength;
+  const transverse = restPosition.x * perpendicular.x + restPosition.y * perpendicular.y;
+  const centerRise = smoothstep(0, Math.max(controls.coreBlend, 0.05), along);
+  const outerTail = 1 - smoothstep(
+    controls.tailStart,
+    Math.max(controls.tailEnd, controls.tailStart + 0.05),
+    along,
   );
-  return scale(
-    total,
-    controls.residualStrength * centerGate / smoothMaximumOne(weightSum),
-  );
+  const width = Math.max(controls.pullWidth, 0.05);
+  const gripRadius = Math.min(Math.max(controls.gripRadius, 0), width - 0.01);
+  const lateral = 1 - smoothstep(gripRadius, width, Math.abs(transverse));
+  return centerRise * outerTail * lateral;
 }
 
-function neckAt(restPosition: Vec2): Vec2 {
-  if (!controls.neckEnabled) return { x: 0, y: 0 };
+function solveLinearSystem(matrix: number[][], rightHandSide: number[]): number[] {
+  const size = rightHandSide.length;
+  const rows = matrix.map((row, index) => [...row, rightHandSide[index]]);
+
+  for (let column = 0; column < size; column += 1) {
+    let pivot = column;
+    for (let row = column + 1; row < size; row += 1) {
+      if (Math.abs(rows[row][column]) > Math.abs(rows[pivot][column])) pivot = row;
+    }
+    [rows[column], rows[pivot]] = [rows[pivot], rows[column]];
+    const pivotValue = rows[column][column];
+    if (Math.abs(pivotValue) < 0.000001) continue;
+
+    for (let entry = column; entry <= size; entry += 1) {
+      rows[column][entry] /= pivotValue;
+    }
+    for (let row = 0; row < size; row += 1) {
+      if (row === column) continue;
+      const factor = rows[row][column];
+      if (Math.abs(factor) < 0.000001) continue;
+      for (let entry = column; entry <= size; entry += 1) {
+        rows[row][entry] -= factor * rows[column][entry];
+      }
+    }
+  }
+
+  return rows.map((row) => row[size]);
+}
+
+function computeShapeState(): ShapeState {
+  const items = [...deformers.values()].slice(0, maxDeformers);
+  const count = items.length;
+  if (count === 0) return { pulls: [], surfaceShrink: 0 };
+
+  const basis = Array.from({ length: count }, (_, row) => (
+    Array.from({ length: count }, (_, column) => (
+      items[column].influence * capsuleWeight(items[row].anchor, items[column].anchor)
+    ))
+  ));
+  const normalMatrix = Array.from({ length: count }, () => Array(count).fill(0));
+  const rightX = Array(count).fill(0);
+  const rightY = Array(count).fill(0);
+
+  for (let column = 0; column < count; column += 1) {
+    for (let otherColumn = 0; otherColumn < count; otherColumn += 1) {
+      let value = column === otherColumn ? controls.solverRegularization : 0;
+      for (let row = 0; row < count; row += 1) {
+        value += items[row].influence * basis[row][column] * basis[row][otherColumn];
+      }
+      normalMatrix[column][otherColumn] = value;
+    }
+
+    for (let row = 0; row < count; row += 1) {
+      const displacement = subtract(items[row].position, items[row].anchor);
+      const weightedBasis = items[row].influence * basis[row][column];
+      rightX[column] += weightedBasis * displacement.x;
+      rightY[column] += weightedBasis * displacement.y;
+    }
+  }
+
+  const coefficientX = solveLinearSystem(normalMatrix, rightX);
+  const coefficientY = solveLinearSystem(normalMatrix, rightY);
+  let pulls = items.map((item, index) => ({
+    anchor: item.anchor,
+    coefficient: {
+      x: coefficientX[index] * item.influence,
+      y: coefficientY[index] * item.influence,
+    },
+  }));
+  const totalInfluence = items.reduce((total, item) => total + item.influence, 0);
+  const computeSurfaceShrink = (currentPulls: Pull[]): number => {
+    const radialStrainSum = currentPulls.reduce((total, pull) => {
+      const restLength = Math.max(length(pull.anchor), 0.08);
+      const axis = scale(pull.anchor, 1 / restLength);
+      const axialDelta = Math.max(
+        pull.coefficient.x * axis.x + pull.coefficient.y * axis.y,
+        0,
+      );
+      return total + axialDelta / restLength;
+    }, 0);
+    const averageRadialStrain = radialStrainSum / Math.max(totalInfluence, 0.001);
+    return Math.min(
+      averageRadialStrain * controls.surfaceTension,
+      controls.maximumSurfaceShrink,
+    );
+  };
+
+  for (let iteration = 0; iteration < 2; iteration += 1) {
+    const provisionalState = { pulls, surfaceShrink: computeSurfaceShrink(pulls) };
+    pulls = pulls.map((pull, index) => {
+      const error = subtract(
+        items[index].position,
+        forwardDeform(pull.anchor, provisionalState),
+      );
+      return {
+        ...pull,
+        coefficient: add(
+          pull.coefficient,
+          scale(error, 0.85 * items[index].influence),
+        ),
+      };
+    });
+  }
+
+  return {
+    pulls,
+    surfaceShrink: computeSurfaceShrink(pulls),
+  };
+}
+
+function pullAt(restPosition: Vec2, state: ShapeState): Vec2 {
+  let displacement = { x: 0, y: 0 };
+  for (const pull of state.pulls) {
+    displacement = add(
+      displacement,
+      scale(pull.coefficient, capsuleWeight(restPosition, pull.anchor)),
+    );
+  }
+  return displacement;
+}
+
+function contractionAt(restPosition: Vec2, state: ShapeState): Vec2 {
+  if (!controls.contractionEnabled) return { x: 0, y: 0 };
   let displacement = { x: 0, y: 0 };
   let weightSum = 0;
 
-  for (const item of deformers.values()) {
-    const restLength = length(item.anchor);
-    const currentLength = length(item.position);
-    if (restLength < 0.08 || currentLength <= restLength) continue;
+  for (const pull of state.pulls) {
+    const restLength = length(pull.anchor);
+    if (restLength < 0.08) continue;
+    const restAxis = scale(pull.anchor, 1 / restLength);
+    const axialDelta = Math.max(
+      pull.coefficient.x * restAxis.x + pull.coefficient.y * restAxis.y,
+      0,
+    );
+    if (axialDelta <= 0.0001) continue;
 
-    const restAxis = scale(item.anchor, 1 / restLength);
     const restPerpendicular = { x: -restAxis.y, y: restAxis.x };
-    const currentAxis = scale(item.position, 1 / Math.max(currentLength, 0.0001));
+    const currentAxisVector = add(pull.anchor, pull.coefficient);
+    const currentAxisLength = Math.max(length(currentAxisVector), 0.0001);
+    const currentAxis = scale(currentAxisVector, 1 / currentAxisLength);
     const currentPerpendicular = { x: -currentAxis.y, y: currentAxis.x };
     const along = (
       restPosition.x * restAxis.x + restPosition.y * restAxis.y
@@ -694,19 +600,20 @@ function neckAt(restPosition: Vec2): Vec2 {
     const transverse = (
       restPosition.x * restPerpendicular.x + restPosition.y * restPerpendicular.y
     );
-    const segmentWindow = smoothstep(-0.9, 0, along)
-      * (1 - smoothstep(1.8, 2.4, along));
-    const alongProgress = smoothstep(0, 1, clamp(along, 0, 1));
-    const neckProfile = 1 + (controls.neckTipScale - 1) * alongProgress;
-    const width = Math.max(controls.neckWidth, 0.05);
-    const lateralWeight = Math.exp(-0.5 * transverse * transverse / (width * width));
-    const stretch = currentLength / restLength;
+    const start = Math.max(controls.contractionStart, 0);
+    const end = Math.max(controls.contractionEnd, start + 0.1);
+    const segmentWindow = smoothstep(start, start + 0.28, along)
+      * (1 - smoothstep(end - 0.38, end, along));
+    const lateralWeight = wendland(
+      Math.abs(transverse) / Math.max(controls.contractionWidth, 0.05),
+    );
+    const stretch = 1 + axialDelta / restLength;
     const contraction = clamp(
-      (1 - Math.pow(stretch, -controls.poissonExponent)) * controls.neckStrength,
+      (1 - Math.pow(stretch, -controls.poissonExponent)) * controls.contractionStrength,
       0,
       1 - controls.minimumWidth,
     );
-    const weight = segmentWindow * neckProfile * lateralWeight * item.influence;
+    const weight = segmentWindow * lateralWeight;
     displacement = add(
       displacement,
       scale(currentPerpendicular, -transverse * contraction * weight),
@@ -717,45 +624,24 @@ function neckAt(restPosition: Vec2): Vec2 {
   return scale(displacement, 1 / smoothMaximumOne(weightSum));
 }
 
-function valleyAt(restPosition: Vec2, state: ShapeState): Vec2 {
+function localDeformation(restPosition: Vec2, state: ShapeState): Vec2 {
   const radius = length(restPosition);
-  if (radius < 0.0001) return { x: 0, y: 0 };
-  const restDirection = scale(restPosition, 1 / radius);
-  let displacement = { x: 0, y: 0 };
-
-  for (const valley of state.valleys) {
-    const directionMatch = clamp(
-      restDirection.x * valley.restDirection.x + restDirection.y * valley.restDirection.y,
-      -1,
-      1,
-    );
-    const width = Math.max(valley.width, 0.05);
-    const angularWeight = Math.exp(-(1 - directionMatch) / (width * width));
-    const radialWeight = smoothstep(0.18, 0.92, radius);
-    displacement = add(
-      displacement,
-      scale(valley.screenDirection, -valley.strength * angularWeight * radialWeight),
-    );
-  }
-
-  const magnitude = length(displacement);
-  const saturatedMagnitude = 0.42 * Math.tanh(magnitude / 0.42);
-  return magnitude > 0.0001
-    ? scale(displacement, saturatedMagnitude / magnitude)
-    : displacement;
+  const surfaceWeight = smoothstep(controls.surfaceStart, 1, radius);
+  const surfaceTension = scale(restPosition, -state.surfaceShrink * surfaceWeight);
+  return add(
+    add(pullAt(restPosition, state), contractionAt(restPosition, state)),
+    surfaceTension,
+  );
 }
 
 function inverseDeform(position: Vec2, state: ShapeState): Vec2 {
-  let restPosition = applyMatrix(state.inverse, subtract(position, state.translation));
+  let restPosition = { ...position };
+  const timeStep = 1 / 16;
 
-  for (let iteration = 0; iteration < 4; iteration += 1) {
-    const localDeformation = add(
-      add(residualAt(restPosition, state), neckAt(restPosition)),
-      valleyAt(restPosition, state),
-    );
-    restPosition = applyMatrix(
-      state.inverse,
-      subtract(subtract(position, state.translation), localDeformation),
+  for (let iteration = 0; iteration < 16; iteration += 1) {
+    restPosition = subtract(
+      restPosition,
+      scale(localDeformation(restPosition, state), timeStep),
     );
   }
 
@@ -763,13 +649,15 @@ function inverseDeform(position: Vec2, state: ShapeState): Vec2 {
 }
 
 function forwardDeform(restPosition: Vec2, state: ShapeState): Vec2 {
-  return add(
-    add(applyMatrix(state.matrix, restPosition), state.translation),
-    add(
-      add(residualAt(restPosition, state), neckAt(restPosition)),
-      valleyAt(restPosition, state),
-    ),
-  );
+  let screenPosition = { ...restPosition };
+  const timeStep = 1 / 16;
+  for (let iteration = 0; iteration < 16; iteration += 1) {
+    screenPosition = add(
+      screenPosition,
+      scale(localDeformation(screenPosition, state), timeStep),
+    );
+  }
+  return screenPosition;
 }
 
 function resize(): void {
@@ -1050,54 +938,36 @@ function packVectors(items: Vec2[]): Float32Array {
   return packed;
 }
 
-function packScalars(items: number[]): Float32Array {
-  const packed = new Float32Array(maxDeformers);
-  for (let index = 0; index < Math.min(items.length, maxDeformers); index += 1) {
-    packed[index] = items[index];
-  }
-  return packed;
-}
-
 function render(): void {
   const items = [...deformers.values()].slice(0, maxDeformers);
-  const residuals = shapeState.residuals.slice(0, maxDeformers);
-  const valleys = shapeState.valleys.slice(0, maxDeformers);
-  const matrix = shapeState.inverse;
+  const pulls = shapeState.pulls.slice(0, maxDeformers);
 
   gl.useProgram(program);
   gl.uniform2f(uniform.resolution, canvas.width, canvas.height);
   gl.uniform2f(uniform.center, view.centerX * view.dpr, view.centerY * view.dpr);
   gl.uniform1f(uniform.radius, view.radius * view.dpr);
-  gl.uniformMatrix2fv(uniform.inverseMatrix, false, new Float32Array([
-    matrix[0], matrix[2], matrix[1], matrix[3],
-  ]));
-  gl.uniform2f(uniform.translation, shapeState.translation.x, shapeState.translation.y);
-  gl.uniform1i(uniform.residualCount, residuals.length);
-  gl.uniform2fv(uniform.anchors, packVectors(residuals.map((item) => item.anchor)));
-  gl.uniform2fv(uniform.residuals, packVectors(residuals.map((item) => item.displacement)));
+  gl.uniform1i(uniform.pullCount, pulls.length);
+  gl.uniform2fv(uniform.anchors, packVectors(pulls.map((pull) => pull.anchor)));
+  gl.uniform2fv(
+    uniform.pullCoefficients,
+    packVectors(pulls.map((pull) => pull.coefficient)),
+  );
   gl.uniform1i(uniform.handleCount, items.length);
   gl.uniform2fv(uniform.handles, packVectors(items.map((item) => item.position)));
-  gl.uniform1fv(uniform.contactInfluences, packScalars(items.map((item) => item.influence)));
-  gl.uniform1f(uniform.influenceRadius, controls.influenceRadius);
-  gl.uniform1f(uniform.residualStrength, controls.residualStrength);
-  gl.uniform1f(uniform.centerLockRadius, controls.centerLockRadius);
-  gl.uniform1i(uniform.neckEnabled, controls.neckEnabled ? 1 : 0);
+  gl.uniform1f(uniform.pullWidth, controls.pullWidth);
+  gl.uniform1f(uniform.gripRadius, controls.gripRadius);
+  gl.uniform1f(uniform.coreBlend, controls.coreBlend);
+  gl.uniform1f(uniform.tailStart, controls.tailStart);
+  gl.uniform1f(uniform.tailEnd, controls.tailEnd);
+  gl.uniform1f(uniform.surfaceShrink, shapeState.surfaceShrink);
+  gl.uniform1f(uniform.surfaceStart, controls.surfaceStart);
+  gl.uniform1i(uniform.contractionEnabled, controls.contractionEnabled ? 1 : 0);
   gl.uniform1f(uniform.poissonExponent, controls.poissonExponent);
-  gl.uniform1f(uniform.neckStrength, controls.neckStrength);
-  gl.uniform1f(uniform.neckWidth, controls.neckWidth);
-  gl.uniform1f(uniform.neckTipScale, controls.neckTipScale);
+  gl.uniform1f(uniform.contractionStrength, controls.contractionStrength);
+  gl.uniform1f(uniform.contractionWidth, controls.contractionWidth);
+  gl.uniform1f(uniform.contractionStart, controls.contractionStart);
+  gl.uniform1f(uniform.contractionEnd, controls.contractionEnd);
   gl.uniform1f(uniform.minimumWidth, controls.minimumWidth);
-  gl.uniform1i(uniform.valleyCount, valleys.length);
-  gl.uniform2fv(
-    uniform.valleyRestDirections,
-    packVectors(valleys.map((valley) => valley.restDirection)),
-  );
-  gl.uniform2fv(
-    uniform.valleyScreenDirections,
-    packVectors(valleys.map((valley) => valley.screenDirection)),
-  );
-  gl.uniform1fv(uniform.valleyStrengths, packScalars(valleys.map((valley) => valley.strength)));
-  gl.uniform1fv(uniform.valleyWidths, packScalars(valleys.map((valley) => valley.width)));
   gl.uniform3fv(uniform.baseColor, hexToRgb(controls.baseColor));
   gl.uniform3fv(uniform.coolTint, hexToRgb(controls.coolTint));
   gl.uniform3fv(uniform.warmTint, hexToRgb(controls.warmTint));
@@ -1119,6 +989,10 @@ function animate(time: number): void {
   debugStats.activeContacts = items.filter((item) => item.active).length;
   debugStats.returningContacts = items.filter((item) => !item.active).length;
   debugStats.solverContacts = items.length + 1;
+  debugStats.maxContactError = items.reduce((maximum, item) => Math.max(
+    maximum,
+    length(subtract(forwardDeform(item.anchor, shapeState), item.position)),
+  ), 0);
   render();
   requestAnimationFrame(animate);
 }
@@ -1193,32 +1067,34 @@ function setupGui(): void {
   };
 
   gui.add(actions, 'demo2Point').name('2-point anchored');
-  gui.add(actions, 'demo3Point').name('3-point RBF');
+  gui.add(actions, 'demo3Point').name('3-point local pull');
   gui.add(actions, 'demoTransition').name('2 + add third');
   gui.add(actions, 'demoReleaseAll').name('regression: release all');
   gui.add(actions, 'demoSingleReentry').name('regression: re-entry');
   gui.add(actions, 'reset').name('reset');
 
-  const shape = gui.addFolder('1 shape field');
-  shape.add(controls, 'maxStretch', 1.2, 4, 0.05).name('max stretch');
-  shape.add(controls, 'globalRigidity', 0.02, 4, 0.01).name('global rigidity');
-  shape.add(controls, 'influenceRadius', 0.2, 1.5, 0.01).name('RBF radius');
-  shape.add(controls, 'residualStrength', 0, 1.8, 0.01).name('RBF strength');
-  shape.add(controls, 'maxLocalWarp', 0.1, 0.8, 0.01).name('fold limit');
-  shape.add(controls, 'centerLockRadius', 0.05, 0.8, 0.01).name('center lock radius');
+  const shape = gui.addFolder('1 local pull');
+  shape.add(controls, 'pullWidth', 0.15, 1.1, 0.01).name('capsule width');
+  shape.add(controls, 'gripRadius', 0, 0.4, 0.01).name('grip radius');
+  shape.add(controls, 'coreBlend', 0.1, 1.2, 0.01).name('center blend');
+  shape.add(controls, 'tailStart', 1, 3.5, 0.01).name('tail start');
+  shape.add(controls, 'tailEnd', 1.2, 5, 0.01).name('tail end');
+  shape.add(controls, 'solverRegularization', 0.001, 0.08, 0.001).name('regularization');
   shape.add(controls, 'contactBlendDuration', 0, 0.5, 0.01).name('contact blend');
   shape.close();
 
-  const neck = gui.addFolder('2 tension neck');
-  neck.add(controls, 'neckEnabled').name('on');
-  neck.add(controls, 'poissonExponent', 0, 1.2, 0.01).name('poisson exponent');
-  neck.add(controls, 'neckStrength', 0, 2, 0.01).name('strength');
-  neck.add(controls, 'neckWidth', 0.1, 1.6, 0.01).name('width');
-  neck.add(controls, 'neckTipScale', 0, 1, 0.01).name('grip width');
-  neck.add(controls, 'minimumWidth', 0.2, 1, 0.01).name('minimum width');
-  neck.add(controls, 'valleyStrength', 0, 0.8, 0.01).name('valley strength');
-  neck.add(controls, 'valleyWidth', 0.1, 0.8, 0.01).name('valley width');
-  neck.close();
+  const contraction = gui.addFolder('2 local contraction');
+  contraction.add(controls, 'contractionEnabled').name('on');
+  contraction.add(controls, 'poissonExponent', 0, 1.2, 0.01).name('poisson exponent');
+  contraction.add(controls, 'contractionStrength', 0, 1.5, 0.01).name('strength');
+  contraction.add(controls, 'contractionWidth', 0.1, 1.2, 0.01).name('width');
+  contraction.add(controls, 'contractionStart', 0, 0.8, 0.01).name('start');
+  contraction.add(controls, 'contractionEnd', 0.8, 2.5, 0.01).name('end');
+  contraction.add(controls, 'minimumWidth', 0.3, 1, 0.01).name('minimum width');
+  contraction.add(controls, 'surfaceTension', 0, 0.3, 0.01).name('surface tension');
+  contraction.add(controls, 'surfaceStart', 0.2, 0.9, 0.01).name('surface start');
+  contraction.add(controls, 'maximumSurfaceShrink', 0, 0.3, 0.01).name('max surface shrink');
+  contraction.close();
 
   const spring = gui.addFolder('3 release spring');
   spring.add(controls, 'springFrequency', 0.5, 8, 0.1).name('frequency');
@@ -1242,6 +1118,7 @@ function setupGui(): void {
   debug.add(debugStats, 'activeContacts').name('active').listen().disable();
   debug.add(debugStats, 'returningContacts').name('returning').listen().disable();
   debug.add(debugStats, 'solverContacts').name('solver contacts').listen().disable();
+  debug.add(debugStats, 'maxContactError').name('max contact error').listen().disable();
   debug.add(debugStats, 'solver').name('solver').listen().disable();
   debug.close();
   gui.close();
