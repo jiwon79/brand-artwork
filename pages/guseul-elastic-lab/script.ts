@@ -41,9 +41,17 @@ type ShapeMetrics = {
   bridgeRadius: number;
 };
 
+type MembraneLink = {
+  start: Vec2;
+  end: Vec2;
+  influence: number;
+  fillTriangle: number;
+};
+
 type DemoMode = 'none' | 'two' | 'three' | 'transition' | 'releaseAll' | 'singleReentry';
 
 const maxContacts = 10;
+const maxMembraneLinks = maxContacts * 2;
 const areaSampleResolution = 76;
 const baseArea = Math.PI;
 const canvas = document.getElementById('elastic-canvas') as HTMLCanvasElement;
@@ -76,6 +84,7 @@ const initialDemo: DemoMode = requestedDemo === '2'
 const controls = {
   seedRadiusScale: 1,
   bridgeRadiusRatio: 0.54,
+  contactFill: 1,
   fieldSmoothness: 0.2,
   contactBlendDuration: 0.12,
   areaPreservation: 0.92,
@@ -104,11 +113,12 @@ const debugStats = {
   effectiveSeeds: 1,
   seedRadius: 1,
   bridgeRadius: 0.54,
+  membraneLinks: 0,
   areaRatio: 1,
   targetAreaRatio: 1,
   contourOffset: 0,
   minimumNeckLimited: false,
-  solver: 'contact SDF + area pressure',
+  solver: 'contact membrane SDF + area pressure',
 };
 
 const vertexShaderSource = `#version 300 es
@@ -129,6 +139,7 @@ const fragmentShaderSource = `#version 300 es
 precision highp float;
 
 #define MAX_CONTACTS 10
+#define MAX_MEMBRANE_LINKS 20
 
 uniform vec2 uResolution;
 uniform vec2 uCenter;
@@ -136,6 +147,11 @@ uniform float uRadius;
 uniform int uContactCount;
 uniform vec2 uContacts[MAX_CONTACTS];
 uniform float uInfluences[MAX_CONTACTS];
+uniform int uMembraneLinkCount;
+uniform vec2 uMembraneStarts[MAX_MEMBRANE_LINKS];
+uniform vec2 uMembraneEnds[MAX_MEMBRANE_LINKS];
+uniform float uMembraneInfluences[MAX_MEMBRANE_LINKS];
+uniform float uMembraneTriangles[MAX_MEMBRANE_LINKS];
 uniform float uContactRadius;
 uniform float uBridgeRadius;
 uniform float uFieldSmoothness;
@@ -165,6 +181,27 @@ float distanceToSegment(vec2 point, vec2 start, vec2 end) {
   return length(point - (start + segment * progress));
 }
 
+float signedDistanceToTriangle(vec2 point, vec2 first, vec2 second, vec2 third) {
+  vec2 edge0 = second - first;
+  vec2 edge1 = third - second;
+  vec2 edge2 = first - third;
+  vec2 value0 = point - first;
+  vec2 value1 = point - second;
+  vec2 value2 = point - third;
+  vec2 nearest0 = value0 - edge0 * clamp(dot(value0, edge0) / max(dot(edge0, edge0), 0.0001), 0.0, 1.0);
+  vec2 nearest1 = value1 - edge1 * clamp(dot(value1, edge1) / max(dot(edge1, edge1), 0.0001), 0.0, 1.0);
+  vec2 nearest2 = value2 - edge2 * clamp(dot(value2, edge2) / max(dot(edge2, edge2), 0.0001), 0.0, 1.0);
+  float orientation = sign(edge0.x * edge2.y - edge0.y * edge2.x);
+  vec2 distanceAndSide = min(
+    min(
+      vec2(dot(nearest0, nearest0), orientation * (value0.x * edge0.y - value0.y * edge0.x)),
+      vec2(dot(nearest1, nearest1), orientation * (value1.x * edge1.y - value1.y * edge1.x))
+    ),
+    vec2(dot(nearest2, nearest2), orientation * (value2.x * edge2.y - value2.y * edge2.x))
+  );
+  return -sqrt(distanceAndSide.x) * sign(distanceAndSide.y);
+}
+
 float contactField(vec2 position) {
   // The center and pointer contacts share the same count-derived radius.
   float distanceToShape = length(position) - uContactRadius;
@@ -186,6 +223,27 @@ float contactField(vec2 position) {
       uFieldSmoothness
     );
     distanceToShape = mix(distanceToShape, combinedDistance, influence);
+  }
+
+  for (int index = 0; index < MAX_MEMBRANE_LINKS; index += 1) {
+    if (index >= uMembraneLinkCount) break;
+    vec2 start = uMembraneStarts[index];
+    vec2 end = uMembraneEnds[index];
+    float linkDistance = distanceToSegment(position, start, end) - uBridgeRadius;
+    if (uMembraneTriangles[index] > 0.5) {
+      float triangleDistance = signedDistanceToTriangle(position, vec2(0.0), start, end);
+      linkDistance = smoothMinimum(linkDistance, triangleDistance, uFieldSmoothness * 0.6);
+    }
+    float combinedDistance = smoothMinimum(
+      distanceToShape,
+      linkDistance,
+      uFieldSmoothness
+    );
+    distanceToShape = mix(
+      distanceToShape,
+      combinedDistance,
+      smoothstep(0.0, 1.0, uMembraneInfluences[index])
+    );
   }
 
   return distanceToShape;
@@ -229,6 +287,20 @@ void main() {
       float lineDistance = distanceToSegment(position, vec2(0.0), uContacts[index]);
       float lineMask = 1.0 - smoothstep(0.009, 0.015, lineDistance);
       color = mix(color, vec3(0.08, 0.14, 0.15), lineMask * uInfluences[index] * 0.56);
+    }
+    for (int index = 0; index < MAX_MEMBRANE_LINKS; index += 1) {
+      if (index >= uMembraneLinkCount) break;
+      float lineDistance = distanceToSegment(
+        position,
+        uMembraneStarts[index],
+        uMembraneEnds[index]
+      );
+      float lineMask = 1.0 - smoothstep(0.011, 0.018, lineDistance);
+      color = mix(
+        color,
+        vec3(0.83, 0.22, 0.27),
+        lineMask * uMembraneInfluences[index] * 0.72
+      );
     }
   }
 
@@ -296,6 +368,11 @@ const uniform = {
   contactCount: gl.getUniformLocation(program, 'uContactCount'),
   contacts: gl.getUniformLocation(program, 'uContacts[0]'),
   influences: gl.getUniformLocation(program, 'uInfluences[0]'),
+  membraneLinkCount: gl.getUniformLocation(program, 'uMembraneLinkCount'),
+  membraneStarts: gl.getUniformLocation(program, 'uMembraneStarts[0]'),
+  membraneEnds: gl.getUniformLocation(program, 'uMembraneEnds[0]'),
+  membraneInfluences: gl.getUniformLocation(program, 'uMembraneInfluences[0]'),
+  membraneTriangles: gl.getUniformLocation(program, 'uMembraneTriangles[0]'),
   contactRadius: gl.getUniformLocation(program, 'uContactRadius'),
   bridgeRadius: gl.getUniformLocation(program, 'uBridgeRadius'),
   fieldSmoothness: gl.getUniformLocation(program, 'uFieldSmoothness'),
@@ -365,9 +442,115 @@ function distanceToSegment(point: Vec2, start: Vec2, end: Vec2): number {
   return length(subtract(point, add(start, scale(segment, progress))));
 }
 
+function cross(first: Vec2, second: Vec2): number {
+  return first.x * second.y - first.y * second.x;
+}
+
+function signedDistanceToTriangle(
+  point: Vec2,
+  first: Vec2,
+  second: Vec2,
+  third: Vec2,
+): number {
+  const edges = [
+    subtract(second, first),
+    subtract(third, second),
+    subtract(first, third),
+  ];
+  const values = [
+    subtract(point, first),
+    subtract(point, second),
+    subtract(point, third),
+  ];
+  const orientation = Math.sign(cross(edges[0], edges[2])) || 1;
+  let minimumDistanceSquared = Number.POSITIVE_INFINITY;
+  let minimumSide = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < 3; index += 1) {
+    const edge = edges[index];
+    const value = values[index];
+    const edgeLengthSquared = Math.max(edge.x * edge.x + edge.y * edge.y, 0.0001);
+    const progress = clamp(
+      (value.x * edge.x + value.y * edge.y) / edgeLengthSquared,
+      0,
+      1,
+    );
+    const nearest = subtract(value, scale(edge, progress));
+    minimumDistanceSquared = Math.min(
+      minimumDistanceSquared,
+      nearest.x * nearest.x + nearest.y * nearest.y,
+    );
+    minimumSide = Math.min(minimumSide, orientation * cross(value, edge));
+  }
+
+  return -Math.sqrt(minimumDistanceSquared) * Math.sign(minimumSide);
+}
+
 function smoothInfluence(influence: number): number {
   const value = clamp(influence, 0, 1);
   return value * value * (3 - 2 * value);
+}
+
+function buildMembraneLinks(items: Contact[]): MembraneLink[] {
+  if (items.length < 2 || controls.contactFill <= 0) return [];
+  const ordered = [...items].sort((first, second) => (
+    Math.atan2(first.position.y, first.position.x)
+    - Math.atan2(second.position.y, second.position.x)
+  ));
+  const links = new Map<string, MembraneLink>();
+
+  const addLink = (first: Contact, second: Contact, influence: number): void => {
+    const weightedInfluence = clamp(influence * controls.contactFill, 0, 1);
+    if (weightedInfluence <= 0.0001) return;
+    const key = first.id < second.id
+      ? `${first.id}:${second.id}`
+      : `${second.id}:${first.id}`;
+    const fillTriangle = Math.abs(cross(first.position, second.position)) > 0.015 ? 1 : 0;
+    const previous = links.get(key);
+    if (previous && previous.influence >= weightedInfluence) return;
+    links.set(key, {
+      start: first.position,
+      end: second.position,
+      influence: weightedInfluence,
+      fillTriangle,
+    });
+  };
+
+  if (ordered.length === 2) {
+    addLink(
+      ordered[0],
+      ordered[1],
+      Math.min(smoothInfluence(ordered[0].influence), smoothInfluence(ordered[1].influence)),
+    );
+    return [...links.values()];
+  }
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const current = ordered[index];
+    const next = ordered[(index + 1) % ordered.length];
+    addLink(
+      current,
+      next,
+      Math.min(smoothInfluence(current.influence), smoothInfluence(next.influence)),
+    );
+  }
+
+  // Preserve the old neighboring edge while a newly inserted contact fades in or out.
+  if (ordered.length > 3) {
+    for (let index = 0; index < ordered.length; index += 1) {
+      const current = ordered[index];
+      const previous = ordered[(index - 1 + ordered.length) % ordered.length];
+      const next = ordered[(index + 1) % ordered.length];
+      addLink(
+        previous,
+        next,
+        Math.min(smoothInfluence(previous.influence), smoothInfluence(next.influence))
+          * (1 - smoothInfluence(current.influence)),
+      );
+    }
+  }
+
+  return [...links.values()].slice(0, maxMembraneLinks);
 }
 
 function computeShapeMetrics(items: Contact[]): ShapeMetrics {
@@ -386,6 +569,7 @@ function computeShapeMetrics(items: Contact[]): ShapeMetrics {
 function rawShapeDistance(
   position: Vec2,
   items: Contact[],
+  membraneLinks: MembraneLink[],
   metrics: ShapeMetrics,
 ): number {
   let distanceToShape = length(position) - metrics.seedRadius;
@@ -411,6 +595,30 @@ function rawShapeDistance(
     distanceToShape += (combinedDistance - distanceToShape) * influence;
   }
 
+  for (const link of membraneLinks) {
+    let linkDistance = distanceToSegment(position, link.start, link.end)
+      - metrics.bridgeRadius;
+    if (link.fillTriangle > 0.5) {
+      const triangleDistance = signedDistanceToTriangle(
+        position,
+        { x: 0, y: 0 },
+        link.start,
+        link.end,
+      );
+      linkDistance = smoothMinimum(
+        linkDistance,
+        triangleDistance,
+        controls.fieldSmoothness * 0.6,
+      );
+    }
+    const combinedDistance = smoothMinimum(
+      distanceToShape,
+      linkDistance,
+      controls.fieldSmoothness,
+    );
+    distanceToShape += (combinedDistance - distanceToShape) * link.influence;
+  }
+
   return distanceToShape;
 }
 
@@ -422,7 +630,11 @@ function estimateArea(values: Float32Array, offset: number, cellArea: number): n
   return insideSamples * cellArea;
 }
 
-function solveAreaPressure(items: Contact[], metrics: ShapeMetrics): AreaSolution {
+function solveAreaPressure(
+  items: Contact[],
+  membraneLinks: MembraneLink[],
+  metrics: ShapeMetrics,
+): AreaSolution {
   const farthestContact = items.reduce(
     (maximum, item) => Math.max(maximum, length(item.position)),
     0,
@@ -437,7 +649,7 @@ function solveAreaPressure(items: Contact[], metrics: ShapeMetrics): AreaSolutio
     const y = -boundsRadius + (row + 0.5) * cellSize;
     for (let column = 0; column < areaSampleResolution; column += 1) {
       const x = -boundsRadius + (column + 0.5) * cellSize;
-      values[valueIndex] = rawShapeDistance({ x, y }, items, metrics);
+      values[valueIndex] = rawShapeDistance({ x, y }, items, membraneLinks, metrics);
       valueIndex += 1;
     }
   }
@@ -509,7 +721,12 @@ function currentContacts(): Contact[] {
 
 function isInsideShape(position: Vec2): boolean {
   const items = currentContacts();
-  return rawShapeDistance(position, items, computeShapeMetrics(items)) <= contourOffset + 0.06;
+  return rawShapeDistance(
+    position,
+    items,
+    buildMembraneLinks(items),
+    computeShapeMetrics(items),
+  ) <= contourOffset + 0.06;
 }
 
 function stopDemo(): void {
@@ -734,24 +951,28 @@ function hexToRgb(color: string): [number, number, number] {
   ];
 }
 
-function packVectors(items: Vec2[]): Float32Array {
-  const packed = new Float32Array(maxContacts * 2);
-  for (let index = 0; index < Math.min(items.length, maxContacts); index += 1) {
+function packVectors(items: Vec2[], capacity = maxContacts): Float32Array {
+  const packed = new Float32Array(capacity * 2);
+  for (let index = 0; index < Math.min(items.length, capacity); index += 1) {
     packed[index * 2] = items[index].x;
     packed[index * 2 + 1] = items[index].y;
   }
   return packed;
 }
 
-function packScalars(items: number[]): Float32Array {
-  const packed = new Float32Array(maxContacts);
-  for (let index = 0; index < Math.min(items.length, maxContacts); index += 1) {
+function packScalars(items: number[], capacity = maxContacts): Float32Array {
+  const packed = new Float32Array(capacity);
+  for (let index = 0; index < Math.min(items.length, capacity); index += 1) {
     packed[index] = items[index];
   }
   return packed;
 }
 
-function render(items: Contact[], metrics: ShapeMetrics): void {
+function render(
+  items: Contact[],
+  membraneLinks: MembraneLink[],
+  metrics: ShapeMetrics,
+): void {
   gl.useProgram(program);
   gl.uniform2f(uniform.resolution, canvas.width, canvas.height);
   gl.uniform2f(uniform.center, view.centerX * view.dpr, view.centerY * view.dpr);
@@ -759,6 +980,23 @@ function render(items: Contact[], metrics: ShapeMetrics): void {
   gl.uniform1i(uniform.contactCount, items.length);
   gl.uniform2fv(uniform.contacts, packVectors(items.map((item) => item.position)));
   gl.uniform1fv(uniform.influences, packScalars(items.map((item) => item.influence)));
+  gl.uniform1i(uniform.membraneLinkCount, membraneLinks.length);
+  gl.uniform2fv(
+    uniform.membraneStarts,
+    packVectors(membraneLinks.map((link) => link.start), maxMembraneLinks),
+  );
+  gl.uniform2fv(
+    uniform.membraneEnds,
+    packVectors(membraneLinks.map((link) => link.end), maxMembraneLinks),
+  );
+  gl.uniform1fv(
+    uniform.membraneInfluences,
+    packScalars(membraneLinks.map((link) => link.influence), maxMembraneLinks),
+  );
+  gl.uniform1fv(
+    uniform.membraneTriangles,
+    packScalars(membraneLinks.map((link) => link.fillTriangle), maxMembraneLinks),
+  );
   gl.uniform1f(uniform.contactRadius, metrics.seedRadius);
   gl.uniform1f(uniform.bridgeRadius, metrics.bridgeRadius);
   gl.uniform1f(uniform.fieldSmoothness, controls.fieldSmoothness);
@@ -781,8 +1019,9 @@ function animate(time: number): void {
   updateDemo(delta);
   updateContactDynamics(delta);
   const items = currentContacts();
+  const membraneLinks = buildMembraneLinks(items);
   const metrics = computeShapeMetrics(items);
-  latestAreaSolution = solveAreaPressure(items, metrics);
+  latestAreaSolution = solveAreaPressure(items, membraneLinks, metrics);
   const pressureBlend = 1 - Math.exp(-controls.pressureResponse * delta);
   contourOffset += (latestAreaSolution.offset - contourOffset) * pressureBlend;
 
@@ -792,11 +1031,12 @@ function animate(time: number): void {
   debugStats.effectiveSeeds = metrics.effectiveSeedCount;
   debugStats.seedRadius = metrics.seedRadius;
   debugStats.bridgeRadius = metrics.bridgeRadius;
+  debugStats.membraneLinks = membraneLinks.length;
   debugStats.areaRatio = latestAreaSolution.actualArea / baseArea;
   debugStats.targetAreaRatio = latestAreaSolution.targetArea / baseArea;
   debugStats.contourOffset = contourOffset;
   debugStats.minimumNeckLimited = latestAreaSolution.minimumNeckLimited;
-  render(items, metrics);
+  render(items, membraneLinks, metrics);
   requestAnimationFrame(animate);
 }
 
@@ -878,6 +1118,7 @@ function setupGui(): void {
   const field = gui.addFolder('1 contact field');
   field.add(controls, 'seedRadiusScale', 0.7, 1.35, 0.01).name('seed radius scale');
   field.add(controls, 'bridgeRadiusRatio', 0.2, 0.9, 0.01).name('bridge / seed');
+  field.add(controls, 'contactFill', 0, 1, 0.01).name('contact fill');
   field.add(controls, 'fieldSmoothness', 0.02, 0.5, 0.01).name('smooth union');
   field.add(controls, 'contactBlendDuration', 0, 0.5, 0.01).name('contact blend');
   field.close();
@@ -906,7 +1147,7 @@ function setupGui(): void {
 
   const debug = gui.addFolder('5 debug');
   debug.add(controls, 'showContacts').name('contacts');
-  debug.add(controls, 'showSkeleton').name('center bridges');
+  debug.add(controls, 'showSkeleton').name('all bridges');
   debug.add(controls, 'normalDebug').name('field normal');
   debug.add(debugStats, 'activeContacts').name('active').listen().disable();
   debug.add(debugStats, 'returningContacts').name('returning').listen().disable();
@@ -914,6 +1155,7 @@ function setupGui(): void {
   debug.add(debugStats, 'effectiveSeeds').name('effective seeds').listen().decimals(2).disable();
   debug.add(debugStats, 'seedRadius').name('seed radius').listen().decimals(3).disable();
   debug.add(debugStats, 'bridgeRadius').name('bridge radius').listen().decimals(3).disable();
+  debug.add(debugStats, 'membraneLinks').name('membrane links').listen().disable();
   debug.add(debugStats, 'areaRatio').name('area ratio').listen().decimals(3).disable();
   debug.add(debugStats, 'targetAreaRatio').name('target ratio').listen().decimals(3).disable();
   debug.add(debugStats, 'contourOffset').name('contour offset').listen().decimals(3).disable();
