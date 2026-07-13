@@ -38,20 +38,12 @@ type AreaSolution = {
 type ShapeMetrics = {
   effectiveSeedCount: number;
   seedRadius: number;
-  bridgeRadius: number;
-};
-
-type MembraneLink = {
-  start: Vec2;
-  end: Vec2;
-  influence: number;
-  fillTriangle: number;
 };
 
 type DemoMode = 'none' | 'two' | 'three' | 'transition' | 'releaseAll' | 'singleReentry';
 
 const maxContacts = 10;
-const maxMembraneLinks = maxContacts * 2;
+const maxHullVertices = maxContacts + 1;
 const areaSampleResolution = 76;
 const baseArea = Math.PI;
 const canvas = document.getElementById('elastic-canvas') as HTMLCanvasElement;
@@ -83,9 +75,6 @@ const initialDemo: DemoMode = requestedDemo === '2'
 
 const controls = {
   seedRadiusScale: 1,
-  bridgeRadiusRatio: 0.54,
-  contactFill: 1,
-  fieldSmoothness: 0.2,
   contactBlendDuration: 0.12,
   areaPreservation: 0.92,
   minimumNeckWidth: 0.18,
@@ -112,13 +101,12 @@ const debugStats = {
   fieldSeeds: 1,
   effectiveSeeds: 1,
   seedRadius: 1,
-  bridgeRadius: 0.54,
-  membraneLinks: 0,
+  hullVertices: 1,
   areaRatio: 1,
   targetAreaRatio: 1,
   contourOffset: 0,
   minimumNeckLimited: false,
-  solver: 'contact membrane SDF + area pressure',
+  solver: 'rounded convex hull SDF + area pressure',
 };
 
 const vertexShaderSource = `#version 300 es
@@ -139,7 +127,7 @@ const fragmentShaderSource = `#version 300 es
 precision highp float;
 
 #define MAX_CONTACTS 10
-#define MAX_MEMBRANE_LINKS 20
+#define MAX_HULL_VERTICES 11
 
 uniform vec2 uResolution;
 uniform vec2 uCenter;
@@ -147,14 +135,9 @@ uniform float uRadius;
 uniform int uContactCount;
 uniform vec2 uContacts[MAX_CONTACTS];
 uniform float uInfluences[MAX_CONTACTS];
-uniform int uMembraneLinkCount;
-uniform vec2 uMembraneStarts[MAX_MEMBRANE_LINKS];
-uniform vec2 uMembraneEnds[MAX_MEMBRANE_LINKS];
-uniform float uMembraneInfluences[MAX_MEMBRANE_LINKS];
-uniform float uMembraneTriangles[MAX_MEMBRANE_LINKS];
-uniform float uContactRadius;
-uniform float uBridgeRadius;
-uniform float uFieldSmoothness;
+uniform int uHullCount;
+uniform vec2 uHullVertices[MAX_HULL_VERTICES];
+uniform float uRoundedRadius;
 uniform float uContourOffset;
 uniform vec3 uBaseColor;
 uniform vec3 uCoolTint;
@@ -168,12 +151,6 @@ uniform bool uNormalDebug;
 
 out vec4 outputColor;
 
-float smoothMinimum(float first, float second, float radius) {
-  float safeRadius = max(radius, 0.0001);
-  float blend = max(safeRadius - abs(first - second), 0.0) / safeRadius;
-  return min(first, second) - blend * blend * safeRadius * 0.25;
-}
-
 float distanceToSegment(vec2 point, vec2 start, vec2 end) {
   vec2 segment = end - start;
   float denominator = max(dot(segment, segment), 0.0001);
@@ -181,72 +158,41 @@ float distanceToSegment(vec2 point, vec2 start, vec2 end) {
   return length(point - (start + segment * progress));
 }
 
-float signedDistanceToTriangle(vec2 point, vec2 first, vec2 second, vec2 third) {
-  vec2 edge0 = second - first;
-  vec2 edge1 = third - second;
-  vec2 edge2 = first - third;
-  vec2 value0 = point - first;
-  vec2 value1 = point - second;
-  vec2 value2 = point - third;
-  vec2 nearest0 = value0 - edge0 * clamp(dot(value0, edge0) / max(dot(edge0, edge0), 0.0001), 0.0, 1.0);
-  vec2 nearest1 = value1 - edge1 * clamp(dot(value1, edge1) / max(dot(edge1, edge1), 0.0001), 0.0, 1.0);
-  vec2 nearest2 = value2 - edge2 * clamp(dot(value2, edge2) / max(dot(edge2, edge2), 0.0001), 0.0, 1.0);
-  float orientation = sign(edge0.x * edge2.y - edge0.y * edge2.x);
-  vec2 distanceAndSide = min(
-    min(
-      vec2(dot(nearest0, nearest0), orientation * (value0.x * edge0.y - value0.y * edge0.x)),
-      vec2(dot(nearest1, nearest1), orientation * (value1.x * edge1.y - value1.y * edge1.x))
-    ),
-    vec2(dot(nearest2, nearest2), orientation * (value2.x * edge2.y - value2.y * edge2.x))
-  );
-  return -sqrt(distanceAndSide.x) * sign(distanceAndSide.y);
+float polygonDistance(vec2 position) {
+  if (uHullCount <= 1) return length(position - uHullVertices[0]);
+  if (uHullCount == 2) {
+    return distanceToSegment(position, uHullVertices[0], uHullVertices[1]);
+  }
+
+  float distanceSquared = dot(position - uHullVertices[0], position - uHullVertices[0]);
+  float signValue = 1.0;
+  int previousIndex = uHullCount - 1;
+  for (int index = 0; index < MAX_HULL_VERTICES; index += 1) {
+    if (index >= uHullCount) break;
+    vec2 current = uHullVertices[index];
+    vec2 previous = uHullVertices[previousIndex];
+    vec2 edge = previous - current;
+    vec2 offset = position - current;
+    vec2 nearest = offset - edge * clamp(
+      dot(offset, edge) / max(dot(edge, edge), 0.0001),
+      0.0,
+      1.0
+    );
+    distanceSquared = min(distanceSquared, dot(nearest, nearest));
+    bool aboveCurrent = position.y >= current.y;
+    bool belowPrevious = position.y < previous.y;
+    bool edgeSide = edge.x * offset.y > edge.y * offset.x;
+    if (
+      (aboveCurrent && belowPrevious && edgeSide)
+      || (!aboveCurrent && !belowPrevious && !edgeSide)
+    ) signValue *= -1.0;
+    previousIndex = index;
+  }
+  return signValue * sqrt(distanceSquared);
 }
 
 float contactField(vec2 position) {
-  // The center and pointer contacts share the same count-derived radius.
-  float distanceToShape = length(position) - uContactRadius;
-
-  for (int index = 0; index < MAX_CONTACTS; index += 1) {
-    if (index >= uContactCount) break;
-    float influence = smoothstep(0.0, 1.0, uInfluences[index]);
-    vec2 contact = uContacts[index];
-    float pointDistance = length(position - contact) - uContactRadius;
-    float bridgeDistance = distanceToSegment(position, vec2(0.0), contact) - uBridgeRadius;
-    float branchDistance = smoothMinimum(
-      pointDistance,
-      bridgeDistance,
-      uFieldSmoothness * 0.72
-    );
-    float combinedDistance = smoothMinimum(
-      distanceToShape,
-      branchDistance,
-      uFieldSmoothness
-    );
-    distanceToShape = mix(distanceToShape, combinedDistance, influence);
-  }
-
-  for (int index = 0; index < MAX_MEMBRANE_LINKS; index += 1) {
-    if (index >= uMembraneLinkCount) break;
-    vec2 start = uMembraneStarts[index];
-    vec2 end = uMembraneEnds[index];
-    float linkDistance = distanceToSegment(position, start, end) - uBridgeRadius;
-    if (uMembraneTriangles[index] > 0.5) {
-      float triangleDistance = signedDistanceToTriangle(position, vec2(0.0), start, end);
-      linkDistance = smoothMinimum(linkDistance, triangleDistance, uFieldSmoothness * 0.6);
-    }
-    float combinedDistance = smoothMinimum(
-      distanceToShape,
-      linkDistance,
-      uFieldSmoothness
-    );
-    distanceToShape = mix(
-      distanceToShape,
-      combinedDistance,
-      smoothstep(0.0, 1.0, uMembraneInfluences[index])
-    );
-  }
-
-  return distanceToShape;
+  return polygonDistance(position) - uRoundedRadius;
 }
 
 void main() {
@@ -282,25 +228,21 @@ void main() {
   }
 
   if (uShowSkeleton) {
-    for (int index = 0; index < MAX_CONTACTS; index += 1) {
-      if (index >= uContactCount) break;
-      float lineDistance = distanceToSegment(position, vec2(0.0), uContacts[index]);
-      float lineMask = 1.0 - smoothstep(0.009, 0.015, lineDistance);
-      color = mix(color, vec3(0.08, 0.14, 0.15), lineMask * uInfluences[index] * 0.56);
-    }
-    for (int index = 0; index < MAX_MEMBRANE_LINKS; index += 1) {
-      if (index >= uMembraneLinkCount) break;
+    int previousIndex = uHullCount - 1;
+    for (int index = 0; index < MAX_HULL_VERTICES; index += 1) {
+      if (index >= uHullCount) break;
       float lineDistance = distanceToSegment(
         position,
-        uMembraneStarts[index],
-        uMembraneEnds[index]
+        uHullVertices[previousIndex],
+        uHullVertices[index]
       );
       float lineMask = 1.0 - smoothstep(0.011, 0.018, lineDistance);
       color = mix(
         color,
         vec3(0.83, 0.22, 0.27),
-        lineMask * uMembraneInfluences[index] * 0.72
+        lineMask * 0.78
       );
+      previousIndex = index;
     }
   }
 
@@ -368,14 +310,9 @@ const uniform = {
   contactCount: gl.getUniformLocation(program, 'uContactCount'),
   contacts: gl.getUniformLocation(program, 'uContacts[0]'),
   influences: gl.getUniformLocation(program, 'uInfluences[0]'),
-  membraneLinkCount: gl.getUniformLocation(program, 'uMembraneLinkCount'),
-  membraneStarts: gl.getUniformLocation(program, 'uMembraneStarts[0]'),
-  membraneEnds: gl.getUniformLocation(program, 'uMembraneEnds[0]'),
-  membraneInfluences: gl.getUniformLocation(program, 'uMembraneInfluences[0]'),
-  membraneTriangles: gl.getUniformLocation(program, 'uMembraneTriangles[0]'),
-  contactRadius: gl.getUniformLocation(program, 'uContactRadius'),
-  bridgeRadius: gl.getUniformLocation(program, 'uBridgeRadius'),
-  fieldSmoothness: gl.getUniformLocation(program, 'uFieldSmoothness'),
+  hullCount: gl.getUniformLocation(program, 'uHullCount'),
+  hullVertices: gl.getUniformLocation(program, 'uHullVertices[0]'),
+  roundedRadius: gl.getUniformLocation(program, 'uRoundedRadius'),
   contourOffset: gl.getUniformLocation(program, 'uContourOffset'),
   baseColor: gl.getUniformLocation(program, 'uBaseColor'),
   coolTint: gl.getUniformLocation(program, 'uCoolTint'),
@@ -425,12 +362,6 @@ function length(vector: Vec2): number {
   return Math.hypot(vector.x, vector.y);
 }
 
-function smoothMinimum(first: number, second: number, radius: number): number {
-  const safeRadius = Math.max(radius, 0.0001);
-  const blend = Math.max(safeRadius - Math.abs(first - second), 0) / safeRadius;
-  return Math.min(first, second) - blend * blend * safeRadius * 0.25;
-}
-
 function distanceToSegment(point: Vec2, start: Vec2, end: Vec2): number {
   const segment = subtract(end, start);
   const denominator = Math.max(segment.x * segment.x + segment.y * segment.y, 0.0001);
@@ -446,111 +377,58 @@ function cross(first: Vec2, second: Vec2): number {
   return first.x * second.y - first.y * second.x;
 }
 
-function signedDistanceToTriangle(
-  point: Vec2,
-  first: Vec2,
-  second: Vec2,
-  third: Vec2,
-): number {
-  const edges = [
-    subtract(second, first),
-    subtract(third, second),
-    subtract(first, third),
-  ];
-  const values = [
-    subtract(point, first),
-    subtract(point, second),
-    subtract(point, third),
-  ];
-  const orientation = Math.sign(cross(edges[0], edges[2])) || 1;
-  let minimumDistanceSquared = Number.POSITIVE_INFINITY;
-  let minimumSide = Number.POSITIVE_INFINITY;
-
-  for (let index = 0; index < 3; index += 1) {
-    const edge = edges[index];
-    const value = values[index];
-    const edgeLengthSquared = Math.max(edge.x * edge.x + edge.y * edge.y, 0.0001);
-    const progress = clamp(
-      (value.x * edge.x + value.y * edge.y) / edgeLengthSquared,
-      0,
-      1,
-    );
-    const nearest = subtract(value, scale(edge, progress));
-    minimumDistanceSquared = Math.min(
-      minimumDistanceSquared,
-      nearest.x * nearest.x + nearest.y * nearest.y,
-    );
-    minimumSide = Math.min(minimumSide, orientation * cross(value, edge));
-  }
-
-  return -Math.sqrt(minimumDistanceSquared) * Math.sign(minimumSide);
-}
-
 function smoothInfluence(influence: number): number {
   const value = clamp(influence, 0, 1);
   return value * value * (3 - 2 * value);
 }
 
-function buildMembraneLinks(items: Contact[]): MembraneLink[] {
-  if (items.length < 2 || controls.contactFill <= 0) return [];
-  const ordered = [...items].sort((first, second) => (
-    Math.atan2(first.position.y, first.position.x)
-    - Math.atan2(second.position.y, second.position.x)
+function effectiveHullPosition(item: Contact): Vec2 {
+  const influence = smoothInfluence(item.influence);
+  const origin = item.active ? item.anchor : { x: 0, y: 0 };
+  return add(scale(origin, 1 - influence), scale(item.position, influence));
+}
+
+function hullTurn(origin: Vec2, first: Vec2, second: Vec2): number {
+  return cross(subtract(first, origin), subtract(second, origin));
+}
+
+function buildContactHull(items: Contact[]): Vec2[] {
+  const points = [
+    { x: 0, y: 0 },
+    ...items.map(effectiveHullPosition),
+  ].sort((first, second) => first.x - second.x || first.y - second.y);
+  const uniquePoints = points.filter((point, index) => (
+    index === 0
+    || length(subtract(point, points[index - 1])) > 0.0001
   ));
-  const links = new Map<string, MembraneLink>();
+  if (uniquePoints.length <= 2) return uniquePoints;
 
-  const addLink = (first: Contact, second: Contact, influence: number): void => {
-    const weightedInfluence = clamp(influence * controls.contactFill, 0, 1);
-    if (weightedInfluence <= 0.0001) return;
-    const key = first.id < second.id
-      ? `${first.id}:${second.id}`
-      : `${second.id}:${first.id}`;
-    const fillTriangle = Math.abs(cross(first.position, second.position)) > 0.015 ? 1 : 0;
-    const previous = links.get(key);
-    if (previous && previous.influence >= weightedInfluence) return;
-    links.set(key, {
-      start: first.position,
-      end: second.position,
-      influence: weightedInfluence,
-      fillTriangle,
-    });
-  };
-
-  if (ordered.length === 2) {
-    addLink(
-      ordered[0],
-      ordered[1],
-      Math.min(smoothInfluence(ordered[0].influence), smoothInfluence(ordered[1].influence)),
-    );
-    return [...links.values()];
-  }
-
-  for (let index = 0; index < ordered.length; index += 1) {
-    const current = ordered[index];
-    const next = ordered[(index + 1) % ordered.length];
-    addLink(
-      current,
-      next,
-      Math.min(smoothInfluence(current.influence), smoothInfluence(next.influence)),
-    );
-  }
-
-  // Preserve the old neighboring edge while a newly inserted contact fades in or out.
-  if (ordered.length > 3) {
-    for (let index = 0; index < ordered.length; index += 1) {
-      const current = ordered[index];
-      const previous = ordered[(index - 1 + ordered.length) % ordered.length];
-      const next = ordered[(index + 1) % ordered.length];
-      addLink(
-        previous,
-        next,
-        Math.min(smoothInfluence(previous.influence), smoothInfluence(next.influence))
-          * (1 - smoothInfluence(current.influence)),
-      );
+  const lower: Vec2[] = [];
+  for (const point of uniquePoints) {
+    while (
+      lower.length >= 2
+      && hullTurn(lower[lower.length - 2], lower[lower.length - 1], point) <= 0.000001
+    ) {
+      lower.pop();
     }
+    lower.push(point);
   }
 
-  return [...links.values()].slice(0, maxMembraneLinks);
+  const upper: Vec2[] = [];
+  for (let index = uniquePoints.length - 1; index >= 0; index -= 1) {
+    const point = uniquePoints[index];
+    while (
+      upper.length >= 2
+      && hullTurn(upper[upper.length - 2], upper[upper.length - 1], point) <= 0.000001
+    ) {
+      upper.pop();
+    }
+    upper.push(point);
+  }
+
+  lower.pop();
+  upper.pop();
+  return [...lower, ...upper].slice(0, maxHullVertices);
 }
 
 function computeShapeMetrics(items: Contact[]): ShapeMetrics {
@@ -562,64 +440,41 @@ function computeShapeMetrics(items: Contact[]): ShapeMetrics {
   return {
     effectiveSeedCount,
     seedRadius,
-    bridgeRadius: seedRadius * controls.bridgeRadiusRatio,
   };
 }
 
-function rawShapeDistance(
-  position: Vec2,
-  items: Contact[],
-  membraneLinks: MembraneLink[],
-  metrics: ShapeMetrics,
-): number {
-  let distanceToShape = length(position) - metrics.seedRadius;
+function polygonDistance(position: Vec2, hull: Vec2[]): number {
+  if (hull.length <= 1) return length(subtract(position, hull[0] ?? { x: 0, y: 0 }));
+  if (hull.length === 2) return distanceToSegment(position, hull[0], hull[1]);
 
-  for (const item of items) {
-    const influence = smoothInfluence(item.influence);
-    const pointDistance = length(subtract(position, item.position)) - metrics.seedRadius;
-    const bridgeDistance = distanceToSegment(
-      position,
-      { x: 0, y: 0 },
-      item.position,
-    ) - metrics.bridgeRadius;
-    const branchDistance = smoothMinimum(
-      pointDistance,
-      bridgeDistance,
-      controls.fieldSmoothness * 0.72,
+  let minimumDistance = Number.POSITIVE_INFINITY;
+  let signValue = 1;
+  let previousIndex = hull.length - 1;
+  for (let index = 0; index < hull.length; index += 1) {
+    const current = hull[index];
+    const previous = hull[previousIndex];
+    minimumDistance = Math.min(
+      minimumDistance,
+      distanceToSegment(position, current, previous),
     );
-    const combinedDistance = smoothMinimum(
-      distanceToShape,
-      branchDistance,
-      controls.fieldSmoothness,
-    );
-    distanceToShape += (combinedDistance - distanceToShape) * influence;
-  }
-
-  for (const link of membraneLinks) {
-    let linkDistance = distanceToSegment(position, link.start, link.end)
-      - metrics.bridgeRadius;
-    if (link.fillTriangle > 0.5) {
-      const triangleDistance = signedDistanceToTriangle(
-        position,
-        { x: 0, y: 0 },
-        link.start,
-        link.end,
-      );
-      linkDistance = smoothMinimum(
-        linkDistance,
-        triangleDistance,
-        controls.fieldSmoothness * 0.6,
-      );
+    const edge = subtract(previous, current);
+    const offset = subtract(position, current);
+    const aboveCurrent = position.y >= current.y;
+    const belowPrevious = position.y < previous.y;
+    const edgeSide = cross(edge, offset) > 0;
+    if (
+      (aboveCurrent && belowPrevious && edgeSide)
+      || (!aboveCurrent && !belowPrevious && !edgeSide)
+    ) {
+      signValue *= -1;
     }
-    const combinedDistance = smoothMinimum(
-      distanceToShape,
-      linkDistance,
-      controls.fieldSmoothness,
-    );
-    distanceToShape += (combinedDistance - distanceToShape) * link.influence;
+    previousIndex = index;
   }
+  return minimumDistance * signValue;
+}
 
-  return distanceToShape;
+function rawShapeDistance(position: Vec2, hull: Vec2[], metrics: ShapeMetrics): number {
+  return polygonDistance(position, hull) - metrics.seedRadius;
 }
 
 function estimateArea(values: Float32Array, offset: number, cellArea: number): number {
@@ -631,12 +486,11 @@ function estimateArea(values: Float32Array, offset: number, cellArea: number): n
 }
 
 function solveAreaPressure(
-  items: Contact[],
-  membraneLinks: MembraneLink[],
+  hull: Vec2[],
   metrics: ShapeMetrics,
 ): AreaSolution {
-  const farthestContact = items.reduce(
-    (maximum, item) => Math.max(maximum, length(item.position)),
+  const farthestContact = hull.reduce(
+    (maximum, point) => Math.max(maximum, length(point)),
     0,
   );
   const boundsRadius = Math.max(1.45, farthestContact + metrics.seedRadius + 0.42);
@@ -649,7 +503,7 @@ function solveAreaPressure(
     const y = -boundsRadius + (row + 0.5) * cellSize;
     for (let column = 0; column < areaSampleResolution; column += 1) {
       const x = -boundsRadius + (column + 0.5) * cellSize;
-      values[valueIndex] = rawShapeDistance({ x, y }, items, membraneLinks, metrics);
+      values[valueIndex] = rawShapeDistance({ x, y }, hull, metrics);
       valueIndex += 1;
     }
   }
@@ -658,7 +512,7 @@ function solveAreaPressure(
   const expansion = Math.max(unconstrainedArea - baseArea, 0);
   const targetArea = baseArea + expansion * (1 - controls.areaPreservation);
   const minimumNeckRadius = controls.minimumNeckWidth * 0.5;
-  const minimumOffset = Math.min(minimumNeckRadius - metrics.bridgeRadius, 0);
+  const minimumOffset = Math.min(minimumNeckRadius - metrics.seedRadius, 0);
   let low = minimumOffset;
   let high = 0.12;
   const minimumArea = estimateArea(values, low, cellArea);
@@ -723,8 +577,7 @@ function isInsideShape(position: Vec2): boolean {
   const items = currentContacts();
   return rawShapeDistance(
     position,
-    items,
-    buildMembraneLinks(items),
+    buildContactHull(items),
     computeShapeMetrics(items),
   ) <= contourOffset + 0.06;
 }
@@ -970,7 +823,7 @@ function packScalars(items: number[], capacity = maxContacts): Float32Array {
 
 function render(
   items: Contact[],
-  membraneLinks: MembraneLink[],
+  hull: Vec2[],
   metrics: ShapeMetrics,
 ): void {
   gl.useProgram(program);
@@ -980,26 +833,9 @@ function render(
   gl.uniform1i(uniform.contactCount, items.length);
   gl.uniform2fv(uniform.contacts, packVectors(items.map((item) => item.position)));
   gl.uniform1fv(uniform.influences, packScalars(items.map((item) => item.influence)));
-  gl.uniform1i(uniform.membraneLinkCount, membraneLinks.length);
-  gl.uniform2fv(
-    uniform.membraneStarts,
-    packVectors(membraneLinks.map((link) => link.start), maxMembraneLinks),
-  );
-  gl.uniform2fv(
-    uniform.membraneEnds,
-    packVectors(membraneLinks.map((link) => link.end), maxMembraneLinks),
-  );
-  gl.uniform1fv(
-    uniform.membraneInfluences,
-    packScalars(membraneLinks.map((link) => link.influence), maxMembraneLinks),
-  );
-  gl.uniform1fv(
-    uniform.membraneTriangles,
-    packScalars(membraneLinks.map((link) => link.fillTriangle), maxMembraneLinks),
-  );
-  gl.uniform1f(uniform.contactRadius, metrics.seedRadius);
-  gl.uniform1f(uniform.bridgeRadius, metrics.bridgeRadius);
-  gl.uniform1f(uniform.fieldSmoothness, controls.fieldSmoothness);
+  gl.uniform1i(uniform.hullCount, hull.length);
+  gl.uniform2fv(uniform.hullVertices, packVectors(hull, maxHullVertices));
+  gl.uniform1f(uniform.roundedRadius, metrics.seedRadius);
   gl.uniform1f(uniform.contourOffset, contourOffset);
   gl.uniform3fv(uniform.baseColor, hexToRgb(controls.baseColor));
   gl.uniform3fv(uniform.coolTint, hexToRgb(controls.coolTint));
@@ -1019,9 +855,9 @@ function animate(time: number): void {
   updateDemo(delta);
   updateContactDynamics(delta);
   const items = currentContacts();
-  const membraneLinks = buildMembraneLinks(items);
+  const hull = buildContactHull(items);
   const metrics = computeShapeMetrics(items);
-  latestAreaSolution = solveAreaPressure(items, membraneLinks, metrics);
+  latestAreaSolution = solveAreaPressure(hull, metrics);
   const pressureBlend = 1 - Math.exp(-controls.pressureResponse * delta);
   contourOffset += (latestAreaSolution.offset - contourOffset) * pressureBlend;
 
@@ -1030,13 +866,12 @@ function animate(time: number): void {
   debugStats.fieldSeeds = items.length + 1;
   debugStats.effectiveSeeds = metrics.effectiveSeedCount;
   debugStats.seedRadius = metrics.seedRadius;
-  debugStats.bridgeRadius = metrics.bridgeRadius;
-  debugStats.membraneLinks = membraneLinks.length;
+  debugStats.hullVertices = hull.length;
   debugStats.areaRatio = latestAreaSolution.actualArea / baseArea;
   debugStats.targetAreaRatio = latestAreaSolution.targetArea / baseArea;
   debugStats.contourOffset = contourOffset;
   debugStats.minimumNeckLimited = latestAreaSolution.minimumNeckLimited;
-  render(items, membraneLinks, metrics);
+  render(items, hull, metrics);
   requestAnimationFrame(animate);
 }
 
@@ -1117,9 +952,6 @@ function setupGui(): void {
 
   const field = gui.addFolder('1 contact field');
   field.add(controls, 'seedRadiusScale', 0.7, 1.35, 0.01).name('seed radius scale');
-  field.add(controls, 'bridgeRadiusRatio', 0.2, 0.9, 0.01).name('bridge / seed');
-  field.add(controls, 'contactFill', 0, 1, 0.01).name('contact fill');
-  field.add(controls, 'fieldSmoothness', 0.02, 0.5, 0.01).name('smooth union');
   field.add(controls, 'contactBlendDuration', 0, 0.5, 0.01).name('contact blend');
   field.close();
 
@@ -1147,15 +979,14 @@ function setupGui(): void {
 
   const debug = gui.addFolder('5 debug');
   debug.add(controls, 'showContacts').name('contacts');
-  debug.add(controls, 'showSkeleton').name('all bridges');
+  debug.add(controls, 'showSkeleton').name('convex hull');
   debug.add(controls, 'normalDebug').name('field normal');
   debug.add(debugStats, 'activeContacts').name('active').listen().disable();
   debug.add(debugStats, 'returningContacts').name('returning').listen().disable();
   debug.add(debugStats, 'fieldSeeds').name('field seeds').listen().disable();
   debug.add(debugStats, 'effectiveSeeds').name('effective seeds').listen().decimals(2).disable();
   debug.add(debugStats, 'seedRadius').name('seed radius').listen().decimals(3).disable();
-  debug.add(debugStats, 'bridgeRadius').name('bridge radius').listen().decimals(3).disable();
-  debug.add(debugStats, 'membraneLinks').name('membrane links').listen().disable();
+  debug.add(debugStats, 'hullVertices').name('hull vertices').listen().disable();
   debug.add(debugStats, 'areaRatio').name('area ratio').listen().decimals(3).disable();
   debug.add(debugStats, 'targetAreaRatio').name('target ratio').listen().decimals(3).disable();
   debug.add(debugStats, 'contourOffset').name('contour offset').listen().decimals(3).disable();
