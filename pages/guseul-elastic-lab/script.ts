@@ -85,14 +85,14 @@ const initialDemo: DemoMode = requestedDemo === '2'
           : 'none';
 
 const controls = {
-  seedRadiusScale: 1,
-  bridgeRadiusRatio: 0.54,
-  contactRadiusShrinkStart: 0.7,
-  contactRadiusShrinkEnd: 2.2,
-  contactRadiusMinScale: 0.52,
+  seedRadiusScale: 0.74,
+  bridgeRadiusRatio: 0.02,
+  contactRadiusShrinkStart: 0.47,
+  contactRadiusShrinkEnd: 3.6,
+  contactRadiusMinScale: 0.58,
   contactFill: 1,
-  edgeConcavity: 0.4,
-  fieldSmoothness: 0.2,
+  edgeConcavity: 0.1,
+  fieldSmoothness: 0.7,
   contactBlendDuration: 0.12,
   areaPreservation: 0.92,
   minimumNeckWidth: 0.18,
@@ -253,7 +253,7 @@ float signedDistanceToCurvedFanEdge(
 }
 
 float contactField(vec2 position) {
-  // The center keeps the count-derived radius; dragged contacts shrink with distance.
+  // The center keeps a fixed seed radius; dragged contacts shrink only with distance.
   float distanceToShape = length(position) - uContactRadius;
 
   for (int index = 0; index < MAX_CONTACTS; index += 1) {
@@ -674,7 +674,7 @@ function computeShapeMetrics(items: Contact[]): ShapeMetrics {
     (total, item) => total + smoothInfluence(item.influence),
     0,
   );
-  const seedRadius = controls.seedRadiusScale / Math.sqrt(effectiveSeedCount);
+  const seedRadius = controls.seedRadiusScale;
   const shrinkRange = Math.max(
     controls.contactRadiusShrinkEnd - controls.contactRadiusShrinkStart,
     0.001,
