@@ -13,6 +13,8 @@ type Contact = {
   velocity: Vec2;
   influence: number;
   releaseAge: number | null;
+  releaseOffset: Vec2;
+  releaseAngle: number;
   active: boolean;
   persistent: boolean;
   demoPhase: number;
@@ -51,7 +53,14 @@ type MembraneLink = {
   fillTriangle: number;
 };
 
-type DemoMode = 'none' | 'two' | 'three' | 'transition' | 'releaseAll' | 'singleReentry';
+type DemoMode =
+  | 'none'
+  | 'two'
+  | 'three'
+  | 'transition'
+  | 'releaseAll'
+  | 'singleReentry'
+  | 'cornerRelease';
 
 const maxContacts = 10;
 const maxMembraneLinks = maxContacts * 2;
@@ -80,9 +89,11 @@ const initialDemo: DemoMode = requestedDemo === '2'
       ? 'releaseAll'
       : requestedDemo === 'single-reentry'
         ? 'singleReentry'
-        : requestedDemo === '3' || requestedDemo === '1'
-          ? 'three'
-          : 'none';
+        : requestedDemo === 'corner-release'
+          ? 'cornerRelease'
+          : requestedDemo === '3' || requestedDemo === '1'
+            ? 'three'
+            : 'none';
 
 const controls = {
   seedRadiusScale: 0.74,
@@ -602,11 +613,16 @@ function smoothInfluence(influence: number): number {
   return value * value * (3 - 2 * value);
 }
 
+function contactSortAngle(item: Contact): number {
+  return item.active || item.releaseAge === null
+    ? Math.atan2(item.position.y, item.position.x)
+    : item.releaseAngle;
+}
+
 function buildMembraneLinks(items: Contact[], metrics: ShapeMetrics): MembraneLink[] {
   if (items.length < 2 || controls.contactFill <= 0) return [];
   const ordered = [...items].sort((first, second) => (
-    Math.atan2(first.position.y, first.position.x)
-    - Math.atan2(second.position.y, second.position.x)
+    contactSortAngle(first) - contactSortAngle(second)
   ));
   const links = new Map<string, MembraneLink>();
   const radiusById = new Map(items.map((item, index) => (
@@ -688,7 +704,14 @@ function computeShapeMetrics(items: Contact[]): ShapeMetrics {
     const easedProgress = progress * progress * (3 - 2 * progress);
     const radiusScale = 1
       - (1 - controls.contactRadiusMinScale) * easedProgress;
-    return seedRadius * radiusScale;
+    const releaseWobble = item.active || item.releaseAge === null
+      ? 1
+      : 1 + Math.sin(Math.PI * 2 * controls.springFrequency * item.releaseAge)
+        * Math.exp(
+          -Math.PI * 2 * controls.springFrequency
+            * controls.springDamping * item.releaseAge,
+        ) * 0.14;
+    return seedRadius * radiusScale * releaseWobble;
   });
   return {
     effectiveSeedCount,
@@ -908,6 +931,8 @@ function createDemoContact(
     velocity: { x: 0, y: 0 },
     influence,
     releaseAge: null,
+    releaseOffset: { x: 0, y: 0 },
+    releaseAngle: Math.atan2(position.y, position.x),
     active: true,
     persistent: true,
     demoPhase: phase,
@@ -934,17 +959,54 @@ function setupDemo(): void {
     createDemoContact(-3, { x: 0, y: 0.56 }, Math.PI * 1.34);
   } else if (controls.demoMode === 'singleReentry') {
     createDemoContact(-1, { x: 0.48, y: 0.02 }, 0);
+  } else if (controls.demoMode === 'cornerRelease') {
+    createDemoContact(
+      -1,
+      { x: -0.18, y: -0.14 },
+      0,
+      1,
+      { x: -1.2, y: -0.82 },
+    );
+    createDemoContact(
+      -2,
+      { x: 0.05, y: -0.05 },
+      0,
+      1,
+      { x: 1.18, y: -0.82 },
+    );
+    createDemoContact(
+      -3,
+      { x: 0.18, y: 0.14 },
+      0,
+      1,
+      { x: 1.18, y: 0.82 },
+    );
+    createDemoContact(
+      -4,
+      { x: -0.18, y: 0.14 },
+      0,
+      1,
+      { x: -1.2, y: 0.82 },
+    );
   }
 
   demoNeedsSetup = false;
 }
 
+function beginContactRelease(item: Contact): void {
+  if (!item.active) return;
+  item.releaseOffset = subtract(item.position, item.anchor);
+  item.releaseAngle = Math.atan2(item.position.y, item.position.x);
+  item.active = false;
+  item.releaseAge = 0;
+  item.persistent = false;
+  item.target = { ...item.anchor };
+  item.velocity = { x: 0, y: 0 };
+}
+
 function releaseDemoContacts(): void {
   for (const item of contacts.values()) {
-    item.active = false;
-    item.releaseAge = 0;
-    item.persistent = false;
-    item.target = { ...item.anchor };
+    beginContactRelease(item);
   }
   demoReleased = true;
 }
@@ -990,10 +1052,7 @@ function updateSingleReentryDemo(): void {
     first.target = add(first.anchor, scale({ x: 0.62, y: 0.18 }, easedProgress));
     first.position = { ...first.target };
   } else if (first?.active) {
-    first.active = false;
-    first.releaseAge = 0;
-    first.persistent = false;
-    first.target = { ...first.anchor };
+    beginContactRelease(first);
   }
 
   if (demoTime >= 1.18 && !demoAddedContact) {
@@ -1011,6 +1070,14 @@ function updateSingleReentryDemo(): void {
   }
 }
 
+function updateCornerReleaseDemo(): void {
+  if (demoReleased || demoTime < 1.5) return;
+  const upperRight = contacts.get(-2);
+  if (!upperRight) return;
+  beginContactRelease(upperRight);
+  demoReleased = true;
+}
+
 function updateDemo(delta: number): void {
   if (controls.demoMode === 'none' || prefersReducedMotion) return;
   if (demoNeedsSetup) setupDemo();
@@ -1026,6 +1093,10 @@ function updateDemo(delta: number): void {
   }
   if (controls.demoMode === 'singleReentry') {
     updateSingleReentryDemo();
+    return;
+  }
+  if (controls.demoMode === 'cornerRelease') {
+    updateCornerReleaseDemo();
     return;
   }
 
@@ -1048,8 +1119,6 @@ function updateDemo(delta: number): void {
 
 function updateContactDynamics(delta: number): void {
   const angularFrequency = Math.PI * 2 * controls.springFrequency;
-  const damping = 2 * controls.springDamping * angularFrequency;
-  const stiffness = angularFrequency * angularFrequency;
   const blendStep = controls.contactBlendDuration <= 0
     ? 1
     : delta / controls.contactBlendDuration;
@@ -1063,11 +1132,13 @@ function updateContactDynamics(delta: number): void {
     }
 
     item.releaseAge = (item.releaseAge ?? 0) + delta;
-    const displacement = subtract(item.position, item.anchor);
-    item.velocity.x += (-stiffness * displacement.x - damping * item.velocity.x) * delta;
-    item.velocity.y += (-stiffness * displacement.y - damping * item.velocity.y) * delta;
-    item.position.x += item.velocity.x * delta;
-    item.position.y += item.velocity.y * delta;
+    // Keep the returning contact on its release ray; elasticity lives in its radius.
+    const returnScale = (1 + angularFrequency * item.releaseAge)
+      * Math.exp(-angularFrequency * item.releaseAge);
+    const returnVelocity = -angularFrequency * angularFrequency * item.releaseAge
+      * Math.exp(-angularFrequency * item.releaseAge);
+    item.position = add(item.anchor, scale(item.releaseOffset, returnScale));
+    item.velocity = scale(item.releaseOffset, returnVelocity);
 
     if (item.releaseAge > controls.releaseHoldDuration) {
       const fadeDuration = Math.max(
@@ -1083,7 +1154,15 @@ function updateContactDynamics(delta: number): void {
       item.influence = Math.min(item.influence, 1 - easedFade);
     }
 
-    if (item.releaseAge >= controls.releaseLifetime) contactsToRemove.push(id);
+    const returnGate = smoothInfluence(clamp((returnScale - 0.04) / 0.31, 0, 1));
+    item.influence = Math.min(item.influence, returnGate);
+
+    if (
+      item.releaseAge >= controls.releaseLifetime
+      || (returnScale <= 0.02 && item.influence <= 0.01)
+    ) {
+      contactsToRemove.push(id);
+    }
   }
 
   for (const id of contactsToRemove) contacts.delete(id);
@@ -1211,6 +1290,8 @@ canvas.addEventListener('pointerdown', (event) => {
     velocity: { x: 0, y: 0 },
     influence: 0,
     releaseAge: null,
+    releaseOffset: { x: 0, y: 0 },
+    releaseAngle: Math.atan2(position.y, position.x),
     active: true,
     persistent,
     demoPhase: 0,
@@ -1233,9 +1314,7 @@ canvas.addEventListener('pointermove', (event) => {
 function releasePointer(event: PointerEvent): void {
   const item = contacts.get(event.pointerId);
   if (item && !item.persistent) {
-    item.active = false;
-    item.releaseAge = 0;
-    item.target = { ...item.anchor };
+    beginContactRelease(item);
   }
   if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
   event.preventDefault();
@@ -1259,6 +1338,7 @@ function setupGui(): void {
     demoTransition: () => startDemo('transition'),
     demoReleaseAll: () => startDemo('releaseAll'),
     demoSingleReentry: () => startDemo('singleReentry'),
+    demoCornerRelease: () => startDemo('cornerRelease'),
     reset: () => {
       controls.demoMode = 'none';
       clearContacts();
@@ -1270,6 +1350,7 @@ function setupGui(): void {
   gui.add(actions, 'demoTransition').name('2 + add third');
   gui.add(actions, 'demoReleaseAll').name('regression: release all');
   gui.add(actions, 'demoSingleReentry').name('regression: re-entry');
+  gui.add(actions, 'demoCornerRelease').name('regression: corner release');
   gui.add(actions, 'reset').name('reset');
 
   const field = gui.addFolder('1 contact field');
