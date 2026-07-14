@@ -1273,15 +1273,15 @@ function setupGui(): void {
   gui.add(actions, 'reset').name('reset');
 
   const field = gui.addFolder('1 contact field');
-  field.add(controls, 'seedRadiusScale', 0.7, 1.35, 0.01).name('seed radius scale');
-  field.add(controls, 'bridgeRadiusRatio', 0.2, 0.9, 0.01).name('bridge / seed');
-  field.add(controls, 'contactRadiusShrinkStart', 0.2, 1.5, 0.01).name('radius shrink start');
-  field.add(controls, 'contactRadiusShrinkEnd', 0.8, 3.5, 0.01).name('radius shrink end');
-  field.add(controls, 'contactRadiusMinScale', 0.2, 1, 0.01).name('minimum radius');
+  field.add(controls, 'seedRadiusScale', 0.25, 3, 0.01).name('seed radius scale');
+  field.add(controls, 'bridgeRadiusRatio', 0.02, 2, 0.01).name('bridge / seed');
+  field.add(controls, 'contactRadiusShrinkStart', 0, 3, 0.01).name('radius shrink start');
+  field.add(controls, 'contactRadiusShrinkEnd', 0.05, 6, 0.01).name('radius shrink end');
+  field.add(controls, 'contactRadiusMinScale', 0.02, 1, 0.01).name('minimum radius');
   field.add(controls, 'contactFill', 0, 1, 0.01).name('contact fill');
-  field.add(controls, 'edgeConcavity', 0, 0.9, 0.01).name('edge concavity');
-  field.add(controls, 'fieldSmoothness', 0.02, 0.5, 0.01).name('smooth union');
-  field.add(controls, 'contactBlendDuration', 0, 0.5, 0.01).name('contact blend');
+  field.add(controls, 'edgeConcavity', -1, 2.5, 0.01).name('edge concavity');
+  field.add(controls, 'fieldSmoothness', 0.001, 1.5, 0.001).name('smooth union');
+  field.add(controls, 'contactBlendDuration', 0, 3, 0.01).name('contact blend');
   field.close();
 
   const pressure = gui.addFolder('2 area pressure');
