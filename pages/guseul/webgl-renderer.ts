@@ -112,6 +112,7 @@ uniform vec4 uMembraneStarts[MAX_MEMBRANE_LINKS];
 uniform vec4 uMembraneEnds[MAX_MEMBRANE_LINKS];
 uniform float uContactRadius;
 uniform float uBridgeRadius;
+uniform float uMembraneBridgeRadius;
 uniform float uEdgeConcavity;
 uniform float uFieldSmoothness;
 uniform float uContourOffset;
@@ -289,7 +290,7 @@ float contactField(vec2 position) {
     vec4 startData = uMembraneStarts[index];
     vec4 endData = uMembraneEnds[index];
     float linkDistance = distanceToSegment(position, startData.xy, endData.xy)
-      - uBridgeRadius;
+      - uMembraneBridgeRadius;
     if (endData.w > 0.5) {
       float triangleDistance = signedDistanceToTriangle(
         position,
@@ -305,7 +306,7 @@ float contactField(vec2 position) {
         endData.z
       );
       linkDistance = smoothMaximum(
-        triangleDistance - uBridgeRadius,
+        triangleDistance - uMembraneBridgeRadius,
         curvedEdgeDistance,
         uFieldSmoothness * 0.32
       );
@@ -756,7 +757,8 @@ export class GuseulWebGLRenderer {
       'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
       'uSourceFollow', 'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
       'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
-      'uContactRadius', 'uBridgeRadius', 'uEdgeConcavity', 'uFieldSmoothness',
+      'uContactRadius', 'uBridgeRadius', 'uMembraneBridgeRadius', 'uEdgeConcavity',
+      'uFieldSmoothness',
       'uContourOffset',
       'uDisplacementEnabled', 'uSurfacePreviewEnabled', 'uSurfaceProfile', 'uBezelWidth',
       'uThickness', 'uDisplacementFactor', 'uEdgeFadeWidth', 'uIor', 'uRefractionEnabled',
@@ -845,6 +847,7 @@ export class GuseulWebGLRenderer {
     gl.uniform4fv(this.uniforms['uMembraneEnds[0]'], ends);
     gl.uniform1f(this.uniforms.uContactRadius, shape.contactRadius);
     gl.uniform1f(this.uniforms.uBridgeRadius, shape.bridgeRadius);
+    gl.uniform1f(this.uniforms.uMembraneBridgeRadius, shape.membraneBridgeRadius);
     gl.uniform1f(this.uniforms.uEdgeConcavity, shape.edgeConcavity);
     gl.uniform1f(this.uniforms.uFieldSmoothness, shape.fieldSmoothness);
     gl.uniform1f(this.uniforms.uContourOffset, shape.contourOffset);

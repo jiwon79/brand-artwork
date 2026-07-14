@@ -231,6 +231,8 @@ const layerControls = {
   pinchSourceFollow: initialSourceFollow,
   seedRadiusScale: 0.74,
   bridgeRadiusRatio: 0.02,
+  membraneBridgeRadiusRatio: 0.12,
+  membraneFanThreshold: 0.015,
   contactRadiusShrinkStart: 0.47,
   contactRadiusShrinkEnd: 3.6,
   contactRadiusMinScale: 0.58,
@@ -917,7 +919,7 @@ function setupGui(): void {
   scene.add(layerControls, 'marbleScale', 0.7, 1.8, 0.01).name('marble scale').onChange(resize);
   scene.add(layerControls, 'dragSensitivity', 0.4, 1.8, 0.01).name('drag sensitivity');
 
-  const elastic = scene.addFolder('elastic contacts');
+  const elastic = gui.addFolder('elastic contacts');
   const elasticActions = {
     resetContacts: () => {
       elasticField.clear();
@@ -930,14 +932,21 @@ function setupGui(): void {
 
   const contactField = elastic.addFolder('contact field');
   contactField.add(layerControls, 'seedRadiusScale', 0.25, 1, 0.01).name('seed radius');
-  contactField.add(layerControls, 'bridgeRadiusRatio', 0.02, 2, 0.01).name('bridge / seed');
+  contactField.add(layerControls, 'bridgeRadiusRatio', 0.005, 0.8, 0.005).name('center bridge / seed');
   contactField.add(layerControls, 'contactRadiusShrinkStart', 0, 3, 0.01).name('shrink start');
   contactField.add(layerControls, 'contactRadiusShrinkEnd', 0.05, 6, 0.01).name('shrink end');
   contactField.add(layerControls, 'contactRadiusMinScale', 0.02, 1, 0.01).name('minimum radius');
-  contactField.add(layerControls, 'contactFill', 0, 1, 0.01).name('contact fill');
-  contactField.add(layerControls, 'edgeConcavity', -1, 2.5, 0.01).name('edge concavity');
-  contactField.add(layerControls, 'fieldSmoothness', 0.001, 1.5, 0.001).name('smooth union');
   contactField.add(layerControls, 'contactBlendDuration', 0, 3, 0.01).name('contact blend');
+
+  const contactMembrane = elastic.addFolder('contact membrane');
+  contactMembrane.add(layerControls, 'membraneBridgeRadiusRatio', 0.005, 0.8, 0.005)
+    .name('bridge / seed');
+  contactMembrane.add(layerControls, 'membraneFanThreshold', 0, 0.25, 0.001)
+    .name('fan threshold');
+  contactMembrane.add(layerControls, 'contactFill', 0, 1, 0.01).name('contact fill');
+  contactMembrane.add(layerControls, 'edgeConcavity', -1, 2.5, 0.01).name('edge concavity');
+  contactMembrane.add(layerControls, 'fieldSmoothness', 0.001, 1.5, 0.001)
+    .name('smooth union');
 
   const areaPressure = elastic.addFolder('area pressure');
   areaPressure.add(layerControls, 'areaPreservation', 0, 1, 0.01).name('preservation');
@@ -1021,6 +1030,7 @@ function setupGui(): void {
 
   circles.close();
   contactField.close();
+  contactMembrane.close();
   areaPressure.close();
   releaseSpring.close();
   elastic.close();

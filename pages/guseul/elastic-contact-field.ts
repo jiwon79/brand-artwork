@@ -6,6 +6,8 @@ export type ElasticVec2 = {
 export type ElasticFieldControls = {
   seedRadiusScale: number;
   bridgeRadiusRatio: number;
+  membraneBridgeRadiusRatio: number;
+  membraneFanThreshold: number;
   contactRadiusShrinkStart: number;
   contactRadiusShrinkEnd: number;
   contactRadiusMinScale: number;
@@ -45,6 +47,7 @@ export type ElasticShapeFrame = {
   membraneLinks: ElasticMembraneLink[];
   contactRadius: number;
   bridgeRadius: number;
+  membraneBridgeRadius: number;
   contourOffset: number;
   edgeConcavity: number;
   fieldSmoothness: number;
@@ -67,6 +70,7 @@ type Contact = {
 type ShapeMetrics = {
   seedRadius: number;
   bridgeRadius: number;
+  membraneBridgeRadius: number;
   contactRadii: number[];
 };
 
@@ -222,7 +226,8 @@ function buildMembraneLinks(
     const key = first.id < second.id
       ? `${first.id}:${second.id}`
       : `${second.id}:${first.id}`;
-    const fillTriangle = Math.abs(cross(first.position, second.position)) > 0.015 ? 1 : 0;
+    const fillTriangle = Math.abs(cross(first.position, second.position))
+      > controls.membraneFanThreshold ? 1 : 0;
     const previous = links.get(key);
     if (previous && previous.influence >= weightedInfluence) return;
 
@@ -304,6 +309,7 @@ function computeShapeMetrics(
   return {
     seedRadius,
     bridgeRadius: seedRadius * controls.bridgeRadiusRatio,
+    membraneBridgeRadius: seedRadius * controls.membraneBridgeRadiusRatio,
     contactRadii,
   };
 }
@@ -346,7 +352,7 @@ function rawShapeDistance(
 
   for (const link of membraneLinks) {
     let linkDistance = distanceToSegment(position, link.start, link.end)
-      - metrics.bridgeRadius;
+      - metrics.membraneBridgeRadius;
 
     if (link.fillTriangle > 0.5) {
       const triangleDistance = signedDistanceToTriangle(
@@ -355,7 +361,7 @@ function rawShapeDistance(
         link.start,
         link.end,
       );
-      const roundedTriangleDistance = triangleDistance - metrics.bridgeRadius;
+      const roundedTriangleDistance = triangleDistance - metrics.membraneBridgeRadius;
       const curvedEdgeDistance = signedDistanceToCurvedFanEdge(
         position,
         link.start,
@@ -429,7 +435,10 @@ function solveContourOffset(
   const expansion = Math.max(unconstrainedArea - baseArea, 0);
   const targetArea = baseArea + expansion * (1 - controls.areaPreservation);
   const minimumNeckRadius = controls.minimumNeckWidth * 0.5;
-  const minimumOffset = Math.min(minimumNeckRadius - metrics.bridgeRadius, 0);
+  const minimumOffset = Math.min(
+    minimumNeckRadius - metrics.membraneBridgeRadius,
+    0,
+  );
   let low = minimumOffset;
   let high = Math.max(0.42, 1 - metrics.seedRadius + 0.16);
 
@@ -462,6 +471,8 @@ export class ElasticContactField {
       membraneLinks: [],
       contactRadius: controls.seedRadiusScale,
       bridgeRadius: controls.seedRadiusScale * controls.bridgeRadiusRatio,
+      membraneBridgeRadius: controls.seedRadiusScale
+        * controls.membraneBridgeRadiusRatio,
       contourOffset: this.contourOffset,
       edgeConcavity: controls.edgeConcavity,
       fieldSmoothness: controls.fieldSmoothness,
@@ -592,6 +603,7 @@ export class ElasticContactField {
       membraneLinks,
       contactRadius: metrics.seedRadius,
       bridgeRadius: metrics.bridgeRadius,
+      membraneBridgeRadius: metrics.membraneBridgeRadius,
       contourOffset: this.contourOffset,
       edgeConcavity: this.controls.edgeConcavity,
       fieldSmoothness: this.controls.fieldSmoothness,
