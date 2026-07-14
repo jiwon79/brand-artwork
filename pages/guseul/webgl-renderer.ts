@@ -29,6 +29,8 @@ export type GpuGlassControls = {
   background: [number, number, number];
   contentOverscan: number;
   sourceFollow: number;
+  specElasticFollow: number;
+  specEdgeBlendWidth: number;
   displacementEnabled: boolean;
   surfacePreviewEnabled: boolean;
   surfaceProfile: 'convex' | 'concave' | 'lip';
@@ -140,6 +142,8 @@ uniform int uCaRimEnabled;
 uniform int uSpecDebugEnabled;
 uniform vec3 uSpecDebugColor;
 uniform float uSpecDebugOpacity;
+uniform float uSpecElasticFollow;
+uniform float uSpecEdgeBlendWidth;
 uniform int uOuterStrokeEnabled;
 uniform int uShowElasticContacts;
 uniform int uCircleCount;
@@ -382,7 +386,7 @@ vec4 sampleContent(vec2 sourcePoint) {
   return texture(uContent, uv);
 }
 
-vec2 transformSourcePoint(vec2 point) {
+vec2 elasticDisplacement(vec2 point) {
   vec2 displacement = vec2(0.0);
   float weightSum = 0.0;
 
@@ -402,7 +406,34 @@ vec2 transformSourcePoint(vec2 point) {
     displacement /= max(weightSum, 1.0);
   }
 
-  return point - displacement * clamp(uSourceFollow, 0.0, 1.0);
+  return displacement;
+}
+
+vec2 inverseElasticPoint(vec2 point, float follow) {
+  return point - elasticDisplacement(point) * clamp(follow, 0.0, 1.0);
+}
+
+vec2 transformSourcePoint(vec2 point) {
+  return inverseElasticPoint(point, uSourceFollow);
+}
+
+vec3 elasticSpecNormal(vec2 point, vec3 boundaryNormal, float inwardDistance) {
+  vec2 canonicalPoint = inverseElasticPoint(point, uSpecElasticFollow);
+  float canonicalRadius = length(canonicalPoint);
+
+  if (canonicalRadius > 0.999) {
+    canonicalPoint *= 0.999 / canonicalRadius;
+  }
+
+  float canonicalZ = sqrt(max(1.0 - dot(canonicalPoint, canonicalPoint), 0.0));
+  vec3 canonicalNormal = normalize(vec3(canonicalPoint, canonicalZ));
+  float edgeBlend = 1.0 - smoothRange(
+    0.0,
+    max(uSpecEdgeBlendWidth, 0.001),
+    inwardDistance
+  );
+
+  return normalize(mix(canonicalNormal, boundaryNormal, edgeBlend));
 }
 
 struct SourceEdge {
@@ -612,7 +643,8 @@ void main() {
   float rim = !preview && uRimEnabled == 1 ? smoothRange(0.72, 1.0, radial) : 0.0;
   float hardRim = !preview && uHardRimEnabled == 1 ? smoothRange(0.93, 1.0, radial) : 0.0;
   float caRim = !preview && uCaRimEnabled == 1 ? smoothRange(0.8, 1.0, radial) : 0.0;
-  vec3 reflection = normalize(reflect(vec3(0.0, 0.0, -1.0), normal));
+  vec3 specNormal = elasticSpecNormal(point, normal, inwardDistance);
+  vec3 reflection = normalize(reflect(vec3(0.0, 0.0, -1.0), specNormal));
   vec2 spec = preview ? vec2(0.0) : sampleSpecs(reflection);
   float shell = uSpecDebugEnabled == 1 ? 0.0 : spec.x;
 
@@ -766,6 +798,7 @@ export class GuseulWebGLRenderer {
       'uChromaticBoundaryStrength', 'uChromaticBoundaryWidth', 'uInnerShadeEnabled',
       'uGlassMilkEnabled', 'uTopWashEnabled', 'uRimEnabled', 'uHardRimEnabled',
       'uCaRimEnabled', 'uSpecDebugEnabled', 'uSpecDebugColor', 'uSpecDebugOpacity',
+      'uSpecElasticFollow', 'uSpecEdgeBlendWidth',
       'uOuterStrokeEnabled', 'uShowElasticContacts',
       'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecSource[0]', 'uSpecAxisX[0]',
       'uSpecAxisY[0]', 'uSpecShape[0]', 'uSpecRender[0]',
@@ -931,6 +964,8 @@ export class GuseulWebGLRenderer {
     gl.uniform1i(this.uniforms.uSpecDebugEnabled, Number(controls.specDebugEnabled));
     gl.uniform3fv(this.uniforms.uSpecDebugColor, controls.specDebugColor === 'red' ? [1, 0, 0] : [0, 0, 0]);
     gl.uniform1f(this.uniforms.uSpecDebugOpacity, controls.specDebugOpacity);
+    gl.uniform1f(this.uniforms.uSpecElasticFollow, controls.specElasticFollow);
+    gl.uniform1f(this.uniforms.uSpecEdgeBlendWidth, controls.specEdgeBlendWidth);
     gl.uniform1i(this.uniforms.uOuterStrokeEnabled, Number(controls.outerStrokeEnabled));
     gl.uniform1i(this.uniforms.uShowElasticContacts, Number(controls.showElasticContacts));
     this.uploadElasticShape(frame.elasticShape);

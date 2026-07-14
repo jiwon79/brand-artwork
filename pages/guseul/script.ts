@@ -291,6 +291,8 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
+  specElasticFollow: 1,
+  specEdgeBlendWidth: 0.22,
   specLargeIntensity: 3.5,
   specLargeSoftness: 2 / 3,
   specMediumIntensity: 4,
@@ -379,6 +381,8 @@ class WebGLRenderer implements Renderer {
         specDebugEnabled: params.controls.specDebugEnabled,
         specDebugColor: params.controls.specDebugColor,
         specDebugOpacity: params.controls.specDebugOpacity,
+        specElasticFollow: params.controls.specElasticFollow,
+        specEdgeBlendWidth: params.controls.specEdgeBlendWidth,
         outerStrokeEnabled: params.controls.outerStrokeEnabled,
         showElasticContacts: params.controls.showElasticContacts,
       },
@@ -1014,6 +1018,8 @@ function setupGui(): void {
   spec.add(layerControls, 'specDebugEnabled').name('debug fill');
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
+  spec.add(layerControls, 'specElasticFollow', 0, 1, 0.01).name('elastic follow');
+  spec.add(layerControls, 'specEdgeBlendWidth', 0.02, 0.6, 0.01).name('edge blend');
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
