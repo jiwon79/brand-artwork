@@ -39,11 +39,14 @@ type ShapeMetrics = {
   effectiveSeedCount: number;
   seedRadius: number;
   bridgeRadius: number;
+  contactRadii: number[];
 };
 
 type MembraneLink = {
   start: Vec2;
   end: Vec2;
+  startRadius: number;
+  endRadius: number;
   influence: number;
   fillTriangle: number;
 };
@@ -84,7 +87,11 @@ const initialDemo: DemoMode = requestedDemo === '2'
 const controls = {
   seedRadiusScale: 1,
   bridgeRadiusRatio: 0.54,
+  contactRadiusShrinkStart: 0.7,
+  contactRadiusShrinkEnd: 2.2,
+  contactRadiusMinScale: 0.52,
   contactFill: 1,
+  edgeConcavity: 0.4,
   fieldSmoothness: 0.2,
   contactBlendDuration: 0.12,
   areaPreservation: 0.92,
@@ -147,13 +154,17 @@ uniform float uRadius;
 uniform int uContactCount;
 uniform vec2 uContacts[MAX_CONTACTS];
 uniform float uInfluences[MAX_CONTACTS];
+uniform float uContactRadii[MAX_CONTACTS];
 uniform int uMembraneLinkCount;
 uniform vec2 uMembraneStarts[MAX_MEMBRANE_LINKS];
 uniform vec2 uMembraneEnds[MAX_MEMBRANE_LINKS];
+uniform float uMembraneStartRadii[MAX_MEMBRANE_LINKS];
+uniform float uMembraneEndRadii[MAX_MEMBRANE_LINKS];
 uniform float uMembraneInfluences[MAX_MEMBRANE_LINKS];
 uniform float uMembraneTriangles[MAX_MEMBRANE_LINKS];
 uniform float uContactRadius;
 uniform float uBridgeRadius;
+uniform float uEdgeConcavity;
 uniform float uFieldSmoothness;
 uniform float uContourOffset;
 uniform vec3 uBaseColor;
@@ -172,6 +183,10 @@ float smoothMinimum(float first, float second, float radius) {
   float safeRadius = max(radius, 0.0001);
   float blend = max(safeRadius - abs(first - second), 0.0) / safeRadius;
   return min(first, second) - blend * blend * safeRadius * 0.25;
+}
+
+float smoothMaximum(float first, float second, float radius) {
+  return -smoothMinimum(-first, -second, radius);
 }
 
 float distanceToSegment(vec2 point, vec2 start, vec2 end) {
@@ -202,16 +217,53 @@ float signedDistanceToTriangle(vec2 point, vec2 first, vec2 second, vec2 third) 
   return -sqrt(distanceAndSide.x) * sign(distanceAndSide.y);
 }
 
+float signedDistanceToCurvedFanEdge(
+  vec2 point,
+  vec2 start,
+  vec2 end,
+  float startRadius,
+  float endRadius
+) {
+  // The quartic bell is tangent to both contact circles and bows toward the center.
+  vec2 segment = end - start;
+  float segmentLength = max(length(segment), 0.0001);
+  vec2 tangent = segment / segmentLength;
+  vec2 inwardNormal = vec2(-tangent.y, tangent.x);
+  float centerSide = dot(-start, inwardNormal) >= 0.0 ? 1.0 : -1.0;
+  inwardNormal *= centerSide;
+
+  float progress = clamp(dot(point - start, tangent) / segmentLength, 0.0, 1.0);
+  float easedProgress = progress * progress * (3.0 - 2.0 * progress);
+  float bell = 16.0 * progress * progress
+    * (1.0 - progress) * (1.0 - progress);
+  float centerDepth = max(dot(-start, inwardNormal), 0.0);
+  float endpointRadius = mix(startRadius, endRadius, easedProgress);
+  float bulge = (0.5 * (startRadius + endRadius) + centerDepth * uEdgeConcavity) * bell;
+  float curveHeight = -endpointRadius + bulge;
+
+  float radiusDerivative = (endRadius - startRadius)
+    * 6.0 * progress * (1.0 - progress);
+  float bellDerivative = 32.0 * progress * (1.0 - progress) * (1.0 - 2.0 * progress);
+  float curveDerivative = -radiusDerivative
+    + (0.5 * (startRadius + endRadius) + centerDepth * uEdgeConcavity)
+      * bellDerivative;
+  float slope = curveDerivative / segmentLength;
+  float pointHeight = dot(point - start, inwardNormal);
+  return (curveHeight - pointHeight) / sqrt(1.0 + slope * slope);
+}
+
 float contactField(vec2 position) {
-  // The center and pointer contacts share the same count-derived radius.
+  // The center keeps the count-derived radius; dragged contacts shrink with distance.
   float distanceToShape = length(position) - uContactRadius;
 
   for (int index = 0; index < MAX_CONTACTS; index += 1) {
     if (index >= uContactCount) break;
     float influence = smoothstep(0.0, 1.0, uInfluences[index]);
     vec2 contact = uContacts[index];
-    float pointDistance = length(position - contact) - uContactRadius;
-    float bridgeDistance = distanceToSegment(position, vec2(0.0), contact) - uBridgeRadius;
+    float pointDistance = length(position - contact) - uContactRadii[index];
+    float contactBridgeRadius = min(uBridgeRadius, uContactRadii[index] * 0.88);
+    float bridgeDistance = distanceToSegment(position, vec2(0.0), contact)
+      - contactBridgeRadius;
     float branchDistance = smoothMinimum(
       pointDistance,
       bridgeDistance,
@@ -233,10 +285,17 @@ float contactField(vec2 position) {
     if (uMembraneTriangles[index] > 0.5) {
       float triangleDistance = signedDistanceToTriangle(position, vec2(0.0), start, end);
       float roundedTriangleDistance = triangleDistance - uBridgeRadius;
-      linkDistance = smoothMinimum(
-        linkDistance,
+      float curvedEdgeDistance = signedDistanceToCurvedFanEdge(
+        position,
+        start,
+        end,
+        uMembraneStartRadii[index],
+        uMembraneEndRadii[index]
+      );
+      linkDistance = smoothMaximum(
         roundedTriangleDistance,
-        uFieldSmoothness * 0.6
+        curvedEdgeDistance,
+        uFieldSmoothness * 0.32
       );
     }
     float combinedDistance = smoothMinimum(
@@ -373,13 +432,17 @@ const uniform = {
   contactCount: gl.getUniformLocation(program, 'uContactCount'),
   contacts: gl.getUniformLocation(program, 'uContacts[0]'),
   influences: gl.getUniformLocation(program, 'uInfluences[0]'),
+  contactRadii: gl.getUniformLocation(program, 'uContactRadii[0]'),
   membraneLinkCount: gl.getUniformLocation(program, 'uMembraneLinkCount'),
   membraneStarts: gl.getUniformLocation(program, 'uMembraneStarts[0]'),
   membraneEnds: gl.getUniformLocation(program, 'uMembraneEnds[0]'),
+  membraneStartRadii: gl.getUniformLocation(program, 'uMembraneStartRadii[0]'),
+  membraneEndRadii: gl.getUniformLocation(program, 'uMembraneEndRadii[0]'),
   membraneInfluences: gl.getUniformLocation(program, 'uMembraneInfluences[0]'),
   membraneTriangles: gl.getUniformLocation(program, 'uMembraneTriangles[0]'),
   contactRadius: gl.getUniformLocation(program, 'uContactRadius'),
   bridgeRadius: gl.getUniformLocation(program, 'uBridgeRadius'),
+  edgeConcavity: gl.getUniformLocation(program, 'uEdgeConcavity'),
   fieldSmoothness: gl.getUniformLocation(program, 'uFieldSmoothness'),
   contourOffset: gl.getUniformLocation(program, 'uContourOffset'),
   baseColor: gl.getUniformLocation(program, 'uBaseColor'),
@@ -430,10 +493,18 @@ function length(vector: Vec2): number {
   return Math.hypot(vector.x, vector.y);
 }
 
+function dot(first: Vec2, second: Vec2): number {
+  return first.x * second.x + first.y * second.y;
+}
+
 function smoothMinimum(first: number, second: number, radius: number): number {
   const safeRadius = Math.max(radius, 0.0001);
   const blend = Math.max(safeRadius - Math.abs(first - second), 0) / safeRadius;
   return Math.min(first, second) - blend * blend * safeRadius * 0.25;
+}
+
+function smoothMaximum(first: number, second: number, radius: number): number {
+  return -smoothMinimum(-first, -second, radius);
 }
 
 function distanceToSegment(point: Vec2, start: Vec2, end: Vec2): number {
@@ -491,18 +562,56 @@ function signedDistanceToTriangle(
   return -Math.sqrt(minimumDistanceSquared) * Math.sign(minimumSide);
 }
 
+function signedDistanceToCurvedFanEdge(
+  point: Vec2,
+  start: Vec2,
+  end: Vec2,
+  startRadius: number,
+  endRadius: number,
+): number {
+  // The quartic bell is tangent to both contact circles and bows toward the center.
+  const segment = subtract(end, start);
+  const segmentLength = Math.max(length(segment), 0.0001);
+  const tangent = scale(segment, 1 / segmentLength);
+  let inwardNormal = { x: -tangent.y, y: tangent.x };
+  if (dot(scale(start, -1), inwardNormal) < 0) {
+    inwardNormal = scale(inwardNormal, -1);
+  }
+
+  const progress = clamp(dot(subtract(point, start), tangent) / segmentLength, 0, 1);
+  const easedProgress = progress * progress * (3 - 2 * progress);
+  const bell = 16 * progress * progress * (1 - progress) * (1 - progress);
+  const centerDepth = Math.max(dot(scale(start, -1), inwardNormal), 0);
+  const endpointRadius = startRadius
+    + (endRadius - startRadius) * easedProgress;
+  const bulgeAmplitude = 0.5 * (startRadius + endRadius)
+    + centerDepth * controls.edgeConcavity;
+  const curveHeight = -endpointRadius + bulgeAmplitude * bell;
+
+  const radiusDerivative = (endRadius - startRadius)
+    * 6 * progress * (1 - progress);
+  const bellDerivative = 32 * progress * (1 - progress) * (1 - 2 * progress);
+  const curveDerivative = -radiusDerivative + bulgeAmplitude * bellDerivative;
+  const slope = curveDerivative / segmentLength;
+  const pointHeight = dot(subtract(point, start), inwardNormal);
+  return (curveHeight - pointHeight) / Math.sqrt(1 + slope * slope);
+}
+
 function smoothInfluence(influence: number): number {
   const value = clamp(influence, 0, 1);
   return value * value * (3 - 2 * value);
 }
 
-function buildMembraneLinks(items: Contact[]): MembraneLink[] {
+function buildMembraneLinks(items: Contact[], metrics: ShapeMetrics): MembraneLink[] {
   if (items.length < 2 || controls.contactFill <= 0) return [];
   const ordered = [...items].sort((first, second) => (
     Math.atan2(first.position.y, first.position.x)
     - Math.atan2(second.position.y, second.position.x)
   ));
   const links = new Map<string, MembraneLink>();
+  const radiusById = new Map(items.map((item, index) => (
+    [item.id, metrics.contactRadii[index]]
+  )));
 
   const addLink = (first: Contact, second: Contact, influence: number): void => {
     const weightedInfluence = clamp(influence * controls.contactFill, 0, 1);
@@ -516,6 +625,8 @@ function buildMembraneLinks(items: Contact[]): MembraneLink[] {
     links.set(key, {
       start: first.position,
       end: second.position,
+      startRadius: radiusById.get(first.id) ?? metrics.seedRadius,
+      endRadius: radiusById.get(second.id) ?? metrics.seedRadius,
       influence: weightedInfluence,
       fillTriangle,
     });
@@ -564,10 +675,26 @@ function computeShapeMetrics(items: Contact[]): ShapeMetrics {
     0,
   );
   const seedRadius = controls.seedRadiusScale / Math.sqrt(effectiveSeedCount);
+  const shrinkRange = Math.max(
+    controls.contactRadiusShrinkEnd - controls.contactRadiusShrinkStart,
+    0.001,
+  );
+  const contactRadii = items.map((item) => {
+    const progress = clamp(
+      (length(item.position) - controls.contactRadiusShrinkStart) / shrinkRange,
+      0,
+      1,
+    );
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    const radiusScale = 1
+      - (1 - controls.contactRadiusMinScale) * easedProgress;
+    return seedRadius * radiusScale;
+  });
   return {
     effectiveSeedCount,
     seedRadius,
     bridgeRadius: seedRadius * controls.bridgeRadiusRatio,
+    contactRadii,
   };
 }
 
@@ -579,14 +706,20 @@ function rawShapeDistance(
 ): number {
   let distanceToShape = length(position) - metrics.seedRadius;
 
-  for (const item of items) {
+  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+    const item = items[itemIndex];
     const influence = smoothInfluence(item.influence);
-    const pointDistance = length(subtract(position, item.position)) - metrics.seedRadius;
+    const pointDistance = length(subtract(position, item.position))
+      - metrics.contactRadii[itemIndex];
+    const contactBridgeRadius = Math.min(
+      metrics.bridgeRadius,
+      metrics.contactRadii[itemIndex] * 0.88,
+    );
     const bridgeDistance = distanceToSegment(
       position,
       { x: 0, y: 0 },
       item.position,
-    ) - metrics.bridgeRadius;
+    ) - contactBridgeRadius;
     const branchDistance = smoothMinimum(
       pointDistance,
       bridgeDistance,
@@ -611,10 +744,17 @@ function rawShapeDistance(
         link.end,
       );
       const roundedTriangleDistance = triangleDistance - metrics.bridgeRadius;
-      linkDistance = smoothMinimum(
-        linkDistance,
+      const curvedEdgeDistance = signedDistanceToCurvedFanEdge(
+        position,
+        link.start,
+        link.end,
+        link.startRadius,
+        link.endRadius,
+      );
+      linkDistance = smoothMaximum(
         roundedTriangleDistance,
-        controls.fieldSmoothness * 0.6,
+        curvedEdgeDistance,
+        controls.fieldSmoothness * 0.32,
       );
     }
     const combinedDistance = smoothMinimum(
@@ -727,11 +867,12 @@ function currentContacts(): Contact[] {
 
 function isInsideShape(position: Vec2): boolean {
   const items = currentContacts();
+  const metrics = computeShapeMetrics(items);
   return rawShapeDistance(
     position,
     items,
-    buildMembraneLinks(items),
-    computeShapeMetrics(items),
+    buildMembraneLinks(items, metrics),
+    metrics,
   ) <= contourOffset + 0.06;
 }
 
@@ -986,6 +1127,7 @@ function render(
   gl.uniform1i(uniform.contactCount, items.length);
   gl.uniform2fv(uniform.contacts, packVectors(items.map((item) => item.position)));
   gl.uniform1fv(uniform.influences, packScalars(items.map((item) => item.influence)));
+  gl.uniform1fv(uniform.contactRadii, packScalars(metrics.contactRadii));
   gl.uniform1i(uniform.membraneLinkCount, membraneLinks.length);
   gl.uniform2fv(
     uniform.membraneStarts,
@@ -994,6 +1136,14 @@ function render(
   gl.uniform2fv(
     uniform.membraneEnds,
     packVectors(membraneLinks.map((link) => link.end), maxMembraneLinks),
+  );
+  gl.uniform1fv(
+    uniform.membraneStartRadii,
+    packScalars(membraneLinks.map((link) => link.startRadius), maxMembraneLinks),
+  );
+  gl.uniform1fv(
+    uniform.membraneEndRadii,
+    packScalars(membraneLinks.map((link) => link.endRadius), maxMembraneLinks),
   );
   gl.uniform1fv(
     uniform.membraneInfluences,
@@ -1005,6 +1155,7 @@ function render(
   );
   gl.uniform1f(uniform.contactRadius, metrics.seedRadius);
   gl.uniform1f(uniform.bridgeRadius, metrics.bridgeRadius);
+  gl.uniform1f(uniform.edgeConcavity, controls.edgeConcavity);
   gl.uniform1f(uniform.fieldSmoothness, controls.fieldSmoothness);
   gl.uniform1f(uniform.contourOffset, contourOffset);
   gl.uniform3fv(uniform.baseColor, hexToRgb(controls.baseColor));
@@ -1025,8 +1176,8 @@ function animate(time: number): void {
   updateDemo(delta);
   updateContactDynamics(delta);
   const items = currentContacts();
-  const membraneLinks = buildMembraneLinks(items);
   const metrics = computeShapeMetrics(items);
+  const membraneLinks = buildMembraneLinks(items, metrics);
   latestAreaSolution = solveAreaPressure(items, membraneLinks, metrics);
   const pressureBlend = 1 - Math.exp(-controls.pressureResponse * delta);
   contourOffset += (latestAreaSolution.offset - contourOffset) * pressureBlend;
@@ -1124,7 +1275,11 @@ function setupGui(): void {
   const field = gui.addFolder('1 contact field');
   field.add(controls, 'seedRadiusScale', 0.7, 1.35, 0.01).name('seed radius scale');
   field.add(controls, 'bridgeRadiusRatio', 0.2, 0.9, 0.01).name('bridge / seed');
+  field.add(controls, 'contactRadiusShrinkStart', 0.2, 1.5, 0.01).name('radius shrink start');
+  field.add(controls, 'contactRadiusShrinkEnd', 0.8, 3.5, 0.01).name('radius shrink end');
+  field.add(controls, 'contactRadiusMinScale', 0.2, 1, 0.01).name('minimum radius');
   field.add(controls, 'contactFill', 0, 1, 0.01).name('contact fill');
+  field.add(controls, 'edgeConcavity', 0, 0.9, 0.01).name('edge concavity');
   field.add(controls, 'fieldSmoothness', 0.02, 0.5, 0.01).name('smooth union');
   field.add(controls, 'contactBlendDuration', 0, 0.5, 0.01).name('contact blend');
   field.close();
