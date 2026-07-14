@@ -1,5 +1,9 @@
+import type { ElasticShapeFrame } from './elastic-contact-field';
+
 export const maxGpuCircles = 10;
 export const maxGpuSpecs = 11;
+export const maxGpuContacts = 10;
+export const maxGpuMembraneLinks = 20;
 
 export type GpuCircle = {
   centerX: number;
@@ -24,8 +28,6 @@ export type GpuSpec = {
 export type GpuGlassControls = {
   background: [number, number, number];
   contentOverscan: number;
-  deformationAxis: [number, number];
-  deformationScales: [number, number];
   sourceFollow: number;
   displacementEnabled: boolean;
   surfacePreviewEnabled: boolean;
@@ -51,15 +53,16 @@ export type GpuGlassControls = {
   specDebugEnabled: boolean;
   specDebugColor: 'red' | 'black';
   specDebugOpacity: number;
+  outerStrokeEnabled: boolean;
+  showElasticContacts: boolean;
 };
 
 export type GpuGlassFrame = {
   contentCanvas: HTMLCanvasElement;
-  surfaceField: Float32Array;
-  surfaceWidth: number;
-  surfaceHeight: number;
-  surfaceSignature: string;
+  viewportCss: [number, number];
+  centerCss: [number, number];
   radiusCss: number;
+  elasticShape: ElasticShapeFrame;
   controls: GpuGlassControls;
   circles: GpuCircle[];
   specs: GpuSpec[];
@@ -88,19 +91,30 @@ precision highp sampler2D;
 
 #define MAX_CIRCLES 10
 #define MAX_SPECS 11
+#define MAX_CONTACTS 10
+#define MAX_MEMBRANE_LINKS 20
 
 in vec2 vUv;
 out vec4 outputColor;
 
 uniform sampler2D uContent;
-uniform sampler2D uSurface;
-uniform vec2 uSurfaceSize;
+uniform vec2 uViewportCss;
+uniform vec2 uCenterCss;
 uniform float uRadiusCss;
 uniform vec3 uBackground;
 uniform float uOverscan;
-uniform vec2 uDeformationAxis;
-uniform vec2 uDeformationScales;
 uniform float uSourceFollow;
+uniform int uContactCount;
+uniform vec4 uContacts[MAX_CONTACTS];
+uniform vec2 uContactAnchors[MAX_CONTACTS];
+uniform int uMembraneLinkCount;
+uniform vec4 uMembraneStarts[MAX_MEMBRANE_LINKS];
+uniform vec4 uMembraneEnds[MAX_MEMBRANE_LINKS];
+uniform float uContactRadius;
+uniform float uBridgeRadius;
+uniform float uEdgeConcavity;
+uniform float uFieldSmoothness;
+uniform float uContourOffset;
 uniform int uDisplacementEnabled;
 uniform int uSurfacePreviewEnabled;
 uniform int uSurfaceProfile;
@@ -125,6 +139,8 @@ uniform int uCaRimEnabled;
 uniform int uSpecDebugEnabled;
 uniform vec3 uSpecDebugColor;
 uniform float uSpecDebugOpacity;
+uniform int uOuterStrokeEnabled;
+uniform int uShowElasticContacts;
 uniform int uCircleCount;
 uniform vec4 uCircles[MAX_CIRCLES];
 uniform int uSpecCount;
@@ -177,50 +193,163 @@ vec2 surfaceProfile(float progress) {
   return vec2(height, derivative);
 }
 
-vec4 fetchSurface(ivec2 point) {
-  ivec2 size = ivec2(uSurfaceSize);
-  return texelFetch(uSurface, clamp(point, ivec2(0), size - 1), 0);
+float smoothMinimum(float first, float second, float radius) {
+  float safeRadius = max(radius, 0.0001);
+  float blend = max(safeRadius - abs(first - second), 0.0) / safeRadius;
+  return min(first, second) - blend * blend * safeRadius * 0.25;
 }
 
-vec4 sampleSurfaceTexture(vec2 point) {
-  vec2 position = (point + 1.0) * uSurfaceSize * 0.5 - 0.5;
-  vec2 bounded = clamp(position, vec2(0.0), uSurfaceSize - 1.001);
-  ivec2 base = ivec2(floor(bounded));
-  ivec2 next = min(base + 1, ivec2(uSurfaceSize) - 1);
-  vec2 amount = fract(bounded);
-  vec4 top = mix(fetchSurface(base), fetchSurface(ivec2(next.x, base.y)), amount.x);
-  vec4 bottom = mix(fetchSurface(ivec2(base.x, next.y)), fetchSurface(next), amount.x);
-  return mix(top, bottom, amount.y);
+float smoothMaximum(float first, float second, float radius) {
+  return -smoothMinimum(-first, -second, radius);
 }
 
-vec3 surfaceSample(vec2 point, float radial) {
+float distanceToSegment(vec2 point, vec2 start, vec2 end) {
+  vec2 segment = end - start;
+  float denominator = max(dot(segment, segment), 0.0001);
+  float progress = clamp(dot(point - start, segment) / denominator, 0.0, 1.0);
+  return length(point - (start + segment * progress));
+}
+
+float signedDistanceToTriangle(vec2 point, vec2 first, vec2 second, vec2 third) {
+  vec2 edge0 = second - first;
+  vec2 edge1 = third - second;
+  vec2 edge2 = first - third;
+  vec2 value0 = point - first;
+  vec2 value1 = point - second;
+  vec2 value2 = point - third;
+  vec2 nearest0 = value0 - edge0 * clamp(dot(value0, edge0) / max(dot(edge0, edge0), 0.0001), 0.0, 1.0);
+  vec2 nearest1 = value1 - edge1 * clamp(dot(value1, edge1) / max(dot(edge1, edge1), 0.0001), 0.0, 1.0);
+  vec2 nearest2 = value2 - edge2 * clamp(dot(value2, edge2) / max(dot(edge2, edge2), 0.0001), 0.0, 1.0);
+  float orientation = sign(edge0.x * edge2.y - edge0.y * edge2.x);
+  vec2 distanceAndSide = min(
+    min(
+      vec2(dot(nearest0, nearest0), orientation * (value0.x * edge0.y - value0.y * edge0.x)),
+      vec2(dot(nearest1, nearest1), orientation * (value1.x * edge1.y - value1.y * edge1.x))
+    ),
+    vec2(dot(nearest2, nearest2), orientation * (value2.x * edge2.y - value2.y * edge2.x))
+  );
+  return -sqrt(distanceAndSide.x) * sign(distanceAndSide.y);
+}
+
+float signedDistanceToCurvedFanEdge(
+  vec2 point,
+  vec2 start,
+  vec2 end,
+  float startRadius,
+  float endRadius
+) {
+  vec2 segment = end - start;
+  float segmentLength = max(length(segment), 0.0001);
+  vec2 tangent = segment / segmentLength;
+  vec2 inwardNormal = vec2(-tangent.y, tangent.x);
+  float centerSide = dot(-start, inwardNormal) >= 0.0 ? 1.0 : -1.0;
+  inwardNormal *= centerSide;
+  float progress = clamp(dot(point - start, tangent) / segmentLength, 0.0, 1.0);
+  float easedProgress = progress * progress * (3.0 - 2.0 * progress);
+  float bell = 16.0 * progress * progress * (1.0 - progress) * (1.0 - progress);
+  float centerDepth = max(dot(-start, inwardNormal), 0.0);
+  float endpointRadius = mix(startRadius, endRadius, easedProgress);
+  float bulge = (0.5 * (startRadius + endRadius) + centerDepth * uEdgeConcavity) * bell;
+  float curveHeight = -endpointRadius + bulge;
+  float radiusDerivative = (endRadius - startRadius) * 6.0 * progress * (1.0 - progress);
+  float bellDerivative = 32.0 * progress * (1.0 - progress) * (1.0 - 2.0 * progress);
+  float curveDerivative = -radiusDerivative
+    + (0.5 * (startRadius + endRadius) + centerDepth * uEdgeConcavity) * bellDerivative;
+  float slope = curveDerivative / segmentLength;
+  float pointHeight = dot(point - start, inwardNormal);
+  return (curveHeight - pointHeight) / sqrt(1.0 + slope * slope);
+}
+
+float contactField(vec2 position) {
+  float distanceToShape = length(position) - uContactRadius;
+
+  for (int index = 0; index < MAX_CONTACTS; index += 1) {
+    if (index >= uContactCount) break;
+    vec4 contact = uContacts[index];
+    float influence = smoothRange(0.0, 1.0, contact.w);
+    float pointDistance = length(position - contact.xy) - contact.z;
+    float contactBridgeRadius = min(uBridgeRadius, contact.z * 0.88);
+    float bridgeDistance = distanceToSegment(position, vec2(0.0), contact.xy)
+      - contactBridgeRadius;
+    float branchDistance = smoothMinimum(
+      pointDistance,
+      bridgeDistance,
+      uFieldSmoothness * 0.72
+    );
+    float combinedDistance = smoothMinimum(
+      distanceToShape,
+      branchDistance,
+      uFieldSmoothness
+    );
+    distanceToShape = mix(distanceToShape, combinedDistance, influence);
+  }
+
+  for (int index = 0; index < MAX_MEMBRANE_LINKS; index += 1) {
+    if (index >= uMembraneLinkCount) break;
+    vec4 startData = uMembraneStarts[index];
+    vec4 endData = uMembraneEnds[index];
+    float linkDistance = distanceToSegment(position, startData.xy, endData.xy)
+      - uBridgeRadius;
+    if (endData.w > 0.5) {
+      float triangleDistance = signedDistanceToTriangle(
+        position,
+        vec2(0.0),
+        startData.xy,
+        endData.xy
+      );
+      float curvedEdgeDistance = signedDistanceToCurvedFanEdge(
+        position,
+        startData.xy,
+        endData.xy,
+        startData.z,
+        endData.z
+      );
+      linkDistance = smoothMaximum(
+        triangleDistance - uBridgeRadius,
+        curvedEdgeDistance,
+        uFieldSmoothness * 0.32
+      );
+    }
+    float combinedDistance = smoothMinimum(
+      distanceToShape,
+      linkDistance,
+      uFieldSmoothness
+    );
+    distanceToShape = mix(
+      distanceToShape,
+      combinedDistance,
+      smoothRange(0.0, 1.0, startData.w)
+    );
+  }
+
+  return distanceToShape;
+}
+
+vec3 surfaceSample(float inwardDistance, vec2 edgeNormal) {
   if (uDisplacementEnabled == 0) {
     return vec3(0.0);
   }
 
-  vec4 field = sampleSurfaceTexture(point);
-  float fill = field.z;
-  vec2 slope = fill > 0.0001 ? field.xy / fill : vec2(0.0);
-  float inwardDistance = max(1.0 - radial, 0.0);
   float bezelWidth = max(uBezelWidth, 0.001);
   float progress = clamp(inwardDistance / bezelWidth, 0.0, 1.0);
-  float profileHeight = surfaceProfile(progress).x;
+  vec2 profile = surfaceProfile(progress);
+  float derivative = clamp(profile.y, -MAX_SURFACE_SLOPE, MAX_SURFACE_SLOPE);
   float flatHeight = surfaceProfile(1.0).x;
-  float bevelHeight = (inwardDistance > bezelWidth ? flatHeight : profileHeight) * bezelWidth;
+  float bevelHeight = (inwardDistance > bezelWidth ? flatHeight : profile.x) * bezelWidth;
   float height = (uThickness + bevelHeight) * uDisplacementFactor;
 
-  return vec3(slope, height);
+  return vec3(edgeNormal * derivative, height);
 }
 
-float rimInfluence(float radial) {
-  return 1.0 - smoothRange(0.0, max(uBezelWidth, 0.001), max(1.0 - radial, 0.0));
+float rimInfluence(float inwardDistance) {
+  return 1.0 - smoothRange(0.0, max(uBezelWidth, 0.001), inwardDistance);
 }
 
-float displacementEdgeFade(float radial) {
+float displacementEdgeFade(float inwardDistance) {
   if (uEdgeFadeWidth <= 0.0001) {
     return 1.0;
   }
-  return smoothRange(0.0, uEdgeFadeWidth, max(1.0 - radial, 0.0));
+  return smoothRange(0.0, uEdgeFadeWidth, inwardDistance);
 }
 
 vec3 refractCameraRay(vec2 slope, float ior) {
@@ -253,13 +382,26 @@ vec4 sampleContent(vec2 sourcePoint) {
 }
 
 vec2 transformSourcePoint(vec2 point) {
-  vec2 axis = normalize(uDeformationAxis);
-  vec2 perpendicular = vec2(-axis.y, axis.x);
-  vec2 deformed =
-    axis * dot(point, axis) * uDeformationScales.x +
-    perpendicular * dot(point, perpendicular) * uDeformationScales.y;
+  vec2 displacement = vec2(0.0);
+  float weightSum = 0.0;
 
-  return mix(deformed, point, clamp(uSourceFollow, 0.0, 1.0));
+  for (int index = 0; index < MAX_CONTACTS; index += 1) {
+    if (index >= uContactCount) break;
+    vec4 contact = uContacts[index];
+    float influence = smoothRange(0.0, 1.0, contact.w);
+    float reach = max(contact.z * 1.8, uContactRadius * 0.72);
+    float distanceToContact = length(point - contact.xy);
+    float weight = (1.0 - smoothRange(contact.z * 0.08, reach, distanceToContact))
+      * influence;
+    displacement += (contact.xy - uContactAnchors[index]) * weight;
+    weightSum += weight;
+  }
+
+  if (weightSum > 0.0001) {
+    displacement /= max(weightSum, 1.0);
+  }
+
+  return point - displacement * clamp(uSourceFollow, 0.0, 1.0);
 }
 
 struct SourceEdge {
@@ -317,12 +459,18 @@ float coverageFromSignedDistance(float signedDistance, float feather) {
   return smoothRange(feather, -feather, signedDistance);
 }
 
-vec3 sampleLiquidGlass(vec2 point, float radial, vec3 surface, float rim) {
+vec3 sampleLiquidGlass(
+  vec2 point,
+  float radial,
+  float inwardDistance,
+  vec3 surface,
+  float rim
+) {
   if (uRefractionEnabled == 0) {
     return sampleContent(transformSourcePoint(point)).rgb;
   }
 
-  float height = surface.z * displacementEdgeFade(radial);
+  float height = surface.z * displacementEdgeFade(inwardDistance);
   vec2 baseOffset = rayDisplacement(refractCameraRay(surface.xy, uIor), height);
   vec2 redOffset = baseOffset;
   vec2 blueOffset = baseOffset;
@@ -413,17 +561,26 @@ vec2 sampleSpecs(vec3 reflection) {
 }
 
 void main() {
-  vec2 point = vec2(vUv.x * 2.0 - 1.0, 1.0 - vUv.y * 2.0);
-  float radialSquared = dot(point, point);
-  if (radialSquared > 1.0) {
+  vec2 pixelCss = vec2(vUv.x * uViewportCss.x, (1.0 - vUv.y) * uViewportCss.y);
+  vec2 point = (pixelCss - uCenterCss) / uRadiusCss;
+  float rawDistance = contactField(point);
+  float shapeDistance = rawDistance - uContourOffset;
+  float antialiasWidth = max(fwidth(shapeDistance) * 1.25, 0.0015);
+  float shapeMask = 1.0 - smoothRange(-antialiasWidth, antialiasWidth, shapeDistance);
+
+  if (shapeMask <= 0.0001) {
     outputColor = vec4(0.0);
     return;
   }
 
-  float radial = sqrt(radialSquared);
-  float nz = sqrt(max(1.0 - radialSquared, 0.0));
-  vec3 surface = surfaceSample(point, radial);
-  float rimField = uDisplacementEnabled == 1 ? rimInfluence(radial) : 0.0;
+  vec2 derivative = vec2(dFdx(rawDistance), -dFdy(rawDistance));
+  vec2 fallbackNormal = length(point) > 0.0001 ? normalize(point) : vec2(-0.55, -0.82);
+  vec2 edgeNormal = length(derivative) > 0.000001 ? normalize(derivative) : fallbackNormal;
+  float inwardDistance = max(-shapeDistance, 0.0);
+  float radial = 1.0 - clamp(inwardDistance, 0.0, 1.0);
+  float nz = sqrt(max(1.0 - radial * radial, 0.0));
+  vec3 surface = surfaceSample(inwardDistance, edgeNormal);
+  float rimField = uDisplacementEnabled == 1 ? rimInfluence(inwardDistance) : 0.0;
   bool preview = uSurfacePreviewEnabled == 1;
   vec3 sampleColor;
 
@@ -436,11 +593,12 @@ void main() {
       mix(248.0, 126.0 + height * 104.0, rimField)
     ) / 255.0;
   } else {
-    sampleColor = sampleLiquidGlass(point, radial, surface, rimField);
+    sampleColor = sampleLiquidGlass(point, radial, inwardDistance, surface, rimField);
   }
 
   float edgeT = smoothRange(0.68, 1.0, radial);
-  float directionalLight = max(0.0, point.x * -0.36 + point.y * -0.48 + nz * 0.88);
+  vec3 normal = normalize(vec3(edgeNormal * radial, nz));
+  float directionalLight = max(0.0, dot(normal, normalize(vec3(-0.36, -0.48, 0.88))));
   float innerShade = !preview && uInnerShadeEnabled == 1
     ? 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08
     : 1.0;
@@ -453,7 +611,6 @@ void main() {
   float rim = !preview && uRimEnabled == 1 ? smoothRange(0.72, 1.0, radial) : 0.0;
   float hardRim = !preview && uHardRimEnabled == 1 ? smoothRange(0.93, 1.0, radial) : 0.0;
   float caRim = !preview && uCaRimEnabled == 1 ? smoothRange(0.8, 1.0, radial) : 0.0;
-  vec3 normal = vec3(point, nz);
   vec3 reflection = normalize(reflect(vec3(0.0, 0.0, -1.0), normal));
   vec2 spec = preview ? vec2(0.0) : sampleSpecs(reflection);
   float shell = uSpecDebugEnabled == 1 ? 0.0 : spec.x;
@@ -470,8 +627,26 @@ void main() {
     color = mix(color, uSpecDebugColor, debugAlpha);
   }
 
-  float alpha = smoothRange(1.0, 0.982, radial);
-  outputColor = vec4(clamp(color, 0.0, 1.0), alpha);
+  if (uOuterStrokeEnabled == 1) {
+    float strokeWidth = max(0.9 / uRadiusCss, antialiasWidth * 1.4);
+    float stroke = 1.0 - smoothRange(strokeWidth * 0.18, strokeWidth, abs(shapeDistance));
+    float diagonal = smoothRange(-1.4, 1.6, point.x + point.y);
+    vec3 strokeColor = mix(vec3(1.0), vec3(0.86, 0.84, 0.8), diagonal * 0.2);
+    color = mix(color, strokeColor, stroke * 0.38);
+  }
+
+  if (uShowElasticContacts == 1) {
+    for (int index = 0; index < MAX_CONTACTS; index += 1) {
+      if (index >= uContactCount) break;
+      float handleDistance = length(point - uContacts[index].xy);
+      float dotMask = 1.0 - smoothRange(0.014, 0.024, handleDistance);
+      float ringMask = 1.0 - smoothRange(0.006, 0.014, abs(handleDistance - 0.065));
+      color = mix(color, vec3(0.06, 0.22, 0.23), dotMask * 0.9);
+      color = mix(color, vec3(1.0), ringMask * uContacts[index].w * 0.62);
+    }
+  }
+
+  outputColor = vec4(clamp(color, 0.0, 1.0), shapeMask);
 }
 `;
 
@@ -550,12 +725,9 @@ export class GuseulWebGLRenderer {
   private readonly program: WebGLProgram;
   private readonly vertexArray: WebGLVertexArrayObject;
   private readonly contentTexture: WebGLTexture;
-  private readonly surfaceTexture: WebGLTexture;
   private readonly uniforms: UniformMap;
   private contentWidth = 0;
   private contentHeight = 0;
-  private uploadedSurfaceSignature = '';
-  private packedSurface = new Float32Array();
 
   constructor() {
     const gl = this.canvas.getContext('webgl2', {
@@ -580,23 +752,25 @@ export class GuseulWebGLRenderer {
     this.program = program;
     this.vertexArray = vertexArray;
     this.contentTexture = createTexture(gl);
-    this.surfaceTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
-      'uContent', 'uSurface', 'uSurfaceSize', 'uRadiusCss', 'uBackground', 'uOverscan',
-      'uDeformationAxis', 'uDeformationScales', 'uSourceFollow',
+      'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
+      'uSourceFollow', 'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
+      'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
+      'uContactRadius', 'uBridgeRadius', 'uEdgeConcavity', 'uFieldSmoothness',
+      'uContourOffset',
       'uDisplacementEnabled', 'uSurfacePreviewEnabled', 'uSurfaceProfile', 'uBezelWidth',
       'uThickness', 'uDisplacementFactor', 'uEdgeFadeWidth', 'uIor', 'uRefractionEnabled',
       'uChromaticEnabled', 'uDispersion', 'uChromaticEdgeStrength', 'uChromaticEdgeWidth',
       'uChromaticBoundaryStrength', 'uChromaticBoundaryWidth', 'uInnerShadeEnabled',
       'uGlassMilkEnabled', 'uTopWashEnabled', 'uRimEnabled', 'uHardRimEnabled',
       'uCaRimEnabled', 'uSpecDebugEnabled', 'uSpecDebugColor', 'uSpecDebugOpacity',
+      'uOuterStrokeEnabled', 'uShowElasticContacts',
       'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecSource[0]', 'uSpecAxisX[0]',
       'uSpecAxisY[0]', 'uSpecShape[0]', 'uSpecRender[0]',
     ]);
 
     gl.useProgram(program);
     gl.uniform1i(this.uniforms.uContent, 0);
-    gl.uniform1i(this.uniforms.uSurface, 1);
     gl.bindVertexArray(vertexArray);
 
     gl.activeTexture(gl.TEXTURE0);
@@ -605,23 +779,15 @@ export class GuseulWebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.surfaceTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 
-  resize(pixelSize: number): void {
-    if (this.canvas.width === pixelSize && this.canvas.height === pixelSize) {
+  resize(pixelWidth: number, pixelHeight: number): void {
+    if (this.canvas.width === pixelWidth && this.canvas.height === pixelHeight) {
       return;
     }
 
-    this.canvas.width = pixelSize;
-    this.canvas.height = pixelSize;
-    this.uploadedSurfaceSignature = '';
+    this.canvas.width = pixelWidth;
+    this.canvas.height = pixelHeight;
   }
 
   private uploadContent(content: HTMLCanvasElement): void {
@@ -640,40 +806,48 @@ export class GuseulWebGLRenderer {
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, content);
   }
 
-  private uploadSurface(frame: GpuGlassFrame): void {
-    if (frame.surfaceSignature === this.uploadedSurfaceSignature) {
-      return;
+  private uploadElasticShape(shape: ElasticShapeFrame): void {
+    const contactCount = Math.min(shape.contacts.length, maxGpuContacts);
+    const contacts = new Float32Array(maxGpuContacts * 4);
+    const anchors = new Float32Array(maxGpuContacts * 2);
+
+    for (let index = 0; index < contactCount; index += 1) {
+      const contact = shape.contacts[index];
+      contacts.set(
+        [contact.position.x, contact.position.y, contact.radius, contact.influence],
+        index * 4,
+      );
+      anchors.set([contact.anchor.x, contact.anchor.y], index * 2);
     }
 
-    const pixelCount = frame.surfaceWidth * frame.surfaceHeight;
-    if (this.packedSurface.length !== pixelCount * 4) {
-      this.packedSurface = new Float32Array(pixelCount * 4);
-    }
+    const linkCount = Math.min(shape.membraneLinks.length, maxGpuMembraneLinks);
+    const starts = new Float32Array(maxGpuMembraneLinks * 4);
+    const ends = new Float32Array(maxGpuMembraneLinks * 4);
 
-    for (let pixel = 0; pixel < pixelCount; pixel += 1) {
-      const source = pixel * 3;
-      const target = pixel * 4;
-      this.packedSurface[target] = frame.surfaceField[source];
-      this.packedSurface[target + 1] = frame.surfaceField[source + 1];
-      this.packedSurface[target + 2] = frame.surfaceField[source + 2];
-      this.packedSurface[target + 3] = 1;
+    for (let index = 0; index < linkCount; index += 1) {
+      const link = shape.membraneLinks[index];
+      starts.set(
+        [link.start.x, link.start.y, link.startRadius, link.influence],
+        index * 4,
+      );
+      ends.set(
+        [link.end.x, link.end.y, link.endRadius, link.fillTriangle],
+        index * 4,
+      );
     }
 
     const gl = this.gl;
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.surfaceTexture);
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA32F,
-      frame.surfaceWidth,
-      frame.surfaceHeight,
-      0,
-      gl.RGBA,
-      gl.FLOAT,
-      this.packedSurface,
-    );
-    this.uploadedSurfaceSignature = frame.surfaceSignature;
+    gl.uniform1i(this.uniforms.uContactCount, contactCount);
+    gl.uniform4fv(this.uniforms['uContacts[0]'], contacts);
+    gl.uniform2fv(this.uniforms['uContactAnchors[0]'], anchors);
+    gl.uniform1i(this.uniforms.uMembraneLinkCount, linkCount);
+    gl.uniform4fv(this.uniforms['uMembraneStarts[0]'], starts);
+    gl.uniform4fv(this.uniforms['uMembraneEnds[0]'], ends);
+    gl.uniform1f(this.uniforms.uContactRadius, shape.contactRadius);
+    gl.uniform1f(this.uniforms.uBridgeRadius, shape.bridgeRadius);
+    gl.uniform1f(this.uniforms.uEdgeConcavity, shape.edgeConcavity);
+    gl.uniform1f(this.uniforms.uFieldSmoothness, shape.fieldSmoothness);
+    gl.uniform1f(this.uniforms.uContourOffset, shape.contourOffset);
   }
 
   private uploadCircles(circles: GpuCircle[]): void {
@@ -717,7 +891,6 @@ export class GuseulWebGLRenderer {
 
   render(frame: GpuGlassFrame): void {
     this.uploadContent(frame.contentCanvas);
-    this.uploadSurface(frame);
 
     const gl = this.gl;
     const controls = frame.controls;
@@ -725,12 +898,11 @@ export class GuseulWebGLRenderer {
     gl.disable(gl.BLEND);
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vertexArray);
-    gl.uniform2f(this.uniforms.uSurfaceSize, frame.surfaceWidth, frame.surfaceHeight);
+    gl.uniform2fv(this.uniforms.uViewportCss, frame.viewportCss);
+    gl.uniform2fv(this.uniforms.uCenterCss, frame.centerCss);
     gl.uniform1f(this.uniforms.uRadiusCss, frame.radiusCss);
     gl.uniform3fv(this.uniforms.uBackground, controls.background);
     gl.uniform1f(this.uniforms.uOverscan, controls.contentOverscan);
-    gl.uniform2fv(this.uniforms.uDeformationAxis, controls.deformationAxis);
-    gl.uniform2fv(this.uniforms.uDeformationScales, controls.deformationScales);
     gl.uniform1f(this.uniforms.uSourceFollow, controls.sourceFollow);
     gl.uniform1i(this.uniforms.uDisplacementEnabled, Number(controls.displacementEnabled));
     gl.uniform1i(this.uniforms.uSurfacePreviewEnabled, Number(controls.surfacePreviewEnabled));
@@ -756,6 +928,9 @@ export class GuseulWebGLRenderer {
     gl.uniform1i(this.uniforms.uSpecDebugEnabled, Number(controls.specDebugEnabled));
     gl.uniform3fv(this.uniforms.uSpecDebugColor, controls.specDebugColor === 'red' ? [1, 0, 0] : [0, 0, 0]);
     gl.uniform1f(this.uniforms.uSpecDebugOpacity, controls.specDebugOpacity);
+    gl.uniform1i(this.uniforms.uOuterStrokeEnabled, Number(controls.outerStrokeEnabled));
+    gl.uniform1i(this.uniforms.uShowElasticContacts, Number(controls.showElasticContacts));
+    this.uploadElasticShape(frame.elasticShape);
     this.uploadCircles(frame.circles);
     this.uploadSpecs(frame.specs);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
