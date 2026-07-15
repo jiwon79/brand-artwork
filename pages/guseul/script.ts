@@ -247,7 +247,6 @@ const layerControls = {
   releaseHoldDuration: 0.04,
   releaseLifetime: 0.26,
   springFrequency: 4.2,
-  springDamping: 0.48,
   showElasticContacts: false,
   specRotationGain: 1.8,
   specEdgeDwell: 1.55,
@@ -975,7 +974,6 @@ function setupGui(): void {
 
   const releaseSpring = elastic.addFolder('release spring');
   releaseSpring.add(layerControls, 'springFrequency', 0.5, 10, 0.1).name('frequency');
-  releaseSpring.add(layerControls, 'springDamping', 0.05, 1.2, 0.01).name('damping');
   releaseSpring.add(layerControls, 'releaseHoldDuration', 0, 0.25, 0.01).name('contact hold');
   releaseSpring.add(layerControls, 'releaseLifetime', 0.08, 0.6, 0.01).name('contact lifetime');
 

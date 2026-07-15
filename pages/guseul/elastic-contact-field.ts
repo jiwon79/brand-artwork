@@ -21,7 +21,6 @@ export type ElasticFieldControls = {
   releaseHoldDuration: number;
   releaseLifetime: number;
   springFrequency: number;
-  springDamping: number;
   specWarpMode?: 'boundary' | 'harmonic' | 'radial';
   specRayDebugEnabled?: boolean;
   specBoundarySamples?: number;
@@ -265,7 +264,7 @@ function buildMembraneLinks(
     addLink(
       ordered[0],
       ordered[1],
-      Math.min(smoothInfluence(ordered[0].influence), smoothInfluence(ordered[1].influence)),
+      Math.min(ordered[0].influence, ordered[1].influence),
     );
     return [...links.values()];
   }
@@ -276,7 +275,7 @@ function buildMembraneLinks(
     addLink(
       current,
       next,
-      Math.min(smoothInfluence(current.influence), smoothInfluence(next.influence)),
+      Math.min(current.influence, next.influence),
     );
   }
 
@@ -288,8 +287,7 @@ function buildMembraneLinks(
       addLink(
         previous,
         next,
-        Math.min(smoothInfluence(previous.influence), smoothInfluence(next.influence))
-          * (1 - smoothInfluence(current.influence)),
+        Math.min(previous.influence, next.influence) * (1 - current.influence),
       );
     }
   }
@@ -315,15 +313,8 @@ function computeShapeMetrics(
     const easedProgress = progress * progress * (3 - 2 * progress);
     const radiusScale = 1
       - (1 - controls.contactRadiusMinScale) * easedProgress;
-    const releaseWobble = item.active || item.releaseAge === null
-      ? 1
-      : 1 + Math.sin(Math.PI * 2 * controls.springFrequency * item.releaseAge)
-        * Math.exp(
-          -Math.PI * 2 * controls.springFrequency
-            * controls.springDamping * item.releaseAge,
-        ) * 0.14;
 
-    return seedRadius * radiusScale * releaseWobble;
+    return seedRadius * radiusScale;
   });
 
   return {
@@ -402,7 +393,8 @@ function rawShapeDistance(
       linkDistance,
       controls.fieldSmoothness,
     );
-    distanceToShape += (combinedDistance - distanceToShape) * link.influence;
+    distanceToShape += (combinedDistance - distanceToShape)
+      * smoothInfluence(link.influence);
   }
 
   return distanceToShape;
@@ -1420,9 +1412,6 @@ export class ElasticContactField {
         const easedFade = fadeProgress * fadeProgress * (3 - 2 * fadeProgress);
         item.influence = Math.min(item.influence, 1 - easedFade);
       }
-
-      const returnGate = smoothInfluence(clamp((returnScale - 0.04) / 0.31, 0, 1));
-      item.influence = Math.min(item.influence, returnGate);
 
       if (
         item.releaseAge >= this.controls.releaseLifetime
