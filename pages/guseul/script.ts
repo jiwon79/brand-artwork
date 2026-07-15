@@ -292,7 +292,7 @@ const layerControls = {
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
   specElasticFollow: 1,
-  specEdgeBlendWidth: 0.22,
+  specEdgeBlendWidth: 0.002,
   specLargeIntensity: 3.5,
   specLargeSoftness: 2 / 3,
   specMediumIntensity: 4,
@@ -1019,7 +1019,7 @@ function setupGui(): void {
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
   spec.add(layerControls, 'specElasticFollow', 0, 1, 0.01).name('elastic follow');
-  spec.add(layerControls, 'specEdgeBlendWidth', 0.02, 0.6, 0.01).name('edge blend');
+  spec.add(layerControls, 'specEdgeBlendWidth', 0.001, 0.12, 0.001).name('edge blend');
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');

@@ -417,23 +417,38 @@ vec2 transformSourcePoint(vec2 point) {
   return inverseElasticPoint(point, uSourceFollow);
 }
 
-vec3 elasticSpecNormal(vec2 point, vec3 boundaryNormal, float inwardDistance) {
+float elasticSurfaceHeight(vec2 point) {
   vec2 canonicalPoint = inverseElasticPoint(point, uSpecElasticFollow);
   float canonicalRadius = length(canonicalPoint);
 
-  if (canonicalRadius > 0.999) {
-    canonicalPoint *= 0.999 / canonicalRadius;
+  if (canonicalRadius > 0.98) {
+    float compressedRadius = 0.98 + 0.019
+      * (1.0 - exp(-(canonicalRadius - 0.98) / 0.019));
+    canonicalPoint *= compressedRadius / canonicalRadius;
   }
 
-  float canonicalZ = sqrt(max(1.0 - dot(canonicalPoint, canonicalPoint), 0.0));
-  vec3 canonicalNormal = normalize(vec3(canonicalPoint, canonicalZ));
+  return sqrt(max(1.0 - dot(canonicalPoint, canonicalPoint), 0.0001));
+}
+
+vec3 smoothElasticSurfaceNormal(vec2 point) {
+  float sampleStep = max(3.5 / uRadiusCss, 0.01);
+  float left = elasticSurfaceHeight(point - vec2(sampleStep, 0.0));
+  float right = elasticSurfaceHeight(point + vec2(sampleStep, 0.0));
+  float top = elasticSurfaceHeight(point - vec2(0.0, sampleStep));
+  float bottom = elasticSurfaceHeight(point + vec2(0.0, sampleStep));
+  vec2 heightGradient = vec2(right - left, bottom - top) / (2.0 * sampleStep);
+  return normalize(vec3(-heightGradient, 1.0));
+}
+
+vec3 elasticSpecNormal(vec2 point, vec3 boundaryNormal, float inwardDistance) {
+  vec3 surfaceNormal = smoothElasticSurfaceNormal(point);
   float edgeBlend = 1.0 - smoothRange(
     0.0,
     max(uSpecEdgeBlendWidth, 0.001),
     inwardDistance
   );
 
-  return normalize(mix(canonicalNormal, boundaryNormal, edgeBlend));
+  return normalize(mix(surfaceNormal, boundaryNormal, edgeBlend));
 }
 
 struct SourceEdge {
