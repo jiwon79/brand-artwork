@@ -1,4 +1,5 @@
 import {
+  elasticSpecRayCount,
   elasticSpecWarpExtent,
   elasticSpecWarpResolution,
   type ElasticShapeFrame,
@@ -54,6 +55,9 @@ export type GpuGlassControls = {
   rimEnabled: boolean;
   hardRimEnabled: boolean;
   caRimEnabled: boolean;
+  specWarpMode: 'harmonic' | 'radial';
+  specRayDebugEnabled: boolean;
+  specRayDebugCount: number;
   specDebugEnabled: boolean;
   specDebugColor: 'red' | 'black';
   specDebugOpacity: number;
@@ -110,6 +114,10 @@ uniform float uOverscan;
 uniform float uSourceFollow;
 uniform sampler2D uSpecWarpMap;
 uniform float uSpecWarpExtent;
+uniform sampler2D uSpecBoundaryMap;
+uniform int uSpecWarpMode;
+uniform int uSpecRayDebugEnabled;
+uniform int uSpecRayDebugCount;
 uniform int uContactCount;
 uniform vec4 uContacts[MAX_CONTACTS];
 uniform vec2 uContactAnchors[MAX_CONTACTS];
@@ -418,12 +426,33 @@ vec2 transformSourcePoint(vec2 point) {
   return inverseElasticPoint(point, uSourceFollow);
 }
 
-vec2 inverseSpecWarp(vec2 point) {
+vec2 inverseHarmonicSpecWarp(vec2 point) {
   vec2 uv = point / (uSpecWarpExtent * 2.0) + 0.5;
   vec2 canonicalPoint = texture(uSpecWarpMap, clamp(uv, 0.0, 1.0)).rg;
   float canonicalRadius = length(canonicalPoint);
   if (canonicalRadius > 0.999) canonicalPoint *= 0.999 / canonicalRadius;
   return canonicalPoint;
+}
+
+float sampleSpecBoundaryRadius(vec2 point) {
+  const float PI = 3.141592653589793;
+  const float TAU = 6.283185307179586;
+  float angle = atan(point.y, point.x);
+  float coordinate = fract((angle + PI) / TAU);
+  return max(texture(uSpecBoundaryMap, vec2(coordinate, 0.5)).r, 0.001);
+}
+
+vec2 inverseRadialSpecWarp(vec2 point) {
+  float currentRadius = length(point);
+  if (currentRadius <= 0.000001) return vec2(0.0);
+  float boundaryRadius = sampleSpecBoundaryRadius(point);
+  return point * (min(currentRadius / boundaryRadius, 0.999) / currentRadius);
+}
+
+vec2 inverseSpecWarp(vec2 point) {
+  return uSpecWarpMode == 1
+    ? inverseRadialSpecWarp(point)
+    : inverseHarmonicSpecWarp(point);
 }
 
 struct SourceEdge {
@@ -663,6 +692,26 @@ void main() {
     color = mix(color, strokeColor, stroke * 0.38);
   }
 
+  if (uSpecRayDebugEnabled == 1) {
+    const float PI = 3.141592653589793;
+    const float TAU = 6.283185307179586;
+    float pointRadius = length(point);
+    float angle = atan(point.y, point.x);
+    float rayCount = float(max(uSpecRayDebugCount, 1));
+    float rayCoordinate = ((angle + PI) / TAU) * rayCount;
+    float angularDistance = abs(fract(rayCoordinate + 0.5) - 0.5)
+      * (TAU / rayCount) * pointRadius * uRadiusCss;
+    float rayMask = 1.0 - smoothRange(0.55, 1.45, angularDistance);
+    float sampledBoundary = sampleSpecBoundaryRadius(point);
+    float boundaryDistance = abs(pointRadius - sampledBoundary) * uRadiusCss;
+    float boundaryMask = 1.0 - smoothRange(0.7, 1.8, boundaryDistance);
+    float centerMask = 1.0 - smoothRange(2.0, 4.5, pointRadius * uRadiusCss);
+    vec3 rayColor = vec3(0.02, 0.5, 0.92);
+    color = mix(color, rayColor, rayMask * 0.72);
+    color = mix(color, vec3(1.0, 0.12, 0.08), boundaryMask * 0.9);
+    color = mix(color, vec3(0.02, 0.12, 0.16), centerMask * 0.95);
+  }
+
   if (uShowElasticContacts == 1) {
     for (int index = 0; index < MAX_CONTACTS; index += 1) {
       if (index >= uContactCount) break;
@@ -754,10 +803,12 @@ export class GuseulWebGLRenderer {
   private readonly vertexArray: WebGLVertexArrayObject;
   private readonly contentTexture: WebGLTexture;
   private readonly specWarpTexture: WebGLTexture;
+  private readonly specBoundaryTexture: WebGLTexture;
   private readonly uniforms: UniformMap;
   private contentWidth = 0;
   private contentHeight = 0;
   private specWarpRevision = -1;
+  private specBoundaryRevision = -1;
 
   constructor() {
     const gl = this.canvas.getContext('webgl2', {
@@ -783,9 +834,11 @@ export class GuseulWebGLRenderer {
     this.vertexArray = vertexArray;
     this.contentTexture = createTexture(gl);
     this.specWarpTexture = createTexture(gl);
+    this.specBoundaryTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
       'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
-      'uSourceFollow', 'uSpecWarpMap', 'uSpecWarpExtent',
+      'uSourceFollow', 'uSpecWarpMap', 'uSpecWarpExtent', 'uSpecBoundaryMap',
+      'uSpecWarpMode', 'uSpecRayDebugEnabled', 'uSpecRayDebugCount',
       'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
       'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
       'uContactRadius', 'uBridgeRadius', 'uMembraneBridgeRadius', 'uEdgeConcavity',
@@ -805,6 +858,7 @@ export class GuseulWebGLRenderer {
     gl.useProgram(program);
     gl.uniform1i(this.uniforms.uContent, 0);
     gl.uniform1i(this.uniforms.uSpecWarpMap, 1);
+    gl.uniform1i(this.uniforms.uSpecBoundaryMap, 2);
     gl.uniform1f(this.uniforms.uSpecWarpExtent, elasticSpecWarpExtent);
     gl.bindVertexArray(vertexArray);
 
@@ -831,6 +885,24 @@ export class GuseulWebGLRenderer {
       elasticSpecWarpResolution,
       0,
       gl.RG,
+      gl.FLOAT,
+      null,
+    );
+
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.specBoundaryTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R16F,
+      elasticSpecRayCount,
+      1,
+      0,
+      gl.RED,
       gl.FLOAT,
       null,
     );
@@ -921,6 +993,23 @@ export class GuseulWebGLRenderer {
         shape.specWarpMap,
       );
     }
+
+    if (shape.specBoundaryRevision !== this.specBoundaryRevision) {
+      this.specBoundaryRevision = shape.specBoundaryRevision;
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.specBoundaryTexture);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        elasticSpecRayCount,
+        1,
+        gl.RED,
+        gl.FLOAT,
+        shape.specBoundaryRadii,
+      );
+    }
   }
 
   private uploadCircles(circles: GpuCircle[]): void {
@@ -998,6 +1087,9 @@ export class GuseulWebGLRenderer {
     gl.uniform1i(this.uniforms.uRimEnabled, Number(controls.rimEnabled));
     gl.uniform1i(this.uniforms.uHardRimEnabled, Number(controls.hardRimEnabled));
     gl.uniform1i(this.uniforms.uCaRimEnabled, Number(controls.caRimEnabled));
+    gl.uniform1i(this.uniforms.uSpecWarpMode, controls.specWarpMode === 'radial' ? 1 : 0);
+    gl.uniform1i(this.uniforms.uSpecRayDebugEnabled, Number(controls.specRayDebugEnabled));
+    gl.uniform1i(this.uniforms.uSpecRayDebugCount, Math.round(controls.specRayDebugCount));
     gl.uniform1i(this.uniforms.uSpecDebugEnabled, Number(controls.specDebugEnabled));
     gl.uniform3fv(this.uniforms.uSpecDebugColor, controls.specDebugColor === 'red' ? [1, 0, 0] : [0, 0, 0]);
     gl.uniform1f(this.uniforms.uSpecDebugOpacity, controls.specDebugOpacity);

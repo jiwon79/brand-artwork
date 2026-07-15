@@ -22,6 +22,8 @@ export type ElasticFieldControls = {
   releaseLifetime: number;
   springFrequency: number;
   springDamping: number;
+  specWarpMode?: 'harmonic' | 'radial';
+  specRayDebugEnabled?: boolean;
   specWarpCenterStiffness?: number;
   specWarpContactStiffness?: number;
   specWarpRestStiffness?: number;
@@ -51,6 +53,8 @@ export type ElasticShapeFrame = {
   membraneLinks: ElasticMembraneLink[];
   specWarpMap: Float32Array;
   specWarpRevision: number;
+  specBoundaryRadii: Float32Array;
+  specBoundaryRevision: number;
   contactRadius: number;
   bridgeRadius: number;
   membraneBridgeRadius: number;
@@ -86,6 +90,7 @@ const areaSampleResolution = 76;
 const baseArea = Math.PI;
 export const elasticSpecWarpResolution = 65;
 export const elasticSpecWarpExtent = 3.2;
+export const elasticSpecRayCount = 256;
 const specWarpCellCount = elasticSpecWarpResolution * elasticSpecWarpResolution;
 
 function clamp(value: number, min: number, max: number): number {
@@ -617,6 +622,134 @@ class HarmonicSpecWarpSolver {
   }
 }
 
+class RadialSpecBoundarySampler {
+  readonly radii = new Float32Array(elasticSpecRayCount).fill(1);
+  revision = 0;
+
+  private lastSignature = '';
+
+  solve(
+    items: Contact[],
+    membraneLinks: ElasticMembraneLink[],
+    metrics: ShapeMetrics,
+    controls: ElasticFieldControls,
+    contourOffset: number,
+  ): Float32Array {
+    const signature = [
+      contourOffset,
+      metrics.seedRadius,
+      metrics.bridgeRadius,
+      metrics.membraneBridgeRadius,
+      controls.edgeConcavity,
+      controls.fieldSmoothness,
+      ...metrics.contactRadii,
+      ...items.flatMap((item) => [
+        item.position.x,
+        item.position.y,
+        item.influence,
+      ]),
+      ...membraneLinks.flatMap((link) => [
+        link.start.x,
+        link.start.y,
+        link.end.x,
+        link.end.y,
+        link.influence,
+        link.fillTriangle,
+      ]),
+    ].map((value) => value.toFixed(5)).join('|');
+
+    if (signature === this.lastSignature) return this.radii;
+    this.lastSignature = signature;
+
+    const farthestContact = items.reduce((maximum, item, index) => Math.max(
+      maximum,
+      length(item.position) + metrics.contactRadii[index],
+    ), 1);
+    const initialSearchRadius = Math.max(
+      1.4,
+      farthestContact + Math.max(contourOffset, 0) + controls.fieldSmoothness + 0.7,
+    );
+    const raySearchSteps = 48;
+    const binarySearchSteps = 10;
+    const tau = Math.PI * 2;
+
+    for (let rayIndex = 0; rayIndex < elasticSpecRayCount; rayIndex += 1) {
+      const angle = ((rayIndex + 0.5) / elasticSpecRayCount) * tau - Math.PI;
+      const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+      let searchRadius = initialSearchRadius;
+      let outsideDistance = rawShapeDistance(
+        scale(direction, searchRadius),
+        items,
+        membraneLinks,
+        metrics,
+        controls,
+      ) - contourOffset;
+
+      for (let expansion = 0; expansion < 4 && outsideDistance <= 0; expansion += 1) {
+        searchRadius *= 1.5;
+        outsideDistance = rawShapeDistance(
+          scale(direction, searchRadius),
+          items,
+          membraneLinks,
+          metrics,
+          controls,
+        ) - contourOffset;
+      }
+
+      let outsideRadius = searchRadius;
+      let insideRadius = 0;
+      let foundBoundary = false;
+      let radius = searchRadius;
+      let distance = outsideDistance;
+      const minimumStep = searchRadius / 1024;
+
+      // Trace inward from guaranteed empty space. The field distance lets most
+      // rays reach their outermost boundary in a handful of evaluations.
+      for (let step = 0; step < raySearchSteps; step += 1) {
+        if (distance <= 0) {
+          insideRadius = radius;
+          foundBoundary = true;
+          break;
+        }
+
+        outsideRadius = radius;
+        radius = Math.max(radius - Math.max(distance * 0.6, minimumStep), 0);
+        distance = rawShapeDistance(
+          scale(direction, radius),
+          items,
+          membraneLinks,
+          metrics,
+          controls,
+        ) - contourOffset;
+      }
+
+      if (!foundBoundary) {
+        this.radii[rayIndex] = Math.max(metrics.seedRadius + contourOffset, 0.001);
+        continue;
+      }
+
+      for (let step = 0; step < binarySearchSteps; step += 1) {
+        const radius = (insideRadius + outsideRadius) * 0.5;
+        const distance = rawShapeDistance(
+          scale(direction, radius),
+          items,
+          membraneLinks,
+          metrics,
+          controls,
+        ) - contourOffset;
+
+        if (distance <= 0) insideRadius = radius;
+        else outsideRadius = radius;
+      }
+
+      this.radii[rayIndex] = Math.max((insideRadius + outsideRadius) * 0.5, 0.001);
+    }
+
+    this.revision += 1;
+    return this.radii;
+  }
+}
+
 function estimateArea(values: Float32Array, offset: number, cellArea: number): number {
   let insideSamples = 0;
   for (let index = 0; index < values.length; index += 1) {
@@ -691,6 +824,7 @@ function solveContourOffset(
 export class ElasticContactField {
   private readonly contacts = new Map<number, Contact>();
   private readonly specWarpSolver = new HarmonicSpecWarpSolver();
+  private readonly specBoundarySampler = new RadialSpecBoundarySampler();
   private contourOffset: number;
   private frame: ElasticShapeFrame;
 
@@ -701,6 +835,8 @@ export class ElasticContactField {
       membraneLinks: [],
       specWarpMap: this.specWarpSolver.map,
       specWarpRevision: this.specWarpSolver.revision,
+      specBoundaryRadii: this.specBoundarySampler.radii,
+      specBoundaryRevision: this.specBoundarySampler.revision,
       contactRadius: controls.seedRadiusScale,
       bridgeRadius: controls.seedRadiusScale * controls.bridgeRadiusRatio,
       membraneBridgeRadius: controls.seedRadiusScale
@@ -823,11 +959,19 @@ export class ElasticContactField {
     const targetOffset = solveContourOffset(items, membraneLinks, metrics, this.controls);
     const pressureBlend = 1 - Math.exp(-this.controls.pressureResponse * delta);
     this.contourOffset += (targetOffset - this.contourOffset) * pressureBlend;
-    const specWarpMap = this.specWarpSolver.solve(
-      items,
-      metrics,
-      this.controls,
-    );
+    const specWarpMode = this.controls.specWarpMode ?? 'harmonic';
+    const specWarpMap = specWarpMode === 'harmonic'
+      ? this.specWarpSolver.solve(items, metrics, this.controls)
+      : this.specWarpSolver.map;
+    const specBoundaryRadii = specWarpMode === 'radial' || this.controls.specRayDebugEnabled
+      ? this.specBoundarySampler.solve(
+        items,
+        membraneLinks,
+        metrics,
+        this.controls,
+        this.contourOffset,
+      )
+      : this.specBoundarySampler.radii;
     this.frame = {
       contacts: items.map((item, index) => ({
         id: item.id,
@@ -840,6 +984,8 @@ export class ElasticContactField {
       membraneLinks,
       specWarpMap,
       specWarpRevision: this.specWarpSolver.revision,
+      specBoundaryRadii,
+      specBoundaryRevision: this.specBoundarySampler.revision,
       contactRadius: metrics.seedRadius,
       bridgeRadius: metrics.bridgeRadius,
       membraneBridgeRadius: metrics.membraneBridgeRadius,

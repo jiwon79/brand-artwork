@@ -94,6 +94,7 @@ type PreparedSpecHighlight = SpecHighlight & {
 };
 
 type SpecDebugColor = 'red' | 'black';
+type SpecWarpMode = 'harmonic' | 'radial';
 
 type SpecSample = {
   shell: number;
@@ -230,7 +231,7 @@ const layerControls = {
   dragSensitivity: 1,
   pinchSourceFollow: initialSourceFollow,
   seedRadiusScale: 0.74,
-  bridgeRadiusRatio: 0.02,
+  bridgeRadiusRatio: 0.8,
   membraneBridgeRadiusRatio: 0.12,
   membraneFanThreshold: 0.015,
   contactRadiusShrinkStart: 0.47,
@@ -291,6 +292,9 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
+  specWarpMode: (urlParams.get('specWarp') === 'harmonic' ? 'harmonic' : 'radial') as SpecWarpMode,
+  specRayDebugEnabled: urlParams.get('specRays') === '1',
+  specRayDebugCount: 24,
   specWarpCenterStiffness: 80,
   specWarpContactStiffness: 36,
   specWarpRestStiffness: 0.02,
@@ -380,6 +384,9 @@ class WebGLRenderer implements Renderer {
         rimEnabled: params.controls.rimEnabled,
         hardRimEnabled: params.controls.hardRimEnabled,
         caRimEnabled: params.controls.caRimEnabled,
+        specWarpMode: params.controls.specWarpMode,
+        specRayDebugEnabled: params.controls.specRayDebugEnabled,
+        specRayDebugCount: params.controls.specRayDebugCount,
         specDebugEnabled: params.controls.specDebugEnabled,
         specDebugColor: params.controls.specDebugColor,
         specDebugOpacity: params.controls.specDebugOpacity,
@@ -1020,10 +1027,14 @@ function setupGui(): void {
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
   const specWarp = spec.addFolder('elastic warp');
-  specWarp.add(layerControls, 'specWarpCenterStiffness', 4, 160, 1).name('center pin');
-  specWarp.add(layerControls, 'specWarpContactStiffness', 4, 100, 1).name('contact stiffness');
-  specWarp.add(layerControls, 'specWarpRestStiffness', 0, 0.2, 0.002).name('round restore');
-  specWarp.add(layerControls, 'specWarpIterations', 2, 32, 1).name('solver iterations');
+  specWarp.add(layerControls, 'specWarpMode', ['radial', 'harmonic']).name('mode');
+  specWarp.add(layerControls, 'specRayDebugEnabled').name('show radial rays');
+  specWarp.add(layerControls, 'specRayDebugCount', 8, 64, 1).name('visible ray count');
+  const harmonicWarp = specWarp.addFolder('harmonic solver');
+  harmonicWarp.add(layerControls, 'specWarpCenterStiffness', 4, 160, 1).name('center pin');
+  harmonicWarp.add(layerControls, 'specWarpContactStiffness', 4, 100, 1).name('contact stiffness');
+  harmonicWarp.add(layerControls, 'specWarpRestStiffness', 0, 0.2, 0.002).name('round restore');
+  harmonicWarp.add(layerControls, 'specWarpIterations', 2, 32, 1).name('solver iterations');
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
@@ -1048,6 +1059,7 @@ function setupGui(): void {
   edgeProjection.close();
   largeSpec.close();
   mediumSpec.close();
+  harmonicWarp.close();
   specWarp.close();
   spec.close();
   scene.close();
