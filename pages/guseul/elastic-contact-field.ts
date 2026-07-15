@@ -54,6 +54,10 @@ export type ElasticShapeFrame = {
   membraneLinks: ElasticMembraneLink[];
   specWarpMap: Float32Array;
   specWarpRevision: number;
+  specWarpCage: Float32Array;
+  specWarpCageCount: number;
+  specWarpCageRevision: number;
+  specWarpCenter: ElasticVec2;
   specBoundaryRadii: Float32Array;
   specBoundaryRevision: number;
   contactRadius: number;
@@ -92,6 +96,7 @@ const baseArea = Math.PI;
 export const elasticSpecWarpResolution = 65;
 export const elasticSpecWarpExtent = 3.2;
 export const elasticSpecRayCount = 256;
+export const maxElasticSpecBoundaryPoints = 64;
 const specWarpCellCount = elasticSpecWarpResolution * elasticSpecWarpResolution;
 
 function clamp(value: number, min: number, max: number): number {
@@ -756,17 +761,18 @@ type ContourSegment = {
   end: ElasticVec2;
 };
 
-class BoundarySpecWarpSolver {
-  readonly map = new Float32Array(specWarpCellCount * 2);
+class BoundarySpecCageSolver {
+  readonly cage = new Float32Array(maxElasticSpecBoundaryPoints * 4);
+  cageCount = 0;
+  center: ElasticVec2 = { x: 0, y: 0 };
   revision = 0;
 
   private readonly values = new Float32Array(specWarpCellCount);
-  private readonly inside = new Uint8Array(specWarpCellCount);
   private lastSignature = '';
   private previousSeam: ElasticVec2 | null = null;
 
   constructor() {
-    this.writeIdentityMap();
+    this.writeIdentityCage(48);
   }
 
   solve(
@@ -775,8 +781,12 @@ class BoundarySpecWarpSolver {
     metrics: ShapeMetrics,
     controls: ElasticFieldControls,
     contourOffset: number,
-  ): Float32Array {
-    const boundarySamples = Math.round(clamp(controls.specBoundarySamples ?? 48, 16, 128));
+  ): void {
+    const boundarySamples = Math.round(clamp(
+      controls.specBoundarySamples ?? 48,
+      16,
+      maxElasticSpecBoundaryPoints,
+    ));
     const signature = [
       contourOffset,
       metrics.seedRadius,
@@ -801,7 +811,7 @@ class BoundarySpecWarpSolver {
       ]),
     ].map((value) => value.toFixed(5)).join('|');
 
-    if (signature === this.lastSignature) return this.map;
+    if (signature === this.lastSignature) return;
     this.lastSignature = signature;
 
     const resolution = elasticSpecWarpResolution;
@@ -817,9 +827,9 @@ class BoundarySpecWarpSolver {
     const contour = this.extractPrimaryContour(spacing);
 
     if (contour.length < 3) {
-      this.writeIdentityMap();
+      this.writeIdentityCage(boundarySamples);
       this.revision += 1;
-      return this.map;
+      return;
     }
 
     const orderedContour = this.orderContour(contour);
@@ -830,52 +840,25 @@ class BoundarySpecWarpSolver {
     });
     const distances = new Float64Array(boundaryCage.length);
     const halfAngleTangents = new Float64Array(boundaryCage.length);
-
-    for (let row = 0; row < resolution; row += 1) {
-      const y = -elasticSpecWarpExtent + row * spacing;
-      for (let column = 0; column < resolution; column += 1) {
-        const x = -elasticSpecWarpExtent + column * spacing;
-        const index = row * resolution + column;
-        const point = { x, y };
-        if (this.inside[index] !== 0) {
-          const coordinate = this.meanValueCoordinate(
-            point,
-            boundaryCage,
-            boundaryCoordinates,
-            distances,
-            halfAngleTangents,
-          );
-          this.map[index * 2] = coordinate.x;
-          this.map[index * 2 + 1] = coordinate.y;
-          continue;
-        }
-
-        if (this.hasInsideNeighbor(row, column, resolution)) {
-          const coordinate = this.closestBoundaryCoordinate(
-            point,
-            boundaryCage,
-            boundaryCoordinates,
-          );
-          this.map[index * 2] = coordinate.x;
-          this.map[index * 2 + 1] = coordinate.y;
-        } else {
-          const pointRadius = Math.max(Math.hypot(x, y), 0.001);
-          this.map[index * 2] = x / pointRadius;
-          this.map[index * 2 + 1] = y / pointRadius;
-        }
-      }
-    }
-
-    const center = Math.floor(resolution / 2);
-    const centerIndex = center * resolution + center;
-    const centerCoordinate = {
-      x: this.map[centerIndex * 2],
-      y: this.map[centerIndex * 2 + 1],
-    };
-    this.centerDiskMap(centerCoordinate);
+    // RGBA cage texel: deformed boundary xy, matching unit-circle coordinate zw.
+    this.cage.fill(0);
+    boundaryCage.forEach((point, index) => {
+      const coordinate = boundaryCoordinates[index];
+      this.cage[index * 4] = point.x;
+      this.cage[index * 4 + 1] = point.y;
+      this.cage[index * 4 + 2] = coordinate.x;
+      this.cage[index * 4 + 3] = coordinate.y;
+    });
+    this.cageCount = boundaryCage.length;
+    this.center = this.meanValueCoordinate(
+      { x: 0, y: 0 },
+      boundaryCage,
+      boundaryCoordinates,
+      distances,
+      halfAngleTangents,
+    );
 
     this.revision += 1;
-    return this.map;
   }
 
   private sampleField(
@@ -900,7 +883,6 @@ class BoundarySpecWarpSolver {
           controls,
         ) - contourOffset;
         this.values[index] = value;
-        this.inside[index] = value <= 0 ? 1 : 0;
       }
     }
   }
@@ -1228,50 +1210,19 @@ class BoundarySpecWarpSolver {
     return closest;
   }
 
-  private hasInsideNeighbor(row: number, column: number, resolution: number): boolean {
-    const index = row * resolution + column;
-    return (column > 0 && this.inside[index - 1] !== 0)
-      || (column + 1 < resolution && this.inside[index + 1] !== 0)
-      || (row > 0 && this.inside[index - resolution] !== 0)
-      || (row + 1 < resolution && this.inside[index + resolution] !== 0);
-  }
-
-  private centerDiskMap(center: ElasticVec2): void {
-    const centerRadiusSquared = dot(center, center);
-    if (centerRadiusSquared <= 0.0000001 || centerRadiusSquared >= 0.998001) return;
-
-    for (let index = 0; index < specWarpCellCount; index += 1) {
-      const x = this.map[index * 2];
-      const y = this.map[index * 2 + 1];
-      const numeratorX = x - center.x;
-      const numeratorY = y - center.y;
-      const denominatorX = 1 - (center.x * x + center.y * y);
-      const denominatorY = center.y * x - center.x * y;
-      const denominator = Math.max(
-        denominatorX * denominatorX + denominatorY * denominatorY,
-        0.000001,
-      );
-      this.map[index * 2] = (
-        numeratorX * denominatorX + numeratorY * denominatorY
-      ) / denominator;
-      this.map[index * 2 + 1] = (
-        numeratorY * denominatorX - numeratorX * denominatorY
-      ) / denominator;
+  private writeIdentityCage(sampleCount: number): void {
+    this.cage.fill(0);
+    this.cageCount = sampleCount;
+    for (let index = 0; index < sampleCount; index += 1) {
+      const angle = index / sampleCount * Math.PI * 2;
+      const x = Math.cos(angle);
+      const y = Math.sin(angle);
+      this.cage[index * 4] = x;
+      this.cage[index * 4 + 1] = y;
+      this.cage[index * 4 + 2] = x;
+      this.cage[index * 4 + 3] = y;
     }
-  }
-
-  private writeIdentityMap(): void {
-    const resolution = elasticSpecWarpResolution;
-    const spacing = elasticSpecWarpExtent * 2 / (resolution - 1);
-    for (let row = 0; row < resolution; row += 1) {
-      const y = -elasticSpecWarpExtent + row * spacing;
-      for (let column = 0; column < resolution; column += 1) {
-        const x = -elasticSpecWarpExtent + column * spacing;
-        const index = row * resolution + column;
-        this.map[index * 2] = x;
-        this.map[index * 2 + 1] = y;
-      }
-    }
+    this.center = { x: 0, y: 0 };
   }
 }
 
@@ -1349,23 +1300,22 @@ function solveContourOffset(
 export class ElasticContactField {
   private readonly contacts = new Map<number, Contact>();
   private readonly specWarpSolver = new HarmonicSpecWarpSolver();
-  private readonly boundarySpecWarpSolver = new BoundarySpecWarpSolver();
+  private readonly boundarySpecCageSolver = new BoundarySpecCageSolver();
   private readonly specBoundarySampler = new RadialSpecBoundarySampler();
   private contourOffset: number;
   private frame: ElasticShapeFrame;
 
   constructor(private readonly controls: ElasticFieldControls) {
     this.contourOffset = 1 - controls.seedRadiusScale;
-    const initialWarpMode = controls.specWarpMode ?? 'harmonic';
-    const initialWarpMap = initialWarpMode === 'boundary'
-      ? this.boundarySpecWarpSolver.map
-      : this.specWarpSolver.map;
-    const initialWarpRevision = initialWarpMode === 'boundary' ? 1_000_000 : 2_000_000;
     this.frame = {
       contacts: [],
       membraneLinks: [],
-      specWarpMap: initialWarpMap,
-      specWarpRevision: initialWarpRevision,
+      specWarpMap: this.specWarpSolver.map,
+      specWarpRevision: this.specWarpSolver.revision,
+      specWarpCage: this.boundarySpecCageSolver.cage,
+      specWarpCageCount: this.boundarySpecCageSolver.cageCount,
+      specWarpCageRevision: this.boundarySpecCageSolver.revision,
+      specWarpCenter: this.boundarySpecCageSolver.center,
       specBoundaryRadii: this.specBoundarySampler.radii,
       specBoundaryRevision: this.specBoundarySampler.revision,
       contactRadius: controls.seedRadiusScale,
@@ -1491,21 +1441,19 @@ export class ElasticContactField {
     const pressureBlend = 1 - Math.exp(-this.controls.pressureResponse * delta);
     this.contourOffset += (targetOffset - this.contourOffset) * pressureBlend;
     const specWarpMode = this.controls.specWarpMode ?? 'harmonic';
-    const specWarpMap = specWarpMode === 'boundary'
-      ? this.boundarySpecWarpSolver.solve(
+    if (specWarpMode === 'boundary') {
+      this.boundarySpecCageSolver.solve(
         items,
         membraneLinks,
         metrics,
         this.controls,
         this.contourOffset,
-      )
-      : specWarpMode === 'harmonic'
-        ? this.specWarpSolver.solve(items, metrics, this.controls)
-        : this.specWarpSolver.map;
-    const specWarpRevision = specWarpMode === 'boundary'
-      ? 1_000_000 + this.boundarySpecWarpSolver.revision
-      : 2_000_000 + this.specWarpSolver.revision;
-    const specBoundaryRadii = specWarpMode === 'radial' || this.controls.specRayDebugEnabled
+      );
+    }
+    const specWarpMap = specWarpMode === 'harmonic'
+      ? this.specWarpSolver.solve(items, metrics, this.controls)
+      : this.specWarpSolver.map;
+    const specBoundaryRadii = specWarpMode === 'radial'
       ? this.specBoundarySampler.solve(
         items,
         membraneLinks,
@@ -1525,7 +1473,11 @@ export class ElasticContactField {
       })),
       membraneLinks,
       specWarpMap,
-      specWarpRevision,
+      specWarpRevision: this.specWarpSolver.revision,
+      specWarpCage: this.boundarySpecCageSolver.cage,
+      specWarpCageCount: this.boundarySpecCageSolver.cageCount,
+      specWarpCageRevision: this.boundarySpecCageSolver.revision,
+      specWarpCenter: this.boundarySpecCageSolver.center,
       specBoundaryRadii,
       specBoundaryRevision: this.specBoundarySampler.revision,
       contactRadius: metrics.seedRadius,

@@ -2,6 +2,7 @@ import {
   elasticSpecRayCount,
   elasticSpecWarpExtent,
   elasticSpecWarpResolution,
+  maxElasticSpecBoundaryPoints,
   type ElasticShapeFrame,
 } from './elastic-contact-field';
 
@@ -101,6 +102,7 @@ precision highp sampler2D;
 #define MAX_SPECS 11
 #define MAX_CONTACTS 10
 #define MAX_MEMBRANE_LINKS 20
+#define MAX_SPEC_BOUNDARY_POINTS 64
 
 in vec2 vUv;
 out vec4 outputColor;
@@ -115,6 +117,9 @@ uniform float uSourceFollow;
 uniform sampler2D uSpecWarpMap;
 uniform float uSpecWarpExtent;
 uniform sampler2D uSpecBoundaryMap;
+uniform sampler2D uSpecWarpCage;
+uniform int uSpecWarpCageCount;
+uniform vec2 uSpecWarpCenter;
 uniform int uSpecWarpMode;
 uniform int uSpecRayDebugEnabled;
 uniform int uSpecRayDebugCount;
@@ -434,6 +439,72 @@ vec2 inverseHarmonicSpecWarp(vec2 point) {
   return canonicalPoint;
 }
 
+vec2 centerBoundaryCoordinate(vec2 coordinate) {
+  vec2 center = uSpecWarpCenter;
+  float centerRadiusSquared = dot(center, center);
+  if (centerRadiusSquared <= 0.0000001 || centerRadiusSquared >= 0.998001) {
+    return coordinate;
+  }
+
+  vec2 numerator = coordinate - center;
+  vec2 denominator = vec2(
+    1.0 - dot(center, coordinate),
+    center.y * coordinate.x - center.x * coordinate.y
+  );
+  float denominatorSquared = max(dot(denominator, denominator), 0.000001);
+  return vec2(
+    numerator.x * denominator.x + numerator.y * denominator.y,
+    numerator.y * denominator.x - numerator.x * denominator.y
+  ) / denominatorSquared;
+}
+
+vec2 inverseBoundarySpecWarp(vec2 point) {
+  const float EPSILON = 0.000001;
+  int count = max(uSpecWarpCageCount, 3);
+  vec2 weightedCoordinate = vec2(0.0);
+  float weightSum = 0.0;
+
+  for (int index = 0; index < MAX_SPEC_BOUNDARY_POINTS; index++) {
+    if (index >= count) break;
+    int nextIndex = index + 1;
+    if (nextIndex >= count) nextIndex = 0;
+
+    vec4 firstSample = texelFetch(uSpecWarpCage, ivec2(index, 0), 0);
+    vec4 secondSample = texelFetch(uSpecWarpCage, ivec2(nextIndex, 0), 0);
+    vec2 first = firstSample.xy - point;
+    vec2 second = secondSample.xy - point;
+    float firstDistance = length(first);
+    float secondDistance = length(second);
+    vec2 firstCoordinate = firstSample.zw;
+    vec2 secondCoordinate = secondSample.zw;
+
+    if (firstDistance <= EPSILON) {
+      return centerBoundaryCoordinate(firstCoordinate);
+    }
+
+    float crossValue = first.x * second.y - first.y * second.x;
+    float tangentDenominator = firstDistance * secondDistance + dot(first, second);
+    float halfAngleTangent = abs(tangentDenominator) <= 0.0000000001
+      ? (crossValue < 0.0 ? -1000000.0 : 1000000.0)
+      : crossValue / tangentDenominator;
+    float firstWeight = halfAngleTangent / max(firstDistance, EPSILON);
+    float secondWeight = halfAngleTangent / max(secondDistance, EPSILON);
+    weightedCoordinate += firstCoordinate * firstWeight
+      + secondCoordinate * secondWeight;
+    weightSum += firstWeight + secondWeight;
+  }
+
+  if (abs(weightSum) <= EPSILON) {
+    float pointRadius = max(length(point), EPSILON);
+    return point * (min(pointRadius, 0.999) / pointRadius);
+  }
+
+  vec2 canonicalPoint = centerBoundaryCoordinate(weightedCoordinate / weightSum);
+  float canonicalRadius = length(canonicalPoint);
+  if (canonicalRadius > 0.999) canonicalPoint *= 0.999 / canonicalRadius;
+  return canonicalPoint;
+}
+
 float sampleSpecBoundaryRadius(vec2 point) {
   const float PI = 3.141592653589793;
   const float TAU = 6.283185307179586;
@@ -450,9 +521,9 @@ vec2 inverseRadialSpecWarp(vec2 point) {
 }
 
 vec2 inverseSpecWarp(vec2 point) {
-  return uSpecWarpMode == 1
-    ? inverseRadialSpecWarp(point)
-    : inverseHarmonicSpecWarp(point);
+  if (uSpecWarpMode == 1) return inverseRadialSpecWarp(point);
+  if (uSpecWarpMode == 2) return inverseBoundarySpecWarp(point);
+  return inverseHarmonicSpecWarp(point);
 }
 
 struct SourceEdge {
@@ -807,11 +878,13 @@ export class GuseulWebGLRenderer {
   private readonly contentTexture: WebGLTexture;
   private readonly specWarpTexture: WebGLTexture;
   private readonly specBoundaryTexture: WebGLTexture;
+  private readonly specWarpCageTexture: WebGLTexture;
   private readonly uniforms: UniformMap;
   private contentWidth = 0;
   private contentHeight = 0;
   private specWarpRevision = -1;
   private specBoundaryRevision = -1;
+  private specWarpCageRevision = -1;
 
   constructor() {
     const gl = this.canvas.getContext('webgl2', {
@@ -838,9 +911,11 @@ export class GuseulWebGLRenderer {
     this.contentTexture = createTexture(gl);
     this.specWarpTexture = createTexture(gl);
     this.specBoundaryTexture = createTexture(gl);
+    this.specWarpCageTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
       'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
       'uSourceFollow', 'uSpecWarpMap', 'uSpecWarpExtent', 'uSpecBoundaryMap',
+      'uSpecWarpCage', 'uSpecWarpCageCount', 'uSpecWarpCenter',
       'uSpecWarpMode', 'uSpecRayDebugEnabled', 'uSpecRayDebugCount',
       'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
       'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
@@ -862,6 +937,7 @@ export class GuseulWebGLRenderer {
     gl.uniform1i(this.uniforms.uContent, 0);
     gl.uniform1i(this.uniforms.uSpecWarpMap, 1);
     gl.uniform1i(this.uniforms.uSpecBoundaryMap, 2);
+    gl.uniform1i(this.uniforms.uSpecWarpCage, 3);
     gl.uniform1f(this.uniforms.uSpecWarpExtent, elasticSpecWarpExtent);
     gl.bindVertexArray(vertexArray);
 
@@ -906,6 +982,24 @@ export class GuseulWebGLRenderer {
       1,
       0,
       gl.RED,
+      gl.FLOAT,
+      null,
+    );
+
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.specWarpCageTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA32F,
+      maxElasticSpecBoundaryPoints,
+      1,
+      0,
+      gl.RGBA,
       gl.FLOAT,
       null,
     );
@@ -979,6 +1073,12 @@ export class GuseulWebGLRenderer {
     gl.uniform1f(this.uniforms.uEdgeConcavity, shape.edgeConcavity);
     gl.uniform1f(this.uniforms.uFieldSmoothness, shape.fieldSmoothness);
     gl.uniform1f(this.uniforms.uContourOffset, shape.contourOffset);
+    gl.uniform1i(this.uniforms.uSpecWarpCageCount, shape.specWarpCageCount);
+    gl.uniform2f(
+      this.uniforms.uSpecWarpCenter,
+      shape.specWarpCenter.x,
+      shape.specWarpCenter.y,
+    );
 
     if (shape.specWarpRevision !== this.specWarpRevision) {
       this.specWarpRevision = shape.specWarpRevision;
@@ -991,7 +1091,7 @@ export class GuseulWebGLRenderer {
         0,
         elasticSpecWarpResolution,
         elasticSpecWarpResolution,
-        gl.RG,
+        gl.RGBA,
         gl.FLOAT,
         shape.specWarpMap,
       );
@@ -1011,6 +1111,23 @@ export class GuseulWebGLRenderer {
         gl.RED,
         gl.FLOAT,
         shape.specBoundaryRadii,
+      );
+    }
+
+    if (shape.specWarpCageRevision !== this.specWarpCageRevision) {
+      this.specWarpCageRevision = shape.specWarpCageRevision;
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, this.specWarpCageTexture);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        maxElasticSpecBoundaryPoints,
+        1,
+        gl.RGBA,
+        gl.FLOAT,
+        shape.specWarpCage,
       );
     }
   }

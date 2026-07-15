@@ -1039,7 +1039,7 @@ function setupGui(): void {
   specWarp.add(layerControls, 'specRayDebugEnabled').name('show material rays');
   specWarp.add(layerControls, 'specRayDebugCount', 8, 64, 1).name('visible ray count');
   const boundaryWarp = specWarp.addFolder('boundary solver');
-  boundaryWarp.add(layerControls, 'specBoundarySamples', 16, 128, 4).name('boundary samples');
+  boundaryWarp.add(layerControls, 'specBoundarySamples', 16, 64, 4).name('boundary samples');
   const harmonicWarp = specWarp.addFolder('harmonic solver');
   harmonicWarp.add(layerControls, 'specWarpCenterStiffness', 4, 160, 1).name('center pin');
   harmonicWarp.add(layerControls, 'specWarpContactStiffness', 4, 100, 1).name('contact stiffness');
