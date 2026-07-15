@@ -32,10 +32,11 @@ export type GpuGlassControls = {
   background: [number, number, number];
   contentOverscan: number;
   sourceFollow: number;
-  specWarpInteriorPower: number;
-  specWarpAngularFollow: number;
-  specWarpAngularWidth: number;
-  specWarpStretchFade: number;
+  specWarpCenterWeight: number;
+  specWarpContactWeight: number;
+  specWarpBoundaryWeight: number;
+  specWarpFalloff: number;
+  specWarpAffineAmount: number;
   displacementEnabled: boolean;
   surfacePreviewEnabled: boolean;
   surfaceProfile: 'convex' | 'concave' | 'lip';
@@ -101,6 +102,8 @@ precision highp sampler2D;
 #define MAX_CONTACTS 10
 #define MAX_MEMBRANE_LINKS 20
 #define SPEC_BOUNDARY_SAMPLES ${elasticBoundarySampleCount}
+#define SPEC_BOUNDARY_CONTROLS 20
+#define MAX_SPEC_WARP_CONTROLS 31
 
 in vec2 vUv;
 out vec4 outputColor;
@@ -149,10 +152,11 @@ uniform int uCaRimEnabled;
 uniform int uSpecDebugEnabled;
 uniform vec3 uSpecDebugColor;
 uniform float uSpecDebugOpacity;
-uniform float uSpecWarpInteriorPower;
-uniform float uSpecWarpAngularFollow;
-uniform float uSpecWarpAngularWidth;
-uniform float uSpecWarpStretchFade;
+uniform float uSpecWarpCenterWeight;
+uniform float uSpecWarpContactWeight;
+uniform float uSpecWarpBoundaryWeight;
+uniform float uSpecWarpFalloff;
+uniform float uSpecWarpAffineAmount;
 uniform int uOuterStrokeEnabled;
 uniform int uShowElasticContacts;
 uniform int uCircleCount;
@@ -427,10 +431,6 @@ vec2 transformSourcePoint(vec2 point) {
   return inverseElasticPoint(point, uSourceFollow);
 }
 
-float wrappedAngle(float angle) {
-  return atan(sin(angle), cos(angle));
-}
-
 float specBoundaryRadius(float angle) {
   float normalizedAngle = fract(angle / TWO_PI + 1.0);
   float samplePosition = normalizedAngle * float(SPEC_BOUNDARY_SAMPLES);
@@ -454,75 +454,126 @@ float specBoundaryRadius(float angle) {
   return clamp(radius, min(first, second) - 0.04, max(first, second) + 0.04);
 }
 
-float specMaterialFollow(float radius) {
-  return pow(smoother(radius), max(uSpecWarpInteriorPower, 0.01));
-}
-
-float specAngularDisplacement(float canonicalAngle) {
-  float displacement = 0.0;
-  float weightSum = 0.35;
-
-  for (int index = 0; index < MAX_CONTACTS; index += 1) {
-    if (index >= uContactCount) break;
-    vec4 contact = uContacts[index];
-    vec2 anchor = uContactAnchors[index];
-    float anchorRadius = length(anchor);
-    float anchorAngle = atan(anchor.y, anchor.x);
-    float currentAngle = atan(contact.y, contact.x);
-    float angleDistance = abs(wrappedAngle(canonicalAngle - anchorAngle));
-    float width = max(uSpecWarpAngularWidth, 0.05);
-    float angularWeight = 1.0 - smoothRange(width * 0.28, width, angleDistance);
-    float anchorGate = smoothRange(0.12, 0.42, anchorRadius);
-    float influence = smoothRange(0.0, 1.0, contact.w);
-    float weight = angularWeight * anchorGate * influence;
-    displacement += wrappedAngle(currentAngle - anchorAngle) * weight;
-    weightSum += weight;
+void specWarpControl(
+  int index,
+  out vec2 deformedPoint,
+  out vec2 canonicalPoint,
+  out float strength
+) {
+  if (index == 0) {
+    deformedPoint = vec2(0.0);
+    canonicalPoint = vec2(0.0);
+    strength = uSpecWarpCenterWeight;
+    return;
   }
 
-  return displacement / weightSum;
+  int contactIndex = index - 1;
+  if (contactIndex < uContactCount) {
+    vec4 contact = uContacts[contactIndex];
+    deformedPoint = contact.xy;
+    canonicalPoint = uContactAnchors[contactIndex];
+    strength = uSpecWarpContactWeight * smoothRange(0.0, 1.0, contact.w);
+    return;
+  }
+
+  int boundaryIndex = contactIndex - uContactCount;
+  float angle = float(boundaryIndex) / float(SPEC_BOUNDARY_CONTROLS) * TWO_PI;
+  vec2 direction = vec2(cos(angle), sin(angle));
+  deformedPoint = direction * specBoundaryRadius(angle);
+  canonicalPoint = direction;
+  strength = uSpecWarpBoundaryWeight;
 }
 
-// Specs stay on the canonical sphere and only their material coordinates deform.
-vec3 inverseSpecWarp(vec2 point) {
-  float deformedRadius = length(point);
-  if (deformedRadius <= 0.00001) return vec3(0.0, 0.0, 1.0);
+float specWarpWeight(vec2 point, vec2 controlPoint, float strength) {
+  float distanceSquared = max(dot(point - controlPoint, point - controlPoint), 0.00002);
+  return max(strength, 0.0) / pow(distanceSquared, max(uSpecWarpFalloff, 0.1));
+}
 
+// A local matrix spreads the center, contact, and boundary constraints through the disk.
+vec2 inverseSpecWarp(vec2 point) {
+  if (length(point) <= 0.00001) return vec2(0.0);
+
+  int controlCount = 1 + uContactCount + SPEC_BOUNDARY_CONTROLS;
+  float weightSum = 0.0;
+  vec2 deformedCentroid = vec2(0.0);
+  vec2 canonicalCentroid = vec2(0.0);
+
+  for (int index = 0; index < MAX_SPEC_WARP_CONTROLS; index += 1) {
+    if (index >= controlCount) break;
+    vec2 deformedControl;
+    vec2 canonicalControl;
+    float strength;
+    specWarpControl(index, deformedControl, canonicalControl, strength);
+    float distanceSquared = dot(point - deformedControl, point - deformedControl);
+    if (strength > 0.0001 && distanceSquared < 0.00002) {
+      return canonicalControl;
+    }
+    float weight = specWarpWeight(point, deformedControl, strength);
+    weightSum += weight;
+    deformedCentroid += deformedControl * weight;
+    canonicalCentroid += canonicalControl * weight;
+  }
+
+  deformedCentroid /= max(weightSum, 0.0001);
+  canonicalCentroid /= max(weightSum, 0.0001);
+  mat2 deformedCovariance = mat2(0.0);
+  mat2 crossCovariance = mat2(0.0);
+
+  for (int index = 0; index < MAX_SPEC_WARP_CONTROLS; index += 1) {
+    if (index >= controlCount) break;
+    vec2 deformedControl;
+    vec2 canonicalControl;
+    float strength;
+    specWarpControl(index, deformedControl, canonicalControl, strength);
+    float weight = specWarpWeight(point, deformedControl, strength);
+    vec2 deformedOffset = deformedControl - deformedCentroid;
+    vec2 canonicalOffset = canonicalControl - canonicalCentroid;
+    deformedCovariance += weight * mat2(
+      deformedOffset.x * deformedOffset.x,
+      deformedOffset.y * deformedOffset.x,
+      deformedOffset.x * deformedOffset.y,
+      deformedOffset.y * deformedOffset.y
+    );
+    crossCovariance += weight * mat2(
+      canonicalOffset.x * deformedOffset.x,
+      canonicalOffset.y * deformedOffset.x,
+      canonicalOffset.x * deformedOffset.y,
+      canonicalOffset.y * deformedOffset.y
+    );
+  }
+
+  float covarianceScale = deformedCovariance[0][0] + deformedCovariance[1][1];
+  deformedCovariance += mat2(max(covarianceScale * 0.0005, 0.00005));
+  mat2 localAffine = crossCovariance * inverse(deformedCovariance);
+  float similarityDenominator = max(covarianceScale, 0.0001);
+  float similarityA = (
+    crossCovariance[0][0] + crossCovariance[1][1]
+  ) / similarityDenominator;
+  float similarityB = (
+    crossCovariance[0][1] - crossCovariance[1][0]
+  ) / similarityDenominator;
+  mat2 localSimilarity = mat2(
+    similarityA,
+    similarityB,
+    -similarityB,
+    similarityA
+  );
+  mat2 localMatrix = localSimilarity
+    + (localAffine - localSimilarity) * clamp(uSpecWarpAffineAmount, 0.0, 1.0);
+  vec2 canonicalPoint = canonicalCentroid
+    + localMatrix * (point - deformedCentroid);
+  float deformedRadius = length(point);
   float deformedAngle = atan(point.y, point.x);
   float boundaryRadius = max(specBoundaryRadius(deformedAngle), 0.05);
-  float targetRadius = min(deformedRadius, boundaryRadius);
-  float low = 0.0;
-  float high = 1.0;
-
-  for (int iteration = 0; iteration < 8; iteration += 1) {
-    float midpoint = (low + high) * 0.5;
-    float mappedRadius = midpoint * mix(
-      1.0,
-      boundaryRadius,
-      specMaterialFollow(midpoint)
-    );
-    if (mappedRadius < targetRadius) low = midpoint;
-    else high = midpoint;
-  }
-
-  float canonicalRadius = min((low + high) * 0.5, 0.999);
-  float angleFollow = specMaterialFollow(canonicalRadius) * uSpecWarpAngularFollow;
-  float canonicalAngle = deformedAngle;
-
-  for (int iteration = 0; iteration < 5; iteration += 1) {
-    canonicalAngle = deformedAngle
-      - specAngularDisplacement(canonicalAngle) * angleFollow;
-  }
-
-  float stretch = max(boundaryRadius - 1.0, 0.0)
-    * specMaterialFollow(canonicalRadius);
-  float stretchFade = 1.0 - smoothRange(
-    max(uSpecWarpStretchFade * 0.2, 0.01),
-    max(uSpecWarpStretchFade, 0.02),
-    stretch
-  );
-  vec2 canonicalPoint = vec2(cos(canonicalAngle), sin(canonicalAngle))
-    * canonicalRadius;
-  return vec3(canonicalPoint, stretchFade);
+  float boundaryProgress = clamp(deformedRadius / boundaryRadius, 0.0, 0.999);
+  vec2 boundaryPoint = deformedRadius > 0.00001
+    ? point / deformedRadius * boundaryProgress
+    : vec2(0.0);
+  float boundaryBlend = pow(smoothRange(0.7, 1.0, boundaryProgress), 2.0);
+  canonicalPoint = mix(canonicalPoint, boundaryPoint, boundaryBlend);
+  float canonicalRadius = length(canonicalPoint);
+  if (canonicalRadius > 0.999) canonicalPoint *= 0.999 / canonicalRadius;
+  return canonicalPoint;
 }
 
 struct SourceEdge {
@@ -732,15 +783,14 @@ void main() {
   float rim = !preview && uRimEnabled == 1 ? smoothRange(0.72, 1.0, radial) : 0.0;
   float hardRim = !preview && uHardRimEnabled == 1 ? smoothRange(0.93, 1.0, radial) : 0.0;
   float caRim = !preview && uCaRimEnabled == 1 ? smoothRange(0.8, 1.0, radial) : 0.0;
-  vec3 specWarp = inverseSpecWarp(point);
-  vec2 specPoint = specWarp.xy;
+  vec2 specPoint = inverseSpecWarp(point);
   float specRadiusSquared = min(dot(specPoint, specPoint), 0.999);
   vec3 specNormal = normalize(vec3(
     specPoint,
     sqrt(max(1.0 - specRadiusSquared, 0.001))
   ));
   vec3 reflection = normalize(reflect(vec3(0.0, 0.0, -1.0), specNormal));
-  vec2 spec = preview ? vec2(0.0) : sampleSpecs(reflection) * specWarp.z;
+  vec2 spec = preview ? vec2(0.0) : sampleSpecs(reflection);
   float shell = uSpecDebugEnabled == 1 ? 0.0 : spec.x;
 
   vec3 color = mix(sampleColor * innerShade, vec3(1.0), vec3(glassMilk, glassMilk, glassMilk * 0.94));
@@ -893,8 +943,8 @@ export class GuseulWebGLRenderer {
       'uChromaticBoundaryStrength', 'uChromaticBoundaryWidth', 'uInnerShadeEnabled',
       'uGlassMilkEnabled', 'uTopWashEnabled', 'uRimEnabled', 'uHardRimEnabled',
       'uCaRimEnabled', 'uSpecDebugEnabled', 'uSpecDebugColor', 'uSpecDebugOpacity',
-      'uSpecWarpInteriorPower', 'uSpecWarpAngularFollow', 'uSpecWarpAngularWidth',
-      'uSpecWarpStretchFade',
+      'uSpecWarpCenterWeight', 'uSpecWarpContactWeight', 'uSpecWarpBoundaryWeight',
+      'uSpecWarpFalloff', 'uSpecWarpAffineAmount',
       'uOuterStrokeEnabled', 'uShowElasticContacts',
       'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecSource[0]', 'uSpecAxisX[0]',
       'uSpecAxisY[0]', 'uSpecShape[0]', 'uSpecRender[0]',
@@ -1061,10 +1111,11 @@ export class GuseulWebGLRenderer {
     gl.uniform1i(this.uniforms.uSpecDebugEnabled, Number(controls.specDebugEnabled));
     gl.uniform3fv(this.uniforms.uSpecDebugColor, controls.specDebugColor === 'red' ? [1, 0, 0] : [0, 0, 0]);
     gl.uniform1f(this.uniforms.uSpecDebugOpacity, controls.specDebugOpacity);
-    gl.uniform1f(this.uniforms.uSpecWarpInteriorPower, controls.specWarpInteriorPower);
-    gl.uniform1f(this.uniforms.uSpecWarpAngularFollow, controls.specWarpAngularFollow);
-    gl.uniform1f(this.uniforms.uSpecWarpAngularWidth, controls.specWarpAngularWidth);
-    gl.uniform1f(this.uniforms.uSpecWarpStretchFade, controls.specWarpStretchFade);
+    gl.uniform1f(this.uniforms.uSpecWarpCenterWeight, controls.specWarpCenterWeight);
+    gl.uniform1f(this.uniforms.uSpecWarpContactWeight, controls.specWarpContactWeight);
+    gl.uniform1f(this.uniforms.uSpecWarpBoundaryWeight, controls.specWarpBoundaryWeight);
+    gl.uniform1f(this.uniforms.uSpecWarpFalloff, controls.specWarpFalloff);
+    gl.uniform1f(this.uniforms.uSpecWarpAffineAmount, controls.specWarpAffineAmount);
     gl.uniform1i(this.uniforms.uOuterStrokeEnabled, Number(controls.outerStrokeEnabled));
     gl.uniform1i(this.uniforms.uShowElasticContacts, Number(controls.showElasticContacts));
     this.uploadElasticShape(frame.elasticShape);

@@ -291,10 +291,11 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
-  specWarpInteriorPower: 2,
-  specWarpAngularFollow: 1,
-  specWarpAngularWidth: 1,
-  specWarpStretchFade: 0.75,
+  specWarpCenterWeight: 3,
+  specWarpContactWeight: 3,
+  specWarpBoundaryWeight: 2,
+  specWarpFalloff: 1,
+  specWarpAffineAmount: 0.3,
   specLargeIntensity: 3.5,
   specLargeSoftness: 2 / 3,
   specMediumIntensity: 4,
@@ -383,10 +384,11 @@ class WebGLRenderer implements Renderer {
         specDebugEnabled: params.controls.specDebugEnabled,
         specDebugColor: params.controls.specDebugColor,
         specDebugOpacity: params.controls.specDebugOpacity,
-        specWarpInteriorPower: params.controls.specWarpInteriorPower,
-        specWarpAngularFollow: params.controls.specWarpAngularFollow,
-        specWarpAngularWidth: params.controls.specWarpAngularWidth,
-        specWarpStretchFade: params.controls.specWarpStretchFade,
+        specWarpCenterWeight: params.controls.specWarpCenterWeight,
+        specWarpContactWeight: params.controls.specWarpContactWeight,
+        specWarpBoundaryWeight: params.controls.specWarpBoundaryWeight,
+        specWarpFalloff: params.controls.specWarpFalloff,
+        specWarpAffineAmount: params.controls.specWarpAffineAmount,
         outerStrokeEnabled: params.controls.outerStrokeEnabled,
         showElasticContacts: params.controls.showElasticContacts,
       },
@@ -1023,10 +1025,11 @@ function setupGui(): void {
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
   const specWarp = spec.addFolder('elastic warp');
-  specWarp.add(layerControls, 'specWarpInteriorPower', 0.5, 6, 0.05).name('edge concentration');
-  specWarp.add(layerControls, 'specWarpAngularFollow', 0, 1.5, 0.01).name('angle follow');
-  specWarp.add(layerControls, 'specWarpAngularWidth', 0.15, 2.5, 0.01).name('angle width');
-  specWarp.add(layerControls, 'specWarpStretchFade', 0.1, 2.5, 0.01).name('stretch fade');
+  specWarp.add(layerControls, 'specWarpCenterWeight', 0.2, 12, 0.1).name('center weight');
+  specWarp.add(layerControls, 'specWarpContactWeight', 0.2, 16, 0.1).name('contact weight');
+  specWarp.add(layerControls, 'specWarpBoundaryWeight', 0.1, 8, 0.1).name('boundary weight');
+  specWarp.add(layerControls, 'specWarpFalloff', 0.4, 3, 0.05).name('field falloff');
+  specWarp.add(layerControls, 'specWarpAffineAmount', 0, 1, 0.01).name('directional stretch');
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
