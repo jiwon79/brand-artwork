@@ -291,8 +291,10 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
-  specElasticFollow: 1,
-  specEdgeBlendWidth: 0.002,
+  specWarpInteriorPower: 2,
+  specWarpAngularFollow: 1,
+  specWarpAngularWidth: 1,
+  specWarpStretchFade: 0.75,
   specLargeIntensity: 3.5,
   specLargeSoftness: 2 / 3,
   specMediumIntensity: 4,
@@ -381,8 +383,10 @@ class WebGLRenderer implements Renderer {
         specDebugEnabled: params.controls.specDebugEnabled,
         specDebugColor: params.controls.specDebugColor,
         specDebugOpacity: params.controls.specDebugOpacity,
-        specElasticFollow: params.controls.specElasticFollow,
-        specEdgeBlendWidth: params.controls.specEdgeBlendWidth,
+        specWarpInteriorPower: params.controls.specWarpInteriorPower,
+        specWarpAngularFollow: params.controls.specWarpAngularFollow,
+        specWarpAngularWidth: params.controls.specWarpAngularWidth,
+        specWarpStretchFade: params.controls.specWarpStretchFade,
         outerStrokeEnabled: params.controls.outerStrokeEnabled,
         showElasticContacts: params.controls.showElasticContacts,
       },
@@ -1018,8 +1022,11 @@ function setupGui(): void {
   spec.add(layerControls, 'specDebugEnabled').name('debug fill');
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
-  spec.add(layerControls, 'specElasticFollow', 0, 1, 0.01).name('elastic follow');
-  spec.add(layerControls, 'specEdgeBlendWidth', 0.001, 0.12, 0.001).name('edge blend');
+  const specWarp = spec.addFolder('elastic warp');
+  specWarp.add(layerControls, 'specWarpInteriorPower', 0.5, 6, 0.05).name('edge concentration');
+  specWarp.add(layerControls, 'specWarpAngularFollow', 0, 1.5, 0.01).name('angle follow');
+  specWarp.add(layerControls, 'specWarpAngularWidth', 0.15, 2.5, 0.01).name('angle width');
+  specWarp.add(layerControls, 'specWarpStretchFade', 0.1, 2.5, 0.01).name('stretch fade');
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
@@ -1044,6 +1051,7 @@ function setupGui(): void {
   edgeProjection.close();
   largeSpec.close();
   mediumSpec.close();
+  specWarp.close();
   spec.close();
   scene.close();
   source.close();

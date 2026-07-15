@@ -1,4 +1,7 @@
-import type { ElasticShapeFrame } from './elastic-contact-field';
+import {
+  elasticBoundarySampleCount,
+  type ElasticShapeFrame,
+} from './elastic-contact-field';
 
 export const maxGpuCircles = 10;
 export const maxGpuSpecs = 11;
@@ -29,8 +32,10 @@ export type GpuGlassControls = {
   background: [number, number, number];
   contentOverscan: number;
   sourceFollow: number;
-  specElasticFollow: number;
-  specEdgeBlendWidth: number;
+  specWarpInteriorPower: number;
+  specWarpAngularFollow: number;
+  specWarpAngularWidth: number;
+  specWarpStretchFade: number;
   displacementEnabled: boolean;
   surfacePreviewEnabled: boolean;
   surfaceProfile: 'convex' | 'concave' | 'lip';
@@ -95,6 +100,7 @@ precision highp sampler2D;
 #define MAX_SPECS 11
 #define MAX_CONTACTS 10
 #define MAX_MEMBRANE_LINKS 20
+#define SPEC_BOUNDARY_SAMPLES ${elasticBoundarySampleCount}
 
 in vec2 vUv;
 out vec4 outputColor;
@@ -106,6 +112,7 @@ uniform float uRadiusCss;
 uniform vec3 uBackground;
 uniform float uOverscan;
 uniform float uSourceFollow;
+uniform float uSpecBoundaryRadii[SPEC_BOUNDARY_SAMPLES];
 uniform int uContactCount;
 uniform vec4 uContacts[MAX_CONTACTS];
 uniform vec2 uContactAnchors[MAX_CONTACTS];
@@ -142,8 +149,10 @@ uniform int uCaRimEnabled;
 uniform int uSpecDebugEnabled;
 uniform vec3 uSpecDebugColor;
 uniform float uSpecDebugOpacity;
-uniform float uSpecElasticFollow;
-uniform float uSpecEdgeBlendWidth;
+uniform float uSpecWarpInteriorPower;
+uniform float uSpecWarpAngularFollow;
+uniform float uSpecWarpAngularWidth;
+uniform float uSpecWarpStretchFade;
 uniform int uOuterStrokeEnabled;
 uniform int uShowElasticContacts;
 uniform int uCircleCount;
@@ -156,6 +165,7 @@ uniform vec4 uSpecShape[MAX_SPECS];
 uniform vec4 uSpecRender[MAX_SPECS];
 
 const float MAX_SURFACE_SLOPE = 11.4300523;
+const float TWO_PI = 6.283185307179586;
 
 float smoothRange(float edge0, float edge1, float value) {
   float denominator = edge1 - edge0;
@@ -417,38 +427,102 @@ vec2 transformSourcePoint(vec2 point) {
   return inverseElasticPoint(point, uSourceFollow);
 }
 
-float elasticSurfaceHeight(vec2 point) {
-  vec2 canonicalPoint = inverseElasticPoint(point, uSpecElasticFollow);
-  float canonicalRadius = length(canonicalPoint);
+float wrappedAngle(float angle) {
+  return atan(sin(angle), cos(angle));
+}
 
-  if (canonicalRadius > 0.98) {
-    float compressedRadius = 0.98 + 0.019
-      * (1.0 - exp(-(canonicalRadius - 0.98) / 0.019));
-    canonicalPoint *= compressedRadius / canonicalRadius;
+float specBoundaryRadius(float angle) {
+  float normalizedAngle = fract(angle / TWO_PI + 1.0);
+  float samplePosition = normalizedAngle * float(SPEC_BOUNDARY_SAMPLES);
+  int firstIndex = int(floor(samplePosition)) % SPEC_BOUNDARY_SAMPLES;
+  int previousIndex = (firstIndex + SPEC_BOUNDARY_SAMPLES - 1) % SPEC_BOUNDARY_SAMPLES;
+  int secondIndex = (firstIndex + 1) % SPEC_BOUNDARY_SAMPLES;
+  int thirdIndex = (firstIndex + 2) % SPEC_BOUNDARY_SAMPLES;
+  float progress = fract(samplePosition);
+  float progressSquared = progress * progress;
+  float progressCubed = progressSquared * progress;
+  float previous = uSpecBoundaryRadii[previousIndex];
+  float first = uSpecBoundaryRadii[firstIndex];
+  float second = uSpecBoundaryRadii[secondIndex];
+  float third = uSpecBoundaryRadii[thirdIndex];
+  float radius = 0.5 * (
+    2.0 * first
+    + (-previous + second) * progress
+    + (2.0 * previous - 5.0 * first + 4.0 * second - third) * progressSquared
+    + (-previous + 3.0 * first - 3.0 * second + third) * progressCubed
+  );
+  return clamp(radius, min(first, second) - 0.04, max(first, second) + 0.04);
+}
+
+float specMaterialFollow(float radius) {
+  return pow(smoother(radius), max(uSpecWarpInteriorPower, 0.01));
+}
+
+float specAngularDisplacement(float canonicalAngle) {
+  float displacement = 0.0;
+  float weightSum = 0.35;
+
+  for (int index = 0; index < MAX_CONTACTS; index += 1) {
+    if (index >= uContactCount) break;
+    vec4 contact = uContacts[index];
+    vec2 anchor = uContactAnchors[index];
+    float anchorRadius = length(anchor);
+    float anchorAngle = atan(anchor.y, anchor.x);
+    float currentAngle = atan(contact.y, contact.x);
+    float angleDistance = abs(wrappedAngle(canonicalAngle - anchorAngle));
+    float width = max(uSpecWarpAngularWidth, 0.05);
+    float angularWeight = 1.0 - smoothRange(width * 0.28, width, angleDistance);
+    float anchorGate = smoothRange(0.12, 0.42, anchorRadius);
+    float influence = smoothRange(0.0, 1.0, contact.w);
+    float weight = angularWeight * anchorGate * influence;
+    displacement += wrappedAngle(currentAngle - anchorAngle) * weight;
+    weightSum += weight;
   }
 
-  return sqrt(max(1.0 - dot(canonicalPoint, canonicalPoint), 0.0001));
+  return displacement / weightSum;
 }
 
-vec3 smoothElasticSurfaceNormal(vec2 point) {
-  float sampleStep = max(3.5 / uRadiusCss, 0.01);
-  float left = elasticSurfaceHeight(point - vec2(sampleStep, 0.0));
-  float right = elasticSurfaceHeight(point + vec2(sampleStep, 0.0));
-  float top = elasticSurfaceHeight(point - vec2(0.0, sampleStep));
-  float bottom = elasticSurfaceHeight(point + vec2(0.0, sampleStep));
-  vec2 heightGradient = vec2(right - left, bottom - top) / (2.0 * sampleStep);
-  return normalize(vec3(-heightGradient, 1.0));
-}
+// Specs stay on the canonical sphere and only their material coordinates deform.
+vec3 inverseSpecWarp(vec2 point) {
+  float deformedRadius = length(point);
+  if (deformedRadius <= 0.00001) return vec3(0.0, 0.0, 1.0);
 
-vec3 elasticSpecNormal(vec2 point, vec3 boundaryNormal, float inwardDistance) {
-  vec3 surfaceNormal = smoothElasticSurfaceNormal(point);
-  float edgeBlend = 1.0 - smoothRange(
-    0.0,
-    max(uSpecEdgeBlendWidth, 0.001),
-    inwardDistance
+  float deformedAngle = atan(point.y, point.x);
+  float boundaryRadius = max(specBoundaryRadius(deformedAngle), 0.05);
+  float targetRadius = min(deformedRadius, boundaryRadius);
+  float low = 0.0;
+  float high = 1.0;
+
+  for (int iteration = 0; iteration < 8; iteration += 1) {
+    float midpoint = (low + high) * 0.5;
+    float mappedRadius = midpoint * mix(
+      1.0,
+      boundaryRadius,
+      specMaterialFollow(midpoint)
+    );
+    if (mappedRadius < targetRadius) low = midpoint;
+    else high = midpoint;
+  }
+
+  float canonicalRadius = min((low + high) * 0.5, 0.999);
+  float angleFollow = specMaterialFollow(canonicalRadius) * uSpecWarpAngularFollow;
+  float canonicalAngle = deformedAngle;
+
+  for (int iteration = 0; iteration < 5; iteration += 1) {
+    canonicalAngle = deformedAngle
+      - specAngularDisplacement(canonicalAngle) * angleFollow;
+  }
+
+  float stretch = max(boundaryRadius - 1.0, 0.0)
+    * specMaterialFollow(canonicalRadius);
+  float stretchFade = 1.0 - smoothRange(
+    max(uSpecWarpStretchFade * 0.2, 0.01),
+    max(uSpecWarpStretchFade, 0.02),
+    stretch
   );
-
-  return normalize(mix(surfaceNormal, boundaryNormal, edgeBlend));
+  vec2 canonicalPoint = vec2(cos(canonicalAngle), sin(canonicalAngle))
+    * canonicalRadius;
+  return vec3(canonicalPoint, stretchFade);
 }
 
 struct SourceEdge {
@@ -658,9 +732,15 @@ void main() {
   float rim = !preview && uRimEnabled == 1 ? smoothRange(0.72, 1.0, radial) : 0.0;
   float hardRim = !preview && uHardRimEnabled == 1 ? smoothRange(0.93, 1.0, radial) : 0.0;
   float caRim = !preview && uCaRimEnabled == 1 ? smoothRange(0.8, 1.0, radial) : 0.0;
-  vec3 specNormal = elasticSpecNormal(point, normal, inwardDistance);
+  vec3 specWarp = inverseSpecWarp(point);
+  vec2 specPoint = specWarp.xy;
+  float specRadiusSquared = min(dot(specPoint, specPoint), 0.999);
+  vec3 specNormal = normalize(vec3(
+    specPoint,
+    sqrt(max(1.0 - specRadiusSquared, 0.001))
+  ));
   vec3 reflection = normalize(reflect(vec3(0.0, 0.0, -1.0), specNormal));
-  vec2 spec = preview ? vec2(0.0) : sampleSpecs(reflection);
+  vec2 spec = preview ? vec2(0.0) : sampleSpecs(reflection) * specWarp.z;
   float shell = uSpecDebugEnabled == 1 ? 0.0 : spec.x;
 
   vec3 color = mix(sampleColor * innerShade, vec3(1.0), vec3(glassMilk, glassMilk, glassMilk * 0.94));
@@ -802,7 +882,7 @@ export class GuseulWebGLRenderer {
     this.contentTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
       'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
-      'uSourceFollow', 'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
+      'uSourceFollow', 'uSpecBoundaryRadii[0]', 'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
       'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
       'uContactRadius', 'uBridgeRadius', 'uMembraneBridgeRadius', 'uEdgeConcavity',
       'uFieldSmoothness',
@@ -813,7 +893,8 @@ export class GuseulWebGLRenderer {
       'uChromaticBoundaryStrength', 'uChromaticBoundaryWidth', 'uInnerShadeEnabled',
       'uGlassMilkEnabled', 'uTopWashEnabled', 'uRimEnabled', 'uHardRimEnabled',
       'uCaRimEnabled', 'uSpecDebugEnabled', 'uSpecDebugColor', 'uSpecDebugOpacity',
-      'uSpecElasticFollow', 'uSpecEdgeBlendWidth',
+      'uSpecWarpInteriorPower', 'uSpecWarpAngularFollow', 'uSpecWarpAngularWidth',
+      'uSpecWarpStretchFade',
       'uOuterStrokeEnabled', 'uShowElasticContacts',
       'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecSource[0]', 'uSpecAxisX[0]',
       'uSpecAxisY[0]', 'uSpecShape[0]', 'uSpecRender[0]',
@@ -888,6 +969,7 @@ export class GuseulWebGLRenderer {
 
     const gl = this.gl;
     gl.uniform1i(this.uniforms.uContactCount, contactCount);
+    gl.uniform1fv(this.uniforms['uSpecBoundaryRadii[0]'], shape.boundaryRadii);
     gl.uniform4fv(this.uniforms['uContacts[0]'], contacts);
     gl.uniform2fv(this.uniforms['uContactAnchors[0]'], anchors);
     gl.uniform1i(this.uniforms.uMembraneLinkCount, linkCount);
@@ -979,8 +1061,10 @@ export class GuseulWebGLRenderer {
     gl.uniform1i(this.uniforms.uSpecDebugEnabled, Number(controls.specDebugEnabled));
     gl.uniform3fv(this.uniforms.uSpecDebugColor, controls.specDebugColor === 'red' ? [1, 0, 0] : [0, 0, 0]);
     gl.uniform1f(this.uniforms.uSpecDebugOpacity, controls.specDebugOpacity);
-    gl.uniform1f(this.uniforms.uSpecElasticFollow, controls.specElasticFollow);
-    gl.uniform1f(this.uniforms.uSpecEdgeBlendWidth, controls.specEdgeBlendWidth);
+    gl.uniform1f(this.uniforms.uSpecWarpInteriorPower, controls.specWarpInteriorPower);
+    gl.uniform1f(this.uniforms.uSpecWarpAngularFollow, controls.specWarpAngularFollow);
+    gl.uniform1f(this.uniforms.uSpecWarpAngularWidth, controls.specWarpAngularWidth);
+    gl.uniform1f(this.uniforms.uSpecWarpStretchFade, controls.specWarpStretchFade);
     gl.uniform1i(this.uniforms.uOuterStrokeEnabled, Number(controls.outerStrokeEnabled));
     gl.uniform1i(this.uniforms.uShowElasticContacts, Number(controls.showElasticContacts));
     this.uploadElasticShape(frame.elasticShape);

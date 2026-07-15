@@ -45,6 +45,7 @@ export type ElasticMembraneLink = {
 export type ElasticShapeFrame = {
   contacts: ElasticContactSample[];
   membraneLinks: ElasticMembraneLink[];
+  boundaryRadii: Float32Array;
   contactRadius: number;
   bridgeRadius: number;
   membraneBridgeRadius: number;
@@ -78,6 +79,9 @@ const maxContacts = 10;
 const maxMembraneLinks = maxContacts * 2;
 const areaSampleResolution = 76;
 const baseArea = Math.PI;
+export const elasticBoundarySampleCount = 128;
+const boundaryRadialSteps = 40;
+const boundaryBinaryIterations = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -388,6 +392,80 @@ function rawShapeDistance(
   return distanceToShape;
 }
 
+// Sample the live SDF along rays so the shader can map it back to the unit disk.
+function sampleBoundaryRadii(
+  items: Contact[],
+  membraneLinks: ElasticMembraneLink[],
+  metrics: ShapeMetrics,
+  controls: ElasticFieldControls,
+  contourOffset: number,
+): Float32Array {
+  const radii = new Float32Array(elasticBoundarySampleCount);
+
+  if (items.length === 0) {
+    radii.fill(1);
+    return radii;
+  }
+
+  const farthestExtent = items.reduce((maximum, item, index) => Math.max(
+    maximum,
+    length(item.position) + metrics.contactRadii[index],
+  ), 1);
+  const maximumRadius = Math.max(
+    1.5,
+    farthestExtent + Math.abs(contourOffset) + controls.fieldSmoothness * 0.5 + 0.2,
+  );
+  const radialStep = maximumRadius / boundaryRadialSteps;
+
+  for (let angleIndex = 0; angleIndex < elasticBoundarySampleCount; angleIndex += 1) {
+    const angle = angleIndex / elasticBoundarySampleCount * Math.PI * 2;
+    const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+    let outermostInside = 0;
+
+    for (let radialIndex = 1; radialIndex <= boundaryRadialSteps; radialIndex += 1) {
+      const radius = radialIndex * radialStep;
+      const distance = rawShapeDistance(
+        scale(direction, radius),
+        items,
+        membraneLinks,
+        metrics,
+        controls,
+      ) - contourOffset;
+
+      if (distance <= 0) outermostInside = radius;
+    }
+
+    let low = outermostInside;
+    let high = Math.min(maximumRadius, outermostInside + radialStep);
+
+    for (let iteration = 0; iteration < boundaryBinaryIterations; iteration += 1) {
+      const midpoint = (low + high) * 0.5;
+      const distance = rawShapeDistance(
+        scale(direction, midpoint),
+        items,
+        membraneLinks,
+        metrics,
+        controls,
+      ) - contourOffset;
+
+      if (distance <= 0) low = midpoint;
+      else high = midpoint;
+    }
+
+    radii[angleIndex] = (low + high) * 0.5;
+  }
+
+  const smoothed = new Float32Array(elasticBoundarySampleCount);
+  for (let index = 0; index < elasticBoundarySampleCount; index += 1) {
+    const previous = radii[(index - 1 + elasticBoundarySampleCount) % elasticBoundarySampleCount];
+    const current = radii[index];
+    const next = radii[(index + 1) % elasticBoundarySampleCount];
+    smoothed[index] = previous * 0.2 + current * 0.6 + next * 0.2;
+  }
+
+  return smoothed;
+}
+
 function estimateArea(values: Float32Array, offset: number, cellArea: number): number {
   let insideSamples = 0;
   for (let index = 0; index < values.length; index += 1) {
@@ -469,6 +547,7 @@ export class ElasticContactField {
     this.frame = {
       contacts: [],
       membraneLinks: [],
+      boundaryRadii: new Float32Array(elasticBoundarySampleCount).fill(1),
       contactRadius: controls.seedRadiusScale,
       bridgeRadius: controls.seedRadiusScale * controls.bridgeRadiusRatio,
       membraneBridgeRadius: controls.seedRadiusScale
@@ -601,6 +680,13 @@ export class ElasticContactField {
         active: item.active,
       })),
       membraneLinks,
+      boundaryRadii: sampleBoundaryRadii(
+        items,
+        membraneLinks,
+        metrics,
+        this.controls,
+        this.contourOffset,
+      ),
       contactRadius: metrics.seedRadius,
       bridgeRadius: metrics.bridgeRadius,
       membraneBridgeRadius: metrics.membraneBridgeRadius,
