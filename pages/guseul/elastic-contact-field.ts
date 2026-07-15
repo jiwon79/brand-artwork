@@ -22,8 +22,9 @@ export type ElasticFieldControls = {
   releaseLifetime: number;
   springFrequency: number;
   springDamping: number;
-  specWarpMode?: 'harmonic' | 'radial';
+  specWarpMode?: 'boundary' | 'harmonic' | 'radial';
   specRayDebugEnabled?: boolean;
+  specBoundarySamples?: number;
   specWarpCenterStiffness?: number;
   specWarpContactStiffness?: number;
   specWarpRestStiffness?: number;
@@ -750,6 +751,530 @@ class RadialSpecBoundarySampler {
   }
 }
 
+type ContourSegment = {
+  start: ElasticVec2;
+  end: ElasticVec2;
+};
+
+class BoundarySpecWarpSolver {
+  readonly map = new Float32Array(specWarpCellCount * 2);
+  revision = 0;
+
+  private readonly values = new Float32Array(specWarpCellCount);
+  private readonly inside = new Uint8Array(specWarpCellCount);
+  private lastSignature = '';
+  private previousSeam: ElasticVec2 | null = null;
+
+  constructor() {
+    this.writeIdentityMap();
+  }
+
+  solve(
+    items: Contact[],
+    membraneLinks: ElasticMembraneLink[],
+    metrics: ShapeMetrics,
+    controls: ElasticFieldControls,
+    contourOffset: number,
+  ): Float32Array {
+    const boundarySamples = Math.round(clamp(controls.specBoundarySamples ?? 48, 16, 128));
+    const signature = [
+      contourOffset,
+      metrics.seedRadius,
+      metrics.bridgeRadius,
+      metrics.membraneBridgeRadius,
+      controls.edgeConcavity,
+      controls.fieldSmoothness,
+      boundarySamples,
+      ...metrics.contactRadii,
+      ...items.flatMap((item) => [
+        item.position.x,
+        item.position.y,
+        item.influence,
+      ]),
+      ...membraneLinks.flatMap((link) => [
+        link.start.x,
+        link.start.y,
+        link.end.x,
+        link.end.y,
+        link.influence,
+        link.fillTriangle,
+      ]),
+    ].map((value) => value.toFixed(5)).join('|');
+
+    if (signature === this.lastSignature) return this.map;
+    this.lastSignature = signature;
+
+    const resolution = elasticSpecWarpResolution;
+    const spacing = elasticSpecWarpExtent * 2 / (resolution - 1);
+    this.sampleField(
+      items,
+      membraneLinks,
+      metrics,
+      controls,
+      contourOffset,
+      spacing,
+    );
+    const contour = this.extractPrimaryContour(spacing);
+
+    if (contour.length < 3) {
+      this.writeIdentityMap();
+      this.revision += 1;
+      return this.map;
+    }
+
+    const orderedContour = this.orderContour(contour);
+    const boundaryCage = this.resampleContour(orderedContour, boundarySamples);
+    const boundaryCoordinates = boundaryCage.map((_, index) => {
+      const angle = index / boundaryCage.length * Math.PI * 2;
+      return { x: Math.cos(angle), y: Math.sin(angle) };
+    });
+    const distances = new Float64Array(boundaryCage.length);
+    const halfAngleTangents = new Float64Array(boundaryCage.length);
+
+    for (let row = 0; row < resolution; row += 1) {
+      const y = -elasticSpecWarpExtent + row * spacing;
+      for (let column = 0; column < resolution; column += 1) {
+        const x = -elasticSpecWarpExtent + column * spacing;
+        const index = row * resolution + column;
+        const point = { x, y };
+        if (this.inside[index] !== 0) {
+          const coordinate = this.meanValueCoordinate(
+            point,
+            boundaryCage,
+            boundaryCoordinates,
+            distances,
+            halfAngleTangents,
+          );
+          this.map[index * 2] = coordinate.x;
+          this.map[index * 2 + 1] = coordinate.y;
+          continue;
+        }
+
+        if (this.hasInsideNeighbor(row, column, resolution)) {
+          const coordinate = this.closestBoundaryCoordinate(
+            point,
+            boundaryCage,
+            boundaryCoordinates,
+          );
+          this.map[index * 2] = coordinate.x;
+          this.map[index * 2 + 1] = coordinate.y;
+        } else {
+          const pointRadius = Math.max(Math.hypot(x, y), 0.001);
+          this.map[index * 2] = x / pointRadius;
+          this.map[index * 2 + 1] = y / pointRadius;
+        }
+      }
+    }
+
+    const center = Math.floor(resolution / 2);
+    const centerIndex = center * resolution + center;
+    const centerCoordinate = {
+      x: this.map[centerIndex * 2],
+      y: this.map[centerIndex * 2 + 1],
+    };
+    this.centerDiskMap(centerCoordinate);
+
+    this.revision += 1;
+    return this.map;
+  }
+
+  private sampleField(
+    items: Contact[],
+    membraneLinks: ElasticMembraneLink[],
+    metrics: ShapeMetrics,
+    controls: ElasticFieldControls,
+    contourOffset: number,
+    spacing: number,
+  ): void {
+    const resolution = elasticSpecWarpResolution;
+    for (let row = 0; row < resolution; row += 1) {
+      const y = -elasticSpecWarpExtent + row * spacing;
+      for (let column = 0; column < resolution; column += 1) {
+        const x = -elasticSpecWarpExtent + column * spacing;
+        const index = row * resolution + column;
+        const value = rawShapeDistance(
+          { x, y },
+          items,
+          membraneLinks,
+          metrics,
+          controls,
+        ) - contourOffset;
+        this.values[index] = value;
+        this.inside[index] = value <= 0 ? 1 : 0;
+      }
+    }
+  }
+
+  private extractPrimaryContour(spacing: number): ElasticVec2[] {
+    const resolution = elasticSpecWarpResolution;
+    const segments: ContourSegment[] = [];
+    const edgePoint = (
+      first: ElasticVec2,
+      second: ElasticVec2,
+      firstValue: number,
+      secondValue: number,
+    ): ElasticVec2 => {
+      const denominator = firstValue - secondValue;
+      const amount = clamp(
+        Math.abs(denominator) < 0.000001 ? 0.5 : firstValue / denominator,
+        0,
+        1,
+      );
+      return {
+        x: first.x + (second.x - first.x) * amount,
+        y: first.y + (second.y - first.y) * amount,
+      };
+    };
+
+    for (let row = 0; row + 1 < resolution; row += 1) {
+      const top = -elasticSpecWarpExtent + row * spacing;
+      const bottom = top + spacing;
+      for (let column = 0; column + 1 < resolution; column += 1) {
+        const left = -elasticSpecWarpExtent + column * spacing;
+        const right = left + spacing;
+        const topLeftIndex = row * resolution + column;
+        const topRightIndex = topLeftIndex + 1;
+        const bottomLeftIndex = topLeftIndex + resolution;
+        const bottomRightIndex = bottomLeftIndex + 1;
+        const values = [
+          this.values[topLeftIndex],
+          this.values[topRightIndex],
+          this.values[bottomRightIndex],
+          this.values[bottomLeftIndex],
+        ];
+        const points = [
+          { x: left, y: top },
+          { x: right, y: top },
+          { x: right, y: bottom },
+          { x: left, y: bottom },
+        ];
+        const mask = values.reduce(
+          (result, value, index) => result | (value <= 0 ? 1 << index : 0),
+          0,
+        );
+        if (mask === 0 || mask === 15) continue;
+
+        const edges = [
+          edgePoint(points[0], points[1], values[0], values[1]),
+          edgePoint(points[1], points[2], values[1], values[2]),
+          edgePoint(points[2], points[3], values[2], values[3]),
+          edgePoint(points[3], points[0], values[3], values[0]),
+        ];
+        const addSegment = (firstEdge: number, secondEdge: number): void => {
+          segments.push({ start: edges[firstEdge], end: edges[secondEdge] });
+        };
+        const centerInside = values.reduce((sum, value) => sum + value, 0) * 0.25 <= 0;
+
+        switch (mask) {
+          case 1: addSegment(3, 0); break;
+          case 2: addSegment(0, 1); break;
+          case 3: addSegment(3, 1); break;
+          case 4: addSegment(1, 2); break;
+          case 5:
+            if (centerInside) {
+              addSegment(0, 1);
+              addSegment(2, 3);
+            } else {
+              addSegment(3, 0);
+              addSegment(1, 2);
+            }
+            break;
+          case 6: addSegment(0, 2); break;
+          case 7: addSegment(3, 2); break;
+          case 8: addSegment(2, 3); break;
+          case 9: addSegment(0, 2); break;
+          case 10:
+            if (centerInside) {
+              addSegment(3, 0);
+              addSegment(1, 2);
+            } else {
+              addSegment(0, 1);
+              addSegment(2, 3);
+            }
+            break;
+          case 11: addSegment(1, 2); break;
+          case 12: addSegment(3, 1); break;
+          case 13: addSegment(0, 1); break;
+          case 14: addSegment(3, 0); break;
+          default: break;
+        }
+      }
+    }
+
+    const keyScale = 1 / Math.max(spacing * 0.0001, 0.000001);
+    const pointKey = (point: ElasticVec2): string => (
+      `${Math.round(point.x * keyScale)},${Math.round(point.y * keyScale)}`
+    );
+    const pointsByKey = new Map<string, ElasticVec2>();
+    const adjacency = new Map<string, Array<{ segment: number; other: string }>>();
+
+    segments.forEach((segment, index) => {
+      const startKey = pointKey(segment.start);
+      const endKey = pointKey(segment.end);
+      pointsByKey.set(startKey, segment.start);
+      pointsByKey.set(endKey, segment.end);
+      const startLinks = adjacency.get(startKey) ?? [];
+      const endLinks = adjacency.get(endKey) ?? [];
+      startLinks.push({ segment: index, other: endKey });
+      endLinks.push({ segment: index, other: startKey });
+      adjacency.set(startKey, startLinks);
+      adjacency.set(endKey, endLinks);
+    });
+
+    const visited = new Uint8Array(segments.length);
+    const loops: ElasticVec2[][] = [];
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+      if (visited[segmentIndex] !== 0) continue;
+      const startKey = pointKey(segments[segmentIndex].start);
+      let currentKey = startKey;
+      let currentSegment = segmentIndex;
+      const loop: ElasticVec2[] = [];
+
+      for (let guard = 0; guard <= segments.length; guard += 1) {
+        if (visited[currentSegment] !== 0) break;
+        visited[currentSegment] = 1;
+        const point = pointsByKey.get(currentKey);
+        if (point) loop.push(point);
+        const segment = segments[currentSegment];
+        const firstKey = pointKey(segment.start);
+        const nextKey = currentKey === firstKey
+          ? pointKey(segment.end)
+          : firstKey;
+        if (nextKey === startKey) {
+          if (loop.length >= 3) loops.push(loop);
+          break;
+        }
+        const nextLink = (adjacency.get(nextKey) ?? []).find(
+          (link) => visited[link.segment] === 0,
+        );
+        if (!nextLink) break;
+        currentKey = nextKey;
+        currentSegment = nextLink.segment;
+      }
+    }
+
+    const contourArea = (loop: ElasticVec2[]): number => loop.reduce((area, point, index) => {
+      const next = loop[(index + 1) % loop.length];
+      return area + point.x * next.y - next.x * point.y;
+    }, 0) * 0.5;
+
+    return loops.reduce<ElasticVec2[]>((largest, loop) => (
+      Math.abs(contourArea(loop)) > Math.abs(contourArea(largest)) ? loop : largest
+    ), []);
+  }
+
+  private orderContour(contour: ElasticVec2[]): ElasticVec2[] {
+    const signedArea = contour.reduce((area, point, index) => {
+      const next = contour[(index + 1) % contour.length];
+      return area + point.x * next.y - next.x * point.y;
+    }, 0) * 0.5;
+    const oriented = signedArea >= 0 ? [...contour] : [...contour].reverse();
+    let seamIndex = 0;
+
+    if (this.previousSeam) {
+      let closestDistance = Number.POSITIVE_INFINITY;
+      oriented.forEach((point, index) => {
+        const distance = length(subtract(point, this.previousSeam!));
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          seamIndex = index;
+        }
+      });
+    } else {
+      oriented.forEach((point, index) => {
+        const current = oriented[seamIndex];
+        if (point.x > current.x || (point.x === current.x && Math.abs(point.y) < Math.abs(current.y))) {
+          seamIndex = index;
+        }
+      });
+    }
+
+    const ordered = [...oriented.slice(seamIndex), ...oriented.slice(0, seamIndex)];
+    this.previousSeam = { ...ordered[0] };
+    return ordered;
+  }
+
+  private resampleContour(contour: ElasticVec2[], sampleCount: number): ElasticVec2[] {
+    const segmentLengths = new Float64Array(contour.length);
+    let perimeter = 0;
+    for (let index = 0; index < contour.length; index += 1) {
+      const next = contour[(index + 1) % contour.length];
+      const segmentLength = length(subtract(next, contour[index]));
+      segmentLengths[index] = segmentLength;
+      perimeter += segmentLength;
+    }
+
+    const samples: ElasticVec2[] = [];
+    let segmentIndex = 0;
+    let segmentStartDistance = 0;
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+      const targetDistance = perimeter * sampleIndex / sampleCount;
+      while (
+        segmentIndex + 1 < contour.length
+        && segmentStartDistance + segmentLengths[segmentIndex] < targetDistance
+      ) {
+        segmentStartDistance += segmentLengths[segmentIndex];
+        segmentIndex += 1;
+      }
+      const nextIndex = (segmentIndex + 1) % contour.length;
+      const segmentLength = Math.max(segmentLengths[segmentIndex], 0.000001);
+      const amount = clamp(
+        (targetDistance - segmentStartDistance) / segmentLength,
+        0,
+        1,
+      );
+      samples.push(add(
+        scale(contour[segmentIndex], 1 - amount),
+        scale(contour[nextIndex], amount),
+      ));
+    }
+
+    return samples;
+  }
+
+  private meanValueCoordinate(
+    point: ElasticVec2,
+    cage: ElasticVec2[],
+    coordinates: ElasticVec2[],
+    distances: Float64Array,
+    halfAngleTangents: Float64Array,
+  ): ElasticVec2 {
+    const vertexEpsilon = 0.000001;
+
+    for (let index = 0; index < cage.length; index += 1) {
+      const dx = cage[index].x - point.x;
+      const dy = cage[index].y - point.y;
+      const distance = Math.hypot(dx, dy);
+      distances[index] = distance;
+      if (distance <= vertexEpsilon) return coordinates[index];
+    }
+
+    for (let index = 0; index < cage.length; index += 1) {
+      const nextIndex = (index + 1) % cage.length;
+      const firstX = cage[index].x - point.x;
+      const firstY = cage[index].y - point.y;
+      const secondX = cage[nextIndex].x - point.x;
+      const secondY = cage[nextIndex].y - point.y;
+      const cross = firstX * secondY - firstY * secondX;
+      const pairDot = firstX * secondX + firstY * secondY;
+
+      if (Math.abs(cross) <= vertexEpsilon && pairDot <= 0) {
+        const amount = distances[index]
+          / Math.max(distances[index] + distances[nextIndex], vertexEpsilon);
+        return add(
+          scale(coordinates[index], 1 - amount),
+          scale(coordinates[nextIndex], amount),
+        );
+      }
+
+      const denominator = distances[index] * distances[nextIndex] + pairDot;
+      halfAngleTangents[index] = Math.abs(denominator) <= 0.0000000001
+        ? Math.sign(cross || 1) * 1_000_000
+        : cross / denominator;
+    }
+
+    let coordinateX = 0;
+    let coordinateY = 0;
+    let weightSum = 0;
+    for (let index = 0; index < cage.length; index += 1) {
+      const previousIndex = (index + cage.length - 1) % cage.length;
+      const weight = (
+        halfAngleTangents[previousIndex] + halfAngleTangents[index]
+      ) / Math.max(distances[index], vertexEpsilon);
+      coordinateX += coordinates[index].x * weight;
+      coordinateY += coordinates[index].y * weight;
+      weightSum += weight;
+    }
+
+    if (Number.isFinite(weightSum) && Math.abs(weightSum) > 0.00000001) {
+      return {
+        x: coordinateX / weightSum,
+        y: coordinateY / weightSum,
+      };
+    }
+
+    return this.closestBoundaryCoordinate(point, cage, coordinates);
+  }
+
+  private closestBoundaryCoordinate(
+    point: ElasticVec2,
+    contour: ElasticVec2[],
+    coordinates: ElasticVec2[],
+  ): ElasticVec2 {
+    let closestDistance = Number.POSITIVE_INFINITY;
+    let closest = coordinates[0];
+
+    for (let index = 0; index < contour.length; index += 1) {
+      const nextIndex = (index + 1) % contour.length;
+      const start = contour[index];
+      const end = contour[nextIndex];
+      const segment = subtract(end, start);
+      const segmentLengthSquared = Math.max(dot(segment, segment), 0.000001);
+      const amount = clamp(dot(subtract(point, start), segment) / segmentLengthSquared, 0, 1);
+      const projection = add(start, scale(segment, amount));
+      const distance = length(subtract(point, projection));
+      if (distance >= closestDistance) continue;
+      closestDistance = distance;
+      const startCoordinate = coordinates[index];
+      const endCoordinate = coordinates[nextIndex];
+      const blended = add(
+        scale(startCoordinate, 1 - amount),
+        scale(endCoordinate, amount),
+      );
+      const blendedLength = Math.max(length(blended), 0.000001);
+      closest = scale(blended, 1 / blendedLength);
+    }
+
+    return closest;
+  }
+
+  private hasInsideNeighbor(row: number, column: number, resolution: number): boolean {
+    const index = row * resolution + column;
+    return (column > 0 && this.inside[index - 1] !== 0)
+      || (column + 1 < resolution && this.inside[index + 1] !== 0)
+      || (row > 0 && this.inside[index - resolution] !== 0)
+      || (row + 1 < resolution && this.inside[index + resolution] !== 0);
+  }
+
+  private centerDiskMap(center: ElasticVec2): void {
+    const centerRadiusSquared = dot(center, center);
+    if (centerRadiusSquared <= 0.0000001 || centerRadiusSquared >= 0.998001) return;
+
+    for (let index = 0; index < specWarpCellCount; index += 1) {
+      const x = this.map[index * 2];
+      const y = this.map[index * 2 + 1];
+      const numeratorX = x - center.x;
+      const numeratorY = y - center.y;
+      const denominatorX = 1 - (center.x * x + center.y * y);
+      const denominatorY = center.y * x - center.x * y;
+      const denominator = Math.max(
+        denominatorX * denominatorX + denominatorY * denominatorY,
+        0.000001,
+      );
+      this.map[index * 2] = (
+        numeratorX * denominatorX + numeratorY * denominatorY
+      ) / denominator;
+      this.map[index * 2 + 1] = (
+        numeratorY * denominatorX - numeratorX * denominatorY
+      ) / denominator;
+    }
+  }
+
+  private writeIdentityMap(): void {
+    const resolution = elasticSpecWarpResolution;
+    const spacing = elasticSpecWarpExtent * 2 / (resolution - 1);
+    for (let row = 0; row < resolution; row += 1) {
+      const y = -elasticSpecWarpExtent + row * spacing;
+      for (let column = 0; column < resolution; column += 1) {
+        const x = -elasticSpecWarpExtent + column * spacing;
+        const index = row * resolution + column;
+        this.map[index * 2] = x;
+        this.map[index * 2 + 1] = y;
+      }
+    }
+  }
+}
+
 function estimateArea(values: Float32Array, offset: number, cellArea: number): number {
   let insideSamples = 0;
   for (let index = 0; index < values.length; index += 1) {
@@ -824,17 +1349,23 @@ function solveContourOffset(
 export class ElasticContactField {
   private readonly contacts = new Map<number, Contact>();
   private readonly specWarpSolver = new HarmonicSpecWarpSolver();
+  private readonly boundarySpecWarpSolver = new BoundarySpecWarpSolver();
   private readonly specBoundarySampler = new RadialSpecBoundarySampler();
   private contourOffset: number;
   private frame: ElasticShapeFrame;
 
   constructor(private readonly controls: ElasticFieldControls) {
     this.contourOffset = 1 - controls.seedRadiusScale;
+    const initialWarpMode = controls.specWarpMode ?? 'harmonic';
+    const initialWarpMap = initialWarpMode === 'boundary'
+      ? this.boundarySpecWarpSolver.map
+      : this.specWarpSolver.map;
+    const initialWarpRevision = initialWarpMode === 'boundary' ? 1_000_000 : 2_000_000;
     this.frame = {
       contacts: [],
       membraneLinks: [],
-      specWarpMap: this.specWarpSolver.map,
-      specWarpRevision: this.specWarpSolver.revision,
+      specWarpMap: initialWarpMap,
+      specWarpRevision: initialWarpRevision,
       specBoundaryRadii: this.specBoundarySampler.radii,
       specBoundaryRevision: this.specBoundarySampler.revision,
       contactRadius: controls.seedRadiusScale,
@@ -960,9 +1491,20 @@ export class ElasticContactField {
     const pressureBlend = 1 - Math.exp(-this.controls.pressureResponse * delta);
     this.contourOffset += (targetOffset - this.contourOffset) * pressureBlend;
     const specWarpMode = this.controls.specWarpMode ?? 'harmonic';
-    const specWarpMap = specWarpMode === 'harmonic'
-      ? this.specWarpSolver.solve(items, metrics, this.controls)
-      : this.specWarpSolver.map;
+    const specWarpMap = specWarpMode === 'boundary'
+      ? this.boundarySpecWarpSolver.solve(
+        items,
+        membraneLinks,
+        metrics,
+        this.controls,
+        this.contourOffset,
+      )
+      : specWarpMode === 'harmonic'
+        ? this.specWarpSolver.solve(items, metrics, this.controls)
+        : this.specWarpSolver.map;
+    const specWarpRevision = specWarpMode === 'boundary'
+      ? 1_000_000 + this.boundarySpecWarpSolver.revision
+      : 2_000_000 + this.specWarpSolver.revision;
     const specBoundaryRadii = specWarpMode === 'radial' || this.controls.specRayDebugEnabled
       ? this.specBoundarySampler.solve(
         items,
@@ -983,7 +1525,7 @@ export class ElasticContactField {
       })),
       membraneLinks,
       specWarpMap,
-      specWarpRevision: this.specWarpSolver.revision,
+      specWarpRevision,
       specBoundaryRadii,
       specBoundaryRevision: this.specBoundarySampler.revision,
       contactRadius: metrics.seedRadius,

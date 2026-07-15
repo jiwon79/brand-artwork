@@ -55,7 +55,7 @@ export type GpuGlassControls = {
   rimEnabled: boolean;
   hardRimEnabled: boolean;
   caRimEnabled: boolean;
-  specWarpMode: 'harmonic' | 'radial';
+  specWarpMode: 'boundary' | 'harmonic' | 'radial';
   specRayDebugEnabled: boolean;
   specRayDebugCount: number;
   specDebugEnabled: boolean;
@@ -696,14 +696,17 @@ void main() {
     const float PI = 3.141592653589793;
     const float TAU = 6.283185307179586;
     float pointRadius = length(point);
-    float angle = atan(point.y, point.x);
+    vec2 materialPoint = inverseSpecWarp(point);
+    float materialRadius = length(materialPoint);
+    float angle = atan(materialPoint.y, materialPoint.x);
     float rayCount = float(max(uSpecRayDebugCount, 1));
     float rayCoordinate = ((angle + PI) / TAU) * rayCount;
     float angularDistance = abs(fract(rayCoordinate + 0.5) - 0.5)
-      * (TAU / rayCount) * pointRadius * uRadiusCss;
+      * (TAU / rayCount) * max(materialRadius, 0.04) * uRadiusCss;
     float rayMask = 1.0 - smoothRange(0.55, 1.45, angularDistance);
-    float sampledBoundary = sampleSpecBoundaryRadius(point);
-    float boundaryDistance = abs(pointRadius - sampledBoundary) * uRadiusCss;
+    float boundaryDistance = uSpecWarpMode == 1
+      ? abs(pointRadius - sampleSpecBoundaryRadius(point)) * uRadiusCss
+      : abs(shapeDistance) * uRadiusCss;
     float boundaryMask = 1.0 - smoothRange(0.7, 1.8, boundaryDistance);
     float centerMask = 1.0 - smoothRange(2.0, 4.5, pointRadius * uRadiusCss);
     vec3 rayColor = vec3(0.02, 0.5, 0.92);
@@ -1087,7 +1090,10 @@ export class GuseulWebGLRenderer {
     gl.uniform1i(this.uniforms.uRimEnabled, Number(controls.rimEnabled));
     gl.uniform1i(this.uniforms.uHardRimEnabled, Number(controls.hardRimEnabled));
     gl.uniform1i(this.uniforms.uCaRimEnabled, Number(controls.caRimEnabled));
-    gl.uniform1i(this.uniforms.uSpecWarpMode, controls.specWarpMode === 'radial' ? 1 : 0);
+    gl.uniform1i(
+      this.uniforms.uSpecWarpMode,
+      controls.specWarpMode === 'radial' ? 1 : controls.specWarpMode === 'boundary' ? 2 : 0,
+    );
     gl.uniform1i(this.uniforms.uSpecRayDebugEnabled, Number(controls.specRayDebugEnabled));
     gl.uniform1i(this.uniforms.uSpecRayDebugCount, Math.round(controls.specRayDebugCount));
     gl.uniform1i(this.uniforms.uSpecDebugEnabled, Number(controls.specDebugEnabled));

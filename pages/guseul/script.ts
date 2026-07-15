@@ -94,7 +94,7 @@ type PreparedSpecHighlight = SpecHighlight & {
 };
 
 type SpecDebugColor = 'red' | 'black';
-type SpecWarpMode = 'harmonic' | 'radial';
+type SpecWarpMode = 'boundary' | 'harmonic' | 'radial';
 
 type SpecSample = {
   shell: number;
@@ -292,9 +292,16 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
-  specWarpMode: (urlParams.get('specWarp') === 'harmonic' ? 'harmonic' : 'radial') as SpecWarpMode,
+  specWarpMode: (
+    urlParams.get('specWarp') === 'harmonic'
+      ? 'harmonic'
+      : urlParams.get('specWarp') === 'radial'
+        ? 'radial'
+        : 'boundary'
+  ) as SpecWarpMode,
   specRayDebugEnabled: urlParams.get('specRays') === '1',
   specRayDebugCount: 24,
+  specBoundarySamples: 48,
   specWarpCenterStiffness: 80,
   specWarpContactStiffness: 36,
   specWarpRestStiffness: 0.02,
@@ -442,6 +449,7 @@ let renderTimeTotal = 0;
 let renderTimeSamples = 0;
 let elasticUpdateMax = 0;
 const renderTimingEnabled = urlParams.get('perf') === '1';
+const elasticMouseDebugEnabled = urlParams.get('elasticMouse') === '1';
 
 function createRenderer(): Renderer {
   if (urlParams.get('renderer') === 'canvas') {
@@ -1027,9 +1035,11 @@ function setupGui(): void {
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
   const specWarp = spec.addFolder('elastic warp');
-  specWarp.add(layerControls, 'specWarpMode', ['radial', 'harmonic']).name('mode');
-  specWarp.add(layerControls, 'specRayDebugEnabled').name('show radial rays');
+  specWarp.add(layerControls, 'specWarpMode', ['boundary', 'radial', 'harmonic']).name('mode');
+  specWarp.add(layerControls, 'specRayDebugEnabled').name('show material rays');
   specWarp.add(layerControls, 'specRayDebugCount', 8, 64, 1).name('visible ray count');
+  const boundaryWarp = specWarp.addFolder('boundary solver');
+  boundaryWarp.add(layerControls, 'specBoundarySamples', 16, 128, 4).name('boundary samples');
   const harmonicWarp = specWarp.addFolder('harmonic solver');
   harmonicWarp.add(layerControls, 'specWarpCenterStiffness', 4, 160, 1).name('center pin');
   harmonicWarp.add(layerControls, 'specWarpContactStiffness', 4, 100, 1).name('contact stiffness');
@@ -1059,6 +1069,7 @@ function setupGui(): void {
   edgeProjection.close();
   largeSpec.close();
   mediumSpec.close();
+  boundaryWarp.close();
   harmonicWarp.close();
   specWarp.close();
   spec.close();
@@ -1871,7 +1882,7 @@ function normalizedElasticPoint(clientX: number, clientY: number): ElasticVec2 {
 }
 
 function shouldUseElasticPointer(event: PointerEvent): boolean {
-  return event.pointerType !== 'mouse' || event.shiftKey;
+  return elasticMouseDebugEnabled || event.pointerType !== 'mouse' || event.shiftKey;
 }
 
 canvas.addEventListener('pointerdown', (event) => {
@@ -1879,7 +1890,8 @@ canvas.addEventListener('pointerdown', (event) => {
   const elasticPointer = shouldUseElasticPointer(event);
 
   if (elasticPointer) {
-    const persistent = event.pointerType === 'mouse' && event.shiftKey;
+    const persistent = event.pointerType === 'mouse'
+      && (event.shiftKey || elasticMouseDebugEnabled);
     const contactId = persistent ? persistentMouseContactId : event.pointerId;
     if (!elasticField.addContact(contactId, position, persistent)) return;
     if (persistent) persistentMouseContactId -= 1;
