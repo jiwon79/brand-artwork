@@ -22,6 +22,10 @@ export type ElasticFieldControls = {
   releaseLifetime: number;
   springFrequency: number;
   springDamping: number;
+  specWarpCenterStiffness?: number;
+  specWarpContactStiffness?: number;
+  specWarpRestStiffness?: number;
+  specWarpIterations?: number;
 };
 
 export type ElasticContactSample = {
@@ -45,7 +49,8 @@ export type ElasticMembraneLink = {
 export type ElasticShapeFrame = {
   contacts: ElasticContactSample[];
   membraneLinks: ElasticMembraneLink[];
-  boundaryRadii: Float32Array;
+  specWarpMap: Float32Array;
+  specWarpRevision: number;
   contactRadius: number;
   bridgeRadius: number;
   membraneBridgeRadius: number;
@@ -79,9 +84,9 @@ const maxContacts = 10;
 const maxMembraneLinks = maxContacts * 2;
 const areaSampleResolution = 76;
 const baseArea = Math.PI;
-export const elasticBoundarySampleCount = 128;
-const boundaryRadialSteps = 40;
-const boundaryBinaryIterations = 8;
+export const elasticSpecWarpResolution = 65;
+export const elasticSpecWarpExtent = 3.2;
+const specWarpCellCount = elasticSpecWarpResolution * elasticSpecWarpResolution;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -392,78 +397,224 @@ function rawShapeDistance(
   return distanceToShape;
 }
 
-// Sample the live SDF along rays so the shader can map it back to the unit disk.
-function sampleBoundaryRadii(
-  items: Contact[],
-  membraneLinks: ElasticMembraneLink[],
-  metrics: ShapeMetrics,
-  controls: ElasticFieldControls,
-  contourOffset: number,
-): Float32Array {
-  const radii = new Float32Array(elasticBoundarySampleCount);
-
-  if (items.length === 0) {
-    radii.fill(1);
-    return radii;
-  }
-
-  const farthestExtent = items.reduce((maximum, item, index) => Math.max(
-    maximum,
-    length(item.position) + metrics.contactRadii[index],
-  ), 1);
-  const maximumRadius = Math.max(
-    1.5,
-    farthestExtent + Math.abs(contourOffset) + controls.fieldSmoothness * 0.5 + 0.2,
+function compactSupport(distance: number, inner: number, outer: number): number {
+  const progress = 1 - clamp(
+    (distance - inner) / Math.max(outer - inner, 0.0001),
+    0,
+    1,
   );
-  const radialStep = maximumRadius / boundaryRadialSteps;
+  return smoothInfluence(progress);
+}
 
-  for (let angleIndex = 0; angleIndex < elasticBoundarySampleCount; angleIndex += 1) {
-    const angle = angleIndex / elasticBoundarySampleCount * Math.PI * 2;
-    const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-    let outermostInside = 0;
+class HarmonicSpecWarpSolver {
+  readonly map = new Float32Array(specWarpCellCount * 2);
+  revision = 0;
 
-    for (let radialIndex = 1; radialIndex <= boundaryRadialSteps; radialIndex += 1) {
-      const radius = radialIndex * radialStep;
-      const distance = rawShapeDistance(
-        scale(direction, radius),
-        items,
-        membraneLinks,
-        metrics,
-        controls,
-      ) - contourOffset;
+  private displacementX = new Float32Array(specWarpCellCount);
+  private displacementY = new Float32Array(specWarpCellCount);
+  private nextX = new Float32Array(specWarpCellCount);
+  private nextY = new Float32Array(specWarpCellCount);
+  private readonly mask = new Uint8Array(specWarpCellCount);
+  private readonly constraintWeight = new Float32Array(specWarpCellCount);
+  private readonly constraintX = new Float32Array(specWarpCellCount);
+  private readonly constraintY = new Float32Array(specWarpCellCount);
+  private lastSignature = 'identity';
 
-      if (distance <= 0) outermostInside = radius;
-    }
-
-    let low = outermostInside;
-    let high = Math.min(maximumRadius, outermostInside + radialStep);
-
-    for (let iteration = 0; iteration < boundaryBinaryIterations; iteration += 1) {
-      const midpoint = (low + high) * 0.5;
-      const distance = rawShapeDistance(
-        scale(direction, midpoint),
-        items,
-        membraneLinks,
-        metrics,
-        controls,
-      ) - contourOffset;
-
-      if (distance <= 0) low = midpoint;
-      else high = midpoint;
-    }
-
-    radii[angleIndex] = (low + high) * 0.5;
+  constructor() {
+    this.writeIdentityMap();
   }
 
-  const smoothed = new Float32Array(elasticBoundarySampleCount);
-  for (let index = 0; index < elasticBoundarySampleCount; index += 1) {
-    const previous = radii[(index - 1 + elasticBoundarySampleCount) % elasticBoundarySampleCount];
-    const current = radii[index];
-    const next = radii[(index + 1) % elasticBoundarySampleCount];
-    smoothed[index] = previous * 0.2 + current * 0.6 + next * 0.2;
+  solve(
+    items: Contact[],
+    metrics: ShapeMetrics,
+    controls: ElasticFieldControls,
+  ): Float32Array {
+    if (items.length === 0) {
+      if (this.lastSignature !== 'identity') {
+        this.lastSignature = 'identity';
+        this.writeIdentityMap();
+        this.revision += 1;
+      }
+      return this.map;
+    }
+
+    const centerStiffness = controls.specWarpCenterStiffness ?? 80;
+    const contactStiffness = controls.specWarpContactStiffness ?? 36;
+    const restStiffness = controls.specWarpRestStiffness ?? 0.02;
+    const iterations = Math.round(clamp(controls.specWarpIterations ?? 4, 2, 32));
+    const signature = [
+      metrics.seedRadius,
+      metrics.bridgeRadius,
+      metrics.membraneBridgeRadius,
+      centerStiffness,
+      contactStiffness,
+      restStiffness,
+      iterations,
+      ...metrics.contactRadii,
+      ...items.flatMap((item) => [
+        item.anchor.x,
+        item.anchor.y,
+        item.position.x,
+        item.position.y,
+        item.influence,
+      ]),
+    ].map((value) => value.toFixed(5)).join('|');
+
+    if (signature === this.lastSignature) {
+      return this.map;
+    }
+    this.lastSignature = signature;
+
+    const resolution = elasticSpecWarpResolution;
+    const spacing = elasticSpecWarpExtent * 2 / (resolution - 1);
+    const centerRadius = Math.max(spacing * 2.4, 0.08);
+    // The visible SDF still clips the glass. This continuous support only carries
+    // material coordinates, so concave contour branches cannot swap underneath it.
+    const supportRadius = Math.min(
+      elasticSpecWarpExtent - spacing,
+      items.reduce((maximum, item, index) => Math.max(
+        maximum,
+        length(item.position) + metrics.contactRadii[index] + 0.5,
+      ), 1.25),
+    );
+
+    for (let row = 0; row < resolution; row += 1) {
+      const y = -elasticSpecWarpExtent + row * spacing;
+      for (let column = 0; column < resolution; column += 1) {
+        const x = -elasticSpecWarpExtent + column * spacing;
+        const index = row * resolution + column;
+        const centerDistance = Math.hypot(x, y);
+        this.mask[index] = centerDistance <= supportRadius ? 1 : 0;
+        const centerWeight = compactSupport(
+          centerDistance,
+          centerRadius * 0.24,
+          centerRadius,
+        ) * centerStiffness;
+        let targetWeight = centerWeight;
+        let targetX = 0;
+        let targetY = 0;
+        let initialWeight = 1 / (centerDistance * centerDistance + 0.08);
+        let initialX = 0;
+        let initialY = 0;
+
+        for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+          const item = items[itemIndex];
+          const influence = smoothInfluence(item.influence);
+          const distance = Math.hypot(x - item.position.x, y - item.position.y);
+          const contactRadius = Math.max(
+            metrics.contactRadii[itemIndex] * 0.72,
+            spacing * 2.5,
+          );
+          const contactWeight = compactSupport(
+            distance,
+            contactRadius * 0.42,
+            contactRadius,
+          ) * contactStiffness * influence;
+          const displacementX = item.position.x - item.anchor.x;
+          const displacementY = item.position.y - item.anchor.y;
+          targetWeight += contactWeight;
+          targetX += displacementX * contactWeight;
+          targetY += displacementY * contactWeight;
+
+          const interpolationWeight = influence
+            / (distance * distance + contactRadius * contactRadius * 0.38 + 0.01);
+          initialWeight += interpolationWeight;
+          initialX += displacementX * interpolationWeight;
+          initialY += displacementY * interpolationWeight;
+        }
+
+        this.constraintWeight[index] = targetWeight;
+        this.constraintX[index] = targetWeight > 0 ? targetX / targetWeight : 0;
+        this.constraintY[index] = targetWeight > 0 ? targetY / targetWeight : 0;
+        this.displacementX[index] = initialX / initialWeight;
+        this.displacementY[index] = initialY / initialWeight;
+      }
+    }
+
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+      for (let row = 0; row < resolution; row += 1) {
+        for (let column = 0; column < resolution; column += 1) {
+          const index = row * resolution + column;
+          if (this.mask[index] === 0) {
+            this.nextX[index] = this.displacementX[index];
+            this.nextY[index] = this.displacementY[index];
+            continue;
+          }
+
+          let sumX = 0;
+          let sumY = 0;
+          let neighborCount = 0;
+          const left = index - 1;
+          const right = index + 1;
+          const top = index - resolution;
+          const bottom = index + resolution;
+          if (column > 0 && this.mask[left] !== 0) {
+            sumX += this.displacementX[left];
+            sumY += this.displacementY[left];
+            neighborCount += 1;
+          }
+          if (column + 1 < resolution && this.mask[right] !== 0) {
+            sumX += this.displacementX[right];
+            sumY += this.displacementY[right];
+            neighborCount += 1;
+          }
+          if (row > 0 && this.mask[top] !== 0) {
+            sumX += this.displacementX[top];
+            sumY += this.displacementY[top];
+            neighborCount += 1;
+          }
+          if (row + 1 < resolution && this.mask[bottom] !== 0) {
+            sumX += this.displacementX[bottom];
+            sumY += this.displacementY[bottom];
+            neighborCount += 1;
+          }
+
+          const constraintWeight = this.constraintWeight[index];
+          const denominator = neighborCount + constraintWeight + restStiffness;
+          const solvedX = (
+            sumX + this.constraintX[index] * constraintWeight
+          ) / Math.max(denominator, 0.0001);
+          const solvedY = (
+            sumY + this.constraintY[index] * constraintWeight
+          ) / Math.max(denominator, 0.0001);
+          this.nextX[index] = this.displacementX[index]
+            + (solvedX - this.displacementX[index]) * 0.92;
+          this.nextY[index] = this.displacementY[index]
+            + (solvedY - this.displacementY[index]) * 0.92;
+        }
+      }
+
+      [this.displacementX, this.nextX] = [this.nextX, this.displacementX];
+      [this.displacementY, this.nextY] = [this.nextY, this.displacementY];
+    }
+
+    for (let row = 0; row < resolution; row += 1) {
+      const y = -elasticSpecWarpExtent + row * spacing;
+      for (let column = 0; column < resolution; column += 1) {
+        const x = -elasticSpecWarpExtent + column * spacing;
+        const index = row * resolution + column;
+        this.map[index * 2] = x - this.displacementX[index];
+        this.map[index * 2 + 1] = y - this.displacementY[index];
+      }
+    }
+
+    this.revision += 1;
+    return this.map;
   }
 
-  return smoothed;
+  private writeIdentityMap(): void {
+    const resolution = elasticSpecWarpResolution;
+    const spacing = elasticSpecWarpExtent * 2 / (resolution - 1);
+    for (let row = 0; row < resolution; row += 1) {
+      const y = -elasticSpecWarpExtent + row * spacing;
+      for (let column = 0; column < resolution; column += 1) {
+        const x = -elasticSpecWarpExtent + column * spacing;
+        const index = row * resolution + column;
+        this.map[index * 2] = x;
+        this.map[index * 2 + 1] = y;
+      }
+    }
+  }
 }
 
 function estimateArea(values: Float32Array, offset: number, cellArea: number): number {
@@ -539,6 +690,7 @@ function solveContourOffset(
 
 export class ElasticContactField {
   private readonly contacts = new Map<number, Contact>();
+  private readonly specWarpSolver = new HarmonicSpecWarpSolver();
   private contourOffset: number;
   private frame: ElasticShapeFrame;
 
@@ -547,7 +699,8 @@ export class ElasticContactField {
     this.frame = {
       contacts: [],
       membraneLinks: [],
-      boundaryRadii: new Float32Array(elasticBoundarySampleCount).fill(1),
+      specWarpMap: this.specWarpSolver.map,
+      specWarpRevision: this.specWarpSolver.revision,
       contactRadius: controls.seedRadiusScale,
       bridgeRadius: controls.seedRadiusScale * controls.bridgeRadiusRatio,
       membraneBridgeRadius: controls.seedRadiusScale
@@ -670,6 +823,11 @@ export class ElasticContactField {
     const targetOffset = solveContourOffset(items, membraneLinks, metrics, this.controls);
     const pressureBlend = 1 - Math.exp(-this.controls.pressureResponse * delta);
     this.contourOffset += (targetOffset - this.contourOffset) * pressureBlend;
+    const specWarpMap = this.specWarpSolver.solve(
+      items,
+      metrics,
+      this.controls,
+    );
     this.frame = {
       contacts: items.map((item, index) => ({
         id: item.id,
@@ -680,13 +838,8 @@ export class ElasticContactField {
         active: item.active,
       })),
       membraneLinks,
-      boundaryRadii: sampleBoundaryRadii(
-        items,
-        membraneLinks,
-        metrics,
-        this.controls,
-        this.contourOffset,
-      ),
+      specWarpMap,
+      specWarpRevision: this.specWarpSolver.revision,
       contactRadius: metrics.seedRadius,
       bridgeRadius: metrics.bridgeRadius,
       membraneBridgeRadius: metrics.membraneBridgeRadius,

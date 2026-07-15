@@ -291,11 +291,10 @@ const layerControls = {
   specDebugEnabled: urlParams.get('specDebug') === '1',
   specDebugColor: initialSpecDebugColor,
   specDebugOpacity: 0.82,
-  specWarpCenterWeight: 3,
-  specWarpContactWeight: 3,
-  specWarpBoundaryWeight: 2,
-  specWarpFalloff: 1,
-  specWarpAffineAmount: 0.3,
+  specWarpCenterStiffness: 80,
+  specWarpContactStiffness: 36,
+  specWarpRestStiffness: 0.02,
+  specWarpIterations: 4,
   specLargeIntensity: 3.5,
   specLargeSoftness: 2 / 3,
   specMediumIntensity: 4,
@@ -384,11 +383,6 @@ class WebGLRenderer implements Renderer {
         specDebugEnabled: params.controls.specDebugEnabled,
         specDebugColor: params.controls.specDebugColor,
         specDebugOpacity: params.controls.specDebugOpacity,
-        specWarpCenterWeight: params.controls.specWarpCenterWeight,
-        specWarpContactWeight: params.controls.specWarpContactWeight,
-        specWarpBoundaryWeight: params.controls.specWarpBoundaryWeight,
-        specWarpFalloff: params.controls.specWarpFalloff,
-        specWarpAffineAmount: params.controls.specWarpAffineAmount,
         outerStrokeEnabled: params.controls.outerStrokeEnabled,
         showElasticContacts: params.controls.showElasticContacts,
       },
@@ -439,6 +433,7 @@ let lastFrame = 0;
 let idleResumeAt = 0;
 let renderTimeTotal = 0;
 let renderTimeSamples = 0;
+let elasticUpdateMax = 0;
 const renderTimingEnabled = urlParams.get('perf') === '1';
 
 function createRenderer(): Renderer {
@@ -1025,11 +1020,10 @@ function setupGui(): void {
   spec.add(layerControls, 'specDebugColor', ['red', 'black']).name('debug color');
   spec.add(layerControls, 'specDebugOpacity', 0.2, 1, 0.01).name('debug opacity');
   const specWarp = spec.addFolder('elastic warp');
-  specWarp.add(layerControls, 'specWarpCenterWeight', 0.2, 12, 0.1).name('center weight');
-  specWarp.add(layerControls, 'specWarpContactWeight', 0.2, 16, 0.1).name('contact weight');
-  specWarp.add(layerControls, 'specWarpBoundaryWeight', 0.1, 8, 0.1).name('boundary weight');
-  specWarp.add(layerControls, 'specWarpFalloff', 0.4, 3, 0.05).name('field falloff');
-  specWarp.add(layerControls, 'specWarpAffineAmount', 0, 1, 0.01).name('directional stretch');
+  specWarp.add(layerControls, 'specWarpCenterStiffness', 4, 160, 1).name('center pin');
+  specWarp.add(layerControls, 'specWarpContactStiffness', 4, 100, 1).name('contact stiffness');
+  specWarp.add(layerControls, 'specWarpRestStiffness', 0, 0.2, 0.002).name('round restore');
+  specWarp.add(layerControls, 'specWarpIterations', 2, 32, 1).name('solver iterations');
 
   const largeSpec = spec.addFolder('large');
   largeSpec.add(layerControls, 'specLargeEnabled').name('on');
@@ -1804,7 +1798,12 @@ function tick(now: number): void {
   const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000 || 0.016));
   lastFrame = now;
   const hadElasticContacts = elasticField.hasContacts();
+  const elasticStartedAt = renderTimingEnabled ? performance.now() : 0;
   elasticField.update(dt);
+  if (renderTimingEnabled) {
+    elasticUpdateMax = Math.max(elasticUpdateMax, performance.now() - elasticStartedAt);
+    canvas.dataset.elasticMaxMs = elasticUpdateMax.toFixed(2);
+  }
   if (
     hadElasticContacts
     && !elasticField.hasContacts()

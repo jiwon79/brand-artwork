@@ -1,5 +1,6 @@
 import {
-  elasticBoundarySampleCount,
+  elasticSpecWarpExtent,
+  elasticSpecWarpResolution,
   type ElasticShapeFrame,
 } from './elastic-contact-field';
 
@@ -32,11 +33,6 @@ export type GpuGlassControls = {
   background: [number, number, number];
   contentOverscan: number;
   sourceFollow: number;
-  specWarpCenterWeight: number;
-  specWarpContactWeight: number;
-  specWarpBoundaryWeight: number;
-  specWarpFalloff: number;
-  specWarpAffineAmount: number;
   displacementEnabled: boolean;
   surfacePreviewEnabled: boolean;
   surfaceProfile: 'convex' | 'concave' | 'lip';
@@ -101,9 +97,6 @@ precision highp sampler2D;
 #define MAX_SPECS 11
 #define MAX_CONTACTS 10
 #define MAX_MEMBRANE_LINKS 20
-#define SPEC_BOUNDARY_SAMPLES ${elasticBoundarySampleCount}
-#define SPEC_BOUNDARY_CONTROLS 20
-#define MAX_SPEC_WARP_CONTROLS 31
 
 in vec2 vUv;
 out vec4 outputColor;
@@ -115,7 +108,8 @@ uniform float uRadiusCss;
 uniform vec3 uBackground;
 uniform float uOverscan;
 uniform float uSourceFollow;
-uniform float uSpecBoundaryRadii[SPEC_BOUNDARY_SAMPLES];
+uniform sampler2D uSpecWarpMap;
+uniform float uSpecWarpExtent;
 uniform int uContactCount;
 uniform vec4 uContacts[MAX_CONTACTS];
 uniform vec2 uContactAnchors[MAX_CONTACTS];
@@ -152,11 +146,6 @@ uniform int uCaRimEnabled;
 uniform int uSpecDebugEnabled;
 uniform vec3 uSpecDebugColor;
 uniform float uSpecDebugOpacity;
-uniform float uSpecWarpCenterWeight;
-uniform float uSpecWarpContactWeight;
-uniform float uSpecWarpBoundaryWeight;
-uniform float uSpecWarpFalloff;
-uniform float uSpecWarpAffineAmount;
 uniform int uOuterStrokeEnabled;
 uniform int uShowElasticContacts;
 uniform int uCircleCount;
@@ -169,8 +158,6 @@ uniform vec4 uSpecShape[MAX_SPECS];
 uniform vec4 uSpecRender[MAX_SPECS];
 
 const float MAX_SURFACE_SLOPE = 11.4300523;
-const float TWO_PI = 6.283185307179586;
-
 float smoothRange(float edge0, float edge1, float value) {
   float denominator = edge1 - edge0;
   if (abs(denominator) < 0.000001) {
@@ -431,146 +418,9 @@ vec2 transformSourcePoint(vec2 point) {
   return inverseElasticPoint(point, uSourceFollow);
 }
 
-float specBoundaryRadius(float angle) {
-  float normalizedAngle = fract(angle / TWO_PI + 1.0);
-  float samplePosition = normalizedAngle * float(SPEC_BOUNDARY_SAMPLES);
-  int firstIndex = int(floor(samplePosition)) % SPEC_BOUNDARY_SAMPLES;
-  int previousIndex = (firstIndex + SPEC_BOUNDARY_SAMPLES - 1) % SPEC_BOUNDARY_SAMPLES;
-  int secondIndex = (firstIndex + 1) % SPEC_BOUNDARY_SAMPLES;
-  int thirdIndex = (firstIndex + 2) % SPEC_BOUNDARY_SAMPLES;
-  float progress = fract(samplePosition);
-  float progressSquared = progress * progress;
-  float progressCubed = progressSquared * progress;
-  float previous = uSpecBoundaryRadii[previousIndex];
-  float first = uSpecBoundaryRadii[firstIndex];
-  float second = uSpecBoundaryRadii[secondIndex];
-  float third = uSpecBoundaryRadii[thirdIndex];
-  float radius = 0.5 * (
-    2.0 * first
-    + (-previous + second) * progress
-    + (2.0 * previous - 5.0 * first + 4.0 * second - third) * progressSquared
-    + (-previous + 3.0 * first - 3.0 * second + third) * progressCubed
-  );
-  return clamp(radius, min(first, second) - 0.04, max(first, second) + 0.04);
-}
-
-void specWarpControl(
-  int index,
-  out vec2 deformedPoint,
-  out vec2 canonicalPoint,
-  out float strength
-) {
-  if (index == 0) {
-    deformedPoint = vec2(0.0);
-    canonicalPoint = vec2(0.0);
-    strength = uSpecWarpCenterWeight;
-    return;
-  }
-
-  int contactIndex = index - 1;
-  if (contactIndex < uContactCount) {
-    vec4 contact = uContacts[contactIndex];
-    deformedPoint = contact.xy;
-    canonicalPoint = uContactAnchors[contactIndex];
-    strength = uSpecWarpContactWeight * smoothRange(0.0, 1.0, contact.w);
-    return;
-  }
-
-  int boundaryIndex = contactIndex - uContactCount;
-  float angle = float(boundaryIndex) / float(SPEC_BOUNDARY_CONTROLS) * TWO_PI;
-  vec2 direction = vec2(cos(angle), sin(angle));
-  deformedPoint = direction * specBoundaryRadius(angle);
-  canonicalPoint = direction;
-  strength = uSpecWarpBoundaryWeight;
-}
-
-float specWarpWeight(vec2 point, vec2 controlPoint, float strength) {
-  float distanceSquared = max(dot(point - controlPoint, point - controlPoint), 0.00002);
-  return max(strength, 0.0) / pow(distanceSquared, max(uSpecWarpFalloff, 0.1));
-}
-
-// A local matrix spreads the center, contact, and boundary constraints through the disk.
 vec2 inverseSpecWarp(vec2 point) {
-  if (length(point) <= 0.00001) return vec2(0.0);
-
-  int controlCount = 1 + uContactCount + SPEC_BOUNDARY_CONTROLS;
-  float weightSum = 0.0;
-  vec2 deformedCentroid = vec2(0.0);
-  vec2 canonicalCentroid = vec2(0.0);
-
-  for (int index = 0; index < MAX_SPEC_WARP_CONTROLS; index += 1) {
-    if (index >= controlCount) break;
-    vec2 deformedControl;
-    vec2 canonicalControl;
-    float strength;
-    specWarpControl(index, deformedControl, canonicalControl, strength);
-    float distanceSquared = dot(point - deformedControl, point - deformedControl);
-    if (strength > 0.0001 && distanceSquared < 0.00002) {
-      return canonicalControl;
-    }
-    float weight = specWarpWeight(point, deformedControl, strength);
-    weightSum += weight;
-    deformedCentroid += deformedControl * weight;
-    canonicalCentroid += canonicalControl * weight;
-  }
-
-  deformedCentroid /= max(weightSum, 0.0001);
-  canonicalCentroid /= max(weightSum, 0.0001);
-  mat2 deformedCovariance = mat2(0.0);
-  mat2 crossCovariance = mat2(0.0);
-
-  for (int index = 0; index < MAX_SPEC_WARP_CONTROLS; index += 1) {
-    if (index >= controlCount) break;
-    vec2 deformedControl;
-    vec2 canonicalControl;
-    float strength;
-    specWarpControl(index, deformedControl, canonicalControl, strength);
-    float weight = specWarpWeight(point, deformedControl, strength);
-    vec2 deformedOffset = deformedControl - deformedCentroid;
-    vec2 canonicalOffset = canonicalControl - canonicalCentroid;
-    deformedCovariance += weight * mat2(
-      deformedOffset.x * deformedOffset.x,
-      deformedOffset.y * deformedOffset.x,
-      deformedOffset.x * deformedOffset.y,
-      deformedOffset.y * deformedOffset.y
-    );
-    crossCovariance += weight * mat2(
-      canonicalOffset.x * deformedOffset.x,
-      canonicalOffset.y * deformedOffset.x,
-      canonicalOffset.x * deformedOffset.y,
-      canonicalOffset.y * deformedOffset.y
-    );
-  }
-
-  float covarianceScale = deformedCovariance[0][0] + deformedCovariance[1][1];
-  deformedCovariance += mat2(max(covarianceScale * 0.0005, 0.00005));
-  mat2 localAffine = crossCovariance * inverse(deformedCovariance);
-  float similarityDenominator = max(covarianceScale, 0.0001);
-  float similarityA = (
-    crossCovariance[0][0] + crossCovariance[1][1]
-  ) / similarityDenominator;
-  float similarityB = (
-    crossCovariance[0][1] - crossCovariance[1][0]
-  ) / similarityDenominator;
-  mat2 localSimilarity = mat2(
-    similarityA,
-    similarityB,
-    -similarityB,
-    similarityA
-  );
-  mat2 localMatrix = localSimilarity
-    + (localAffine - localSimilarity) * clamp(uSpecWarpAffineAmount, 0.0, 1.0);
-  vec2 canonicalPoint = canonicalCentroid
-    + localMatrix * (point - deformedCentroid);
-  float deformedRadius = length(point);
-  float deformedAngle = atan(point.y, point.x);
-  float boundaryRadius = max(specBoundaryRadius(deformedAngle), 0.05);
-  float boundaryProgress = clamp(deformedRadius / boundaryRadius, 0.0, 0.999);
-  vec2 boundaryPoint = deformedRadius > 0.00001
-    ? point / deformedRadius * boundaryProgress
-    : vec2(0.0);
-  float boundaryBlend = pow(smoothRange(0.7, 1.0, boundaryProgress), 2.0);
-  canonicalPoint = mix(canonicalPoint, boundaryPoint, boundaryBlend);
+  vec2 uv = point / (uSpecWarpExtent * 2.0) + 0.5;
+  vec2 canonicalPoint = texture(uSpecWarpMap, clamp(uv, 0.0, 1.0)).rg;
   float canonicalRadius = length(canonicalPoint);
   if (canonicalRadius > 0.999) canonicalPoint *= 0.999 / canonicalRadius;
   return canonicalPoint;
@@ -903,9 +753,11 @@ export class GuseulWebGLRenderer {
   private readonly program: WebGLProgram;
   private readonly vertexArray: WebGLVertexArrayObject;
   private readonly contentTexture: WebGLTexture;
+  private readonly specWarpTexture: WebGLTexture;
   private readonly uniforms: UniformMap;
   private contentWidth = 0;
   private contentHeight = 0;
+  private specWarpRevision = -1;
 
   constructor() {
     const gl = this.canvas.getContext('webgl2', {
@@ -930,9 +782,11 @@ export class GuseulWebGLRenderer {
     this.program = program;
     this.vertexArray = vertexArray;
     this.contentTexture = createTexture(gl);
+    this.specWarpTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
       'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
-      'uSourceFollow', 'uSpecBoundaryRadii[0]', 'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
+      'uSourceFollow', 'uSpecWarpMap', 'uSpecWarpExtent',
+      'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
       'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
       'uContactRadius', 'uBridgeRadius', 'uMembraneBridgeRadius', 'uEdgeConcavity',
       'uFieldSmoothness',
@@ -943,8 +797,6 @@ export class GuseulWebGLRenderer {
       'uChromaticBoundaryStrength', 'uChromaticBoundaryWidth', 'uInnerShadeEnabled',
       'uGlassMilkEnabled', 'uTopWashEnabled', 'uRimEnabled', 'uHardRimEnabled',
       'uCaRimEnabled', 'uSpecDebugEnabled', 'uSpecDebugColor', 'uSpecDebugOpacity',
-      'uSpecWarpCenterWeight', 'uSpecWarpContactWeight', 'uSpecWarpBoundaryWeight',
-      'uSpecWarpFalloff', 'uSpecWarpAffineAmount',
       'uOuterStrokeEnabled', 'uShowElasticContacts',
       'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecSource[0]', 'uSpecAxisX[0]',
       'uSpecAxisY[0]', 'uSpecShape[0]', 'uSpecRender[0]',
@@ -952,6 +804,8 @@ export class GuseulWebGLRenderer {
 
     gl.useProgram(program);
     gl.uniform1i(this.uniforms.uContent, 0);
+    gl.uniform1i(this.uniforms.uSpecWarpMap, 1);
+    gl.uniform1f(this.uniforms.uSpecWarpExtent, elasticSpecWarpExtent);
     gl.bindVertexArray(vertexArray);
 
     gl.activeTexture(gl.TEXTURE0);
@@ -960,6 +814,27 @@ export class GuseulWebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.specWarpTexture);
+    const specWarpFilter = gl.getExtension('OES_texture_float_linear')
+      ? gl.LINEAR
+      : gl.NEAREST;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, specWarpFilter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, specWarpFilter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RG16F,
+      elasticSpecWarpResolution,
+      elasticSpecWarpResolution,
+      0,
+      gl.RG,
+      gl.FLOAT,
+      null,
+    );
   }
 
   resize(pixelWidth: number, pixelHeight: number): void {
@@ -1019,7 +894,6 @@ export class GuseulWebGLRenderer {
 
     const gl = this.gl;
     gl.uniform1i(this.uniforms.uContactCount, contactCount);
-    gl.uniform1fv(this.uniforms['uSpecBoundaryRadii[0]'], shape.boundaryRadii);
     gl.uniform4fv(this.uniforms['uContacts[0]'], contacts);
     gl.uniform2fv(this.uniforms['uContactAnchors[0]'], anchors);
     gl.uniform1i(this.uniforms.uMembraneLinkCount, linkCount);
@@ -1031,6 +905,23 @@ export class GuseulWebGLRenderer {
     gl.uniform1f(this.uniforms.uEdgeConcavity, shape.edgeConcavity);
     gl.uniform1f(this.uniforms.uFieldSmoothness, shape.fieldSmoothness);
     gl.uniform1f(this.uniforms.uContourOffset, shape.contourOffset);
+
+    if (shape.specWarpRevision !== this.specWarpRevision) {
+      this.specWarpRevision = shape.specWarpRevision;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.specWarpTexture);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        elasticSpecWarpResolution,
+        elasticSpecWarpResolution,
+        gl.RG,
+        gl.FLOAT,
+        shape.specWarpMap,
+      );
+    }
   }
 
   private uploadCircles(circles: GpuCircle[]): void {
@@ -1111,11 +1002,6 @@ export class GuseulWebGLRenderer {
     gl.uniform1i(this.uniforms.uSpecDebugEnabled, Number(controls.specDebugEnabled));
     gl.uniform3fv(this.uniforms.uSpecDebugColor, controls.specDebugColor === 'red' ? [1, 0, 0] : [0, 0, 0]);
     gl.uniform1f(this.uniforms.uSpecDebugOpacity, controls.specDebugOpacity);
-    gl.uniform1f(this.uniforms.uSpecWarpCenterWeight, controls.specWarpCenterWeight);
-    gl.uniform1f(this.uniforms.uSpecWarpContactWeight, controls.specWarpContactWeight);
-    gl.uniform1f(this.uniforms.uSpecWarpBoundaryWeight, controls.specWarpBoundaryWeight);
-    gl.uniform1f(this.uniforms.uSpecWarpFalloff, controls.specWarpFalloff);
-    gl.uniform1f(this.uniforms.uSpecWarpAffineAmount, controls.specWarpAffineAmount);
     gl.uniform1i(this.uniforms.uOuterStrokeEnabled, Number(controls.outerStrokeEnabled));
     gl.uniform1i(this.uniforms.uShowElasticContacts, Number(controls.showElasticContacts));
     this.uploadElasticShape(frame.elasticShape);
