@@ -48,3 +48,17 @@ body {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+
+.tc-dot {
+  background: rgba(18, 42, 44, 0.72) !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.78);
+}
+
+.tc-ring {
+  border-color: rgba(18, 42, 44, 0.5) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.tc-ripple {
+  border-color: rgba(18, 42, 44, 0.42) !important;
+}
