@@ -104,7 +104,15 @@ type SpecSample = {
 type PointerPosition = {
   x: number;
   y: number;
+  startX: number;
+  startY: number;
+  stretchStartX?: number;
+  stretchStartY?: number;
+  contactStartX?: number;
+  contactStartY?: number;
 };
+
+type GestureMode = 'idle' | 'pending' | 'rotate' | 'stretch';
 
 type RenderParams = {
   view: View;
@@ -229,6 +237,8 @@ const layerControls = {
   shadowEnabled: true,
   marbleScale: 1.22,
   dragSensitivity: 1,
+  longPressDuration: 0.35,
+  longPressMoveThreshold: 10,
   pinchSourceFollow: initialSourceFollow,
   seedRadiusScale: 0.74,
   bridgeRadiusRatio: 0.8,
@@ -438,6 +448,8 @@ let spinVelocity = 0;
 const activePointers = new Map<number, PointerPosition>();
 const elasticPointerContacts = new Map<number, number>();
 let persistentMouseContactId = -1;
+let gestureMode: GestureMode = 'idle';
+let longPressTimer: number | null = null;
 let pointerId: number | null = null;
 let lastPointerX = 0;
 let lastPointerY = 0;
@@ -449,6 +461,7 @@ let renderTimeSamples = 0;
 let elasticUpdateMax = 0;
 const renderTimingEnabled = urlParams.get('perf') === '1';
 const elasticMouseDebugEnabled = urlParams.get('elasticMouse') === '1';
+const touchGestureMouseDebugEnabled = urlParams.get('elasticMouse') === 'touch';
 
 function createRenderer(): Renderer {
   if (urlParams.get('renderer') === 'canvas') {
@@ -465,6 +478,7 @@ function createRenderer(): Renderer {
 
 const renderer: Renderer = createRenderer();
 canvas.dataset.renderer = renderer.kind;
+canvas.dataset.gestureMode = gestureMode;
 
 function getRenderParams(): RenderParams {
   return {
@@ -942,12 +956,21 @@ function setupGui(): void {
   const elasticActions = {
     resetContacts: () => {
       elasticField.clear();
+      elasticPointerContacts.clear();
+      clearLongPressTimer();
+      setGestureMode('idle');
       idleResumeAt = performance.now() + layerControls.idleResumeDelay * 1000;
     },
   };
   elastic.add(layerControls, 'pinchSourceFollow', 0, 1, 0.01).name('source follow');
   elastic.add(layerControls, 'showElasticContacts').name('show contacts');
   elastic.add(elasticActions, 'resetContacts').name('reset contacts');
+
+  const gestureInput = elastic.addFolder('gesture input');
+  gestureInput.add(layerControls, 'longPressDuration', 0.15, 0.8, 0.01)
+    .name('long press');
+  gestureInput.add(layerControls, 'longPressMoveThreshold', 2, 30, 1)
+    .name('move threshold');
 
   const contactField = elastic.addFolder('contact field');
   contactField.add(layerControls, 'seedRadiusScale', 0.25, 1, 0.01).name('seed radius');
@@ -1818,23 +1841,15 @@ function drawScene(params: RenderParams): void {
 function tick(now: number): void {
   const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000 || 0.016));
   lastFrame = now;
-  const hadElasticContacts = elasticField.hasContacts();
   const elasticStartedAt = renderTimingEnabled ? performance.now() : 0;
   elasticField.update(dt);
   if (renderTimingEnabled) {
     elasticUpdateMax = Math.max(elasticUpdateMax, performance.now() - elasticStartedAt);
     canvas.dataset.elasticMaxMs = elasticUpdateMax.toFixed(2);
   }
-  if (
-    hadElasticContacts
-    && !elasticField.hasContacts()
-    && activePointers.size === 0
-  ) {
-    idleResumeAt = now + layerControls.idleResumeDelay * 1000;
-  }
-
-  if (activePointers.size === 0 && !elasticField.hasContacts()) {
-    if (spinVelocity > 0) {
+  const idleMotionAllowed = activePointers.size === 0 || gestureMode === 'stretch';
+  if (idleMotionAllowed) {
+    if (gestureMode !== 'stretch' && spinVelocity > 0) {
       applyScreenAxisRotation(spinAxis, spinVelocity * dt);
       spinVelocity *= 0.92;
     } else if (layerControls.idleMotionEnabled && now >= idleResumeAt) {
@@ -1879,37 +1894,145 @@ function normalizedElasticPoint(clientX: number, clientY: number): ElasticVec2 {
   };
 }
 
-function shouldUseElasticPointer(event: PointerEvent): boolean {
-  return elasticMouseDebugEnabled || event.pointerType !== 'mouse' || event.shiftKey;
+function setGestureMode(nextMode: GestureMode): void {
+  gestureMode = nextMode;
+  canvas.dataset.gestureMode = nextMode;
+  if (nextMode === 'rotate' || nextMode === 'stretch') {
+    canvas.dataset.lastGesture = nextMode;
+  }
+  document.documentElement.classList.toggle(
+    'guseul-stretch-active',
+    nextMode === 'stretch',
+  );
+}
+
+function clearLongPressTimer(): void {
+  if (longPressTimer === null) return;
+  window.clearTimeout(longPressTimer);
+  longPressTimer = null;
+}
+
+function activateStretchGesture(): boolean {
+  clearLongPressTimer();
+  let contactCount = 0;
+
+  for (const [activePointerId, pointer] of activePointers) {
+    if (elasticPointerContacts.has(activePointerId)) {
+      contactCount += 1;
+      continue;
+    }
+
+    const currentPosition = normalizedElasticPoint(pointer.x, pointer.y);
+    const startPosition = normalizedElasticPoint(pointer.startX, pointer.startY);
+    const contactPosition = elasticField.contains(currentPosition)
+      ? currentPosition
+      : startPosition;
+    if (elasticField.addContact(activePointerId, contactPosition)) {
+      pointer.stretchStartX = pointer.x;
+      pointer.stretchStartY = pointer.y;
+      pointer.contactStartX = contactPosition.x;
+      pointer.contactStartY = contactPosition.y;
+      elasticPointerContacts.set(activePointerId, activePointerId);
+      contactCount += 1;
+    }
+  }
+
+  if (contactCount === 0) return false;
+
+  pointerId = null;
+  spinVelocity = 0;
+  idleResumeAt = 0;
+  setGestureMode('stretch');
+  return true;
+}
+
+function scheduleLongPress(): void {
+  clearLongPressTimer();
+  longPressTimer = window.setTimeout(() => {
+    longPressTimer = null;
+    if (gestureMode !== 'pending' || activePointers.size !== 1) return;
+
+    for (const pointer of activePointers.values()) {
+      const moved = Math.hypot(
+        pointer.x - pointer.startX,
+        pointer.y - pointer.startY,
+      );
+      if (moved <= layerControls.longPressMoveThreshold) {
+        activateStretchGesture();
+      }
+      break;
+    }
+  }, layerControls.longPressDuration * 1000);
+}
+
+function trackPointer(event: PointerEvent): void {
+  activePointers.set(event.pointerId, {
+    x: event.clientX,
+    y: event.clientY,
+    startX: event.clientX,
+    startY: event.clientY,
+  });
+  if (!canvas.hasPointerCapture(event.pointerId)) {
+    canvas.setPointerCapture(event.pointerId);
+  }
 }
 
 canvas.addEventListener('pointerdown', (event) => {
   const position = normalizedElasticPoint(event.clientX, event.clientY);
-  const elasticPointer = shouldUseElasticPointer(event);
+  const immediateMouseStretch = event.pointerType === 'mouse'
+    && (event.shiftKey || elasticMouseDebugEnabled);
+  const touchGesturePointer = event.pointerType !== 'mouse'
+    || touchGestureMouseDebugEnabled;
 
-  if (elasticPointer) {
-    const persistent = event.pointerType === 'mouse'
-      && (event.shiftKey || elasticMouseDebugEnabled);
-    const contactId = persistent ? persistentMouseContactId : event.pointerId;
-    if (!elasticField.addContact(contactId, position, persistent)) return;
-    if (persistent) persistentMouseContactId -= 1;
-    elasticPointerContacts.set(event.pointerId, contactId);
-  } else if (activePointers.size > 0 || !elasticField.contains(position)) {
+  if (
+    !elasticField.contains(position)
+    || (!immediateMouseStretch && !touchGesturePointer && activePointers.size > 0)
+  ) {
     return;
   }
 
   event.preventDefault();
   const now = event.timeStamp || performance.now();
-  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (!canvas.hasPointerCapture(event.pointerId)) {
-    canvas.setPointerCapture(event.pointerId);
-  }
-
+  trackPointer(event);
   spinVelocity = 0;
   idleResumeAt = Number.POSITIVE_INFINITY;
 
-  if (elasticPointer) {
+  if (immediateMouseStretch) {
+    const contactId = persistentMouseContactId;
+    if (!elasticField.addContact(contactId, position, true)) {
+      activePointers.delete(event.pointerId);
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
+    persistentMouseContactId -= 1;
+    const pointer = activePointers.get(event.pointerId);
+    if (pointer) {
+      pointer.stretchStartX = event.clientX;
+      pointer.stretchStartY = event.clientY;
+      pointer.contactStartX = position.x;
+      pointer.contactStartY = position.y;
+    }
+    elasticPointerContacts.set(event.pointerId, contactId);
     pointerId = null;
+    idleResumeAt = 0;
+    setGestureMode('stretch');
+    return;
+  }
+
+  if (touchGesturePointer) {
+    if (activePointers.size >= 2 || gestureMode === 'stretch') {
+      activateStretchGesture();
+      return;
+    }
+
+    pointerId = event.pointerId;
+    lastPointerX = event.clientX;
+    lastPointerY = event.clientY;
+    lastPointerTime = now;
+    setGestureMode('pending');
+    scheduleLongPress();
     return;
   }
 
@@ -1917,29 +2040,52 @@ canvas.addEventListener('pointerdown', (event) => {
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
   lastPointerTime = now;
+  setGestureMode('rotate');
 });
 
 canvas.addEventListener('pointermove', (event) => {
-  if (!activePointers.has(event.pointerId)) {
-    return;
-  }
+  const pointer = activePointers.get(event.pointerId);
+  if (!pointer) return;
 
   event.preventDefault();
-  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  pointer.x = event.clientX;
+  pointer.y = event.clientY;
   const now = event.timeStamp || performance.now();
 
   const elasticContactId = elasticPointerContacts.get(event.pointerId);
   if (elasticContactId !== undefined) {
+    const stretchStart = normalizedElasticPoint(
+      pointer.stretchStartX ?? pointer.startX,
+      pointer.stretchStartY ?? pointer.startY,
+    );
+    const currentPosition = normalizedElasticPoint(event.clientX, event.clientY);
     elasticField.moveContact(
       elasticContactId,
-      normalizedElasticPoint(event.clientX, event.clientY),
+      {
+        x: (pointer.contactStartX ?? stretchStart.x)
+          + currentPosition.x - stretchStart.x,
+        y: (pointer.contactStartY ?? stretchStart.y)
+          + currentPosition.y - stretchStart.y,
+      },
     );
     return;
   }
 
-  if (pointerId !== event.pointerId) {
-    return;
+  if (gestureMode === 'pending') {
+    const pendingDistance = Math.hypot(
+      pointer.x - pointer.startX,
+      pointer.y - pointer.startY,
+    );
+    if (pendingDistance <= layerControls.longPressMoveThreshold) return;
+
+    clearLongPressTimer();
+    pointerId = event.pointerId;
+    lastPointerX = pointer.startX;
+    lastPointerY = pointer.startY;
+    setGestureMode('rotate');
   }
+
+  if (gestureMode !== 'rotate' || pointerId !== event.pointerId) return;
 
   const dx = event.clientX - lastPointerX;
   const dy = event.clientY - lastPointerY;
@@ -1967,6 +2113,7 @@ function releasePointer(event: PointerEvent): void {
 
   event.preventDefault();
   const now = event.timeStamp || performance.now();
+  const releasedFromStretch = gestureMode === 'stretch';
   const elasticContactId = elasticPointerContacts.get(event.pointerId);
 
   if (elasticContactId !== undefined) {
@@ -1984,11 +2131,14 @@ function releasePointer(event: PointerEvent): void {
   }
 
   if (activePointers.size === 0) {
-    idleResumeAt = elasticField.hasContacts()
-      ? Number.POSITIVE_INFINITY
+    clearLongPressTimer();
+    setGestureMode('idle');
+    idleResumeAt = releasedFromStretch
+      ? now
       : now + layerControls.idleResumeDelay * 1000;
-  } else {
-    idleResumeAt = Number.POSITIVE_INFINITY;
+  } else if (releasedFromStretch) {
+    idleResumeAt = 0;
+    setGestureMode('stretch');
   }
 }
 

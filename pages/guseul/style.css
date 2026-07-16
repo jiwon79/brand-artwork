@@ -62,3 +62,10 @@ body {
 .tc-ripple {
   border-color: rgba(18, 42, 44, 0.42) !important;
 }
+
+.guseul-stretch-active .tc-ring {
+  border-color: rgba(32, 196, 185, 0.88) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.86),
+    0 0 12px rgba(32, 196, 185, 0.3);
+}
