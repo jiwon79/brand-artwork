@@ -952,6 +952,12 @@ function setupGui(): void {
   scene.add(layerControls, 'marbleScale', 0.7, 1.8, 0.01).name('marble scale').onChange(resize);
   scene.add(layerControls, 'dragSensitivity', 0.4, 1.8, 0.01).name('drag sensitivity');
 
+  const idleMotion = scene.addFolder('auto rotation');
+  idleMotion.add(layerControls, 'idleMotionEnabled').name('on');
+  idleMotion.add(layerControls, 'idleSpeed', 0, 0.3, 0.001).name('speed');
+  idleMotion.add(layerControls, 'idleAxisDrift', 0, 0.5, 0.01).name('axis drift');
+  idleMotion.add(layerControls, 'idleResumeDelay', 0, 3, 0.05).name('resume delay');
+
   const elastic = gui.addFolder('elastic contacts');
   const elasticActions = {
     resetContacts: () => {
@@ -1009,12 +1015,6 @@ function setupGui(): void {
   circles.add(layerControls, 'circleSizeVariance', 0, 2.5, 0.01).name('size variance');
   circles.add(layerControls, 'circleStrokeEnabled').name('white stroke');
   circles.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
-
-  const idleMotion = source.addFolder('idle motion');
-  idleMotion.add(layerControls, 'idleMotionEnabled').name('on');
-  idleMotion.add(layerControls, 'idleSpeed', 0, 0.15, 0.001).name('speed');
-  idleMotion.add(layerControls, 'idleAxisDrift', 0, 0.5, 0.01).name('axis drift');
-  idleMotion.add(layerControls, 'idleResumeDelay', 0, 3, 0.05).name('resume delay');
 
   const edgeProjection = source.addFolder('edge projection');
   edgeProjection.add(layerControls, 'edgeScaleFloor', 0.08, 0.8, 0.01).name('edge min size');
