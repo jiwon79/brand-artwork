@@ -248,7 +248,7 @@ const layerControls = {
   contactRadiusShrinkEnd: 3.6,
   contactRadiusMinScale: 0.58,
   contactFill: 1,
-  edgeConcavity: 0.1,
+  edgeConcavity: -0.08,
   fieldSmoothness: 0.7,
   contactBlendDuration: 0.12,
   areaPreservation: 0.92,
