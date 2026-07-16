@@ -276,6 +276,7 @@ const layerControls = {
   edgePortalWidth: 0.06,
   portalInset: 0.9,
   circleStrokeEnabled: true,
+  circleStrokeBackAlpha: 0.65,
   circleStrokeScale: 1,
   displacementEnabled: true,
   surfacePreviewEnabled: false,
@@ -934,7 +935,7 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
     saturation: mix(1, mix(0.88, 0.76, backDepth), backBlend),
     brightness: mix(1, mix(0.9, 0.8, backDepth), backBlend),
     back: z < 0,
-    strokeAlpha: mix(0.65, 1, frontDepth),
+    strokeAlpha: mix(params.controls.circleStrokeBackAlpha, 1, frontDepth),
   };
 }
 
@@ -1014,6 +1015,7 @@ function setupGui(): void {
   circles.add(layerControls, 'circleSizeScale', 0.45, 2.6, 0.01).name('size');
   circles.add(layerControls, 'circleSizeVariance', 0, 2.5, 0.01).name('size variance');
   circles.add(layerControls, 'circleStrokeEnabled').name('white stroke');
+  circles.add(layerControls, 'circleStrokeBackAlpha', 0, 1, 0.01).name('back stroke alpha');
   circles.add(layerControls, 'circleStrokeScale', 0, 2, 0.01).name('stroke scale');
 
   const edgeProjection = source.addFolder('edge projection');
