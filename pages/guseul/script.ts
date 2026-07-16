@@ -272,7 +272,7 @@ const layerControls = {
   idleHandoffDuration: 0.8,
   inertiaDamping: 5,
   edgeScaleFloor: 0.32,
-  edgePortalEnabled: true,
+  edgePortalEnabled: false,
   edgePortalWidth: 0.06,
   portalInset: 0.9,
   circleStrokeEnabled: true,
@@ -899,49 +899,42 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
   const [x, y, z] = rotateSpherePoint(params.orientation, circle.x, circle.y, circle.z);
   const portalWidth = Math.max(params.controls.edgePortalWidth, 0.001);
   const edgeScaleFloor = params.controls.edgeScaleFloor;
-
-  if (z < 0) {
-    const depth = smoothstep(0, 1, -z);
-    const portalProgress = smoothstep(0, portalWidth, -z);
-    const inset = params.controls.edgePortalEnabled
-      ? mix(0.94, params.controls.portalInset, portalProgress)
-      : 1;
-
-    return {
-      ...circle,
-      cx: x * inset,
-      cy: y * inset,
-      dot: depth,
-      z: -depth,
-      scale: mix(edgeScaleFloor * 0.9, Math.max(0.52, edgeScaleFloor), depth ** 0.58),
-      fillAlpha: mix(0.86, 0.84, depth),
-      hazeAlpha: mix(0.01, 0.02, depth),
-      blur: mix(0.18, 0.55, depth),
-      saturation: mix(0.88, 0.76, depth),
-      brightness: mix(0.9, 0.8, depth),
-      back: true,
-      strokeAlpha: 0,
-    };
-  }
-
   const displayDepth = clamp(z, 0, 1);
-  const scale = mix(edgeScaleFloor, 1.04, displayDepth ** 1.7);
+  const backDepth = smoothstep(0, 1, Math.max(-z, 0));
+  const backBlend = smoothstep(0, portalWidth, -z);
   const frontDepth = smoothstep(0, 0.86, displayDepth);
+  const inset = params.controls.edgePortalEnabled
+    ? mix(1, params.controls.portalInset, backBlend)
+    : 1;
+  const frontScale = mix(edgeScaleFloor, 1.04, displayDepth ** 1.7);
+  const backScale = mix(
+    edgeScaleFloor * 0.9,
+    Math.max(0.52, edgeScaleFloor),
+    backDepth ** 0.58,
+  );
 
   return {
     ...circle,
-    cx: x,
-    cy: y,
-    dot: displayDepth,
-    z: displayDepth,
-    scale,
-    fillAlpha: mix(0.94, 1, frontDepth),
-    hazeAlpha: mix(0.035, 0, frontDepth),
-    blur: 0,
-    saturation: 1,
-    brightness: 1,
-    back: false,
-    strokeAlpha: mix(0.65, 1, frontDepth),
+    cx: x * inset,
+    cy: y * inset,
+    dot: mix(displayDepth, backDepth, backBlend),
+    z: mix(displayDepth, -backDepth, backBlend),
+    scale: mix(frontScale, backScale, backBlend),
+    fillAlpha: mix(
+      mix(0.94, 1, frontDepth),
+      mix(0.86, 0.84, backDepth),
+      backBlend,
+    ),
+    hazeAlpha: mix(
+      mix(0.035, 0, frontDepth),
+      mix(0.01, 0.02, backDepth),
+      backBlend,
+    ),
+    blur: mix(0, mix(0.18, 0.55, backDepth), backBlend),
+    saturation: mix(1, mix(0.88, 0.76, backDepth), backBlend),
+    brightness: mix(1, mix(0.9, 0.8, backDepth), backBlend),
+    back: z < 0,
+    strokeAlpha: mix(mix(0.65, 1, frontDepth), 0, backBlend),
   };
 }
 
@@ -1203,7 +1196,7 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
   }
   contentCtx.restore();
 
-  if (strokeWidth > 0 && !circle.back && circle.strokeAlpha > 0) {
+  if (strokeWidth > 0 && circle.strokeAlpha > 0) {
     contentCtx.save();
     contentCtx.globalAlpha = circle.fillAlpha * circle.strokeAlpha;
     contentCtx.lineWidth = strokeWidth;
