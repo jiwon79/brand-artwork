@@ -272,6 +272,7 @@ const layerControls = {
   idleHandoffDuration: 0.8,
   inertiaDamping: 5,
   edgeScaleFloor: 0.32,
+  edgePortalEnabled: true,
   edgePortalWidth: 0.06,
   portalInset: 0.9,
   circleStrokeEnabled: true,
@@ -902,7 +903,9 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
   if (z < 0) {
     const depth = smoothstep(0, 1, -z);
     const portalProgress = smoothstep(0, portalWidth, -z);
-    const inset = mix(0.94, params.controls.portalInset, portalProgress);
+    const inset = params.controls.edgePortalEnabled
+      ? mix(0.94, params.controls.portalInset, portalProgress)
+      : 1;
 
     return {
       ...circle,
@@ -1022,6 +1025,7 @@ function setupGui(): void {
 
   const edgeProjection = source.addFolder('edge projection');
   edgeProjection.add(layerControls, 'edgeScaleFloor', 0.08, 0.8, 0.01).name('edge min size');
+  edgeProjection.add(layerControls, 'edgePortalEnabled').name('back portal');
   edgeProjection.add(layerControls, 'edgePortalWidth', 0.01, 0.3, 0.01).name('edge portal');
   edgeProjection.add(layerControls, 'portalInset', 0.5, 1, 0.01).name('portal inset');
 
