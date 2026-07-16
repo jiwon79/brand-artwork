@@ -934,7 +934,7 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
     saturation: mix(1, mix(0.88, 0.76, backDepth), backBlend),
     brightness: mix(1, mix(0.9, 0.8, backDepth), backBlend),
     back: z < 0,
-    strokeAlpha: mix(mix(0.65, 1, frontDepth), 0, backBlend),
+    strokeAlpha: mix(0.65, 1, frontDepth),
   };
 }
 
