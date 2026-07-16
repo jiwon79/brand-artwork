@@ -266,7 +266,7 @@ const layerControls = {
   circleSizeScale: 2,
   circleSizeVariance: 0,
   idleMotionEnabled: true,
-  idleSpeed: 0.045,
+  idleSpeed: 0.5,
   idleAxisDrift: 0.16,
   idleResumeDelay: 0.9,
   idleHandoffDuration: 0.8,
@@ -1851,7 +1851,9 @@ function tick(now: number): void {
     elasticUpdateMax = Math.max(elasticUpdateMax, performance.now() - elasticStartedAt);
     canvas.dataset.elasticMaxMs = elasticUpdateMax.toFixed(2);
   }
-  const idleMotionAllowed = activePointers.size === 0 || gestureMode === 'stretch';
+  const idleMotionAllowed = activePointers.size === 0
+    || gestureMode === 'pending'
+    || gestureMode === 'stretch';
   if (idleMotionAllowed) {
     const autoRotationReady = layerControls.idleMotionEnabled
       && now >= idleResumeAt;
@@ -1865,9 +1867,7 @@ function tick(now: number): void {
           (now - idleResumeAt) / handoffDurationMs,
         )
       : 0;
-    const inertiaWeight = gestureMode === 'stretch'
-      ? 0
-      : 1 - handoffProgress;
+    const inertiaWeight = 1 - handoffProgress;
 
     if (spinVelocity > 0 && inertiaWeight > 0) {
       applyScreenAxisRotation(
@@ -1970,8 +1970,6 @@ function activateStretchGesture(): boolean {
   if (contactCount === 0) return false;
 
   pointerId = null;
-  spinVelocity = 0;
-  idleResumeAt = 0;
   setGestureMode('stretch');
   return true;
 }
@@ -2024,8 +2022,6 @@ canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   const now = event.timeStamp || performance.now();
   trackPointer(event);
-  spinVelocity = 0;
-  idleResumeAt = Number.POSITIVE_INFINITY;
 
   if (immediateMouseStretch) {
     const contactId = persistentMouseContactId;
@@ -2046,7 +2042,6 @@ canvas.addEventListener('pointerdown', (event) => {
     }
     elasticPointerContacts.set(event.pointerId, contactId);
     pointerId = null;
-    idleResumeAt = 0;
     setGestureMode('stretch');
     return;
   }
@@ -2066,6 +2061,8 @@ canvas.addEventListener('pointerdown', (event) => {
     return;
   }
 
+  spinVelocity = 0;
+  idleResumeAt = Number.POSITIVE_INFINITY;
   pointerId = event.pointerId;
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
@@ -2109,6 +2106,8 @@ canvas.addEventListener('pointermove', (event) => {
     if (pendingDistance <= layerControls.longPressMoveThreshold) return;
 
     clearLongPressTimer();
+    spinVelocity = 0;
+    idleResumeAt = Number.POSITIVE_INFINITY;
     pointerId = event.pointerId;
     lastPointerX = pointer.startX;
     lastPointerY = pointer.startY;
@@ -2144,12 +2143,13 @@ function releasePointer(event: PointerEvent): void {
   event.preventDefault();
   const now = event.timeStamp || performance.now();
   const releasedFromStretch = gestureMode === 'stretch';
+  const preservesAutoRotation = releasedFromStretch
+    || gestureMode === 'pending';
   const elasticContactId = elasticPointerContacts.get(event.pointerId);
 
   if (elasticContactId !== undefined) {
     elasticField.releaseContact(elasticContactId);
     elasticPointerContacts.delete(event.pointerId);
-    spinVelocity = 0;
   } else if (pointerId === event.pointerId) {
     pointerId = null;
   }
@@ -2163,11 +2163,10 @@ function releasePointer(event: PointerEvent): void {
   if (activePointers.size === 0) {
     clearLongPressTimer();
     setGestureMode('idle');
-    idleResumeAt = releasedFromStretch
-      ? now
-      : now + layerControls.idleResumeDelay * 1000;
+    if (!preservesAutoRotation) {
+      idleResumeAt = now + layerControls.idleResumeDelay * 1000;
+    }
   } else if (releasedFromStretch) {
-    idleResumeAt = 0;
     setGestureMode('stretch');
   }
 }
