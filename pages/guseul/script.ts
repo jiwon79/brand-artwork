@@ -269,6 +269,8 @@ const layerControls = {
   idleSpeed: 0.045,
   idleAxisDrift: 0.16,
   idleResumeDelay: 0.9,
+  idleHandoffDuration: 0.8,
+  inertiaDamping: 5,
   edgeScaleFloor: 0.32,
   edgePortalWidth: 0.06,
   portalInset: 0.9,
@@ -954,9 +956,11 @@ function setupGui(): void {
 
   const idleMotion = scene.addFolder('auto rotation');
   idleMotion.add(layerControls, 'idleMotionEnabled').name('on');
-  idleMotion.add(layerControls, 'idleSpeed', 0, 0.3, 0.001).name('speed');
-  idleMotion.add(layerControls, 'idleAxisDrift', 0, 0.5, 0.01).name('axis drift');
-  idleMotion.add(layerControls, 'idleResumeDelay', 0, 3, 0.05).name('resume delay');
+  idleMotion.add(layerControls, 'idleSpeed', 0, 1, 0.001).name('speed');
+  idleMotion.add(layerControls, 'idleAxisDrift', 0, 2, 0.01).name('axis drift');
+  idleMotion.add(layerControls, 'idleResumeDelay', 0, 10, 0.05).name('resume delay');
+  idleMotion.add(layerControls, 'idleHandoffDuration', 0, 5, 0.05).name('handoff duration');
+  idleMotion.add(layerControls, 'inertiaDamping', 0.2, 15, 0.1).name('inertia damping');
 
   const elastic = gui.addFolder('elastic contacts');
   const elasticActions = {
@@ -1849,10 +1853,30 @@ function tick(now: number): void {
   }
   const idleMotionAllowed = activePointers.size === 0 || gestureMode === 'stretch';
   if (idleMotionAllowed) {
-    if (gestureMode !== 'stretch' && spinVelocity > 0) {
-      applyScreenAxisRotation(spinAxis, spinVelocity * dt);
-      spinVelocity *= 0.92;
-    } else if (layerControls.idleMotionEnabled && now >= idleResumeAt) {
+    const autoRotationReady = layerControls.idleMotionEnabled
+      && now >= idleResumeAt;
+    const handoffDurationMs = layerControls.idleHandoffDuration * 1000;
+    const handoffProgress = autoRotationReady
+      ? handoffDurationMs <= 0
+        ? 1
+        : smoothstep(
+          0,
+          1,
+          (now - idleResumeAt) / handoffDurationMs,
+        )
+      : 0;
+    const inertiaWeight = gestureMode === 'stretch'
+      ? 0
+      : 1 - handoffProgress;
+
+    if (spinVelocity > 0 && inertiaWeight > 0) {
+      applyScreenAxisRotation(
+        spinAxis,
+        spinVelocity * inertiaWeight * dt,
+      );
+    }
+
+    if (autoRotationReady && handoffProgress > 0) {
       const phase = now * 0.00009;
       const drift = layerControls.idleAxisDrift;
       const idleAxis = normalizeVec3([
@@ -1861,11 +1885,17 @@ function tick(now: number): void {
         Math.cos(phase * 0.83) * drift * 0.55,
       ]);
 
-      applyContentAxisRotation(idleAxis, layerControls.idleSpeed * dt);
+      applyContentAxisRotation(
+        idleAxis,
+        layerControls.idleSpeed * handoffProgress * dt,
+      );
     }
 
-    if (spinVelocity < 0.01) {
-      spinVelocity = 0;
+    if (spinVelocity > 0) {
+      spinVelocity *= Math.exp(-layerControls.inertiaDamping * dt);
+      if (spinVelocity < 0.01 || handoffProgress >= 1) {
+        spinVelocity = 0;
+      }
     }
   }
 
