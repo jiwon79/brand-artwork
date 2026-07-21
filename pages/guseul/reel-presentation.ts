@@ -5,12 +5,10 @@ export const reelStages = [
   '03 refraction',
   '04 chromatic',
   '05 inner shade',
-  '06 glass milk',
-  '07 top wash',
-  '08 rim',
-  '09 hard / CA rim',
-  '10 specular',
-  '11 final',
+  '06 milk / top wash',
+  '07 rim / hard / CA',
+  '08 specular',
+  '09 final',
 ] as const;
 
 export type ReelStage = typeof reelStages[number];
@@ -33,7 +31,7 @@ type LayerToggleKey =
   | 'showShadowLayer';
 
 export const presentationControls = {
-  reelStep: '11 final' as ReelStep,
+  reelStep: '09 final' as ReelStep,
   debugView: 'final' as DebugView,
   showContactDebug: false,
   showSourceLayer: true,
@@ -103,13 +101,13 @@ function applyReelStage(stage: ReelStage): void {
   presentationControls.showChromaticLayer = visibleThrough >= 4;
   presentationControls.showInnerShadeLayer = visibleThrough >= 5;
   presentationControls.showGlassMilkLayer = visibleThrough >= 6;
-  presentationControls.showTopWashLayer = visibleThrough >= 7;
-  presentationControls.showRimLayer = visibleThrough >= 8;
-  presentationControls.showHardRimLayer = visibleThrough >= 9;
-  presentationControls.showCaRimLayer = visibleThrough >= 9;
-  presentationControls.showSpecLayer = visibleThrough >= 10;
-  presentationControls.showOuterStrokeLayer = visibleThrough >= 11;
-  presentationControls.showShadowLayer = visibleThrough >= 11;
+  presentationControls.showTopWashLayer = visibleThrough >= 6;
+  presentationControls.showRimLayer = visibleThrough >= 7;
+  presentationControls.showHardRimLayer = visibleThrough >= 7;
+  presentationControls.showCaRimLayer = visibleThrough >= 7;
+  presentationControls.showSpecLayer = visibleThrough >= 8;
+  presentationControls.showOuterStrokeLayer = visibleThrough >= 9;
+  presentationControls.showShadowLayer = visibleThrough >= 9;
 }
 
 function createStepButton(label: string, symbol: string): HTMLButtonElement {
