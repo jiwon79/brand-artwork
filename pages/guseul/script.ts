@@ -23,7 +23,11 @@ import {
   type Matrix3,
   type Vec3,
 } from './math';
-import { layerControls, type LayerControls } from './settings';
+import {
+  layerControls,
+  type LayerControls,
+  type ReelStep,
+} from './settings';
 
 type MarbleCircle = {
   x: number;
@@ -242,6 +246,19 @@ class SceneRenderer {
       })),
       controls: {
         background: [background[0] / 255, background[1] / 255, background[2] / 255],
+        debugView: params.controls.debugView,
+        showContactDebug: params.controls.showContactDebug,
+        showSourceLayer: params.controls.showSourceLayer,
+        showRefractionLayer: params.controls.showRefractionLayer,
+        showChromaticLayer: params.controls.showChromaticLayer,
+        showInnerShadeLayer: params.controls.showInnerShadeLayer,
+        showGlassMilkLayer: params.controls.showGlassMilkLayer,
+        showTopWashLayer: params.controls.showTopWashLayer,
+        showRimLayer: params.controls.showRimLayer,
+        showHardRimLayer: params.controls.showHardRimLayer,
+        showCaRimLayer: params.controls.showCaRimLayer,
+        showSpecLayer: params.controls.showSpecLayer,
+        showOuterStrokeLayer: params.controls.showOuterStrokeLayer,
         contentOverscan: params.controls.contentOverscan,
         sourceFollow: params.controls.sourceFollow,
         bezelWidth: params.controls.bezelWidth,
@@ -526,11 +543,109 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
   };
 }
 
+const reelSteps: ReelStep[] = [
+  '00 clear',
+  '01 source',
+  '02 source strokes',
+  '03 refraction',
+  '04 chromatic',
+  '05 inner shade',
+  '06 glass milk',
+  '07 top wash',
+  '08 rim',
+  '09 hard / CA rim',
+  '10 specular',
+  '11 final',
+];
+
+function applyReelStep(step: ReelStep): void {
+  if (step === 'custom') return;
+
+  const visibleThrough = Number.parseInt(step.slice(0, 2), 10);
+  layerControls.debugView = 'final';
+  layerControls.showContactDebug = false;
+  layerControls.showSourceLayer = visibleThrough >= 1;
+  layerControls.showCircleStrokeLayer = visibleThrough >= 2;
+  layerControls.showRefractionLayer = visibleThrough >= 3;
+  layerControls.showChromaticLayer = visibleThrough >= 4;
+  layerControls.showInnerShadeLayer = visibleThrough >= 5;
+  layerControls.showGlassMilkLayer = visibleThrough >= 6;
+  layerControls.showTopWashLayer = visibleThrough >= 7;
+  layerControls.showRimLayer = visibleThrough >= 8;
+  layerControls.showHardRimLayer = visibleThrough >= 9;
+  layerControls.showCaRimLayer = visibleThrough >= 9;
+  layerControls.showSpecLayer = visibleThrough >= 10;
+  layerControls.showOuterStrokeLayer = visibleThrough >= 11;
+  layerControls.showShadowLayer = visibleThrough >= 11;
+}
+
 function setupGui(): void {
   const gui = new GUI({ title: 'Guseul layers' });
   gui.domElement.addEventListener('pointerdown', (event) => {
     event.stopPropagation();
   });
+
+  const presentation = gui.addFolder('0 reel presentation');
+  const reelStepController = presentation
+    .add(layerControls, 'reelStep', [...reelSteps, 'custom'])
+    .name('build step')
+    .onChange((step: ReelStep) => applyReelStep(step));
+  const markCustom = () => {
+    layerControls.reelStep = 'custom';
+    reelStepController.updateDisplay();
+  };
+  const reelActions = {
+    previousStep: () => {
+      const current = reelSteps.indexOf(layerControls.reelStep);
+      const target = current < 0 ? reelSteps.length - 1 : Math.max(0, current - 1);
+      reelStepController.setValue(reelSteps[target]);
+    },
+    nextStep: () => {
+      const current = reelSteps.indexOf(layerControls.reelStep);
+      const target = current < 0 ? 0 : Math.min(reelSteps.length - 1, current + 1);
+      reelStepController.setValue(reelSteps[target]);
+    },
+  };
+  presentation.add(reelActions, 'previousStep').name('previous step');
+  presentation.add(reelActions, 'nextStep').name('next step');
+  presentation.add(
+    layerControls,
+    'debugView',
+    ['final', 'contact field', 'surface normals', 'spec mask'],
+  ).name('debug view').listen();
+  presentation.add(layerControls, 'showContactDebug').name('show contacts').listen();
+
+  const sourceLayers = presentation.addFolder('source layers');
+  sourceLayers.add(layerControls, 'showSourceLayer').name('source').listen().onChange(markCustom);
+  sourceLayers.add(layerControls, 'showCircleStrokeLayer')
+    .name('circle strokes').listen().onChange(markCustom);
+
+  const glassLayers = presentation.addFolder('glass layers');
+  glassLayers.add(layerControls, 'showRefractionLayer')
+    .name('refraction').listen().onChange(markCustom);
+  glassLayers.add(layerControls, 'showChromaticLayer')
+    .name('chromatic').listen().onChange(markCustom);
+  glassLayers.add(layerControls, 'showInnerShadeLayer')
+    .name('inner shade').listen().onChange(markCustom);
+  glassLayers.add(layerControls, 'showGlassMilkLayer')
+    .name('glass milk').listen().onChange(markCustom);
+
+  const lightLayers = presentation.addFolder('light layers');
+  lightLayers.add(layerControls, 'showTopWashLayer')
+    .name('top wash').listen().onChange(markCustom);
+  lightLayers.add(layerControls, 'showRimLayer').name('rim').listen().onChange(markCustom);
+  lightLayers.add(layerControls, 'showHardRimLayer')
+    .name('hard rim').listen().onChange(markCustom);
+  lightLayers.add(layerControls, 'showCaRimLayer')
+    .name('CA rim').listen().onChange(markCustom);
+  lightLayers.add(layerControls, 'showSpecLayer')
+    .name('specular').listen().onChange(markCustom);
+
+  const finishLayers = presentation.addFolder('finish layers');
+  finishLayers.add(layerControls, 'showOuterStrokeLayer')
+    .name('outer stroke').listen().onChange(markCustom);
+  finishLayers.add(layerControls, 'showShadowLayer')
+    .name('shadow').listen().onChange(markCustom);
 
   const scene = gui.addFolder('1 scene');
   scene.addColor(layerControls, 'backgroundColor').name('background').onChange(applyBackgroundColor);
@@ -638,6 +753,10 @@ function setupGui(): void {
   depthProjection.close();
   largeSpec.close();
   mediumSpec.close();
+  sourceLayers.close();
+  glassLayers.close();
+  lightLayers.close();
+  finishLayers.close();
   spec.close();
   scene.close();
   source.close();
@@ -729,7 +848,11 @@ function drawContentCircle(circle: VisibleMarbleCircle, params: RenderParams): v
   }
   contentCtx.restore();
 
-  if (strokeWidth > 0 && circle.strokeAlpha > 0) {
+  if (
+    params.controls.showCircleStrokeLayer
+    && strokeWidth > 0
+    && circle.strokeAlpha > 0
+  ) {
     contentCtx.save();
     contentCtx.globalAlpha = circle.fillAlpha * circle.strokeAlpha;
     contentCtx.lineWidth = strokeWidth;
@@ -787,9 +910,11 @@ function compositeScene(
   ctx.fillRect(0, 0, renderView.width, renderView.height);
 
   ctx.save();
-  ctx.shadowColor = 'rgba(20, 34, 35, 0.2)';
-  ctx.shadowBlur = renderView.radius * 0.16;
-  ctx.shadowOffsetY = renderView.radius * 0.08;
+  if (params.controls.showShadowLayer) {
+    ctx.shadowColor = 'rgba(20, 34, 35, 0.2)';
+    ctx.shadowBlur = renderView.radius * 0.16;
+    ctx.shadowOffsetY = renderView.radius * 0.08;
+  }
   ctx.drawImage(glassCanvas, 0, 0, renderView.width, renderView.height);
   ctx.restore();
 }

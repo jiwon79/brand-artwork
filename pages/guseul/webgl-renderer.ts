@@ -30,6 +30,19 @@ export type GpuSpec = {
 
 export type GpuGlassControls = {
   background: [number, number, number];
+  debugView: 'final' | 'contact field' | 'surface normals' | 'spec mask';
+  showContactDebug: boolean;
+  showSourceLayer: boolean;
+  showRefractionLayer: boolean;
+  showChromaticLayer: boolean;
+  showInnerShadeLayer: boolean;
+  showGlassMilkLayer: boolean;
+  showTopWashLayer: boolean;
+  showRimLayer: boolean;
+  showHardRimLayer: boolean;
+  showCaRimLayer: boolean;
+  showSpecLayer: boolean;
+  showOuterStrokeLayer: boolean;
   contentOverscan: number;
   sourceFollow: number;
   bezelWidth: number;
@@ -115,6 +128,19 @@ uniform float uChromaticEdgeStrength;
 uniform float uChromaticEdgeWidth;
 uniform float uChromaticBoundaryStrength;
 uniform float uChromaticBoundaryWidth;
+uniform int uDebugView;
+uniform int uShowContactDebug;
+uniform float uShowSourceLayer;
+uniform float uShowRefractionLayer;
+uniform float uShowChromaticLayer;
+uniform float uShowInnerShadeLayer;
+uniform float uShowGlassMilkLayer;
+uniform float uShowTopWashLayer;
+uniform float uShowRimLayer;
+uniform float uShowHardRimLayer;
+uniform float uShowCaRimLayer;
+uniform float uShowSpecLayer;
+uniform float uShowOuterStrokeLayer;
 uniform int uCircleCount;
 uniform vec4 uCircles[MAX_CIRCLES];
 uniform int uSpecCount;
@@ -478,12 +504,18 @@ vec3 sampleLiquidGlass(
   float rim
 ) {
   float height = surface.z;
-  vec2 baseOffset = rayDisplacement(refractCameraRay(surface.xy, uIor), height);
-  vec2 redOffset = rayDisplacement(refractCameraRay(surface.xy, uIor + uDispersion), height);
-  vec2 blueOffset = rayDisplacement(
+  vec2 baseOffset = rayDisplacement(refractCameraRay(surface.xy, uIor), height)
+    * uShowRefractionLayer;
+  vec2 dispersedRedOffset = rayDisplacement(
+    refractCameraRay(surface.xy, uIor + uDispersion),
+    height
+  ) * uShowRefractionLayer;
+  vec2 dispersedBlueOffset = rayDisplacement(
     refractCameraRay(surface.xy, max(uIor - uDispersion, 1.0001)),
     height
-  );
+  ) * uShowRefractionLayer;
+  vec2 redOffset = mix(baseOffset, dispersedRedOffset, uShowChromaticLayer);
+  vec2 blueOffset = mix(baseOffset, dispersedBlueOffset, uShowChromaticLayer);
 
   vec2 redPoint = transformSourcePoint(point + redOffset);
   vec2 basePoint = transformSourcePoint(point + baseOffset);
@@ -497,14 +529,19 @@ vec3 sampleLiquidGlass(
   float separationPixels = length(separationVector) * uRadiusCss;
   SourceEdge sourceEdge = sampleSourceEdge(basePoint);
   float sourceEdgeGate = sourceEdge.edge * uChromaticBoundaryStrength
-    * smoothRange(0.42, 0.98, radial) * (0.48 + rim * 0.52);
-  float dispersionMix = clamp(uDispersion * (rim * 1.2 + sourceEdgeGate * 0.85), 0.0, 0.54);
+    * smoothRange(0.42, 0.98, radial) * (0.48 + rim * 0.52)
+    * uShowChromaticLayer;
+  float dispersionMix = clamp(
+    uDispersion * (rim * 1.2 + sourceEdgeGate * 0.85),
+    0.0,
+    0.54
+  ) * uShowChromaticLayer;
   sampleColor = mix(sampleColor, vec3(red.r, base.g, blue.b), dispersionMix);
 
   float sourceContrast = max(colorDistance(red, base), colorDistance(blue, base));
   float refractedEdgeGate = smoothRange(0.04, 0.24, sourceContrast)
     * smoothRange(0.25, 2.6, separationPixels)
-    * smoothRange(0.56, 1.0, radial) * rim;
+    * smoothRange(0.56, 1.0, radial) * rim * uShowChromaticLayer;
   float edgeGate = max(refractedEdgeGate, sourceEdgeGate);
 
   if (edgeGate > 0.001 && uChromaticEdgeStrength > 0.0) {
@@ -561,6 +598,41 @@ float sampleSpecs(vec3 reflection) {
   return shell;
 }
 
+vec3 contactDebugOverlay(vec2 point, vec3 color) {
+  float pixel = 1.5 / uRadiusCss;
+  float centerMarker = 1.0 - smoothRange(0.025, 0.055, length(point));
+  color = mix(color, vec3(0.04, 0.12, 0.14), centerMarker * 0.9);
+
+  for (int index = 0; index < MAX_CONTACTS; index += 1) {
+    if (index >= uContactCount) break;
+    vec4 contact = uContacts[index];
+    float influence = smoothRange(0.0, 1.0, contact.w);
+    float linkDistance = distanceToSegment(point, vec2(0.0), contact.xy);
+    float link = 1.0 - smoothRange(pixel, pixel * 3.0, linkDistance);
+    float contactDistance = length(point - contact.xy);
+    float ring = 1.0 - smoothRange(
+      pixel,
+      pixel * 3.0,
+      abs(contactDistance - 0.075)
+    );
+    float core = 1.0 - smoothRange(0.018, 0.04, contactDistance);
+    color = mix(color, vec3(0.0, 0.75, 0.95), link * influence * 0.75);
+    color = mix(color, vec3(1.0, 0.12, 0.04), ring * influence);
+    color = mix(color, vec3(0.05), core * influence);
+  }
+
+  for (int index = 0; index < MAX_MEMBRANE_LINKS; index += 1) {
+    if (index >= uMembraneLinkCount) break;
+    vec4 startData = uMembraneStarts[index];
+    vec4 endData = uMembraneEnds[index];
+    float linkDistance = distanceToSegment(point, startData.xy, endData.xy);
+    float link = 1.0 - smoothRange(pixel, pixel * 3.0, linkDistance);
+    color = mix(color, vec3(0.72, 0.1, 0.92), link * startData.w * 0.8);
+  }
+
+  return color;
+}
+
 void main() {
   vec2 pixelCss = vec2(vUv.x * uViewportCss.x, (1.0 - vUv.y) * uViewportCss.y);
   vec2 point = (pixelCss - uCenterCss) / uRadiusCss;
@@ -588,18 +660,23 @@ void main() {
     surface,
     rimField
   );
+  sampleColor = mix(uBackground, sampleColor, uShowSourceLayer);
 
   float edgeT = smoothRange(0.68, 1.0, radial);
   vec3 normal = normalize(vec3(edgeNormal * radial, nz));
   float directionalLight = max(0.0, dot(normal, normalize(vec3(-0.36, -0.48, 0.88))));
-  float innerShade = 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08;
-  float glassMilk = 0.005 + edgeT * 0.1
-    + smoothRange(0.92, 1.0, radial) * 0.08;
+  float innerShade = mix(
+    1.0,
+    0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08,
+    uShowInnerShadeLayer
+  );
+  float glassMilk = (0.005 + edgeT * 0.1
+    + smoothRange(0.92, 1.0, radial) * 0.08) * uShowGlassMilkLayer;
   float topWash = smoothRange(0.18, -0.82, point.y)
-    * smoothRange(0.98, 0.16, radial);
-  float rim = smoothRange(0.72, 1.0, radial);
-  float hardRim = smoothRange(0.93, 1.0, radial);
-  float caRim = smoothRange(0.8, 1.0, radial);
+    * smoothRange(0.98, 0.16, radial) * uShowTopWashLayer;
+  float rim = smoothRange(0.72, 1.0, radial) * uShowRimLayer;
+  float hardRim = smoothRange(0.93, 1.0, radial) * uShowHardRimLayer;
+  float caRim = smoothRange(0.8, 1.0, radial) * uShowCaRimLayer;
   vec2 specPoint = inverseBoundarySpecWarp(point);
   float specRadiusSquared = min(dot(specPoint, specPoint), 0.999);
   vec3 specNormal = normalize(vec3(
@@ -607,7 +684,8 @@ void main() {
     sqrt(max(1.0 - specRadiusSquared, 0.001))
   ));
   vec3 reflection = normalize(reflect(vec3(0.0, 0.0, -1.0), specNormal));
-  float shell = sampleSpecs(reflection);
+  float specMask = sampleSpecs(reflection);
+  float shell = specMask * uShowSpecLayer;
 
   vec3 color = mix(sampleColor * innerShade, vec3(1.0), vec3(glassMilk, glassMilk, glassMilk * 0.94));
   color += vec3(shell / 255.0);
@@ -625,7 +703,23 @@ void main() {
   );
   float diagonal = smoothRange(-1.4, 1.6, point.x + point.y);
   vec3 strokeColor = mix(vec3(1.0), vec3(0.86, 0.84, 0.8), diagonal * 0.2);
-  color = mix(color, strokeColor, stroke * 0.38);
+  color = mix(color, strokeColor, stroke * 0.38 * uShowOuterStrokeLayer);
+
+  if (uDebugView == 1) {
+    float field = clamp(0.5 + shapeDistance * 2.0, 0.0, 1.0);
+    float contour = 1.0 - smoothRange(0.0, 0.025, abs(shapeDistance));
+    color = mix(vec3(0.08, 0.32, 0.72), vec3(0.96, 0.18, 0.08), field);
+    color = mix(color, vec3(1.0), contour);
+  } else if (uDebugView == 2) {
+    color = vec3(normal.xy * 0.5 + 0.5, normal.z * 0.5 + 0.5);
+  } else if (uDebugView == 3) {
+    float mask = smoothRange(0.0, 0.18, specMask / 255.0);
+    color = mix(vec3(0.025), vec3(1.0, 0.08, 0.02), mask);
+  }
+
+  if (uShowContactDebug == 1) {
+    color = contactDebugOverlay(point, color);
+  }
 
   outputColor = vec4(clamp(color, 0.0, 1.0), shapeMask);
 }
@@ -694,6 +788,13 @@ function getUniforms(gl: WebGL2RenderingContext, program: WebGLProgram, names: s
   }));
 }
 
+function debugViewIndex(view: GpuGlassControls['debugView']): number {
+  if (view === 'contact field') return 1;
+  if (view === 'surface normals') return 2;
+  if (view === 'spec mask') return 3;
+  return 0;
+}
+
 export class GuseulWebGLRenderer {
   readonly canvas = document.createElement('canvas');
   private readonly gl: WebGL2RenderingContext;
@@ -739,6 +840,10 @@ export class GuseulWebGLRenderer {
       'uFieldSmoothness', 'uContourOffset', 'uBezelWidth', 'uThickness',
       'uDisplacementFactor', 'uIor', 'uDispersion', 'uChromaticEdgeStrength',
       'uChromaticEdgeWidth', 'uChromaticBoundaryStrength', 'uChromaticBoundaryWidth',
+      'uDebugView', 'uShowContactDebug', 'uShowSourceLayer', 'uShowRefractionLayer',
+      'uShowChromaticLayer', 'uShowInnerShadeLayer', 'uShowGlassMilkLayer',
+      'uShowTopWashLayer', 'uShowRimLayer', 'uShowHardRimLayer', 'uShowCaRimLayer',
+      'uShowSpecLayer', 'uShowOuterStrokeLayer',
       'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecSource[0]', 'uSpecAxisX[0]',
       'uSpecAxisY[0]', 'uSpecShape[0]', 'uSpecRender[0]',
     ]);
@@ -930,6 +1035,19 @@ export class GuseulWebGLRenderer {
     gl.uniform1f(this.uniforms.uChromaticEdgeWidth, controls.chromaticEdgeWidth);
     gl.uniform1f(this.uniforms.uChromaticBoundaryStrength, controls.chromaticBoundaryStrength);
     gl.uniform1f(this.uniforms.uChromaticBoundaryWidth, controls.chromaticBoundaryWidth);
+    gl.uniform1i(this.uniforms.uDebugView, debugViewIndex(controls.debugView));
+    gl.uniform1i(this.uniforms.uShowContactDebug, Number(controls.showContactDebug));
+    gl.uniform1f(this.uniforms.uShowSourceLayer, Number(controls.showSourceLayer));
+    gl.uniform1f(this.uniforms.uShowRefractionLayer, Number(controls.showRefractionLayer));
+    gl.uniform1f(this.uniforms.uShowChromaticLayer, Number(controls.showChromaticLayer));
+    gl.uniform1f(this.uniforms.uShowInnerShadeLayer, Number(controls.showInnerShadeLayer));
+    gl.uniform1f(this.uniforms.uShowGlassMilkLayer, Number(controls.showGlassMilkLayer));
+    gl.uniform1f(this.uniforms.uShowTopWashLayer, Number(controls.showTopWashLayer));
+    gl.uniform1f(this.uniforms.uShowRimLayer, Number(controls.showRimLayer));
+    gl.uniform1f(this.uniforms.uShowHardRimLayer, Number(controls.showHardRimLayer));
+    gl.uniform1f(this.uniforms.uShowCaRimLayer, Number(controls.showCaRimLayer));
+    gl.uniform1f(this.uniforms.uShowSpecLayer, Number(controls.showSpecLayer));
+    gl.uniform1f(this.uniforms.uShowOuterStrokeLayer, Number(controls.showOuterStrokeLayer));
     this.uploadElasticShape(frame.elasticShape);
     this.uploadCircles(frame.circles);
     this.uploadSpecs(frame.specs);

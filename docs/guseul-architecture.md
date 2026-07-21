@@ -1,6 +1,6 @@
 # Guseul Final Architecture
 
-이 문서는 현재 구슬 페이지를 읽기 위한 기준 문서다. 실험 중 사용했던 Canvas2D 유리 렌더러, 포탈 전환, surface preview, spec debug 및 대체 spec warp는 최종 코드에서 제거되었다.
+이 문서는 현재 구슬 페이지를 읽기 위한 기준 문서다. 실험 중 사용했던 Canvas2D 유리 렌더러, 포탈 전환 및 대체 spec warp는 최종 코드에서 제거되었다. 릴스 촬영용 디버그 뷰는 최종 WebGL 렌더 경로를 설명하기 위한 가벼운 시각화로만 남아 있다.
 
 ## 파일 읽는 순서
 
@@ -90,7 +90,28 @@ spec은 먼저 완전한 구 위의 고정된 carrier와 tangent axes로 정의�
 5. `rim`, `hardRim`, `caRim`: 가장자리 두께와 색수차 보강
 6. outer stroke: 최종 외곽선의 얇은 경계
 
-이 항목들은 최종 디자인에서 항상 사용하므로 별도 on/off 분기는 없다.
+최종 디자인에서는 모두 켜져 있다. `0 reel presentation` GUI는 같은 셰이더 안에서 각 합성 결과를 마스킹하므로, 대체 렌더러 없이 레이어가 쌓이는 과정을 보여준다.
+
+## 7. 릴스 프레젠테이션
+
+`build step`은 다음 순서로 레이어를 누적한다.
+
+```text
+clear -> source -> circle strokes -> refraction -> chromatic
+      -> inner shade -> glass milk -> top wash -> rim
+      -> hard / CA rim -> specular -> final stroke and shadow
+```
+
+`previous step`과 `next step`으로 촬영 중 한 단계씩 이동할 수 있다. source, glass, light, finish 폴더에서는 각 레이어를 따로 켜고 끌 수 있으며, 이때 단계 이름은 `custom`으로 바뀐다.
+
+디버그 뷰는 최종 픽셀 계산을 다음 방식으로 바꿔 보여준다.
+
+- `contact field`: 내부와 외부의 signed distance 및 실제 contour
+- `surface normals`: 굴절과 명암에 사용하는 변형 표면 normal
+- `spec mask`: 반사 벡터가 spec 영역에 들어간 정도
+- `show contacts`: 중심-contact bridge와 contact-contact membrane을 최종 화면 위에 표시
+
+이 설정들은 계산 방식을 교체하지 않는다. 최종 fragment shader가 이미 계산한 중간값을 색으로 표시하거나, 합성 직전의 레이어 기여도를 0으로 만드는 역할만 한다.
 
 ## 설정을 바꿀 때
 

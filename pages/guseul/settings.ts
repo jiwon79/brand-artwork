@@ -1,6 +1,23 @@
 // These are the final artwork values. The GUI mutates this object at runtime so
 // each stage can be studied without keeping alternate rendering implementations.
 export const layerControls = {
+  reelStep: '11 final' as ReelStep,
+  debugView: 'final' as DebugView,
+  showContactDebug: false,
+  showSourceLayer: true,
+  showCircleStrokeLayer: true,
+  showRefractionLayer: true,
+  showChromaticLayer: true,
+  showInnerShadeLayer: true,
+  showGlassMilkLayer: true,
+  showTopWashLayer: true,
+  showRimLayer: true,
+  showHardRimLayer: true,
+  showCaRimLayer: true,
+  showSpecLayer: true,
+  showOuterStrokeLayer: true,
+  showShadowLayer: true,
+
   backgroundColor: '#fffefb',
   marbleScale: 1.22,
   dragSensitivity: 1,
@@ -61,4 +78,20 @@ export const layerControls = {
   specMediumSoftness: 2 / 3,
 };
 
+export type ReelStep =
+  | '00 clear'
+  | '01 source'
+  | '02 source strokes'
+  | '03 refraction'
+  | '04 chromatic'
+  | '05 inner shade'
+  | '06 glass milk'
+  | '07 top wash'
+  | '08 rim'
+  | '09 hard / CA rim'
+  | '10 specular'
+  | '11 final'
+  | 'custom';
+
+export type DebugView = 'final' | 'contact field' | 'surface normals' | 'spec mask';
 export type LayerControls = typeof layerControls;
