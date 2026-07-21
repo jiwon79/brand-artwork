@@ -2,6 +2,7 @@ import {
   maxElasticSpecBoundaryPoints,
   type ElasticShapeFrame,
 } from './elastic-contact-field';
+import type { DebugView } from './reel-presentation';
 
 const maxGpuCircles = 10;
 const maxGpuSpecs = 11;
@@ -30,7 +31,7 @@ export type GpuSpec = {
 
 export type GpuGlassControls = {
   background: [number, number, number];
-  debugView: 'final' | 'contact field' | 'surface normals' | 'spec mask';
+  debugView: DebugView;
   showContactDebug: boolean;
   showSourceLayer: boolean;
   showRefractionLayer: boolean;

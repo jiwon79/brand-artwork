@@ -6,13 +6,15 @@
 
 1. `pages/guseul/settings.ts`
    최종 기본값과 GUI에서 조절 가능한 값만 모여 있다.
-2. `pages/guseul/script.ts`
+2. `pages/guseul/reel-presentation.ts`
+   릴스 단계, 디버그 상태, 화면 하단 프레젠테이션 UI만 모여 있다.
+3. `pages/guseul/script.ts`
    이미지 원, 회전, 제스처, 프레임 갱신을 연결하는 진입점이다.
-3. `pages/guseul/elastic-contact-field.ts`
+4. `pages/guseul/elastic-contact-field.ts`
    여러 contact로 늘어난 외곽선과 release spring을 계산한다.
-4. `pages/guseul/webgl-renderer.ts`
+5. `pages/guseul/webgl-renderer.ts`
    외곽선, 굴절, chromatic separation, spec, glass shell을 픽셀마다 계산한다.
-5. `pages/guseul/math.ts`
+6. `pages/guseul/math.ts`
    구 회전과 spec 계산에서 공유하는 3D 벡터/행렬 함수다.
 
 ## 한 프레임의 흐름
@@ -90,7 +92,7 @@ spec은 먼저 완전한 구 위의 고정된 carrier와 tangent axes로 정의�
 5. `rim`, `hardRim`, `caRim`: 가장자리 두께와 색수차 보강
 6. outer stroke: 최종 외곽선의 얇은 경계
 
-최종 디자인에서는 모두 켜져 있다. `0 reel presentation` GUI는 같은 셰이더 안에서 각 합성 결과를 마스킹하므로, 대체 렌더러 없이 레이어가 쌓이는 과정을 보여준다.
+최종 디자인에서는 모두 켜져 있다. 화면 하단 릴스 컨트롤은 같은 셰이더 안에서 각 합성 결과를 마스킹하므로, 대체 렌더러 없이 레이어가 쌓이는 과정을 보여준다.
 
 ## 7. 릴스 프레젠테이션
 
@@ -102,7 +104,7 @@ clear -> source -> circle strokes -> refraction -> chromatic
       -> hard / CA rim -> specular -> final stroke and shadow
 ```
 
-`previous step`과 `next step`으로 촬영 중 한 단계씩 이동할 수 있다. source, glass, light, finish 폴더에서는 각 레이어를 따로 켜고 끌 수 있으며, 이때 단계 이름은 `custom`으로 바뀐다.
+화면 하단의 화살표와 `build step` 선택으로 촬영 중 한 단계씩 이동할 수 있다. `layers` 패널에서는 source, glass, light, finish 레이어를 따로 켜고 끌 수 있으며, 이때 단계 이름은 `custom`으로 바뀐다. 이 UI와 상태는 `reel-presentation.ts`에 격리되어 lil-gui나 최종 아트워크 기본값에 섞이지 않는다.
 
 디버그 뷰는 최종 픽셀 계산을 다음 방식으로 바꿔 보여준다.
 
@@ -115,4 +117,4 @@ clear -> source -> circle strokes -> refraction -> chromatic
 
 ## 설정을 바꿀 때
 
-최종 기본값은 `settings.ts` 한 곳에서만 바꾼다. GUI는 같은 객체를 직접 수정하므로 별도의 설정 복사본이 없다. 형태 관련 값을 추가하려면 `ElasticFieldControls`, 렌더링 관련 값을 추가하려면 `GpuGlassControls`까지 데이터가 전달되는 경로를 함께 갱신해야 한다.
+최종 아트워크 기본값은 `settings.ts`에서 바꾼다. 릴스 단계와 디버그 기본값은 `reel-presentation.ts`에만 있다. 형태 관련 값을 추가하려면 `ElasticFieldControls`, 렌더링 관련 값을 추가하려면 `GpuGlassControls`까지 데이터가 전달되는 경로를 함께 갱신해야 한다.
