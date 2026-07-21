@@ -21,13 +21,7 @@ export type ElasticFieldControls = {
   releaseHoldDuration: number;
   releaseLifetime: number;
   springFrequency: number;
-  specWarpMode?: 'boundary' | 'harmonic' | 'radial';
-  specRayDebugEnabled?: boolean;
-  specBoundarySamples?: number;
-  specWarpCenterStiffness?: number;
-  specWarpContactStiffness?: number;
-  specWarpRestStiffness?: number;
-  specWarpIterations?: number;
+  specBoundarySamples: number;
 };
 
 export type ElasticContactSample = {
@@ -51,14 +45,10 @@ export type ElasticMembraneLink = {
 export type ElasticShapeFrame = {
   contacts: ElasticContactSample[];
   membraneLinks: ElasticMembraneLink[];
-  specWarpMap: Float32Array;
-  specWarpRevision: number;
   specWarpCage: Float32Array;
   specWarpCageCount: number;
   specWarpCageRevision: number;
   specWarpCenter: ElasticVec2;
-  specBoundaryRadii: Float32Array;
-  specBoundaryRevision: number;
   contactRadius: number;
   bridgeRadius: number;
   membraneBridgeRadius: number;
@@ -78,7 +68,6 @@ type Contact = {
   releaseOffset: ElasticVec2;
   releaseAngle: number;
   active: boolean;
-  persistent: boolean;
 };
 
 type ShapeMetrics = {
@@ -92,11 +81,10 @@ const maxContacts = 10;
 const maxMembraneLinks = maxContacts * 2;
 const areaSampleResolution = 76;
 const baseArea = Math.PI;
-export const elasticSpecWarpResolution = 101;
-export const elasticSpecWarpExtent = 5;
-export const elasticSpecRayCount = 256;
+const specCageGridResolution = 101;
+const specCageGridExtent = 5;
 export const maxElasticSpecBoundaryPoints = 64;
-const specWarpCellCount = elasticSpecWarpResolution * elasticSpecWarpResolution;
+const specCageGridCellCount = specCageGridResolution * specCageGridResolution;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -400,354 +388,6 @@ function rawShapeDistance(
   return distanceToShape;
 }
 
-function compactSupport(distance: number, inner: number, outer: number): number {
-  const progress = 1 - clamp(
-    (distance - inner) / Math.max(outer - inner, 0.0001),
-    0,
-    1,
-  );
-  return smoothInfluence(progress);
-}
-
-class HarmonicSpecWarpSolver {
-  readonly map = new Float32Array(specWarpCellCount * 2);
-  revision = 0;
-
-  private displacementX = new Float32Array(specWarpCellCount);
-  private displacementY = new Float32Array(specWarpCellCount);
-  private nextX = new Float32Array(specWarpCellCount);
-  private nextY = new Float32Array(specWarpCellCount);
-  private readonly mask = new Uint8Array(specWarpCellCount);
-  private readonly constraintWeight = new Float32Array(specWarpCellCount);
-  private readonly constraintX = new Float32Array(specWarpCellCount);
-  private readonly constraintY = new Float32Array(specWarpCellCount);
-  private lastSignature = 'identity';
-
-  constructor() {
-    this.writeIdentityMap();
-  }
-
-  solve(
-    items: Contact[],
-    metrics: ShapeMetrics,
-    controls: ElasticFieldControls,
-  ): Float32Array {
-    if (items.length === 0) {
-      if (this.lastSignature !== 'identity') {
-        this.lastSignature = 'identity';
-        this.writeIdentityMap();
-        this.revision += 1;
-      }
-      return this.map;
-    }
-
-    const centerStiffness = controls.specWarpCenterStiffness ?? 80;
-    const contactStiffness = controls.specWarpContactStiffness ?? 36;
-    const restStiffness = controls.specWarpRestStiffness ?? 0.02;
-    const iterations = Math.round(clamp(controls.specWarpIterations ?? 4, 2, 32));
-    const signature = [
-      metrics.seedRadius,
-      metrics.bridgeRadius,
-      metrics.membraneBridgeRadius,
-      centerStiffness,
-      contactStiffness,
-      restStiffness,
-      iterations,
-      ...metrics.contactRadii,
-      ...items.flatMap((item) => [
-        item.anchor.x,
-        item.anchor.y,
-        item.position.x,
-        item.position.y,
-        item.influence,
-      ]),
-    ].map((value) => value.toFixed(5)).join('|');
-
-    if (signature === this.lastSignature) {
-      return this.map;
-    }
-    this.lastSignature = signature;
-
-    const resolution = elasticSpecWarpResolution;
-    const spacing = elasticSpecWarpExtent * 2 / (resolution - 1);
-    const centerRadius = Math.max(spacing * 2.4, 0.08);
-    // The visible SDF still clips the glass. This continuous support only carries
-    // material coordinates, so concave contour branches cannot swap underneath it.
-    const supportRadius = Math.min(
-      elasticSpecWarpExtent - spacing,
-      items.reduce((maximum, item, index) => Math.max(
-        maximum,
-        length(item.position) + metrics.contactRadii[index] + 0.5,
-      ), 1.25),
-    );
-
-    for (let row = 0; row < resolution; row += 1) {
-      const y = -elasticSpecWarpExtent + row * spacing;
-      for (let column = 0; column < resolution; column += 1) {
-        const x = -elasticSpecWarpExtent + column * spacing;
-        const index = row * resolution + column;
-        const centerDistance = Math.hypot(x, y);
-        this.mask[index] = centerDistance <= supportRadius ? 1 : 0;
-        const centerWeight = compactSupport(
-          centerDistance,
-          centerRadius * 0.24,
-          centerRadius,
-        ) * centerStiffness;
-        let targetWeight = centerWeight;
-        let targetX = 0;
-        let targetY = 0;
-        let initialWeight = 1 / (centerDistance * centerDistance + 0.08);
-        let initialX = 0;
-        let initialY = 0;
-
-        for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-          const item = items[itemIndex];
-          const influence = smoothInfluence(item.influence);
-          const distance = Math.hypot(x - item.position.x, y - item.position.y);
-          const contactRadius = Math.max(
-            metrics.contactRadii[itemIndex] * 0.72,
-            spacing * 2.5,
-          );
-          const contactWeight = compactSupport(
-            distance,
-            contactRadius * 0.42,
-            contactRadius,
-          ) * contactStiffness * influence;
-          const displacementX = item.position.x - item.anchor.x;
-          const displacementY = item.position.y - item.anchor.y;
-          targetWeight += contactWeight;
-          targetX += displacementX * contactWeight;
-          targetY += displacementY * contactWeight;
-
-          const interpolationWeight = influence
-            / (distance * distance + contactRadius * contactRadius * 0.38 + 0.01);
-          initialWeight += interpolationWeight;
-          initialX += displacementX * interpolationWeight;
-          initialY += displacementY * interpolationWeight;
-        }
-
-        this.constraintWeight[index] = targetWeight;
-        this.constraintX[index] = targetWeight > 0 ? targetX / targetWeight : 0;
-        this.constraintY[index] = targetWeight > 0 ? targetY / targetWeight : 0;
-        this.displacementX[index] = initialX / initialWeight;
-        this.displacementY[index] = initialY / initialWeight;
-      }
-    }
-
-    for (let iteration = 0; iteration < iterations; iteration += 1) {
-      for (let row = 0; row < resolution; row += 1) {
-        for (let column = 0; column < resolution; column += 1) {
-          const index = row * resolution + column;
-          if (this.mask[index] === 0) {
-            this.nextX[index] = this.displacementX[index];
-            this.nextY[index] = this.displacementY[index];
-            continue;
-          }
-
-          let sumX = 0;
-          let sumY = 0;
-          let neighborCount = 0;
-          const left = index - 1;
-          const right = index + 1;
-          const top = index - resolution;
-          const bottom = index + resolution;
-          if (column > 0 && this.mask[left] !== 0) {
-            sumX += this.displacementX[left];
-            sumY += this.displacementY[left];
-            neighborCount += 1;
-          }
-          if (column + 1 < resolution && this.mask[right] !== 0) {
-            sumX += this.displacementX[right];
-            sumY += this.displacementY[right];
-            neighborCount += 1;
-          }
-          if (row > 0 && this.mask[top] !== 0) {
-            sumX += this.displacementX[top];
-            sumY += this.displacementY[top];
-            neighborCount += 1;
-          }
-          if (row + 1 < resolution && this.mask[bottom] !== 0) {
-            sumX += this.displacementX[bottom];
-            sumY += this.displacementY[bottom];
-            neighborCount += 1;
-          }
-
-          const constraintWeight = this.constraintWeight[index];
-          const denominator = neighborCount + constraintWeight + restStiffness;
-          const solvedX = (
-            sumX + this.constraintX[index] * constraintWeight
-          ) / Math.max(denominator, 0.0001);
-          const solvedY = (
-            sumY + this.constraintY[index] * constraintWeight
-          ) / Math.max(denominator, 0.0001);
-          this.nextX[index] = this.displacementX[index]
-            + (solvedX - this.displacementX[index]) * 0.92;
-          this.nextY[index] = this.displacementY[index]
-            + (solvedY - this.displacementY[index]) * 0.92;
-        }
-      }
-
-      [this.displacementX, this.nextX] = [this.nextX, this.displacementX];
-      [this.displacementY, this.nextY] = [this.nextY, this.displacementY];
-    }
-
-    for (let row = 0; row < resolution; row += 1) {
-      const y = -elasticSpecWarpExtent + row * spacing;
-      for (let column = 0; column < resolution; column += 1) {
-        const x = -elasticSpecWarpExtent + column * spacing;
-        const index = row * resolution + column;
-        this.map[index * 2] = x - this.displacementX[index];
-        this.map[index * 2 + 1] = y - this.displacementY[index];
-      }
-    }
-
-    this.revision += 1;
-    return this.map;
-  }
-
-  private writeIdentityMap(): void {
-    const resolution = elasticSpecWarpResolution;
-    const spacing = elasticSpecWarpExtent * 2 / (resolution - 1);
-    for (let row = 0; row < resolution; row += 1) {
-      const y = -elasticSpecWarpExtent + row * spacing;
-      for (let column = 0; column < resolution; column += 1) {
-        const x = -elasticSpecWarpExtent + column * spacing;
-        const index = row * resolution + column;
-        this.map[index * 2] = x;
-        this.map[index * 2 + 1] = y;
-      }
-    }
-  }
-}
-
-class RadialSpecBoundarySampler {
-  readonly radii = new Float32Array(elasticSpecRayCount).fill(1);
-  revision = 0;
-
-  private lastSignature = '';
-
-  solve(
-    items: Contact[],
-    membraneLinks: ElasticMembraneLink[],
-    metrics: ShapeMetrics,
-    controls: ElasticFieldControls,
-    contourOffset: number,
-  ): Float32Array {
-    const signature = [
-      contourOffset,
-      metrics.seedRadius,
-      metrics.bridgeRadius,
-      metrics.membraneBridgeRadius,
-      controls.edgeConcavity,
-      controls.fieldSmoothness,
-      ...metrics.contactRadii,
-      ...items.flatMap((item) => [
-        item.position.x,
-        item.position.y,
-        item.influence,
-      ]),
-      ...membraneLinks.flatMap((link) => [
-        link.start.x,
-        link.start.y,
-        link.end.x,
-        link.end.y,
-        link.influence,
-        link.fillTriangle,
-      ]),
-    ].map((value) => value.toFixed(5)).join('|');
-
-    if (signature === this.lastSignature) return this.radii;
-    this.lastSignature = signature;
-
-    const farthestContact = items.reduce((maximum, item, index) => Math.max(
-      maximum,
-      length(item.position) + metrics.contactRadii[index],
-    ), 1);
-    const initialSearchRadius = Math.max(
-      1.4,
-      farthestContact + Math.max(contourOffset, 0) + controls.fieldSmoothness + 0.7,
-    );
-    const raySearchSteps = 48;
-    const binarySearchSteps = 10;
-    const tau = Math.PI * 2;
-
-    for (let rayIndex = 0; rayIndex < elasticSpecRayCount; rayIndex += 1) {
-      const angle = ((rayIndex + 0.5) / elasticSpecRayCount) * tau - Math.PI;
-      const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-      let searchRadius = initialSearchRadius;
-      let outsideDistance = rawShapeDistance(
-        scale(direction, searchRadius),
-        items,
-        membraneLinks,
-        metrics,
-        controls,
-      ) - contourOffset;
-
-      for (let expansion = 0; expansion < 4 && outsideDistance <= 0; expansion += 1) {
-        searchRadius *= 1.5;
-        outsideDistance = rawShapeDistance(
-          scale(direction, searchRadius),
-          items,
-          membraneLinks,
-          metrics,
-          controls,
-        ) - contourOffset;
-      }
-
-      let outsideRadius = searchRadius;
-      let insideRadius = 0;
-      let foundBoundary = false;
-      let radius = searchRadius;
-      let distance = outsideDistance;
-      const minimumStep = searchRadius / 1024;
-
-      // Trace inward from guaranteed empty space. The field distance lets most
-      // rays reach their outermost boundary in a handful of evaluations.
-      for (let step = 0; step < raySearchSteps; step += 1) {
-        if (distance <= 0) {
-          insideRadius = radius;
-          foundBoundary = true;
-          break;
-        }
-
-        outsideRadius = radius;
-        radius = Math.max(radius - Math.max(distance * 0.6, minimumStep), 0);
-        distance = rawShapeDistance(
-          scale(direction, radius),
-          items,
-          membraneLinks,
-          metrics,
-          controls,
-        ) - contourOffset;
-      }
-
-      if (!foundBoundary) {
-        this.radii[rayIndex] = Math.max(metrics.seedRadius + contourOffset, 0.001);
-        continue;
-      }
-
-      for (let step = 0; step < binarySearchSteps; step += 1) {
-        const radius = (insideRadius + outsideRadius) * 0.5;
-        const distance = rawShapeDistance(
-          scale(direction, radius),
-          items,
-          membraneLinks,
-          metrics,
-          controls,
-        ) - contourOffset;
-
-        if (distance <= 0) insideRadius = radius;
-        else outsideRadius = radius;
-      }
-
-      this.radii[rayIndex] = Math.max((insideRadius + outsideRadius) * 0.5, 0.001);
-    }
-
-    this.revision += 1;
-    return this.radii;
-  }
-}
-
 type ContourSegment = {
   start: ElasticVec2;
   end: ElasticVec2;
@@ -759,7 +399,7 @@ class BoundarySpecCageSolver {
   center: ElasticVec2 = { x: 0, y: 0 };
   revision = 0;
 
-  private readonly values = new Float32Array(specWarpCellCount);
+  private readonly values = new Float32Array(specCageGridCellCount);
   private lastSignature = '';
   private previousSeam: ElasticVec2 | null = null;
 
@@ -775,7 +415,7 @@ class BoundarySpecCageSolver {
     contourOffset: number,
   ): void {
     const boundarySamples = Math.round(clamp(
-      controls.specBoundarySamples ?? 48,
+      controls.specBoundarySamples,
       16,
       maxElasticSpecBoundaryPoints,
     ));
@@ -806,8 +446,8 @@ class BoundarySpecCageSolver {
     if (signature === this.lastSignature) return;
     this.lastSignature = signature;
 
-    const resolution = elasticSpecWarpResolution;
-    const spacing = elasticSpecWarpExtent * 2 / (resolution - 1);
+    const resolution = specCageGridResolution;
+    const spacing = specCageGridExtent * 2 / (resolution - 1);
     this.sampleField(
       items,
       membraneLinks,
@@ -861,11 +501,11 @@ class BoundarySpecCageSolver {
     contourOffset: number,
     spacing: number,
   ): void {
-    const resolution = elasticSpecWarpResolution;
+    const resolution = specCageGridResolution;
     for (let row = 0; row < resolution; row += 1) {
-      const y = -elasticSpecWarpExtent + row * spacing;
+      const y = -specCageGridExtent + row * spacing;
       for (let column = 0; column < resolution; column += 1) {
-        const x = -elasticSpecWarpExtent + column * spacing;
+        const x = -specCageGridExtent + column * spacing;
         const index = row * resolution + column;
         const value = rawShapeDistance(
           { x, y },
@@ -880,7 +520,7 @@ class BoundarySpecCageSolver {
   }
 
   private extractPrimaryContour(spacing: number): ElasticVec2[] {
-    const resolution = elasticSpecWarpResolution;
+    const resolution = specCageGridResolution;
     const segments: ContourSegment[] = [];
     const edgePoint = (
       first: ElasticVec2,
@@ -901,10 +541,10 @@ class BoundarySpecCageSolver {
     };
 
     for (let row = 0; row + 1 < resolution; row += 1) {
-      const top = -elasticSpecWarpExtent + row * spacing;
+      const top = -specCageGridExtent + row * spacing;
       const bottom = top + spacing;
       for (let column = 0; column + 1 < resolution; column += 1) {
-        const left = -elasticSpecWarpExtent + column * spacing;
+        const left = -specCageGridExtent + column * spacing;
         const right = left + spacing;
         const topLeftIndex = row * resolution + column;
         const topRightIndex = topLeftIndex + 1;
@@ -1291,9 +931,7 @@ function solveContourOffset(
 
 export class ElasticContactField {
   private readonly contacts = new Map<number, Contact>();
-  private readonly specWarpSolver = new HarmonicSpecWarpSolver();
   private readonly boundarySpecCageSolver = new BoundarySpecCageSolver();
-  private readonly specBoundarySampler = new RadialSpecBoundarySampler();
   private contourOffset: number;
   private frame: ElasticShapeFrame;
 
@@ -1302,14 +940,10 @@ export class ElasticContactField {
     this.frame = {
       contacts: [],
       membraneLinks: [],
-      specWarpMap: this.specWarpSolver.map,
-      specWarpRevision: this.specWarpSolver.revision,
       specWarpCage: this.boundarySpecCageSolver.cage,
       specWarpCageCount: this.boundarySpecCageSolver.cageCount,
       specWarpCageRevision: this.boundarySpecCageSolver.revision,
       specWarpCenter: this.boundarySpecCageSolver.center,
-      specBoundaryRadii: this.specBoundarySampler.radii,
-      specBoundaryRevision: this.specBoundarySampler.revision,
       contactRadius: controls.seedRadiusScale,
       bridgeRadius: controls.seedRadiusScale * controls.bridgeRadiusRatio,
       membraneBridgeRadius: controls.seedRadiusScale
@@ -1318,10 +952,6 @@ export class ElasticContactField {
       edgeConcavity: controls.edgeConcavity,
       fieldSmoothness: controls.fieldSmoothness,
     };
-  }
-
-  hasContacts(): boolean {
-    return this.contacts.size > 0;
   }
 
   clear(): void {
@@ -1338,7 +968,7 @@ export class ElasticContactField {
       <= this.contourOffset + 0.06;
   }
 
-  addContact(id: number, position: ElasticVec2, persistent = false): boolean {
+  addContact(id: number, position: ElasticVec2): boolean {
     if (this.contacts.size >= maxContacts || !this.contains(position)) return false;
 
     this.contacts.set(id, {
@@ -1352,7 +982,6 @@ export class ElasticContactField {
       releaseOffset: { x: 0, y: 0 },
       releaseAngle: Math.atan2(position.y, position.x),
       active: true,
-      persistent,
     });
     return true;
   }
@@ -1368,7 +997,7 @@ export class ElasticContactField {
 
   releaseContact(id: number): void {
     const item = this.contacts.get(id);
-    if (!item?.active || item.persistent) return;
+    if (!item?.active) return;
     item.releaseOffset = subtract(item.position, item.anchor);
     item.releaseAngle = Math.atan2(item.position.y, item.position.x);
     item.active = false;
@@ -1429,28 +1058,13 @@ export class ElasticContactField {
     const targetOffset = solveContourOffset(items, membraneLinks, metrics, this.controls);
     const pressureBlend = 1 - Math.exp(-this.controls.pressureResponse * delta);
     this.contourOffset += (targetOffset - this.contourOffset) * pressureBlend;
-    const specWarpMode = this.controls.specWarpMode ?? 'harmonic';
-    if (specWarpMode === 'boundary') {
-      this.boundarySpecCageSolver.solve(
-        items,
-        membraneLinks,
-        metrics,
-        this.controls,
-        this.contourOffset,
-      );
-    }
-    const specWarpMap = specWarpMode === 'harmonic'
-      ? this.specWarpSolver.solve(items, metrics, this.controls)
-      : this.specWarpSolver.map;
-    const specBoundaryRadii = specWarpMode === 'radial'
-      ? this.specBoundarySampler.solve(
-        items,
-        membraneLinks,
-        metrics,
-        this.controls,
-        this.contourOffset,
-      )
-      : this.specBoundarySampler.radii;
+    this.boundarySpecCageSolver.solve(
+      items,
+      membraneLinks,
+      metrics,
+      this.controls,
+      this.contourOffset,
+    );
     this.frame = {
       contacts: items.map((item, index) => ({
         id: item.id,
@@ -1461,14 +1075,10 @@ export class ElasticContactField {
         active: item.active,
       })),
       membraneLinks,
-      specWarpMap,
-      specWarpRevision: this.specWarpSolver.revision,
       specWarpCage: this.boundarySpecCageSolver.cage,
       specWarpCageCount: this.boundarySpecCageSolver.cageCount,
       specWarpCageRevision: this.boundarySpecCageSolver.revision,
       specWarpCenter: this.boundarySpecCageSolver.center,
-      specBoundaryRadii,
-      specBoundaryRevision: this.specBoundarySampler.revision,
       contactRadius: metrics.seedRadius,
       bridgeRadius: metrics.bridgeRadius,
       membraneBridgeRadius: metrics.membraneBridgeRadius,

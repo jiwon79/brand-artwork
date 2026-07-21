@@ -1,4 +1,6 @@
-# Guseul WebGL2 Renderer
+# Guseul WebGL2 Renderer (Historical Notes)
+
+> 이 문서는 CPU renderer에서 WebGL2로 이전할 당시의 기록이다. 현재 구현에는 Canvas fallback, `renderer`/`perf` URL parameter, surface field texture가 없다. 최종 구조는 [`guseul-architecture.md`](./guseul-architecture.md)를 기준으로 본다.
 
 ## Why The Renderer Changed
 

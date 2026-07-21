@@ -1,4 +1,6 @@
-# Guseul Elastic Pinch
+# Guseul Elastic Pinch (Historical Prototype)
+
+> 이 문서는 타원형 pinch prototype 기록이다. 현재 페이지는 n개의 contact를 SDF로 합치는 방식이며, 최종 구조는 [`guseul-architecture.md`](./guseul-architecture.md)를 기준으로 본다.
 
 ## Interaction Contract
 

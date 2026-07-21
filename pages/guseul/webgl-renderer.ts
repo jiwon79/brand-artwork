@@ -1,15 +1,12 @@
 import {
-  elasticSpecRayCount,
-  elasticSpecWarpExtent,
-  elasticSpecWarpResolution,
   maxElasticSpecBoundaryPoints,
   type ElasticShapeFrame,
 } from './elastic-contact-field';
 
-export const maxGpuCircles = 10;
-export const maxGpuSpecs = 11;
-export const maxGpuContacts = 10;
-export const maxGpuMembraneLinks = 20;
+const maxGpuCircles = 10;
+const maxGpuSpecs = 11;
+const maxGpuContacts = 10;
+const maxGpuMembraneLinks = 20;
 
 export type GpuCircle = {
   centerX: number;
@@ -35,35 +32,15 @@ export type GpuGlassControls = {
   background: [number, number, number];
   contentOverscan: number;
   sourceFollow: number;
-  displacementEnabled: boolean;
-  surfacePreviewEnabled: boolean;
-  surfaceProfile: 'convex' | 'concave' | 'lip';
   bezelWidth: number;
   thickness: number;
   displacementFactor: number;
-  edgeFadeWidth: number;
   ior: number;
-  refractionEnabled: boolean;
-  chromaticEnabled: boolean;
   dispersion: number;
   chromaticEdgeStrength: number;
   chromaticEdgeWidth: number;
   chromaticBoundaryStrength: number;
   chromaticBoundaryWidth: number;
-  innerShadeEnabled: boolean;
-  glassMilkEnabled: boolean;
-  topWashEnabled: boolean;
-  rimEnabled: boolean;
-  hardRimEnabled: boolean;
-  caRimEnabled: boolean;
-  specWarpMode: 'boundary' | 'harmonic' | 'radial';
-  specRayDebugEnabled: boolean;
-  specRayDebugCount: number;
-  specDebugEnabled: boolean;
-  specDebugColor: 'red' | 'black';
-  specDebugOpacity: number;
-  outerStrokeEnabled: boolean;
-  showElasticContacts: boolean;
 };
 
 export type GpuGlassFrame = {
@@ -114,15 +91,9 @@ uniform float uRadiusCss;
 uniform vec3 uBackground;
 uniform float uOverscan;
 uniform float uSourceFollow;
-uniform sampler2D uSpecWarpMap;
-uniform float uSpecWarpExtent;
-uniform sampler2D uSpecBoundaryMap;
 uniform sampler2D uSpecWarpCage;
 uniform int uSpecWarpCageCount;
 uniform vec2 uSpecWarpCenter;
-uniform int uSpecWarpMode;
-uniform int uSpecRayDebugEnabled;
-uniform int uSpecRayDebugCount;
 uniform int uContactCount;
 uniform vec4 uContacts[MAX_CONTACTS];
 uniform vec2 uContactAnchors[MAX_CONTACTS];
@@ -135,32 +106,15 @@ uniform float uMembraneBridgeRadius;
 uniform float uEdgeConcavity;
 uniform float uFieldSmoothness;
 uniform float uContourOffset;
-uniform int uDisplacementEnabled;
-uniform int uSurfacePreviewEnabled;
-uniform int uSurfaceProfile;
 uniform float uBezelWidth;
 uniform float uThickness;
 uniform float uDisplacementFactor;
-uniform float uEdgeFadeWidth;
 uniform float uIor;
-uniform int uRefractionEnabled;
-uniform int uChromaticEnabled;
 uniform float uDispersion;
 uniform float uChromaticEdgeStrength;
 uniform float uChromaticEdgeWidth;
 uniform float uChromaticBoundaryStrength;
 uniform float uChromaticBoundaryWidth;
-uniform int uInnerShadeEnabled;
-uniform int uGlassMilkEnabled;
-uniform int uTopWashEnabled;
-uniform int uRimEnabled;
-uniform int uHardRimEnabled;
-uniform int uCaRimEnabled;
-uniform int uSpecDebugEnabled;
-uniform vec3 uSpecDebugColor;
-uniform float uSpecDebugOpacity;
-uniform int uOuterStrokeEnabled;
-uniform int uShowElasticContacts;
 uniform int uCircleCount;
 uniform vec4 uCircles[MAX_CIRCLES];
 uniform int uSpecCount;
@@ -180,35 +134,11 @@ float smoothRange(float edge0, float edge1, float value) {
   return t * t * (3.0 - 2.0 * t);
 }
 
-float smoother(float value) {
-  float x = clamp(value, 0.0, 1.0);
-  return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
-}
-
 vec2 convexProfile(float progress) {
   float u = 1.0 - clamp(progress, 0.0, 1.0);
   float inside = max(1.0 - pow(u, 4.0), 0.0001);
   float height = sqrt(inside);
   float derivative = (2.0 * pow(u, 3.0)) / sqrt(inside);
-  return vec2(height, derivative);
-}
-
-vec2 surfaceProfile(float progress) {
-  vec2 convex = convexProfile(progress);
-  if (uSurfaceProfile == 0) {
-    return convex;
-  }
-
-  vec2 concave = vec2(1.0 - convex.x, -convex.y);
-  if (uSurfaceProfile == 1) {
-    return concave;
-  }
-
-  float blend = smoother(progress);
-  float x = clamp(progress, 0.0, 1.0);
-  float blendDerivative = 30.0 * x * x * (x * (x - 2.0) + 1.0);
-  float height = mix(convex.x, concave.x, blend);
-  float derivative = mix(convex.y, concave.y, blend) + (concave.x - convex.x) * blendDerivative;
   return vec2(height, derivative);
 }
 
@@ -345,15 +275,11 @@ float contactField(vec2 position) {
 }
 
 vec3 surfaceSample(float inwardDistance, vec2 edgeNormal) {
-  if (uDisplacementEnabled == 0) {
-    return vec3(0.0);
-  }
-
   float bezelWidth = max(uBezelWidth, 0.001);
   float progress = clamp(inwardDistance / bezelWidth, 0.0, 1.0);
-  vec2 profile = surfaceProfile(progress);
+  vec2 profile = convexProfile(progress);
   float derivative = clamp(profile.y, -MAX_SURFACE_SLOPE, MAX_SURFACE_SLOPE);
-  float flatHeight = surfaceProfile(1.0).x;
+  float flatHeight = convexProfile(1.0).x;
   float bevelHeight = (inwardDistance > bezelWidth ? flatHeight : profile.x) * bezelWidth;
   float height = (uThickness + bevelHeight) * uDisplacementFactor;
 
@@ -362,13 +288,6 @@ vec3 surfaceSample(float inwardDistance, vec2 edgeNormal) {
 
 float rimInfluence(float inwardDistance) {
   return 1.0 - smoothRange(0.0, max(uBezelWidth, 0.001), inwardDistance);
-}
-
-float displacementEdgeFade(float inwardDistance) {
-  if (uEdgeFadeWidth <= 0.0001) {
-    return 1.0;
-  }
-  return smoothRange(0.0, uEdgeFadeWidth, inwardDistance);
 }
 
 vec3 refractCameraRay(vec2 slope, float ior) {
@@ -429,14 +348,6 @@ vec2 inverseElasticPoint(vec2 point, float follow) {
 
 vec2 transformSourcePoint(vec2 point) {
   return inverseElasticPoint(point, uSourceFollow);
-}
-
-vec2 inverseHarmonicSpecWarp(vec2 point) {
-  vec2 uv = point / (uSpecWarpExtent * 2.0) + 0.5;
-  vec2 canonicalPoint = texture(uSpecWarpMap, clamp(uv, 0.0, 1.0)).rg;
-  float canonicalRadius = length(canonicalPoint);
-  if (canonicalRadius > 0.999) canonicalPoint *= 0.999 / canonicalRadius;
-  return canonicalPoint;
 }
 
 vec2 centerBoundaryCoordinate(vec2 coordinate) {
@@ -505,27 +416,6 @@ vec2 inverseBoundarySpecWarp(vec2 point) {
   return canonicalPoint;
 }
 
-float sampleSpecBoundaryRadius(vec2 point) {
-  const float PI = 3.141592653589793;
-  const float TAU = 6.283185307179586;
-  float angle = atan(point.y, point.x);
-  float coordinate = fract((angle + PI) / TAU);
-  return max(texture(uSpecBoundaryMap, vec2(coordinate, 0.5)).r, 0.001);
-}
-
-vec2 inverseRadialSpecWarp(vec2 point) {
-  float currentRadius = length(point);
-  if (currentRadius <= 0.000001) return vec2(0.0);
-  float boundaryRadius = sampleSpecBoundaryRadius(point);
-  return point * (min(currentRadius / boundaryRadius, 0.999) / currentRadius);
-}
-
-vec2 inverseSpecWarp(vec2 point) {
-  if (uSpecWarpMode == 1) return inverseRadialSpecWarp(point);
-  if (uSpecWarpMode == 2) return inverseBoundarySpecWarp(point);
-  return inverseHarmonicSpecWarp(point);
-}
-
 struct SourceEdge {
   float edge;
   float alpha;
@@ -584,23 +474,16 @@ float coverageFromSignedDistance(float signedDistance, float feather) {
 vec3 sampleLiquidGlass(
   vec2 point,
   float radial,
-  float inwardDistance,
   vec3 surface,
   float rim
 ) {
-  if (uRefractionEnabled == 0) {
-    return sampleContent(transformSourcePoint(point)).rgb;
-  }
-
-  float height = surface.z * displacementEdgeFade(inwardDistance);
+  float height = surface.z;
   vec2 baseOffset = rayDisplacement(refractCameraRay(surface.xy, uIor), height);
-  vec2 redOffset = baseOffset;
-  vec2 blueOffset = baseOffset;
-
-  if (uChromaticEnabled == 1) {
-    redOffset = rayDisplacement(refractCameraRay(surface.xy, uIor + uDispersion), height);
-    blueOffset = rayDisplacement(refractCameraRay(surface.xy, max(uIor - uDispersion, 1.0001)), height);
-  }
+  vec2 redOffset = rayDisplacement(refractCameraRay(surface.xy, uIor + uDispersion), height);
+  vec2 blueOffset = rayDisplacement(
+    refractCameraRay(surface.xy, max(uIor - uDispersion, 1.0001)),
+    height
+  );
 
   vec2 redPoint = transformSourcePoint(point + redOffset);
   vec2 basePoint = transformSourcePoint(point + baseOffset);
@@ -610,57 +493,54 @@ vec3 sampleLiquidGlass(
   vec3 blue = sampleContent(bluePoint).rgb;
   vec3 sampleColor = base;
 
-  if (uChromaticEnabled == 1) {
-    vec2 separationVector = bluePoint - redPoint;
-    float separationPixels = length(separationVector) * uRadiusCss;
-    SourceEdge sourceEdge = sampleSourceEdge(basePoint);
-    float sourceEdgeGate = sourceEdge.edge * uChromaticBoundaryStrength
-      * smoothRange(0.42, 0.98, radial) * (0.48 + rim * 0.52);
-    float dispersionMix = clamp(uDispersion * (rim * 1.2 + sourceEdgeGate * 0.85), 0.0, 0.54);
-    sampleColor = mix(sampleColor, vec3(red.r, base.g, blue.b), dispersionMix);
+  vec2 separationVector = bluePoint - redPoint;
+  float separationPixels = length(separationVector) * uRadiusCss;
+  SourceEdge sourceEdge = sampleSourceEdge(basePoint);
+  float sourceEdgeGate = sourceEdge.edge * uChromaticBoundaryStrength
+    * smoothRange(0.42, 0.98, radial) * (0.48 + rim * 0.52);
+  float dispersionMix = clamp(uDispersion * (rim * 1.2 + sourceEdgeGate * 0.85), 0.0, 0.54);
+  sampleColor = mix(sampleColor, vec3(red.r, base.g, blue.b), dispersionMix);
 
-    float sourceContrast = max(colorDistance(red, base), colorDistance(blue, base));
-    float refractedEdgeGate = smoothRange(0.04, 0.24, sourceContrast)
-      * smoothRange(0.25, 2.6, separationPixels)
-      * smoothRange(0.56, 1.0, radial) * rim;
-    float edgeGate = max(refractedEdgeGate, sourceEdgeGate);
+  float sourceContrast = max(colorDistance(red, base), colorDistance(blue, base));
+  float refractedEdgeGate = smoothRange(0.04, 0.24, sourceContrast)
+    * smoothRange(0.25, 2.6, separationPixels)
+    * smoothRange(0.56, 1.0, radial) * rim;
+  float edgeGate = max(refractedEdgeGate, sourceEdgeGate);
 
-    if (edgeGate > 0.001 && uChromaticEdgeStrength > 0.0) {
-      float separationLength = length(separationVector);
-      vec2 refractDirection = separationLength > 0.000001
-        ? separationVector / separationLength
-        : sourceEdge.normal;
-      float directionMix = clamp(sourceEdgeGate / (sourceEdgeGate + refractedEdgeGate + 0.001), 0.0, 1.0);
-      vec2 mixedDirection = mix(refractDirection, sourceEdge.normal, directionMix * 0.9);
-      vec2 direction = length(mixedDirection) > 0.000001 ? normalize(mixedDirection) : refractDirection;
-      float strength = uChromaticEdgeStrength * edgeGate;
-      float boost = 1.0 + strength * 1.8;
-      float spread = (uChromaticEdgeWidth / uRadiusCss) * (0.32 + strength);
-      vec3 redWide = sampleContent(basePoint + (redPoint - basePoint) * boost - direction * spread * 0.35).rgb;
-      vec3 blueWide = sampleContent(basePoint + (bluePoint - basePoint) * boost + direction * spread * 0.35).rgb;
-      vec3 refractedSplit = vec3(redWide.r, sampleColor.g, blueWide.b);
-      sampleColor = mix(sampleColor, refractedSplit, clamp(strength * 0.28, 0.0, 0.46));
+  if (edgeGate > 0.001 && uChromaticEdgeStrength > 0.0) {
+    float separationLength = length(separationVector);
+    vec2 refractDirection = separationLength > 0.000001
+      ? separationVector / separationLength
+      : sourceEdge.normal;
+    float directionMix = clamp(sourceEdgeGate / (sourceEdgeGate + refractedEdgeGate + 0.001), 0.0, 1.0);
+    vec2 mixedDirection = mix(refractDirection, sourceEdge.normal, directionMix * 0.9);
+    vec2 direction = length(mixedDirection) > 0.000001 ? normalize(mixedDirection) : refractDirection;
+    float strength = uChromaticEdgeStrength * edgeGate;
+    float boost = 1.0 + strength * 1.8;
+    float spread = (uChromaticEdgeWidth / uRadiusCss) * (0.32 + strength);
+    vec3 redWide = sampleContent(basePoint + (redPoint - basePoint) * boost - direction * spread * 0.35).rgb;
+    vec3 blueWide = sampleContent(basePoint + (bluePoint - basePoint) * boost + direction * spread * 0.35).rgb;
+    vec3 refractedSplit = vec3(redWide.r, sampleColor.g, blueWide.b);
+    sampleColor = mix(sampleColor, refractedSplit, clamp(strength * 0.28, 0.0, 0.46));
 
-      float channelFeather = clamp(uChromaticBoundaryWidth * 0.22, 0.75, 2.4) / uRadiusCss;
-      float sourceShift = (uChromaticEdgeWidth / uRadiusCss) * clamp(0.35 + sourceEdgeGate * 0.9, 0.0, 1.8);
-      float redCoverage = coverageFromSignedDistance(sourceEdge.signedDistance - sourceShift, channelFeather) * sourceEdge.alpha;
-      float greenCoverage = coverageFromSignedDistance(sourceEdge.signedDistance, channelFeather) * sourceEdge.alpha;
-      float blueCoverage = coverageFromSignedDistance(sourceEdge.signedDistance + sourceShift, channelFeather) * sourceEdge.alpha;
-      vec3 sourceSplit = vec3(
-        mix(uBackground.r, sourceEdge.color.r, redCoverage),
-        mix(uBackground.g, sourceEdge.color.g, greenCoverage),
-        mix(uBackground.b, sourceEdge.color.b, blueCoverage)
-      );
-      sampleColor = mix(sampleColor, sourceSplit, clamp(sourceEdgeGate * 0.72, 0.0, 0.86));
-    }
+    float channelFeather = clamp(uChromaticBoundaryWidth * 0.22, 0.75, 2.4) / uRadiusCss;
+    float sourceShift = (uChromaticEdgeWidth / uRadiusCss) * clamp(0.35 + sourceEdgeGate * 0.9, 0.0, 1.8);
+    float redCoverage = coverageFromSignedDistance(sourceEdge.signedDistance - sourceShift, channelFeather) * sourceEdge.alpha;
+    float greenCoverage = coverageFromSignedDistance(sourceEdge.signedDistance, channelFeather) * sourceEdge.alpha;
+    float blueCoverage = coverageFromSignedDistance(sourceEdge.signedDistance + sourceShift, channelFeather) * sourceEdge.alpha;
+    vec3 sourceSplit = vec3(
+      mix(uBackground.r, sourceEdge.color.r, redCoverage),
+      mix(uBackground.g, sourceEdge.color.g, greenCoverage),
+      mix(uBackground.b, sourceEdge.color.b, blueCoverage)
+    );
+    sampleColor = mix(sampleColor, sourceSplit, clamp(sourceEdgeGate * 0.72, 0.0, 0.86));
   }
 
   return sampleColor;
 }
 
-vec2 sampleSpecs(vec3 reflection) {
+float sampleSpecs(vec3 reflection) {
   float shell = 0.0;
-  float debugMask = 0.0;
 
   for (int index = 0; index < MAX_SPECS; index += 1) {
     if (index >= uSpecCount) {
@@ -676,10 +556,9 @@ vec2 sampleSpecs(vec3 reflection) {
     float sourceFacing = smoothRange(-0.04, 0.24, dot(reflection, uSpecSource[index].xyz));
     float value = pow(max(box, 0.0), render.x) * sourceFacing * render.z;
     shell += value * render.y;
-    debugMask = max(debugMask, value);
   }
 
-  return vec2(shell, debugMask);
+  return shell;
 }
 
 void main() {
@@ -702,100 +581,51 @@ void main() {
   float radial = 1.0 - clamp(inwardDistance, 0.0, 1.0);
   float nz = sqrt(max(1.0 - radial * radial, 0.0));
   vec3 surface = surfaceSample(inwardDistance, edgeNormal);
-  float rimField = uDisplacementEnabled == 1 ? rimInfluence(inwardDistance) : 0.0;
-  bool preview = uSurfacePreviewEnabled == 1;
-  vec3 sampleColor;
-
-  if (preview) {
-    vec2 slope = clamp(surface.xy / MAX_SURFACE_SLOPE, -1.0, 1.0);
-    float height = clamp(surface.z / 0.8, 0.0, 1.0);
-    sampleColor = vec3(
-      mix(248.0, 128.0 + slope.x * 96.0, rimField),
-      mix(248.0, 128.0 + slope.y * 96.0, rimField),
-      mix(248.0, 126.0 + height * 104.0, rimField)
-    ) / 255.0;
-  } else {
-    sampleColor = sampleLiquidGlass(point, radial, inwardDistance, surface, rimField);
-  }
+  float rimField = rimInfluence(inwardDistance);
+  vec3 sampleColor = sampleLiquidGlass(
+    point,
+    radial,
+    surface,
+    rimField
+  );
 
   float edgeT = smoothRange(0.68, 1.0, radial);
   vec3 normal = normalize(vec3(edgeNormal * radial, nz));
   float directionalLight = max(0.0, dot(normal, normalize(vec3(-0.36, -0.48, 0.88))));
-  float innerShade = !preview && uInnerShadeEnabled == 1
-    ? 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08
-    : 1.0;
-  float glassMilk = !preview && uGlassMilkEnabled == 1
-    ? 0.005 + edgeT * 0.1 + smoothRange(0.92, 1.0, radial) * 0.08
-    : 0.0;
-  float topWash = !preview && uTopWashEnabled == 1
-    ? smoothRange(0.18, -0.82, point.y) * smoothRange(0.98, 0.16, radial)
-    : 0.0;
-  float rim = !preview && uRimEnabled == 1 ? smoothRange(0.72, 1.0, radial) : 0.0;
-  float hardRim = !preview && uHardRimEnabled == 1 ? smoothRange(0.93, 1.0, radial) : 0.0;
-  float caRim = !preview && uCaRimEnabled == 1 ? smoothRange(0.8, 1.0, radial) : 0.0;
-  vec2 specPoint = inverseSpecWarp(point);
+  float innerShade = 0.88 + nz * 0.12 + directionalLight * 0.08 - edgeT * 0.08;
+  float glassMilk = 0.005 + edgeT * 0.1
+    + smoothRange(0.92, 1.0, radial) * 0.08;
+  float topWash = smoothRange(0.18, -0.82, point.y)
+    * smoothRange(0.98, 0.16, radial);
+  float rim = smoothRange(0.72, 1.0, radial);
+  float hardRim = smoothRange(0.93, 1.0, radial);
+  float caRim = smoothRange(0.8, 1.0, radial);
+  vec2 specPoint = inverseBoundarySpecWarp(point);
   float specRadiusSquared = min(dot(specPoint, specPoint), 0.999);
   vec3 specNormal = normalize(vec3(
     specPoint,
     sqrt(max(1.0 - specRadiusSquared, 0.001))
   ));
   vec3 reflection = normalize(reflect(vec3(0.0, 0.0, -1.0), specNormal));
-  vec2 spec = preview ? vec2(0.0) : sampleSpecs(reflection);
-  float shell = uSpecDebugEnabled == 1 ? 0.0 : spec.x;
+  float shell = sampleSpecs(reflection);
 
   vec3 color = mix(sampleColor * innerShade, vec3(1.0), vec3(glassMilk, glassMilk, glassMilk * 0.94));
   color += vec3(shell / 255.0);
   color += topWash * vec3(8.0, 9.0, 10.0) / 255.0;
   color += rim * vec3(10.0, 11.0, 15.0) / 255.0;
   color -= hardRim * vec3(5.0, 6.0, 2.0) / 255.0;
-  color += caRim * vec3(6.0) / 255.0;
+  // This mix form avoids an ANGLE miscompile seen with the equivalent addition.
+  color = mix(color, color + vec3(6.0 / 255.0), caRim);
 
-  if (uSpecDebugEnabled == 1 && spec.y > 0.01) {
-    float debugAlpha = clamp(spec.y * uSpecDebugOpacity * 1.35, 0.0, 1.0);
-    color = mix(color, uSpecDebugColor, debugAlpha);
-  }
-
-  if (uOuterStrokeEnabled == 1) {
-    float strokeWidth = max(0.9 / uRadiusCss, antialiasWidth * 1.4);
-    float stroke = 1.0 - smoothRange(strokeWidth * 0.18, strokeWidth, abs(shapeDistance));
-    float diagonal = smoothRange(-1.4, 1.6, point.x + point.y);
-    vec3 strokeColor = mix(vec3(1.0), vec3(0.86, 0.84, 0.8), diagonal * 0.2);
-    color = mix(color, strokeColor, stroke * 0.38);
-  }
-
-  if (uSpecRayDebugEnabled == 1) {
-    const float PI = 3.141592653589793;
-    const float TAU = 6.283185307179586;
-    float pointRadius = length(point);
-    vec2 materialPoint = inverseSpecWarp(point);
-    float materialRadius = length(materialPoint);
-    float angle = atan(materialPoint.y, materialPoint.x);
-    float rayCount = float(max(uSpecRayDebugCount, 1));
-    float rayCoordinate = ((angle + PI) / TAU) * rayCount;
-    float angularDistance = abs(fract(rayCoordinate + 0.5) - 0.5)
-      * (TAU / rayCount) * max(materialRadius, 0.04) * uRadiusCss;
-    float rayMask = 1.0 - smoothRange(0.55, 1.45, angularDistance);
-    float boundaryDistance = uSpecWarpMode == 1
-      ? abs(pointRadius - sampleSpecBoundaryRadius(point)) * uRadiusCss
-      : abs(shapeDistance) * uRadiusCss;
-    float boundaryMask = 1.0 - smoothRange(0.7, 1.8, boundaryDistance);
-    float centerMask = 1.0 - smoothRange(2.0, 4.5, pointRadius * uRadiusCss);
-    vec3 rayColor = vec3(0.02, 0.5, 0.92);
-    color = mix(color, rayColor, rayMask * 0.72);
-    color = mix(color, vec3(1.0, 0.12, 0.08), boundaryMask * 0.9);
-    color = mix(color, vec3(0.02, 0.12, 0.16), centerMask * 0.95);
-  }
-
-  if (uShowElasticContacts == 1) {
-    for (int index = 0; index < MAX_CONTACTS; index += 1) {
-      if (index >= uContactCount) break;
-      float handleDistance = length(point - uContacts[index].xy);
-      float dotMask = 1.0 - smoothRange(0.014, 0.024, handleDistance);
-      float ringMask = 1.0 - smoothRange(0.006, 0.014, abs(handleDistance - 0.065));
-      color = mix(color, vec3(0.06, 0.22, 0.23), dotMask * 0.9);
-      color = mix(color, vec3(1.0), ringMask * uContacts[index].w * 0.62);
-    }
-  }
+  float strokeWidth = max(0.9 / uRadiusCss, antialiasWidth * 1.4);
+  float stroke = 1.0 - smoothRange(
+    strokeWidth * 0.18,
+    strokeWidth,
+    abs(shapeDistance)
+  );
+  float diagonal = smoothRange(-1.4, 1.6, point.x + point.y);
+  vec3 strokeColor = mix(vec3(1.0), vec3(0.86, 0.84, 0.8), diagonal * 0.2);
+  color = mix(color, strokeColor, stroke * 0.38);
 
   outputColor = vec4(clamp(color, 0.0, 1.0), shapeMask);
 }
@@ -864,26 +694,16 @@ function getUniforms(gl: WebGL2RenderingContext, program: WebGLProgram, names: s
   }));
 }
 
-function profileIndex(profile: GpuGlassControls['surfaceProfile']): number {
-  if (profile === 'concave') return 1;
-  if (profile === 'lip') return 2;
-  return 0;
-}
-
 export class GuseulWebGLRenderer {
   readonly canvas = document.createElement('canvas');
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
   private readonly vertexArray: WebGLVertexArrayObject;
   private readonly contentTexture: WebGLTexture;
-  private readonly specWarpTexture: WebGLTexture;
-  private readonly specBoundaryTexture: WebGLTexture;
   private readonly specWarpCageTexture: WebGLTexture;
   private readonly uniforms: UniformMap;
   private contentWidth = 0;
   private contentHeight = 0;
-  private specWarpRevision = -1;
-  private specBoundaryRevision = -1;
   private specWarpCageRevision = -1;
 
   constructor() {
@@ -909,36 +729,23 @@ export class GuseulWebGLRenderer {
     this.program = program;
     this.vertexArray = vertexArray;
     this.contentTexture = createTexture(gl);
-    this.specWarpTexture = createTexture(gl);
-    this.specBoundaryTexture = createTexture(gl);
     this.specWarpCageTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
       'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
-      'uSourceFollow', 'uSpecWarpMap', 'uSpecWarpExtent', 'uSpecBoundaryMap',
-      'uSpecWarpCage', 'uSpecWarpCageCount', 'uSpecWarpCenter',
-      'uSpecWarpMode', 'uSpecRayDebugEnabled', 'uSpecRayDebugCount',
+      'uSourceFollow', 'uSpecWarpCage', 'uSpecWarpCageCount', 'uSpecWarpCenter',
       'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
       'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
       'uContactRadius', 'uBridgeRadius', 'uMembraneBridgeRadius', 'uEdgeConcavity',
-      'uFieldSmoothness',
-      'uContourOffset',
-      'uDisplacementEnabled', 'uSurfacePreviewEnabled', 'uSurfaceProfile', 'uBezelWidth',
-      'uThickness', 'uDisplacementFactor', 'uEdgeFadeWidth', 'uIor', 'uRefractionEnabled',
-      'uChromaticEnabled', 'uDispersion', 'uChromaticEdgeStrength', 'uChromaticEdgeWidth',
-      'uChromaticBoundaryStrength', 'uChromaticBoundaryWidth', 'uInnerShadeEnabled',
-      'uGlassMilkEnabled', 'uTopWashEnabled', 'uRimEnabled', 'uHardRimEnabled',
-      'uCaRimEnabled', 'uSpecDebugEnabled', 'uSpecDebugColor', 'uSpecDebugOpacity',
-      'uOuterStrokeEnabled', 'uShowElasticContacts',
+      'uFieldSmoothness', 'uContourOffset', 'uBezelWidth', 'uThickness',
+      'uDisplacementFactor', 'uIor', 'uDispersion', 'uChromaticEdgeStrength',
+      'uChromaticEdgeWidth', 'uChromaticBoundaryStrength', 'uChromaticBoundaryWidth',
       'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecSource[0]', 'uSpecAxisX[0]',
       'uSpecAxisY[0]', 'uSpecShape[0]', 'uSpecRender[0]',
     ]);
 
     gl.useProgram(program);
     gl.uniform1i(this.uniforms.uContent, 0);
-    gl.uniform1i(this.uniforms.uSpecWarpMap, 1);
-    gl.uniform1i(this.uniforms.uSpecBoundaryMap, 2);
-    gl.uniform1i(this.uniforms.uSpecWarpCage, 3);
-    gl.uniform1f(this.uniforms.uSpecWarpExtent, elasticSpecWarpExtent);
+    gl.uniform1i(this.uniforms.uSpecWarpCage, 1);
     gl.bindVertexArray(vertexArray);
 
     gl.activeTexture(gl.TEXTURE0);
@@ -949,44 +756,6 @@ export class GuseulWebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.specWarpTexture);
-    // RG16F is linearly filterable in WebGL2. Checking the float-linear
-    // extension here incorrectly forced Safari onto a visibly blocky grid.
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RG16F,
-      elasticSpecWarpResolution,
-      elasticSpecWarpResolution,
-      0,
-      gl.RG,
-      gl.FLOAT,
-      null,
-    );
-
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, this.specBoundaryTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.R16F,
-      elasticSpecRayCount,
-      1,
-      0,
-      gl.RED,
-      gl.FLOAT,
-      null,
-    );
-
-    gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, this.specWarpCageTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -1080,43 +849,9 @@ export class GuseulWebGLRenderer {
       shape.specWarpCenter.y,
     );
 
-    if (shape.specWarpRevision !== this.specWarpRevision) {
-      this.specWarpRevision = shape.specWarpRevision;
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this.specWarpTexture);
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
-        elasticSpecWarpResolution,
-        elasticSpecWarpResolution,
-        gl.RGBA,
-        gl.FLOAT,
-        shape.specWarpMap,
-      );
-    }
-
-    if (shape.specBoundaryRevision !== this.specBoundaryRevision) {
-      this.specBoundaryRevision = shape.specBoundaryRevision;
-      gl.activeTexture(gl.TEXTURE2);
-      gl.bindTexture(gl.TEXTURE_2D, this.specBoundaryTexture);
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
-        elasticSpecRayCount,
-        1,
-        gl.RED,
-        gl.FLOAT,
-        shape.specBoundaryRadii,
-      );
-    }
-
     if (shape.specWarpCageRevision !== this.specWarpCageRevision) {
       this.specWarpCageRevision = shape.specWarpCageRevision;
-      gl.activeTexture(gl.TEXTURE3);
+      gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.specWarpCageTexture);
       gl.texSubImage2D(
         gl.TEXTURE_2D,
@@ -1186,38 +921,15 @@ export class GuseulWebGLRenderer {
     gl.uniform3fv(this.uniforms.uBackground, controls.background);
     gl.uniform1f(this.uniforms.uOverscan, controls.contentOverscan);
     gl.uniform1f(this.uniforms.uSourceFollow, controls.sourceFollow);
-    gl.uniform1i(this.uniforms.uDisplacementEnabled, Number(controls.displacementEnabled));
-    gl.uniform1i(this.uniforms.uSurfacePreviewEnabled, Number(controls.surfacePreviewEnabled));
-    gl.uniform1i(this.uniforms.uSurfaceProfile, profileIndex(controls.surfaceProfile));
     gl.uniform1f(this.uniforms.uBezelWidth, controls.bezelWidth);
     gl.uniform1f(this.uniforms.uThickness, controls.thickness);
     gl.uniform1f(this.uniforms.uDisplacementFactor, controls.displacementFactor);
-    gl.uniform1f(this.uniforms.uEdgeFadeWidth, controls.edgeFadeWidth);
     gl.uniform1f(this.uniforms.uIor, controls.ior);
-    gl.uniform1i(this.uniforms.uRefractionEnabled, Number(controls.refractionEnabled));
-    gl.uniform1i(this.uniforms.uChromaticEnabled, Number(controls.chromaticEnabled));
     gl.uniform1f(this.uniforms.uDispersion, controls.dispersion);
     gl.uniform1f(this.uniforms.uChromaticEdgeStrength, controls.chromaticEdgeStrength);
     gl.uniform1f(this.uniforms.uChromaticEdgeWidth, controls.chromaticEdgeWidth);
     gl.uniform1f(this.uniforms.uChromaticBoundaryStrength, controls.chromaticBoundaryStrength);
     gl.uniform1f(this.uniforms.uChromaticBoundaryWidth, controls.chromaticBoundaryWidth);
-    gl.uniform1i(this.uniforms.uInnerShadeEnabled, Number(controls.innerShadeEnabled));
-    gl.uniform1i(this.uniforms.uGlassMilkEnabled, Number(controls.glassMilkEnabled));
-    gl.uniform1i(this.uniforms.uTopWashEnabled, Number(controls.topWashEnabled));
-    gl.uniform1i(this.uniforms.uRimEnabled, Number(controls.rimEnabled));
-    gl.uniform1i(this.uniforms.uHardRimEnabled, Number(controls.hardRimEnabled));
-    gl.uniform1i(this.uniforms.uCaRimEnabled, Number(controls.caRimEnabled));
-    gl.uniform1i(
-      this.uniforms.uSpecWarpMode,
-      controls.specWarpMode === 'radial' ? 1 : controls.specWarpMode === 'boundary' ? 2 : 0,
-    );
-    gl.uniform1i(this.uniforms.uSpecRayDebugEnabled, Number(controls.specRayDebugEnabled));
-    gl.uniform1i(this.uniforms.uSpecRayDebugCount, Math.round(controls.specRayDebugCount));
-    gl.uniform1i(this.uniforms.uSpecDebugEnabled, Number(controls.specDebugEnabled));
-    gl.uniform3fv(this.uniforms.uSpecDebugColor, controls.specDebugColor === 'red' ? [1, 0, 0] : [0, 0, 0]);
-    gl.uniform1f(this.uniforms.uSpecDebugOpacity, controls.specDebugOpacity);
-    gl.uniform1i(this.uniforms.uOuterStrokeEnabled, Number(controls.outerStrokeEnabled));
-    gl.uniform1i(this.uniforms.uShowElasticContacts, Number(controls.showElasticContacts));
     this.uploadElasticShape(frame.elasticShape);
     this.uploadCircles(frame.circles);
     this.uploadSpecs(frame.specs);
