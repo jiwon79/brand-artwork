@@ -1,0 +1,92 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #fffefb;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  background: #fffefb;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#artwork {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#artwork:active {
+  cursor: grabbing;
+}
+
+.lil-gui.root {
+  z-index: 10;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tc-dot {
+  width: 8px !important;
+  height: 8px !important;
+  background: rgba(18, 42, 44, 0.48) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.58) !important;
+}
+
+.tc-ring {
+  width: 34px !important;
+  height: 34px !important;
+  border-width: 1px !important;
+  border-color: rgba(18, 42, 44, 0.28) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5) !important;
+}
+
+.tc-ripple {
+  width: 34px !important;
+  height: 34px !important;
+  border-width: 1px !important;
+  border-color: rgba(18, 42, 44, 0.2) !important;
+  animation: guseul-touch-ripple 0.28s ease-out forwards !important;
+}
+
+@keyframes guseul-touch-ripple {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.3;
+  }
+
+  to {
+    transform: translate(-50%, -50%) scale(1.55);
+    opacity: 0;
+  }
+}
+
+.guseul-stretch-active .tc-ring {
+  border-color: rgba(32, 196, 185, 0.48) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.58),
+    0 0 6px rgba(32, 196, 185, 0.12) !important;
+}

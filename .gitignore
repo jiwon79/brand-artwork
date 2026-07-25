@@ -2,6 +2,7 @@ node_modules/
 dist/
 .DS_Store
 .omc/
+.codex/
 __pycache__/
 *.pyc
 
@@ -14,4 +15,3 @@ pages/gentle-monster/scripts/verify_*.png
 # Playwright MCP / 임시 스크린샷
 .playwright-mcp/
 /*.png
-
