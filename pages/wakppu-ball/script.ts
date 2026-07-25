@@ -1,878 +1,1933 @@
-import GUI from 'lil-gui';
 import { Delaunay } from 'd3-delaunay';
+import GUI from 'lil-gui';
+import * as THREE from 'three';
 
-type Point = { x: number; y: number };
-type ShardState = 'solid' | 'cracked' | 'separated' | 'split' | 'detached';
-type AudioKind = 'crackSmall' | 'snapClean' | 'crackle' | 'flake';
+type Point = {
+  x: number;
+  y: number;
+};
 
 type Shard = {
-  id: number;
-  parentId: number | null;
   polygon: Point[];
-  children: number[];
   center: Point;
-  area: number;
-  state: ShardState;
-  depth: number;
-  hidden: boolean;
-  energy: number;
-  crackAt: number;
-  separateAt: number;
-  splitAt: number;
-  detachAt: number;
-  gap: number;
-  offset: Point;
+  tint: number;
   lift: number;
-  thickness: number;
-  angle: number;
-  targetGap: number;
-  targetOffset: Point;
-  targetLift: number;
-  targetAngle: number;
-  breakOrigin: Point | null;
-  breakDir: Point;
-  baseAngle: number;
-  hueShift: number;
-  detachDrift: Point;
-  path?: Path2D;
+  twist: number;
+  split: number;
+  consumed: number;
+  settle: number;
+  phase: number;
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial | THREE.MeshPhysicalMaterial[]>;
+};
+
+type CrackEdge = {
+  a: Point;
+  b: Point;
+  weight: number;
+};
+
+type ImpactFootprint = {
+  kind: 'press' | 'stroke';
+  direction: Point;
+  stretch: number;
+  width: number;
+};
+
+type BreakZone = {
+  id: number;
+  seed: number;
+  normal: THREE.Vector3;
+  tangent: THREE.Vector3;
+  bitangent: THREE.Vector3;
+  radius: number;
+  damage: number;
+  progress: number;
+  fractureCount: number;
+  group: THREE.Group;
+  shardGroup: THREE.Group;
+  gelMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
+  shards: Shard[];
+  edges: CrackEdge[];
+  outline: Point[][];
+};
+
+type SurfaceHit = {
+  normal: THREE.Vector3;
+  point: THREE.Vector3;
+};
+
+type SurfaceDeformOptions = {
+  carveStrength: number;
+  carveDepth: number;
+};
+
+type PendingTouchBreak = {
+  pointerId: number;
+  hit: SurfaceHit;
+  force: number;
+  timeoutId: number;
+};
+
+type BreakZoneCreation = {
+  zone: BreakZone | null;
+  fracturedOverlap: boolean;
+};
+
+type OverlapHit = {
+  zone: BreakZone;
+  normal: THREE.Vector3;
+  score: number;
 };
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
-const ctx = canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
-const resetButton = document.getElementById('resetButton') as HTMLButtonElement;
-const meterFill = document.getElementById('meterFill') as HTMLSpanElement;
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const EPSILON = 0.0001;
+const SPHERE_RADIUS = 2.24;
+const CAMERA_FOV = 34;
+const MIN_CAMERA_DISTANCE = 8.15;
+const CAMERA_FRAME_RADIUS = SPHERE_RADIUS * 1.16;
+const CORE_RADIUS = SPHERE_RADIUS * 0.93;
+const WAX_THICKNESS = 0.026;
+const CORE_EXPOSURE_DEPTH = SPHERE_RADIUS - CORE_RADIUS + WAX_THICKNESS * 0.8;
+const ZONE_BACKFACE_DOT = 0.12;
+const SHARD_SETTLE_SPEED = 2.4;
+const TOUCH_BREAK_DELAY_MS = 180;
+const DEFAULT_MIN_VISIBLE_SHARD_AREA = 0.01;
+const BASE_MAX_SHARDS_PER_ZONE = 52;
+const CRACK_AUDIO_VOLUME = 1;
+const CRACK_SAMPLE_PATHS = [
+  'assets/wakppu-crack-clip-1.m4a',
+  'assets/wakppu-crack-clip-2.m4a',
+  'assets/wakppu-crack-clip-3.m4a',
+  'assets/wakppu-crack-clip-4.m4a',
+];
 
-const TWO_PI = Math.PI * 2;
-const EPSILON = 0.00001;
-const LIGHT = normalize({ x: -0.45, y: -0.75 });
-
-const params = {
-  seed: 230623,
-  waxColor: '#7ec9af',
-  waxWarmth: 0.16,
-  initialShards: 14,
-  circleSides: 124,
-  pressRadius: 186,
-  energyRate: 1.28,
-  gapScale: 1.12,
-  liftScale: 1,
-  splitDensity: 3,
-  maxDepth: 1,
-  maxShards: 90,
-  maxSplitsPerFrame: 1,
-  separationStrength: 0.9,
-  bevelWidth: 1.25,
-  shadowStrength: 0.24,
-  debugSeeds: false,
+const colors = {
+  wax: new THREE.Color('#000000'),
+  waxLight: new THREE.Color('#333333'),
+  waxDark: new THREE.Color('#000000'),
+  waxCut: new THREE.Color('#111111'),
+  core: new THREE.Color('#fcfcf8'),
+  coreDeep: new THREE.Color('#dce1db'),
+  gel: new THREE.Color('#ffffff'),
+  rubber: new THREE.Color('#dff8f5'),
+  background: new THREE.Color('#121212'),
 };
 
-let dpr = window.devicePixelRatio || 1;
-let width = 0;
-let height = 0;
-let diskCenter: Point = { x: 0, y: 0 };
-let diskRadius = 0;
-let diskPolygon: Point[] = [];
-let shards: Shard[] = [];
-let nextShardId = 1;
-let rng = mulberry32(params.seed);
-let holdPoint: Point | null = null;
-let isHolding = false;
-let activePointerId: number | null = null;
-let lastNow = performance.now();
-let splitQueue: number[] = [];
-let audio = createAudioSampler();
-let palette = makePalette(params.waxColor);
+const fractureTuning = {
+  shardCount: 0.7,
+  crackRange: 1,
+  shardCullArea: DEFAULT_MIN_VISIBLE_SHARD_AREA,
+  waxColor: '#000000',
+  contentColor: '#fcfcf8',
+  backgroundColor: '#121212',
+  reset: () => resetArtwork(),
+};
 
-const gui = new GUI({ title: 'wakppu fracture' });
-gui.close();
-gui.add(params, 'pressRadius', 110, 230, 1);
-gui.add(params, 'energyRate', 0.6, 1.8, 0.01);
-gui.add(params, 'gapScale', 0.4, 1.8, 0.01);
-gui.add(params, 'liftScale', 0, 1.8, 0.01);
-gui.add(params, 'separationStrength', 0, 1, 0.01);
-gui.add(params, 'splitDensity', 3, 7, 1).onFinishChange(resetArtwork);
-gui.add(params, 'maxDepth', 1, 3, 1).onFinishChange(resetArtwork);
-gui.addColor(params, 'waxColor').onChange((value: string) => {
-  palette = makePalette(value);
+const gui = new GUI({ title: 'Wakppu tuning' });
+const fractureFolder = gui.addFolder('Fracture');
+fractureFolder.add(fractureTuning, 'shardCount', 0.35, 2.2, 0.01).name('조각 수');
+fractureFolder.add(fractureTuning, 'crackRange', 0.55, 2.25, 0.01).name('크랙 범위');
+fractureFolder.add(fractureTuning, 'shardCullArea', 0.0015, 0.018, 0.0001).name('사라짐 기준');
+fractureFolder.add(fractureTuning, 'reset').name('크랙 리셋');
+const colorFolder = gui.addFolder('Color');
+colorFolder.addColor(fractureTuning, 'waxColor').name('왁스 색').onChange(applyTuningColors);
+colorFolder.addColor(fractureTuning, 'contentColor').name('내용물 색').onChange(applyTuningColors);
+colorFolder.addColor(fractureTuning, 'backgroundColor').name('배경 색').onChange(applyTuningColors);
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  alpha: false,
+  powerPreference: 'high-performance',
 });
-gui.add(params, 'debugSeeds');
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.04;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-function setupCanvas(): void {
-  dpr = Math.min(window.devicePixelRatio || 1, 2);
-  width = window.innerWidth;
-  height = window.innerHeight;
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
+const scene = new THREE.Scene();
+scene.background = colors.background;
+
+const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 80);
+camera.position.set(0, 0, MIN_CAMERA_DISTANCE);
+
+const sphereGroup = new THREE.Group();
+scene.add(sphereGroup);
+
+const coreMaterial = new THREE.MeshPhysicalMaterial({
+  color: colors.core,
+  roughness: 0.58,
+  metalness: 0,
+  clearcoat: 0.28,
+  clearcoatRoughness: 0.6,
+});
+
+const waxMaterial = new THREE.MeshPhysicalMaterial({
+  color: colors.wax,
+  roughness: 0.28,
+  metalness: 0,
+  clearcoat: 0.92,
+  clearcoatRoughness: 0.14,
+});
+
+const rubberMaterial = new THREE.MeshPhysicalMaterial({
+  color: colors.rubber,
+  roughness: 0.2,
+  metalness: 0,
+  transparent: true,
+  opacity: 0.24,
+  clearcoat: 0.5,
+  clearcoatRoughness: 0.16,
+  depthWrite: false,
+});
+
+const gelMaterial = new THREE.MeshPhysicalMaterial({
+  color: colors.gel,
+  roughness: 0.48,
+  metalness: 0,
+  clearcoat: 0.18,
+  clearcoatRoughness: 0.52,
+  transparent: false,
+  opacity: 0.82,
+  depthTest: true,
+  depthWrite: false,
+});
+
+function applyTuningColors(): void {
+  colors.wax.set(fractureTuning.waxColor);
+  colors.waxLight.copy(colors.wax).offsetHSL(0, -0.06, 0.2);
+  colors.waxDark.copy(colors.wax).offsetHSL(0, 0.08, -0.28);
+  colors.waxCut.copy(colors.wax).offsetHSL(0, -0.03, -0.12);
+  colors.core.set(fractureTuning.contentColor);
+  colors.coreDeep.copy(colors.core).offsetHSL(0, -0.04, -0.16);
+  colors.gel.copy(colors.core);
+  colors.background.set(fractureTuning.backgroundColor);
+
+  waxMaterial.color.copy(colors.wax);
+  coreMaterial.color.copy(colors.core);
+  gelMaterial.color.copy(colors.core);
+  scene.background = colors.background;
+}
+
+applyTuningColors();
+
+const coreMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(CORE_RADIUS, 96, 48),
+  coreMaterial,
+);
+coreMesh.castShadow = true;
+coreMesh.receiveShadow = true;
+sphereGroup.add(coreMesh);
+
+const shellMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(SPHERE_RADIUS, 128, 64),
+  waxMaterial,
+);
+shellMesh.castShadow = true;
+shellMesh.receiveShadow = true;
+sphereGroup.add(shellMesh);
+
+const rubberMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(SPHERE_RADIUS * 1.018, 128, 64),
+  rubberMaterial,
+);
+sphereGroup.add(rubberMesh);
+
+const hitMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(SPHERE_RADIUS * 1.02, 64, 32),
+  new THREE.MeshBasicMaterial({ visible: false }),
+);
+sphereGroup.add(hitMesh);
+
+const shellBasePositions = clonePositions(shellMesh.geometry);
+const rubberBasePositions = clonePositions(rubberMesh.geometry);
+const coreBasePositions = clonePositions(coreMesh.geometry);
+
+const speckGroup = new THREE.Group();
+sphereGroup.add(speckGroup);
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 3.4);
+keyLight.position.set(-3.2, 4.4, 5.8);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(1024, 1024);
+scene.add(keyLight);
+
+const fillLight = new THREE.HemisphereLight(0xfff7db, 0x1a1015, 1.42);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xdffcff, 1.5);
+rimLight.position.set(3.6, 1.8, 3.4);
+scene.add(rimLight);
+
+applyTuningColors();
+
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+const clock = new THREE.Clock();
+
+let width = 1;
+let height = 1;
+const activePointers = new Map<number, THREE.Vector2>();
+let isDown = false;
+let isRotating = false;
+let multiTouchGestureActive = false;
+let pointerTravel = 0;
+let lastPointer = new THREE.Vector2();
+let lastGestureAt = performance.now();
+let currentHit: SurfaceHit | null = null;
+let holdDuration = 0;
+let lastBreakAt = 0;
+let lastHoldBreakAt = 0;
+let lastStrokeBreakAt = 0;
+let suppressClickUntil = 0;
+let inputForce = 1;
+let pendingTouchBreak: PendingTouchBreak | null = null;
+let zoneId = 1;
+let zones: BreakZone[] = [];
+let audioContext: AudioContext | null = null;
+let crackSamplePromise: Promise<void> | null = null;
+const crackSampleBuffers: AudioBuffer[] = [];
+let spinVelocity = new THREE.Vector2(0, 0);
+let debugFrame = 0;
+
+function viewportSize(): { width: number; height: number } {
+  const viewport = window.visualViewport;
+  return {
+    width: Math.max(1, Math.round(viewport?.width ?? window.innerWidth)),
+    height: Math.max(1, Math.round(viewport?.height ?? window.innerHeight)),
+  };
+}
+
+function resize(): void {
+  const viewport = viewportSize();
+  width = viewport.width;
+  height = viewport.height;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
+  const limitingAspect = Math.min(1, camera.aspect);
+  const halfFov = THREE.MathUtils.degToRad(camera.fov) * 0.5;
+  const fitDistance = CAMERA_FRAME_RADIUS / (Math.tan(halfFov) * limitingAspect);
+  camera.position.set(0, 0, Math.max(MIN_CAMERA_DISTANCE, fitDistance));
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
 }
 
 function resetArtwork(): void {
-  rng = mulberry32(params.seed);
-  nextShardId = 1;
-  splitQueue = [];
-  holdPoint = null;
-  isHolding = false;
-  activePointerId = null;
-
-  const portraitLimit = Math.min(width * 0.84, height * 0.74);
-  const landscapeLimit = Math.min(width * 0.58, height * 0.82);
-  diskRadius = Math.max(130, Math.min(360, (width < height ? portraitLimit : landscapeLimit) * 0.5));
-  diskCenter = {
-    x: width * 0.5,
-    y: height * (width < height ? 0.51 : 0.54),
-  };
-  diskPolygon = createCirclePolygon(diskCenter, diskRadius, params.circleSides);
-  shards = createInitialShards();
-  meterFill.style.transform = 'scaleX(0)';
+  cancelPendingTouchBreak();
+  zones.forEach((zone) => {
+    disposeObject3D(zone.group);
+    sphereGroup.remove(zone.group);
+  });
+  zones = [];
+  zoneId = 1;
+  holdDuration = 0;
+  pointerTravel = 0;
+  activePointers.clear();
+  isRotating = false;
+  multiTouchGestureActive = false;
+  suppressClickUntil = 0;
+  spinVelocity.set(0, 0);
+  sphereGroup.quaternion.identity();
 }
 
-function createInitialShards(): Shard[] {
-  const points: Point[] = [];
-  points.push({ ...diskCenter });
+function removeZone(zone: BreakZone): void {
+  const index = zones.indexOf(zone);
+  if (index >= 0) zones.splice(index, 1);
+  sphereGroup.remove(zone.group);
+  disposeObject3D(zone.group);
+}
 
-  const ringCount = Math.max(8, params.initialShards - 1);
-  for (let i = 0; i < ringCount; i += 1) {
-    const band = i / ringCount;
-    const angle = band * TWO_PI + rand(-0.18, 0.18);
-    const radius = diskRadius * rand(0.2, 0.9) * (i % 3 === 0 ? 0.72 : 1);
-    points.push({
-      x: diskCenter.x + Math.cos(angle) * radius,
-      y: diskCenter.y + Math.sin(angle) * radius,
+function disposeObject3D(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.geometry) return;
+    mesh.geometry.dispose();
+    disposeMaterial(mesh.material);
+  });
+}
+
+function disposeMaterial(material: THREE.Material | THREE.Material[] | undefined): void {
+  if (Array.isArray(material)) {
+    material.forEach((item) => item.dispose());
+  } else if (material) {
+    material.dispose();
+  }
+}
+
+function shardArea(shard: Shard): number {
+  return Math.abs(polygonArea(shard.polygon));
+}
+
+function minVisibleShardArea(): number {
+  return Math.max(0.0004, fractureTuning.shardCullArea);
+}
+
+function shouldCullPolygon(polygon: Point[], minArea = minVisibleShardArea()): boolean {
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(polygon);
+  if (area < minArea) return true;
+
+  const fineSliver = area < minArea * 18 && (apparentWidth < 0.022 || compactness < 0.038);
+  const awkwardFragment = area < minArea * 6.6 && (apparentWidth < 0.038 || compactness < 0.085);
+  return fineSliver || awkwardFragment;
+}
+
+function shouldCullShard(shard: Shard): boolean {
+  return shouldCullPolygon(shard.polygon);
+}
+
+function shouldCullDirectHitShard(shard: Shard): boolean {
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(shard.polygon);
+  const minArea = minVisibleShardArea();
+  if (area < minArea * 1.8) return true;
+
+  return area < minArea * 12 && (shard.split > 3 || apparentWidth < 0.06 || compactness < 0.14);
+}
+
+function disposeShard(zone: BreakZone, shard: Shard): void {
+  zone.shardGroup.remove(shard.mesh);
+  shard.mesh.geometry.dispose();
+  disposeMaterial(shard.mesh.material);
+}
+
+function refreshZoneOutline(zone: BreakZone): void {
+  zone.outline = zone.shards.map((shard) => clonePolygon(shard.polygon));
+}
+
+function cleanupZoneArtifacts(zone: BreakZone): boolean {
+  const before = zone.shards.length;
+  const survivors: Shard[] = [];
+
+  zone.shards.forEach((shard) => {
+    if (shouldCullOverworkedShard(zone, shard)) {
+      disposeShard(zone, shard);
+    } else {
+      survivors.push(shard);
+    }
+  });
+
+  const maxShards = maxShardsPerZone();
+  if (survivors.length > maxShards) {
+    const ranked = survivors
+      .map((shard) => ({ shard, score: shardArtifactScore(shard) }))
+      .sort((a, b) => b.score - a.score);
+    const dropSet = new Set(ranked.slice(0, survivors.length - maxShards).map((item) => item.shard));
+    zone.shards = survivors.filter((shard) => {
+      if (!dropSet.has(shard)) return true;
+      disposeShard(zone, shard);
+      return false;
+    });
+  } else {
+    zone.shards = survivors;
+  }
+
+  return zone.shards.length !== before;
+}
+
+function shouldCullOverworkedShard(zone: BreakZone, shard: Shard): boolean {
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(shard.polygon);
+  const minArea = minVisibleShardArea();
+  const pressure = Math.max(0, zone.fractureCount - 3);
+  const crowded = zone.shards.length > maxShardsPerZone() * 0.78;
+
+  if (shard.split > 6 && (area < minArea * 22 || compactness < 0.18 || apparentWidth < 0.08)) return true;
+  if (pressure > 0 && area < minArea * (7 + pressure * 2.6) && (compactness < 0.13 || apparentWidth < 0.062)) return true;
+  if (crowded && area < minArea * 12 && (compactness < 0.16 || apparentWidth < 0.072 || shard.split > 4)) return true;
+  return false;
+}
+
+function shouldCullTouchedShard(zone: BreakZone, shard: Shard, localPoint: Point, forceScale: number): boolean {
+  const hitDistance = shardHitDistance(zone, shard, localPoint);
+  if (hitDistance > zone.radius * (0.13 + forceScale * 0.025)) return false;
+  if (shouldCullOverworkedShard(zone, shard)) return true;
+
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(shard.polygon);
+  const minArea = minVisibleShardArea();
+  return area < minArea * (10 + forceScale * 3)
+    && (shard.split > 3 || apparentWidth < 0.07 || compactness < 0.16);
+}
+
+function cleanupTouchedArtifacts(zone: BreakZone, localPoint: Point, forceScale: number): boolean {
+  const before = zone.shards.length;
+  const survivors: Shard[] = [];
+
+  zone.shards.forEach((shard) => {
+    if (shouldCullTouchedShard(zone, shard, localPoint, forceScale)) {
+      disposeShard(zone, shard);
+    } else {
+      survivors.push(shard);
+    }
+  });
+
+  zone.shards = survivors;
+  return zone.shards.length !== before;
+}
+
+function shardArtifactScore(shard: Shard): number {
+  const { area, apparentWidth, compactness } = polygonShapeMetrics(shard.polygon);
+  const minArea = minVisibleShardArea();
+  return (
+    (minArea * 10) / Math.max(area, EPSILON)
+    + 0.08 / Math.max(apparentWidth, EPSILON)
+    + 0.2 / Math.max(compactness, EPSILON)
+    + shard.split * 0.42
+  );
+}
+
+function maxShardsPerZone(): number {
+  return Math.round(BASE_MAX_SHARDS_PER_ZONE * Math.max(0.75, fractureTuning.shardCount));
+}
+
+function clonePositions(geometry: THREE.BufferGeometry): Float32Array {
+  return new Float32Array((geometry.getAttribute('position').array as Float32Array));
+}
+
+function buildSpecks(): void {
+  const speckGeometry = new THREE.SphereGeometry(0.008, 6, 4);
+  const materials = [
+    new THREE.MeshBasicMaterial({ color: 0xf6ffc4, transparent: true, opacity: 0.28 }),
+    new THREE.MeshBasicMaterial({ color: 0x6f8820, transparent: true, opacity: 0.16 }),
+  ];
+
+  for (let i = 0; i < 150; i += 1) {
+    const normal = randomSphereNormal(i * 97 + 31);
+    const speck = new THREE.Mesh(speckGeometry, materials[i % 2]);
+    speck.position.copy(normal.multiplyScalar(SPHERE_RADIUS * 1.004));
+    speck.scale.setScalar(0.7 + noise(i * 17) * 1.6);
+    speckGroup.add(speck);
+  }
+}
+
+function createBreakZone(normal: THREE.Vector3, force = 1, impact?: ImpactFootprint): BreakZoneCreation {
+  const seed = Math.floor(Math.random() * 1_000_000_000) + zoneId * 1009;
+  const rng = mulberry32(seed);
+  const basis = createBasis(normal);
+  const forceScale = Math.min(2.2, Math.max(0.45, force));
+  const footprint = impact ?? {
+    kind: 'press',
+    direction: { x: 1, y: 0 },
+    stretch: 1,
+    width: 0.92,
+  };
+  const isStroke = footprint.kind === 'stroke';
+  const shardScale = Math.max(0.35, fractureTuning.shardCount);
+  const rangeScale = Math.max(0.55, fractureTuning.crackRange);
+  const radiusBase = isStroke ? 0.34 + rng() * 0.08 : 0.58 + rng() * 0.15;
+  const radius = radiusBase * (isStroke ? 0.98 + forceScale * 0.12 : 0.96 + forceScale * 0.1) * rangeScale;
+  const impactPolygon = createImpactPolygon(radius, 13 + Math.floor(rng() * 5), rng, footprint);
+  const minShardArea = minVisibleShardArea();
+  const baseCellMinArea = isStroke
+    ? Math.max(0.012, radius * radius * 0.047)
+    : Math.max(minShardArea, radius * radius * 0.022);
+  const cellMinArea = baseCellMinArea / shardScale;
+  const basePointCount = (isStroke ? 6 : 8.5) + forceScale * (isStroke ? 1.25 : 1.8) + rng() * (isStroke ? 1.2 : 2);
+  const points = createImpactPoints(
+    radius,
+    impactPolygon,
+    Math.max(isStroke ? 4 : 7, Math.round(basePointCount * shardScale)),
+    rng,
+    footprint,
+  );
+  const cells = createVoronoiCells(points, impactPolygon, boundsFromPolygon(impactPolygon, radius * 0.55), cellMinArea);
+  const availableCells: Point[][] = [];
+  const overlapHits: OverlapHit[] = [];
+
+  cells.forEach((cell) => {
+    const overlap = findOverlappingBreakCell(normal, basis.tangent, basis.bitangent, cell);
+    if (overlap) overlapHits.push(overlap);
+    availableCells.push(...subtractExistingOutlinesFromCell(normal, basis.tangent, basis.bitangent, cell));
+  });
+
+  const fracturedOverlap = fractureOverlappingBreakCells(overlapHits, forceScale, footprint, seed);
+  if (availableCells.length === 0) {
+    return { zone: null, fracturedOverlap };
+  }
+
+  const edgeMap = new Map<string, CrackEdge & { count: number }>();
+  const shardGroup = new THREE.Group();
+  const group = new THREE.Group();
+  const gelMesh = new THREE.Mesh(new THREE.BufferGeometry(), gelMaterial.clone());
+  gelMesh.renderOrder = 3;
+  gelMesh.visible = false;
+  group.add(shardGroup, gelMesh);
+  sphereGroup.add(group);
+
+  const zone: BreakZone = {
+    id: zoneId++,
+    seed,
+    normal: normal.clone().normalize(),
+    tangent: basis.tangent,
+    bitangent: basis.bitangent,
+    radius,
+    damage: forceScale,
+    progress: 0,
+    fractureCount: 0,
+    group,
+    shardGroup,
+    gelMesh,
+    shards: [],
+    edges: [],
+    outline: availableCells.map((cell) => clonePolygon(cell)),
+  };
+
+  const baseShardMinArea = isStroke
+    ? Math.max(0.011, radius * radius * 0.04)
+    : Math.max(minShardArea * 1.08, radius * radius * 0.018);
+  const shardMinArea = baseShardMinArea / shardScale;
+  availableCells.forEach((cell, index) => {
+    addShard(zone, cell, edgeMap, seed + index * 41, 0, shardMinArea);
+  });
+  refreshZoneOutline(zone);
+
+  if (zone.shards.length === 0) {
+    sphereGroup.remove(group);
+    disposeObject3D(group);
+    return { zone: null, fracturedOverlap };
+  }
+
+  rebuildZoneEdges(zone, edgeMap);
+  return { zone, fracturedOverlap };
+}
+
+function findOverlappingBreakCell(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  cell: Point[],
+): OverlapHit | null {
+  if (zones.length === 0) return null;
+
+  const samples = [polygonCentroid(cell), ...cell];
+  let bestHit: OverlapHit | null = null;
+
+  samples.forEach((sample, index) => {
+    const sampleNormal = tangentBasisPointToNormal(normal, tangent, bitangent, sample);
+    zones.forEach((zone) => {
+      const facing = sampleNormal.dot(zone.normal);
+      if (facing < 0.68) return;
+
+      const localPoint = surfaceToZonePoint(zone, sampleNormal);
+      const localDistance = Math.hypot(localPoint.x, localPoint.y);
+      if (localDistance > zone.radius * (1.12 + Math.min(0.22, zone.fractureCount * 0.018))) return;
+
+      const overlap = zoneOutlineMask(zone, localPoint, zone.radius * 0.05);
+      if (overlap <= 0) return;
+
+      const score = overlap * (index === 0 ? 1.2 : 1) * facing;
+      if (!bestHit || score > bestHit.score) {
+        bestHit = {
+          zone,
+          normal: sampleNormal,
+          score,
+        };
+      }
+    });
+  });
+
+  return bestHit;
+}
+
+function subtractExistingOutlinesFromCell(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  cell: Point[],
+): Point[][] {
+  const minArea = Math.max(0.0009, Math.abs(polygonArea(cell)) * 0.08);
+  let pieces = [cell];
+
+  zones.forEach((zone) => {
+    if (normal.dot(zone.normal) < 0.68 || zone.outline.length === 0 || pieces.length === 0) return;
+
+    const nextPieces: Point[][] = [];
+    pieces.forEach((piece) => {
+      const zonePieces = subtractZoneOutlinesFromCell(normal, tangent, bitangent, piece, zone)
+        .filter((candidate) => candidate.length >= 3 && Math.abs(polygonArea(candidate)) > minArea);
+      nextPieces.push(...zonePieces);
+    });
+    pieces = nextPieces;
+  });
+
+  return pieces.filter((piece) => piece.length >= 3 && Math.abs(polygonArea(piece)) > minArea);
+}
+
+function subtractZoneOutlinesFromCell(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  cell: Point[],
+  zone: BreakZone,
+): Point[][] {
+  let zonePieces = [cell.map((point) => basisPointToZonePoint(normal, tangent, bitangent, point, zone))];
+  let clipped = false;
+
+  zone.outline.forEach((outline) => {
+    const nextPieces: Point[][] = [];
+    zonePieces.forEach((piece) => {
+      if (polygonsIntersect(piece, outline)) {
+        clipped = true;
+        nextPieces.push(...subtractConvexPolygon(piece, outline));
+      } else {
+        nextPieces.push(piece);
+      }
+    });
+    zonePieces = nextPieces;
+  });
+
+  if (!clipped) return [cell];
+
+  return zonePieces.map((piece) => (
+    piece.map((point) => zonePointToBasisPoint(point, zone, normal, tangent, bitangent))
+  ));
+}
+
+function fractureOverlappingBreakCells(
+  overlapHits: OverlapHit[],
+  forceScale: number,
+  impact: ImpactFootprint,
+  seed: number,
+): boolean {
+  if (overlapHits.length === 0) return false;
+
+  const groupedHits = new Map<number, OverlapHit[]>();
+  overlapHits.forEach((hit) => {
+    groupedHits.set(hit.zone.id, [...(groupedHits.get(hit.zone.id) ?? []), hit]);
+  });
+
+  const selectedHits: OverlapHit[] = [];
+  groupedHits.forEach((hits) => {
+    selectedHits.push(...hits.sort((a, b) => b.score - a.score).slice(0, 2));
+  });
+
+  selectedHits
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .forEach((hit, index) => {
+      fractureExistingZone(
+        hit.zone,
+        hit.normal,
+        forceScale * (0.82 + Math.min(0.22, hit.score * 0.14)),
+        true,
+        impact,
+      );
+      hit.zone.damage = Math.min(4.4, hit.zone.damage + 0.025 + index * 0.004 + noise(seed + index * 31) * 0.01);
+    });
+
+  return true;
+}
+
+function tangentBasisPointToNormal(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  point: Point,
+): THREE.Vector3 {
+  return normal.clone()
+    .multiplyScalar(SPHERE_RADIUS)
+    .addScaledVector(tangent, point.x)
+    .addScaledVector(bitangent, point.y)
+    .normalize();
+}
+
+function basisPointToZonePoint(
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+  point: Point,
+  zone: BreakZone,
+): Point {
+  return surfaceToZonePoint(zone, tangentBasisPointToNormal(normal, tangent, bitangent, point));
+}
+
+function zonePointToBasisPoint(
+  point: Point,
+  zone: BreakZone,
+  normal: THREE.Vector3,
+  tangent: THREE.Vector3,
+  bitangent: THREE.Vector3,
+): Point {
+  const sampleNormal = tangentBasisPointToNormal(zone.normal, zone.tangent, zone.bitangent, point);
+  const delta = sampleNormal.multiplyScalar(SPHERE_RADIUS)
+    .sub(normal.clone().normalize().multiplyScalar(SPHERE_RADIUS));
+  return {
+    x: delta.dot(tangent),
+    y: delta.dot(bitangent),
+  };
+}
+
+function addShard(
+  zone: BreakZone,
+  polygon: Point[],
+  edgeMap: Map<string, CrackEdge & { count: number }>,
+  seed: number,
+  split = 0,
+  minArea = 0.0035,
+): void {
+  if (shouldCullPolygon(polygon, Math.max(minArea, minVisibleShardArea()))) return;
+
+  const topMaterial = new THREE.MeshPhysicalMaterial({
+    color: colors.wax,
+    roughness: 0.25,
+    metalness: 0,
+    clearcoat: 0.88,
+    clearcoatRoughness: 0.16,
+    side: THREE.DoubleSide,
+    emissive: colors.wax.clone().multiplyScalar(0.08),
+  });
+  const undersideMaterial = new THREE.MeshPhysicalMaterial({
+    color: colors.waxLight,
+    roughness: 0.42,
+    metalness: 0,
+    clearcoat: 0.38,
+    clearcoatRoughness: 0.32,
+    side: THREE.DoubleSide,
+    emissive: colors.waxLight.clone().multiplyScalar(0.08),
+  });
+  const edgeMaterial = new THREE.MeshPhysicalMaterial({
+    color: colors.waxCut,
+    roughness: 0.34,
+    metalness: 0,
+    clearcoat: 0.46,
+    clearcoatRoughness: 0.24,
+    side: THREE.DoubleSide,
+    emissive: colors.waxCut.clone().multiplyScalar(0.12),
+  });
+  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), [topMaterial, undersideMaterial, edgeMaterial]);
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  mesh.renderOrder = 4;
+  zone.shardGroup.add(mesh);
+
+  const center = polygonCentroid(polygon);
+  const shard: Shard = {
+    polygon,
+    center,
+    tint: noise(seed + 9) - 0.5,
+    lift: 0.002 + noise(seed + 17) * 0.012 + split * 0.0015,
+    twist: (noise(seed + 27) - 0.5) * (0.055 + split * 0.01),
+    split,
+    consumed: 0,
+    settle: 0,
+    phase: noise(seed + 38) * Math.PI * 2,
+    mesh,
+  };
+  zone.shards.push(shard);
+  registerShardEdges(shard, edgeMap, seed);
+}
+
+function registerShardEdges(
+  shard: Shard,
+  edgeMap: Map<string, CrackEdge & { count: number }>,
+  seed: number,
+): void {
+  for (let i = 0; i < shard.polygon.length; i += 1) {
+    const a = shard.polygon[i];
+    const b = shard.polygon[(i + 1) % shard.polygon.length];
+    const key = edgeKey(a, b);
+    const edge = edgeMap.get(key);
+    if (edge) {
+      edge.count += 1;
+    } else {
+      edgeMap.set(key, {
+        a,
+        b,
+        count: 1,
+        weight: 0.65 + noise(seed + i * 7) * 1.35,
+      });
+    }
+  }
+}
+
+function rebuildZoneEdges(zone: BreakZone, edgeMap: Map<string, CrackEdge & { count: number }>): void {
+  zone.edges = Array.from(edgeMap.values())
+    .filter((edge) => edge.count > 1)
+    .map((edge, index) => {
+      return {
+        a: edge.a,
+        b: edge.b,
+        weight: edge.weight + noise(zone.seed + index * 19) * 0.4,
+      };
+    });
+}
+
+function rebuildAllZoneEdges(zone: BreakZone, seed: number): void {
+  const edgeMap = new Map<string, CrackEdge & { count: number }>();
+  zone.shards.forEach((shard, index) => {
+    registerShardEdges(shard, edgeMap, seed + index * 37 + shard.split * 131);
+  });
+  rebuildZoneEdges(zone, edgeMap);
+}
+
+function updateZone(zone: BreakZone, dt: number, elapsed: number): void {
+  zone.progress += (1 - zone.progress) * (reducedMotion ? 0.5 : Math.min(0.16, dt * 7.2));
+  const progress = smoothstep(zone.progress);
+
+  zone.shards.forEach((shard) => {
+    shard.settle = Math.min(1, shard.settle + dt * SHARD_SETTLE_SPEED);
+    updateShardMesh(zone, shard, progress, elapsed);
+  });
+
+  updateGelMesh(zone, progress);
+}
+
+function updateShardMesh(
+  zone: BreakZone,
+  shard: Shard,
+  progress: number,
+  elapsed: number,
+): void {
+  const points = [shard.center, ...shard.polygon];
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const consumed = smoothstep(shard.consumed);
+  const wobbleFade = 1 - smoothstep(shard.settle);
+  const wobble = reducedMotion ? 0 : Math.sin(elapsed * 4.3 + shard.phase) * 0.0009 * shard.split * wobbleFade;
+  const topOffsets: number[] = [];
+  const rotatedPoints: Point[] = [];
+  const shardDistance = Math.hypot(shard.center.x, shard.center.y);
+  const shardDirection = shardDistance > EPSILON
+    ? { x: shard.center.x / shardDistance, y: shard.center.y / shardDistance }
+    : { x: Math.cos(shard.phase), y: Math.sin(shard.phase) };
+  const splitProgress = progress * 0.68;
+  const gap = splitProgress * (0.028 + zone.fractureCount * 0.006) * (1 - consumed * 0.15);
+  const inset = Math.min(0.16, splitProgress * (0.048 + zone.fractureCount * 0.006));
+  const shiftedCenter = {
+    x: shard.center.x + shardDirection.x * gap,
+    y: shard.center.y + shardDirection.y * gap,
+  };
+  const tiltAxis = {
+    x: Math.cos(shard.phase),
+    y: Math.sin(shard.phase),
+  };
+
+  points.forEach((point) => {
+    const outward = Math.min(1, Math.hypot(point.x, point.y) / zone.radius);
+    const anchor = 1 - smoothstep(Math.max(0, outward - 0.72) / 0.28);
+    const surfaceLift = shard.lift * (0.05 + anchor * 0.16) * progress * (1 - consumed * 0.72);
+    const twist = shard.twist * progress * anchor * (1 - consumed * 0.5);
+    const local = {
+      x: (point.x - shard.center.x) * (1 - inset),
+      y: (point.y - shard.center.y) * (1 - inset),
+    };
+    const rotatedLocal = rotatePoint(local, twist);
+    const separated = {
+      x: shiftedCenter.x + rotatedLocal.x,
+      y: shiftedCenter.y + rotatedLocal.y,
+    };
+    const tilt = (
+      (rotatedLocal.x * tiltAxis.x + rotatedLocal.y * tiltAxis.y)
+      / Math.max(zone.radius, EPSILON)
+    ) * splitProgress * 0.026;
+    const lift = Math.max(-0.002, surfaceLift + tilt + wobble);
+    rotatedPoints.push(separated);
+    topOffsets.push(lift);
+    const surfacePoint = tangentToSurface(zone, separated, lift);
+    positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
+  });
+
+  points.forEach((_, index) => {
+    const bottomOffset = topOffsets[index] - WAX_THICKNESS * (0.95 + progress * 0.38);
+    const surfacePoint = tangentToSurface(zone, rotatedPoints[index], bottomOffset);
+    positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
+  });
+
+  for (let i = 1; i < points.length; i += 1) {
+    indices.push(0, i, i === points.length - 1 ? 1 : i + 1);
+  }
+
+  const bottomCenter = points.length;
+  for (let i = 1; i < points.length; i += 1) {
+    const currentBottom = bottomCenter + i;
+    const nextBottom = bottomCenter + (i === points.length - 1 ? 1 : i + 1);
+    indices.push(bottomCenter, nextBottom, currentBottom);
+  }
+
+  for (let i = 1; i < points.length; i += 1) {
+    const next = i === points.length - 1 ? 1 : i + 1;
+    const currentBottom = bottomCenter + i;
+    const nextBottom = bottomCenter + next;
+    indices.push(i, currentBottom, nextBottom);
+    indices.push(i, nextBottom, next);
+  }
+
+  const geometry = shard.mesh.geometry;
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  const capIndexCount = (points.length - 1) * 3;
+  geometry.clearGroups();
+  geometry.addGroup(0, capIndexCount, 0);
+  geometry.addGroup(capIndexCount, capIndexCount, 1);
+  geometry.addGroup(capIndexCount * 2, indices.length - capIndexCount * 2, 2);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+
+  const color = waxColor(shard.tint, consumed);
+  const materials = Array.isArray(shard.mesh.material) ? shard.mesh.material : [shard.mesh.material];
+  const [topMaterial, undersideMaterial, edgeMaterial] = materials;
+  topMaterial.color.copy(color);
+  topMaterial.emissive.copy(color).multiplyScalar(0.08 + consumed * 0.05);
+  topMaterial.opacity = 1;
+  if (undersideMaterial) {
+    const undersideColor = colors.waxLight.clone().lerp(colors.waxCut, Math.min(0.32, 0.14 + consumed * 0.14));
+    undersideMaterial.color.copy(undersideColor);
+    undersideMaterial.emissive.copy(undersideColor).multiplyScalar(0.08);
+    undersideMaterial.opacity = 1;
+  }
+  if (edgeMaterial) {
+    const exposedCut = Math.min(0.7, 0.44 + consumed * 0.2);
+    const edgeColor = colors.waxDark.clone().lerp(colors.waxCut, exposedCut);
+    edgeMaterial.color.copy(edgeColor);
+    edgeMaterial.emissive.copy(edgeColor).multiplyScalar(0.05);
+    edgeMaterial.opacity = 1;
+  }
+}
+
+function updateGelMesh(zone: BreakZone, progress: number): void {
+  if (zone.shards.length === 0) {
+    zone.gelMesh.visible = false;
+    return;
+  }
+
+  zone.gelMesh.visible = true;
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const bedOffset = CORE_RADIUS - SPHERE_RADIUS - WAX_THICKNESS * 0.12;
+
+  zone.shards.forEach((shard, shardIndex) => {
+    const baseIndex = positions.length / 3;
+    const settle = Math.min(0.012, smoothstep(shard.consumed) * 0.008 + shard.split * 0.0008);
+    const center = tangentToSurface(zone, shard.center, bedOffset - settle);
+    positions.push(center.x, center.y, center.z);
+
+    shard.polygon.forEach((point, pointIndex) => {
+      const uneven = noise(zone.seed + shardIndex * 191 + pointIndex * 37) * 0.004;
+      const surfacePoint = tangentToSurface(zone, point, bedOffset - settle - uneven);
+      positions.push(surfacePoint.x, surfacePoint.y, surfacePoint.z);
+    });
+
+    for (let i = 1; i <= shard.polygon.length; i += 1) {
+      indices.push(baseIndex, baseIndex + i, baseIndex + (i === shard.polygon.length ? 1 : i + 1));
+    }
+  });
+
+  const geometry = zone.gelMesh.geometry;
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+
+  zone.gelMesh.material.transparent = true;
+  zone.gelMesh.material.depthTest = true;
+  zone.gelMesh.material.depthWrite = false;
+  zone.gelMesh.material.color.copy(colors.core).lerp(colors.coreDeep, 0.12);
+  zone.gelMesh.material.opacity = Math.min(0.94, 0.82 * progress);
+}
+
+function triggerBreak(hit: SurfaceHit, force = 1, fromHold = false, impact?: ImpactFootprint): void {
+  lastBreakAt = performance.now();
+  const existing = findBreakableZone(hit.normal);
+  const shouldCreateStrokeTrail = impact?.kind === 'stroke'
+    && (!existing || shouldCreateTrailZone(existing, hit.normal, impact));
+
+  if (existing && !shouldCreateStrokeTrail) {
+    fractureExistingZone(existing, hit.normal, force, fromHold, impact);
+    consumeTouchedZone(existing, hit.normal, force, fromHold ? 0.032 : 0.012);
+    playCrack(force * (fromHold ? 0.76 : 1), impact?.kind === 'stroke' ? 1.25 : 1);
+    return;
+  }
+
+  const creation = createBreakZone(hit.normal, force, impact);
+  if (creation.zone) {
+    zones.push(creation.zone);
+    consumeTouchedZone(creation.zone, hit.normal, force, fromHold ? 0.026 : 0.014);
+  }
+  if (creation.zone || creation.fracturedOverlap) {
+    playCrack(force, impact?.kind === 'stroke' ? 1.35 : 1);
+  }
+}
+
+function findBreakableZone(normal: THREE.Vector3): BreakZone | null {
+  let nearest: BreakZone | null = null;
+  let nearestScore = Infinity;
+
+  zones.forEach((zone) => {
+    const surfaceDistance = zoneSurfaceDistance(zone, normal);
+    if (surfaceDistance > zone.radius * 1.28) return;
+
+    const localPoint = surfaceToZonePoint(zone, normal);
+    const shardDistance = zoneShardHitDistance(zone, localPoint);
+    const score = shardDistance < zone.radius * 0.13
+      ? shardDistance - zone.radius * 0.24
+      : surfaceDistance;
+
+    if (score < nearestScore && (surfaceDistance < zone.radius * 1.04 || shardDistance < zone.radius * 0.13)) {
+      nearest = zone;
+      nearestScore = score;
+    }
+  });
+
+  return nearest;
+}
+
+function shouldCreateTrailZone(zone: BreakZone, normal: THREE.Vector3, impact: ImpactFootprint): boolean {
+  const localPoint = surfaceToZonePoint(zone, normal);
+  const localDistance = zoneSurfaceDistance(zone, normal);
+  const direction = normalizePoint(impact.direction);
+  const along = Math.abs(localPoint.x * direction.x + localPoint.y * direction.y);
+  return localDistance > zone.radius * 0.62 || along > zone.radius * 0.56;
+}
+
+function fractureExistingZone(
+  zone: BreakZone,
+  normal: THREE.Vector3,
+  force: number,
+  fromHold: boolean,
+  impact?: ImpactFootprint,
+): void {
+  if (!zones.includes(zone)) return;
+  if (!Number.isFinite(zoneSurfaceDistance(zone, normal))) return;
+
+  const localPoint = surfaceToZonePoint(zone, normal);
+  const forceScale = Math.min(2.6, Math.max(0.5, force));
+  const seed = zone.seed + zone.fractureCount * 4099 + Math.floor(performance.now());
+  const isStroke = impact?.kind === 'stroke';
+  const shardScale = Math.max(0.35, fractureTuning.shardCount);
+  const rangeScale = Math.max(0.55, fractureTuning.crackRange);
+  const breakRadius = zone.radius * (
+    isStroke
+      ? 0.28 + forceScale * 0.08
+      : 0.2 + forceScale * 0.06
+  ) * rangeScale;
+  const directHitRadius = zone.radius * (isStroke ? 0.08 : 0.12);
+  const candidates = zone.shards
+    .map((shard, index) => {
+      const hitDistance = shardHitDistance(zone, shard, localPoint);
+      const centerDistance = impact?.kind === 'stroke'
+        ? strokeDistance(localPoint, shard.center, impact, breakRadius * impact.stretch)
+        : distance(localPoint, shard.center);
+      return {
+        shard,
+        index,
+        contains: hitDistance <= EPSILON,
+        distance: Math.min(hitDistance, centerDistance),
+        hitDistance,
+      };
+    })
+    .filter((candidate) => (
+      candidate.contains
+      || candidate.hitDistance < directHitRadius
+      || candidate.distance < breakRadius * (1 + candidate.shard.consumed * 0.35)
+    ))
+    .sort((a, b) => {
+      if (a.contains !== b.contains) return a.contains ? -1 : 1;
+      if (Math.abs(a.hitDistance - b.hitDistance) > EPSILON) return a.hitDistance - b.hitDistance;
+      return a.distance - b.distance;
+    });
+
+  if (candidates.length === 0) return;
+
+  const selectionBase = isStroke ? 1.8 : fromHold ? 1 : 1.35;
+  const selectionForce = isStroke ? 0.95 : 0.75;
+  const selectedCount = Math.min(
+    candidates.length,
+    Math.max(1, Math.round((selectionBase + forceScale * selectionForce) * shardScale)),
+  );
+  const selectedCandidates = new Map(candidates.slice(0, selectedCount).map((candidate) => [candidate.index, candidate]));
+  const nextShards: Shard[] = [];
+
+  zone.shards.forEach((shard, index) => {
+    if (shouldCullShard(shard)) {
+      disposeShard(zone, shard);
+      return;
+    }
+
+    const selectedCandidate = selectedCandidates.get(index);
+    if (!selectedCandidate) {
+      nextShards.push(shard);
+      return;
+    }
+
+    if (selectedCandidate.hitDistance < directHitRadius * 0.72 && shouldCullDirectHitShard(shard)) {
+      disposeShard(zone, shard);
+      return;
+    }
+
+    const pieces = splitShard(zone, shard, localPoint, forceScale, seed + index * 83, impact);
+    if (pieces.length > 1) {
+      disposeShard(zone, shard);
+      nextShards.push(...pieces);
+    } else if (pieces.length === 0) {
+      disposeShard(zone, shard);
+    } else {
+      shard.lift = Math.max(0, shard.lift - forceScale * 0.002);
+      shard.twist += (noise(seed + index) - 0.5) * 0.04;
+      nextShards.push(shard);
+    }
+  });
+
+  zone.shards = nextShards;
+  if (zone.shards.length === 0) {
+    removeZone(zone);
+    return;
+  }
+
+  zone.fractureCount += 1;
+  zone.damage = Math.min(4.4, zone.damage + forceScale * 0.16);
+  cleanupZoneArtifacts(zone);
+  if (zone.shards.length === 0) {
+    removeZone(zone);
+    return;
+  }
+
+  refreshZoneOutline(zone);
+  rebuildAllZoneEdges(zone, seed);
+}
+
+function splitShard(
+  zone: BreakZone,
+  shard: Shard,
+  point: Point,
+  forceScale: number,
+  seed: number,
+  impact?: ImpactFootprint,
+): Shard[] {
+  const area = Math.abs(polygonArea(shard.polygon));
+  if (area < minVisibleShardArea()) return [];
+  if (shouldCullOverworkedShard(zone, shard)) return [];
+  if (shard.split > 7) return area < minVisibleShardArea() * 28 ? [] : [shard];
+
+  const rng = mulberry32(seed);
+  const focus = pointInPolygon(point, shard.polygon) ? point : shard.center;
+  const isStroke = impact?.kind === 'stroke';
+  const shardScale = Math.max(0.35, fractureTuning.shardCount);
+  const splitLimit = Math.max(isStroke ? 2 : 3, Math.round((isStroke ? 4 : 7) * shardScale));
+  const baseSplitCount = isStroke
+    ? Math.min(4, Math.round(2 + forceScale * 0.72 + rng() * 0.95 + shard.split * 0.08))
+    : Math.min(7, Math.round(2 + forceScale * 1.3 + rng() * 1.8 + shard.split * 0.25));
+  const splitCount = Math.max(2, Math.min(splitLimit, Math.round(baseSplitCount * shardScale)));
+  const splitPoints = createShardSplitPoints(shard.polygon, focus, splitCount, rng, impact);
+  const baseCellMinArea = isStroke ? Math.max(0.0024, area / (splitCount * 5.8)) : Math.max(0.0009, area / (splitCount * 12));
+  const cellMinArea = baseCellMinArea / shardScale;
+  const cells = createVoronoiCells(
+    splitPoints,
+    shard.polygon,
+    boundsFromPolygon(shard.polygon, 0.08),
+    cellMinArea,
+  );
+  if (cells.length < 2) return [shard];
+
+  const edgeMap = new Map<string, CrackEdge & { count: number }>();
+  const pieces: Shard[] = [];
+  cells.forEach((cell, index) => {
+    const before = zone.shards.length;
+    addShard(
+      zone,
+      cell,
+      edgeMap,
+      seed + index * 53,
+      shard.split + 1,
+      (isStroke ? Math.max(0.0022, area / (splitCount * 7)) : Math.max(0.0008, area / (splitCount * 16))) / shardScale,
+    );
+    if (zone.shards.length === before) return;
+    const created = zone.shards.pop();
+    if (!created || zone.shards.length !== before) return;
+    created.tint = created.tint * 0.62 + shard.tint * 0.38;
+    created.lift = Math.max(0, created.lift * 0.4 + shard.lift * 0.28 - forceScale * 0.0015);
+    created.twist += shard.twist * 0.56;
+    created.consumed = Math.min(1, shard.consumed + 0.02);
+    pieces.push(created);
+  });
+  if (pieces.length > 1) return pieces;
+  pieces.forEach((piece) => disposeShard(zone, piece));
+  return [shard];
+}
+
+function consumeTouchedZone(zone: BreakZone, normal: THREE.Vector3, force: number, amount: number): void {
+  if (!zones.includes(zone)) return;
+  if (!Number.isFinite(zoneSurfaceDistance(zone, normal))) return;
+
+  const localPoint = surfaceToZonePoint(zone, normal);
+  const forceScale = Math.min(2.4, Math.max(0.5, force));
+
+  zone.shards.forEach((shard) => {
+    const falloff = Math.max(0, 1 - distance(localPoint, shard.center) / (zone.radius * 0.34));
+    if (falloff <= 0) return;
+    shard.consumed = Math.min(1, shard.consumed + amount * falloff * (0.18 + forceScale * 0.07));
+    shard.lift = Math.max(0.001, shard.lift - amount * falloff * 0.018);
+  });
+
+  if (!cleanupTouchedArtifacts(zone, localPoint, forceScale)) return;
+  if (zone.shards.length === 0) {
+    removeZone(zone);
+    return;
+  }
+
+  refreshZoneOutline(zone);
+  rebuildAllZoneEdges(zone, zone.seed + zone.fractureCount * 701 + Math.floor(performance.now()));
+}
+
+function continueSingleFingerBreak(hit: SurfaceHit, force: number, travel: number, previousHit: SurfaceHit | null): void {
+  const touchedZone = findBreakableZone(hit.normal);
+  if (touchedZone) {
+    consumeTouchedZone(touchedZone, hit.normal, force, 0.006 + Math.min(0.032, travel * 0.0012));
+  }
+
+  const now = performance.now();
+  if (travel > 4.5 && now - lastStrokeBreakAt > Math.max(54, 138 - force * 24)) {
+    if (previousHit) {
+      createStrokeSamples(previousHit, hit, travel).forEach((sample, index) => {
+        triggerBreak(
+          sample,
+          Math.max(0.76, force * (0.76 + index * 0.05)),
+          true,
+          createStrokeFootprint(previousHit, hit, travel, index),
+        );
+      });
+    } else {
+      triggerBreak(hit, Math.max(0.68, force * 0.72), true);
+    }
+    lastStrokeBreakAt = now;
+  }
+}
+
+function getSurfaceHitAt(clientX: number, clientY: number): SurfaceHit | null {
+  const rect = canvas.getBoundingClientRect();
+  pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointerNdc, camera);
+  const hit = raycaster.intersectObject(hitMesh, false)[0];
+  if (!hit) return null;
+
+  const localPoint = sphereGroup.worldToLocal(hit.point.clone());
+  return {
+    normal: localPoint.clone().normalize(),
+    point: hit.point.clone(),
+  };
+}
+
+function getSurfaceHit(event: PointerEvent | MouseEvent): SurfaceHit | null {
+  return getSurfaceHitAt(event.clientX, event.clientY);
+}
+
+function pointerPosition(event: PointerEvent): THREE.Vector2 {
+  return new THREE.Vector2(event.clientX, event.clientY);
+}
+
+function activePointerCenter(): THREE.Vector2 {
+  const center = new THREE.Vector2();
+  activePointers.forEach((point) => center.add(point));
+  return center.multiplyScalar(1 / Math.max(1, activePointers.size));
+}
+
+function rotateFromDrag(previous: THREE.Vector2, next: THREE.Vector2, dt: number): void {
+  const dx = next.x - previous.x;
+  const dy = next.y - previous.y;
+  const yaw = dx * 0.0082;
+  const pitch = dy * 0.007;
+  const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+  const pitchQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
+  sphereGroup.quaternion.premultiply(yawQ).premultiply(pitchQ);
+  if (!reducedMotion) {
+    spinVelocity.set(dx / Math.max(16, dt), dy / Math.max(16, dt));
+  }
+}
+
+function cancelPendingTouchBreak(): void {
+  if (!pendingTouchBreak) return;
+  window.clearTimeout(pendingTouchBreak.timeoutId);
+  pendingTouchBreak = null;
+}
+
+function completePendingTouchBreak(pointerId?: number): boolean {
+  if (!pendingTouchBreak) return false;
+  if (pointerId !== undefined && pendingTouchBreak.pointerId !== pointerId) return false;
+
+  const pending = pendingTouchBreak;
+  cancelPendingTouchBreak();
+  triggerBreak(pending.hit, pending.force);
+  lastHoldBreakAt = performance.now();
+  lastStrokeBreakAt = lastHoldBreakAt;
+  return true;
+}
+
+function queuePendingTouchBreak(pointerId: number, hit: SurfaceHit, force: number): void {
+  cancelPendingTouchBreak();
+  const timeoutId = window.setTimeout(() => {
+    if (!pendingTouchBreak || pendingTouchBreak.pointerId !== pointerId) return;
+    if (!isDown || isRotating || activePointers.size !== 1 || !activePointers.has(pointerId)) {
+      cancelPendingTouchBreak();
+      return;
+    }
+    completePendingTouchBreak(pointerId);
+  }, TOUCH_BREAK_DELAY_MS);
+
+  pendingTouchBreak = {
+    pointerId,
+    hit,
+    force,
+    timeoutId,
+  };
+}
+
+function animate(): void {
+  const dt = Math.min(0.04, clock.getDelta());
+  const elapsed = clock.elapsedTime;
+
+  if (!isDown && spinVelocity.lengthSq() > 0.0001) {
+    rotateFromDrag(
+      new THREE.Vector2(0, 0),
+      new THREE.Vector2(spinVelocity.x * 14, spinVelocity.y * 14),
+      16,
+    );
+    spinVelocity.multiplyScalar(reducedMotion ? 0.78 : Math.pow(0.02, dt));
+  }
+
+  if (
+    isDown
+    && activePointers.size === 1
+    && currentHit
+    && !pendingTouchBreak
+    && !multiTouchGestureActive
+  ) {
+    holdDuration += dt;
+    const holdForce = Math.min(2.55, inputForce + holdDuration * 0.72);
+    const touchedZone = findBreakableZone(currentHit.normal);
+    if (touchedZone) {
+      consumeTouchedZone(touchedZone, currentHit.normal, holdForce, dt * 0.72);
+    }
+
+    const interval = Math.max(86, 260 - holdForce * 58);
+    const now = performance.now();
+    if (now - lastHoldBreakAt > interval) {
+      triggerBreak(currentHit, holdForce, true);
+      lastHoldBreakAt = now;
+    }
+  }
+
+  zones.forEach((zone) => updateZone(zone, dt, elapsed));
+  deformSphereSurfaces();
+  renderer.render(scene, camera);
+  updateCanvasStats();
+}
+
+function onPointerDown(event: PointerEvent): void {
+  canvas.setPointerCapture(event.pointerId);
+  activePointers.set(event.pointerId, pointerPosition(event));
+  isDown = true;
+  inputForce = pointerForce(event);
+
+  if (activePointers.size === 1) {
+    isRotating = false;
+    multiTouchGestureActive = false;
+    pointerTravel = 0;
+    holdDuration = 0;
+    spinVelocity.set(0, 0);
+    lastPointer.set(event.clientX, event.clientY);
+    lastGestureAt = performance.now();
+    currentHit = getSurfaceHit(event);
+  } else {
+    cancelPendingTouchBreak();
+    isRotating = true;
+    multiTouchGestureActive = true;
+    currentHit = null;
+    holdDuration = 0;
+    pointerTravel = 0;
+    lastPointer.copy(activePointerCenter());
+    lastGestureAt = performance.now();
+    suppressClickUntil = performance.now() + 260;
+  }
+
+  if (activePointers.size === 1 && currentHit) {
+    if (event.pointerType === 'touch') {
+      queuePendingTouchBreak(event.pointerId, currentHit, inputForce);
+    } else {
+      triggerBreak(currentHit, inputForce);
+      lastHoldBreakAt = performance.now();
+      lastStrokeBreakAt = lastHoldBreakAt;
+    }
+  }
+}
+
+function onPointerMove(event: PointerEvent): void {
+  if (!activePointers.has(event.pointerId)) return;
+
+  const now = performance.now();
+  const previous = activePointers.get(event.pointerId)?.clone() ?? pointerPosition(event);
+  const next = pointerPosition(event);
+  activePointers.set(event.pointerId, next);
+  inputForce = pointerForce(event);
+
+  if (activePointers.size >= 2) {
+    cancelPendingTouchBreak();
+    multiTouchGestureActive = true;
+    const center = activePointerCenter();
+    pointerTravel += center.distanceTo(lastPointer);
+    isRotating = true;
+    currentHit = null;
+    rotateFromDrag(lastPointer, center, now - lastGestureAt);
+    lastPointer.copy(center);
+    lastGestureAt = now;
+    suppressClickUntil = now + 260;
+    return;
+  }
+
+  const travel = next.distanceTo(previous);
+  pointerTravel += travel;
+
+  if (multiTouchGestureActive) {
+    isRotating = true;
+    currentHit = null;
+    lastPointer.copy(next);
+    lastGestureAt = now;
+    suppressClickUntil = now + 260;
+    return;
+  }
+
+  isRotating = false;
+  const previousHit = currentHit;
+  currentHit = getSurfaceHit(event);
+  lastPointer.copy(next);
+  lastGestureAt = now;
+
+  if (pendingTouchBreak?.pointerId === event.pointerId) {
+    if (currentHit) {
+      pendingTouchBreak.hit = currentHit;
+      pendingTouchBreak.force = inputForce;
+    }
+    return;
+  }
+
+  if (isDown && currentHit) {
+    continueSingleFingerBreak(currentHit, inputForce, travel, previousHit);
+  }
+}
+
+function onPointerUp(event: PointerEvent): void {
+  if (pendingTouchBreak?.pointerId === event.pointerId) {
+    if (!isRotating && pointerTravel <= 7) {
+      completePendingTouchBreak(event.pointerId);
+    } else {
+      cancelPendingTouchBreak();
+    }
+  }
+
+  activePointers.delete(event.pointerId);
+  if (canvas.hasPointerCapture(event.pointerId)) {
+    canvas.releasePointerCapture(event.pointerId);
+  }
+
+  if (activePointers.size >= 2) {
+    cancelPendingTouchBreak();
+    isDown = true;
+    isRotating = true;
+    multiTouchGestureActive = true;
+    currentHit = null;
+    lastPointer.copy(activePointerCenter());
+    lastGestureAt = performance.now();
+    return;
+  }
+
+  if (activePointers.size === 1) {
+    cancelPendingTouchBreak();
+    const [, remainingPoint] = Array.from(activePointers.entries())[0];
+    isDown = true;
+    if (multiTouchGestureActive) {
+      isRotating = true;
+      holdDuration = 0;
+      lastPointer.copy(remainingPoint);
+      currentHit = null;
+      lastGestureAt = performance.now();
+      suppressClickUntil = performance.now() + 260;
+      return;
+    }
+    isRotating = false;
+    pointerTravel = 0;
+    holdDuration = 0;
+    lastPointer.copy(remainingPoint);
+    currentHit = getSurfaceHitAt(remainingPoint.x, remainingPoint.y);
+    lastGestureAt = performance.now();
+    return;
+  }
+
+  isDown = false;
+  if (pointerTravel > 7 || isRotating || multiTouchGestureActive) suppressClickUntil = performance.now() + 260;
+  isRotating = false;
+  multiTouchGestureActive = false;
+  holdDuration = 0;
+  currentHit = null;
+}
+
+function onClick(event: MouseEvent): void {
+  if (activePointers.size > 0 || performance.now() < suppressClickUntil || performance.now() - lastBreakAt < 120) return;
+  const hit = getSurfaceHit(event);
+  if (hit) triggerBreak(hit, 1);
+}
+
+function pointerForce(event: PointerEvent): number {
+  const raw = event.pressure && event.pressure > 0 ? event.pressure : 0.62;
+  return Math.min(2.6, 0.72 + raw * 1.4 + holdDuration * 0.32);
+}
+
+function createBasis(normal: THREE.Vector3): { tangent: THREE.Vector3; bitangent: THREE.Vector3 } {
+  const up = Math.abs(normal.y) > 0.92 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  const tangent = new THREE.Vector3().crossVectors(up, normal).normalize();
+  const bitangent = new THREE.Vector3().crossVectors(normal, tangent).normalize();
+  return { tangent, bitangent };
+}
+
+function tangentToSurface(zone: BreakZone, point: Point, offset = 0): THREE.Vector3 {
+  return zone.normal.clone()
+    .multiplyScalar(SPHERE_RADIUS)
+    .addScaledVector(zone.tangent, point.x)
+    .addScaledVector(zone.bitangent, point.y)
+    .normalize()
+    .multiplyScalar(SPHERE_RADIUS + offset);
+}
+
+function surfaceToZonePoint(zone: BreakZone, normal: THREE.Vector3): Point {
+  const delta = normal.clone().normalize().multiplyScalar(SPHERE_RADIUS)
+    .sub(zone.normal.clone().multiplyScalar(SPHERE_RADIUS));
+  return {
+    x: delta.dot(zone.tangent),
+    y: delta.dot(zone.bitangent),
+  };
+}
+
+function zoneSurfaceDistance(zone: BreakZone, normal: THREE.Vector3): number {
+  const dot = clamp(normal.clone().normalize().dot(zone.normal), -1, 1);
+  if (dot < ZONE_BACKFACE_DOT) return Infinity;
+  return Math.acos(dot) * SPHERE_RADIUS;
+}
+
+function createStrokeSamples(previousHit: SurfaceHit, hit: SurfaceHit, pixelTravel: number): SurfaceHit[] {
+  const count = Math.min(3, Math.max(1, Math.floor(pixelTravel / 24) + 1));
+  const samples: SurfaceHit[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const t = count === 1 ? 1 : (i + 1) / count;
+    const normal = previousHit.normal.clone().lerp(hit.normal, t).normalize();
+    samples.push({
+      normal,
+      point: normal.clone().multiplyScalar(SPHERE_RADIUS),
     });
   }
 
-  const cells = createVoronoiCells(points, diskPolygon, boundsFromPolygon(diskPolygon, 80));
-  return cells
-    .filter((polygon) => Math.abs(polygonArea(polygon)) > 850)
-    .map((polygon) => makeShard(polygon, null, 0, 0));
+  return samples;
 }
 
-function createVoronoiCells(points: Point[], clipPolygon: Point[], bounds: [number, number, number, number]): Point[][] {
+function createStrokeFootprint(
+  previousHit: SurfaceHit,
+  hit: SurfaceHit,
+  pixelTravel: number,
+  sampleIndex = 0,
+): ImpactFootprint {
+  const basis = createBasis(hit.normal);
+  const delta = hit.normal.clone().sub(previousHit.normal).multiplyScalar(SPHERE_RADIUS);
+  const direction = normalizePoint({
+    x: delta.dot(basis.tangent),
+    y: delta.dot(basis.bitangent),
+  });
+  const surfaceTravel = Math.max(0.04, Math.hypot(delta.dot(basis.tangent), delta.dot(basis.bitangent)));
+  const jitter = sampleIndex % 2 === 0 ? 0.12 : -0.1;
+  return {
+    kind: 'stroke',
+    direction: rotatePoint(direction, jitter),
+    stretch: Math.min(2.35, 1.28 + surfaceTravel * 1.08 + pixelTravel * 0.004),
+    width: Math.min(1.02, 0.76 + surfaceTravel * 0.16 + pixelTravel * 0.0018),
+  };
+}
+
+function deformSphereSurfaces(): void {
+  deformSphereGeometry(shellMesh, shellBasePositions, {
+    carveStrength: 1,
+    carveDepth: CORE_EXPOSURE_DEPTH,
+  });
+  deformSphereGeometry(rubberMesh, rubberBasePositions, {
+    carveStrength: 0,
+    carveDepth: 0,
+  });
+  deformSphereGeometry(coreMesh, coreBasePositions, {
+    carveStrength: 0,
+    carveDepth: 0,
+  });
+}
+
+function deformSphereGeometry(
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>,
+  basePositions: Float32Array,
+  options: SurfaceDeformOptions,
+): void {
+  const position = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+  const array = position.array as Float32Array;
+  const normal = new THREE.Vector3();
+
+  for (let i = 0; i < array.length; i += 3) {
+    normal.set(basePositions[i], basePositions[i + 1], basePositions[i + 2]);
+    const radius = normal.length();
+    normal.normalize();
+
+    let carveDepression = 0;
+    zones.forEach((zone) => {
+      const surfaceDistance = zoneSurfaceDistance(zone, normal);
+      if (options.carveStrength <= 0 || zone.shards.length === 0) return;
+      const carveRadius = zone.radius * (1.72 + Math.min(0.18, zone.fractureCount * 0.018));
+      if (surfaceDistance > carveRadius) return;
+
+      const localPoint = surfaceToZonePoint(zone, normal);
+      const footprintMask = shardFootprintMask(zone, localPoint, zone.radius * 0.08);
+      if (footprintMask <= 0) return;
+
+      const fractureDepth = Math.min(0.032, zone.fractureCount * 0.0038);
+      carveDepression += (
+        options.carveDepth
+        + zone.damage * 0.004
+        + fractureDepth
+      ) * zone.progress * footprintMask;
+    });
+
+    const nextRadius = radius
+      - carveDepression * options.carveStrength;
+    array[i] = normal.x * nextRadius;
+    array[i + 1] = normal.y * nextRadius;
+    array[i + 2] = normal.z * nextRadius;
+  }
+
+  position.needsUpdate = true;
+  mesh.geometry.computeVertexNormals();
+  mesh.geometry.computeBoundingSphere();
+}
+
+function shardFootprintMask(zone: BreakZone, localPoint: Point, softness: number): number {
+  let nearestEdge = Infinity;
+
+  for (const shard of zone.shards) {
+    if (pointInPolygon(localPoint, shard.polygon)) return 1;
+    nearestEdge = Math.min(nearestEdge, polygonEdgeDistance(localPoint, shard.polygon));
+  }
+
+  if (!Number.isFinite(nearestEdge)) return 0;
+  return smoothstep(1 - nearestEdge / Math.max(softness, EPSILON)) * 0.48;
+}
+
+function zoneShardHitDistance(zone: BreakZone, localPoint: Point): number {
+  return zone.shards.reduce((nearest, shard) => (
+    Math.min(nearest, shardHitDistance(zone, shard, localPoint))
+  ), Infinity);
+}
+
+function shardHitDistance(zone: BreakZone, shard: Shard, localPoint: Point): number {
+  if (pointInPolygon(localPoint, shard.polygon)) return 0;
+
+  const visiblePolygon = visibleShardPolygon(zone, shard);
+  if (pointInPolygon(localPoint, visiblePolygon)) return 0;
+
+  return Math.min(
+    polygonEdgeDistance(localPoint, shard.polygon),
+    polygonEdgeDistance(localPoint, visiblePolygon),
+  );
+}
+
+function visibleShardPolygon(zone: BreakZone, shard: Shard): Point[] {
+  const progress = smoothstep(zone.progress);
+  const consumed = smoothstep(shard.consumed);
+  const splitProgress = progress * 0.68;
+  const shardDistance = Math.hypot(shard.center.x, shard.center.y);
+  const shardDirection = shardDistance > EPSILON
+    ? { x: shard.center.x / shardDistance, y: shard.center.y / shardDistance }
+    : { x: Math.cos(shard.phase), y: Math.sin(shard.phase) };
+  const gap = splitProgress * (0.028 + zone.fractureCount * 0.006) * (1 - consumed * 0.15);
+  const inset = Math.min(0.16, splitProgress * (0.048 + zone.fractureCount * 0.006));
+  const shiftedCenter = {
+    x: shard.center.x + shardDirection.x * gap,
+    y: shard.center.y + shardDirection.y * gap,
+  };
+
+  return shard.polygon.map((point) => ({
+    x: shiftedCenter.x + (point.x - shard.center.x) * (1 - inset),
+    y: shiftedCenter.y + (point.y - shard.center.y) * (1 - inset),
+  }));
+}
+
+function zoneOutlineMask(zone: BreakZone, localPoint: Point, softness: number): number {
+  let nearestEdge = Infinity;
+
+  for (const outline of zone.outline) {
+    if (pointInPolygon(localPoint, outline)) return 1;
+    nearestEdge = Math.min(nearestEdge, polygonEdgeDistance(localPoint, outline));
+  }
+
+  if (!Number.isFinite(nearestEdge)) return 0;
+  return smoothstep(1 - nearestEdge / Math.max(softness, EPSILON)) * 0.42;
+}
+
+function waxColor(tint: number, consumed: number): THREE.Color {
+  const target = tint > 0 ? colors.waxLight : colors.waxDark;
+  const color = colors.wax.clone().lerp(target, Math.abs(tint) * 0.34);
+  return color.lerp(colors.waxCut, Math.min(0.2, consumed * 0.1));
+}
+
+function createImpactPolygon(
+  radius: number,
+  sides: number,
+  rng: () => number,
+  footprint: ImpactFootprint,
+): Point[] {
+  const points: Point[] = [];
+  const lean = (rng() - 0.5) * 0.22;
+  const direction = normalizePoint(footprint.direction);
+  const angleOffset = Math.atan2(direction.y, direction.x);
+  const lengthScale = footprint.kind === 'stroke' ? footprint.stretch : 1;
+  const widthScale = footprint.kind === 'stroke' ? footprint.width : 0.86 + rng() * 0.12;
+
+  for (let i = 0; i < sides; i += 1) {
+    const angle = (i / sides) * Math.PI * 2 + lean * Math.sin(i * 0.7);
+    const variance = 0.86 + rng() * 0.18;
+    const point = {
+      x: Math.cos(angle) * radius * variance,
+      y: Math.sin(angle) * radius * variance * (0.82 + rng() * 0.14),
+    };
+    points.push(rotatePoint({
+      x: point.x * lengthScale,
+      y: point.y * widthScale,
+    }, angleOffset));
+  }
+
+  return points;
+}
+
+function createImpactPoints(
+  radius: number,
+  polygon: Point[],
+  count: number,
+  rng: () => number,
+  footprint: ImpactFootprint,
+): Point[] {
+  const points: Point[] = [{ x: 0, y: 0 }];
+  const [minX, minY, maxX, maxY] = boundsFromPolygon(polygon, 0);
+
+  if (footprint.kind === 'stroke') {
+    const direction = normalizePoint(footprint.direction);
+    const normal = perpendicular(direction);
+    const spineCount = 3;
+    for (let i = 0; i < spineCount; i += 1) {
+      const t = (i / (spineCount - 1) - 0.5) * radius * footprint.stretch * 0.82;
+      const jitter = (rng() - 0.5) * radius * footprint.width * 0.52;
+      const candidate = {
+        x: direction.x * t + normal.x * jitter,
+        y: direction.y * t + normal.y * jitter,
+      };
+      if (pointInPolygon(candidate, polygon)) points.push(candidate);
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      const side = i % 2 === 0 ? 1 : -1;
+      const branchDirection = rotatePoint(direction, side * (0.75 + rng() * 0.42));
+      const candidate = {
+        x: branchDirection.x * radius * (0.28 + rng() * 0.36),
+        y: branchDirection.y * radius * (0.28 + rng() * 0.36),
+      };
+      if (pointInPolygon(candidate, polygon)) points.push(candidate);
+    }
+  }
+
+  let attempts = 0;
+  while (points.length < count && attempts < count * 80) {
+    attempts += 1;
+    const point = {
+      x: lerp(minX, maxX, rng()),
+      y: lerp(minY, maxY, rng()),
+    };
+    if (pointInPolygon(point, polygon)) points.push(point);
+  }
+
+  return points;
+}
+
+function createShardSplitPoints(
+  polygon: Point[],
+  focus: Point,
+  count: number,
+  rng: () => number,
+  impact?: ImpactFootprint,
+): Point[] {
+  const center = polygonCentroid(polygon);
+  const points: Point[] = [pointInPolygon(focus, polygon) ? focus : center, center];
+  const maxRadius = polygon.reduce((max, point) => Math.max(max, distance(focus, point)), 0);
+  const [minX, minY, maxX, maxY] = boundsFromPolygon(polygon, 0);
+
+  if (impact?.kind === 'stroke') {
+    const direction = normalizePoint(impact.direction);
+    const normal = perpendicular(direction);
+    const linePoints = Math.min(count - points.length, 3);
+    for (let i = 0; i < linePoints; i += 1) {
+      const t = (i / Math.max(1, linePoints - 1) - 0.5) * maxRadius * 0.72;
+      const jitter = (rng() - 0.5) * maxRadius * 0.36;
+      const candidate = {
+        x: focus.x + direction.x * t + normal.x * jitter,
+        y: focus.y + direction.y * t + normal.y * jitter,
+      };
+      if (pointInPolygon(candidate, polygon)) points.push(candidate);
+    }
+
+    const branchCount = Math.min(count - points.length, 2);
+    for (let i = 0; i < branchCount; i += 1) {
+      const branchDirection = rotatePoint(direction, (i === 0 ? 1 : -1) * (0.68 + rng() * 0.5));
+      const candidate = {
+        x: focus.x + branchDirection.x * maxRadius * (0.22 + rng() * 0.34),
+        y: focus.y + branchDirection.y * maxRadius * (0.22 + rng() * 0.34),
+      };
+      if (pointInPolygon(candidate, polygon)) points.push(candidate);
+    }
+  }
+
+  let attempts = 0;
+  while (points.length < count && attempts < count * 90) {
+    attempts += 1;
+    const useFocus = rng() < 0.76;
+    const candidate = useFocus
+      ? {
+        x: focus.x + Math.cos(rng() * Math.PI * 2) * maxRadius * Math.sqrt(rng()) * (0.18 + rng() * 0.78),
+        y: focus.y + Math.sin(rng() * Math.PI * 2) * maxRadius * Math.sqrt(rng()) * (0.18 + rng() * 0.78),
+      }
+      : {
+        x: lerp(minX, maxX, rng()),
+        y: lerp(minY, maxY, rng()),
+      };
+    if (pointInPolygon(candidate, polygon)) points.push(candidate);
+  }
+
+  return points;
+}
+
+function createVoronoiCells(
+  points: Point[],
+  clipPolygon: Point[],
+  bounds: [number, number, number, number],
+  minArea = 0.005,
+): Point[][] {
   if (points.length < 3) return [];
 
-  const delaunay = Delaunay.from(points, (p) => p.x, (p) => p.y);
+  const delaunay = Delaunay.from(points, (point) => point.x, (point) => point.y);
   const voronoi = delaunay.voronoi(bounds);
   const polygons: Point[][] = [];
 
   for (let i = 0; i < points.length; i += 1) {
     const cell = voronoi.cellPolygon(i);
     if (!cell || cell.length < 4) continue;
-    const subject = cell
-      .slice(0, -1)
-      .map(([x, y]) => ({ x, y }));
+    const subject = cell.slice(0, -1).map(([x, y]) => ({ x, y }));
     const clipped = clipPolygonToConvex(subject, clipPolygon);
-    if (clipped.length >= 3 && Math.abs(polygonArea(clipped)) > 120) {
+    if (clipped.length >= 3 && Math.abs(polygonArea(clipped)) > minArea) {
       polygons.push(clipped);
     }
   }
 
   return polygons;
-}
-
-function makeShard(polygon: Point[], parentId: number | null, depth: number, inheritedEnergy: number): Shard {
-  const center = polygonCentroid(polygon);
-  const area = Math.abs(polygonArea(polygon));
-  const jitter = rand(-0.045, 0.065);
-  const depthBias = depth * 0.055;
-  const childBias = depth > 0 ? -0.04 : 0;
-  const baseAngle = rand(-0.08, 0.08);
-
-  return {
-    id: nextShardId++,
-    parentId,
-    polygon,
-    children: [],
-    center,
-    area,
-    state: inheritedEnergy > 0.2 ? 'cracked' : 'solid',
-    depth,
-    hidden: false,
-    energy: inheritedEnergy,
-    crackAt: 0.12 + jitter + childBias,
-    separateAt: 0.31 + jitter + depthBias,
-    splitAt: 0.56 + jitter + depthBias * 1.6,
-    detachAt: 1.05 + jitter + depthBias * 2.2,
-    gap: 0,
-    offset: { x: 0, y: 0 },
-    lift: 0,
-    thickness: rand(1.8, 3.7),
-    angle: 0,
-    targetGap: 0,
-    targetOffset: { x: 0, y: 0 },
-    targetLift: 0,
-    targetAngle: 0,
-    breakOrigin: null,
-    breakDir: normalize(sub(center, diskCenter)),
-    baseAngle,
-    hueShift: rand(-1, 1),
-    detachDrift: {
-      x: rand(-0.55, 0.55),
-      y: rand(-0.8, 0.2),
-    },
-    path: pathFromPolygon(polygon),
-  };
-}
-
-function splitShard(parent: Shard): void {
-  if (parent.hidden || parent.depth >= params.maxDepth || shards.length >= params.maxShards) return;
-
-  const count = Math.max(3, Math.min(4, Math.round(params.splitDensity + rand(-0.65, 0.75))));
-  const points = randomPointsInPolygon(parent.polygon, count);
-  if (points.length < 3) return;
-
-  const cells = createVoronoiCells(points, parent.polygon, boundsFromPolygon(parent.polygon, 60));
-  const children = cells
-    .filter((polygon) => Math.abs(polygonArea(polygon)) > Math.max(180, parent.area * 0.08))
-    .slice(0, 4);
-
-  if (children.length < 2) return;
-
-  parent.hidden = true;
-  parent.state = 'split';
-  parent.children = [];
-  audio.play('crackle');
-
-  for (const polygon of children) {
-    if (shards.length >= params.maxShards) break;
-    const child = makeShard(polygon, parent.id, parent.depth + 1, parent.energy * rand(0.46, 0.68));
-    const localDir = normalize(sub(child.center, parent.center));
-    const inheritedDir = parent.breakOrigin
-      ? parent.breakDir
-      : normalize(sub(parent.center, holdPoint ?? diskCenter));
-    const childDir = normalize({
-      x: inheritedDir.x * 0.64 + localDir.x * 0.92 + rand(-0.08, 0.08),
-      y: inheritedDir.y * 0.64 + localDir.y * 0.92 + rand(-0.08, 0.08),
-    });
-    child.breakOrigin = parent.breakOrigin ?? holdPoint ?? parent.center;
-    child.breakDir = childDir;
-    child.gap = parent.gap * rand(0.65, 0.95);
-    child.offset = {
-      x: parent.offset.x + localDir.x * rand(0.4, 1.2),
-      y: parent.offset.y + localDir.y * rand(0.4, 1.2),
-    };
-    child.targetGap = parent.targetGap * rand(0.72, 0.96);
-    child.targetOffset = {
-      x: parent.targetOffset.x + localDir.x * rand(1.2, 2.6),
-      y: parent.targetOffset.y + localDir.y * rand(1.2, 2.6),
-    };
-    child.lift = parent.lift * rand(0.45, 0.85);
-    child.angle = parent.angle * rand(0.3, 0.8);
-    parent.children.push(child.id);
-    shards.push(child);
-  }
-}
-
-function update(now: number): void {
-  const dt = Math.min(0.033, (now - lastNow) / 1000);
-  lastNow = now;
-
-  let maxEnergy = 0;
-  let pendingSplits = 0;
-
-  for (const shard of shards) {
-    if (shard.hidden) continue;
-
-    if (isHolding && holdPoint) {
-      const falloff = smoothstep(1 - distance(holdPoint, shard.center) / params.pressRadius);
-      if (falloff > 0) {
-        shard.energy += dt * params.energyRate * falloff;
-      }
-    }
-
-    maxEnergy = Math.max(maxEnergy, shard.energy);
-    updateState(shard);
-
-    if (shard.energy >= shard.splitAt && !shard.hidden && shard.children.length === 0) {
-      const canSplit = shard.depth < params.maxDepth && shard.area > 520 && shards.length + pendingSplits * 5 < params.maxShards;
-      if (canSplit && !splitQueue.includes(shard.id)) {
-        splitQueue.push(shard.id);
-        pendingSplits += 1;
-      }
-    }
-  }
-
-  processSplitQueue();
-
-  for (const shard of visibleShards()) {
-    updateTargets(shard);
-  }
-  applySeparation();
-  for (const shard of visibleShards()) {
-    easeMotion(shard);
-  }
-
-  meterFill.style.transform = `scaleX(${clamp(maxEnergy / 1.55, 0, 1)})`;
-}
-
-function updateState(shard: Shard): void {
-  const previous = shard.state;
-
-  if (shard.energy >= shard.detachAt && shard.depth > 0 && shard.area < 1700) {
-    shard.state = 'detached';
-  } else if (shard.energy >= shard.splitAt) {
-    shard.state = 'split';
-  } else if (shard.energy >= shard.separateAt) {
-    shard.state = 'separated';
-  } else if (shard.energy >= shard.crackAt) {
-    shard.state = 'cracked';
-  } else {
-    shard.state = 'solid';
-  }
-
-  if (previous === shard.state) return;
-  if (previous === 'solid' && shard.state !== 'solid') {
-    freezeBreakPose(shard, holdPoint ?? diskCenter);
-  }
-  if (shard.state === 'cracked') audio.play('crackSmall');
-  if (shard.state === 'separated') audio.play('snapClean');
-  if (shard.state === 'detached') audio.play('flake');
-}
-
-function updateTargets(shard: Shard): void {
-  if (shard.state === 'solid') {
-    shard.targetGap = 0;
-    shard.targetOffset = { x: 0, y: 0 };
-    shard.targetLift = 0;
-    shard.targetAngle = 0;
-    return;
-  }
-
-  if (!shard.breakOrigin) {
-    freezeBreakPose(shard, holdPoint ?? diskCenter);
-  }
-
-  const breakDir = vectorLength(shard.breakDir) > EPSILON
-    ? shard.breakDir
-    : normalize(sub(shard.center, shard.breakOrigin ?? diskCenter));
-  const radialNoise = 0.82 + (Math.sin(shard.id * 12.9898) + 1) * 0.14;
-  const stage = clamp((shard.energy - shard.crackAt) / Math.max(0.1, shard.detachAt - shard.crackAt), 0, 1);
-
-  let targetGap = 0;
-  let targetLift = 0;
-  let targetAngle = 0;
-
-  if (shard.state === 'cracked') {
-    const t = smoothstep(clamp((shard.energy - shard.crackAt) / 0.22, 0, 1));
-    targetGap = lerp(0.45, 1.35, t);
-    targetAngle = shard.baseAngle * 0.12;
-  } else if (shard.state === 'separated') {
-    const t = smoothstep(clamp((shard.energy - shard.separateAt) / 0.36, 0, 1));
-    targetGap = lerp(2.1, 4.9, t);
-    targetLift = lerp(0.35, 1.6, t);
-    targetAngle = shard.baseAngle * 0.45;
-  } else if (shard.state === 'split') {
-    const t = smoothstep(clamp((shard.energy - shard.splitAt) / 0.48, 0, 1));
-    targetGap = lerp(4.1, 8.4, t);
-    targetLift = lerp(1.0, 4.4, t);
-    targetAngle = shard.baseAngle;
-  } else if (shard.state === 'detached') {
-    const t = smoothstep(clamp((shard.energy - shard.detachAt) / 0.55, 0, 1));
-    targetGap = lerp(8.0, 15.0, t);
-    targetLift = lerp(2.0, 7.0, t);
-    targetAngle = shard.baseAngle * 1.8 + shard.detachDrift.x * 0.14;
-  }
-
-  const outwardBias = 0.82 + stage * 0.4 + shard.depth * 0.08;
-  shard.targetGap = targetGap * params.gapScale * radialNoise * outwardBias;
-  shard.targetOffset = {
-    x: breakDir.x * shard.targetGap,
-    y: breakDir.y * shard.targetGap,
-  };
-  if (shard.state === 'detached') {
-    shard.targetOffset.x += shard.detachDrift.x * shard.targetGap * 0.7;
-    shard.targetOffset.y += shard.detachDrift.y * shard.targetGap * 0.7;
-  }
-  shard.targetLift = targetLift * params.liftScale;
-  shard.targetAngle = targetAngle + (breakDir.x * 0.018 + breakDir.y * 0.012) * stage;
-}
-
-function easeMotion(shard: Shard): void {
-  shard.gap += (shard.targetGap - shard.gap) * 0.18;
-  shard.offset.x += (shard.targetOffset.x - shard.offset.x) * 0.18;
-  shard.offset.y += (shard.targetOffset.y - shard.offset.y) * 0.18;
-  shard.lift += (shard.targetLift - shard.lift) * 0.16;
-  shard.angle += (shard.targetAngle - shard.angle) * 0.12;
-}
-
-function freezeBreakPose(shard: Shard, origin: Point): void {
-  if (shard.breakOrigin) return;
-
-  const fallback = vectorLength(sub(shard.center, diskCenter)) > EPSILON
-    ? diskCenter
-    : { x: diskCenter.x - 1, y: diskCenter.y - 1 };
-  const dir = normalize(sub(shard.center, origin));
-  shard.breakOrigin = { ...origin };
-  shard.breakDir = vectorLength(dir) > EPSILON
-    ? dir
-    : normalize(sub(shard.center, fallback));
-}
-
-function applySeparation(): void {
-  if (params.separationStrength <= 0) return;
-
-  const active = visibleShards().filter((shard) => shard.state !== 'solid');
-  const passes = 3;
-
-  for (let pass = 0; pass < passes; pass += 1) {
-    for (let i = 0; i < active.length; i += 1) {
-      const a = active[i];
-      const ar = separationRadius(a);
-      const ac = projectedCenter(a);
-
-      for (let j = i + 1; j < active.length; j += 1) {
-        const b = active[j];
-        const br = separationRadius(b);
-        const bc = projectedCenter(b);
-        const delta = sub(bc, ac);
-        const dist = Math.max(vectorLength(delta), 0.001);
-        const minDist = Math.min(34, (ar + br) * 0.95);
-        if (dist >= minDist) continue;
-
-        const dir = dist > 0.01
-          ? { x: delta.x / dist, y: delta.y / dist }
-          : normalize({
-            x: Math.sin((a.id + b.id) * 12.9898),
-            y: Math.cos((a.id - b.id) * 78.233),
-          });
-        const push = (minDist - dist) * 0.5 * params.separationStrength;
-        a.targetOffset.x -= dir.x * push;
-        a.targetOffset.y -= dir.y * push;
-        b.targetOffset.x += dir.x * push;
-        b.targetOffset.y += dir.y * push;
-
-        clampTargetOffset(a);
-        clampTargetOffset(b);
-      }
-    }
-  }
-}
-
-function projectedCenter(shard: Shard): Point {
-  return {
-    x: shard.center.x + shard.targetOffset.x,
-    y: shard.center.y + shard.targetOffset.y,
-  };
-}
-
-function separationRadius(shard: Shard): number {
-  const base = Math.sqrt(shard.area) * (shard.depth > 0 ? 0.28 : 0.18);
-  return clamp(base, 7, shard.depth > 0 ? 24 : 30);
-}
-
-function clampTargetOffset(shard: Shard): void {
-  const maxOffset = Math.max(16, shard.targetGap * 2.8 + 8 + shard.depth * 4);
-  const length = vectorLength(shard.targetOffset);
-  if (length <= maxOffset || length < EPSILON) return;
-  const scale = maxOffset / length;
-  shard.targetOffset.x *= scale;
-  shard.targetOffset.y *= scale;
-}
-
-function processSplitQueue(): void {
-  let processed = 0;
-
-  while (splitQueue.length > 0 && processed < params.maxSplitsPerFrame) {
-    const shardId = splitQueue.shift() as number;
-    const shard = shards.find((candidate) => candidate.id === shardId);
-    if (shard && !shard.hidden && shard.children.length === 0) {
-      splitShard(shard);
-      processed += 1;
-    }
-  }
-}
-
-function render(): void {
-  drawBackdrop();
-  drawBaseShadow();
-  drawAmbientGap();
-  drawContactShadows();
-  drawSideWalls();
-  drawTopFaces();
-  drawPressureBloom();
-  if (params.debugSeeds) drawDebugCenters();
-}
-
-function drawBackdrop(): void {
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, '#f4f7f1');
-  gradient.addColorStop(0.52, '#e9ece8');
-  gradient.addColorStop(1, '#d8dfdc');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.save();
-  ctx.globalAlpha = 0.18;
-  ctx.fillStyle = '#b8b2a5';
-  ctx.beginPath();
-  ctx.ellipse(width * 0.48, height * 0.78, diskRadius * 1.0, diskRadius * 0.13, -0.08, 0, TWO_PI);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawBaseShadow(): void {
-  ctx.save();
-  ctx.translate(0, diskRadius * 0.026);
-  ctx.shadowColor = `rgba(26, 31, 29, ${params.shadowStrength})`;
-  ctx.shadowBlur = Math.max(18, diskRadius * 0.105);
-  ctx.shadowOffsetY = Math.max(10, diskRadius * 0.06);
-  ctx.fillStyle = 'rgba(50, 66, 60, 0.18)';
-  drawPolygon(diskPolygon);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawAmbientGap(): void {
-  const gradient = ctx.createRadialGradient(
-    diskCenter.x - diskRadius * 0.24,
-    diskCenter.y - diskRadius * 0.28,
-    diskRadius * 0.08,
-    diskCenter.x,
-    diskCenter.y,
-    diskRadius * 1.06,
-  );
-  gradient.addColorStop(0, '#347568');
-  gradient.addColorStop(0.68, '#20544d');
-  gradient.addColorStop(1, '#173a37');
-  ctx.fillStyle = gradient;
-  drawPolygon(diskPolygon);
-  ctx.fill();
-}
-
-function drawContactShadows(): void {
-  for (const shard of visibleShards()) {
-    if (shard.gap < 0.1 && shard.lift < 0.1) continue;
-    const alpha = clamp(0.025 + shard.gap * 0.006 + shard.lift * 0.01, 0.035, 0.15);
-    ctx.save();
-    ctx.shadowColor = `rgba(14, 25, 22, ${alpha})`;
-    ctx.shadowBlur = 7 + shard.lift * 1.8 + shard.gap * 0.55;
-    ctx.shadowOffsetY = 3 + shard.lift * 0.55;
-    ctx.fillStyle = `rgba(14, 25, 22, ${alpha * 0.55})`;
-    drawTransformedPolygon(shard, {
-      x: shard.thickness * 0.3,
-      y: shard.thickness * 0.5 + shard.lift * 0.24,
-    });
-    ctx.fill();
-    ctx.restore();
-  }
-}
-
-function drawSideWalls(): void {
-  const walls: Array<{
-    a: Point;
-    b: Point;
-    c: Point;
-    d: Point;
-    brightness: number;
-    shade: number;
-  }> = [];
-
-  for (const shard of visibleShards()) {
-    if (shard.state === 'solid' || (shard.gap < 0.08 && shard.lift < 0.08)) continue;
-
-    const top = transformedPoints(shard, { includeLift: true });
-    const bottom = transformedPoints(shard, sideWallOffset(shard));
-    const areaSign = Math.sign(polygonArea(top)) || 1;
-
-    for (let i = 0; i < top.length; i += 1) {
-      const a = top[i];
-      const b = top[(i + 1) % top.length];
-      const d = bottom[i];
-      const c = bottom[(i + 1) % bottom.length];
-      const edge = sub(b, a);
-      const normal = areaSign >= 0
-        ? normalize({ x: edge.y, y: -edge.x })
-        : normalize({ x: -edge.y, y: edge.x });
-      const brightness = dot(normal, LIGHT);
-      walls.push({
-        a,
-        b,
-        c,
-        d,
-        brightness,
-        shade: (a.y + b.y + c.y + d.y) * 0.25,
-      });
-    }
-  }
-
-  walls.sort((left, right) => left.shade - right.shade);
-
-  for (const wall of walls) {
-    drawSideWall(wall.a, wall.b, wall.c, wall.d, wall.brightness);
-  }
-}
-
-function sideWallOffset(shard: Shard): { x: number; y: number; includeLift: boolean } {
-  return {
-    x: shard.thickness * 0.52,
-    y: shard.thickness * 0.9 + shard.lift * 0.46,
-    includeLift: false,
-  };
-}
-
-function drawSideWall(a: Point, b: Point, c: Point, d: Point, brightness: number): void {
-  const midTop = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
-  const midBottom = { x: (c.x + d.x) * 0.5, y: (c.y + d.y) * 0.5 };
-  const lightAmount = clamp(brightness * 0.18, -0.16, 0.12);
-  const topColor = adjustColor(palette.edge, 0.04 + lightAmount);
-  const bottomColor = adjustColor(palette.edge, -0.16 + lightAmount * 0.65);
-  const gradient = ctx.createLinearGradient(midTop.x, midTop.y, midBottom.x, midBottom.y);
-  gradient.addColorStop(0, topColor);
-  gradient.addColorStop(1, bottomColor);
-
-  ctx.save();
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.lineTo(c.x, c.y);
-  ctx.lineTo(d.x, d.y);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = 0.65;
-  ctx.strokeStyle = brightness > 0.18
-    ? `rgba(235, 255, 246, ${0.16 + brightness * 0.18})`
-    : `rgba(18, 66, 59, ${0.2 + Math.abs(brightness) * 0.16})`;
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.45;
-  ctx.strokeStyle = 'rgba(16, 55, 50, 0.18)';
-  ctx.beginPath();
-  ctx.moveTo(d.x, d.y);
-  ctx.lineTo(c.x, c.y);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawTopFaces(): void {
-  if (visibleShards().every((shard) => shard.state === 'solid')) {
-    drawSmoothDiskTop();
-    return;
-  }
-
-  for (const shard of visibleShards()) {
-    const topPoints = transformedPoints(shard, { includeLift: true });
-    const faceColor = adjustColor(palette.top, shard.hueShift * params.waxWarmth * 0.08);
-    const topGradient = ctx.createLinearGradient(
-      diskCenter.x - diskRadius * 0.45,
-      diskCenter.y - diskRadius * 0.48,
-      diskCenter.x + diskRadius * 0.56,
-      diskCenter.y + diskRadius * 0.62,
-    );
-    topGradient.addColorStop(0, adjustColor(faceColor, 0.08));
-    topGradient.addColorStop(0.52, faceColor);
-    topGradient.addColorStop(1, adjustColor(faceColor, -0.1));
-
-    ctx.fillStyle = topGradient;
-    drawPolygon(topPoints);
-    ctx.fill();
-
-    if (shard.state !== 'solid') {
-      const crackAlpha = clamp(0.18 + shard.energy * 0.1, 0.2, 0.42);
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = 0.75;
-      ctx.strokeStyle = `rgba(20, 78, 68, ${crackAlpha})`;
-      drawPolygon(topPoints);
-      ctx.stroke();
-
-      drawBevel(topPoints);
-      drawSpecular(topPoints, shard);
-    }
-  }
-}
-
-function drawSmoothDiskTop(): void {
-  const topGradient = ctx.createLinearGradient(
-    diskCenter.x - diskRadius * 0.45,
-    diskCenter.y - diskRadius * 0.48,
-    diskCenter.x + diskRadius * 0.56,
-    diskCenter.y + diskRadius * 0.62,
-  );
-  topGradient.addColorStop(0, adjustColor(palette.top, 0.08));
-  topGradient.addColorStop(0.52, palette.top);
-  topGradient.addColorStop(1, adjustColor(palette.top, -0.1));
-
-  ctx.fillStyle = topGradient;
-  drawPolygon(diskPolygon);
-  ctx.fill();
-
-  ctx.save();
-  ctx.clip();
-  ctx.globalAlpha = 0.15;
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.ellipse(
-    diskCenter.x - diskRadius * 0.36,
-    diskCenter.y - diskRadius * 0.24,
-    diskRadius * 0.17,
-    diskRadius * 0.036,
-    -0.45,
-    0,
-    TWO_PI,
-  );
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawBevel(points: Point[]): void {
-  const areaSign = Math.sign(polygonArea(points)) || 1;
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = params.bevelWidth;
-
-  for (let i = 0; i < points.length; i += 1) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    const edge = sub(b, a);
-    const normal = areaSign >= 0
-      ? normalize({ x: edge.y, y: -edge.x })
-      : normalize({ x: -edge.y, y: edge.x });
-    const brightness = dot(normal, LIGHT);
-
-    if (brightness > 0.18) {
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.18 + brightness * 0.28})`;
-    } else if (brightness < -0.2) {
-      ctx.strokeStyle = `rgba(30, 80, 72, ${0.16 + Math.abs(brightness) * 0.22})`;
-    } else {
-      continue;
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-function drawSpecular(points: Point[], shard: Shard): void {
-  if (shard.state === 'detached' || shard.area < 700) return;
-  const c = polygonCentroid(points);
-  const radius = Math.sqrt(shard.area) * 0.14;
-
-  ctx.save();
-  ctx.globalAlpha = 0.13;
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.ellipse(
-    c.x - radius * 0.55,
-    c.y - radius * 0.62,
-    Math.max(3, radius * 0.65),
-    Math.max(1.2, radius * 0.16),
-    -0.48,
-    0,
-    TWO_PI,
-  );
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawPressureBloom(): void {
-  if (!holdPoint || !isHolding) return;
-
-  const energy = clamp(
-    shards.reduce((max, shard) => (!shard.hidden ? Math.max(max, shard.energy) : max), 0),
-    0,
-    1.8,
-  );
-  const radius = lerp(18, 54, smoothstep(energy / 1.8));
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  const gradient = ctx.createRadialGradient(holdPoint.x, holdPoint.y, 2, holdPoint.x, holdPoint.y, radius);
-  gradient.addColorStop(0, 'rgba(48, 108, 96, 0.17)');
-  gradient.addColorStop(0.52, 'rgba(48, 108, 96, 0.06)');
-  gradient.addColorStop(1, 'rgba(48, 108, 96, 0)');
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(holdPoint.x, holdPoint.y, radius, 0, TWO_PI);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawDebugCenters(): void {
-  ctx.save();
-  ctx.fillStyle = '#ca3b2a';
-  for (const shard of visibleShards()) {
-    ctx.beginPath();
-    ctx.arc(shard.center.x, shard.center.y, 2, 0, TWO_PI);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-function visibleShards(): Shard[] {
-  return shards.filter((shard) => !shard.hidden);
-}
-
-function drawTransformedPolygon(
-  shard: Shard,
-  options: { x?: number; y?: number; includeLift?: boolean } = {},
-): void {
-  drawPolygon(transformedPoints(shard, options));
-}
-
-function transformedPoints(
-  shard: Shard,
-  options: { x?: number; y?: number; includeLift?: boolean } = {},
-): Point[] {
-  const offset = {
-    x: shard.offset.x + (options.x ?? 0),
-    y: shard.offset.y + (options.y ?? 0),
-  };
-  const liftY = options.includeLift === false ? 0 : -shard.lift;
-  const cos = Math.cos(shard.angle);
-  const sin = Math.sin(shard.angle);
-
-  return shard.polygon.map((point) => {
-    const px = point.x - shard.center.x;
-    const py = point.y - shard.center.y;
-    return {
-      x: shard.center.x + px * cos - py * sin + offset.x,
-      y: shard.center.y + px * sin + py * cos + offset.y + liftY,
-    };
-  });
-}
-
-function drawPolygon(points: Point[]): void {
-  if (points.length === 0) return;
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i += 1) {
-    ctx.lineTo(points[i].x, points[i].y);
-  }
-  ctx.closePath();
-}
-
-function pathFromPolygon(points: Point[]): Path2D {
-  const path = new Path2D();
-  if (points.length === 0) return path;
-  path.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i += 1) {
-    path.lineTo(points[i].x, points[i].y);
-  }
-  path.closePath();
-  return path;
-}
-
-function createCirclePolygon(center: Point, radius: number, sides: number): Point[] {
-  const points: Point[] = [];
-  for (let i = 0; i < sides; i += 1) {
-    const angle = -Math.PI / 2 + (i / sides) * TWO_PI;
-    points.push({
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius,
-    });
-  }
-  return points;
 }
 
 function clipPolygonToConvex(subject: Point[], clip: Point[]): Point[] {
@@ -897,9 +1952,63 @@ function clipPolygonToConvex(subject: Point[], clip: Point[]): Point[] {
       } else if (startInside) {
         output.push(lineIntersection(start, end, a, b));
       }
-
       start = end;
     }
+  }
+
+  return dedupePoints(output);
+}
+
+function subtractConvexPolygon(subject: Point[], clip: Point[]): Point[][] {
+  if (subject.length < 3 || clip.length < 3) return [];
+
+  let remaining: Point[][] = [dedupePoints(subject)];
+  const outsidePieces: Point[][] = [];
+  const clipSign = Math.sign(polygonArea(clip)) || 1;
+
+  for (let i = 0; i < clip.length; i += 1) {
+    const a = clip[i];
+    const b = clip[(i + 1) % clip.length];
+    const nextRemaining: Point[][] = [];
+
+    remaining.forEach((piece) => {
+      const inside = clipPolygonToHalfPlane(piece, a, b, clipSign, true);
+      const outside = clipPolygonToHalfPlane(piece, a, b, clipSign, false);
+      if (isUsablePolygon(outside, 0.0006)) outsidePieces.push(outside);
+      if (isUsablePolygon(inside, 0.0006)) nextRemaining.push(inside);
+    });
+
+    remaining = nextRemaining;
+    if (remaining.length === 0) break;
+  }
+
+  return outsidePieces.filter((piece) => isUsablePolygon(piece, 0.0006));
+}
+
+function clipPolygonToHalfPlane(
+  subject: Point[],
+  a: Point,
+  b: Point,
+  sign: number,
+  keepInside: boolean,
+): Point[] {
+  const output: Point[] = [];
+  if (subject.length === 0) return output;
+
+  let start = subject[subject.length - 1];
+  for (const end of subject) {
+    const endInside = isInsideClip(end, a, b, sign);
+    const startInside = isInsideClip(start, a, b, sign);
+    const endKeep = keepInside ? endInside : !endInside;
+    const startKeep = keepInside ? startInside : !startInside;
+
+    if (endKeep) {
+      if (!startKeep) output.push(lineIntersection(start, end, a, b));
+      output.push(end);
+    } else if (startKeep) {
+      output.push(lineIntersection(start, end, a, b));
+    }
+    start = end;
   }
 
   return dedupePoints(output);
@@ -926,47 +2035,20 @@ function dedupePoints(points: Point[]): Point[] {
   const deduped: Point[] = [];
   for (const point of points) {
     const previous = deduped[deduped.length - 1];
-    if (!previous || distance(previous, point) > 0.2) {
-      deduped.push(point);
-    }
+    if (!previous || distance(previous, point) > 0.0005) deduped.push(point);
   }
-  if (deduped.length > 1 && distance(deduped[0], deduped[deduped.length - 1]) < 0.2) {
+  if (deduped.length > 1 && distance(deduped[0], deduped[deduped.length - 1]) < 0.0005) {
     deduped.pop();
   }
   return deduped;
 }
 
-function randomPointsInPolygon(polygon: Point[], count: number): Point[] {
-  const [minX, minY, maxX, maxY] = boundsFromPolygon(polygon, 0);
-  const points: Point[] = [];
-  const center = polygonCentroid(polygon);
-  points.push(center);
-
-  let attempts = 0;
-  while (points.length < count && attempts < count * 80) {
-    attempts += 1;
-    const point = {
-      x: rand(minX, maxX),
-      y: rand(minY, maxY),
-    };
-    if (pointInPolygon(point, polygon)) {
-      points.push(point);
-    }
-  }
-
-  return points;
+function clonePolygon(points: Point[]): Point[] {
+  return points.map((point) => ({ x: point.x, y: point.y }));
 }
 
-function pointInPolygon(point: Point, polygon: Point[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
-    const a = polygon[i];
-    const b = polygon[j];
-    const intersects = ((a.y > point.y) !== (b.y > point.y))
-      && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y + EPSILON) + a.x;
-    if (intersects) inside = !inside;
-  }
-  return inside;
+function isUsablePolygon(points: Point[], minArea: number): boolean {
+  return points.length >= 3 && Math.abs(polygonArea(points)) > minArea;
 }
 
 function boundsFromPolygon(polygon: Point[], padding: number): [number, number, number, number] {
@@ -975,12 +2057,12 @@ function boundsFromPolygon(polygon: Point[], padding: number): [number, number, 
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  for (const point of polygon) {
+  polygon.forEach((point) => {
     minX = Math.min(minX, point.x);
     minY = Math.min(minY, point.y);
     maxX = Math.max(maxX, point.x);
     maxY = Math.max(maxY, point.y);
-  }
+  });
 
   return [minX - padding, minY - padding, maxX + padding, maxY + padding];
 }
@@ -995,221 +2077,377 @@ function polygonArea(points: Point[]): number {
   return area * 0.5;
 }
 
-function polygonCentroid(points: Point[]): Point {
-  let area = 0;
-  let cx = 0;
-  let cy = 0;
+function polygonPerimeter(points: Point[]): number {
+  let perimeter = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    perimeter += distance(points[i], points[(i + 1) % points.length]);
+  }
+  return perimeter;
+}
 
+function polygonLongestEdge(points: Point[]): number {
+  let longest = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    longest = Math.max(longest, distance(points[i], points[(i + 1) % points.length]));
+  }
+  return longest;
+}
+
+function polygonCompactness(points: Point[]): number {
+  const perimeter = polygonPerimeter(points);
+  if (perimeter <= EPSILON) return 0;
+  return (4 * Math.PI * Math.abs(polygonArea(points))) / (perimeter * perimeter);
+}
+
+function polygonShapeMetrics(points: Point[]): {
+  area: number;
+  apparentWidth: number;
+  compactness: number;
+} {
+  const area = Math.abs(polygonArea(points));
+  const longestEdge = polygonLongestEdge(points);
+  return {
+    area,
+    apparentWidth: area / Math.max(longestEdge, EPSILON),
+    compactness: polygonCompactness(points),
+  };
+}
+
+function polygonCentroid(points: Point[]): Point {
+  const area = polygonArea(points);
+  if (Math.abs(area) < 0.00001) {
+    const sum = points.reduce((acc, point) => add(acc, point), { x: 0, y: 0 });
+    return { x: sum.x / points.length, y: sum.y / points.length };
+  }
+
+  let x = 0;
+  let y = 0;
   for (let i = 0; i < points.length; i += 1) {
     const a = points[i];
     const b = points[(i + 1) % points.length];
-    const f = a.x * b.y - b.x * a.y;
-    area += f;
-    cx += (a.x + b.x) * f;
-    cy += (a.y + b.y) * f;
+    const value = a.x * b.y - b.x * a.y;
+    x += (a.x + b.x) * value;
+    y += (a.y + b.y) * value;
+  }
+  return { x: x / (6 * area), y: y / (6 * area) };
+}
+
+function edgeKey(a: Point, b: Point): string {
+  const aKey = `${Math.round(a.x * 1000)},${Math.round(a.y * 1000)}`;
+  const bKey = `${Math.round(b.x * 1000)},${Math.round(b.y * 1000)}`;
+  return aKey < bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`;
+}
+
+function pointInPolygon(point: Point, polygon: Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const a = polygon[i];
+    const b = polygon[j];
+    const intersects = ((a.y > point.y) !== (b.y > point.y))
+      && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y + EPSILON) + a.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function polygonsIntersect(a: Point[], b: Point[]): boolean {
+  if (a.some((point) => pointInPolygon(point, b)) || b.some((point) => pointInPolygon(point, a))) {
+    return true;
   }
 
-  area *= 0.5;
-  if (Math.abs(area) < EPSILON) {
-    return points.reduce(
-      (sum, point) => ({ x: sum.x + point.x / points.length, y: sum.y + point.y / points.length }),
-      { x: 0, y: 0 },
-    );
-  }
-
-  return {
-    x: cx / (6 * area),
-    y: cy / (6 * area),
-  };
-}
-
-function makePalette(hex: string): { top: string; edge: string } {
-  return {
-    top: hex,
-    edge: adjustColor(hex, -0.27),
-  };
-}
-
-function adjustColor(hex: string, amount: number): string {
-  const { r, g, b } = parseHex(hex);
-  const mix = amount >= 0 ? 255 : 0;
-  const t = Math.abs(amount);
-  return rgbToHex(
-    Math.round(lerp(r, mix, t)),
-    Math.round(lerp(g, mix, t)),
-    Math.round(lerp(b, mix, t)),
-  );
-}
-
-function parseHex(hex: string): { r: number; g: number; b: number } {
-  const normalized = hex.replace('#', '').trim();
-  const value = normalized.length === 3
-    ? normalized.split('').map((part) => part + part).join('')
-    : normalized.padEnd(6, '0').slice(0, 6);
-  return {
-    r: Number.parseInt(value.slice(0, 2), 16),
-    g: Number.parseInt(value.slice(2, 4), 16),
-    b: Number.parseInt(value.slice(4, 6), 16),
-  };
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  return `#${[r, g, b].map((value) => clamp(value, 0, 255).toString(16).padStart(2, '0')).join('')}`;
-}
-
-function createAudioSampler(): { unlock: () => Promise<void>; play: (kind: AudioKind) => void } {
-  const files: Record<AudioKind, string[]> = {
-    crackSmall: [],
-    snapClean: [],
-    crackle: [],
-    flake: [],
-  };
-  const buffers = new Map<string, AudioBuffer>();
-  let audioContext: AudioContext | null = null;
-  let unlocked = false;
-
-  async function unlock(): Promise<void> {
-    if (unlocked) return;
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextCtor) return;
-    audioContext = new AudioContextCtor();
-    await audioContext.resume();
-    unlocked = true;
-
-    for (const paths of Object.values(files)) {
-      for (const path of paths) {
-        if (buffers.has(path)) continue;
-        try {
-          const response = await fetch(path);
-          const arrayBuffer = await response.arrayBuffer();
-          buffers.set(path, await audioContext.decodeAudioData(arrayBuffer));
-        } catch {
-          // Recorded samples are optional project assets and should fail silently when absent.
-        }
-      }
+  for (let i = 0; i < a.length; i += 1) {
+    const a1 = a[i];
+    const a2 = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j += 1) {
+      if (segmentsIntersect(a1, a2, b[j], b[(j + 1) % b.length])) return true;
     }
   }
 
-  function play(kind: AudioKind): void {
-    if (!audioContext || !unlocked || files[kind].length === 0) return;
-    const path = files[kind][Math.floor(Math.random() * files[kind].length)];
-    const buffer = buffers.get(path);
-    if (!buffer) return;
+  return false;
+}
 
-    const source = audioContext.createBufferSource();
-    const gain = audioContext.createGain();
-    source.buffer = buffer;
-    gain.gain.value = rand(0.65, 0.92);
-    source.connect(gain);
-    gain.connect(audioContext.destination);
-    source.start();
+function segmentsIntersect(a: Point, b: Point, c: Point, d: Point): boolean {
+  const ab = sub(b, a);
+  const ac = sub(c, a);
+  const ad = sub(d, a);
+  const cd = sub(d, c);
+  const ca = sub(a, c);
+  const cb = sub(b, c);
+  const d1 = cross(ab, ac);
+  const d2 = cross(ab, ad);
+  const d3 = cross(cd, ca);
+  const d4 = cross(cd, cb);
+
+  if (
+    ((d1 > EPSILON && d2 < -EPSILON) || (d1 < -EPSILON && d2 > EPSILON))
+    && ((d3 > EPSILON && d4 < -EPSILON) || (d3 < -EPSILON && d4 > EPSILON))
+  ) {
+    return true;
   }
 
-  return { unlock, play };
+  return isPointOnSegment(c, a, b)
+    || isPointOnSegment(d, a, b)
+    || isPointOnSegment(a, c, d)
+    || isPointOnSegment(b, c, d);
 }
 
-function onPointerDown(event: PointerEvent): void {
-  if (activePointerId !== null) return;
-  activePointerId = event.pointerId;
-  isHolding = true;
-  holdPoint = { x: event.clientX, y: event.clientY };
-  canvas.setPointerCapture(event.pointerId);
-  void audio.unlock();
+function isPointOnSegment(point: Point, a: Point, b: Point): boolean {
+  return Math.abs(cross(sub(b, a), sub(point, a))) <= EPSILON
+    && point.x >= Math.min(a.x, b.x) - EPSILON
+    && point.x <= Math.max(a.x, b.x) + EPSILON
+    && point.y >= Math.min(a.y, b.y) - EPSILON
+    && point.y <= Math.max(a.y, b.y) + EPSILON;
 }
 
-function onPointerMove(event: PointerEvent): void {
-  if (event.pointerId !== activePointerId || !holdPoint) return;
-  holdPoint = {
-    x: lerp(holdPoint.x, event.clientX, 0.35),
-    y: lerp(holdPoint.y, event.clientY, 0.35),
+function polygonEdgeDistance(point: Point, polygon: Point[]): number {
+  let nearest = Infinity;
+  for (let i = 0; i < polygon.length; i += 1) {
+    nearest = Math.min(nearest, pointToSegmentDistance(point, polygon[i], polygon[(i + 1) % polygon.length]));
+  }
+  return nearest;
+}
+
+function pointToSegmentDistance(point: Point, a: Point, b: Point): number {
+  const segment = sub(b, a);
+  const lengthSquared = segment.x * segment.x + segment.y * segment.y;
+  if (lengthSquared < EPSILON) return distance(point, a);
+
+  const t = Math.max(0, Math.min(1, (
+    (point.x - a.x) * segment.x
+    + (point.y - a.y) * segment.y
+  ) / lengthSquared));
+
+  return distance(point, {
+    x: a.x + segment.x * t,
+    y: a.y + segment.y * t,
+  });
+}
+
+function ensureAudioContext(): AudioContext | null {
+  const AudioContextCtor = window.AudioContext
+    || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return null;
+
+  audioContext ??= new AudioContextCtor();
+  if (audioContext.state === 'suspended') {
+    void audioContext.resume();
+  }
+  return audioContext;
+}
+
+function playCrack(force: number, density = 1): void {
+  const context = ensureAudioContext();
+  if (!context) return;
+  void loadCrackSamples(context).then((buffers) => {
+    if (buffers.length === 0) return;
+
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    const sampleIndex = Math.floor(noise(zoneId * 421 + performance.now()) * buffers.length);
+    source.buffer = buffers[sampleIndex];
+    source.playbackRate.value = clamp(0.94 + (force - 1) * 0.035 + (density - 1) * 0.018, 0.9, 1.08);
+    gain.gain.value = Math.min(0.95, 0.42 + force * 0.2 + density * 0.08) * CRACK_AUDIO_VOLUME;
+    source.connect(gain);
+    gain.connect(context.destination);
+    source.start();
+  });
+}
+
+async function loadCrackSamples(context: AudioContext): Promise<AudioBuffer[]> {
+  if (crackSampleBuffers.length > 0) return crackSampleBuffers;
+
+  crackSamplePromise ??= Promise.all(CRACK_SAMPLE_PATHS.map(async (path) => {
+    try {
+      const response = await fetch(path);
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!response.ok || contentType.includes('text/html')) return;
+      const arrayBuffer = await response.arrayBuffer();
+      crackSampleBuffers.push(await context.decodeAudioData(arrayBuffer));
+    } catch {
+      // Recorded samples are optional local assets; missing files should not break the artwork.
+    }
+  })).then(() => undefined);
+
+  await crackSamplePromise;
+  return crackSampleBuffers;
+}
+
+function randomSphereNormal(seed: number): THREE.Vector3 {
+  const z = noise(seed) * 2 - 1;
+  const angle = noise(seed + 31) * Math.PI * 2;
+  const radius = Math.sqrt(1 - z * z);
+  return new THREE.Vector3(Math.cos(angle) * radius, z, Math.sin(angle) * radius).normalize();
+}
+
+function rotatePoint(point: Point, angle: number): Point {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: point.x * cos - point.y * sin,
+    y: point.x * sin + point.y * cos,
   };
 }
 
-function onPointerUp(event: PointerEvent): void {
-  if (event.pointerId !== activePointerId) return;
-  isHolding = false;
-  activePointerId = null;
-  if (canvas.hasPointerCapture(event.pointerId)) {
-    canvas.releasePointerCapture(event.pointerId);
-  }
+function normalizePoint(point: Point): Point {
+  const length = Math.hypot(point.x, point.y);
+  if (length < EPSILON) return { x: 1, y: 0 };
+  return { x: point.x / length, y: point.y / length };
 }
 
-function frame(now: number): void {
-  update(now);
-  render();
-  requestAnimationFrame(frame);
+function perpendicular(point: Point): Point {
+  return { x: -point.y, y: point.x };
 }
 
-function smoothstep(t: number): number {
-  const x = clamp(t, 0, 1);
-  return x * x * (3 - 2 * x);
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function distance(a: Point, b: Point): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function vectorLength(point: Point): number {
-  return Math.hypot(point.x, point.y);
+function add(a: Point, b: Point): Point {
+  return { x: a.x + b.x, y: a.y + b.y };
 }
 
 function sub(a: Point, b: Point): Point {
   return { x: a.x - b.x, y: a.y - b.y };
 }
 
-function normalize(point: Point): Point {
-  const length = Math.hypot(point.x, point.y);
-  if (length < EPSILON) return { x: 0, y: 0 };
-  return { x: point.x / length, y: point.y / length };
-}
-
-function dot(a: Point, b: Point): number {
-  return a.x * b.x + a.y * b.y;
-}
-
 function cross(a: Point, b: Point): number {
   return a.x * b.y - a.y * b.x;
 }
 
-function rand(min: number, max: number): number {
-  return min + (max - min) * rng();
+function distance(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function strokeDistance(focus: Point, point: Point, impact: ImpactFootprint, length: number): number {
+  const direction = normalizePoint(impact.direction);
+  const normal = perpendicular(direction);
+  const delta = sub(point, focus);
+  const along = Math.abs(delta.x * direction.x + delta.y * direction.y);
+  const across = Math.abs(delta.x * normal.x + delta.y * normal.y);
+  return across + Math.max(0, along - length) * 0.35;
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function smoothstep(value: number): number {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
+}
+
+function noise(seed: number): number {
+  const value = Math.sin(seed * 12.9898) * 43758.5453123;
+  return value - Math.floor(value);
 }
 
 function mulberry32(seed: number): () => number {
-  let value = seed >>> 0;
   return () => {
-    value += 0x6D2B79F5;
-    let t = value;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    seed |= 0;
+    seed = seed + 0x6d2b79f5 | 0;
+    let value = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
   };
 }
 
-declare global {
-  interface Window {
-    webkitAudioContext?: typeof AudioContext;
+function updateCanvasStats(): void {
+  debugFrame += 1;
+  if (debugFrame % 24 !== 0) return;
+
+  const gl = renderer.getContext();
+  const sampleWidth = Math.min(120, gl.drawingBufferWidth);
+  const sampleHeight = Math.min(90, gl.drawingBufferHeight);
+  const x = Math.max(0, Math.floor((gl.drawingBufferWidth - sampleWidth) / 2));
+  const y = Math.max(0, Math.floor((gl.drawingBufferHeight - sampleHeight) / 2));
+  const pixels = new Uint8Array(sampleWidth * sampleHeight * 4);
+  gl.readPixels(x, y, sampleWidth, sampleHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+  let nonDark = 0;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    red += pixels[i];
+    green += pixels[i + 1];
+    blue += pixels[i + 2];
+    if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 72) nonDark += 1;
   }
+
+  const total = sampleWidth * sampleHeight;
+  canvas.dataset.renderStats = JSON.stringify({
+    width: gl.drawingBufferWidth,
+    height: gl.drawingBufferHeight,
+    nonDarkRatio: nonDark / total,
+    average: [
+      Math.round(red / total),
+      Math.round(green / total),
+      Math.round(blue / total),
+    ],
+    zones: zones.length,
+    shards: zones.reduce((sum, zone) => sum + zone.shards.length, 0),
+  });
+}
+
+function exposeDebugApi(): void {
+  const target = window as Window & {
+    __wakppuDebug?: {
+      stats: () => {
+        width: number;
+        height: number;
+        nonDarkRatio: number;
+        average: [number, number, number];
+        zones: number;
+        shards: number;
+      };
+    };
+  };
+
+  target.__wakppuDebug = {
+    stats: () => {
+      renderer.render(scene, camera);
+      const gl = renderer.getContext();
+      const sampleWidth = Math.min(240, gl.drawingBufferWidth);
+      const sampleHeight = Math.min(180, gl.drawingBufferHeight);
+      const x = Math.max(0, Math.floor((gl.drawingBufferWidth - sampleWidth) / 2));
+      const y = Math.max(0, Math.floor((gl.drawingBufferHeight - sampleHeight) / 2));
+      const pixels = new Uint8Array(sampleWidth * sampleHeight * 4);
+      gl.readPixels(x, y, sampleWidth, sampleHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      let nonDark = 0;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        r += pixels[i];
+        g += pixels[i + 1];
+        b += pixels[i + 2];
+        if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 72) nonDark += 1;
+      }
+
+      const total = sampleWidth * sampleHeight;
+      return {
+        width: gl.drawingBufferWidth,
+        height: gl.drawingBufferHeight,
+        nonDarkRatio: nonDark / total,
+        average: [r / total, g / total, b / total],
+        zones: zones.length,
+        shards: zones.reduce((sum, zone) => sum + zone.shards.length, 0),
+      };
+    },
+  };
 }
 
 canvas.addEventListener('pointerdown', onPointerDown);
 canvas.addEventListener('pointermove', onPointerMove);
 canvas.addEventListener('pointerup', onPointerUp);
-canvas.addEventListener('pointercancel', onPointerUp);
-resetButton.addEventListener('click', resetArtwork);
-window.addEventListener('resize', () => {
-  setupCanvas();
-  resetArtwork();
-});
+canvas.addEventListener('pointerleave', onPointerUp);
+canvas.addEventListener('click', onClick);
+window.addEventListener('resize', resize);
+window.visualViewport?.addEventListener('resize', resize);
+window.visualViewport?.addEventListener('scroll', resize);
 
-setupCanvas();
-resetArtwork();
-requestAnimationFrame(frame);
+resize();
+buildSpecks();
+exposeDebugApi();
+renderer.setAnimationLoop(animate);
