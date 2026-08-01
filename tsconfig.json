@@ -11,7 +11,8 @@
   },
   "include": [
     "vite.config.ts",
-    "common/touch-cursor.ts"
+    "common/touch-cursor.ts",
+    "pages/guseul/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
