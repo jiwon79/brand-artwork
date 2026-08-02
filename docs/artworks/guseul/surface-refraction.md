@@ -25,11 +25,27 @@ Guseul은 외곽선을 polygon으로 먼저 만든 뒤 내부를 채우지 않�
 vec2 point = (pixelCss - uCenterCss) / uRadiusCss;
 ```
 
+![Guseul SDF 좌표 단위와 center seed, contour offset의 관계](../../assets/guseul-sdf-coordinate-unit.svg)
+
+여기서 좌표계의 `1`은 사각형 한 변이 아니라 화면의 명목상 구슬 반지름 `view.radius`다. `uRadiusCss`에 이 값이 전달된다.
+
 ```text
 point = (0, 0)   구슬 중심
 point = (1, 0)   기본 구슬의 오른쪽 경계
 point = (0, -1)  기본 구슬의 위쪽 경계
 ```
+
+따라서 기본 구슬을 감싸는 정규화 사각형은 x와 y가 각각 `-1~1`이고 한 변의 길이는 `2`다.
+
+```text
+화면 반지름 view.radius = 100px인 예
+
+화면 100px = SDF 거리 1
+화면  50px = SDF 거리 0.5
+화면   1px = SDF 거리 0.01
+```
+
+이 좌표 단위는 contact로 외곽선이 늘어나도 바뀌지 않는다. Contact 위치가 `(2, 0)`이면 구슬 중심에서 명목상 반지름 두 배만큼 오른쪽이라는 의미다.
 
 이제 각 픽셀은 `contactField(point)`를 호출해 자신이 최종 외곽선에서 얼마나 떨어져 있는지 계산한다.
 
@@ -46,6 +62,46 @@ Center seed의 중심은 항상 `(0, 0)`이므로 더 단순하다.
 ```glsl
 float distanceToShape = length(point) - uContactRadius;
 ```
+
+현재 `uContactRadius`에 전달되는 기본 `seedRadiusScale`은 `0.74`다. 따라서 보정 전 center seed 경계는 `length(point) = 0.74`에 있다.
+
+```text
+rawDistance = length(point) - 0.74
+```
+
+Contact가 없는 초기 `contourOffset`은 `1 - seedRadiusScale`로 설정한다.
+
+```text
+contourOffset = 1 - 0.74
+              = 0.26
+```
+
+최종 shader 거리는 raw distance에서 이 offset을 뺀다.
+
+```text
+shapeDistance
+= rawDistance - contourOffset
+= length(point) - 0.74 - 0.26
+= length(point) - 1.0
+```
+
+그래서 center seed 자체는 반지름 `0.74`지만, contact가 없는 최종 기본 외곽선은 반지름 `1`이 된다.
+
+```text
+SDF 좌표계의 1
+  = view.radius만큼의 화면 거리
+
+center seed 반지름
+  = 0.74
+
+초기 contour offset
+  = 0.26
+
+최종 기본 구슬 반지름
+  = 1.0
+```
+
+Center seed를 작게 시작하는 이유는 contact, bridge, membrane이 추가될 공간을 남기고 면적 보정으로 최종 크기를 조절하기 위해서다. Contact가 움직일 때 `contourOffset`도 면적 보정 결과에 따라 변하지만 좌표계에서 `1 = view.radius`라는 기준은 유지된다.
 
 결과의 부호는 다음 의미다.
 
@@ -251,6 +307,8 @@ vec3 normal = normalize(vec3(surface.xy, 1.0));
 평평한 내부에서는 `surface.xy`가 0에 가까워 normal이 카메라를 향한다. 외곽선에서는 slope가 커져 normal이 옆으로 크게 기울어진다.
 
 `refractCameraRay()`은 normal과 IOR로 굴절된 광선 방향을 계산한다. `rayDisplacement()`는 광선이 유리 높이만큼 진행했을 때 source 평면에서 옆으로 얼마나 이동했는지 구한다.
+
+`normalize()`와 GLSL `refract()`의 입력 벡터 및 Snell 법칙은 공통 문서 [`SDF Glass Rendering`](../../concepts/sdf-glass-rendering.md#8-기울기와-높이가-texture-굴절을-만든다)에 설명한다. Guseul의 `refractCameraRay()`는 고정된 camera ray에 맞춰 같은 계산을 직접 풀어 쓴 버전이다.
 
 ```glsl
 vec3 ray = refractCameraRay(surface.xy, ior);

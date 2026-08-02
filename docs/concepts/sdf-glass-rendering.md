@@ -278,17 +278,116 @@ surface height
 
 ## 8. 기울기와 높이가 texture 굴절을 만든다
 
+![벡터를 normalize하고 표면 normal로 광선을 굴절시키는 과정](../assets/normalize-refract.svg)
+
 Slope를 사용해 카메라를 향한 3D normal을 만든다.
 
 ```glsl
 vec3 surfaceNormal = normalize(vec3(slope, 1.0));
 ```
 
+### `normalize()`는 방향을 유지하고 길이를 1로 만든다
+
+벡터에는 방향과 길이가 함께 들어 있다. `normalize(vector)`는 각 성분을 전체 길이로 나눠 방향은 유지하면서 길이만 `1`로 바꾼다.
+
+```glsl
+vec3 normalize(vec3 vector) {
+  return vector / length(vector);
+}
+```
+
+예를 들어 `(3, 4, 0)`의 길이는 `5`다.
+
+```text
+length(3, 4, 0)
+= sqrt(3² + 4² + 0²)
+= 5
+
+normalize(3, 4, 0)
+= (3/5, 4/5, 0/5)
+= (0.6, 0.8, 0)
+```
+
+결과의 방향은 같지만 길이는 `1`이다.
+
+```text
+length(0.6, 0.8, 0) = 1
+```
+
+표면 normal은 “어느 방향을 향하는가”만 표현해야 한다. 벡터 길이가 굴절 강도에 섞이면 같은 표면 방향인데도 결과가 달라지므로 광학 계산 전에 unit vector로 만든다.
+
+```glsl
+vec3 rawNormal = vec3(slope.x, slope.y, 1.0);
+vec3 surfaceNormal = normalize(rawNormal);
+```
+
+`rawNormal.z = 1`이므로 이 코드의 입력은 영벡터가 되지 않는다. 일반적으로 `normalize(vec3(0.0))`처럼 길이가 0인 벡터는 방향을 정할 수 없으므로 피해야 한다.
+
+### `refract()`는 Snell 법칙으로 통과한 광선 방향을 구한다
+
 카메라 광선, surface normal, 굴절률 IOR를 `refract()` 또는 Snell 법칙에 넣으면 유리 안에서 진행할 광선 방향이 나온다.
 
 ```glsl
 vec3 ray = refract(cameraRay, surfaceNormal, 1.0 / ior);
 ```
+
+GLSL의 함수 형태는 다음과 같다.
+
+```glsl
+refract(incidentDirection, surfaceNormal, eta)
+```
+
+각 입력의 역할은 다음과 같다.
+
+```text
+incidentDirection
+  표면으로 들어오는 광선 방향
+
+surfaceNormal
+  표면이 향하는 단위 방향
+
+eta
+  들어오기 전 매질 굴절률 / 들어간 뒤 매질 굴절률
+```
+
+공기의 굴절률을 `1`, 유리의 굴절률을 `1.5`로 보면 공기에서 유리로 들어갈 때는 다음 값을 사용한다.
+
+```text
+eta = airIOR / glassIOR
+    = 1.0 / 1.5
+    = 약 0.667
+```
+
+`refract()`의 GLSL 수식을 펼치면 다음과 같다.
+
+```glsl
+float dotNI = dot(surfaceNormal, incidentDirection);
+float k = 1.0 - eta * eta * (1.0 - dotNI * dotNI);
+
+if (k < 0.0) {
+  return vec3(0.0);
+}
+
+return eta * incidentDirection
+  - (eta * dotNI + sqrt(k)) * surfaceNormal;
+```
+
+`dot()`은 입사 광선과 normal 사이의 각도 정보를 만들고, `eta`는 두 매질의 굴절률 차이를 반영한다. 결과 벡터는 표면을 통과한 뒤 유리 내부에서 진행할 새 방향이다.
+
+```text
+수직에 가깝게 입사
+  -> 방향 변화가 작음
+
+비스듬하게 입사
+  -> 옆 방향 변화가 커짐
+
+공기에서 더 밀한 유리로 진입
+  -> 광선이 normal 쪽으로 굽음
+```
+
+`k < 0`은 굴절 광선이 존재하지 않는 전반사 조건이다. GLSL 내장 `refract()`는 이때 영벡터를 반환한다. 공기에서 유리로 들어가는 일반적인 카메라 광선에서는 보통 발생하지 않고, 유리 안에서 공기로 나올 때 큰 각도로 입사하면 발생할 수 있다.
+
+Guseul은 카메라 광선이 고정된 현재 구조에 맞춰 같은 Snell 법칙을 [`refractCameraRay()`](../artworks/guseul/surface-refraction.md#11-기울기와-높이로-굴절을-계산한다) 안에 직접 풀어 쓴다.
 
 광선이 `height`만큼 진행했을 때 source 평면에서 이동한 x/y 거리를 계산한다.
 
