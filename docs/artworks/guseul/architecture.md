@@ -234,7 +234,7 @@ d_bridge = distanceToSegment(point, center, contact) - bridgeRadius
 
 contact가 두 개 이상이면 `buildMembraneLinks()`가 contact를 중심 각도순으로 정렬하고 이웃 contact를 연결한다.
 
-![입력 순서 연결과 중심 각도순 contact 연결 비교](./assets/guseul-contact-membrane.svg)
+![입력 순서 연결과 중심 각도순 contact 연결 비교](../../assets/guseul-contact-membrane.svg)
 
 - 2개: 두 contact를 직접 연결
 - 3개 이상: 바깥 순서의 이웃끼리 연결
@@ -250,7 +250,7 @@ release 중에는 저장된 `releaseAngle`을 사용한다. contact가 anchor로
 
 여러 원과 bridge를 `min(a, b)`로 합치면 접합부가 날카롭다. 현재 코드는 `smoothMinimum()`으로 부드럽게 합친다.
 
-![일반 min union과 smooth minimum union 비교](./assets/guseul-smooth-union.svg)
+![일반 min union과 smooth minimum union 비교](../../assets/guseul-smooth-union.svg)
 
 ```text
 d_shape = smoothMin(d_shape, d_branch, fieldSmoothness)
@@ -258,7 +258,7 @@ d_shape = smoothMin(d_shape, d_branch, fieldSmoothness)
 
 일반 `min()`은 두 거리값이 같아지는 위치에서 선택하는 거리장과 normal을 즉시 바꾼다. `smoothMinimum()`은 두 거리의 차이가 `fieldSmoothness`보다 작은 구간에서만 값을 보정한다. 그래서 외곽선과 normal이 함께 연속적으로 전환된다.
 
-`fieldSmoothness`가 클수록 접합부가 더 넓고 둥글게 섞인다. 너무 크면 원래 의도보다 전체 면적이 부풀 수 있다. 수식, 현재 적용 순서, 튜닝 영향은 [`Guseul Smooth Union Guide`](./guseul-smooth-union.md)에 별도로 정리했다.
+`fieldSmoothness`가 클수록 접합부가 더 넓고 둥글게 섞인다. 너무 크면 원래 의도보다 전체 면적이 부풀 수 있다. 수식, 현재 적용 순서, 튜닝 영향은 [`Smooth Union Guide`](../../concepts/smooth-union.md)에 별도로 정리했다.
 
 ## 7. 면적 보정
 
