@@ -264,7 +264,6 @@ class SceneRenderer {
         showCaRimLayer: params.presentation.showCaRimLayer,
         showSpecLayer: params.presentation.showSpecLayer,
         showOuterStrokeLayer: params.presentation.showOuterStrokeLayer,
-        contentOverscan: params.controls.contentOverscan,
         sourceFollow: params.controls.sourceFollow,
         bezelWidth: params.controls.bezelWidth,
         thickness: params.controls.thickness,
@@ -373,16 +372,12 @@ function backgroundSample(controls: LayerControls = layerControls): Rgb {
   ];
 }
 
-function getContentOverscan(controls: LayerControls): number {
-  return Math.max(controls.contentOverscan, 0);
-}
-
 function getContentSize(params: RenderParams): number {
-  return params.view.radius * 2 * (1 + getContentOverscan(params.controls) * 2);
+  return params.view.radius * 2;
 }
 
 function getContentCenter(params: RenderParams): number {
-  return params.view.radius * (1 + getContentOverscan(params.controls));
+  return params.view.radius;
 }
 
 function reflectionDerivative(carrier: Vec3, tangent: Vec3): Vec3 {
@@ -615,7 +610,6 @@ function setupGui(): void {
   releaseSpring.add(layerControls, 'releaseLifetime', 0.08, 0.6, 0.01).name('contact lifetime');
 
   const source = gui.addFolder('3 source circles');
-  source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
   source.add(layerControls, 'circleCount', 4, maxMarbleCircleCount, 1).name('count');
   source.add(layerControls, 'circleSizeScale', 0.45, 2.6, 0.01).name('size');
   source.add(layerControls, 'circleSizeVariance', 0, 2.5, 0.01).name('size variance');

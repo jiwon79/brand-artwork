@@ -44,7 +44,6 @@ export type GpuGlassControls = {
   showCaRimLayer: boolean;
   showSpecLayer: boolean;
   showOuterStrokeLayer: boolean;
-  contentOverscan: number;
   sourceFollow: number;
   bezelWidth: number;
   thickness: number;
@@ -103,7 +102,6 @@ uniform vec2 uViewportCss;
 uniform vec2 uCenterCss;
 uniform float uRadiusCss;
 uniform vec3 uBackground;
-uniform float uOverscan;
 uniform float uSourceFollow;
 uniform sampler2D uSpecWarpCage;
 uniform int uSpecWarpCageCount;
@@ -334,8 +332,7 @@ vec2 rayDisplacement(vec3 ray, float height) {
 }
 
 vec2 contentUv(vec2 sourcePoint) {
-  float denominator = 2.0 * (1.0 + uOverscan * 2.0);
-  return (vec2(1.0 + uOverscan) + sourcePoint) / denominator;
+  return (vec2(1.0) + sourcePoint) * 0.5;
 }
 
 vec4 sampleContent(vec2 sourcePoint) {
@@ -833,7 +830,7 @@ export class GuseulWebGLRenderer {
     this.contentTexture = createTexture(gl);
     this.specWarpCageTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
-      'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
+      'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground',
       'uSourceFollow', 'uSpecWarpCage', 'uSpecWarpCageCount', 'uSpecWarpCenter',
       'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
       'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
@@ -1025,7 +1022,6 @@ export class GuseulWebGLRenderer {
     gl.uniform2fv(this.uniforms.uCenterCss, frame.centerCss);
     gl.uniform1f(this.uniforms.uRadiusCss, frame.radiusCss);
     gl.uniform3fv(this.uniforms.uBackground, controls.background);
-    gl.uniform1f(this.uniforms.uOverscan, controls.contentOverscan);
     gl.uniform1f(this.uniforms.uSourceFollow, controls.sourceFollow);
     gl.uniform1f(this.uniforms.uBezelWidth, controls.bezelWidth);
     gl.uniform1f(this.uniforms.uThickness, controls.thickness);
