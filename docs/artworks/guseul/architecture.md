@@ -425,7 +425,29 @@ visible circles
 
 - spec warp cage texture
 
-여기서 revision은 Git revision이나 프레임 번호가 아니다. **CPU에 있는 spec warp cage 배열의 내용 버전 번호**다.
+#### spec warp cage가 무엇인가
+
+Spec warp cage는 원래 원형 외곽선의 점이 늘어난 구슬 외곽선의 어디로 이동했는지 기록한 좌표 대응표다.
+
+```text
+원래 원의 위쪽 점     -> 늘어난 모양의 위쪽 점
+원래 원의 오른쪽 점   -> 늘어난 모양의 오른쪽 끝
+원래 원의 아래쪽 점   -> 늘어난 모양의 오목한 부분
+```
+
+GPU는 이 대응표를 이용해 원형 구슬에 있던 spec 하이라이트를 늘어난 외곽선에 맞게 변형한다.
+
+#### revision은 변경 번호다
+
+여기서 revision은 Git revision이나 프레임 번호가 아니다. **CPU에 있는 spec warp cage 좌표가 몇 번째로 변경된 데이터인지 나타내는 번호**다.
+
+```text
+revision 1: 기본 원 모양의 cage
+revision 2: 오른쪽으로 조금 늘어난 cage
+revision 3: 오른쪽으로 더 늘어난 cage
+```
+
+실제 경계 좌표는 `Float32Array`에 들어 있고 revision에는 좌표가 들어 있지 않다. revision은 cage 내용이 바뀌었다는 표시만 담당한다.
 
 `BoundarySpecCageSolver`는 최대 64개 경계점의 대응 관계를 하나의 `Float32Array`에 계속 덮어쓴다. 배열 객체를 매번 새로 만들지 않으므로 renderer가 배열 참조만 비교하면 내부 숫자가 바뀌었는지 알 수 없다.
 
@@ -446,7 +468,9 @@ visible circles
 
 사진 원의 회전이나 색상만 바뀌고 탄성 외곽선이 그대로라면 cage 내용은 바뀌지 않으므로 revision도 그대로다.
 
-GPU renderer는 마지막으로 업로드한 revision을 기억한다.
+#### CPU와 GPU가 번호를 비교하는 방법
+
+CPU는 새 cage를 계산하고 GPU는 그 데이터를 texture 복사본으로 받아 spec을 그린다. GPU renderer는 마지막으로 업로드한 revision을 기억한다.
 
 ```text
 CPU cage revision = 8
@@ -458,7 +482,19 @@ GPU가 기억한 revision = 8
   -> 이미 같은 데이터이므로 upload 생략
 ```
 
-즉, `GuseulWebGLRenderer.uploadElasticShape()`는 가벼운 contact uniform은 매 프레임 전달하지만, 최대 64개 경계점이 담긴 spec warp cage texture는 내용이 바뀌었을 때만 `gl.texSubImage2D()`로 갱신한다. revision은 CPU와 GPU가 같은 버전의 cage를 가지고 있는지 확인하는 번호표다.
+칠판에 좌표를 새로 적을 때마다 구석의 번호를 올린다고 생각하면 된다.
+
+```text
+칠판 내용 변경 -> 번호 7
+다시 변경      -> 번호 8
+내용 그대로    -> 번호도 8
+```
+
+Revision은 이전 cage들을 보관하는 history가 아니다. revision 7, 8, 9의 배열을 따로 저장하지 않고, 배열 하나에는 항상 최신 좌표만 남긴다. 숫자만 증가시켜 GPU가 가진 복사본이 최신인지 확인한다.
+
+즉, `GuseulWebGLRenderer.uploadElasticShape()`는 가벼운 contact uniform은 매 프레임 전달하지만, 최대 64개 경계점이 담긴 spec warp cage texture는 내용이 바뀌었을 때만 `gl.texSubImage2D()`로 갱신한다.
+
+> `specWarpCageRevision`은 CPU와 GPU가 같은 cage 좌표를 가지고 있는지 확인하기 위한 변경 번호다.
 
 ## 12. fragment shader가 픽셀 하나를 그리는 순서
 
