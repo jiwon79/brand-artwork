@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">Glass cross-section and refracted source sampling</title>
+  <desc id="desc">A convex glass cross-section rises steeply from the edge and becomes flat inward. Surface slope determines ray direction and glass height determines how far the ray moves before reaching the source plane.</desc>
+  <defs>
+    <marker id="arrow-dark" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#34474b"/>
+    </marker>
+    <marker id="arrow-coral" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#ef6752"/>
+    </marker>
+    <style>
+      .title { font: 700 21px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #162326; }
+      .heading { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #26373a; }
+      .label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #405256; }
+      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #68797c; }
+    </style>
+  </defs>
+
+  <rect width="960" height="600" fill="#fff"/>
+  <text x="480" y="38" class="title" text-anchor="middle">A 2D edge becomes a virtual glass surface</text>
+
+  <text x="55" y="82" class="heading">Cross-section from the edge toward the center</text>
+  <line x1="115" y1="420" x2="875" y2="420" stroke="#839397" stroke-width="2"/>
+  <text x="885" y="425" class="small">source plane</text>
+
+  <path d="M135 337 C150 262 185 197 252 163 C315 132 401 125 498 125 L845 125 L845 420 L135 420 Z" fill="#dff3f1" fill-opacity="0.86"/>
+  <path d="M135 337 C150 262 185 197 252 163 C315 132 401 125 498 125 L845 125" fill="none" stroke="#168c88" stroke-width="5"/>
+  <text x="445" y="108" class="small">convexProfile height becomes flat</text>
+
+  <line x1="135" y1="480" x2="825" y2="480" stroke="#34474b" stroke-width="2" marker-end="url(#arrow-dark)"/>
+  <line x1="135" y1="468" x2="135" y2="492" stroke="#34474b" stroke-width="2"/>
+  <text x="480" y="506" class="label" text-anchor="middle">inwardDistance: 0 at edge, larger toward the center</text>
+
+  <circle cx="205" cy="183" r="8" fill="#ef6752" stroke="#fff" stroke-width="3"/>
+  <text x="205" y="157" class="label" text-anchor="middle">edge sample</text>
+
+  <line x1="157" y1="230" x2="261" y2="146" stroke="#ef6752" stroke-width="3"/>
+  <text x="149" y="250" class="small">surface slope</text>
+
+  <line x1="205" y1="183" x2="139" y2="101" stroke="#34474b" stroke-width="3" marker-end="url(#arrow-dark)"/>
+  <text x="55" y="119" class="label">tilted normal</text>
+
+  <line x1="205" y1="99" x2="205" y2="176" stroke="#7592d0" stroke-width="3" marker-end="url(#arrow-dark)"/>
+  <text x="217" y="118" class="small">camera ray</text>
+
+  <line x1="205" y1="190" x2="355" y2="414" stroke="#ef6752" stroke-width="4" marker-end="url(#arrow-coral)"/>
+  <circle cx="355" cy="420" r="8" fill="#ef6752"/>
+  <text x="367" y="399" class="label">sampled source pixel</text>
+
+  <line x1="205" y1="194" x2="205" y2="414" stroke="#68797c" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="216" y="315" class="small">height</text>
+
+  <line x1="205" y1="445" x2="355" y2="445" stroke="#ef6752" stroke-width="3" marker-end="url(#arrow-coral)"/>
+  <text x="280" y="437" class="label" text-anchor="middle">refraction offset</text>
+
+  <circle cx="700" cy="125" r="8" fill="#168c88" stroke="#fff" stroke-width="3"/>
+  <text x="700" y="101" class="label" text-anchor="middle">inner sample</text>
+  <line x1="700" y1="82" x2="700" y2="117" stroke="#7592d0" stroke-width="3" marker-end="url(#arrow-dark)"/>
+  <line x1="700" y1="125" x2="700" y2="414" stroke="#168c88" stroke-width="4" marker-end="url(#arrow-dark)"/>
+  <circle cx="700" cy="420" r="8" fill="#168c88"/>
+  <text x="714" y="280" class="small">slope near 0</text>
+  <text x="714" y="299" class="small">offset near 0</text>
+
+  <rect x="515" y="530" width="360" height="54" rx="7" fill="#18282b"/>
+  <text x="695" y="553" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#fff" text-anchor="middle">offset = ray.xy / -ray.z * height</text>
+  <text x="695" y="571" class="small" fill="#cbd8da" text-anchor="middle">slope chooses direction; height chooses distance</text>
+</svg>

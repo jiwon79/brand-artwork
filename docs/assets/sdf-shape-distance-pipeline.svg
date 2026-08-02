@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" role="img" aria-labelledby="title desc">
+  <title id="title">Per-pixel signed-distance field composition</title>
+  <desc id="desc">Center seed, contact circles, bridges, and membrane fields combine through smooth union. Each GPU pixel receives a negative, zero, or positive final shape distance.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#5c6d70"/>
+    </marker>
+    <style>
+      .title { font: 700 21px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #162326; }
+      .heading { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #26373a; }
+      .label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #405256; }
+      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #68797c; }
+      .panel { fill: #f8fbfb; stroke: #d8e0e2; stroke-width: 2; }
+      .flow { fill: none; stroke: #5c6d70; stroke-width: 2.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="960" height="520" fill="#fff"/>
+  <text x="480" y="38" class="title" text-anchor="middle">Every GPU pixel asks: how far am I from the final edge?</text>
+
+  <rect x="36" y="70" width="390" height="350" rx="8" class="panel"/>
+  <text x="56" y="101" class="heading">1. Build distance fields</text>
+
+  <circle cx="155" cy="252" r="82" fill="#d8f1ee" stroke="#168c88" stroke-width="3"/>
+  <text x="105" y="312" class="label">center seed</text>
+
+  <line x1="175" y1="230" x2="300" y2="150" stroke="#ffd29b" stroke-width="50" stroke-linecap="round"/>
+  <line x1="175" y1="230" x2="300" y2="150" stroke="#ef8d42" stroke-width="2.5" stroke-dasharray="6 5"/>
+  <circle cx="300" cy="150" r="48" fill="#ffe5c5" stroke="#ef8d42" stroke-width="3"/>
+  <text x="285" y="146" class="label" text-anchor="middle">contact</text>
+  <text x="251" y="205" class="small">center bridge</text>
+
+  <line x1="172" y1="270" x2="315" y2="330" stroke="#d9ddfa" stroke-width="38" stroke-linecap="round"/>
+  <circle cx="315" cy="330" r="43" fill="#eceefd" stroke="#626fd0" stroke-width="3"/>
+  <text x="315" y="334" class="label" text-anchor="middle">contact</text>
+
+  <path d="M300 150 Q395 230 315 330" fill="#f4ddec" fill-opacity="0.78" stroke="#ba4f83" stroke-width="3"/>
+  <text x="344" y="252" class="small" transform="rotate(10 344 252)">membrane</text>
+
+  <text x="56" y="393" class="small">Each field returns negative inside, zero on edge, positive outside.</text>
+
+  <path d="M440 245 H500" class="flow"/>
+  <text x="470" y="224" class="small" text-anchor="middle">smooth union</text>
+
+  <rect x="515" y="70" width="409" height="350" rx="8" class="panel"/>
+  <text x="535" y="101" class="heading">2. Evaluate the combined field</text>
+
+  <path d="M585 325 C548 287 555 218 604 191 C616 128 689 106 738 143 C800 123 865 163 873 222 C883 284 827 321 775 319 C733 370 644 373 585 325 Z" fill="#d8f1ee" stroke="#168c88" stroke-width="4"/>
+
+  <circle cx="698" cy="242" r="9" fill="#168c88" stroke="#fff" stroke-width="3"/>
+  <text x="698" y="273" class="label" text-anchor="middle">-0.18 inside</text>
+
+  <circle cx="860" cy="202" r="9" fill="#f2b441" stroke="#fff" stroke-width="3"/>
+  <text x="842" y="180" class="label" text-anchor="middle">0 edge</text>
+
+  <circle cx="892" cy="337" r="9" fill="#ed6755" stroke="#fff" stroke-width="3"/>
+  <text x="852" y="365" class="label" text-anchor="middle">+0.22 outside</text>
+
+  <path d="M575 390 H865" stroke="#c9d3d5" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <text x="720" y="404" class="small" text-anchor="middle">The shader repeats this test for every output pixel.</text>
+
+  <rect x="95" y="450" width="770" height="46" rx="7" fill="#18282b"/>
+  <text x="480" y="479" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#fff" text-anchor="middle">shapeDistance = contactField(point) - contourOffset</text>
+</svg>
