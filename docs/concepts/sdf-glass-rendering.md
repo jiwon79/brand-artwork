@@ -59,13 +59,101 @@ Smooth union의 수식과 단면 변화는 [`Smooth Union`](./smooth-union.md)�
 
 ## 3. GPU는 출력 픽셀마다 같은 질문을 한다
 
-화면 전체를 덮는 삼각형을 하나 그리고 fragment shader가 각 픽셀에서 다음 값을 계산한다.
+Fragment shader는 혼자 실행되지 않는다. GPU가 먼저 point, line, triangle 같은 primitive를 rasterize해야 하고, 그 primitive가 덮는 위치에서 fragment shader가 실행된다.
+
+화면의 모든 픽셀에서 거리 함수를 실행하려면 viewport 전체를 덮는 primitive가 필요하다.
+
+### 왜 사각형이 아니라 삼각형인가
+
+![화면보다 큰 fullscreen triangle이 viewport를 덮는 과정](../assets/fullscreen-triangle.svg)
+
+GPU의 기본 면 primitive는 삼각형이다. 사각형을 그리려면 실제로는 대각선으로 나눈 삼각형 두 개가 필요하다.
+
+```text
+사각형
+  -> 삼각형 2개
+  -> 공통 대각선 1개
+
+fullscreen triangle
+  -> 삼각형 1개
+  -> 공통 대각선 없음
+```
+
+화면보다 큰 삼각형 하나를 만들면 viewport 사각형 전체를 덮을 수 있다. WebGL clip-space에서 화면 범위는 x와 y 모두 `-1`부터 `1`까지다.
+
+```glsl
+vec2 positions[3] = vec2[3](
+  vec2(-1.0, -1.0),
+  vec2( 3.0, -1.0),
+  vec2(-1.0,  3.0)
+);
+```
+
+두 꼭짓점은 화면 범위 `1`을 넘어 `3`까지 나간다. 삼각형의 화면 밖 부분은 GPU가 자동으로 잘라내고, 화면 안에는 사각형 viewport가 완전히 덮인 채로 남는다.
+
+```text
+큰 삼각형
+  -> fragment shader를 실행할 화면 영역 제공
+
+shapeDistance
+  -> 그 픽셀이 실제 물체 안인지 밖인지 결정
+```
+
+따라서 최종 결과가 삼각형이라는 뜻은 아니다. Fullscreen triangle은 빈 도화지 역할만 하고 실제 외곽선은 SDF가 결정한다.
+
+사각형을 구성하는 삼각형 두 개와 비교하면 꼭짓점과 primitive가 하나씩 줄고 화면을 가로지르는 공통 대각선도 없다. 성능 차이는 작지만, 화면 전체 후처리에서는 간단하고 잠재적인 대각선 보간 경계를 피할 수 있어 흔히 사용하는 방식이다.
+
+### 각 픽셀에서 SDF를 평가한다
+
+Fullscreen triangle 위의 각 fragment는 자신의 화면 좌표로 거리 함수를 호출한다.
 
 ```glsl
 float shapeDistance = shapeField(point);
 ```
 
 결과가 양수이면 외부이므로 투명하게 끝낼 수 있다. 음수이면 유리 내부이므로 굴절과 색상 계산을 계속한다.
+
+### fwidth와 smoothstep으로 외곽선을 부드럽게 만든다
+
+![fwidth가 전환 폭을 정하고 smoothstep이 coverage를 만드는 과정](../assets/sdf-antialiasing.svg)
+
+`shapeDistance < 0`만 내부로 그리고 나머지를 바로 버리면 외곽선이 한 픽셀 단위로 갑자기 바뀐다.
+
+```glsl
+float coverage = shapeDistance < 0.0 ? 1.0 : 0.0;
+```
+
+픽셀은 사각 격자이므로 곡선 경계가 계단처럼 보인다. Antialiasing은 경계 주변의 몇 픽셀에 0과 1 사이의 coverage를 주어 이 계단을 완화한다.
+
+#### `fwidth()`는 한 픽셀 동안 값이 얼마나 변하는지 추정한다
+
+Fragment shader의 `fwidth(value)`는 주변 픽셀과 비교했을 때 `value`가 화면 x/y 방향으로 얼마나 변하는지 계산한다.
+
+```glsl
+fwidth(value) = abs(dFdx(value)) + abs(dFdy(value));
+```
+
+`shapeDistance`에 사용하면 현재 화면에서 외곽선 한 픽셀이 차지하는 거리 단위가 어느 정도인지 알 수 있다.
+
+```glsl
+float antialiasWidth = fwidth(shapeDistance);
+```
+
+물체를 크게 확대하면 정규화된 거리값은 픽셀마다 조금씩 변하므로 `fwidth`가 작아진다. 물체를 축소하면 한 픽셀이 더 넓은 거리 범위를 덮으므로 `fwidth`가 커진다. 그래서 고정된 상수보다 화면 크기와 해상도에 맞는 전환 폭을 만들 수 있다.
+
+`fwidth()`는 실제로 멀리 떨어진 픽셀을 하나씩 검색하는 함수가 아니다. GPU가 함께 처리하는 인접 fragment들의 값을 이용해 화면 미분을 빠르게 추정한다.
+
+#### `smoothstep()`은 그 폭을 0에서 1로 부드럽게 연결한다
+
+`smoothstep(edge0, edge1, value)`는 다음 결과를 반환한다.
+
+```text
+value <= edge0  -> 0
+value >= edge1  -> 1
+그 사이         -> 0에서 1로 부드럽게 변화
+```
+
+내부에서 외부로 갈수록 coverage는 반대로 `1 -> 0`이 되어야 하므로 결과를 `1.0`에서 뺀다.
 
 ```glsl
 float antialiasWidth = fwidth(shapeDistance);
@@ -76,7 +164,28 @@ float coverage = 1.0 - smoothstep(
 );
 ```
 
-`fwidth()`를 사용하면 화면 해상도에 맞는 부드러운 외곽선을 만들 수 있다.
+```text
+shapeDistance <= -antialiasWidth
+  -> 완전히 내부
+  -> coverage 1
+
+shapeDistance = 0
+  -> 정확한 외곽선
+  -> coverage 약 0.5
+
+shapeDistance >= +antialiasWidth
+  -> 완전히 외부
+  -> coverage 0
+```
+
+`smoothstep()` 내부는 단순 직선 보간이 아니라 시작과 끝의 기울기가 0이 되는 곡선을 사용한다.
+
+```glsl
+float t = clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
+float result = t * t * (3.0 - 2.0 * t);
+```
+
+정리하면 `fwidth()`는 **얼마나 넓게 섞을지** 정하고, `smoothstep()`은 그 범위에서 **어떤 곡선으로 섞을지** 정한다.
 
 ## 4. inwardDistance는 외곽선에서 안으로 들어온 거리다
 

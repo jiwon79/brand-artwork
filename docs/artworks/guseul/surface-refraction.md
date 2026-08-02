@@ -125,7 +125,7 @@ shapeDistance = 0  최종 외곽선
 shapeDistance > 0  구슬 외부
 ```
 
-`fwidth(shapeDistance)`는 픽셀 크기에 맞는 antialias 폭을 만든다. 완전히 외부인 픽셀은 투명하게 끝나고 내부 픽셀만 유리 계산을 계속한다.
+`fwidth(shapeDistance)`는 픽셀 크기에 맞는 antialias 폭을 만든다. 완전히 외부인 픽셀은 투명하게 끝나고 내부 픽셀만 유리 계산을 계속한다. Fullscreen triangle을 사용하는 이유와 `fwidth()` 및 `smoothstep()`의 antialias 과정은 [`SDF Glass Rendering`](../../concepts/sdf-glass-rendering.md#3-gpu는-출력-픽셀마다-같은-질문을-한다)에 설명한다.
 
 ## 6. CPU에도 같은 거리 함수가 있는 이유
 
