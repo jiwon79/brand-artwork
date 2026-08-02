@@ -264,10 +264,67 @@ d_shape = smoothMin(d_shape, d_branch, fieldSmoothness)
 
 contact를 단순히 union하면 손가락 수와 거리에 따라 면적이 계속 증가한다. `solveContourOffset()`은 이를 줄이기 위해 최종 경계를 평행 이동한다.
 
+### 76x76 grid는 렌더링 해상도가 아니다
+
+여기서 76x76 grid는 구슬을 76픽셀로 그린다는 뜻이 아니다. CPU가 현재 모양의 면적을 재기 위해 잠시 사용하는 **모눈종이**다. 실제 화면은 이 grid와 관계없이 GPU가 화면 해상도에 맞춰 픽셀마다 렌더링한다.
+
+CPU는 먼저 모든 contact를 포함하는 정사각형 검사 영역을 만들고, 이를 가로 76칸과 세로 76칸으로 나눈다. 따라서 검사하는 지점은 총 5,776개다.
+
+```text
+76 * 76 = 5,776 samples
+
+. . . X X . . .
+. . X X X X . .
+. X X X X X X .
+. . X X X X . .
+. . . X X . . .
+```
+
+- `X`: 칸 중심이 구슬 내부
+- `.`: 칸 중심이 구슬 외부
+
+각 칸의 중심에서 `rawShapeDistance()`를 한 번 계산한다. signed distance가 0보다 작거나 같으면 내부로 판정한다.
+
+```text
+estimatedArea = insideSampleCount * cellArea
+```
+
+이는 종이에 그린 불규칙한 도형의 면적을 구할 때, 도형 안에 들어간 모눈 칸의 수를 세는 것과 같은 원리다. 경계를 지나는 칸은 중심점 하나로 안과 밖을 정하기 때문에 정확한 적분이 아니라 근삿값이다.
+
+### 목표 면적 계산
+
+기본 구슬의 정규화 반지름은 1이므로 기본 면적은 `PI`다. contact를 합친 보정 전 면적이 기본 면적보다 커지면 `areaPreservation`으로 허용할 팽창량을 정한다.
+
+```text
+expansion = max(unconstrainedArea - baseArea, 0)
+targetArea = baseArea + expansion * (1 - areaPreservation)
+```
+
+예를 들어 이해를 돕기 위해 기본 면적을 100, contact로 늘어난 면적을 150이라고 가정하면 다음과 같다.
+
+```text
+areaPreservation = 0.92
+targetArea = 100 + (150 - 100) * (1 - 0.92)
+           = 104
+```
+
+즉, 늘어난 면적 150을 그대로 사용하지 않고 최종 면적이 약 104가 되도록 외곽선을 보정한다. `areaPreservation = 1`이면 가능한 한 원래 면적을 유지하고, 0이면 팽창한 면적을 그대로 허용한다.
+
+### contour offset 찾기
+
+CPU는 저장해 둔 5,776개의 distance를 서로 다른 `contourOffset`과 비교한다. offset을 바꿀 때마다 `rawShapeDistance()`부터 다시 계산하지 않아도 되므로, 같은 grid를 이용해 빠르게 여러 후보를 시험할 수 있다.
+
+```text
+현재 면적 > 목표 면적: 외곽선을 안쪽으로 이동
+현재 면적 < 목표 면적: 외곽선을 바깥쪽으로 이동
+```
+
+이 판단으로 탐색 범위를 절반씩 줄이는 binary search를 13회 실행한다. 그 결과 목표 면적에 가장 가까운 `contourOffset` 하나를 얻는다. 전체 순서는 다음과 같다.
+
 1. CPU가 76x76 grid에서 `rawShapeDistance()`를 샘플링한다.
-2. 현재 union 면적을 추정한다.
+2. `distance <= 0`인 칸을 세어 보정 전 union 면적을 추정한다.
 3. `areaPreservation`으로 목표 면적을 정한다.
-4. binary search로 목표 면적에 맞는 `contourOffset`을 찾는다.
+4. 같은 distance 샘플을 재사용하는 binary search로 `contourOffset`을 찾는다.
 5. `pressureResponse` 속도로 이전 offset에서 새 offset까지 보간한다.
 
 최종 shader에서는 다음 식을 사용한다.
@@ -276,7 +333,9 @@ contact를 단순히 union하면 손가락 수와 거리에 따라 면적이 계
 float shapeDistance = rawDistance - uContourOffset;
 ```
 
-`areaPreservation = 1`이면 가능한 한 원래 원의 면적 `PI`를 유지한다. 현재 값은 약간의 팽창을 허용해 지나치게 얇은 목이 생기는 것을 피한다. `minimumNeckWidth`는 면적 보정이 bridge를 완전히 눌러 없애지 않도록 하한을 둔다.
+양의 `contourOffset`은 내부로 인정하는 범위를 넓혀 외곽선을 바깥쪽으로 이동시키고, 더 작은 값은 외곽선을 안쪽으로 이동시킨다. `minimumNeckWidth`는 면적 보정이 bridge를 완전히 눌러 없애지 않도록 offset의 하한을 둔다.
+
+76이라는 값은 정확도와 CPU 비용 사이의 절충이다. grid가 너무 작으면 면적이 계단식으로 변하고, 너무 크면 매 프레임 검사할 지점이 지나치게 많아진다. contact를 멀리 당기면 같은 76x76 grid가 더 넓은 검사 영역을 덮으므로 칸 하나가 커지고 측정은 상대적으로 거칠어진다. 다만 이 grid는 면적과 offset만 정하며 최종 렌더링 해상도를 제한하지 않는다.
 
 ## 8. contact release
 
