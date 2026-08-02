@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">Fragment quads packed into a warp or wave</title>
+  <desc id="desc">A rasterized triangle is evaluated in two by two fragment quads. Several quads are packed into a larger hardware execution group such as a warp or wave. Helper invocations fill missing neighbors at triangle edges.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#53666a"/>
+    </marker>
+    <style>
+      .title { font: 700 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #162326; }
+      .heading { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #26373a; }
+      .label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #405256; }
+      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #68797c; }
+      .cell { stroke: #fff; stroke-width: 2; }
+      .quad { fill: none; stroke: #35494d; stroke-width: 3; }
+    </style>
+  </defs>
+
+  <rect width="960" height="560" fill="#fff"/>
+  <text x="480" y="38" class="title" text-anchor="middle">2x2 derivative quads live inside a larger hardware execution group</text>
+
+  <rect x="35" y="70" width="380" height="410" rx="8" fill="#f8fbfb" stroke="#d8e0e2" stroke-width="2"/>
+  <text x="55" y="101" class="heading">1. Rasterizer forms 2x2 quads</text>
+
+  <g transform="translate(80 135)">
+    <rect x="0" y="0" width="55" height="55" fill="#d8f1ee" class="cell"/>
+    <rect x="55" y="0" width="55" height="55" fill="#d8f1ee" class="cell"/>
+    <rect x="110" y="0" width="55" height="55" fill="#dce7fb" class="cell"/>
+    <rect x="165" y="0" width="55" height="55" fill="#fde3df" class="cell"/>
+
+    <rect x="0" y="55" width="55" height="55" fill="#d8f1ee" class="cell"/>
+    <rect x="55" y="55" width="55" height="55" fill="#d8f1ee" class="cell"/>
+    <rect x="110" y="55" width="55" height="55" fill="#dce7fb" class="cell"/>
+    <rect x="165" y="55" width="55" height="55" fill="#fde3df" class="cell"/>
+
+    <rect x="0" y="110" width="55" height="55" fill="#fff2ca" class="cell"/>
+    <rect x="55" y="110" width="55" height="55" fill="#fff2ca" class="cell"/>
+    <rect x="110" y="110" width="55" height="55" fill="#d9ddfa" class="cell"/>
+    <rect x="165" y="110" width="55" height="55" fill="#d9ddfa" class="cell"/>
+
+    <rect x="0" y="165" width="55" height="55" fill="#fff2ca" class="cell"/>
+    <rect x="55" y="165" width="55" height="55" fill="#fff2ca" class="cell"/>
+    <rect x="110" y="165" width="55" height="55" fill="#d9ddfa" class="cell"/>
+    <rect x="165" y="165" width="55" height="55" fill="#d9ddfa" class="cell"/>
+
+    <rect x="0" y="0" width="110" height="110" class="quad"/>
+    <rect x="110" y="0" width="110" height="110" class="quad"/>
+    <rect x="0" y="110" width="110" height="110" class="quad"/>
+    <rect x="110" y="110" width="110" height="110" class="quad"/>
+
+    <path d="M-12 217 L230 -12" fill="none" stroke="#ef6752" stroke-width="5"/>
+    <text x="144" y="37" class="label">helper</text>
+    <circle cx="192" cy="27" r="14" fill="none" stroke="#ef6752" stroke-width="3" stroke-dasharray="4 3"/>
+  </g>
+
+  <text x="80" y="383" class="small">Thick borders: one derivative quad</text>
+  <text x="80" y="404" class="small">Coral line: triangle edge</text>
+  <text x="80" y="425" class="small">Dashed circle: helper invocation outside the triangle</text>
+
+  <path d="M425 270 H475" fill="none" stroke="#53666a" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="490" y="70" width="435" height="410" rx="8" fill="#fff9f5" stroke="#eaded7" stroke-width="2"/>
+  <text x="510" y="101" class="heading">2. Hardware packs several quads together</text>
+  <text x="510" y="124" class="small">Example only: a 32-lane group containing eight 2x2 quads</text>
+
+  <g transform="translate(550 160)">
+    <g fill="#d8f1ee">
+      <rect x="0" y="0" width="38" height="38" class="cell"/><rect x="38" y="0" width="38" height="38" class="cell"/>
+      <rect x="0" y="38" width="38" height="38" class="cell"/><rect x="38" y="38" width="38" height="38" class="cell"/>
+      <rect x="152" y="0" width="38" height="38" class="cell"/><rect x="190" y="0" width="38" height="38" class="cell"/>
+      <rect x="152" y="38" width="38" height="38" class="cell"/><rect x="190" y="38" width="38" height="38" class="cell"/>
+      <rect x="0" y="76" width="38" height="38" class="cell"/><rect x="38" y="76" width="38" height="38" class="cell"/>
+      <rect x="0" y="114" width="38" height="38" class="cell"/><rect x="38" y="114" width="38" height="38" class="cell"/>
+      <rect x="152" y="76" width="38" height="38" class="cell"/><rect x="190" y="76" width="38" height="38" class="cell"/>
+      <rect x="152" y="114" width="38" height="38" class="cell"/><rect x="190" y="114" width="38" height="38" class="cell"/>
+    </g>
+    <g fill="#dce7fb">
+      <rect x="76" y="0" width="38" height="38" class="cell"/><rect x="114" y="0" width="38" height="38" class="cell"/>
+      <rect x="76" y="38" width="38" height="38" class="cell"/><rect x="114" y="38" width="38" height="38" class="cell"/>
+      <rect x="228" y="0" width="38" height="38" class="cell"/><rect x="266" y="0" width="38" height="38" class="cell"/>
+      <rect x="228" y="38" width="38" height="38" class="cell"/><rect x="266" y="38" width="38" height="38" class="cell"/>
+      <rect x="76" y="76" width="38" height="38" class="cell"/><rect x="114" y="76" width="38" height="38" class="cell"/>
+      <rect x="76" y="114" width="38" height="38" class="cell"/><rect x="114" y="114" width="38" height="38" class="cell"/>
+      <rect x="228" y="76" width="38" height="38" class="cell"/><rect x="266" y="76" width="38" height="38" class="cell"/>
+      <rect x="228" y="114" width="38" height="38" class="cell"/><rect x="266" y="114" width="38" height="38" class="cell"/>
+    </g>
+
+    <rect x="0" y="0" width="76" height="76" class="quad"/><rect x="76" y="0" width="76" height="76" class="quad"/>
+    <rect x="152" y="0" width="76" height="76" class="quad"/><rect x="228" y="0" width="76" height="76" class="quad"/>
+    <rect x="0" y="76" width="76" height="76" class="quad"/><rect x="76" y="76" width="76" height="76" class="quad"/>
+    <rect x="152" y="76" width="76" height="76" class="quad"/><rect x="228" y="76" width="76" height="76" class="quad"/>
+  </g>
+
+  <text x="702" y="344" class="label" text-anchor="middle">warp / wave / SIMD group</text>
+  <text x="702" y="369" class="small" text-anchor="middle">All lanes execute the same shader instruction position.</text>
+  <text x="702" y="391" class="small" text-anchor="middle">Values differ per lane; physical width depends on the GPU.</text>
+
+  <rect x="120" y="505" width="720" height="38" rx="7" fill="#18282b"/>
+  <text x="480" y="529" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#fff" text-anchor="middle">2x2 quad = derivative neighborhood   |   warp/wave = hardware execution group</text>
+</svg>

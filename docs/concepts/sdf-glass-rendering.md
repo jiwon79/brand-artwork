@@ -141,7 +141,7 @@ float antialiasWidth = fwidth(shapeDistance);
 
 물체를 크게 확대하면 정규화된 거리값은 픽셀마다 조금씩 변하므로 `fwidth`가 작아진다. 물체를 축소하면 한 픽셀이 더 넓은 거리 범위를 덮으므로 `fwidth`가 커진다. 그래서 고정된 상수보다 화면 크기와 해상도에 맞는 전환 폭을 만들 수 있다.
 
-`fwidth()`는 실제로 멀리 떨어진 픽셀을 하나씩 검색하는 함수가 아니다. GPU가 함께 처리하는 인접 fragment들의 값을 이용해 화면 미분을 빠르게 추정한다.
+`fwidth()`는 실제로 멀리 떨어진 픽셀을 하나씩 검색하는 함수가 아니다. GPU가 함께 처리하는 인접 fragment들의 값을 이용해 화면 미분을 빠르게 추정한다. 2x2 quad, warp/wave와 helper invocation의 관계는 [`Fragment Shader Execution`](./fragment-shader-execution.md)에 분리해 설명한다.
 
 #### `smoothstep()`은 그 폭을 0에서 1로 부드럽게 연결한다
 
