@@ -1,6 +1,6 @@
-# SDF Surface and Refraction
+# Guseul Surface and Refraction
 
-이 문서는 Guseul이 polygon mesh 없이 탄성 외곽선과 유리 굴절을 만드는 과정을 설명한다.
+이 문서는 Guseul이 polygon mesh 없이 탄성 외곽선과 유리 굴절을 만드는 실제 구현을 설명한다. 다른 프로젝트에도 적용할 수 있는 일반 원리는 [`SDF Glass Rendering`](../../concepts/sdf-glass-rendering.md)에 분리했다.
 
 ```text
 화면 픽셀
@@ -11,11 +11,11 @@
   -> 굴절된 source 위치에서 사진 색상 읽기
 ```
 
-전체 코드 구조는 [`Guseul Architecture`](../artworks/guseul/architecture.md)를 먼저 참고한다.
+전체 코드 구조는 [`Guseul Architecture`](./architecture.md)를 먼저 참고한다.
 
 ## 1. GPU가 픽셀마다 shapeDistance를 계산한다
 
-![픽셀마다 signed distance를 합성하는 과정](../assets/sdf-shape-distance-pipeline.svg)
+![픽셀마다 Guseul signed distance를 합성하는 과정](../../assets/guseul-shape-distance-pipeline.svg)
 
 Guseul은 외곽선을 polygon으로 먼저 만든 뒤 내부를 채우지 않는다. 화면을 덮는 WebGL 삼각형 하나를 그리고, fragment shader가 출력 픽셀마다 같은 거리 수식을 실행한다.
 
@@ -96,7 +96,7 @@ center seed
   -> rawDistance
 ```
 
-구현은 [`contactField()`](../../pages/guseul/webgl-renderer.ts#L232)에 있다.
+구현은 [`contactField()`](../../../pages/guseul/webgl-renderer.ts#L232)에 있다.
 
 ## 5. 면적 보정으로 shapeDistance를 완성한다
 
@@ -175,7 +175,7 @@ SDF 값이 가장 빠르게 증가하는 방향은 외곽선에 수직이다. �
 
 ## 9. convexProfile은 유리의 볼록한 단면이다
 
-![유리 단면에서 slope, height, refraction offset이 만들어지는 과정](../assets/glass-surface-refraction.svg)
+![유리 단면에서 slope, height, refraction offset이 만들어지는 과정](../../assets/glass-surface-refraction.svg)
 
 `convexProfile(progress)`는 외곽선에서 안쪽으로 이동할 때 유리 표면이 얼마나 높고 가파른지 계산한다.
 
@@ -238,7 +238,7 @@ surface.y = 표면의 y 방향 기울기
 surface.z = 광선이 통과할 유리 높이
 ```
 
-구현은 [`surfaceSample()`](../../pages/guseul/webgl-renderer.ts#L301)에 있다.
+구현은 [`surfaceSample()`](../../../pages/guseul/webgl-renderer.ts#L301)에 있다.
 
 ## 11. 기울기와 높이로 굴절을 계산한다
 

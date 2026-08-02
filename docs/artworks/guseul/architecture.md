@@ -204,7 +204,7 @@ d_circle(p) = length(p - center) - radius
 
 `rawShapeDistance()`와 shader의 `contactField()`는 같은 형태 공식을 각각 CPU와 GPU에서 구현한다.
 
-GPU가 각 픽셀에서 center seed, contact, bridge, membrane 거리장을 합쳐 `shapeDistance`를 만드는 전체 과정은 [`SDF Surface and Refraction`](../../concepts/sdf-surface-refraction.md)에 그림과 함께 정리했다.
+GPU가 각 픽셀에서 center seed, contact, bridge, membrane 거리장을 합쳐 `shapeDistance`를 만드는 전체 과정은 [`Guseul Surface and Refraction`](./surface-refraction.md)에 그림과 함께 정리했다.
 
 ### center seed
 
@@ -543,7 +543,7 @@ vec2 edgeNormal = normalize(derivative);
 height = (thickness + bevelHeight) * displacementFactor
 ```
 
-`inwardDistance`, `convexProfile()`, `surfaceSample()`이 각각 어떤 역할을 하고 slope와 height가 굴절 offset으로 이어지는지는 [`SDF Surface and Refraction`](../../concepts/sdf-surface-refraction.md#9-convexprofile은-유리의-볼록한-단면이다)에서 단면 도식으로 설명한다.
+`inwardDistance`, `convexProfile()`, `surfaceSample()`이 각각 어떤 역할을 하고 slope와 height가 굴절 offset으로 이어지는지는 [`Guseul Surface and Refraction`](./surface-refraction.md#9-convexprofile은-유리의-볼록한-단면이다)에서 단면 도식으로 설명한다. 작품과 무관한 공통 원리는 [`SDF Glass Rendering`](../../concepts/sdf-glass-rendering.md)에 분리했다.
 
 ## 13. 굴절
 

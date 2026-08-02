@@ -17,11 +17,12 @@ docs/
 ### Guseul
 
 - [`architecture.md`](./artworks/guseul/architecture.md) - 현재 코드, 입력, SDF, 렌더링 전체 구조
+- [`surface-refraction.md`](./artworks/guseul/surface-refraction.md) - Guseul의 contact SDF, 유리 단면, 굴절 구현
 
 ## Concepts
 
 - [`golden-angle-sphere-distribution.md`](./concepts/golden-angle-sphere-distribution.md) - 사진 원을 구 전체에 분산하는 Fibonacci sphere 원리
-- [`sdf-surface-refraction.md`](./concepts/sdf-surface-refraction.md) - 픽셀별 SDF에서 유리 단면과 굴절 offset까지 이어지는 과정
+- [`sdf-glass-rendering.md`](./concepts/sdf-glass-rendering.md) - SDF에서 normal, 가상 유리 단면, 굴절 offset을 만드는 공통 원리
 - [`smooth-union.md`](./concepts/smooth-union.md) - signed-distance field의 union과 부드러운 접합 원리
 
 ## Research
