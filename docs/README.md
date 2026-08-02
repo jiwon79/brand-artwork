@@ -20,6 +20,7 @@ docs/
 
 ## Concepts
 
+- [`golden-angle-sphere-distribution.md`](./concepts/golden-angle-sphere-distribution.md) - 사진 원을 구 전체에 분산하는 Fibonacci sphere 원리
 - [`smooth-union.md`](./concepts/smooth-union.md) - signed-distance field의 union과 부드러운 접합 원리
 
 ## Research

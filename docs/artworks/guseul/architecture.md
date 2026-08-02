@@ -371,6 +371,8 @@ z = sin(theta) * r
 
 이 방식은 개수가 변해도 한쪽 면에 몰리지 않고 구 전체에 비교적 균일하게 퍼진다.
 
+`y`를 같은 간격으로 나누는 이유, golden angle이 반복 정렬을 피하는 원리, 현재 deterministic jitter의 역할은 [`Golden-angle Sphere Distribution`](../../concepts/golden-angle-sphere-distribution.md)에 그림과 함께 정리했다.
+
 매 프레임 `projectMarbleCircle()`이 현재 `sphereOrientation`을 적용한다.
 
 ```ts
