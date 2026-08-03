@@ -716,27 +716,228 @@ float edgeGate = max(refractedEdgeGate, sourceEdgeGate);
 
 ## 15. spec의 기본 원리
 
-spec은 화면의 고정 radial gradient가 아니다. 각 spec은 구 위의 `carrier`와 그 표면의 두 tangent axis를 가진다.
+Spec은 `specular highlight`의 줄임말이다. 매끄러운 유리나 금속 표면에 창문, 조명 같은 밝은 환경이 반사되어 생기는 하이라이트를 뜻한다.
 
-CPU의 `prepareSpecHighlight()`가 다음을 계산한다.
+![carrier와 tangent axis가 spec 영역으로 변환되는 과정](../../assets/guseul-spec-coordinate-frame.svg)
 
-1. `specOrientation`으로 carrier를 회전
-2. edge 체류감을 위해 `applySpecEdgeDwell()` 적용
-3. carrier를 반사시켜 `sourceDirection` 계산
-4. tangent를 reflection 공간의 `axisX`, `axisY`로 변환
-5. 뒷면이면 visibility를 0으로 fade
+### 먼저 구와 스티커를 떠올린다
 
-shader의 `sampleSpecs()`는 현재 픽셀의 reflection vector가 각 spec 영역 안에 있는지 계산한다.
+구 표면에 작은 반사 스티커를 붙인다고 생각하면 용어를 구분하기 쉽다.
 
 ```text
-dx = dot(reflection, specAxisX) / halfWidth
-dy = dot(reflection, specAxisY) / halfHeight
+구의 중심에서 스티커 중심까지 꽂은 핀
+  -> carrier
 
-circle: distance = length(dx, dy)
-rect:   distance = max(abs(dx), abs(dy))
+스티커 표면의 가로 방향
+  -> tangent axis X
+
+스티커 표면의 세로 방향
+  -> tangent axis Y
+
+스티커의 가로/세로 크기
+  -> halfWidth / halfHeight
 ```
 
-경계에서는 `softness`로 smoothstep하고, 내부는 `power`와 `intensity`를 적용한다.
+구가 회전하면 핀인 `carrier`가 구 표면을 따라 움직이고, 스티커의 두 축도 함께 회전한다. 따라서 spec은 화면에 고정된 얼룩이 아니라 구에 붙어 이동하는 반사 영역처럼 보인다.
+
+### radial은 중심에서 바깥으로 향한다는 뜻이다
+
+`radial`은 원이나 구의 중심에서 바깥쪽으로 뻗는 방향을 뜻한다. 구의 중심이 `(0, 0, 0)`이고 표면의 한 점이 `(x, y, z)`라면, 중심에서 그 점으로 향하는 벡터가 radial vector다.
+
+단위 구에서는 표면까지 거리가 항상 `1`이므로 표면 위치, radial vector, surface normal이 같은 숫자로 표현된다.
+
+```text
+(0, 0, 1)   화면 정면 중앙을 향하는 표면 normal
+(1, 0, 0)   오른쪽 edge를 향하는 표면 normal
+(0, 0, -1)  구의 뒷면을 향하는 표면 normal
+```
+
+이 프로젝트의 `carrier`는 **각 spec 중심의 radial unit vector**다. 예를 들어 다음 carrier는 z가 `1`에 가까우므로 구의 정면 중앙 근처에 spec을 둔다.
+
+```ts
+carrier: [0.1039, 0.0024, 0.9946]
+```
+
+`carrier`는 WebGL이나 광학의 표준 용어가 아니라, spec의 위치와 회전 궤도를 운반한다는 의미로 이 프로젝트에서 붙인 이름이다.
+
+> 이 절의 `radial gradient`는 중심에서 바깥으로 색이 변하는 2D 그라데이션을 뜻한다. 다른 shader 절의 `radial`이라는 `0~1` 숫자와는 별개의 표현이다.
+
+### tangent plane은 구에 한 점만 닿는 평면이다
+
+구 표면의 한 점에 평평한 종이를 살짝 대면 종이는 구와 그 점에서만 닿는다. 이 종이가 tangent plane, 즉 접평면이다.
+
+Carrier는 접평면을 수직으로 뚫고 나가는 normal이다. Tangent axis는 이 평면 위에 놓여 있으므로 carrier와 직각이다.
+
+```text
+dot(carrier, tangentAxisX) = 0
+dot(carrier, tangentAxisY) = 0
+dot(tangentAxisX, tangentAxisY) = 0
+```
+
+두 tangent axis는 작은 스티커의 로컬 좌표계다. `axisX` 방향으로 움직이면 spec의 가로 위치가 바뀌고, `axisY` 방향으로 움직이면 세로 위치가 바뀐다.
+
+코드는 임의의 x축을 tangent plane 위로 투영해서 첫 축을 만들고, `cross()`로 두 번째 축을 만든다.
+
+```ts
+const baseAxisX = projectOntoTangent([1, 0, 0], baseCarrier);
+const baseAxisY = normalizeVec3(crossVec3(baseCarrier, baseAxisX));
+```
+
+`projectOntoTangent()`는 입력 벡터에서 carrier와 같은 방향의 성분을 빼서 접평면 위에 눕힌다.
+
+```text
+tangent = vector - carrier * dot(vector, carrier)
+```
+
+### radial gradient를 화면에 그리는 방식과 무엇이 다른가
+
+2D radial gradient는 화면의 `(centerX, centerY)`를 중심으로 밝기가 퍼지는 그림이다. 구가 회전해도 중심 좌표를 따로 움직이지 않으면 같은 화면 위치에 남는다. 구 edge에서 실제 반사처럼 찌그러지는 방향도 알 수 없다.
+
+현재 방식은 각 화면 픽셀의 구 표면 normal로 reflection vector를 계산한다. 그런 다음 이 reflection이 미리 정의한 밝은 환경 영역 안을 향하는지 검사한다.
+
+```text
+2D radial gradient
+  화면 좌표 -> 중심과의 2D 거리 -> 밝기
+
+현재 spec
+  화면 픽셀 -> 구 표면 normal -> reflection 방향
+  -> 밝은 환경 영역과의 방향 차이 -> 밝기
+```
+
+### CPU가 carrier를 실제 spec 데이터로 바꾸는 순서
+
+`prepareSpecHighlight()`는 preset에 저장된 carrier와 크기 값을 매 frame GPU가 검사할 수 있는 데이터로 바꾼다.
+
+#### 1. Carrier와 tangent frame을 회전한다
+
+`specOrientation`은 드래그와 자동 회전으로 누적된 3D 회전 행렬이다.
+
+```ts
+const orbitCarrier = normalizeVec3(applyMatrix3(orientation, baseCarrier));
+```
+
+Carrier만 회전하면 스티커 중심만 움직이고 무늬 방향은 고정되는 것처럼 보인다. 그래서 `baseAxisX`, `baseAxisY`도 같은 행렬로 회전한다.
+
+#### 2. Edge에서 머무는 시간을 조절한다
+
+구의 정면은 `carrier.z`가 `1`, 옆면은 `0`, 뒷면은 음수다. `applySpecEdgeDwell()`은 z에 `specEdgeDwell` 지수를 적용하고 x/y를 다시 조정해 carrier 길이를 `1`로 유지한다.
+
+```text
+z가 1에 가까움  -> 정면
+z가 0에 가까움  -> edge
+z가 음수        -> 뒷면
+```
+
+이것은 spec이 edge를 너무 빨리 통과하지 않도록 화면에서 보이는 이동 속도를 조절하는 시각적 보정이다.
+
+#### 3. `sourceDirection`을 계산한다
+
+고정된 camera ray `(0, 0, -1)`를 carrier 방향의 거울면에 반사한다.
+
+```ts
+const sourceDirection = normalizeVec3(
+  reflectVec3([0, 0, -1], carrier),
+);
+```
+
+`sourceDirection`은 화면 위치가 아니다. **이 spec의 중심이 되려면 픽셀의 반사광선이 어느 3D 방향을 향해야 하는가**를 나타내는 unit vector다.
+
+```text
+carrier
+  구 표면에서 spec 중심이 이동할 위치
+
+sourceDirection
+  그 위치의 normal이 camera ray를 반사한 방향
+  즉 reflection 공간에서 spec 영역의 중심
+```
+
+#### 4. Tangent axis를 reflection 공간으로 옮긴다
+
+구 표면에서 carrier가 tangent 방향으로 조금 움직이면 reflected ray도 방향이 바뀐다. `reflectionDerivative()`는 이 작은 방향 변화를 계산한다.
+
+그 결과를 `sourceDirection`의 tangent plane에 투영해 GPU가 사용할 `axisX`, `axisY`를 만든다.
+
+```ts
+const axisX = projectOntoTangent(
+  reflectionDerivative(carrier, carrierAxisX),
+  sourceDirection,
+);
+```
+
+따라서 이름이 비슷하지만 두 단계의 축을 구분해야 한다.
+
+```text
+carrierAxisX / carrierAxisY
+  구 표면에서 spec 스티커의 가로/세로 이동 방향
+
+axisX / axisY
+  reflected ray 방향 공간에서 spec 폭과 높이를 측정하는 방향
+```
+
+#### 5. 뒷면에서는 숨긴다
+
+회전 전면 판정에 사용하는 `orbitCarrier.z`가 `0` 이하면 spec 중심이 뒷면에 있다. 이때 `visibility`를 `0`으로 만든다. Edge 근처에서는 `specEdgeFade` 범위로 서서히 사라지게 해 갑자기 끊기는 것을 줄인다.
+
+### GPU는 현재 픽셀이 spec 안에 있는지 검사한다
+
+Shader는 먼저 늘어난 구슬 좌표를 원래 원 좌표로 역변환한다. 이 과정은 다음 16장에서 설명한다. 원 좌표 `specPoint`를 단위 구의 앞면 normal로 복원하고 camera ray를 반사하면 현재 픽셀의 `reflection`을 얻는다.
+
+```glsl
+vec3 specNormal = normalize(vec3(
+  specPoint,
+  sqrt(1.0 - dot(specPoint, specPoint))
+));
+
+vec3 reflection = normalize(
+  reflect(vec3(0.0, 0.0, -1.0), specNormal)
+);
+```
+
+현재 `reflection`을 spec의 두 축에 투영하면 spec 중심에서 가로와 세로로 얼마나 떨어졌는지 알 수 있다.
+
+```glsl
+float dx = abs(dot(reflection, axisX) / halfWidth);
+float dy = abs(dot(reflection, axisY) / halfHeight);
+```
+
+`reflection == sourceDirection`이면 `axisX`, `axisY`와 직각이므로 `dx = 0`, `dy = 0`이다. 즉 spec 중심이다. `halfWidth`나 `halfHeight`만큼 떨어지면 정규화된 거리가 약 `1`이 된다.
+
+원과 직사각형은 같은 `dx`, `dy`를 서로 다른 거리 수식에 넣어 만든다.
+
+```glsl
+// 타원 또는 원
+float distanceToSpec = length(vec2(dx, dy));
+
+// 둥글게 흐려지는 직사각형
+float distanceToSpec = max(dx, dy);
+```
+
+```text
+distanceToSpec < 1  spec 영역 안쪽
+distanceToSpec = 1  spec 경계
+distanceToSpec > 1  spec 영역 바깥
+```
+
+`softness`는 경계가 흐려지는 폭, `power`는 중심에서 경계까지 밝기가 줄어드는 곡선, `intensity`는 최종 밝기다.
+
+마지막으로 `dot(reflection, sourceDirection)`을 검사한다. `axisX`, `axisY` 투영만 보면 반대 방향에도 같은 좌표가 생길 수 있기 때문에, 실제로 `sourceDirection`과 같은 반구를 향할 때만 spec을 보이게 한다.
+
+### 한 spec이 화면에 나타나는 전체 흐름
+
+```text
+preset carrier와 크기
+  -> specOrientation으로 carrier와 tangent frame 회전
+  -> carrier를 camera ray에 반사해 sourceDirection 계산
+  -> tangent frame을 reflection-space axisX/axisY로 변환
+  -> GPU에 전달
+
+각 출력 픽셀
+  -> 늘어난 좌표를 원래 원 좌표로 역변환
+  -> 구 surface normal 계산
+  -> camera ray를 반사해 reflection 계산
+  -> reflection을 axisX/axisY에 투영
+  -> circle/rect 영역 안이면 softness, power, intensity 적용
+```
 
 ## 16. 늘어난 외곽선에서 spec을 유지하는 방법
 
