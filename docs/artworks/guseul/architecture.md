@@ -571,7 +571,13 @@ sourcePoint = deformedPoint - elasticDisplacement * sourceFollow
 
 ## 14. chromatic separation
 
-단순 blur가 아니라 R/G/B가 서로 다른 위치를 샘플링한다.
+단순 blur가 아니라 R/G/B가 서로 다른 source texture 위치를 샘플링한다.
+
+![세 굴절 ray가 source texture를 샘플링하고 gate를 통과하는 과정](../../assets/guseul-chromatic-gates.svg)
+
+### green은 굴절되지 않는 것이 아니다
+
+실제 빛은 파장마다 굴절률이 조금씩 다르지만, 현재 shader는 연속된 빛의 스펙트럼 대신 세 ray로 이를 근사한다.
 
 ```text
 red IOR  = ior + dispersion
@@ -579,23 +585,134 @@ green IOR = ior
 blue IOR = ior - dispersion
 ```
 
-shader는 세 ray offset에서 각각 texture를 읽고 다음처럼 채널을 조립한다.
+기본 `ior`로 계산한 `baseOffset`에는 이미 유리 굴절이 들어 있다. Green은 굴절되지 않는 것이 아니라 이 기본 굴절 경로를 기준으로 사용한다. Red와 blue는 그 기준에서 각각 다른 방향으로 dispersion 편차를 더 가진다.
 
-```glsl
-vec3 separated = vec3(redSample.r, greenSample.g, blueSample.b);
+```text
+공통 유리 굴절      = baseOffset
+red의 추가 편차    = dispersedRedOffset - baseOffset
+green의 추가 편차  = 0
+blue의 추가 편차   = dispersedBlueOffset - baseOffset
 ```
 
-모든 픽셀에서 강하게 분리하면 화면 전체가 흐릿해진다. 그래서 두 gate를 사용한다.
+상대적인 채널 차이가 chromatic aberration을 만들기 때문에 한 채널을 기준으로 두어도 분리는 표현된다. Green을 기준으로 유지하면 세 채널을 모두 독립적으로 크게 이동시키는 것보다 원래 영상의 중심과 밝기 디테일이 안정적이다. 다만 이것은 파장별 굴절률을 정확히 재현한 물리 시뮬레이션이 아니라 시각적 근사다.
+
+### `redPoint`, `basePoint`, `bluePoint`는 사진을 읽을 위치다
+
+현재 출력 fragment의 구슬 좌표가 `point`다. 굴절 offset을 더하고 contact 변형을 역으로 보정하면 source texture에서 읽을 최종 좌표가 된다.
+
+```glsl
+vec2 redPoint = transformSourcePoint(point + redOffset);
+vec2 basePoint = transformSourcePoint(point + baseOffset);
+vec2 bluePoint = transformSourcePoint(point + blueOffset);
+```
+
+이 좌표들은 화면에서 앞으로 이동시킬 픽셀 위치가 아니다. 현재 출력 픽셀을 칠하기 위해 source texture의 어디를 읽어야 하는지 나타내는 inverse-sampling 좌표다.
+
+각 좌표에서는 채널 하나가 아니라 완전한 RGB 색상 하나를 읽는다.
+
+```glsl
+vec3 red = sampleContent(redPoint).rgb;
+vec3 base = sampleContent(basePoint).rgb;
+vec3 blue = sampleContent(bluePoint).rgb;
+```
+
+변수 이름 `red`, `base`, `blue`는 각각 `redRaySample`, `baseRaySample`, `blueRaySample`이라고 읽는 편이 정확하다. 마지막에 각 샘플에서 필요한 채널 하나를 꺼내 조립한다.
+
+```glsl
+vec3 separated = vec3(red.r, base.g, blue.b);
+```
+
+세 좌표가 모두 균일한 흰색 영역 안에 있으면 각 샘플은 모두 `(1, 1, 1)`이다. 샘플 위치는 다르지만 조립 결과도 `(1, 1, 1)`이므로 색 분리는 보이지 않는다. 반대로 세 좌표가 사진 원과 배경의 경계를 가로지르면 서로 다른 색을 읽어 chromatic fringe가 생긴다.
+
+### gate는 효과의 통과량이다
+
+모든 픽셀에서 red와 blue 샘플을 강하게 벌리면 서로 다른 위치의 사진 세 장을 겹치는 것처럼 화면 전체가 흐릿해진다. 이를 막기 위해 두 gate가 강한 chromatic pass를 적용할 픽셀을 제한한다.
+
+여기서 gate는 단순한 `true/false`가 아니라 `0~1` 범위의 부드러운 가중치다.
+
+```text
+gate = 0    효과를 통과시키지 않음
+gate = 0.5  효과를 절반만 적용
+gate = 1    효과를 완전히 적용
+```
 
 ### refracted edge gate
 
-R/G/B sample 사이의 색 대비와 실제 pixel separation이 충분한지 검사한다. 구슬 edge에 가까울수록 강해진다.
+이 gate는 굴절된 세 ray가 실제 source의 색 경계를 가로질렀는지 검사한다.
+
+먼저 세 위치에서 읽은 전체 RGB 색상이 얼마나 다른지 `sourceContrast`로 측정한다.
+
+```glsl
+float sourceContrast = max(
+  colorDistance(red, base),
+  colorDistance(blue, base)
+);
+```
+
+`colorDistance()`는 두 RGB 벡터의 유클리드 거리를 `0~1` 범위로 정규화한다. 세 ray가 모두 같은 흰색이나 같은 주황색 영역을 읽으면 `sourceContrast`는 `0`에 가깝다. 서로 다른 색 영역이나 사진 경계를 읽으면 값이 커진다.
+
+```glsl
+smoothRange(0.04, 0.24, sourceContrast)
+```
+
+대비가 `0.04` 이하면 gate를 닫고, `0.24` 이상이면 이 조건을 완전히 통과시킨다. 중간은 `smoothRange()`로 부드럽게 보간한다.
+
+다음으로 red와 blue의 source 좌표가 화면에서 식별될 만큼 떨어졌는지 검사한다.
+
+```glsl
+vec2 separationVector = bluePoint - redPoint;
+float separationPixels = length(separationVector) * uRadiusCss;
+smoothRange(0.25, 2.6, separationPixels)
+```
+
+`redPoint`와 `bluePoint`의 차이는 정규화된 SDF 좌표이므로 `uRadiusCss`를 곱해 CSS pixel 거리로 바꾼다. `0.25px` 이하는 닫고, `2.6px` 이상은 완전히 통과시킨다.
+
+마지막으로 현재 fragment가 구슬 외곽의 실제 굴절 band 안에 있는지 확인한다.
+
+```glsl
+smoothRange(0.56, 1.0, radial) * rim
+```
+
+`radial`은 구슬 안쪽에서 작고 외곽에서 `1`에 가까워진다. `rim`은 그중에서도 `bezelWidth` 안쪽의 좁은 유리 경계에서 강하다. 최종 gate는 네 조건의 곱이다.
+
+```glsl
+float refractedEdgeGate =
+    contrastGate
+  * separationGate
+  * radialGate
+  * rim;
+```
+
+곱셈이므로 색 대비, 실제 분리 거리, 외곽 위치, rim 중 하나라도 `0`이면 강한 chromatic pass가 닫힌다.
 
 ### source edge gate
 
 `sampleSourceEdge()`가 uniform으로 받은 사진 원의 signed distance를 계산한다. 현재 픽셀이 사진 원 경계에 가까울 때만 추가 RGB coverage를 만든다.
 
-이 구조 때문에 뒤에 가려진 원의 chromatic이 위로 새지 않는다. shader가 draw order의 위쪽 원부터 검사해 실제로 보이는 원 경계를 선택한다.
+`refractedEdgeGate`가 실제 texture 색상 차이로 경계를 찾는다면 `sourceEdgeGate`는 사진 원의 중심과 반지름을 사용해 수학적으로 경계를 찾는다. 그래서 균일한 사진이라 색 대비가 약해도 원의 outline에서는 안정적으로 chromatic을 만들 수 있다.
+
+Shader는 draw order의 위쪽 원부터 검사해 현재 위치에서 실제로 보이는 원 경계 하나를 선택한다. 이 구조 때문에 뒤에 가려진 원의 chromatic이 위로 새지 않는다.
+
+### 두 gate의 결합
+
+두 gate는 곱하지 않고 큰 값을 선택한다.
+
+```glsl
+float edgeGate = max(refractedEdgeGate, sourceEdgeGate);
+```
+
+```text
+사진 내부의 강한 명암 경계
+  -> refractedEdgeGate가 열림
+
+사진 원의 수학적 외곽선
+  -> sourceEdgeGate가 열림
+
+평평한 단색 내부 또는 구슬 중심
+  -> 두 gate가 모두 닫힘
+```
+
+즉 둘 중 하나라도 신뢰할 만한 경계를 발견하면 강한 RGB 분리를 허용하되, 아무 경계도 없는 영역은 기본 굴절의 선명도를 유지한다.
 
 ## 15. spec의 기본 원리
 

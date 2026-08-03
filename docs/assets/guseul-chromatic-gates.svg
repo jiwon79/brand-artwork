@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="title description">
+  <title id="title">Guseul chromatic sampling and edge gates</title>
+  <desc id="description">Three refracted rays sample different source coordinates. Color contrast, sample separation, radial position, and rim influence form the refracted edge gate, which is combined with the analytic source edge gate.</desc>
+  <defs>
+    <style>
+      .title { font: 700 25px system-ui, sans-serif; fill: #19272a; }
+      .heading { font: 700 18px system-ui, sans-serif; fill: #253438; }
+      .label { font: 600 14px system-ui, sans-serif; fill: #405156; }
+      .small { font: 500 12px system-ui, sans-serif; fill: #637176; }
+      .inverse-muted { fill: #d9e4e3; }
+      .code { font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#60747a"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="560" fill="#ffffff"/>
+  <text x="480" y="42" text-anchor="middle" class="title">Chromatic rays move sample positions; gates decide where separation is visible</text>
+
+  <rect x="35" y="75" width="435" height="420" rx="8" fill="#f7faf9" stroke="#d8e1df" stroke-width="2"/>
+  <text x="58" y="108" class="heading">1. Three source-texture coordinates</text>
+
+  <rect x="70" y="135" width="365" height="230" rx="8" fill="#ffffff" stroke="#cbd6d4" stroke-width="2"/>
+  <path d="M70 135 H250 C285 175 285 325 250 365 H70 Z" fill="#ff8a35"/>
+  <text x="100" y="165" class="label" fill="#72320d">orange region</text>
+  <text x="330" y="165" class="label">white region</text>
+
+  <line x1="150" y1="250" x2="350" y2="250" stroke="#93a3a7" stroke-width="2" stroke-dasharray="6 5"/>
+  <circle cx="205" cy="250" r="10" fill="#e75c4b"/>
+  <circle cx="270" cy="250" r="10" fill="#35a56f"/>
+  <circle cx="335" cy="250" r="10" fill="#4d75c4"/>
+  <text x="205" y="285" text-anchor="middle" class="code" fill="#a5352a">redPoint</text>
+  <text x="270" y="307" text-anchor="middle" class="code" fill="#23734e">basePoint</text>
+  <text x="335" y="285" text-anchor="middle" class="code" fill="#31579f">bluePoint</text>
+
+  <text x="82" y="395" class="small">Each point reads a complete RGB color.</text>
+  <text x="82" y="418" class="code" fill="#a5352a">red  = sampleContent(redPoint).rgb</text>
+  <text x="82" y="441" class="code" fill="#23734e">base = sampleContent(basePoint).rgb</text>
+  <text x="82" y="464" class="code" fill="#31579f">blue = sampleContent(bluePoint).rgb</text>
+
+  <rect x="490" y="75" width="435" height="420" rx="8" fill="#fff9f5" stroke="#eaded7" stroke-width="2"/>
+  <text x="513" y="108" class="heading">2. Edge gates</text>
+
+  <rect x="525" y="135" width="170" height="48" rx="6" fill="#f5dfda"/>
+  <text x="610" y="156" text-anchor="middle" class="label">color contrast</text>
+  <text x="610" y="174" text-anchor="middle" class="small">0.04 to 0.24</text>
+
+  <rect x="720" y="135" width="170" height="48" rx="6" fill="#e1e9f8"/>
+  <text x="805" y="156" text-anchor="middle" class="label">sample separation</text>
+  <text x="805" y="174" text-anchor="middle" class="small">0.25 to 2.6 px</text>
+
+  <rect x="525" y="205" width="170" height="48" rx="6" fill="#dff0ec"/>
+  <text x="610" y="226" text-anchor="middle" class="label">near marble edge</text>
+  <text x="610" y="244" text-anchor="middle" class="small">radial 0.56 to 1.0</text>
+
+  <rect x="720" y="205" width="170" height="48" rx="6" fill="#e8edf0"/>
+  <text x="805" y="226" text-anchor="middle" class="label">glass rim</text>
+  <text x="805" y="244" text-anchor="middle" class="small">bezel influence</text>
+
+  <line x1="610" y1="183" x2="680" y2="290" stroke="#60747a" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="805" y1="183" x2="735" y2="290" stroke="#60747a" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="610" y1="253" x2="680" y2="290" stroke="#60747a" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="805" y1="253" x2="735" y2="290" stroke="#60747a" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="590" y="288" width="235" height="52" rx="7" fill="#203338"/>
+  <text x="707" y="311" text-anchor="middle" class="code" fill="#ffffff">multiply</text>
+  <text x="707" y="329" text-anchor="middle" class="small inverse-muted">refractedEdgeGate</text>
+
+  <rect x="525" y="375" width="170" height="50" rx="7" fill="#f1e3bd"/>
+  <text x="610" y="397" text-anchor="middle" class="label">analytic circle edge</text>
+  <text x="610" y="416" text-anchor="middle" class="small">sourceEdgeGate</text>
+
+  <line x1="707" y1="340" x2="750" y2="390" stroke="#60747a" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="695" y1="400" x2="750" y2="400" stroke="#60747a" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="750" y="375" width="140" height="50" rx="7" fill="#dcebea"/>
+  <text x="820" y="397" text-anchor="middle" class="code" fill="#1b5956">max()</text>
+  <text x="820" y="416" text-anchor="middle" class="small">edgeGate</text>
+
+  <rect x="210" y="515" width="540" height="30" rx="6" fill="#18282b"/>
+  <text x="480" y="535" text-anchor="middle" class="code" fill="#ffffff">strong RGB split only where either gate finds a trustworthy edge</text>
+</svg>
