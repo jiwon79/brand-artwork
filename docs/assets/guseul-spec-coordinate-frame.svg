@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" role="img" aria-labelledby="title description">
-  <title id="title">Guseul spec carrier and tangent coordinate frame</title>
-  <desc id="description">A carrier points from the sphere center to the spec anchor. Two tangent axes define the local highlight frame. Reflecting the camera ray around the carrier produces the source direction used by the shader.</desc>
+  <title id="title">Guseul spec anchor normal and tangent coordinate frame</title>
+  <desc id="description">An anchor normal points from the sphere center to the spec anchor. Two surface tangent axes define the local highlight frame. Reflecting the camera ray around the anchor normal produces the reflection center used by the shader.</desc>
   <defs>
     <style>
       .title { font: 700 25px system-ui, sans-serif; fill: #19272a; }
@@ -8,6 +8,7 @@
       .label { font: 600 13px system-ui, sans-serif; fill: #405156; }
       .small { font: 500 11px system-ui, sans-serif; fill: #647277; }
       .code { font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #26383c; }
+      .formula { font-size: 10.5px; }
       .inverse { fill: #ffffff; }
     </style>
     <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
@@ -25,7 +26,7 @@
   <text x="480" y="40" text-anchor="middle" class="title">A spec is a moving direction-space patch, not a fixed 2D gradient</text>
 
   <rect x="25" y="70" width="285" height="465" rx="8" fill="#f7faf9" stroke="#d8e1df" stroke-width="2"/>
-  <text x="45" y="100" class="heading">1. Carrier on the sphere</text>
+  <text x="45" y="100" class="heading">1. Anchor normal on the sphere</text>
 
   <circle cx="160" cy="285" r="105" fill="#e8f3f2" stroke="#438e8b" stroke-width="3"/>
   <ellipse cx="224" cy="196" rx="66" ry="24" transform="rotate(34 224 196)" fill="#f6ded7" fill-opacity="0.86" stroke="#df7967" stroke-width="2"/>
@@ -33,17 +34,17 @@
   <text x="132" y="306" class="small">center</text>
 
   <line x1="160" y1="285" x2="224" y2="196" stroke="#168c88" stroke-width="4" marker-end="url(#arrow-teal)"/>
-  <text x="68" y="220" class="label">carrier</text>
+  <text x="68" y="220" class="label">anchorNormal</text>
   <text x="68" y="239" class="small">radial unit vector</text>
 
   <line x1="173" y1="163" x2="275" y2="229" stroke="#ec6753" stroke-width="3" marker-end="url(#arrow-coral)"/>
-  <text x="247" y="249" class="label">tangent X</text>
+  <text x="180" y="249" class="label">surfaceTangentX</text>
   <line x1="244" y1="169" x2="205" y2="221" stroke="#5578bd" stroke-width="3" marker-end="url(#arrow-blue)"/>
-  <text x="180" y="158" class="label">tangent Y</text>
+  <text x="155" y="158" class="label">surfaceTangentY</text>
 
   <rect x="50" y="420" width="235" height="80" rx="7" fill="#e9efef"/>
-  <text x="168" y="444" text-anchor="middle" class="code">dot(carrier, tangentX) = 0</text>
-  <text x="168" y="466" text-anchor="middle" class="code">dot(carrier, tangentY) = 0</text>
+  <text x="168" y="444" text-anchor="middle" class="code formula">dot(N, surfaceTangentX) = 0</text>
+  <text x="168" y="466" text-anchor="middle" class="code formula">dot(N, surfaceTangentY) = 0</text>
   <text x="168" y="488" text-anchor="middle" class="small">The axes lie flat on the tangent plane.</text>
 
   <rect x="337" y="70" width="285" height="465" rx="8" fill="#fff9f5" stroke="#eaded7" stroke-width="2"/>
@@ -54,18 +55,19 @@
   <circle cx="480" cy="320" r="5" fill="#26383c"/>
 
   <line x1="480" y1="320" x2="520" y2="190" stroke="#168c88" stroke-width="4" marker-end="url(#arrow-teal)"/>
-  <text x="525" y="193" class="label">carrier / normal</text>
+  <text x="500" y="176" class="label">anchorNormal</text>
+  <text x="500" y="194" class="small">surface normal</text>
 
   <line x1="405" y1="160" x2="472" y2="310" stroke="#5578bd" stroke-width="4" marker-end="url(#arrow-blue)"/>
   <text x="370" y="145" class="label">camera ray</text>
 
   <line x1="488" y1="312" x2="584" y2="205" stroke="#ec6753" stroke-width="4" marker-end="url(#arrow-coral)"/>
-  <text x="500" y="240" class="label">sourceDirection</text>
+  <text x="500" y="240" class="label">reflectionCenter</text>
   <text x="500" y="258" class="small">center in reflection space</text>
 
   <rect x="365" y="420" width="230" height="80" rx="7" fill="#f4e4de"/>
-  <text x="480" y="450" text-anchor="middle" class="code">sourceDirection =</text>
-  <text x="480" y="474" text-anchor="middle" class="code">reflect(cameraRay, carrier)</text>
+  <text x="480" y="450" text-anchor="middle" class="code">reflectionCenter =</text>
+  <text x="480" y="474" text-anchor="middle" class="code">reflect(cameraRay, anchorNormal)</text>
 
   <rect x="650" y="70" width="285" height="465" rx="8" fill="#f7f8fc" stroke="#dce1ec" stroke-width="2"/>
   <text x="670" y="100" class="heading">3. Test each pixel reflection</text>
@@ -73,11 +75,11 @@
   <ellipse cx="790" cy="280" rx="94" ry="58" fill="#dfe8fa" stroke="#5578bd" stroke-width="3"/>
   <line x1="696" y1="280" x2="884" y2="280" stroke="#ec6753" stroke-width="3" marker-end="url(#arrow-coral)"/>
   <line x1="790" y1="338" x2="790" y2="222" stroke="#168c88" stroke-width="3" marker-end="url(#arrow-teal)"/>
-  <text x="850" y="272" class="label">axisX</text>
-  <text x="748" y="219" class="label">axisY</text>
+  <text x="805" y="272" class="label">reflectionAxisX</text>
+  <text x="690" y="219" class="label">reflectionAxisY</text>
 
   <circle cx="790" cy="280" r="7" fill="#26383c"/>
-  <text x="700" y="310" class="small">sourceDirection</text>
+  <text x="690" y="310" class="small">reflectionCenter</text>
   <circle cx="837" cy="245" r="8" fill="#f3b32f" stroke="#ffffff" stroke-width="2"/>
   <text x="820" y="203" class="label">reflection</text>
   <line x1="840" y1="208" x2="838" y2="235" stroke="#87979b" stroke-width="1.5"/>
@@ -87,12 +89,12 @@
   <text x="810" y="239" class="small">dx</text>
   <text x="772" y="265" class="small">dy</text>
 
-  <rect x="680" y="390" width="225" height="110" rx="7" fill="#e9edf6"/>
-  <text x="792" y="418" text-anchor="middle" class="code">dx = dot(R, axisX) / width</text>
-  <text x="792" y="442" text-anchor="middle" class="code">dy = dot(R, axisY) / height</text>
+  <rect x="665" y="390" width="255" height="110" rx="7" fill="#e9edf6"/>
+  <text x="792" y="418" text-anchor="middle" class="code formula">dx = dot(R, reflectionAxisX) / width</text>
+  <text x="792" y="442" text-anchor="middle" class="code formula">dy = dot(R, reflectionAxisY) / height</text>
   <text x="792" y="470" text-anchor="middle" class="small">circle: length(dx, dy)</text>
   <text x="792" y="489" text-anchor="middle" class="small">rect: max(abs(dx), abs(dy))</text>
 
   <rect x="145" y="565" width="670" height="34" rx="7" fill="#18282b"/>
-  <text x="480" y="587" text-anchor="middle" class="code inverse">carrier moves the patch; tangent axes measure its width and height</text>
+  <text x="480" y="587" text-anchor="middle" class="code inverse">anchor normal moves the patch; tangent axes measure its width and height</text>
 </svg>

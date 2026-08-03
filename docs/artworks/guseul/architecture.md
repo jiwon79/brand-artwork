@@ -718,7 +718,7 @@ float edgeGate = max(refractedEdgeGate, sourceEdgeGate);
 
 Spec은 `specular highlight`의 줄임말이다. 매끄러운 유리나 금속 표면에 창문, 조명 같은 밝은 환경이 반사되어 생기는 하이라이트를 뜻한다.
 
-![carrier와 tangent axis가 spec 영역으로 변환되는 과정](../../assets/guseul-spec-coordinate-frame.svg)
+![anchor normal과 tangent axis가 spec 영역으로 변환되는 과정](../../assets/guseul-spec-coordinate-frame.svg)
 
 ### 먼저 구와 스티커를 떠올린다
 
@@ -726,7 +726,7 @@ Spec은 `specular highlight`의 줄임말이다. 매끄러운 유리나 금속 �
 
 ```text
 구의 중심에서 스티커 중심까지 꽂은 핀
-  -> carrier
+  -> anchorNormal
 
 스티커 표면의 가로 방향
   -> tangent axis X
@@ -738,7 +738,7 @@ Spec은 `specular highlight`의 줄임말이다. 매끄러운 유리나 금속 �
   -> halfWidth / halfHeight
 ```
 
-구가 회전하면 핀인 `carrier`가 구 표면을 따라 움직이고, 스티커의 두 축도 함께 회전한다. 따라서 spec은 화면에 고정된 얼룩이 아니라 구에 붙어 이동하는 반사 영역처럼 보인다.
+구가 회전하면 핀인 `anchorNormal`이 구 표면을 따라 움직이고, 스티커의 두 축도 함께 회전한다. 따라서 spec은 화면에 고정된 얼룩이 아니라 구에 붙어 이동하는 반사 영역처럼 보인다.
 
 ### radial은 중심에서 바깥으로 향한다는 뜻이다
 
@@ -752,13 +752,13 @@ Spec은 `specular highlight`의 줄임말이다. 매끄러운 유리나 금속 �
 (0, 0, -1)  구의 뒷면을 향하는 표면 normal
 ```
 
-이 프로젝트의 `carrier`는 **각 spec 중심의 radial unit vector**다. 예를 들어 다음 carrier는 z가 `1`에 가까우므로 구의 정면 중앙 근처에 spec을 둔다.
+각 spec의 `anchorNormal`은 **spec 중심을 고정하는 radial unit vector이자 surface normal**이다. 예를 들어 다음 normal은 z가 `1`에 가까우므로 구의 정면 중앙 근처에 spec을 둔다.
 
 ```ts
-carrier: [0.1039, 0.0024, 0.9946]
+anchorNormal: [0.1039, 0.0024, 0.9946]
 ```
 
-`carrier`는 WebGL이나 광학의 표준 용어가 아니라, spec의 위치와 회전 궤도를 운반한다는 의미로 이 프로젝트에서 붙인 이름이다.
+`anchor`는 무언가를 고정하는 기준점, `normal`은 표면에 수직인 방향이라는 그래픽스 용어다. 따라서 `anchorNormal`은 “spec 중심을 고정하는 표면 normal”이라는 역할을 이름에서 바로 알 수 있다.
 
 > 이 절의 `radial gradient`는 중심에서 바깥으로 색이 변하는 2D 그라데이션을 뜻한다. 다른 shader 절의 `radial`이라는 `0~1` 숫자와는 별개의 표현이다.
 
@@ -766,27 +766,29 @@ carrier: [0.1039, 0.0024, 0.9946]
 
 구 표면의 한 점에 평평한 종이를 살짝 대면 종이는 구와 그 점에서만 닿는다. 이 종이가 tangent plane, 즉 접평면이다.
 
-Carrier는 접평면을 수직으로 뚫고 나가는 normal이다. Tangent axis는 이 평면 위에 놓여 있으므로 carrier와 직각이다.
+`anchorNormal`은 접평면을 수직으로 뚫고 나간다. Tangent axis는 이 평면 위에 놓여 있으므로 `anchorNormal`과 직각이다.
 
 ```text
-dot(carrier, tangentAxisX) = 0
-dot(carrier, tangentAxisY) = 0
-dot(tangentAxisX, tangentAxisY) = 0
+dot(anchorNormal, surfaceTangentX) = 0
+dot(anchorNormal, surfaceTangentY) = 0
+dot(surfaceTangentX, surfaceTangentY) = 0
 ```
 
-두 tangent axis는 작은 스티커의 로컬 좌표계다. `axisX` 방향으로 움직이면 spec의 가로 위치가 바뀌고, `axisY` 방향으로 움직이면 세로 위치가 바뀐다.
+두 tangent axis는 작은 스티커의 로컬 좌표계다. `surfaceTangentX` 방향으로 움직이면 spec의 가로 위치가 바뀌고, `surfaceTangentY` 방향으로 움직이면 세로 위치가 바뀐다.
 
 코드는 임의의 x축을 tangent plane 위로 투영해서 첫 축을 만들고, `cross()`로 두 번째 축을 만든다.
 
 ```ts
-const baseAxisX = projectOntoTangent([1, 0, 0], baseCarrier);
-const baseAxisY = normalizeVec3(crossVec3(baseCarrier, baseAxisX));
+const baseSurfaceTangentX = projectOntoTangent([1, 0, 0], baseAnchorNormal);
+const baseSurfaceTangentY = normalizeVec3(
+  crossVec3(baseAnchorNormal, baseSurfaceTangentX),
+);
 ```
 
-`projectOntoTangent()`는 입력 벡터에서 carrier와 같은 방향의 성분을 빼서 접평면 위에 눕힌다.
+`projectOntoTangent()`는 입력 벡터에서 `anchorNormal`과 같은 방향의 성분을 빼서 접평면 위에 눕힌다.
 
 ```text
-tangent = vector - carrier * dot(vector, carrier)
+tangent = vector - anchorNormal * dot(vector, anchorNormal)
 ```
 
 ### radial gradient를 화면에 그리는 방식과 무엇이 다른가
@@ -804,23 +806,25 @@ tangent = vector - carrier * dot(vector, carrier)
   -> 밝은 환경 영역과의 방향 차이 -> 밝기
 ```
 
-### CPU가 carrier를 실제 spec 데이터로 바꾸는 순서
+### CPU가 anchor normal을 실제 spec 데이터로 바꾸는 순서
 
-`prepareSpecHighlight()`는 preset에 저장된 carrier와 크기 값을 매 frame GPU가 검사할 수 있는 데이터로 바꾼다.
+`prepareSpecHighlight()`는 preset에 저장된 `anchorNormal`과 크기 값을 매 frame GPU가 검사할 수 있는 데이터로 바꾼다.
 
-#### 1. Carrier와 tangent frame을 회전한다
+#### 1. Anchor normal과 tangent frame을 회전한다
 
 `specOrientation`은 드래그와 자동 회전으로 누적된 3D 회전 행렬이다.
 
 ```ts
-const orbitCarrier = normalizeVec3(applyMatrix3(orientation, baseCarrier));
+const rotatedAnchorNormal = normalizeVec3(
+  applyMatrix3(orientation, baseAnchorNormal),
+);
 ```
 
-Carrier만 회전하면 스티커 중심만 움직이고 무늬 방향은 고정되는 것처럼 보인다. 그래서 `baseAxisX`, `baseAxisY`도 같은 행렬로 회전한다.
+Anchor normal만 회전하면 스티커 중심만 움직이고 무늬 방향은 고정되는 것처럼 보인다. 그래서 `baseSurfaceTangentX`, `baseSurfaceTangentY`도 같은 행렬로 회전한다.
 
 #### 2. Edge에서 머무는 시간을 조절한다
 
-구의 정면은 `carrier.z`가 `1`, 옆면은 `0`, 뒷면은 음수다. `applySpecEdgeDwell()`은 z에 `specEdgeDwell` 지수를 적용하고 x/y를 다시 조정해 carrier 길이를 `1`로 유지한다.
+구의 정면은 `anchorNormal.z`가 `1`, 옆면은 `0`, 뒷면은 음수다. `applySpecEdgeDwell()`은 z에 `specEdgeDwell` 지수를 적용하고 x/y를 다시 조정해 normal 길이를 `1`로 유지한다.
 
 ```text
 z가 1에 가까움  -> 정면
@@ -830,53 +834,54 @@ z가 음수        -> 뒷면
 
 이것은 spec이 edge를 너무 빨리 통과하지 않도록 화면에서 보이는 이동 속도를 조절하는 시각적 보정이다.
 
-#### 3. `sourceDirection`을 계산한다
+#### 3. `reflectionCenter`를 계산한다
 
-고정된 camera ray `(0, 0, -1)`를 carrier 방향의 거울면에 반사한다.
+고정된 camera ray `(0, 0, -1)`를 `anchorNormal` 방향의 거울면에 반사한다.
 
 ```ts
-const sourceDirection = normalizeVec3(
-  reflectVec3([0, 0, -1], carrier),
+const reflectionCenter = normalizeVec3(
+  reflectVec3([0, 0, -1], anchorNormal),
 );
 ```
 
-`sourceDirection`은 화면 위치가 아니다. **이 spec의 중심이 되려면 픽셀의 반사광선이 어느 3D 방향을 향해야 하는가**를 나타내는 unit vector다.
+`reflectionCenter`는 화면 위치가 아니다. **이 spec의 중심이 되려면 픽셀의 반사광선이 어느 3D 방향을 향해야 하는가**를 나타내는 unit vector다. Camera ray를 반사할 때 사용하는 normal은 `anchorNormal`이고, 그 계산 결과로 나오는 reflected ray가 `reflectionCenter`다.
 
 ```text
-carrier
+anchorNormal
   구 표면에서 spec 중심이 이동할 위치
+  camera ray를 반사하는 surface normal
 
-sourceDirection
-  그 위치의 normal이 camera ray를 반사한 방향
+reflectionCenter
+  anchorNormal이 camera ray를 반사한 방향
   즉 reflection 공간에서 spec 영역의 중심
 ```
 
 #### 4. Tangent axis를 reflection 공간으로 옮긴다
 
-구 표면에서 carrier가 tangent 방향으로 조금 움직이면 reflected ray도 방향이 바뀐다. `reflectionDerivative()`는 이 작은 방향 변화를 계산한다.
+구 표면에서 `anchorNormal`이 tangent 방향으로 조금 움직이면 reflected ray도 방향이 바뀐다. `reflectionDerivative()`는 이 작은 방향 변화를 계산한다.
 
-그 결과를 `sourceDirection`의 tangent plane에 투영해 GPU가 사용할 `axisX`, `axisY`를 만든다.
+그 결과를 `reflectionCenter`의 tangent plane에 투영해 GPU가 사용할 `reflectionAxisX`, `reflectionAxisY`를 만든다.
 
 ```ts
-const axisX = projectOntoTangent(
-  reflectionDerivative(carrier, carrierAxisX),
-  sourceDirection,
+const reflectionAxisX = projectOntoTangent(
+  reflectionDerivative(anchorNormal, surfaceTangentX),
+  reflectionCenter,
 );
 ```
 
 따라서 이름이 비슷하지만 두 단계의 축을 구분해야 한다.
 
 ```text
-carrierAxisX / carrierAxisY
+surfaceTangentX / surfaceTangentY
   구 표면에서 spec 스티커의 가로/세로 이동 방향
 
-axisX / axisY
+reflectionAxisX / reflectionAxisY
   reflected ray 방향 공간에서 spec 폭과 높이를 측정하는 방향
 ```
 
 #### 5. 뒷면에서는 숨긴다
 
-회전 전면 판정에 사용하는 `orbitCarrier.z`가 `0` 이하면 spec 중심이 뒷면에 있다. 이때 `visibility`를 `0`으로 만든다. Edge 근처에서는 `specEdgeFade` 범위로 서서히 사라지게 해 갑자기 끊기는 것을 줄인다.
+전면 판정에 사용하는 `rotatedAnchorNormal.z`가 `0` 이하면 spec 중심이 뒷면에 있다. 이때 `visibility`를 `0`으로 만든다. Edge 근처에서는 `specEdgeFade` 범위로 서서히 사라지게 해 갑자기 끊기는 것을 줄인다.
 
 ### GPU는 현재 픽셀이 spec 안에 있는지 검사한다
 
@@ -896,11 +901,11 @@ vec3 reflection = normalize(
 현재 `reflection`을 spec의 두 축에 투영하면 spec 중심에서 가로와 세로로 얼마나 떨어졌는지 알 수 있다.
 
 ```glsl
-float dx = abs(dot(reflection, axisX) / halfWidth);
-float dy = abs(dot(reflection, axisY) / halfHeight);
+float dx = abs(dot(reflection, reflectionAxisX) / halfWidth);
+float dy = abs(dot(reflection, reflectionAxisY) / halfHeight);
 ```
 
-`reflection == sourceDirection`이면 `axisX`, `axisY`와 직각이므로 `dx = 0`, `dy = 0`이다. 즉 spec 중심이다. `halfWidth`나 `halfHeight`만큼 떨어지면 정규화된 거리가 약 `1`이 된다.
+`reflection == reflectionCenter`이면 `reflectionAxisX`, `reflectionAxisY`와 직각이므로 `dx = 0`, `dy = 0`이다. 즉 spec 중심이다. `halfWidth`나 `halfHeight`만큼 떨어지면 정규화된 거리가 약 `1`이 된다.
 
 원과 직사각형은 같은 `dx`, `dy`를 서로 다른 거리 수식에 넣어 만든다.
 
@@ -920,22 +925,22 @@ distanceToSpec > 1  spec 영역 바깥
 
 `softness`는 경계가 흐려지는 폭, `power`는 중심에서 경계까지 밝기가 줄어드는 곡선, `intensity`는 최종 밝기다.
 
-마지막으로 `dot(reflection, sourceDirection)`을 검사한다. `axisX`, `axisY` 투영만 보면 반대 방향에도 같은 좌표가 생길 수 있기 때문에, 실제로 `sourceDirection`과 같은 반구를 향할 때만 spec을 보이게 한다.
+마지막으로 `dot(reflection, reflectionCenter)`를 검사한다. `reflectionAxisX`, `reflectionAxisY` 투영만 보면 반대 방향에도 같은 좌표가 생길 수 있기 때문에, 실제로 `reflectionCenter`와 같은 반구를 향할 때만 spec을 보이게 한다.
 
 ### 한 spec이 화면에 나타나는 전체 흐름
 
 ```text
-preset carrier와 크기
-  -> specOrientation으로 carrier와 tangent frame 회전
-  -> carrier를 camera ray에 반사해 sourceDirection 계산
-  -> tangent frame을 reflection-space axisX/axisY로 변환
+preset anchorNormal과 크기
+  -> specOrientation으로 anchorNormal과 surface tangent frame 회전
+  -> anchorNormal로 camera ray를 반사해 reflectionCenter 계산
+  -> surface tangent frame을 reflectionAxisX/reflectionAxisY로 변환
   -> GPU에 전달
 
 각 출력 픽셀
   -> 늘어난 좌표를 원래 원 좌표로 역변환
   -> 구 surface normal 계산
   -> camera ray를 반사해 reflection 계산
-  -> reflection을 axisX/axisY에 투영
+  -> reflection을 reflectionAxisX/reflectionAxisY에 투영
   -> circle/rect 영역 안이면 softness, power, intensity 적용
 ```
 
@@ -1078,8 +1083,10 @@ reel-presentation.ts presentationControls
 - **dispersion**: 파장별 굴절률 차이
 - **chromatic separation**: R/G/B 채널이 다른 위치에서 보이는 현상
 - **specular/spec**: 광원의 직접 반사 하이라이트
-- **carrier**: 구 표면에서 spec preset의 중심을 운반하는 3D 벡터
-- **tangent axes**: spec의 가로/세로 방향을 정하는 구 표면 축
+- **anchor normal**: 구 표면에서 spec 중심을 고정하는 radial unit vector이자 surface normal
+- **surface tangent axes**: anchor normal 위치에서 spec의 가로/세로 방향을 정하는 구 표면 축
+- **reflection center**: anchor normal로 camera ray를 반사한 방향이자 reflection 공간의 spec 중심
+- **reflection axes**: reflection 공간에서 spec의 가로/세로 크기를 측정하는 축
 - **cage**: 변형 전후 좌표를 대응시키는 외곽선 표본
 - **uniform**: CPU가 shader 전체에 전달하는 공통 값
 - **source texture**: 사진 원을 미리 합쳐 둔 Canvas2D 이미지
