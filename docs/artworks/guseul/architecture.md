@@ -860,6 +860,28 @@ reflectionCenter
 
 구 표면에서 `anchorNormal`이 tangent 방향으로 조금 움직이면 reflected ray도 방향이 바뀐다. `reflectionDerivative()`는 이 작은 방향 변화를 계산한다.
 
+![구 표면의 tangent를 reflection 공간의 측정 축으로 바꾸고 현재 reflection을 재는 과정](../../assets/guseul-reflection-axis-projection.svg)
+
+두 축은 같은 것이 아니다.
+
+```text
+surfaceTangentX
+  구 표면에서 anchorNormal을 어느 방향으로 움직일지 알려주는 화살표
+
+reflectionAxisX
+  그렇게 움직였을 때 reflected ray의 끝이 어느 방향으로 움직이는지 알려주는 화살표
+```
+
+거울의 기울기를 오른쪽으로 조금 바꾸면 반사광선도 움직이지만, 두 화살표가 반드시 같은 방향으로 움직이지는 않는다. 거울 반사 수식이 중간에 있기 때문이다.
+
+```text
+anchorNormal을 surfaceTangentX 방향으로 조금 이동
+  -> camera ray를 다시 반사
+  -> reflected ray 끝점의 이동 방향 계산
+  -> 그 방향을 normalize
+  -> reflectionAxisX
+```
+
 그 결과를 `reflectionCenter`의 tangent plane에 투영해 GPU가 사용할 `reflectionAxisX`, `reflectionAxisY`를 만든다.
 
 ```ts
@@ -878,6 +900,8 @@ surfaceTangentX / surfaceTangentY
 reflectionAxisX / reflectionAxisY
   reflected ray 방향 공간에서 spec 폭과 높이를 측정하는 방향
 ```
+
+`projectOntoTangent()`가 마지막에 결과를 normalize하므로 `reflectionDerivative()`의 크기는 버리고 방향만 남긴다. 따라서 `reflectionAxisX`는 reflection 공간에서 사용하는 길이 `1`인 가로 자다.
 
 #### 5. 뒷면에서는 숨긴다
 
@@ -898,14 +922,57 @@ vec3 reflection = normalize(
 );
 ```
 
-현재 `reflection`을 spec의 두 축에 투영하면 spec 중심에서 가로와 세로로 얼마나 떨어졌는지 알 수 있다.
+현재 `reflection`을 spec의 두 축에 투영하면 spec 중심에서 가로와 세로로 얼마나 벗어났는지 알 수 있다. 여기서는 `reflectionAxisX`, `reflectionAxisY`를 길이 `1`인 두 개의 자라고 생각하면 된다.
 
 ```glsl
-float dx = abs(dot(reflection, reflectionAxisX) / halfWidth);
-float dy = abs(dot(reflection, reflectionAxisY) / halfHeight);
+float measuredX = abs(dot(reflection, reflectionAxisX));
+float measuredY = abs(dot(reflection, reflectionAxisY));
+
+float dx = measuredX / halfWidth;
+float dy = measuredY / halfHeight;
 ```
 
-`reflection == reflectionCenter`이면 `reflectionAxisX`, `reflectionAxisY`와 직각이므로 `dx = 0`, `dy = 0`이다. 즉 spec 중심이다. `halfWidth`나 `halfHeight`만큼 떨어지면 정규화된 거리가 약 `1`이 된다.
+`dot()`은 현재 reflection 화살표에 가로 자 방향이 얼마나 들어 있는지 측정한다.
+
+```text
+reflection이 오른쪽으로 전혀 기울지 않음
+  -> measuredX = 0
+
+reflection이 오른쪽으로 많이 기울어짐
+  -> measuredX가 커짐
+```
+
+`reflectionCenter`는 두 자와 직각이 되도록 축을 만들었기 때문에 다음 식이 성립한다.
+
+```text
+dot(reflectionCenter, reflectionAxisX) = 0
+dot(reflectionCenter, reflectionAxisY) = 0
+```
+
+따라서 현재 픽셀의 `reflection`이 `reflectionCenter`와 같으면 `measuredX = 0`, `measuredY = 0`이고 spec 정중앙이 된다.
+
+코드에서 `reflection - reflectionCenter`를 먼저 계산하지 않는 이유도 같다.
+
+```text
+dot(reflection - reflectionCenter, reflectionAxisX)
+= dot(reflection, reflectionAxisX)
+  - dot(reflectionCenter, reflectionAxisX)
+= dot(reflection, reflectionAxisX) - 0
+```
+
+`halfWidth`는 화면 픽셀 거리나 구 표면의 직선거리가 아니다. Reflection 공간의 가로 자에서 spec 경계로 사용할 눈금이다.
+
+```text
+halfWidth = 0.42인 예
+
+measuredX = 0     -> dx = 0 / 0.42    = 0    -> spec 중심
+measuredX = 0.21  -> dx = 0.21 / 0.42 = 0.5  -> 중심과 경계 사이
+measuredX = 0.42  -> dx = 0.42 / 0.42 = 1    -> spec 가로 경계
+```
+
+따라서 기존의 “`halfWidth`만큼 떨어진다”는 표현보다 다음 설명이 정확하다.
+
+> Reflection의 `reflectionAxisX` 방향 성분이 `halfWidth`가 되면 `dx = 1`이고, `reflectionAxisY` 방향 성분이 `halfHeight`가 되면 `dy = 1`이다.
 
 원과 직사각형은 같은 `dx`, `dy`를 서로 다른 거리 수식에 넣어 만든다.
 
