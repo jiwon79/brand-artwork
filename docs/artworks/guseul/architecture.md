@@ -858,7 +858,25 @@ reflectionCenter
 
 #### 4. Tangent axis를 reflection 공간으로 옮긴다
 
-구 표면에서 `anchorNormal`이 tangent 방향으로 조금 움직이면 reflected ray도 방향이 바뀐다. `reflectionDerivative()`는 이 작은 방향 변화를 계산한다.
+GPU는 뒤에서 각 픽셀의 reflected ray를 구해 spec 직사각형 안에 있는지 검사한다. 하지만 reflected ray 하나만으로는 직사각형 안쪽인지 판단할 수 없다. 회전할 수 있는 직사각형을 정의하려면 중심뿐 아니라 가로와 세로를 재는 방향도 필요하다.
+
+```text
+reflectionCenter
+  검사할 직사각형의 중심
+
+reflectionAxisX / reflectionAxisY
+  직사각형의 가로와 세로를 재는 길이 1인 자
+
+halfWidth / halfHeight
+  각 자에서 경계로 사용할 눈금
+
+각 픽셀의 reflection
+  두 자로 측정할 점
+```
+
+따라서 `reflectionDerivative()`는 픽셀별 반사 계산을 대신하지 않는다. 구 표면에 붙어 있는 spec의 가로·세로 방향을 **reflected ray를 측정하는 가로·세로 자로 바꾸는 준비 작업**이다. 이 준비 작업은 CPU에서 spec마다 수행하고, GPU는 준비된 자로 모든 픽셀을 검사한다.
+
+구 표면에서 `anchorNormal`이 tangent 방향으로 조금 움직이면 reflected ray도 방향이 바뀐다. `reflectionDerivative()`는 이 작은 방향 변화를 계산해 측정 축의 방향을 찾는다.
 
 ![구 표면의 tangent를 reflection 공간의 측정 축으로 바꾸고 현재 reflection을 재는 과정](../../assets/guseul-reflection-axis-projection.svg)
 
@@ -882,6 +900,77 @@ anchorNormal을 surfaceTangentX 방향으로 조금 이동
   -> reflectionAxisX
 ```
 
+정면 중앙에서는 두 방향이 우연히 비슷해 보여서 `surfaceTangentX`를 그대로 사용해도 될 것처럼 보인다. 하지만 구의 옆으로 갈수록 둘은 크게 달라진다. 예를 들어 다음 45도 지점에서는 구 표면의 가로 tangent는 대각선이지만 reflected ray의 끝점은 z축 방향으로 움직인다.
+
+```text
+anchorNormal      = (0.707, 0,  0.707)
+surfaceTangentX   = (0.707, 0, -0.707)
+reflectionCenter  = (1,     0,  0)
+reflectionAxisX   = (0,     0, -1)
+```
+
+`surfaceTangentX`를 reflection 공간의 자로 그대로 사용하면 이 위치에서 spec 직사각형의 회전과 폭을 잘못 측정한다.
+
+##### 여기서 “조금”은 고정된 이동량이 아니다
+
+`N = anchorNormal`, `T = surfaceTangent`라고 하자. 두 벡터는 길이가 1이고 서로 직각이다. 단위 구에서 `N`을 `T` 방향으로 `s` radian만큼 움직인 normal은 다음과 같다.
+
+```text
+N(s) = cos(s)N + sin(s)T
+```
+
+`s`가 아주 작을 때는 다음처럼 생각할 수 있다.
+
+```text
+N(s) ≈ N + sT
+```
+
+`reflectionDerivative()`는 `s = 0.01`처럼 실제 이동량을 정하는 함수가 아니다. `s`가 0에 가까워질 때 **normal이 T 방향으로 변하는 속도에 대한 reflected ray의 변화 속도**를 계산한다.
+
+```text
+reflectionDerivative(N, T)
+= limit(s -> 0) [reflect(I, N(s)) - reflect(I, N)] / s
+```
+
+미분 없이 생각하면 다음 유한 차분과 같다.
+
+```ts
+// 개념을 보여주기 위한 pseudocode
+const epsilon = 0.0001;
+const reflectionCenter = reflect(cameraRay, anchorNormal);
+const movedNormal = normalize(anchorNormal + epsilon * surfaceTangentX);
+const movedReflection = reflect(cameraRay, movedNormal);
+
+const reflectionAxisX = normalize(
+  movedReflection - reflectionCenter,
+);
+```
+
+즉 normal을 tangent 방향으로 아주 조금 옮기고, 반사를 다시 계산하고, 두 reflected ray 끝점의 차이를 재는 방식이다. 현재 함수는 두 번 반사하는 대신 반사 수식을 직접 미분해 같은 1차 변화 방향을 한 번에 구한다.
+
+Camera ray가 `I = (0, 0, -1)`일 때 반사식은 다음처럼 단순해진다.
+
+```text
+R(N) = I - 2 dot(I, N)N
+     = I + 2 Nz N
+```
+
+`N`의 변화율은 `T`, `Nz`의 변화율은 `Tz`이므로 곱을 미분하면 다음 결과가 나온다.
+
+```text
+dR/ds = 2(Tz N + Nz T)
+```
+
+이 벡터식이 `reflectionDerivative()` 내부 구현의 세 component로 그대로 풀려 있다.
+
+```ts
+return [
+  2 * (tangentZ * anchorNormal[0] + normalZ * surfaceTangent[0]),
+  2 * (tangentZ * anchorNormal[1] + normalZ * surfaceTangent[1]),
+  2 * (tangentZ * anchorNormal[2] + normalZ * surfaceTangent[2]),
+];
+```
+
 그 결과를 `reflectionCenter`의 tangent plane에 투영해 GPU가 사용할 `reflectionAxisX`, `reflectionAxisY`를 만든다.
 
 ```ts
@@ -902,6 +991,21 @@ reflectionAxisX / reflectionAxisY
 ```
 
 `projectOntoTangent()`가 마지막에 결과를 normalize하므로 `reflectionDerivative()`의 크기는 버리고 방향만 남긴다. 따라서 `reflectionAxisX`는 reflection 공간에서 사용하는 길이 `1`인 가로 자다.
+
+결국 CPU와 GPU의 역할은 다음처럼 나뉜다.
+
+```text
+CPU, spec마다
+  surfaceTangentX/Y
+  -> reflectionDerivative()
+  -> reflectionAxisX/Y라는 두 자 준비
+
+GPU, 픽셀마다
+  surface normal
+  -> reflected ray 계산
+  -> 준비된 두 자로 가로·세로 위치 측정
+  -> 직사각형 안인지 판단
+```
 
 #### 5. 뒷면에서는 숨긴다
 
@@ -1010,6 +1114,31 @@ preset anchorNormal과 크기
   -> reflection을 reflectionAxisX/reflectionAxisY에 투영
   -> circle/rect 영역 안이면 softness, power, intensity 적용
 ```
+
+### 이 방식의 그래픽스 용어와 범위
+
+전체 구현에 하나의 정해진 알고리즘 이름이 있는 것은 아니다. 다음과 같은 표준 기법과 현재 artwork를 위한 수학적 mask를 조합한 방식이다.
+
+| 현재 단계 | 가까운 그래픽스 용어 | 범위 |
+| --- | --- | --- |
+| `reflect(I, N)`으로 방향 계산 | reflection vector | 이상적인 거울 반사의 표준 공식 |
+| reflected ray가 향하는 곳으로 밝기 결정 | reflection mapping / environment mapping | Cube map 등에서 널리 쓰이는 방식 |
+| tangent 변화가 reflected ray에 미치는 영향 계산 | differential of reflection map / Jacobian | ray differential과 같은 미분 원리를 사용하는 특수한 경우 |
+| 원·직사각형 안인지 수식으로 검사 | procedural reflection-space highlight mask | 이 artwork를 위한 stylized 구현 |
+
+일반적인 environment mapping은 reflected ray 방향으로 cube map 이미지를 조회한다. 현재 구현은 cube map에 밝은 원이나 직사각형을 그려 두는 대신, 같은 방향 공간에 원·직사각형을 수학적으로 정의하고 `dot()`으로 직접 검사한다고 볼 수 있다.
+
+```text
+일반적인 environment mapping
+  reflected ray -> cube map의 색 조회
+
+현재 spec
+  reflected ray -> 수학적 원/직사각형 mask 조회
+```
+
+Reflection vector를 환경 map 조회 좌표로 쓰는 방식은 [Khronos `ARB_texture_cube_map` 명세](https://registry.khronos.org/OpenGL/extensions/ARB/ARB_texture_cube_map.txt)에 정의되어 있다. 반사식의 작은 변화를 미분해 인접 ray의 변화를 추적하는 더 일반적인 개념은 Homan Igehy의 [Tracing Ray Differentials](https://graphics.stanford.edu/papers/trd/)와 가깝다. 현재 `reflectionDerivative()`는 화면 전체 ray footprint를 추적하는 완전한 ray differential이 아니라, surface tangent를 reflection 측정 축으로 바꾸는 데 필요한 방향 미분만 사용한다.
+
+반사 방향 자체는 물리적인 거울 반사식이지만, 밝은 직사각형을 방향 mask로 판단하는 부분은 실제 면광원의 거리, 차폐, 표면 거칠기와 빛의 적분을 모두 계산하는 물리 기반 조명은 아니다. 멀리 있는 밝은 studio light card를 빠르고 조절하기 쉬운 형태로 흉내 내는 시각적 근사다.
 
 ## 16. 늘어난 외곽선에서 spec을 유지하는 방법
 
