@@ -2,7 +2,7 @@
 
 이 문서는 현재 `pages/guseul/` 구현을 처음 읽는 사람을 위한 코드 가이드다. 과거 실험 버전이 아니라 현재 최종 코드만 설명한다.
 
-## 1. 가장 먼저 이해할 한 문장
+## 1. 가장 먼저 이해할 구조
 
 구슬은 실제 3D mesh가 아니다.
 
@@ -114,9 +114,9 @@ WebGL2와 fragment shader가 있다.
 
 3D 벡터와 3x3 회전 행렬의 작은 공용 함수 모음이다.
 
-## 4. 세 가지 좌표계
+## 4. 렌더링에서 사용하는 좌표와 방향 공간
 
-코드를 읽을 때 좌표계를 섞지 않는 것이 중요하다.
+코드를 읽을 때 같은 숫자가 어느 공간의 값인지 섞지 않는 것이 중요하다. 이 구현은 화면 위치, 변형된 구슬 위치, 원래 원 위치, 3D 방향을 한 프레임 안에서 차례로 사용한다.
 
 ### 화면 좌표
 
@@ -125,7 +125,7 @@ WebGL2와 fragment shader가 있다.
 - `view.cx`, `view.cy`: 구슬 중심
 - `view.radius`: 화면에서 구슬 반지름
 
-### 구슬 정규화 좌표
+### 변형된 구슬 정규화 좌표
 
 `normalizedElasticPoint()`가 화면 좌표를 다음과 같이 바꾼다.
 
@@ -134,9 +134,27 @@ x = (screenX - centerX) / radius
 y = (screenY - centerY) / radius
 ```
 
-기본 구슬의 경계는 반지름 1인 원이다. contact와 SDF 계산은 모두 이 좌표를 사용하므로 화면 크기가 달라도 같은 모양을 유지한다.
+기본 구슬의 경계는 반지름 1인 원이다. Contact와 SDF 계산은 모두 이 좌표를 사용하므로 화면 크기가 달라도 같은 모양을 유지한다. Shader의 `point`는 현재 늘어난 외곽선 위에서 검사할 위치다.
 
-### 구 표면 3D 좌표
+### Source texture 좌표
+
+굴절은 출력 픽셀을 앞으로 옮기는 대신, 현재 픽셀을 칠하기 위해 source texture의 어디를 읽을지 역으로 찾는다. `redPoint`, `basePoint`, `bluePoint`가 이 좌표다.
+
+```text
+변형된 point
+  -> 굴절 offset 적용
+  -> contact 변형을 sourceFollow만큼 역보정
+  -> sourcePoint
+  -> contentCanvas 조회
+```
+
+이 좌표도 기본 원이 `[-1, 1]` 범위에 들어가는 정규화 좌표이며, `contentUv()`가 texture의 `[0, 1]` UV로 바꾼다.
+
+### Canonical spec 좌표
+
+`specPoint`는 늘어나기 전 반지름 1인 원에서의 위치다. `inverseBoundarySpecWarp()`가 현재 `point`를 이 좌표로 되돌린다. 그래야 contact로 외곽선이 길게 늘어나도 원래 구의 반사 수식을 안정적으로 적용할 수 있다.
+
+### 구 표면과 reflection의 3D 방향 공간
 
 사진 원과 spec의 위치는 길이 1인 `[x, y, z]` 벡터다.
 
@@ -144,7 +162,30 @@ y = (screenY - centerY) / radius
 - `z > 0`: 앞면
 - `z < 0`: 뒷면
 
-`sphereOrientation`과 `specOrientation`은 이 벡터를 회전시키는 3x3 행렬이다.
+`sphereOrientation`과 `specOrientation`은 이 벡터를 회전시키는 3x3 행렬이다. Spec에서는 `specPoint`를 단위 구의 `specNormal`로 복원한 뒤, camera ray를 반사해 또 다른 길이 1의 방향인 `reflection`을 만든다. `reflection`은 화면 위치가 아니라 환경의 어느 방향을 향하는지 나타낸다.
+
+전체 변환을 한 줄로 보면 다음과 같다.
+
+```text
+screenCss
+  -> 변형된 구슬 point
+     -> sourcePoint -> source texture 조회
+     -> canonical specPoint
+        -> specNormal
+           -> reflection
+              -> spec 원/직사각형 검사
+```
+
+### 이 문서에서 사용하는 normal은 서로 다르다
+
+| 이름 | 차원 | 역할 |
+| --- | --- | --- |
+| `edgeNormal` | 2D | 현재 SDF 외곽선에 수직인 방향 |
+| 굴절용 surface normal | 3D | `edgeNormal`과 유리 단면 slope로 만든 굴절 방향 |
+| `specNormal` | 3D | `specPoint`에서 복원한 단위 구의 픽셀별 normal |
+| `anchorNormal` | 3D | 한 spec의 중심 위치와 중심 surface normal을 함께 나타내는 기준 벡터 |
+
+따라서 `edgeNormal`은 늘어난 2D 외곽선을 설명하고, `specNormal`과 `anchorNormal`은 반지름 1인 3D 구의 반사 방향을 설명한다. 이름에 모두 normal이 들어가지만 같은 벡터가 아니다.
 
 ## 5. 입력 상태 머신
 
@@ -427,80 +468,22 @@ visible circles
 
 - spec warp cage texture
 
-#### spec warp cage가 무엇인가
-
-Spec warp cage는 원래 원형 외곽선의 점이 늘어난 구슬 외곽선의 어디로 이동했는지 기록한 좌표 대응표다.
-
-```text
-원래 원의 위쪽 점     -> 늘어난 모양의 위쪽 점
-원래 원의 오른쪽 점   -> 늘어난 모양의 오른쪽 끝
-원래 원의 아래쪽 점   -> 늘어난 모양의 오목한 부분
-```
-
-GPU는 이 대응표를 이용해 원형 구슬에 있던 spec 하이라이트를 늘어난 외곽선에 맞게 변형한다.
-
-#### revision은 변경 번호다
-
-여기서 revision은 Git revision이나 프레임 번호가 아니다. **CPU에 있는 spec warp cage 좌표가 몇 번째로 변경된 데이터인지 나타내는 번호**다.
-
-```text
-revision 1: 기본 원 모양의 cage
-revision 2: 오른쪽으로 조금 늘어난 cage
-revision 3: 오른쪽으로 더 늘어난 cage
-```
-
-실제 경계 좌표는 `Float32Array`에 들어 있고 revision에는 좌표가 들어 있지 않다. revision은 cage 내용이 바뀌었다는 표시만 담당한다.
-
-`BoundarySpecCageSolver`는 최대 64개 경계점의 대응 관계를 하나의 `Float32Array`에 계속 덮어쓴다. 배열 객체를 매번 새로 만들지 않으므로 renderer가 배열 참조만 비교하면 내부 숫자가 바뀌었는지 알 수 없다.
-
-```text
-같은 Float32Array 객체
-  revision 7: 이전 경계 좌표가 들어 있음
-  revision 8: 같은 배열에 새 경계 좌표를 덮어씀
-```
-
-그래서 solver는 cage를 실제로 다시 계산한 다음 `revision += 1`을 실행한다. 다음 값 중 하나가 달라져 최종 탄성 외곽선이 바뀔 때 cage도 다시 계산된다.
-
-- contact 위치, radius, influence
-- membrane link 위치와 influence
-- center seed와 bridge 두께
-- contour offset
-- edge concavity와 smooth union 값
-- 경계 sample 개수
-
-사진 원의 회전이나 색상만 바뀌고 탄성 외곽선이 그대로라면 cage 내용은 바뀌지 않으므로 revision도 그대로다.
-
-#### CPU와 GPU가 번호를 비교하는 방법
-
-CPU는 새 cage를 계산하고 GPU는 그 데이터를 texture 복사본으로 받아 spec을 그린다. GPU renderer는 마지막으로 업로드한 revision을 기억한다.
-
-```text
-CPU cage revision = 8
-GPU가 기억한 revision = 7
-  -> 새로운 RGBA32F texture를 GPU로 upload
-
-CPU cage revision = 8
-GPU가 기억한 revision = 8
-  -> 이미 같은 데이터이므로 upload 생략
-```
-
-칠판에 좌표를 새로 적을 때마다 구석의 번호를 올린다고 생각하면 된다.
-
-```text
-칠판 내용 변경 -> 번호 7
-다시 변경      -> 번호 8
-내용 그대로    -> 번호도 8
-```
-
-Revision은 이전 cage들을 보관하는 history가 아니다. revision 7, 8, 9의 배열을 따로 저장하지 않고, 배열 하나에는 항상 최신 좌표만 남긴다. 숫자만 증가시켜 GPU가 가진 복사본이 최신인지 확인한다.
-
-즉, `GuseulWebGLRenderer.uploadElasticShape()`는 가벼운 contact uniform은 매 프레임 전달하지만, 최대 64개 경계점이 담긴 spec warp cage texture는 내용이 바뀌었을 때만 `gl.texSubImage2D()`로 갱신한다.
-
-> `specWarpCageRevision`은 CPU와 GPU가 같은 cage 좌표를 가지고 있는지 확인하기 위한 변경 번호다.
+Spec warp cage는 늘어난 외곽선의 점과 원래 원의 점을 대응시키는 좌표표다. 다른 uniform보다 크고 외곽선이 바뀔 때만 새로 계산되므로 revision이 달라졌을 때만 GPU texture를 갱신한다. Cage가 spec을 어떻게 보존하는지와 revision upload의 세부 구현은 16장에서 설명한다.
 
 ## 12. fragment shader가 픽셀 하나를 그리는 순서
 
-shader의 `main()`은 다음 순서로 작동한다.
+Shader의 `main()`이 담당하는 일을 한눈에 보면 다음과 같다. 이 장은 공통 전처리인 1~4단계를 먼저 설명하고, 13~17장은 서로 관련된 광학 계산을 주제별로 묶어 설명한다.
+
+```text
+1. 화면 좌표를 변형된 구슬 point로 변환
+2. SDF와 최종 shape mask 계산
+3. SDF gradient로 edgeNormal 계산
+4. 유리 단면의 slope와 height 계산
+5. 굴절된 source와 chromatic separation 계산
+6. inner shade, milk, wash, rim의 가중치 계산
+7. canonical specPoint에서 reflection과 spec mask 계산
+8. 모든 층, outer stroke, debug output 합성
+```
 
 ### 1. 현재 픽셀을 구슬 정규화 좌표로 변환
 
@@ -527,7 +510,7 @@ vec2 derivative = vec2(dFdx(rawDistance), -dFdy(rawDistance));
 vec2 edgeNormal = normalize(derivative);
 ```
 
-이 normal은 원 중심에서 바깥으로 향하는 고정 radial vector가 아니다. 늘어난 현재 외곽선에 실제로 수직인 방향이므로 오목한 부분에서도 유리의 방향이 바뀐다.
+이 normal은 원 중심에서 현재 픽셀을 향하는 고정 방향이 아니다. 늘어난 현재 외곽선에 실제로 수직인 방향이므로 오목한 부분에서도 유리의 방향이 바뀐다.
 
 ### 4. 유리 단면 생성
 
@@ -670,10 +653,18 @@ smoothRange(0.25, 2.6, separationPixels)
 마지막으로 현재 fragment가 구슬 외곽의 실제 굴절 band 안에 있는지 확인한다.
 
 ```glsl
+float radial = 1.0 - clamp(inwardDistance, 0.0, 1.0);
 smoothRange(0.56, 1.0, radial) * rim
 ```
 
-`radial`은 구슬 안쪽에서 작고 외곽에서 `1`에 가까워진다. `rim`은 그중에서도 `bezelWidth` 안쪽의 좁은 유리 경계에서 강하다. 최종 gate는 네 조건의 곱이다.
+여기서 shader 변수 `radial`은 3D radial vector나 2D radial gradient가 아니다. 현재 SDF 외곽선에서 안쪽으로 들어간 거리 `inwardDistance`를 뒤집은 **외곽선 근접도**다. 의미만 보면 `edgeProximity`에 가깝다.
+
+```text
+외곽선 바로 위  -> inwardDistance = 0 -> radial = 1
+안쪽으로 이동   -> inwardDistance 증가 -> radial 감소
+```
+
+`rim`은 그중에서도 `bezelWidth` 안쪽의 좁은 유리 경계에서 강하다. 최종 gate는 네 조건의 곱이다.
 
 ```glsl
 float refractedEdgeGate =
@@ -718,55 +709,101 @@ float edgeGate = max(refractedEdgeGate, sourceEdgeGate);
 
 Spec은 `specular highlight`의 줄임말이다. 매끄러운 유리나 금속 표면에 창문, 조명 같은 밝은 환경이 반사되어 생기는 하이라이트를 뜻한다.
 
+### 먼저 결과부터: 환경의 밝은 카드를 방향으로 조회한다
+
+멀리 있는 스튜디오에 밝은 원형 조명이나 직사각형 소프트박스가 있다고 생각하자. 매끄러운 구의 각 픽셀은 서로 다른 방향을 거울처럼 비춘다. 현재 shader는 픽셀마다 reflected ray를 구하고, 그 ray가 밝은 환경 영역을 향하면 spec을 밝힌다.
+
+```text
+각 출력 픽셀
+  -> 구 표면 normal 계산
+  -> camera ray를 반사해 reflection 계산
+  -> reflection이 밝은 원/직사각형 영역 안인지 검사
+  -> 안쪽이면 spec 밝기 적용
+```
+
+일반적인 environment mapping은 이 방향으로 cube map 이미지를 조회한다. 현재 구현은 별도 환경 이미지 대신 원과 직사각형을 수학으로 정의해 직접 검사한다.
+
+```text
+일반적인 environment mapping
+  reflection -> cube map의 색 조회
+
+현재 spec
+  reflection -> 수학적 원/직사각형 mask 조회
+```
+
+화면 좌표에 밝은 2D 얼룩을 고정해 그리는 방식과도 다르다. 현재 방식은 구 표면의 normal과 반사 방향을 거치므로 spec이 edge로 갈수록 구의 곡률에 맞게 압축되고 휘어 보인다.
+
+### 원이나 직사각형을 검사하려면 중심과 두 축이 필요하다
+
+회전할 수 있는 직사각형 안에 점 하나가 들어 있는지 알려면 중심, 가로 방향, 세로 방향, 가로 크기, 세로 크기가 필요하다. Reflection 공간에서도 같다.
+
+```text
+reflectionCenter
+  검사할 원/직사각형의 중심 방향
+
+reflectionAxisX / reflectionAxisY
+  가로와 세로를 재는 길이 1인 자
+
+halfWidth / halfHeight
+  각 자에서 경계로 사용할 눈금
+
+각 픽셀의 reflection
+  두 자로 측정할 점
+```
+
+이해하기 쉬운 형태로 쓰면 GPU의 질문은 다음과 같다.
+
+```text
+offset = pixelReflection - reflectionCenter
+x = dot(offset, reflectionAxisX)
+y = dot(offset, reflectionAxisY)
+
+abs(x) <= halfWidth이고 abs(y) <= halfHeight인가?
+```
+
+따라서 픽셀별 `reflection`만 계산해서는 아직 직사각형을 검사할 수 없다. 그 점을 잴 `reflectionCenter`, `reflectionAxisX`, `reflectionAxisY`를 먼저 준비해야 한다.
+
 ![anchor normal과 tangent axis가 spec 영역으로 변환되는 과정](../../assets/guseul-spec-coordinate-frame.svg)
 
-### 먼저 구와 스티커를 떠올린다
+### Spec preset은 구 표면의 anchor frame으로 저장한다
 
-구 표면에 작은 반사 스티커를 붙인다고 생각하면 용어를 구분하기 쉽다.
+Preset은 reflection 공간의 두 축을 직접 저장하지 않는다. 대신 구 표면에서 spec의 중심과 방향을 다루기 쉬운 `anchorNormal`과 두 tangent axis를 만든다. 이를 작은 좌표 스티커에 비유할 수 있다.
 
 ```text
 구의 중심에서 스티커 중심까지 꽂은 핀
   -> anchorNormal
 
 스티커 표면의 가로 방향
-  -> tangent axis X
+  -> surfaceTangentX
 
 스티커 표면의 세로 방향
-  -> tangent axis Y
+  -> surfaceTangentY
 
 스티커의 가로/세로 크기
   -> halfWidth / halfHeight
 ```
 
-구가 회전하면 핀인 `anchorNormal`이 구 표면을 따라 움직이고, 스티커의 두 축도 함께 회전한다. 따라서 spec은 화면에 고정된 얼룩이 아니라 구에 붙어 이동하는 반사 영역처럼 보인다.
+스티커는 좌표 frame을 이해하기 위한 비유일 뿐 실제로 표면에 칠한 decal은 아니다. 실제 밝은 영역은 reflection 방향 공간에 있다. 현재 artwork는 이 anchor frame을 `specOrientation`으로 움직여 반사 카드가 구 위를 이동하는 것처럼 연출한다.
 
-### radial은 중심에서 바깥으로 향한다는 뜻이다
+#### `anchorNormal`은 위치이자 surface normal이다
 
-`radial`은 원이나 구의 중심에서 바깥쪽으로 뻗는 방향을 뜻한다. 구의 중심이 `(0, 0, 0)`이고 표면의 한 점이 `(x, y, z)`라면, 중심에서 그 점으로 향하는 벡터가 radial vector다.
-
-단위 구에서는 표면까지 거리가 항상 `1`이므로 표면 위치, radial vector, surface normal이 같은 숫자로 표현된다.
+구의 중심은 `(0, 0, 0)`이고 반지름은 `1`이다. 따라서 중심에서 표면의 한 점으로 향하는 길이 1의 벡터는 그 점의 위치이면서 바깥쪽 surface normal이기도 하다.
 
 ```text
-(0, 0, 1)   화면 정면 중앙을 향하는 표면 normal
-(1, 0, 0)   오른쪽 edge를 향하는 표면 normal
-(0, 0, -1)  구의 뒷면을 향하는 표면 normal
+(0, 0, 1)   화면 정면 중앙의 위치이자 normal
+(1, 0, 0)   오른쪽 edge의 위치이자 normal
+(0, 0, -1)  구 뒷면의 위치이자 normal
 ```
 
-각 spec의 `anchorNormal`은 **spec 중심을 고정하는 radial unit vector이자 surface normal**이다. 예를 들어 다음 normal은 z가 `1`에 가까우므로 구의 정면 중앙 근처에 spec을 둔다.
+각 spec의 `anchorNormal`은 spec 중심을 고정하는 이 기준 벡터다. 다음 값은 z가 `1`에 가까우므로 구의 정면 중앙 근처를 뜻한다.
 
 ```ts
 anchorNormal: [0.1039, 0.0024, 0.9946]
 ```
 
-`anchor`는 무언가를 고정하는 기준점, `normal`은 표면에 수직인 방향이라는 그래픽스 용어다. 따라서 `anchorNormal`은 “spec 중심을 고정하는 표면 normal”이라는 역할을 이름에서 바로 알 수 있다.
+#### Tangent plane은 구에 한 점만 닿는 평면이다
 
-> 이 절의 `radial gradient`는 중심에서 바깥으로 색이 변하는 2D 그라데이션을 뜻한다. 다른 shader 절의 `radial`이라는 `0~1` 숫자와는 별개의 표현이다.
-
-### tangent plane은 구에 한 점만 닿는 평면이다
-
-구 표면의 한 점에 평평한 종이를 살짝 대면 종이는 구와 그 점에서만 닿는다. 이 종이가 tangent plane, 즉 접평면이다.
-
-`anchorNormal`은 접평면을 수직으로 뚫고 나간다. Tangent axis는 이 평면 위에 놓여 있으므로 `anchorNormal`과 직각이다.
+구 표면의 한 점에 평평한 종이를 살짝 대면 종이는 구와 그 점에서만 닿는다. 이 종이가 tangent plane, 즉 접평면이다. `anchorNormal`은 종이를 수직으로 뚫고, 두 tangent axis는 종이 위에 놓인다.
 
 ```text
 dot(anchorNormal, surfaceTangentX) = 0
@@ -774,9 +811,7 @@ dot(anchorNormal, surfaceTangentY) = 0
 dot(surfaceTangentX, surfaceTangentY) = 0
 ```
 
-두 tangent axis는 작은 스티커의 로컬 좌표계다. `surfaceTangentX` 방향으로 움직이면 spec의 가로 위치가 바뀌고, `surfaceTangentY` 방향으로 움직이면 세로 위치가 바뀐다.
-
-코드는 임의의 x축을 tangent plane 위로 투영해서 첫 축을 만들고, `cross()`로 두 번째 축을 만든다.
+코드는 x축을 tangent plane 위로 투영해서 첫 축을 만들고, `cross()`로 두 번째 축을 만든다.
 
 ```ts
 const baseSurfaceTangentX = projectOntoTangent([1, 0, 0], baseAnchorNormal);
@@ -785,30 +820,15 @@ const baseSurfaceTangentY = normalizeVec3(
 );
 ```
 
-`projectOntoTangent()`는 입력 벡터에서 `anchorNormal`과 같은 방향의 성분을 빼서 접평면 위에 눕힌다.
+`projectOntoTangent()`는 입력 벡터에서 `anchorNormal` 방향 성분을 빼서 접평면 위에 눕힌다.
 
 ```text
 tangent = vector - anchorNormal * dot(vector, anchorNormal)
 ```
 
-### radial gradient를 화면에 그리는 방식과 무엇이 다른가
+### CPU가 anchor frame을 reflection 영역으로 바꾸는 순서
 
-2D radial gradient는 화면의 `(centerX, centerY)`를 중심으로 밝기가 퍼지는 그림이다. 구가 회전해도 중심 좌표를 따로 움직이지 않으면 같은 화면 위치에 남는다. 구 edge에서 실제 반사처럼 찌그러지는 방향도 알 수 없다.
-
-현재 방식은 각 화면 픽셀의 구 표면 normal로 reflection vector를 계산한다. 그런 다음 이 reflection이 미리 정의한 밝은 환경 영역 안을 향하는지 검사한다.
-
-```text
-2D radial gradient
-  화면 좌표 -> 중심과의 2D 거리 -> 밝기
-
-현재 spec
-  화면 픽셀 -> 구 표면 normal -> reflection 방향
-  -> 밝은 환경 영역과의 방향 차이 -> 밝기
-```
-
-### CPU가 anchor normal을 실제 spec 데이터로 바꾸는 순서
-
-`prepareSpecHighlight()`는 preset에 저장된 `anchorNormal`과 크기 값을 매 frame GPU가 검사할 수 있는 데이터로 바꾼다.
+`prepareSpecHighlight()`는 preset의 anchor frame을 GPU가 검사할 `reflectionCenter`, `reflectionAxisX`, `reflectionAxisY`로 바꾼다.
 
 #### 1. Anchor normal과 tangent frame을 회전한다
 
@@ -858,23 +878,7 @@ reflectionCenter
 
 #### 4. Tangent axis를 reflection 공간으로 옮긴다
 
-GPU는 뒤에서 각 픽셀의 reflected ray를 구해 spec 직사각형 안에 있는지 검사한다. 하지만 reflected ray 하나만으로는 직사각형 안쪽인지 판단할 수 없다. 회전할 수 있는 직사각형을 정의하려면 중심뿐 아니라 가로와 세로를 재는 방향도 필요하다.
-
-```text
-reflectionCenter
-  검사할 직사각형의 중심
-
-reflectionAxisX / reflectionAxisY
-  직사각형의 가로와 세로를 재는 길이 1인 자
-
-halfWidth / halfHeight
-  각 자에서 경계로 사용할 눈금
-
-각 픽셀의 reflection
-  두 자로 측정할 점
-```
-
-따라서 `reflectionDerivative()`는 픽셀별 반사 계산을 대신하지 않는다. 구 표면에 붙어 있는 spec의 가로·세로 방향을 **reflected ray를 측정하는 가로·세로 자로 바꾸는 준비 작업**이다. 이 준비 작업은 CPU에서 spec마다 수행하고, GPU는 준비된 자로 모든 픽셀을 검사한다.
+`reflectionDerivative()`는 픽셀별 반사 계산을 대신하지 않는다. 구 표면의 가로·세로 tangent를 **reflected ray를 측정하는 가로·세로 자로 바꾸는 준비 작업**이다. 이 작업은 CPU에서 매 frame spec마다 한 번 수행하고, GPU는 준비된 자로 모든 픽셀을 검사한다.
 
 구 표면에서 `anchorNormal`이 tangent 방향으로 조금 움직이면 reflected ray도 방향이 바뀐다. `reflectionDerivative()`는 이 작은 방향 변화를 계산해 측정 축의 방향을 찾는다.
 
@@ -992,26 +996,11 @@ reflectionAxisX / reflectionAxisY
 
 `projectOntoTangent()`가 마지막에 결과를 normalize하므로 `reflectionDerivative()`의 크기는 버리고 방향만 남긴다. 따라서 `reflectionAxisX`는 reflection 공간에서 사용하는 길이 `1`인 가로 자다.
 
-결국 CPU와 GPU의 역할은 다음처럼 나뉜다.
-
-```text
-CPU, spec마다
-  surfaceTangentX/Y
-  -> reflectionDerivative()
-  -> reflectionAxisX/Y라는 두 자 준비
-
-GPU, 픽셀마다
-  surface normal
-  -> reflected ray 계산
-  -> 준비된 두 자로 가로·세로 위치 측정
-  -> 직사각형 안인지 판단
-```
-
 #### 5. 뒷면에서는 숨긴다
 
 전면 판정에 사용하는 `rotatedAnchorNormal.z`가 `0` 이하면 spec 중심이 뒷면에 있다. 이때 `visibility`를 `0`으로 만든다. Edge 근처에서는 `specEdgeFade` 범위로 서서히 사라지게 해 갑자기 끊기는 것을 줄인다.
 
-### GPU는 현재 픽셀이 spec 안에 있는지 검사한다
+### GPU는 준비된 두 자로 현재 픽셀을 측정한다
 
 Shader는 먼저 늘어난 구슬 좌표를 원래 원 좌표로 역변환한다. 이 과정은 다음 16장에서 설명한다. 원 좌표 `specPoint`를 단위 구의 앞면 normal로 복원하고 camera ray를 반사하면 현재 픽셀의 `reflection`을 얻는다.
 
@@ -1026,7 +1015,7 @@ vec3 reflection = normalize(
 );
 ```
 
-현재 `reflection`을 spec의 두 축에 투영하면 spec 중심에서 가로와 세로로 얼마나 벗어났는지 알 수 있다. 여기서는 `reflectionAxisX`, `reflectionAxisY`를 길이 `1`인 두 개의 자라고 생각하면 된다.
+현재 `reflection`을 spec의 두 축에 투영하면 spec 중심에서 가로와 세로로 얼마나 벗어났는지 알 수 있다.
 
 ```glsl
 float measuredX = abs(dot(reflection, reflectionAxisX));
@@ -1126,53 +1115,175 @@ preset anchorNormal과 크기
 | tangent 변화가 reflected ray에 미치는 영향 계산 | differential of reflection map / Jacobian | ray differential과 같은 미분 원리를 사용하는 특수한 경우 |
 | 원·직사각형 안인지 수식으로 검사 | procedural reflection-space highlight mask | 이 artwork를 위한 stylized 구현 |
 
-일반적인 environment mapping은 reflected ray 방향으로 cube map 이미지를 조회한다. 현재 구현은 cube map에 밝은 원이나 직사각형을 그려 두는 대신, 같은 방향 공간에 원·직사각형을 수학적으로 정의하고 `dot()`으로 직접 검사한다고 볼 수 있다.
-
-```text
-일반적인 environment mapping
-  reflected ray -> cube map의 색 조회
-
-현재 spec
-  reflected ray -> 수학적 원/직사각형 mask 조회
-```
-
 Reflection vector를 환경 map 조회 좌표로 쓰는 방식은 [Khronos `ARB_texture_cube_map` 명세](https://registry.khronos.org/OpenGL/extensions/ARB/ARB_texture_cube_map.txt)에 정의되어 있다. 반사식의 작은 변화를 미분해 인접 ray의 변화를 추적하는 더 일반적인 개념은 Homan Igehy의 [Tracing Ray Differentials](https://graphics.stanford.edu/papers/trd/)와 가깝다. 현재 `reflectionDerivative()`는 화면 전체 ray footprint를 추적하는 완전한 ray differential이 아니라, surface tangent를 reflection 측정 축으로 바꾸는 데 필요한 방향 미분만 사용한다.
 
 반사 방향 자체는 물리적인 거울 반사식이지만, 밝은 직사각형을 방향 mask로 판단하는 부분은 실제 면광원의 거리, 차폐, 표면 거칠기와 빛의 적분을 모두 계산하는 물리 기반 조명은 아니다. 멀리 있는 밝은 studio light card를 빠르고 조절하기 쉬운 형태로 흉내 내는 시각적 근사다.
 
 ## 16. 늘어난 외곽선에서 spec을 유지하는 방법
 
-원형 구의 reflection 수식을 늘어난 좌표에 바로 적용하면 contact 끝에 긴 spec이 생긴다. 현재 방식은 먼저 늘어난 픽셀을 원래 원 좌표로 역변환한 뒤 reflection을 계산한다.
+### 먼저 둥근 고무판을 늘린다고 생각한다
 
-### CPU: `BoundarySpecCageSolver`
-
-1. 101x101 grid에서 현재 SDF를 샘플링
-2. marching-squares 방식으로 0 contour 추출
-3. 가장 큰 연결 contour를 순서대로 정렬
-4. `specBoundarySamples` 개수로 일정 간격 resample
-5. 변형 boundary와 원래 unit circle boundary를 1:1 대응
-
-cage texture 한 texel은 다음 네 값을 가진다.
+늘이기 전의 구슬은 반지름 1인 원이다. 이 둥근 고무판에 spec을 그린 뒤 오른쪽 끝을 손가락으로 길게 당긴다고 생각하자.
 
 ```text
-R, G = 현재 변형된 boundary x, y
-B, A = 대응하는 원래 unit-circle x, y
+늘이기 전                   늘인 뒤
+
+    ______                  _________
+  /   ▭    \              /   ▭      \____
+ |          |     ->      |                 )
+  \________/              \________________/
 ```
 
-### GPU: `inverseBoundarySpecWarp()`
+Spec까지 고무처럼 같은 비율로 늘이면 오른쪽 contact 끝에 길고 찌그러진 하이라이트가 생긴다. 현재 artwork가 원하는 것은 하이라이트를 단순히 잡아당기는 것이 아니라, 늘어난 유리 표면 위에서도 원래 구의 반사 방향을 사용해 spec이 자연스럽게 이어지는 모습이다.
 
-현재 픽셀과 cage boundary의 mean-value coordinate weight를 계산하고, 같은 weight로 원래 unit circle 좌표를 보간한다.
+그래서 shader는 늘어난 현재 좌표로 바로 reflection을 계산하지 않는다. 먼저 다음 질문을 한다.
+
+> 늘어난 고무판의 이 픽셀은, 늘이기 전 둥근 고무판에서는 어디에 있던 점인가?
+
+그 원래 위치가 `specPoint`다.
+
+```text
+늘어난 현재 point
+  -> 늘이기 전 위치를 역으로 찾음
+  -> canonical specPoint
+  -> 단위 구의 specNormal
+  -> reflection
+  -> spec mask
+```
+
+`canonical`은 변형을 적용하기 전 기준 모양이라는 뜻이다. 여기서는 반지름 1인 원이 canonical shape다.
+
+### Cage는 두 외곽선에 같은 번호를 붙인 울타리다
+
+CPU는 현재 늘어난 외곽선과 원래 원의 외곽선에 같은 개수의 표본점을 만든다. 각 표본점을 울타리 기둥이라고 생각하면 쉽다.
+
+```text
+현재 늘어난 외곽선의 0번 기둥 <-> 원래 원의 0번 기둥
+현재 늘어난 외곽선의 1번 기둥 <-> 원래 원의 1번 기둥
+현재 늘어난 외곽선의 2번 기둥 <-> 원래 원의 2번 기둥
+...
+```
+
+이렇게 번호가 대응된 두 울타리가 spec warp cage다.
+
+```text
+늘어난 cage                       canonical circle
+
+           B                               B
+       A       C                       A       C
+    H             D_______          H             D
+       G       E                       G       E
+           F                               F
+```
+
+늘어난 쪽의 D 기둥이 오른쪽으로 멀리 이동해도 canonical 쪽의 D 기둥은 원의 오른쪽에 그대로 있다. 이 대응표가 있으면 늘어난 내부 픽셀을 원래 원의 내부 위치로 되돌릴 수 있다.
+
+### CPU는 현재 외곽선을 찾아 cage를 만든다
+
+`BoundarySpecCageSolver`는 다음 순서로 울타리를 만든다.
+
+1. 101x101 grid에서 현재 SDF를 샘플링한다.
+2. `distance = 0`이 지나가는 칸을 이어 현재 외곽선을 찾는다.
+3. 여러 contour가 생기면 가장 큰 연결 contour를 선택한다.
+4. 외곽선을 따라 같은 간격으로 `specBoundarySamples`개의 기둥을 다시 배치한다.
+5. 원래 원에도 같은 개수의 기둥을 각도 순서대로 배치한다.
+6. 같은 index의 두 기둥을 한 쌍으로 저장한다.
+
+101x101 grid는 최종 렌더링 해상도가 아니라 외곽선을 찾기 위한 모눈종이다. Marching squares는 각 모눈 칸에서 안쪽과 바깥쪽 사이를 지나가는 짧은 선분을 찾고, 그 선분들을 이어 외곽선을 만드는 방법이다.
+
+Cage texture의 texel 하나에는 기둥 한 쌍이 들어간다.
+
+```text
+R, G = 현재 늘어난 boundary 기둥의 x, y
+B, A = 대응하는 canonical circle 기둥의 x, y
+```
+
+### GPU는 내부 픽셀도 같은 비율로 원에 되돌린다
+
+경계 기둥의 대응만으로는 내부 픽셀의 원래 위치가 바로 나오지 않는다. `inverseBoundarySpecWarp()`는 현재 픽셀이 늘어난 cage의 각 기둥과 얼마나 관계있는지 가중치를 계산한다.
+
+예를 들어 오른쪽 끝에 가까운 픽셀은 오른쪽 기둥들의 영향을 많이 받고, 위쪽과 오른쪽 사이에 있는 픽셀은 위쪽 기둥과 오른쪽 기둥의 영향을 섞어서 받는다.
+
+```text
+늘어난 cage에서 현재 픽셀 P
+
+왼쪽 기둥 영향      작음
+위쪽 기둥 영향      중간
+오른쪽 기둥 영향    큼
+아래쪽 기둥 영향    작음
+```
+
+그런 다음 똑같은 가중치를 canonical circle의 대응 기둥에 적용한다.
+
+```text
+늘어난 cage
+  P = 0번 기둥 * w0
+    + 1번 기둥 * w1
+    + 2번 기둥 * w2
+    + ...
+
+canonical circle
+  specPoint = 원의 0번 기둥 * w0
+            + 원의 1번 기둥 * w1
+            + 원의 2번 기둥 * w2
+            + ...
+```
+
+이때 사용하는 부드러운 가중치 계산법이 **mean-value coordinates**다. 이름보다 역할이 중요하다.
+
+> 늘어난 울타리 안에서 현재 픽셀의 위치를 설명하는 혼합 비율을 구하고, 그 혼합 비율을 원래 원의 울타리에 그대로 적용한다.
+
+픽셀이 기둥 사이를 움직이면 가중치도 서서히 바뀌므로 `specPoint`가 갑자기 튀지 않는다. Contact 사이가 오목한 외곽선에서도 같은 원리로 연속적인 위치를 얻는다. 마지막 center 보정은 늘어난 모양의 중심이 canonical 원의 중심 `(0, 0)`에 대응하도록 맞춘다.
+
+### 왜 forward가 아니라 inverse warp인가
+
+원래 원의 픽셀을 늘어난 위치로 앞으로 밀어내면 출력 화면에서 어떤 픽셀은 비고 어떤 픽셀은 여러 번 덮일 수 있다. Fragment shader는 지금 칠해야 하는 출력 픽셀 하나를 이미 알고 있으므로 반대로 묻는 편이 안정적이다.
+
+```text
+현재 출력 픽셀
+  -> 원래 어느 좌표였는지 찾음
+  -> 그 좌표에서 reflection 계산
+```
+
+Source texture를 굴절할 때 출력 픽셀에서 읽을 source 위치를 역으로 찾는 것과 같은 inverse-sampling 사고방식이다.
+
+### 역변환 뒤에 다시 구의 reflection을 계산한다
+
+GPU의 최종 순서는 다음과 같다.
 
 ```text
 deformed point
   -> mean-value weights in deformed cage
-  -> same weights on canonical circle
-  -> canonical point
-  -> sphere normal and reflection
-  -> spec mask
+  -> 같은 weights를 canonical circle에 적용
+  -> canonical specPoint
+  -> 단위 구의 앞면 specNormal 복원
+  -> camera ray reflection 계산
+  -> spec 원/직사각형 mask 검사
 ```
 
-그래서 contact 사이의 오목한 경계에서도 spec이 외곽선을 따라 연속적으로 변형된다. cage는 spec 좌표만 바꾸며 사진 원 굴절에는 사용하지 않는다.
+따라서 오른쪽 contact 끝처럼 화면상 길게 늘어난 곳도 reflection 계산을 할 때는 원래 단위 구의 알맞은 위치로 돌아간다. Cage는 spec 좌표만 바꾸며, 사진 원의 굴절과 `sourceFollow`에는 사용하지 않는다.
+
+### Cage texture는 외곽선이 바뀔 때만 upload한다
+
+`BoundarySpecCageSolver`는 최대 64개 기둥 쌍을 하나의 `Float32Array`에 계속 덮어쓴다. 배열 객체는 같고 내부 숫자만 바뀌므로 배열 참조만 비교해서는 새 cage인지 알 수 없다. 그래서 solver는 cage를 다시 계산할 때 `revision`을 1씩 올린다.
+
+```text
+같은 Float32Array 객체
+  revision 7: 이전 boundary 좌표
+  revision 8: 새 boundary 좌표
+```
+
+Renderer는 마지막으로 GPU에 올린 revision을 기억한다.
+
+```text
+CPU revision = 8, GPU revision = 7
+  -> 새 RGBA32F cage texture upload
+
+CPU revision = 8, GPU revision = 8
+  -> 내용이 같으므로 upload 생략
+```
+
+Revision은 과거 cage를 보관하는 history가 아니다. 배열 하나에는 항상 최신 좌표만 남고, revision은 CPU와 GPU가 같은 버전의 좌표를 가지고 있는지 알려주는 변경 번호다. 사진 원의 회전이나 색상만 바뀌고 외곽선이 그대로면 cage도 바뀌지 않으므로 upload하지 않는다.
 
 ## 17. glass shell 합성 순서
 
@@ -1274,12 +1385,15 @@ reel-presentation.ts presentationControls
 - **bridge**: 중심과 contact를 잇는 두꺼운 선분
 - **membrane**: contact와 contact 사이를 채우는 영역
 - **contour offset**: 목표 면적을 맞추기 위한 전체 경계 이동량
-- **normal**: 현재 표면에 수직인 방향
+- **edge normal**: 현재 늘어난 2D SDF 외곽선에 수직인 방향
+- **굴절용 surface normal**: edge normal과 유리 단면 slope로 만든 3D 굴절 방향
 - **IOR**: 굴절률, Index of Refraction
 - **dispersion**: 파장별 굴절률 차이
 - **chromatic separation**: R/G/B 채널이 다른 위치에서 보이는 현상
-- **specular/spec**: 광원의 직접 반사 하이라이트
-- **anchor normal**: 구 표면에서 spec 중심을 고정하는 radial unit vector이자 surface normal
+- **shader `radial`**: SDF 외곽선에 가까울수록 1이 되는 외곽선 근접도
+- **specular/spec**: 밝은 조명이나 환경 영역이 매끄러운 표면에 반사되어 생기는 하이라이트
+- **spec normal**: canonical spec 좌표에서 복원한 픽셀별 단위 구 normal
+- **anchor normal**: 구 표면에서 한 spec의 중심 위치와 중심 surface normal을 함께 나타내는 단위 벡터
 - **surface tangent axes**: anchor normal 위치에서 spec의 가로/세로 방향을 정하는 구 표면 축
 - **reflection center**: anchor normal로 camera ray를 반사한 방향이자 reflection 공간의 spec 중심
 - **reflection axes**: reflection 공간에서 spec의 가로/세로 크기를 측정하는 축
