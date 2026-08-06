@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1380 820" role="img" aria-labelledby="title description">
+  <title id="title">From SDF grid samples to a spec warp cage</title>
+  <desc id="description">Three panels explain how the code samples SDF values on a 101 by 101 grid, uses marching squares to create a short boundary segment in every cell whose corner signs differ, joins the segments into a contour, and resamples that contour into matching cage posts on the deformed boundary and canonical circle.</desc>
+  <defs>
+    <style>
+      .title { font: 700 30px ui-sans-serif, system-ui, sans-serif; fill: #152238; }
+      .panel-title { font: 700 21px ui-sans-serif, system-ui, sans-serif; fill: #1d2c42; }
+      .label { font: 650 16px ui-sans-serif, system-ui, sans-serif; fill: #34445e; }
+      .small { font: 500 14px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .tiny { font: 600 12px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .code { font: 700 14px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #26383c; }
+      .inverse { fill: #ffffff; }
+      .grid { stroke: #dce2e9; stroke-width: 1.4; }
+      .outside { fill: #ffffff; stroke: #8793a5; stroke-width: 2.4; }
+      .inside { fill: #37b9b1; stroke: #166e6a; stroke-width: 2.4; }
+      .boundary { fill: none; stroke: #ec6753; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .post { fill: #ffd166; stroke: #9a5e00; stroke-width: 2.5; }
+      .post-label { font: 800 12px ui-sans-serif, system-ui, sans-serif; fill: #653d00; text-anchor: middle; dominant-baseline: middle; }
+    </style>
+    <pattern id="sampleGrid" width="50" height="50" patternUnits="userSpaceOnUse">
+      <path d="M 50 0 L 0 0 0 50" fill="none" class="grid"/>
+    </pattern>
+    <pattern id="fineGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#e6ebf0" stroke-width="1"/>
+    </pattern>
+    <circle id="outsideSample" class="outside" r="5.5"/>
+    <circle id="insideSample" class="inside" r="6"/>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#718287"/>
+    </marker>
+    <marker id="coralArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#ec6753"/>
+    </marker>
+  </defs>
+
+  <rect width="1380" height="820" fill="#ffffff"/>
+  <text x="690" y="48" text-anchor="middle" class="title">SDF 모눈종이에서 spec cage 기둥까지</text>
+
+  <rect x="25" y="75" width="425" height="665" rx="12" fill="#f8fafc" stroke="#d9e0e8" stroke-width="2"/>
+  <rect x="477" y="75" width="425" height="665" rx="12" fill="#fffaf6" stroke="#eadfd6" stroke-width="2"/>
+  <rect x="929" y="75" width="425" height="665" rx="12" fill="#f8f9fc" stroke="#dce1ec" stroke-width="2"/>
+
+  <line x1="452" y1="405" x2="468" y2="405" stroke="#718287" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="904" y1="405" x2="920" y2="405" stroke="#718287" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <text x="237" y="112" text-anchor="middle" class="panel-title">1. 격자점마다 SDF 숫자를 잰다</text>
+  <text x="237" y="139" text-anchor="middle" class="small">실제: 101×101 = 10,201개 점 · 아래 그림: 일부 확대</text>
+
+  <rect x="62" y="166" width="350" height="350" fill="url(#sampleGrid)" stroke="#bcc7d3" stroke-width="2"/>
+  <path d="M 116 337 C 118 276 156 226 210 214 C 271 199 315 233 333 276 C 350 294 382 299 401 321 C 416 339 405 363 383 372 C 357 384 337 384 321 401 C 294 449 243 472 190 447 C 142 425 115 390 116 337 Z" fill="#37b9b1" fill-opacity="0.13" stroke="#168c88" stroke-width="3" stroke-dasharray="7 6"/>
+
+  <use href="#outsideSample" x="62" y="166"/><use href="#outsideSample" x="112" y="166"/><use href="#outsideSample" x="162" y="166"/><use href="#outsideSample" x="212" y="166"/><use href="#outsideSample" x="262" y="166"/><use href="#outsideSample" x="312" y="166"/><use href="#outsideSample" x="362" y="166"/><use href="#outsideSample" x="412" y="166"/>
+  <use href="#outsideSample" x="62" y="216"/><use href="#outsideSample" x="112" y="216"/><use href="#outsideSample" x="162" y="216"/><use href="#insideSample" x="212" y="216"/><use href="#insideSample" x="262" y="216"/><use href="#outsideSample" x="312" y="216"/><use href="#outsideSample" x="362" y="216"/><use href="#outsideSample" x="412" y="216"/>
+  <use href="#outsideSample" x="62" y="266"/><use href="#outsideSample" x="112" y="266"/><use href="#insideSample" x="162" y="266"/><use href="#insideSample" x="212" y="266"/><use href="#insideSample" x="262" y="266"/><use href="#insideSample" x="312" y="266"/><use href="#outsideSample" x="362" y="266"/><use href="#outsideSample" x="412" y="266"/>
+  <use href="#outsideSample" x="62" y="316"/><use href="#outsideSample" x="112" y="316"/><use href="#insideSample" x="162" y="316"/><use href="#insideSample" x="212" y="316"/><use href="#insideSample" x="262" y="316"/><use href="#insideSample" x="312" y="316"/><use href="#insideSample" x="362" y="316"/><use href="#outsideSample" x="412" y="316"/>
+  <use href="#outsideSample" x="62" y="366"/><use href="#outsideSample" x="112" y="366"/><use href="#insideSample" x="162" y="366"/><use href="#insideSample" x="212" y="366"/><use href="#insideSample" x="262" y="366"/><use href="#insideSample" x="312" y="366"/><use href="#insideSample" x="362" y="366"/><use href="#outsideSample" x="412" y="366"/>
+  <use href="#outsideSample" x="62" y="416"/><use href="#outsideSample" x="112" y="416"/><use href="#outsideSample" x="162" y="416"/><use href="#insideSample" x="212" y="416"/><use href="#insideSample" x="262" y="416"/><use href="#insideSample" x="312" y="416"/><use href="#outsideSample" x="362" y="416"/><use href="#outsideSample" x="412" y="416"/>
+  <use href="#outsideSample" x="62" y="466"/><use href="#outsideSample" x="112" y="466"/><use href="#outsideSample" x="162" y="466"/><use href="#outsideSample" x="212" y="466"/><use href="#outsideSample" x="262" y="466"/><use href="#outsideSample" x="312" y="466"/><use href="#outsideSample" x="362" y="466"/><use href="#outsideSample" x="412" y="466"/>
+  <use href="#outsideSample" x="62" y="516"/><use href="#outsideSample" x="112" y="516"/><use href="#outsideSample" x="162" y="516"/><use href="#outsideSample" x="212" y="516"/><use href="#outsideSample" x="262" y="516"/><use href="#outsideSample" x="312" y="516"/><use href="#outsideSample" x="362" y="516"/><use href="#outsideSample" x="412" y="516"/>
+
+  <rect x="75" y="538" width="350" height="86" rx="8" fill="#ffffff" stroke="#d9e0e8"/>
+  <circle class="inside" cx="98" cy="564" r="6"/><text x="113" y="569" class="label">음수: 도형 안쪽</text>
+  <circle class="outside" cx="270" cy="564" r="5.5"/><text x="285" y="569" class="label">양수: 도형 바깥쪽</text>
+  <text x="250" y="601" text-anchor="middle" class="code">sample = rawShapeDistance(x, y) - contourOffset</text>
+  <text x="237" y="661" text-anchor="middle" class="label">샘플링 = 점마다 “경계까지 몇 칸?”을 계산해 저장</text>
+  <text x="237" y="688" text-anchor="middle" class="small">사진을 101px로 만드는 것이 아니라 숫자표 하나를 만드는 과정</text>
+
+  <text x="689" y="112" text-anchor="middle" class="panel-title">2. 부호가 바뀌는 셀에 선분을 놓는다</text>
+  <text x="689" y="139" text-anchor="middle" class="small">Marching squares는 셀 네 모서리의 + / − 조합을 본다</text>
+
+  <rect x="550" y="186" width="278" height="278" fill="#ffffff" stroke="#aeb9c6" stroke-width="3"/>
+  <rect x="550" y="325" width="278" height="139" fill="#37b9b1" fill-opacity="0.12"/>
+  <path d="M 550 336 C 625 314 756 345 828 315" fill="none" stroke="#168c88" stroke-width="3" stroke-dasharray="8 7"/>
+  <circle class="outside" cx="550" cy="186" r="10"/><text x="570" y="180" class="code">+0.30</text>
+  <circle class="outside" cx="828" cy="186" r="10"/><text x="760" y="180" class="code">+0.52</text>
+  <circle class="inside" cx="550" cy="464" r="10"/><text x="570" y="488" class="code">−0.44</text>
+  <circle class="inside" cx="828" cy="464" r="10"/><text x="760" y="488" class="code">−0.21</text>
+
+  <circle cx="550" cy="327" r="8" fill="#ec6753" stroke="#9b3528" stroke-width="2"/>
+  <circle cx="828" cy="327" r="8" fill="#ec6753" stroke="#9b3528" stroke-width="2"/>
+  <line x1="550" y1="327" x2="828" y2="327" class="boundary"/>
+  <text x="689" y="308" text-anchor="middle" class="label" fill="#c64d3c">이 셀의 짧은 경계 선분</text>
+  <text x="537" y="348" text-anchor="end" class="tiny">+에서 −로 바뀌는 위치</text>
+  <text x="841" y="348" class="tiny">+에서 −로 바뀌는 위치</text>
+
+  <line x1="568" y1="523" x2="810" y2="523" stroke="#718287" stroke-width="3" marker-end="url(#coralArrow)"/>
+  <text x="689" y="510" text-anchor="middle" class="small">두 교차점을 잇는다</text>
+  <rect x="535" y="550" width="308" height="88" rx="8" fill="#fff1ea" stroke="#ead2c5"/>
+  <text x="689" y="578" text-anchor="middle" class="label">네 점이 전부 + 또는 전부 −이면 선분 없음</text>
+  <text x="689" y="605" text-anchor="middle" class="label">부호가 섞인 셀만 경계가 지나감</text>
+  <text x="689" y="685" text-anchor="middle" class="small">모든 셀에서 이 판단을 반복하면 짧은 선분들이 생긴다</text>
+
+  <text x="1141" y="112" text-anchor="middle" class="panel-title">3. 선분을 잇고 같은 간격으로 기둥을 세운다</text>
+  <text x="1141" y="139" text-anchor="middle" class="small">닫힌 contour → 일정 간격 resample → cage texture</text>
+
+  <rect x="970" y="166" width="342" height="228" fill="url(#fineGrid)" stroke="#c7d0db" stroke-width="2"/>
+  <path d="M 1004 291 L 1015 250 L 1042 215 L 1084 198 L 1127 207 L 1160 229 L 1178 257 L 1209 263 L 1240 275 L 1272 300 L 1282 324 L 1262 345 L 1226 350 L 1190 349 L 1161 371 L 1119 381 L 1076 369 L 1038 345 L 1012 322 Z" class="boundary"/>
+  <text x="1141" y="186" text-anchor="middle" class="small">각 셀의 짧은 선분을 이으면 닫힌 외곽선</text>
+
+  <line x1="1141" y1="405" x2="1141" y2="438" stroke="#718287" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="1160" y="429" class="tiny">외곽선 길이를 같은 간격으로 나눔</text>
+
+  <g transform="translate(97 55) scale(0.9)">
+    <path d="M 970 559 C 970 507 1003 469 1047 462 C 1091 455 1124 480 1138 515 C 1152 530 1182 530 1197 548 C 1210 564 1197 581 1179 587 C 1154 595 1138 590 1123 612 C 1099 644 1058 650 1018 629 C 986 613 970 589 970 559 Z" fill="#37b9b1" fill-opacity="0.12" stroke="#168c88" stroke-width="3"/>
+    <circle class="post" cx="1197" cy="548" r="8"/><text class="post-label" x="1197" y="548">0</text>
+    <circle class="post" cx="1179" cy="587" r="8"/><text class="post-label" x="1179" y="587">1</text>
+    <circle class="post" cx="1123" cy="612" r="8"/><text class="post-label" x="1123" y="612">2</text>
+    <circle class="post" cx="1061" cy="647" r="8"/><text class="post-label" x="1061" y="647">3</text>
+    <circle class="post" cx="1001" cy="619" r="8"/><text class="post-label" x="1001" y="619">4</text>
+    <circle class="post" cx="970" cy="559" r="8"/><text class="post-label" x="970" y="559">5</text>
+    <circle class="post" cx="987" cy="493" r="8"/><text class="post-label" x="987" y="493">6</text>
+    <circle class="post" cx="1112" cy="487" r="8"/><text class="post-label" x="1112" y="487">7</text>
+  </g>
+
+  <line x1="1179" y1="555" x2="1201" y2="555" stroke="#718287" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <circle cx="1278" cy="555" r="61" fill="#5578bd" fill-opacity="0.08" stroke="#5578bd" stroke-width="3"/>
+  <circle class="post" cx="1339" cy="555" r="7"/><text class="post-label" x="1339" y="555">0</text>
+  <circle class="post" cx="1321" cy="598" r="7"/><text class="post-label" x="1321" y="598">1</text>
+  <circle class="post" cx="1278" cy="616" r="7"/><text class="post-label" x="1278" y="616">2</text>
+  <circle class="post" cx="1235" cy="598" r="7"/><text class="post-label" x="1235" y="598">3</text>
+  <circle class="post" cx="1217" cy="555" r="7"/><text class="post-label" x="1217" y="555">4</text>
+  <circle class="post" cx="1235" cy="512" r="7"/><text class="post-label" x="1235" y="512">5</text>
+  <circle class="post" cx="1278" cy="494" r="7"/><text class="post-label" x="1278" y="494">6</text>
+  <circle class="post" cx="1321" cy="512" r="7"/><text class="post-label" x="1321" y="512">7</text>
+  <text x="1086" y="684" text-anchor="middle" class="label">늘어난 boundary 기둥</text>
+  <text x="1278" y="684" text-anchor="middle" class="label">원래 원의 같은 index</text>
+  <text x="1141" y="710" text-anchor="middle" class="small">그림은 8개만 표시 · 실제 코드 16~64개 · 같은 번호끼리 한 쌍</text>
+  <text x="1141" y="732" text-anchor="middle" class="small">각 쌍: RG = 현재 기둥 좌표, BA = canonical 기둥 좌표</text>
+
+  <rect x="210" y="766" width="960" height="36" rx="9" fill="#18282b"/>
+  <text x="690" y="790" text-anchor="middle" class="code inverse">10,201개 SDF 숫자 → 부호가 섞인 셀의 선분 → 닫힌 contour → 일정 간격 cage 기둥</text>
+</svg>
