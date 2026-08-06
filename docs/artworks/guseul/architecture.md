@@ -1290,40 +1290,11 @@ B, A = 대응하는 canonical circle 기둥의 x, y
 
 ### GPU는 내부 픽셀도 같은 비율로 원에 되돌린다
 
-경계 기둥의 대응만으로는 내부 픽셀의 원래 위치가 바로 나오지 않는다. `inverseBoundarySpecWarp()`는 현재 픽셀이 늘어난 cage의 각 기둥과 얼마나 관계있는지 가중치를 계산한다.
+경계 기둥의 대응만으로는 내부 픽셀의 원래 위치가 바로 나오지 않는다. `inverseBoundarySpecWarp()`는 **mean-value coordinates**를 사용해 현재 픽셀에서 각 기둥까지의 거리와 이웃 기둥 사이의 각도로 weights를 계산한다. 그런 다음 같은 weights를 canonical circle의 대응 기둥에 적용해 `specPoint`를 만든다.
 
-예를 들어 오른쪽 끝에 가까운 픽셀은 오른쪽 기둥들의 영향을 많이 받고, 위쪽과 오른쪽 사이에 있는 픽셀은 위쪽 기둥과 오른쪽 기둥의 영향을 섞어서 받는다.
+Weights는 cage에 고정된 값이 아니라 픽셀마다 다시 계산한다. 픽셀이 움직이면 거리와 각도도 연속적으로 바뀌므로 `specPoint`가 갑자기 튀지 않는다. 오목한 cage에서는 일부 weight가 음수가 될 수도 있어 단순한 0~100% 비율보다는 부호가 있는 좌표 계수라고 이해하는 편이 정확하다.
 
-```text
-늘어난 cage에서 현재 픽셀 P
-
-왼쪽 기둥 영향      작음
-위쪽 기둥 영향      중간
-오른쪽 기둥 영향    큼
-아래쪽 기둥 영향    작음
-```
-
-그런 다음 똑같은 가중치를 canonical circle의 대응 기둥에 적용한다.
-
-```text
-늘어난 cage
-  P = 0번 기둥 * w0
-    + 1번 기둥 * w1
-    + 2번 기둥 * w2
-    + ...
-
-canonical circle
-  specPoint = 원의 0번 기둥 * w0
-            + 원의 1번 기둥 * w1
-            + 원의 2번 기둥 * w2
-            + ...
-```
-
-이때 사용하는 부드러운 가중치 계산법이 **mean-value coordinates**다. 이름보다 역할이 중요하다.
-
-> 늘어난 울타리 안에서 현재 픽셀의 위치를 설명하는 혼합 비율을 구하고, 그 혼합 비율을 원래 원의 울타리에 그대로 적용한다.
-
-픽셀이 기둥 사이를 움직이면 가중치도 서서히 바뀌므로 `specPoint`가 갑자기 튀지 않는다. Contact 사이가 오목한 외곽선에서도 같은 원리로 연속적인 위치를 얻는다. 마지막 center 보정은 늘어난 모양의 중심이 canonical 원의 중심 `(0, 0)`에 대응하도록 맞춘다.
+가중치의 그림, `q_i`와 `w_i` 수식, GPU edge loop는 별도 개념 문서인 [`Mean-Value Coordinates`](../../concepts/mean-value-coordinates.md)에서 단계별로 설명한다. 마지막 center 보정은 늘어난 모양의 중심이 canonical 원의 중심 `(0, 0)`에 대응하도록 맞춘다.
 
 ### 왜 forward가 아니라 inverse warp인가
 
