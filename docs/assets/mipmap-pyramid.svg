@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">Mipmap pyramid and texture minification</title>
+  <desc id="desc">A source texture is stored at progressively halved resolutions. Screen-space texture-coordinate derivatives estimate how many texels one screen pixel covers so the GPU can choose an appropriately reduced mip level.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#53666a"/>
+    </marker>
+    <pattern id="fine" width="24" height="24" patternUnits="userSpaceOnUse">
+      <rect width="24" height="24" fill="#d8f1ee"/>
+      <rect width="12" height="12" fill="#5578bd"/>
+      <rect x="12" y="12" width="12" height="12" fill="#ef8d42"/>
+    </pattern>
+    <pattern id="medium" width="28" height="28" patternUnits="userSpaceOnUse">
+      <rect width="28" height="28" fill="#c9dfe1"/>
+      <rect width="14" height="14" fill="#748bb7"/>
+      <rect x="14" y="14" width="14" height="14" fill="#db9f70"/>
+    </pattern>
+    <style>
+      .title { font: 700 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #162326; }
+      .heading { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #26373a; }
+      .label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #405256; }
+      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #68797c; }
+    </style>
+  </defs>
+
+  <rect width="960" height="560" fill="#fff"/>
+  <text x="480" y="38" class="title" text-anchor="middle">Mipmap stores prefiltered texture sizes for minification</text>
+
+  <rect x="35" y="70" width="585" height="400" rx="8" fill="#f8fbfb" stroke="#d8e0e2" stroke-width="2"/>
+  <text x="55" y="101" class="heading">Texture levels shrink by half in each dimension</text>
+
+  <rect x="70" y="135" width="220" height="220" fill="url(#fine)" stroke="#35494d" stroke-width="3"/>
+  <text x="180" y="380" class="label" text-anchor="middle">level 0</text>
+  <text x="180" y="400" class="small" text-anchor="middle">1024 x 1024 original</text>
+
+  <path d="M300 245 H330" fill="none" stroke="#53666a" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="340" y="175" width="140" height="140" fill="url(#medium)" stroke="#5578bd" stroke-width="3"/>
+  <text x="410" y="340" class="label" text-anchor="middle">level 1</text>
+  <text x="410" y="360" class="small" text-anchor="middle">512 x 512</text>
+
+  <path d="M490 245 H515" fill="none" stroke="#53666a" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="525" y="205" width="80" height="80" fill="#aebfc4" stroke="#ef8d42" stroke-width="3"/>
+  <circle cx="548" cy="228" r="14" fill="#8192b1"/>
+  <circle cx="581" cy="260" r="17" fill="#d59c73"/>
+  <text x="565" y="310" class="label" text-anchor="middle">level 2+</text>
+  <text x="565" y="330" class="small" text-anchor="middle">averaged detail</text>
+
+  <text x="335" y="437" class="small" text-anchor="middle">Each smaller level represents a wider source area per texel.</text>
+
+  <rect x="650" y="70" width="275" height="400" rx="8" fill="#fff9f5" stroke="#eaded7" stroke-width="2"/>
+  <text x="670" y="101" class="heading">One screen pixel footprint</text>
+
+  <rect x="700" y="135" width="175" height="175" fill="url(#fine)" stroke="#8b9a9d" stroke-width="2"/>
+  <rect x="735" y="170" width="105" height="105" fill="#fff" fill-opacity="0.18" stroke="#ef6752" stroke-width="5"/>
+  <text x="787" y="329" class="small" text-anchor="middle">many source texels</text>
+  <text x="787" y="347" class="small" text-anchor="middle">map to one screen pixel</text>
+
+  <path d="M787 365 V397" fill="none" stroke="#53666a" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="755" y="405" width="64" height="38" rx="5" fill="#aebfc4" stroke="#168c88" stroke-width="3"/>
+  <text x="787" y="462" class="small" text-anchor="middle">sample a smaller mip level</text>
+
+  <rect x="105" y="500" width="750" height="42" rx="7" fill="#18282b"/>
+  <text x="480" y="518" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#fff" text-anchor="middle">dFdx(uv), dFdy(uv) -> screen-pixel texture footprint</text>
+  <text x="480" y="535" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#cbd8da" text-anchor="middle">small footprint: level 0   |   large footprint: smaller mip level</text>
+</svg>

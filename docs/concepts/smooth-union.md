@@ -2,11 +2,11 @@
 
 이 문서는 Guseul의 탄성 외곽선에서 `smoothMinimum()`이 왜 필요하고, 실제 코드에서 어떻게 사용되는지 설명한다.
 
-전체 렌더링 구조는 [`guseul-architecture.md`](./guseul-architecture.md)를 먼저 참고한다.
+구슬 작품에 적용된 전체 렌더링 구조는 [`architecture.md`](../artworks/guseul/architecture.md)를 먼저 참고한다.
 
 ## 1. 그림으로 먼저 보기
 
-![일반 min union과 smooth minimum union 비교](./assets/guseul-smooth-union.svg)
+![일반 min union과 smooth minimum union 비교](../assets/guseul-smooth-union.svg)
 
 왼쪽은 두 signed-distance field를 `min(a, b)`로 바로 합친 결과다. 외곽선은 연결되지만 원과 bridge 중 어느 쪽의 거리를 선택할지가 바뀌는 위치에서 기울기가 꺾인다.
 
@@ -90,7 +90,7 @@ gradient(a)  -> 선택 전환 -> gradient(b)
 
 ## 5. 현재 `smoothMinimum()` 수식
 
-현재 구현은 [`elastic-contact-field.ts`](../pages/guseul/elastic-contact-field.ts#L117)에 있다.
+현재 구현은 [`elastic-contact-field.ts`](../../pages/guseul/elastic-contact-field.ts#L117)에 있다.
 
 ```ts
 function smoothMinimum(first: number, second: number, radius: number): number {
@@ -182,7 +182,7 @@ const combinedDistance = smoothMinimum(
 
 contact 사이를 채우는 membrane도 마지막에 같은 방식으로 union한다.
 
-실제 코드는 [`rawShapeDistance()`](../pages/guseul/elastic-contact-field.ts#L316)에서 확인할 수 있다.
+실제 코드는 [`rawShapeDistance()`](../../pages/guseul/elastic-contact-field.ts#L316)에서 확인할 수 있다.
 
 ## 9. Contact influence와 smooth union은 다른 역할이다
 

@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 850" role="img" aria-labelledby="title description">
+  <title id="title">Why mean-value coordinates use angular influence and the tangent of a half angle</title>
+  <desc id="description">Three panels compare a narrow and wide angular wedge at equal distance, show that the sum and difference of two unit direction vectors have lengths involving cosine and sine of half the angle, and show how direction differences cancel around a closed cage so weighted cage posts reconstruct the original point.</desc>
+  <defs>
+    <style>
+      .title { font: 700 31px ui-sans-serif, system-ui, sans-serif; fill: #152238; }
+      .subtitle { font: 500 15px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .panel-title { font: 700 21px ui-sans-serif, system-ui, sans-serif; fill: #1d2c42; }
+      .label { font: 650 16px ui-sans-serif, system-ui, sans-serif; fill: #34445e; }
+      .small { font: 500 14px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .tiny { font: 600 12px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .formula { font: 700 17px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #26383c; }
+      .formula-small { font: 700 14px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #26383c; }
+      .inverse { fill: #ffffff; }
+      .post { fill: #ffd166; stroke: #9a5e00; stroke-width: 2.5; }
+      .point { fill: #ec6753; stroke: #9b3528; stroke-width: 2.5; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#718287"/>
+    </marker>
+    <marker id="tealArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#168c88"/>
+    </marker>
+    <marker id="blueArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#5578bd"/>
+    </marker>
+    <marker id="coralArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#ec6753"/>
+    </marker>
+  </defs>
+
+  <rect width="1440" height="850" fill="#ffffff"/>
+  <text x="720" y="44" text-anchor="middle" class="title">왜 각도 tᵢ가 필요하고, 왜 tan(αᵢ / 2)인가</text>
+  <text x="720" y="69" text-anchor="middle" class="subtitle">각도는 P에서 본 edge의 점유량을 나타내고, 반각은 한 바퀴의 벡터 기여를 정확히 상쇄시킨다</text>
+
+  <rect x="24" y="94" width="438" height="658" rx="13" fill="#f8fafc" stroke="#d9e0e8" stroke-width="2"/>
+  <rect x="501" y="94" width="438" height="658" rx="13" fill="#fffaf6" stroke="#eadfd6" stroke-width="2"/>
+  <rect x="978" y="94" width="438" height="658" rx="13" fill="#f8f9fc" stroke="#dce1ec" stroke-width="2"/>
+
+  <line x1="464" y1="420" x2="492" y2="420" stroke="#718287" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="941" y1="420" x2="969" y2="420" stroke="#718287" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <text x="243" y="133" text-anchor="middle" class="panel-title">1. 같은 거리라도 보이는 경계 폭이 다르다</text>
+  <text x="243" y="159" text-anchor="middle" class="small">기둥 개수가 아니라 P를 둘러싼 각도 점유량까지 보정한다</text>
+
+  <text x="66" y="205" class="label">좁은 wedge</text>
+  <circle cx="116" cy="276" r="9" class="point"/>
+  <text x="93" y="270" class="label" fill="#9b3528">P</text>
+  <line x1="116" y1="276" x2="264" y2="250" stroke="#168c88" stroke-width="3"/>
+  <line x1="116" y1="276" x2="264" y2="302" stroke="#168c88" stroke-width="3"/>
+  <line x1="264" y1="250" x2="264" y2="302" stroke="#5578bd" stroke-width="4"/>
+  <circle cx="264" cy="250" r="9" class="post"/>
+  <circle cx="264" cy="302" r="9" class="post"/>
+  <path d="M 175 266 A 60 60 0 0 1 175 286" fill="none" stroke="#ec6753" stroke-width="3"/>
+  <text x="184" y="280" class="label" fill="#c64d3c">α = 20°</text>
+  <text x="307" y="272" class="formula-small">t = tan(10°) ≈ 0.18</text>
+  <text x="307" y="296" class="small">같은 방향에 몰린 edge</text>
+
+  <line x1="62" y1="348" x2="424" y2="348" stroke="#d9e0e8" stroke-width="2"/>
+
+  <text x="66" y="389" class="label">넓은 wedge</text>
+  <circle cx="116" cy="535" r="9" class="point"/>
+  <text x="93" y="529" class="label" fill="#9b3528">P</text>
+  <line x1="116" y1="535" x2="191" y2="405" stroke="#168c88" stroke-width="3"/>
+  <line x1="116" y1="535" x2="191" y2="665" stroke="#168c88" stroke-width="3"/>
+  <line x1="191" y1="405" x2="191" y2="665" stroke="#5578bd" stroke-width="4"/>
+  <circle cx="191" cy="405" r="9" class="post"/>
+  <circle cx="191" cy="665" r="9" class="post"/>
+  <path d="M 146 483 A 60 60 0 0 1 146 587" fill="none" stroke="#ec6753" stroke-width="3"/>
+  <text x="216" y="520" class="label" fill="#c64d3c">α = 120°</text>
+  <text x="216" y="548" class="formula-small">t = tan(60°) ≈ 1.73</text>
+  <text x="216" y="579" class="small">P 주변의 큰 경계 구간을 담당</text>
+  <text x="243" y="713" text-anchor="middle" class="label">거리 r이 비슷해도 넓은 edge의 t가 더 크다</text>
+
+  <text x="720" y="133" text-anchor="middle" class="panel-title">2. 반각에서 두 벡터의 합과 차가 만난다</text>
+  <text x="720" y="159" text-anchor="middle" class="small">두 unit 방향은 가운데 선을 기준으로 각각 α/2만큼 기울어져 있다</text>
+
+  <circle cx="720" cy="382" r="10" class="point"/>
+  <text x="696" y="403" class="label" fill="#9b3528">P</text>
+  <line x1="720" y1="382" x2="605" y2="245" stroke="#718096" stroke-width="3.5" marker-end="url(#arrow)"/>
+  <line x1="720" y1="382" x2="835" y2="245" stroke="#718096" stroke-width="3.5" marker-end="url(#arrow)"/>
+  <text x="585" y="236" class="formula-small">uᵢ</text>
+  <text x="840" y="236" class="formula-small">uᵢ₊₁</text>
+  <line x1="720" y1="382" x2="720" y2="204" stroke="#aeb8c5" stroke-width="2" stroke-dasharray="7 6"/>
+  <path d="M 682 337 A 59 59 0 0 1 720 323" fill="none" stroke="#5578bd" stroke-width="3"/>
+  <path d="M 720 323 A 59 59 0 0 1 758 337" fill="none" stroke="#5578bd" stroke-width="3"/>
+  <text x="642" y="342" class="label" fill="#5578bd">α/2</text>
+  <text x="782" y="342" class="label" fill="#5578bd">α/2</text>
+
+  <line x1="720" y1="382" x2="720" y2="260" stroke="#168c88" stroke-width="5" marker-end="url(#tealArrow)"/>
+  <text x="735" y="238" class="formula-small" fill="#166e6a">uᵢ + uᵢ₊₁</text>
+  <text x="735" y="260" class="tiny">길이 2 cos(α/2)</text>
+
+  <line x1="720" y1="382" x2="850" y2="382" stroke="#5578bd" stroke-width="5" marker-end="url(#blueArrow)"/>
+  <text x="775" y="408" class="formula-small" fill="#4565a5">uᵢ₊₁ − uᵢ</text>
+  <text x="782" y="429" class="tiny">길이 2 sin(α/2)</text>
+
+  <rect x="548" y="486" width="344" height="156" rx="9" fill="#ffffff" stroke="#eadfd6"/>
+  <text x="720" y="521" text-anchor="middle" class="formula">tan(α/2) = sin(α/2) / cos(α/2)</text>
+  <text x="720" y="561" text-anchor="middle" class="formula">tan(α/2) × 2cos(α/2) = 2sin(α/2)</text>
+  <text x="720" y="599" text-anchor="middle" class="label">합벡터를 차벡터와 같은 길이로 바꾼다</text>
+  <text x="720" y="625" text-anchor="middle" class="small">두 벡터는 방향만 90° 회전한 관계가 된다</text>
+  <text x="720" y="698" text-anchor="middle" class="label">반각은 임의의 완화값이 아니라 정확한 균형 비율</text>
+
+  <text x="1197" y="133" text-anchor="middle" class="panel-title">3. 한 바퀴를 더하면 방향 차가 모두 지워진다</text>
+  <text x="1197" y="159" text-anchor="middle" class="small">각 edge의 끝 방향은 다음 edge의 시작 방향과 같은 항이다</text>
+
+  <polygon points="1320,333 1234,451 1094,406 1094,260 1234,215" fill="#5578bd" fill-opacity="0.07" stroke="#5578bd" stroke-width="3"/>
+  <g stroke="#b7c1cd" stroke-width="2">
+    <line x1="1180" y1="333" x2="1320" y2="333"/>
+    <line x1="1180" y1="333" x2="1234" y2="451"/>
+    <line x1="1180" y1="333" x2="1094" y2="406"/>
+    <line x1="1180" y1="333" x2="1094" y2="260"/>
+    <line x1="1180" y1="333" x2="1234" y2="215"/>
+  </g>
+  <circle cx="1180" cy="333" r="10" class="point"/>
+  <text x="1158" y="327" class="label" fill="#9b3528">P</text>
+  <circle cx="1320" cy="333" r="9" class="post"/><text x="1333" y="327" class="formula-small">u₀</text>
+  <circle cx="1234" cy="451" r="9" class="post"/><text x="1244" y="477" class="formula-small">u₁</text>
+  <circle cx="1094" cy="406" r="9" class="post"/><text x="1059" y="414" class="formula-small">u₂</text>
+  <circle cx="1094" cy="260" r="9" class="post"/><text x="1059" y="264" class="formula-small">u₃</text>
+  <circle cx="1234" cy="215" r="9" class="post"/><text x="1244" y="202" class="formula-small">u₄</text>
+  <path d="M 1303 352 Q 1280 404 1244 435" fill="none" stroke="#ec6753" stroke-width="3" marker-end="url(#coralArrow)"/>
+  <path d="M 1210 456 Q 1158 454 1111 414" fill="none" stroke="#ec6753" stroke-width="3" marker-end="url(#coralArrow)"/>
+  <path d="M 1085 388 Q 1072 333 1085 278" fill="none" stroke="#ec6753" stroke-width="3" marker-end="url(#coralArrow)"/>
+  <path d="M 1112 247 Q 1162 204 1215 216" fill="none" stroke="#ec6753" stroke-width="3" marker-end="url(#coralArrow)"/>
+  <path d="M 1251 228 Q 1298 264 1317 312" fill="none" stroke="#ec6753" stroke-width="3" marker-end="url(#coralArrow)"/>
+
+  <rect x="1014" y="498" width="366" height="146" rx="9" fill="#ffffff" stroke="#dce1ec"/>
+  <text x="1197" y="531" text-anchor="middle" class="formula-small">(u₁−u₀) + (u₂−u₁) + (u₃−u₂)</text>
+  <text x="1197" y="557" text-anchor="middle" class="formula-small">+ (u₄−u₃) + (u₀−u₄) = 0</text>
+  <text x="1197" y="593" text-anchor="middle" class="label">+u와 −u가 한 번씩 나와 모두 상쇄</text>
+  <text x="1197" y="620" text-anchor="middle" class="small">tan(α/2)가 각 edge 기여를 이 차이 형태로 바꾼다</text>
+
+  <text x="1197" y="686" text-anchor="middle" class="formula">Σ qᵢ(Dᵢ − P) = 0</text>
+  <text x="1197" y="718" text-anchor="middle" class="formula">P = Σ(Dᵢ × wᵢ)</text>
+
+  <rect x="172" y="785" width="1096" height="44" rx="10" fill="#18282b"/>
+  <text x="720" y="813" text-anchor="middle" class="formula inverse">각도 점유량 + 반각 항등식 → 닫힌 cage의 정확한 벡터 균형 → P 복원</text>
+</svg>

@@ -31,7 +31,6 @@ export const layerControls = {
   idleHandoffDuration: 0.8,
   inertiaDamping: 5,
 
-  contentOverscan: 0.46,
   circleCount: 10,
   circleSizeScale: 2,
   circleSizeVariance: 0,

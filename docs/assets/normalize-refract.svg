@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">Vector normalization and optical refraction</title>
+  <desc id="desc">Normalization preserves a vector direction while scaling its length to one. Refraction combines a unit incident direction, a unit surface normal, and the ratio of refractive indices to calculate the transmitted ray direction.</desc>
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#5578bd"/>
+    </marker>
+    <marker id="arrow-coral" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#ef6752"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#168c88"/>
+    </marker>
+    <style>
+      .title { font: 700 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #162326; }
+      .heading { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #26373a; }
+      .label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #405256; }
+      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #68797c; }
+      .code { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    </style>
+  </defs>
+
+  <rect width="960" height="560" fill="#fff"/>
+  <text x="480" y="38" class="title" text-anchor="middle">normalize fixes vector length; refract changes ray direction</text>
+
+  <rect x="35" y="70" width="405" height="405" rx="8" fill="#f8fbfb" stroke="#d8e0e2" stroke-width="2"/>
+  <text x="55" y="101" class="heading">1. normalize(vector)</text>
+
+  <circle cx="145" cy="330" r="90" fill="none" stroke="#b5c1c4" stroke-width="2" stroke-dasharray="6 5"/>
+  <line x1="70" y1="330" x2="400" y2="330" stroke="#a6b2b5" stroke-width="1.5"/>
+  <line x1="145" y1="400" x2="145" y2="125" stroke="#a6b2b5" stroke-width="1.5"/>
+  <circle cx="145" cy="330" r="5" fill="#35494d"/>
+
+  <line x1="145" y1="330" x2="365" y2="145" stroke="#5578bd" stroke-width="3" stroke-dasharray="8 5" marker-end="url(#arrow-blue)"/>
+  <line x1="145" y1="330" x2="214" y2="272" stroke="#ef6752" stroke-width="5" marker-end="url(#arrow-coral)"/>
+
+  <text x="330" y="137" class="label">raw vector</text>
+  <text x="236" y="259" class="label">unit vector</text>
+  <text x="245" y="356" class="small">same direction</text>
+  <text x="245" y="375" class="small">different length</text>
+
+  <rect x="70" y="415" width="335" height="40" rx="6" fill="#18282b"/>
+  <text x="237" y="440" class="code" fill="#fff" text-anchor="middle">normalize(v) = v / length(v)</text>
+
+  <rect x="475" y="70" width="450" height="405" rx="8" fill="#fff9f5" stroke="#eaded7" stroke-width="2"/>
+  <text x="495" y="101" class="heading">2. refract(incident, normal, eta)</text>
+
+  <rect x="510" y="125" width="380" height="145" fill="#f8fbfb"/>
+  <rect x="510" y="270" width="380" height="165" fill="#dce7fb" fill-opacity="0.72"/>
+  <line x1="510" y1="270" x2="890" y2="270" stroke="#35494d" stroke-width="3"/>
+  <text x="535" y="150" class="label">air IOR 1.0</text>
+  <text x="535" y="413" class="label">glass IOR 1.5</text>
+
+  <line x1="705" y1="270" x2="705" y2="135" stroke="#168c88" stroke-width="4" marker-end="url(#arrow-teal)"/>
+  <text x="718" y="158" class="label">surface normal N</text>
+
+  <line x1="565" y1="125" x2="698" y2="263" stroke="#5578bd" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <text x="566" y="185" class="label">incident I</text>
+
+  <line x1="705" y1="270" x2="760" y2="421" stroke="#ef6752" stroke-width="5" marker-end="url(#arrow-coral)"/>
+  <text x="776" y="375" class="label">refracted ray</text>
+  <text x="776" y="396" class="small">bends toward the normal</text>
+
+  <path d="M672 270 A33 33 0 0 1 682 247" fill="none" stroke="#5578bd" stroke-width="2"/>
+  <path d="M705 307 A37 37 0 0 0 718 304" fill="none" stroke="#ef6752" stroke-width="2"/>
+  <text x="622" y="251" class="small">incident angle</text>
+  <text x="721" y="322" class="small">smaller angle</text>
+
+  <rect x="545" y="442" width="310" height="24" rx="5" fill="#f5e1dc"/>
+  <text x="700" y="459" class="code" fill="#6b3d34" text-anchor="middle">eta = 1.0 / 1.5 = 0.667</text>
+
+  <rect x="120" y="495" width="720" height="38" rx="7" fill="#18282b"/>
+  <text x="480" y="519" class="code" fill="#fff" text-anchor="middle">unit incident + unit normal + IOR ratio -> transmitted unit direction</text>
+</svg>

@@ -371,11 +371,11 @@ content texture was clipped to a circle first
 
 That is different from the `liquid-dom` model. In `liquid-dom`, source/backdrop textures exist as larger planes, and the glass shape masks the final composite. The source texture is not pre-cut to the exact glass silhouette before refraction.
 
-The Guseul source layer now uses a larger internal content plane with overscan:
+The Guseul source layer is not pre-clipped to the circular glass silhouette:
 
-- colored circles are drawn beyond the visible marble silhouette into an offscreen guard band.
+- colored circles are drawn into a square offscreen source texture.
 - the final glass ball alpha still clips the visible result to a perfect circle.
-- `sampleContent()` returns the background color when sampling outside the overscan plane instead of clamping to the texture edge.
+- `sampleContent()` returns the background color when sampling outside the source texture instead of clamping to its edge.
 - GUI folders are reorganized by pipeline stage: scene, source content, surface field, refraction, glass shell, final composite.
 
 This does not remove every possible fold from extreme optical settings. A very high `thickness`, high `displacementFactor`, or narrow `bezelWidth` can still make the inverse mapping non-monotonic. But the visible one-sided kink from the reference screenshot should be reduced because the sampler no longer runs into a pre-clipped content edge.

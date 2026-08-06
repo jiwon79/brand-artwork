@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">Guseul SDF coordinate unit, center seed, and contour offset</title>
+  <desc id="desc">The nominal view radius is one normalized SDF unit. The center seed radius is point seven four and an initial contour offset of point two six expands the final undeformed boundary to radius one. The surrounding normalized square has side length two.</desc>
+  <defs>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#168c88"/>
+    </marker>
+    <marker id="arrow-coral" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#ef6752"/>
+    </marker>
+    <style>
+      .title { font: 700 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #162326; }
+      .heading { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #26373a; }
+      .label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #405256; }
+      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #68797c; }
+      .code { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    </style>
+  </defs>
+
+  <rect width="960" height="560" fill="#fff"/>
+  <text x="480" y="38" class="title" text-anchor="middle">Guseul uses the nominal marble radius as one SDF unit</text>
+
+  <rect x="35" y="70" width="500" height="410" rx="8" fill="#f8fbfb" stroke="#d8e0e2" stroke-width="2"/>
+  <text x="55" y="101" class="heading">Normalized shape coordinates</text>
+
+  <rect x="105" y="130" width="300" height="300" fill="#fff" stroke="#aab7ba" stroke-width="2" stroke-dasharray="6 5"/>
+  <line x1="85" y1="280" x2="430" y2="280" stroke="#87979a" stroke-width="1.5"/>
+  <line x1="255" y1="110" x2="255" y2="450" stroke="#87979a" stroke-width="1.5"/>
+
+  <circle cx="255" cy="280" r="150" fill="#d8f1ee" fill-opacity="0.55" stroke="#168c88" stroke-width="4"/>
+  <circle cx="255" cy="280" r="111" fill="#fde3df" fill-opacity="0.7" stroke="#ef6752" stroke-width="3" stroke-dasharray="7 5"/>
+  <circle cx="255" cy="280" r="5" fill="#35494d"/>
+
+  <line x1="255" y1="280" x2="405" y2="280" stroke="#168c88" stroke-width="3" marker-end="url(#arrow-teal)"/>
+  <text x="330" y="266" class="label" text-anchor="middle">final radius 1.0</text>
+
+  <line x1="333" y1="202" x2="361" y2="174" stroke="#ef6752" stroke-width="3" marker-end="url(#arrow-coral)"/>
+  <text x="381" y="158" class="label" text-anchor="middle">+0.26 offset</text>
+
+  <text x="255" y="285" class="small" text-anchor="middle">center</text>
+  <text x="255" y="226" class="label" text-anchor="middle">center seed</text>
+  <text x="255" y="246" class="small" text-anchor="middle">radius 0.74</text>
+
+  <text x="99" y="449" class="label" text-anchor="middle">-1</text>
+  <text x="411" y="449" class="label" text-anchor="middle">+1</text>
+  <text x="88" y="285" class="label" text-anchor="end">-1</text>
+  <text x="88" y="135" class="label" text-anchor="end">y -1</text>
+  <text x="255" y="469" class="small" text-anchor="middle">bounding square side length = 2</text>
+
+  <rect x="570" y="70" width="355" height="410" rx="8" fill="#fff9f5" stroke="#eaded7" stroke-width="2"/>
+  <text x="590" y="101" class="heading">No-contact distance calculation</text>
+
+  <rect x="605" y="130" width="285" height="58" rx="7" fill="#f5e1dc"/>
+  <text x="747" y="154" class="code" fill="#6b3d34" text-anchor="middle">rawDistance</text>
+  <text x="747" y="175" class="code" fill="#6b3d34" text-anchor="middle">= length(point) - 0.74</text>
+
+  <text x="747" y="217" class="label" text-anchor="middle">initial contourOffset = 1 - 0.74 = 0.26</text>
+  <path d="M747 232 V260" fill="none" stroke="#53666a" stroke-width="2.5" marker-end="url(#arrow-teal)"/>
+
+  <rect x="605" y="275" width="285" height="84" rx="7" fill="#dce7fb"/>
+  <text x="747" y="300" class="code" fill="#344d7b" text-anchor="middle">shapeDistance</text>
+  <text x="747" y="323" class="code" fill="#344d7b" text-anchor="middle">= rawDistance - 0.26</text>
+  <text x="747" y="346" class="code" fill="#344d7b" text-anchor="middle">= length(point) - 1.0</text>
+
+  <text x="747" y="394" class="label" text-anchor="middle">shapeDistance = 0 at length(point) = 1</text>
+  <text x="747" y="420" class="small" text-anchor="middle">The seed starts smaller, while the final basic silhouette</text>
+  <text x="747" y="439" class="small" text-anchor="middle">is restored to the nominal radius by contourOffset.</text>
+
+  <rect x="120" y="505" width="720" height="38" rx="7" fill="#18282b"/>
+  <text x="480" y="529" class="code" fill="#fff" text-anchor="middle">uRadiusCss screen pixels = 1 SDF unit   |   normalized square side = 2</text>
+</svg>

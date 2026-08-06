@@ -17,9 +17,9 @@ export type GpuCircle = {
 };
 
 export type GpuSpec = {
-  sourceDirection: [number, number, number];
-  axisX: [number, number, number];
-  axisY: [number, number, number];
+  reflectionCenter: [number, number, number];
+  reflectionAxisX: [number, number, number];
+  reflectionAxisY: [number, number, number];
   halfWidth: number;
   halfHeight: number;
   softness: number;
@@ -44,7 +44,6 @@ export type GpuGlassControls = {
   showCaRimLayer: boolean;
   showSpecLayer: boolean;
   showOuterStrokeLayer: boolean;
-  contentOverscan: number;
   sourceFollow: number;
   bezelWidth: number;
   thickness: number;
@@ -103,7 +102,6 @@ uniform vec2 uViewportCss;
 uniform vec2 uCenterCss;
 uniform float uRadiusCss;
 uniform vec3 uBackground;
-uniform float uOverscan;
 uniform float uSourceFollow;
 uniform sampler2D uSpecWarpCage;
 uniform int uSpecWarpCageCount;
@@ -145,9 +143,9 @@ uniform float uShowOuterStrokeLayer;
 uniform int uCircleCount;
 uniform vec4 uCircles[MAX_CIRCLES];
 uniform int uSpecCount;
-uniform vec4 uSpecSource[MAX_SPECS];
-uniform vec4 uSpecAxisX[MAX_SPECS];
-uniform vec4 uSpecAxisY[MAX_SPECS];
+uniform vec4 uSpecReflectionCenter[MAX_SPECS];
+uniform vec4 uSpecReflectionAxisX[MAX_SPECS];
+uniform vec4 uSpecReflectionAxisY[MAX_SPECS];
 uniform vec4 uSpecShape[MAX_SPECS];
 uniform vec4 uSpecRender[MAX_SPECS];
 
@@ -334,8 +332,7 @@ vec2 rayDisplacement(vec3 ray, float height) {
 }
 
 vec2 contentUv(vec2 sourcePoint) {
-  float denominator = 2.0 * (1.0 + uOverscan * 2.0);
-  return (vec2(1.0 + uOverscan) + sourcePoint) / denominator;
+  return (vec2(1.0) + sourcePoint) * 0.5;
 }
 
 vec4 sampleContent(vec2 sourcePoint) {
@@ -587,12 +584,16 @@ float sampleSpecs(vec3 reflection) {
 
     vec4 shape = uSpecShape[index];
     vec4 render = uSpecRender[index];
-    float dx = abs(dot(reflection, uSpecAxisX[index].xyz) / shape.x);
-    float dy = abs(dot(reflection, uSpecAxisY[index].xyz) / shape.y);
+    float dx = abs(dot(reflection, uSpecReflectionAxisX[index].xyz) / shape.x);
+    float dy = abs(dot(reflection, uSpecReflectionAxisY[index].xyz) / shape.y);
     float distanceToSpec = shape.w > 0.5 ? length(vec2(dx, dy)) : max(dx, dy);
     float box = 1.0 - smoothRange(1.0 - shape.z, 1.0 + shape.z, distanceToSpec);
-    float sourceFacing = smoothRange(-0.04, 0.24, dot(reflection, uSpecSource[index].xyz));
-    float value = pow(max(box, 0.0), render.x) * sourceFacing * render.z;
+    float centerFacing = smoothRange(
+      -0.04,
+      0.24,
+      dot(reflection, uSpecReflectionCenter[index].xyz)
+    );
+    float value = pow(max(box, 0.0), render.x) * centerFacing * render.z;
     shell += value * render.y;
   }
 
@@ -833,7 +834,7 @@ export class GuseulWebGLRenderer {
     this.contentTexture = createTexture(gl);
     this.specWarpCageTexture = createTexture(gl);
     this.uniforms = getUniforms(gl, program, [
-      'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground', 'uOverscan',
+      'uContent', 'uViewportCss', 'uCenterCss', 'uRadiusCss', 'uBackground',
       'uSourceFollow', 'uSpecWarpCage', 'uSpecWarpCageCount', 'uSpecWarpCenter',
       'uContactCount', 'uContacts[0]', 'uContactAnchors[0]',
       'uMembraneLinkCount', 'uMembraneStarts[0]', 'uMembraneEnds[0]',
@@ -845,8 +846,9 @@ export class GuseulWebGLRenderer {
       'uShowChromaticLayer', 'uShowInnerShadeLayer', 'uShowGlassMilkLayer',
       'uShowTopWashLayer', 'uShowRimLayer', 'uShowHardRimLayer', 'uShowCaRimLayer',
       'uShowSpecLayer', 'uShowOuterStrokeLayer',
-      'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecSource[0]', 'uSpecAxisX[0]',
-      'uSpecAxisY[0]', 'uSpecShape[0]', 'uSpecRender[0]',
+      'uCircleCount', 'uCircles[0]', 'uSpecCount', 'uSpecReflectionCenter[0]',
+      'uSpecReflectionAxisX[0]', 'uSpecReflectionAxisY[0]',
+      'uSpecShape[0]', 'uSpecRender[0]',
     ]);
 
     gl.useProgram(program);
@@ -988,26 +990,26 @@ export class GuseulWebGLRenderer {
 
   private uploadSpecs(specs: GpuSpec[]): void {
     const count = Math.min(specs.length, maxGpuSpecs);
-    const source = new Float32Array(maxGpuSpecs * 4);
-    const axisX = new Float32Array(maxGpuSpecs * 4);
-    const axisY = new Float32Array(maxGpuSpecs * 4);
+    const reflectionCenters = new Float32Array(maxGpuSpecs * 4);
+    const reflectionAxesX = new Float32Array(maxGpuSpecs * 4);
+    const reflectionAxesY = new Float32Array(maxGpuSpecs * 4);
     const shape = new Float32Array(maxGpuSpecs * 4);
     const render = new Float32Array(maxGpuSpecs * 4);
 
     for (let index = 0; index < count; index += 1) {
       const spec = specs[index];
-      source.set([...spec.sourceDirection, 0], index * 4);
-      axisX.set([...spec.axisX, 0], index * 4);
-      axisY.set([...spec.axisY, 0], index * 4);
+      reflectionCenters.set([...spec.reflectionCenter, 0], index * 4);
+      reflectionAxesX.set([...spec.reflectionAxisX, 0], index * 4);
+      reflectionAxesY.set([...spec.reflectionAxisY, 0], index * 4);
       shape.set([spec.halfWidth, spec.halfHeight, spec.softness, spec.shape === 'circle' ? 1 : 0], index * 4);
       render.set([spec.power, spec.intensity, spec.visibility, 0], index * 4);
     }
 
     const gl = this.gl;
     gl.uniform1i(this.uniforms.uSpecCount, count);
-    gl.uniform4fv(this.uniforms['uSpecSource[0]'], source);
-    gl.uniform4fv(this.uniforms['uSpecAxisX[0]'], axisX);
-    gl.uniform4fv(this.uniforms['uSpecAxisY[0]'], axisY);
+    gl.uniform4fv(this.uniforms['uSpecReflectionCenter[0]'], reflectionCenters);
+    gl.uniform4fv(this.uniforms['uSpecReflectionAxisX[0]'], reflectionAxesX);
+    gl.uniform4fv(this.uniforms['uSpecReflectionAxisY[0]'], reflectionAxesY);
     gl.uniform4fv(this.uniforms['uSpecShape[0]'], shape);
     gl.uniform4fv(this.uniforms['uSpecRender[0]'], render);
   }
@@ -1025,7 +1027,6 @@ export class GuseulWebGLRenderer {
     gl.uniform2fv(this.uniforms.uCenterCss, frame.centerCss);
     gl.uniform1f(this.uniforms.uRadiusCss, frame.radiusCss);
     gl.uniform3fv(this.uniforms.uBackground, controls.background);
-    gl.uniform1f(this.uniforms.uOverscan, controls.contentOverscan);
     gl.uniform1f(this.uniforms.uSourceFollow, controls.sourceFollow);
     gl.uniform1f(this.uniforms.uBezelWidth, controls.bezelWidth);
     gl.uniform1f(this.uniforms.uThickness, controls.thickness);

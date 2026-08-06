@@ -80,7 +80,7 @@ type Rgb = [number, number, number];
 
 type SpecHighlight = {
   shape: 'rect' | 'circle';
-  carrier: Vec3;
+  anchorNormal: Vec3;
   halfWidth: number;
   halfHeight: number;
   softness: number;
@@ -89,9 +89,9 @@ type SpecHighlight = {
 };
 
 type PreparedSpecHighlight = SpecHighlight & {
-  sourceDirection: Vec3;
-  axisX: Vec3;
-  axisY: Vec3;
+  reflectionCenter: Vec3;
+  reflectionAxisX: Vec3;
+  reflectionAxisY: Vec3;
   visibility: number;
   intensityScale: number;
   softnessScale: number;
@@ -178,7 +178,7 @@ const circleArtworks: CircleArtwork[] = circleArtworkSources.map((source) => {
   };
 });
 
-const specCarrierPositions: Vec3[] = [
+const specAnchorNormals: Vec3[] = [
   [0.1039, 0.0024, 0.9946],
   [0.6834, -0.1646, 0.7113],
   [0.08, 0.86, 0.5],
@@ -193,20 +193,20 @@ const specCarrierPositions: Vec3[] = [
 ];
 
 const largeWindowSpecs: SpecHighlight[] = [
-  { shape: 'rect', carrier: specCarrierPositions[0], halfWidth: 0.42, halfHeight: 0.158, softness: 0.4, power: 1.5, intensity: 38 },
-  { shape: 'rect', carrier: specCarrierPositions[4], halfWidth: 0.36, halfHeight: 0.135, softness: 0.44, power: 1.48, intensity: 34 },
-  { shape: 'rect', carrier: specCarrierPositions[8], halfWidth: 0.39, halfHeight: 0.145, softness: 0.42, power: 1.49, intensity: 36 },
-  { shape: 'circle', carrier: specCarrierPositions[1], halfWidth: 0.255, halfHeight: 0.255, softness: 0.54, power: 1.46, intensity: 32 },
-  { shape: 'circle', carrier: specCarrierPositions[5], halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
-  { shape: 'circle', carrier: specCarrierPositions[9], halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
+  { shape: 'rect', anchorNormal: specAnchorNormals[0], halfWidth: 0.42, halfHeight: 0.158, softness: 0.4, power: 1.5, intensity: 38 },
+  { shape: 'rect', anchorNormal: specAnchorNormals[4], halfWidth: 0.36, halfHeight: 0.135, softness: 0.44, power: 1.48, intensity: 34 },
+  { shape: 'rect', anchorNormal: specAnchorNormals[8], halfWidth: 0.39, halfHeight: 0.145, softness: 0.42, power: 1.49, intensity: 36 },
+  { shape: 'circle', anchorNormal: specAnchorNormals[1], halfWidth: 0.255, halfHeight: 0.255, softness: 0.54, power: 1.46, intensity: 32 },
+  { shape: 'circle', anchorNormal: specAnchorNormals[5], halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
+  { shape: 'circle', anchorNormal: specAnchorNormals[9], halfWidth: 0.24, halfHeight: 0.24, softness: 0.56, power: 1.44, intensity: 30 },
 ];
 
 const mediumWindowSpecs: SpecHighlight[] = [
-  { shape: 'circle', carrier: specCarrierPositions[2], halfWidth: 0.18, halfHeight: 0.18, softness: 0.66, power: 1.34, intensity: 22 },
-  { shape: 'circle', carrier: specCarrierPositions[3], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
-  { shape: 'circle', carrier: specCarrierPositions[6], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
-  { shape: 'circle', carrier: specCarrierPositions[7], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
-  { shape: 'circle', carrier: specCarrierPositions[10], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
+  { shape: 'circle', anchorNormal: specAnchorNormals[2], halfWidth: 0.18, halfHeight: 0.18, softness: 0.66, power: 1.34, intensity: 22 },
+  { shape: 'circle', anchorNormal: specAnchorNormals[3], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
+  { shape: 'circle', anchorNormal: specAnchorNormals[6], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
+  { shape: 'circle', anchorNormal: specAnchorNormals[7], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.38, intensity: 21 },
+  { shape: 'circle', anchorNormal: specAnchorNormals[10], halfWidth: 0.18, halfHeight: 0.18, softness: 0.68, power: 1.4, intensity: 20 },
 ];
 
 const elasticField = new ElasticContactField(layerControls);
@@ -238,9 +238,9 @@ class SceneRenderer {
         alpha: circle.fillAlpha,
       })),
       specs: preparedSpecs.map((spec) => ({
-        sourceDirection: spec.sourceDirection,
-        axisX: spec.axisX,
-        axisY: spec.axisY,
+        reflectionCenter: spec.reflectionCenter,
+        reflectionAxisX: spec.reflectionAxisX,
+        reflectionAxisY: spec.reflectionAxisY,
         halfWidth: spec.halfWidth,
         halfHeight: spec.halfHeight,
         softness: clamp(spec.softness * spec.softnessScale, 0.08, 1.8),
@@ -264,7 +264,6 @@ class SceneRenderer {
         showCaRimLayer: params.presentation.showCaRimLayer,
         showSpecLayer: params.presentation.showSpecLayer,
         showOuterStrokeLayer: params.presentation.showOuterStrokeLayer,
-        contentOverscan: params.controls.contentOverscan,
         sourceFollow: params.controls.sourceFollow,
         bezelWidth: params.controls.bezelWidth,
         thickness: params.controls.thickness,
@@ -373,40 +372,36 @@ function backgroundSample(controls: LayerControls = layerControls): Rgb {
   ];
 }
 
-function getContentOverscan(controls: LayerControls): number {
-  return Math.max(controls.contentOverscan, 0);
-}
-
 function getContentSize(params: RenderParams): number {
-  return params.view.radius * 2 * (1 + getContentOverscan(params.controls) * 2);
+  return params.view.radius * 2;
 }
 
 function getContentCenter(params: RenderParams): number {
-  return params.view.radius * (1 + getContentOverscan(params.controls));
+  return params.view.radius;
 }
 
-function reflectionDerivative(carrier: Vec3, tangent: Vec3): Vec3 {
-  const carrierZ = carrier[2];
-  const tangentZ = tangent[2];
+function reflectionDerivative(anchorNormal: Vec3, surfaceTangent: Vec3): Vec3 {
+  const normalZ = anchorNormal[2];
+  const tangentZ = surfaceTangent[2];
 
   return [
-    2 * (tangentZ * carrier[0] + carrierZ * tangent[0]),
-    2 * (tangentZ * carrier[1] + carrierZ * tangent[1]),
-    2 * (tangentZ * carrier[2] + carrierZ * tangent[2]),
+    2 * (tangentZ * anchorNormal[0] + normalZ * surfaceTangent[0]),
+    2 * (tangentZ * anchorNormal[1] + normalZ * surfaceTangent[1]),
+    2 * (tangentZ * anchorNormal[2] + normalZ * surfaceTangent[2]),
   ];
 }
 
-function applySpecEdgeDwell(carrier: Vec3, power: number): Vec3 {
-  const xyLength = Math.hypot(carrier[0], carrier[1]);
+function applySpecEdgeDwell(anchorNormal: Vec3, power: number): Vec3 {
+  const xyLength = Math.hypot(anchorNormal[0], anchorNormal[1]);
 
   if (xyLength <= 0.000001) {
-    return carrier;
+    return anchorNormal;
   }
 
-  const z = Math.sign(carrier[2]) * Math.abs(carrier[2]) ** power;
+  const z = Math.sign(anchorNormal[2]) * Math.abs(anchorNormal[2]) ** power;
   const xyScale = Math.sqrt(Math.max(1 - z * z, 0)) / xyLength;
 
-  return [carrier[0] * xyScale, carrier[1] * xyScale, z];
+  return [anchorNormal[0] * xyScale, anchorNormal[1] * xyScale, z];
 }
 
 function prepareSpecHighlight(
@@ -416,31 +411,45 @@ function prepareSpecHighlight(
   intensityScale: number,
   softnessScale: number,
 ): PreparedSpecHighlight {
-  // The carrier owns the orbit; its reflected source and tangent frame preserve the glass distortion.
-  const baseCarrier = normalizeVec3(spec.carrier);
-  const baseAxisX = projectOntoTangent([1, 0, 0], baseCarrier);
-  const baseAxisY = normalizeVec3(crossVec3(baseCarrier, baseAxisX));
-  const orbitCarrier = normalizeVec3(applyMatrix3(orientation, baseCarrier));
-  const carrier = applySpecEdgeDwell(orbitCarrier, controls.specEdgeDwell);
-  const carrierAxisX = projectOntoTangent(applyMatrix3(orientation, baseAxisX), carrier);
-  const carrierAxisY = projectOntoTangent(applyMatrix3(orientation, baseAxisY), carrier);
-  const sourceDirection = normalizeVec3(reflectVec3([0, 0, -1], carrier));
-  const axisX = projectOntoTangent(reflectionDerivative(carrier, carrierAxisX), sourceDirection);
-  const rawAxisY = projectOntoTangent(reflectionDerivative(carrier, carrierAxisY), sourceDirection);
-  const axisY = normalizeVec3(crossVec3(sourceDirection, axisX));
+  // The anchor normal owns the orbit; its tangent frame defines the highlight footprint.
+  const baseAnchorNormal = normalizeVec3(spec.anchorNormal);
+  const baseSurfaceTangentX = projectOntoTangent([1, 0, 0], baseAnchorNormal);
+  const baseSurfaceTangentY = normalizeVec3(crossVec3(baseAnchorNormal, baseSurfaceTangentX));
+  const rotatedAnchorNormal = normalizeVec3(applyMatrix3(orientation, baseAnchorNormal));
+  const anchorNormal = applySpecEdgeDwell(rotatedAnchorNormal, controls.specEdgeDwell);
+  const surfaceTangentX = projectOntoTangent(
+    applyMatrix3(orientation, baseSurfaceTangentX),
+    anchorNormal,
+  );
+  const surfaceTangentY = projectOntoTangent(
+    applyMatrix3(orientation, baseSurfaceTangentY),
+    anchorNormal,
+  );
+  const reflectionCenter = normalizeVec3(reflectVec3([0, 0, -1], anchorNormal));
+  const reflectionAxisX = projectOntoTangent(
+    reflectionDerivative(anchorNormal, surfaceTangentX),
+    reflectionCenter,
+  );
+  const rawReflectionAxisY = projectOntoTangent(
+    reflectionDerivative(anchorNormal, surfaceTangentY),
+    reflectionCenter,
+  );
+  const reflectionAxisY = normalizeVec3(crossVec3(reflectionCenter, reflectionAxisX));
 
-  if (dotVec3(axisY, rawAxisY) < 0) {
-    axisY[0] *= -1;
-    axisY[1] *= -1;
-    axisY[2] *= -1;
+  if (dotVec3(reflectionAxisY, rawReflectionAxisY) < 0) {
+    reflectionAxisY[0] *= -1;
+    reflectionAxisY[1] *= -1;
+    reflectionAxisY[2] *= -1;
   }
 
   return {
     ...spec,
-    sourceDirection,
-    axisX,
-    axisY,
-    visibility: orbitCarrier[2] <= 0 ? 0 : smoothstep(0, controls.specEdgeFade, orbitCarrier[2]),
+    reflectionCenter,
+    reflectionAxisX,
+    reflectionAxisY,
+    visibility: rotatedAnchorNormal[2] <= 0
+      ? 0
+      : smoothstep(0, controls.specEdgeFade, rotatedAnchorNormal[2]),
     intensityScale,
     softnessScale,
   };
@@ -615,7 +624,6 @@ function setupGui(): void {
   releaseSpring.add(layerControls, 'releaseLifetime', 0.08, 0.6, 0.01).name('contact lifetime');
 
   const source = gui.addFolder('3 source circles');
-  source.add(layerControls, 'contentOverscan', 0.1, 0.9, 0.01).name('overscan').onChange(resize);
   source.add(layerControls, 'circleCount', 4, maxMarbleCircleCount, 1).name('count');
   source.add(layerControls, 'circleSizeScale', 0.45, 2.6, 0.01).name('size');
   source.add(layerControls, 'circleSizeVariance', 0, 2.5, 0.01).name('size variance');

@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="title description">
+  <title id="title">How mean-value coordinate weights are calculated and reused</title>
+  <desc id="description">Three panels show a point inside a deformed cage, the distances and adjacent angles used to calculate raw weights, normalization of eight weights so they sum to one, and reuse of those weights on matching posts of a canonical circle to recover the point's original coordinate.</desc>
+  <defs>
+    <style>
+      .title { font: 700 31px ui-sans-serif, system-ui, sans-serif; fill: #152238; }
+      .subtitle { font: 500 15px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .panel-title { font: 700 21px ui-sans-serif, system-ui, sans-serif; fill: #1d2c42; }
+      .label { font: 650 16px ui-sans-serif, system-ui, sans-serif; fill: #34445e; }
+      .small { font: 500 14px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .tiny { font: 600 12px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .formula { font: 700 17px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #26383c; }
+      .formula-small { font: 700 14px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #26383c; }
+      .inverse { fill: #ffffff; }
+      .post-label { font: 800 12px ui-sans-serif, system-ui, sans-serif; fill: #34445e; text-anchor: middle; dominant-baseline: middle; }
+      .active-post-label { font: 800 12px ui-sans-serif, system-ui, sans-serif; fill: #653d00; text-anchor: middle; dominant-baseline: middle; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#718287"/>
+    </marker>
+    <marker id="goldArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#c78900"/>
+    </marker>
+    <circle id="post" r="9" fill="#ffffff" stroke="#718096" stroke-width="2.4"/>
+    <circle id="activePost" r="10" fill="#ffd166" stroke="#9a5e00" stroke-width="2.5"/>
+  </defs>
+
+  <rect width="1440" height="900" fill="#ffffff"/>
+  <text x="720" y="45" text-anchor="middle" class="title">한 픽셀 P의 mean-value weights가 만들어지는 과정</text>
+  <text x="720" y="70" text-anchor="middle" class="subtitle">각 픽셀마다 거리와 이웃 각도를 다시 계산하고, 같은 weights를 canonical cage에 적용한다</text>
+
+  <rect x="24" y="94" width="438" height="704" rx="13" fill="#f8fafc" stroke="#d9e0e8" stroke-width="2"/>
+  <rect x="501" y="94" width="438" height="704" rx="13" fill="#fffaf6" stroke="#eadfd6" stroke-width="2"/>
+  <rect x="978" y="94" width="438" height="704" rx="13" fill="#f8f9fc" stroke="#dce1ec" stroke-width="2"/>
+
+  <line x1="464" y1="446" x2="492" y2="446" stroke="#718287" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="941" y1="446" x2="969" y2="446" stroke="#718287" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <text x="243" y="133" text-anchor="middle" class="panel-title">1. P에서 cage 기둥을 바라본다</text>
+  <text x="243" y="159" text-anchor="middle" class="small">가까운 기둥과 양옆의 벌어진 각도가 더 큰 영향을 만든다</text>
+
+  <polygon points="382,318 350,390 270,420 185,390 135,318 170,235 252,198 335,228" fill="#37b9b1" fill-opacity="0.10" stroke="#168c88" stroke-width="3.5" stroke-linejoin="round"/>
+
+  <g stroke="#b7c1cd" stroke-width="1.6" opacity="0.72">
+    <line x1="304" y1="300" x2="270" y2="420"/>
+    <line x1="304" y1="300" x2="185" y2="390"/>
+    <line x1="304" y1="300" x2="135" y2="318"/>
+    <line x1="304" y1="300" x2="170" y2="235"/>
+    <line x1="304" y1="300" x2="252" y2="198"/>
+  </g>
+  <line x1="304" y1="300" x2="335" y2="228" stroke="#ec6753" stroke-width="3.2" opacity="0.82"/>
+  <line x1="304" y1="300" x2="382" y2="318" stroke="#ec6753" stroke-width="4.8"/>
+  <line x1="304" y1="300" x2="350" y2="390" stroke="#ec6753" stroke-width="3.5" opacity="0.88"/>
+
+  <path d="M 318 267 A 36 36 0 0 1 339 308" fill="none" stroke="#5578bd" stroke-width="3"/>
+  <path d="M 339 308 A 36 36 0 0 1 320 332" fill="none" stroke="#5578bd" stroke-width="3"/>
+  <text x="334" y="274" class="label" fill="#5578bd">α₇</text>
+  <text x="340" y="337" class="label" fill="#5578bd">α₀</text>
+  <text x="355" y="292" class="formula-small" fill="#c64d3c">r₀</text>
+
+  <circle cx="304" cy="300" r="11" fill="#ec6753" stroke="#9b3528" stroke-width="3"/>
+  <text x="285" y="293" class="label" fill="#9b3528">P</text>
+
+  <use href="#activePost" x="382" y="318"/><text class="active-post-label" x="382" y="318">0</text>
+  <use href="#activePost" x="350" y="390"/><text class="active-post-label" x="350" y="390">1</text>
+  <use href="#post" x="270" y="420"/><text class="post-label" x="270" y="420">2</text>
+  <use href="#post" x="185" y="390"/><text class="post-label" x="185" y="390">3</text>
+  <use href="#post" x="135" y="318"/><text class="post-label" x="135" y="318">4</text>
+  <use href="#post" x="170" y="235"/><text class="post-label" x="170" y="235">5</text>
+  <use href="#post" x="252" y="198"/><text class="post-label" x="252" y="198">6</text>
+  <use href="#activePost" x="335" y="228"/><text class="active-post-label" x="335" y="228">7</text>
+
+  <rect x="62" y="490" width="362" height="160" rx="9" fill="#ffffff" stroke="#d9e0e8"/>
+  <text x="243" y="520" text-anchor="middle" class="label">0번 기둥의 정규화 전 영향 q₀</text>
+  <text x="243" y="556" text-anchor="middle" class="formula">t₇ = tan(α₇ / 2),  t₀ = tan(α₀ / 2)</text>
+  <text x="243" y="596" text-anchor="middle" class="formula">q₀ = (t₇ + t₀) / r₀</text>
+  <text x="243" y="628" text-anchor="middle" class="small">가까우면 r₀가 작아지고, 양옆 각도가 넓으면 t가 커진다</text>
+  <text x="243" y="692" text-anchor="middle" class="label">같은 계산을 0~7번 기둥에 반복</text>
+  <text x="243" y="720" text-anchor="middle" class="small">이 q는 아직 합이 1이 아닌 raw weight다</text>
+
+  <text x="720" y="133" text-anchor="middle" class="panel-title">2. 전체 합으로 나눠 weights를 만든다</text>
+  <text x="720" y="159" text-anchor="middle" class="small">정규화 뒤에는 w₀ + w₁ + ... + w₇ = 1</text>
+
+  <rect x="548" y="183" width="344" height="74" rx="9" fill="#ffffff" stroke="#eadfd6"/>
+  <text x="720" y="214" text-anchor="middle" class="formula">wᵢ = qᵢ / (q₀ + q₁ + ... + q₇)</text>
+  <text x="720" y="241" text-anchor="middle" class="small">아래 값은 왼쪽 P 위치에서 계산한 예시</text>
+
+  <g>
+    <text x="572" y="300" class="formula-small">w₀</text><rect x="615" y="283" width="220" height="22" rx="5" fill="#e6ebf0"/><rect x="615" y="283" width="206" height="22" rx="5" fill="#168c88"/><text x="848" y="300" class="formula-small">0.262</text>
+    <text x="572" y="343" class="formula-small">w₁</text><rect x="615" y="326" width="220" height="22" rx="5" fill="#e6ebf0"/><rect x="615" y="326" width="110" height="22" rx="5" fill="#37b9b1"/><text x="848" y="343" class="formula-small">0.139</text>
+    <text x="572" y="386" class="formula-small">w₂</text><rect x="615" y="369" width="220" height="22" rx="5" fill="#e6ebf0"/><rect x="615" y="369" width="69" height="22" rx="5" fill="#8ad8d3"/><text x="848" y="386" class="formula-small">0.088</text>
+    <text x="572" y="429" class="formula-small">w₃</text><rect x="615" y="412" width="220" height="22" rx="5" fill="#e6ebf0"/><rect x="615" y="412" width="46" height="22" rx="5" fill="#8ad8d3"/><text x="848" y="429" class="formula-small">0.058</text>
+    <text x="572" y="472" class="formula-small">w₄</text><rect x="615" y="455" width="220" height="22" rx="5" fill="#e6ebf0"/><rect x="615" y="455" width="39" height="22" rx="5" fill="#8ad8d3"/><text x="848" y="472" class="formula-small">0.050</text>
+    <text x="572" y="515" class="formula-small">w₅</text><rect x="615" y="498" width="220" height="22" rx="5" fill="#e6ebf0"/><rect x="615" y="498" width="49" height="22" rx="5" fill="#8ad8d3"/><text x="848" y="515" class="formula-small">0.062</text>
+    <text x="572" y="558" class="formula-small">w₆</text><rect x="615" y="541" width="220" height="22" rx="5" fill="#e6ebf0"/><rect x="615" y="541" width="77" height="22" rx="5" fill="#8ad8d3"/><text x="848" y="558" class="formula-small">0.098</text>
+    <text x="572" y="601" class="formula-small">w₇</text><rect x="615" y="584" width="220" height="22" rx="5" fill="#e6ebf0"/><rect x="615" y="584" width="190" height="22" rx="5" fill="#168c88"/><text x="848" y="601" class="formula-small">0.242</text>
+  </g>
+
+  <line x1="568" y1="635" x2="872" y2="635" stroke="#d1bfae" stroke-width="2"/>
+  <text x="720" y="668" text-anchor="middle" class="formula">Σwᵢ = 1.000</text>
+  <text x="720" y="704" text-anchor="middle" class="label">P에 가까운 0번과 7번의 막대가 가장 길다</text>
+  <text x="720" y="732" text-anchor="middle" class="small">P가 움직이면 거리와 각도도 연속적으로 변해 막대가 부드럽게 바뀐다</text>
+
+  <text x="1197" y="133" text-anchor="middle" class="panel-title">3. 같은 weights를 원의 기둥에 적용한다</text>
+  <text x="1197" y="159" text-anchor="middle" class="small">weights는 늘어난 D cage에서 계산하고, 좌표는 원의 C cage에서 가져온다</text>
+
+  <polygon points="1160,350 1140,405 1090,425 1040,408 1008,370 1025,320 1075,295 1132,315" fill="#37b9b1" fill-opacity="0.10" stroke="#168c88" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="1112" cy="356" r="9" fill="#ec6753" stroke="#9b3528" stroke-width="2.5"/>
+  <text x="1094" y="350" class="label" fill="#9b3528">P</text>
+  <use href="#activePost" x="1160" y="350"/><text class="active-post-label" x="1160" y="350">0</text>
+  <use href="#activePost" x="1140" y="405"/><text class="active-post-label" x="1140" y="405">1</text>
+  <use href="#post" x="1090" y="425"/><text class="post-label" x="1090" y="425">2</text>
+  <use href="#post" x="1040" y="408"/><text class="post-label" x="1040" y="408">3</text>
+  <use href="#post" x="1008" y="370"/><text class="post-label" x="1008" y="370">4</text>
+  <use href="#post" x="1025" y="320"/><text class="post-label" x="1025" y="320">5</text>
+  <use href="#post" x="1075" y="295"/><text class="post-label" x="1075" y="295">6</text>
+  <use href="#activePost" x="1132" y="315"/><text class="active-post-label" x="1132" y="315">7</text>
+  <text x="1085" y="466" text-anchor="middle" class="label">deformed posts Dᵢ</text>
+
+  <line x1="1178" y1="360" x2="1200" y2="360" stroke="#718287" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="1188" y="344" text-anchor="middle" class="tiny">w 유지</text>
+
+  <circle cx="1306" cy="360" r="72" fill="#5578bd" fill-opacity="0.08" stroke="#5578bd" stroke-width="3"/>
+  <g stroke="#c78900" stroke-linecap="round">
+    <line x1="1378" y1="360" x2="1335" y2="354" stroke-width="4.5" opacity="0.80"/>
+    <line x1="1357" y1="411" x2="1335" y2="354" stroke-width="3.2" opacity="0.56"/>
+    <line x1="1357" y1="309" x2="1335" y2="354" stroke-width="4.2" opacity="0.76"/>
+  </g>
+  <use href="#activePost" x="1378" y="360"/><text class="active-post-label" x="1378" y="360">0</text>
+  <use href="#activePost" x="1357" y="411"/><text class="active-post-label" x="1357" y="411">1</text>
+  <use href="#post" x="1306" y="432"/><text class="post-label" x="1306" y="432">2</text>
+  <use href="#post" x="1255" y="411"/><text class="post-label" x="1255" y="411">3</text>
+  <use href="#post" x="1234" y="360"/><text class="post-label" x="1234" y="360">4</text>
+  <use href="#post" x="1255" y="309"/><text class="post-label" x="1255" y="309">5</text>
+  <use href="#post" x="1306" y="288"/><text class="post-label" x="1306" y="288">6</text>
+  <use href="#activePost" x="1357" y="309"/><text class="active-post-label" x="1357" y="309">7</text>
+  <circle cx="1335" cy="354" r="10" fill="#ffd166" stroke="#9a5e00" stroke-width="3"/>
+  <text x="1306" y="466" text-anchor="middle" class="label">canonical posts Cᵢ와 specPoint</text>
+
+  <rect x="1012" y="512" width="370" height="126" rx="9" fill="#ffffff" stroke="#dce1ec"/>
+  <text x="1197" y="545" text-anchor="middle" class="formula">specPoint = Σ(Cᵢ × wᵢ)</text>
+  <text x="1197" y="578" text-anchor="middle" class="label">같은 번호의 기둥에 같은 wᵢ 적용</text>
+  <text x="1197" y="608" text-anchor="middle" class="small">0번과 7번의 큰 weight가 원의 오른쪽 위 위치를 강하게 당긴다</text>
+
+  <line x1="1080" y1="690" x2="1310" y2="690" stroke="#c78900" stroke-width="3" marker-end="url(#goldArrow)"/>
+  <text x="1197" y="676" text-anchor="middle" class="small">Guseul에서 이어지는 계산</text>
+  <text x="1197" y="724" text-anchor="middle" class="label">specPoint → 구의 normal → reflection</text>
+
+  <rect x="196" y="827" width="1048" height="46" rx="10" fill="#18282b"/>
+  <text x="720" y="856" text-anchor="middle" class="formula inverse">거리 + 이웃 각도 → raw q → 합이 1인 w → canonical 좌표 복원</text>
+</svg>

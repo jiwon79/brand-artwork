@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" role="img" aria-labelledby="title desc">
+  <title id="title">SDF antialiasing with fwidth and smoothstep</title>
+  <desc id="desc">Fwidth estimates the signed-distance change across one pixel and defines a transition from minus w to plus w. Smoothstep converts that interval into coverage descending smoothly from one inside the shape to zero outside.</desc>
+  <defs>
+    <style>
+      .title { font: 700 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #162326; }
+      .heading { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #26373a; }
+      .label { font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #405256; }
+      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #68797c; }
+      .code { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    </style>
+  </defs>
+
+  <rect width="960" height="500" fill="#fff"/>
+  <text x="480" y="38" class="title" text-anchor="middle">fwidth chooses the transition width; smoothstep fills it</text>
+
+  <rect x="55" y="70" width="850" height="330" rx="8" fill="#f8fbfb" stroke="#d8e0e2" stroke-width="2"/>
+  <rect x="105" y="105" width="260" height="245" fill="#d8f1ee" fill-opacity="0.78"/>
+  <rect x="365" y="105" width="230" height="245" fill="#fff2ca" fill-opacity="0.78"/>
+  <rect x="595" y="105" width="260" height="245" fill="#fde3df" fill-opacity="0.72"/>
+
+  <line x1="105" y1="350" x2="855" y2="350" stroke="#708084" stroke-width="2"/>
+  <line x1="105" y1="105" x2="105" y2="350" stroke="#708084" stroke-width="2"/>
+  <text x="480" y="384" class="label" text-anchor="middle">shapeDistance</text>
+  <text x="75" y="120" class="label" transform="rotate(-90 75 120)">coverage</text>
+
+  <line x1="365" y1="105" x2="365" y2="350" stroke="#d0a12a" stroke-width="2" stroke-dasharray="6 5"/>
+  <line x1="480" y1="105" x2="480" y2="350" stroke="#53666a" stroke-width="2" stroke-dasharray="6 5"/>
+  <line x1="595" y1="105" x2="595" y2="350" stroke="#d0a12a" stroke-width="2" stroke-dasharray="6 5"/>
+
+  <path d="M105 135 H365 C420 135 430 228 480 228 C530 228 540 320 595 320 H855" fill="none" stroke="#168c88" stroke-width="6" stroke-linecap="round"/>
+  <path d="M105 135 H480 V320 H855" fill="none" stroke="#ef6752" stroke-width="2" stroke-dasharray="8 6"/>
+
+  <circle cx="365" cy="135" r="7" fill="#d0a12a" stroke="#fff" stroke-width="3"/>
+  <circle cx="480" cy="228" r="7" fill="#53666a" stroke="#fff" stroke-width="3"/>
+  <circle cx="595" cy="320" r="7" fill="#d0a12a" stroke="#fff" stroke-width="3"/>
+
+  <text x="235" y="93" class="heading" text-anchor="middle">inside</text>
+  <text x="480" y="93" class="heading" text-anchor="middle">one-pixel transition</text>
+  <text x="725" y="93" class="heading" text-anchor="middle">outside</text>
+  <text x="125" y="128" class="small">coverage 1</text>
+  <text x="735" y="342" class="small">coverage 0</text>
+
+  <text x="365" y="373" class="label" text-anchor="middle">-w</text>
+  <text x="480" y="373" class="label" text-anchor="middle">0 edge</text>
+  <text x="595" y="373" class="label" text-anchor="middle">+w</text>
+  <text x="690" y="148" class="small" fill="#ef6752">hard cutoff</text>
+  <text x="615" y="285" class="small" fill="#168c88">smooth coverage</text>
+
+  <rect x="120" y="425" width="720" height="48" rx="7" fill="#18282b"/>
+  <text x="480" y="446" class="code" fill="#fff" text-anchor="middle">w = fwidth(shapeDistance)</text>
+  <text x="480" y="465" class="code" fill="#cbd8da" text-anchor="middle">coverage = 1 - smoothstep(-w, +w, shapeDistance)</text>
+</svg>

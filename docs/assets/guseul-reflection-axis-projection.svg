@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 590" role="img" aria-labelledby="title description">
+  <title id="title">From a surface tangent to a reflection-space measurement axis</title>
+  <desc id="description">The surface tangent describes how the anchor normal moves on the sphere. The reflection derivative converts that movement into a reflection-space axis. The shader projects a pixel reflection onto that axis and divides by half width.</desc>
+  <defs>
+    <style>
+      .title { font: 700 24px system-ui, sans-serif; fill: #19272a; }
+      .heading { font: 700 17px system-ui, sans-serif; fill: #253438; }
+      .label { font: 600 13px system-ui, sans-serif; fill: #405156; }
+      .small { font: 500 11px system-ui, sans-serif; fill: #647277; }
+      .code { font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #26383c; }
+      .inverse { fill: #ffffff; }
+    </style>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#168c88"/>
+    </marker>
+    <marker id="arrow-coral" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#ec6753"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#5578bd"/>
+    </marker>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#718287"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="590" fill="#ffffff"/>
+  <text x="480" y="40" text-anchor="middle" class="title">구 표면의 방향을 반사광선을 재는 자로 바꾸는 과정</text>
+
+  <rect x="25" y="70" width="280" height="440" rx="8" fill="#f7faf9" stroke="#d8e1df" stroke-width="2"/>
+  <text x="45" y="100" class="heading">1. 구 표면에서 움직일 방향</text>
+
+  <circle cx="160" cy="280" r="98" fill="#e8f3f2" stroke="#438e8b" stroke-width="3"/>
+  <circle cx="160" cy="280" r="5" fill="#26383c"/>
+  <line x1="160" y1="280" x2="216" y2="198" stroke="#168c88" stroke-width="4" marker-end="url(#arrow-teal)"/>
+  <text x="76" y="230" class="label">anchorNormal</text>
+  <text x="76" y="248" class="small">spec 중심의 표면 방향</text>
+
+  <line x1="216" y1="198" x2="275" y2="238" stroke="#ec6753" stroke-width="4" marker-end="url(#arrow-coral)"/>
+  <text x="145" y="181" class="label">surfaceTangentX</text>
+  <text x="64" y="405" class="small">뜻:</text>
+  <text x="64" y="428" class="label">anchorNormal을 이 방향으로</text>
+  <text x="64" y="449" class="small">구 표면 위에서 움직인다.</text>
+
+  <rect x="335" y="70" width="290" height="440" rx="8" fill="#fff9f5" stroke="#eaded7" stroke-width="2"/>
+  <text x="355" y="100" class="heading">2. 반사 수식으로 축 변환</text>
+
+  <rect x="372" y="140" width="216" height="72" rx="7" fill="#f3e2dc"/>
+  <text x="480" y="168" text-anchor="middle" class="code">anchorNormal을</text>
+  <text x="480" y="191" text-anchor="middle" class="code">surfaceTangentX 쪽으로 이동</text>
+
+  <line x1="480" y1="220" x2="480" y2="266" stroke="#718287" stroke-width="3" marker-end="url(#arrow-gray)"/>
+  <text x="494" y="249" class="small">반사 수식으로 방향 변환</text>
+
+  <rect x="372" y="280" width="216" height="72" rx="7" fill="#dfe8fa"/>
+  <text x="480" y="308" text-anchor="middle" class="code">반사광선 끝의</text>
+  <text x="480" y="331" text-anchor="middle" class="code">이동 방향을 관찰</text>
+
+  <line x1="480" y1="360" x2="480" y2="406" stroke="#718287" stroke-width="3" marker-end="url(#arrow-gray)"/>
+  <text x="494" y="389" class="small">투영한 뒤 길이를 1로 맞춤</text>
+
+  <rect x="372" y="420" width="216" height="55" rx="7" fill="#dcebea"/>
+  <text x="480" y="453" text-anchor="middle" class="code">reflectionAxisX</text>
+  <text x="480" y="494" text-anchor="middle" class="small">길이는 버리고 방향만 남긴다.</text>
+
+  <rect x="655" y="70" width="280" height="440" rx="8" fill="#f7f8fc" stroke="#dce1ec" stroke-width="2"/>
+  <text x="675" y="100" class="heading">3. 픽셀의 반사 방향 측정</text>
+
+  <circle cx="790" cy="325" r="5" fill="#26383c"/>
+  <line x1="790" y1="325" x2="790" y2="170" stroke="#168c88" stroke-width="4" marker-end="url(#arrow-teal)"/>
+  <text x="676" y="157" class="label">reflectionCenter</text>
+
+  <line x1="790" y1="325" x2="905" y2="325" stroke="#ec6753" stroke-width="4" marker-end="url(#arrow-coral)"/>
+  <text x="798" y="350" class="label">reflectionAxisX</text>
+
+  <line x1="790" y1="325" x2="866" y2="205" stroke="#5578bd" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <text x="866" y="190" class="label">pixel reflection</text>
+
+  <line x1="866" y1="205" x2="866" y2="325" stroke="#718287" stroke-width="2" stroke-dasharray="6 5"/>
+  <line x1="790" y1="365" x2="866" y2="365" stroke="#ec6753" stroke-width="3"/>
+  <line x1="790" y1="357" x2="790" y2="373" stroke="#ec6753" stroke-width="2"/>
+  <line x1="866" y1="357" x2="866" y2="373" stroke="#ec6753" stroke-width="2"/>
+  <text x="828" y="388" text-anchor="middle" class="code">measuredX</text>
+
+  <rect x="682" y="415" width="226" height="65" rx="7" fill="#e9edf6"/>
+  <text x="795" y="442" text-anchor="middle" class="code">dx = measuredX / halfWidth</text>
+  <text x="795" y="465" text-anchor="middle" class="small">measuredX = halfWidth이면 dx = 1</text>
+
+  <rect x="135" y="545" width="690" height="30" rx="7" fill="#18282b"/>
+  <text x="480" y="565" text-anchor="middle" class="code inverse">surfaceTangentX는 이동 방향, reflectionAxisX는 반사 결과를 재는 자</text>
+</svg>
