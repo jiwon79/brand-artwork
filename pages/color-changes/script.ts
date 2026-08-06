@@ -3,6 +3,9 @@ import GUI from 'lil-gui';
 
 const ART_WIDTH = 480;
 const ART_HEIGHT = 600;
+const FIELD_SCALE = 3;
+const FIELD_WIDTH = ART_WIDTH * FIELD_SCALE;
+const FIELD_HEIGHT = ART_HEIGHT * FIELD_SCALE;
 const BLUR_TAPS = 12;
 const QA_MODE = new URLSearchParams(window.location.search).has('qa');
 
@@ -16,12 +19,14 @@ const state = {
   blurSigma: 8.5,
   blurStep: 1.40,
   threshold: 0.047,
-  softness: 0.0075,
+  softness: 0.0085,
   densityRange: 0.105,
   hueBands: 0.30,
   colorCycle: 8.0,
-  pointerEase: 13.5,
-  fringe: 0.78,
+  pointerEase: 5.0,
+  pointerMaxSpeed: 360,
+  trailPersistence: 0.22,
+  fringe: 0.92,
 };
 
 const lines = [
@@ -46,8 +51,8 @@ let previousTime = startTime;
 let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const textCanvas = document.createElement('canvas');
-textCanvas.width = ART_WIDTH;
-textCanvas.height = ART_HEIGHT;
+textCanvas.width = FIELD_WIDTH;
+textCanvas.height = FIELD_HEIGHT;
 const textContext = textCanvas.getContext('2d', { alpha: true });
 if (!textContext) throw new Error('Unable to create the text mask.');
 
@@ -65,6 +70,7 @@ function drawTrackedLine(
 }
 
 function bakeTextMask(): void {
+  textContext.setTransform(FIELD_SCALE, 0, 0, FIELD_SCALE, 0, 0);
   textContext.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
   textContext.save();
   textContext.fillStyle = '#ffffff';
@@ -112,23 +118,27 @@ const vertexShader = `
 
 const textTexture = new THREE.CanvasTexture(textCanvas);
 textTexture.colorSpace = THREE.NoColorSpace;
-textTexture.minFilter = THREE.LinearFilter;
+textTexture.minFilter = THREE.LinearMipmapLinearFilter;
 textTexture.magFilter = THREE.LinearFilter;
-textTexture.generateMipmaps = false;
+textTexture.generateMipmaps = true;
 
 const renderTargetOptions: THREE.RenderTargetOptions = {
   depthBuffer: false,
   stencilBuffer: false,
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
-  format: THREE.RGBAFormat,
-  type: THREE.UnsignedByteType,
+  format: THREE.RedFormat,
+  type: THREE.HalfFloatType,
   colorSpace: THREE.NoColorSpace,
 };
 
-const sourceTarget = new THREE.WebGLRenderTarget(ART_WIDTH, ART_HEIGHT, renderTargetOptions);
-const horizontalTarget = new THREE.WebGLRenderTarget(ART_WIDTH, ART_HEIGHT, renderTargetOptions);
-const densityTarget = new THREE.WebGLRenderTarget(ART_WIDTH, ART_HEIGHT, renderTargetOptions);
+const sourceTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
+const historyTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
+const historyTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
+const horizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
+const densityTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
+densityTarget.texture.minFilter = THREE.LinearMipmapLinearFilter;
+densityTarget.texture.generateMipmaps = true;
 
 const sourceMaterial = new THREE.ShaderMaterial({
   vertexShader,
@@ -161,6 +171,32 @@ const sourceMaterial = new THREE.ShaderMaterial({
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uRadius: { value: new THREE.Vector2(state.radiusX, state.radiusY) },
     uFalloff: { value: state.lightFalloff },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
+const temporalMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uCurrent;
+    uniform sampler2D uHistory;
+    uniform float uRetention;
+
+    void main() {
+      float currentInk = texture2D(uCurrent, vUv).r;
+      float retainedInk = texture2D(uHistory, vUv).r * uRetention;
+      float persistentInk = max(currentInk, retainedInk);
+      gl_FragColor = vec4(persistentInk, 0.0, 0.0, 1.0);
+    }
+  `,
+  uniforms: {
+    uCurrent: { value: sourceTarget.texture },
+    uHistory: { value: historyTargetA.texture },
+    uRetention: { value: 0 },
   },
   depthTest: false,
   depthWrite: false,
@@ -211,7 +247,6 @@ const finalMaterial = new THREE.ShaderMaterial({
 
     varying vec2 vUv;
     uniform sampler2D uText;
-    uniform sampler2D uExcited;
     uniform sampler2D uDensity;
     uniform vec2 uResolution;
     uniform vec2 uPosterOffset;
@@ -230,6 +265,10 @@ const finalMaterial = new THREE.ShaderMaterial({
       return hsv.z * mix(vec3(1.0), rgb, hsv.y);
     }
 
+    float interleavedGradientNoise(vec2 pixel) {
+      return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+    }
+
     void main() {
       vec2 fragment = vUv * uResolution;
       vec2 artUv = (fragment - uPosterOffset) / uPosterSize;
@@ -241,38 +280,39 @@ const finalMaterial = new THREE.ShaderMaterial({
       }
 
       float textMask = texture2D(uText, artUv).a;
-      float excitedInk = texture2D(uExcited, artUv).r;
       float density = texture2D(uDensity, artUv).r;
-      vec3 base = mix(background, vec3(0.155, 0.153, 0.148), textMask * 0.92);
 
-      float alpha = smoothstep(uThreshold - uSoftness, uThreshold + uSoftness, density);
-      float fringeAlpha = smoothstep(uThreshold * 0.54, uThreshold, density) * (1.0 - alpha);
+      float antialiasWidth = max(uSoftness, fwidth(density) * 1.35);
+      float alpha = smoothstep(uThreshold - antialiasWidth, uThreshold + antialiasWidth, density);
+      float fringeAlpha = smoothstep(uThreshold * 0.24, uThreshold, density) * (1.0 - alpha);
       float normalizedDensity = clamp((density - uThreshold) / max(uDensityRange, 0.001), 0.0, 1.0);
+      float underprintFade = smoothstep(uThreshold * 0.34, uThreshold * 0.82, density);
+      float visibleText = textMask * 0.92 * (1.0 - underprintFade);
+      vec3 base = mix(background, vec3(0.155, 0.153, 0.148), visibleText);
 
       float cycle = max(uColorCycle, 0.1);
       float palettePhase = fract(0.84 + uTime / cycle);
-      float bandProgress = smoothstep(0.08, 0.78, normalizedDensity);
+      float bandProgress = smoothstep(0.04, 0.90, normalizedDensity);
       float hue = fract(palettePhase + bandProgress * uHueBands);
-      float saturation = mix(0.38, 0.76, smoothstep(0.58, 1.0, normalizedDensity));
+      float saturation = mix(0.44, 0.76, smoothstep(0.50, 1.0, normalizedDensity));
       vec3 goo = hsvToRgb(vec3(hue, saturation, 1.0));
-      float hotStrength = smoothstep(0.92, 1.0, normalizedDensity);
+      float hotStrength = smoothstep(0.78, 1.0, normalizedDensity);
       vec3 hotColor = hsvToRgb(vec3(fract(palettePhase + 0.025), 0.68, 1.0));
-      goo = mix(goo, hotColor, hotStrength);
+      goo = mix(goo, hotColor, hotStrength * 0.14);
 
-      float fringeHue = fract(palettePhase - 0.075);
-      vec3 fringeColor = hsvToRgb(vec3(fringeHue, 0.76, 0.84));
+      float fringeHue = fract(palettePhase + 0.09);
+      vec3 fringeColor = hsvToRgb(vec3(fringeHue, 0.90, 0.66));
       vec3 withFringe = mix(base, fringeColor, fringeAlpha * uFringe);
-      float strokeAlpha = smoothstep(0.10, 0.48, excitedInk) * (1.0 - alpha);
-      vec3 strokeColor = hsvToRgb(vec3(fract(palettePhase + 0.62), 0.82, 0.86));
-      vec3 withStrokes = mix(withFringe, strokeColor, strokeAlpha * 0.88);
-      vec3 result = mix(withStrokes, goo, alpha);
+      vec3 result = mix(withFringe, goo, alpha);
+      float coloredCoverage = max(alpha, fringeAlpha);
+      float dither = (interleavedGradientNoise(fragment) - 0.5) / 255.0;
+      result += vec3(dither * coloredCoverage * 0.85);
 
       gl_FragColor = vec4(result, 1.0);
     }
   `,
   uniforms: {
     uText: { value: textTexture },
-    uExcited: { value: sourceTarget.texture },
     uDensity: { value: densityTarget.texture },
     uResolution: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uPosterOffset: { value: new THREE.Vector2(0, 0) },
@@ -292,12 +332,25 @@ const finalMaterial = new THREE.ShaderMaterial({
 const passScene = new THREE.Scene();
 const passQuad = new THREE.Mesh(geometry, sourceMaterial);
 passScene.add(passQuad);
+let historyRead = historyTargetA;
+let historyWrite = historyTargetB;
 
 function renderPass(material: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null): void {
   passQuad.material = material;
   renderer.setRenderTarget(target);
   renderer.render(passScene, camera);
 }
+
+function clearTarget(target: THREE.WebGLRenderTarget): void {
+  renderer.setRenderTarget(target);
+  renderer.setClearColor(0x000000, 1);
+  renderer.clear();
+}
+
+clearTarget(historyTargetA);
+clearTarget(historyTargetB);
+renderer.setClearColor(0xfbfbfa, 1);
+renderer.setRenderTarget(null);
 
 function updateLayout(): void {
   const width = window.innerWidth;
@@ -329,15 +382,11 @@ function updateLayout(): void {
   finalMaterial.uniforms.uPosterSize.value.set(posterWidth, posterHeight);
 }
 
-function setPointerFromClient(clientX: number, clientY: number, snap = false): void {
+function setPointerFromClient(clientX: number, clientY: number): void {
   const x = THREE.MathUtils.clamp((clientX - artworkRect.left) / artworkRect.width, 0, 1);
   const yFromTop = THREE.MathUtils.clamp((clientY - artworkRect.top) / artworkRect.height, 0, 1);
   pointerTarget.x = x;
   pointerTarget.y = 1 - yFromTop;
-  if (snap) {
-    pointer.x = pointerTarget.x;
-    pointer.y = pointerTarget.y;
-  }
 }
 
 window.addEventListener('pointermove', (event) => {
@@ -345,7 +394,7 @@ window.addEventListener('pointermove', (event) => {
 }, { passive: true });
 
 window.addEventListener('pointerdown', (event) => {
-  setPointerFromClient(event.clientX, event.clientY, true);
+  setPointerFromClient(event.clientX, event.clientY);
 }, { passive: true });
 
 window.addEventListener('resize', updateLayout);
@@ -388,7 +437,9 @@ function bindGui(): void {
   gui.add(state, 'fringe', 0, 1, 0.01).onChange((value: number) => {
     finalMaterial.uniforms.uFringe.value = value;
   });
-  gui.add(state, 'pointerEase', 1, 30, 0.5);
+  gui.add(state, 'pointerEase', 1, 16, 0.1);
+  gui.add(state, 'pointerMaxSpeed', 80, 720, 10);
+  gui.add(state, 'trailPersistence', 0.08, 0.8, 0.01);
   gui.hide();
 
   window.addEventListener('keydown', (event) => {
@@ -403,13 +454,30 @@ function animate(now: number): void {
   const delta = Math.min((now - previousTime) / 1000, 0.1);
   previousTime = now;
   const ease = 1 - Math.exp(-state.pointerEase * delta);
-  pointer.x += (pointerTarget.x - pointer.x) * ease;
-  pointer.y += (pointerTarget.y - pointer.y) * ease;
+  const pointerDeltaX = pointerTarget.x - pointer.x;
+  const pointerDeltaY = pointerTarget.y - pointer.y;
+  const distanceInArtworkPixels = Math.hypot(
+    pointerDeltaX * ART_WIDTH,
+    pointerDeltaY * ART_HEIGHT,
+  );
+  if (distanceInArtworkPixels > 0.001) {
+    const easedDistance = distanceInArtworkPixels * ease;
+    const cappedDistance = Math.min(easedDistance, state.pointerMaxSpeed * delta);
+    const pointerStep = cappedDistance / distanceInArtworkPixels;
+    pointer.x += pointerDeltaX * pointerStep;
+    pointer.y += pointerDeltaY * pointerStep;
+  }
 
   sourceMaterial.uniforms.uPointer.value.set(pointer.x, pointer.y);
 
   renderPass(sourceMaterial, sourceTarget);
-  blurMaterial.uniforms.uInput.value = sourceTarget.texture;
+  temporalMaterial.uniforms.uCurrent.value = sourceTarget.texture;
+  temporalMaterial.uniforms.uHistory.value = historyRead.texture;
+  temporalMaterial.uniforms.uRetention.value = Math.exp(-delta / state.trailPersistence);
+  renderPass(temporalMaterial, historyWrite);
+  [historyRead, historyWrite] = [historyWrite, historyRead];
+
+  blurMaterial.uniforms.uInput.value = historyRead.texture;
   blurMaterial.uniforms.uDirection.value.set(1 / ART_WIDTH, 0);
   renderPass(blurMaterial, horizontalTarget);
   blurMaterial.uniforms.uInput.value = horizontalTarget.texture;

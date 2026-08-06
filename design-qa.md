@@ -3,144 +3,155 @@
 ## Comparison target
 
 - Source visual truth: `pages/color-changes/assets/reference-frame.png`
-- Source motion reference: `pages/color-changes/assets/reference.mp4`
-- Browser-rendered implementation: `pages/color-changes/qa/implementation-final.jpg`
-- Combined full-view evidence: `pages/color-changes/qa/compare-final.jpg`
+- Source motion truth: `pages/color-changes/assets/reference.mp4`
+- Browser-rendered desktop screenshot:
+  `pages/color-changes/qa/implementation-hq-final-full.png`
+- Density-normalized implementation crop:
+  `pages/color-changes/qa/implementation-hq-final.jpg`
+- Combined source/implementation evidence:
+  `pages/color-changes/qa/compare-hq-final.jpg`
+- Motion evidence: `pages/color-changes/qa/motion-delay-contact-final.jpg`
+- Responsive evidence: `pages/color-changes/qa/responsive-mobile-hq-final.png`
 - Route: `/pages/color-changes/?qa=1`
-- Browser: existing user Chrome window
-- State: palette frozen at the opening pink/yellow phase; light centered at the
-  calibrated QA pointer position `(177.6, 325.2)` in the 480 × 600 artwork
-  coordinate system
+- Browser: the existing user Chrome window
+- State: palette frozen at the source's opening pink/yellow phase.
 
 ## Normalization
 
-- Source pixels: 480 × 600 PNG extracted from the first video frame
-- Implementation pixels: 480 × 600 browser screenshot
-- CSS viewport: 480 × 600
-- Density normalization: source and implementation are both compared at 1×
-- Combined comparison: 960 × 600, source on the left and implementation on the
-  right, without additional crop or device frame
-- The tiny cursor remnant at the extreme top-left of Chrome screenshots is
-  browser-automation chrome, outside the artwork content and excluded from the
-  comparison.
+- Source pixels: 480 × 600 at 1×.
+- Desktop browser viewport: 1265 × 694 CSS px at device pixel ratio 2.
+- Desktop browser screenshot: 1265 × 694 pixels as returned by Chrome.
+- Contained artwork region: 555 × 694 pixels, cropped from the browser screenshot
+  and Lanczos-normalized to 480 × 600 for the combined comparison.
+- Mobile viewport: 390 × 844 CSS px at device pixel ratio 1.
+- Internal text and density fields: 1440 × 1800 half-float pixels, with
+  trilinear mipmapped sampling when reduced to the output canvas.
+- Static comparison pointer: reference-space `(177.6, 325.2)` from the top-left
+  of the 480 × 600 artwork.
 
 ## Full-view comparison
 
-`pages/color-changes/qa/compare-final.jpg` shows the complete 4:5 composition at
-matched size and interaction state.
+`pages/color-changes/qa/compare-hq-final.jpg` places the source on the left and
+the final browser render on the right at equal 480 × 600 pixel dimensions.
 
-- The nine lines use the same copy, fixed character rhythm, line breaks, and
-  central alignment as the source.
-- The text block begins and ends at the same reference-space positions.
-- The active goo spans the same central group of lines and preserves the main
-  negative-space holes, horizontal bands, and vertical joins.
-- The opening palette preserves the source hierarchy: mauve fringe, milky pink
-  body, yellow inner density, and small returning pink hotspots.
-- Background and charcoal text contrast match the source without adding UI or
-  decorative elements.
+- Copy, nine-line wrapping, alignment, text size, and overall composition remain
+  aligned with the source.
+- The final colored field preserves the same central connected silhouette,
+  negative-space channels, pink body, yellow density centers, and dark fringe.
+- The implementation is intentionally cleaner than the compressed MP4 but no
+  longer shows the square texels, hard 8-bit density steps, or jagged upscaling
+  visible in the earlier implementation.
 
-No additional focused crop was needed because the source is already 480 × 600,
-the typography and goo edges remain readable in the 1× full-view comparison,
-and there are no smaller icons or controls to inspect separately.
+The artwork is already legible at the full 480 × 600 comparison size. A separate
+focused crop was not necessary; the mobile evidence additionally stresses the
+high-density center where the earlier aliasing was most visible.
 
 ## Required fidelity surfaces
 
 ### Fonts and typography
 
 - Result: passed.
-- Helvetica Neue Light with manual 31.8 px character advance reproduces the
-  source's thin uppercase rhythm, centered widths, 43 px optical scale, and
-  42.2 px line height.
-- P3: the source font file is unavailable, so a few terminal shapes differ
-  subtly from the compressed reference. Block geometry and visual weight match.
+- Helvetica Neue Light with manual 31.8 px character advance continues to match
+  the reference's thin uppercase rhythm, line height, and centered widths.
+- Colored density now occludes the underlying dark glyphs inside the main field,
+  avoiding the earlier comb-like colored stroke artifacts.
+- P3: exact terminal shapes remain limited by the unavailable source font file.
 
 ### Spacing and layout rhythm
 
 - Result: passed.
-- The artwork uses a fixed 480 × 600 reference coordinate system and scales with
-  `contain`, preserving the source's margins and central composition.
-- No clipping or unintended wrapping was found at 480 × 600, 900 × 700, or
-  390 × 844.
+- The 480 × 600 artwork coordinate system still scales with `contain` and shows
+  no overflow at 1265 × 694 or 390 × 844.
+- The mobile check measured `scrollWidth: 390` and `scrollHeight: 844`, matching
+  the viewport without unintended scrolling or clipping.
 
 ### Colors and visual tokens
 
 - Result: passed.
-- The background, charcoal type, pink/mauve body, yellow cores, cyan/green/red
-  moving phases, and dark fringe follow the reference palette.
-- P3: the implementation is slightly cleaner than the 213 kbps H.264 source;
-  source compression noise and chroma macroblocking were intentionally not
-  reproduced.
+- The opening state keeps the source hierarchy of dark magenta fringe, soft pink
+  body, and yellow high-density centers.
+- Hue and hotspot interpolation now spans a wider density interval, avoiding the
+  hard contour rings found during the intermediate mobile pass.
+- P3: isolated cyan/red edge fragments vary with the live palette phase and are
+  not identical to every compressed source frame.
 
 ### Image quality and asset fidelity
 
 - Result: passed.
-- The user-supplied video and extracted reference frame are preserved as QA
-  assets. The visible artwork itself is procedural WebGL, as required for the
-  cursor-driven interaction; no placeholder, CSS drawing, SVG substitute, or
-  generated raster replacement is present.
-- The broad Gaussian field is rendered in two separable passes at reference
-  resolution and uses linear filtering at responsive sizes.
+- Text, activation, history, blur, and density are evaluated at 3× reference
+  resolution. Intermediate density uses single-channel half-float targets rather
+  than the previous 8-bit 480 × 600 buffers.
+- Trilinear mipmaps remove the downsampling moire found at the 390 px viewport.
+- Density derivatives provide edge antialiasing and low-amplitude in-field
+  dithering removes residual output banding without adding noise to the white
+  background or charcoal text.
+- The procedural WebGL artwork uses the supplied MP4 as its visual source; no
+  placeholder raster, SVG, or CSS substitute is present.
 
 ### Copy and content
 
 - Result: passed.
-- Copy and line breaks exactly match the source:
+- Copy and line breaks remain exactly:
   `COLOR / CHANGES / EVERYTHING / DEPENDING / ON / THE LIGHT / THAT / TOUCHES / IT`.
 
 ### States, interactions, and accessibility
 
 - Result: passed.
-- Cursor and touch positions directly control the light center with eased
-  tracking and no persistent trail.
-- Interaction evidence:
-  `pages/color-changes/qa/interaction-upper-right.jpg` and
-  `pages/color-changes/qa/interaction-lower-left.jpg`.
-- Responsive evidence:
-  `pages/color-changes/qa/responsive-wide.jpg` and
-  `pages/color-changes/qa/responsive-mobile.jpg`.
-- The canvas has a semantic artwork label and WebGL fallback message.
-- Reduced-motion mode freezes palette animation and restores the platform cursor.
-- Chrome console was checked after the reference state, both pointer states, and
-  both responsive states; no warnings or errors were present.
+- `pages/color-changes/qa/motion-delay-contact-final.jpg` shows four matched
+  states: settled upper-left, immediately after a lower-right pointer jump,
+  250 ms after the jump, and 1400 ms after the jump.
+- The immediate frame remains at the previous location. The 250 ms frame shows
+  controlled movement without an artwork-wide smear. By 1400 ms the previous
+  activation has crossed the density threshold and disappeared.
+- Tracking uses a 360 reference-pixel-per-second cap and 0.22 second half-float
+  history persistence. Pointer-down no longer snaps the light.
+- Pointer movement, the delayed transition, the final settled state, desktop,
+  and mobile rendering were tested in the existing Chrome window.
+- Chrome console was checked after desktop, mobile, and motion tests; no warnings
+  or errors were present.
+- The semantic artwork label and WebGL fallback remain intact. Reduced-motion
+  mode continues to freeze palette cycling and restore the platform cursor.
 
 ## Comparison history
 
-1. Initial field pass — `pages/color-changes/qa/compare-v2.jpg`
-   - Earlier P1: circular light produced an oversized, nearly flat green field;
-     the source required separate rows, holes, and pink/yellow density bands.
-   - Fix: changed to a strongly falling elliptical light, raised the density
-     threshold, reduced blur, and remapped the palette.
-2. Color-band pass — `pages/color-changes/qa/compare-v6.jpg`
-   - Earlier P2: density colors formed hard contour rings and the broad pink body
-     was too saturated.
-   - Fix: separated body/fringe treatment, lowered body saturation, and added a
-     nonlinear peak return toward pink.
-3. Spatial pass — `pages/color-changes/qa/compare-v11.jpg`
-   - Earlier P2: a fixed-width ellipse made the distant upper rows too wide and
-     the central/lower rows too narrow.
-   - Fix: added vertical-position-dependent horizontal taper and recalibrated the
-     pointer, radii, blur, and threshold against matched frames.
-4. Final pass — `pages/color-changes/qa/compare-final.jpg`
-   - Post-fix evidence: typography, overall active bounds, primary holes, color
-     hierarchy, interaction, and responsive composition have no actionable
-     P0/P1/P2 mismatch.
+1. Baseline quality finding — P1
+   - Earlier evidence: `pages/color-changes/qa/implementation-final.jpg`.
+   - Finding: a 480 × 600 unsigned-byte density target was enlarged on a DPR 2
+     canvas, exposing square texels and quantized color bands.
+   - Fix: moved the mask and render targets to 1440 × 1800, switched density to
+     half-float, added derivative antialiasing, and limited dithering to color.
+2. Initial delay pass — P2
+   - Earlier evidence: `pages/color-changes/qa/motion-delay-contact.jpg`.
+   - Finding: temporal retention worked, but a large pointer jump painted an
+     excessive vertical trail through most of the text block.
+   - Fix: added a 360 px/s light-speed cap and reduced persistence to 0.22 s.
+3. Narrow-viewport pass — P1
+   - Earlier browser evidence showed comb-like downsampling at 390 × 844.
+   - Finding: the 3× text and density textures used bilinear sampling without
+     mip levels when reduced by more than 3×.
+   - Fix: enabled trilinear mipmapped sampling for the text and final density,
+     and removed the redundant direct-stroke color layer.
+4. Final pass
+   - Post-fix evidence: `compare-hq-final.jpg`,
+     `motion-delay-contact-final.jpg`, and `responsive-mobile-hq-final.png`.
+   - No actionable P0, P1, or P2 mismatch remains for the requested motion delay
+     and gradient/image-quality corrections.
 
 ## Findings
 
 - No actionable P0, P1, or P2 findings remain.
-- P3: exact font outlines may differ slightly because the source font is not
-  embedded in the reference.
-- P3: the WebGL output is cleaner than the low-bitrate source video.
+- P3: source compression and unavailable original font outlines prevent literal
+  pixel identity, but they do not affect the corrected interaction or quality.
 
 ## Implementation checklist
 
-- [x] Match 480 × 600 typography and copy
-- [x] Drive the light from pointer and touch position
-- [x] Build the goo from activated text density
-- [x] Match the animated neon palette
-- [x] Test upper-right and lower-left pointer positions
-- [x] Test reference, wide, and tall viewports
+- [x] Add delayed, speed-limited cursor tracking
+- [x] Add short temporal persistence with threshold cutoff
+- [x] Replace 8-bit reference-sized density with 3× half-float rendering
+- [x] Add mipmapped downsampling for narrow/low-DPR viewports
+- [x] Smooth color and hotspot interpolation
+- [x] Test desktop, mobile, and a large pointer jump
 - [x] Check Chrome console errors
-- [x] Compare source and implementation side by side
+- [x] Compare source and final implementation in one combined image
 
 final result: passed
