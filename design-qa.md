@@ -47,8 +47,9 @@ image therefore use the same crop, dimensions, and frozen palette state.
 - Final implementation evidence: the focused `Y` crop has no isolated round
   hotspot at the junction. Geometry still comes from distance to the nearest
   active glyph seed, while the fine carrier adds only a directional bias inside
-  a broader low-frequency color field. The 1.55 px derivative antialiasing shows
-  no square texels or stepped contours at native output or in the DPR 2 capture.
+  a broader low-frequency color field. The 2.35 px derivative-aware transition
+  shows no square texels, stepped contours, or one-pixel outline at native output
+  or in the DPR 2 capture.
 - The 1440 × 1800 text mask remains high resolution. The 480 × 600 half-float
   geometry field matches the native source resolution. A local 16 px jump flood
   covers the 13.4 px body radius and receives a second one-pixel cleanup pass.
@@ -59,13 +60,17 @@ image therefore use the same crop, dimensions, and frozen palette state.
 - Color is no longer derived from the silhouette density. A normalized field
   separately blurs `activation × glyph` and `glyph`, divides them, and uses the
   blurred glyph denominator as its main low-frequency carrier.
-- The six-pixel carrier merges individual character details before palette
-  mapping. Only 16% of the fine nearest-stroke signal remains, enough to preserve
+- The nine-pixel carrier merges individual character details before palette
+  mapping. Only 4% of the fine nearest-stroke signal remains, enough to preserve
   directional junction behavior without making `THE`, `ON`, or `DEPENDING`
   legible as thick colored typography.
-- The dark rim now comes from erosion of the union coverage, rather than from a
-  distance band around every seed. Internal seams between neighboring letters
-  therefore disappear while the outer silhouette and true holes retain a rim.
+- The former erosion-derived rim and its fixed dark color were removed entirely.
+  Rose, pale pink, and the hot color now overlap in RGB across the same scalar
+  energy field. Low energy naturally darkens toward the boundary, so the result
+  has depth without reading as a separately drawn outline.
+- The enlarged Gaussian kernel and overlapping smoothstep ranges remove the
+  discrete blue/pink/yellow bands seen in the previous pass while retaining the
+  reference's pale transition zone around each hot core.
 - The charcoal underprint is fully occluded inside colored coverage, removing
   the previous comb-line interference.
 
@@ -129,6 +134,17 @@ image therefore use the same crop, dimensions, and frozen palette state.
      top copy and fragments outside the colored coverage, not words inside it.
    - No actionable P0, P1, or P2 mismatch remains for stroke-dependent geometry,
      non-legible color diffusion, smooth contours, gradient continuity, or delay.
+7. Outline and continuity comparison.
+   - Finding after handoff — P1: the union erosion still produced a uniform dark
+     perimeter. Even without internal letter seams, it read as a literal outline,
+     and the HSV ramp separated low- and high-energy colors too abruptly.
+   - Fix: delete the rim pass and map the nine-pixel energy field through three
+     overlapping RGB anchors. Increase silhouette antialiasing to 2.35 px and
+     reduce the fine distance carrier from 16% to 4%.
+   - Verification: in `compare-distance-final.jpg`, the implementation boundary
+     now changes continuously from background to rose and then pale pink; there
+     is no fixed-color contour. In `y-legibility-final.jpg`, the central color
+     follows the junction region but does not reconstruct complete colored words.
 
 ## Findings
 
