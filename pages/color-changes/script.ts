@@ -3,30 +3,42 @@ import GUI from 'lil-gui';
 
 const ART_WIDTH = 480;
 const ART_HEIGHT = 600;
-const FIELD_SCALE = 3;
-const FIELD_WIDTH = ART_WIDTH * FIELD_SCALE;
-const FIELD_HEIGHT = ART_HEIGHT * FIELD_SCALE;
-const BLUR_TAPS = 12;
-const QA_MODE = new URLSearchParams(window.location.search).has('qa');
+const TEXTURE_SCALE = 3;
+const FIELD_WIDTH = ART_WIDTH;
+const FIELD_HEIGHT = ART_HEIGHT;
+const COLOR_BLUR_TAPS = 8;
+// Coverage stops at 10.2 artwork pixels, so a local 16→1 flood is sufficient.
+const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
+const searchParams = new URLSearchParams(window.location.search);
+const QA_MODE = searchParams.has('qa');
+const qaPointerX = Number(searchParams.get('qaX'));
+const qaPointerY = Number(searchParams.get('qaY'));
+const QA_POINTER_LOCKED = searchParams.has('qaX')
+  && searchParams.has('qaY')
+  && Number.isFinite(qaPointerX)
+  && Number.isFinite(qaPointerY);
 
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const error = document.getElementById('error') as HTMLParagraphElement;
 
 const state = {
   radiusX: 175,
-  radiusY: 205,
+  radiusY: 155,
+  radiusYBelow: 180,
   lightFalloff: 0.12,
-  blurSigma: 8.5,
-  blurStep: 1.40,
-  threshold: 0.047,
-  softness: 0.0085,
-  densityRange: 0.105,
-  hueBands: 0.30,
+  seedThreshold: 0.085,
+  bodyRadius: 10.2,
+  rimWidth: 3.6,
+  colorBlurSigma: 4.0,
+  colorBlurStep: 1.0,
+  colorFloor: 0.055,
+  colorRange: 0.64,
+  hueBands: 0.31,
   colorCycle: 8.0,
-  pointerEase: 5.0,
-  pointerMaxSpeed: 360,
-  trailPersistence: 0.22,
-  fringe: 0.92,
+  pointerEase: 4.3,
+  pointerMaxSpeed: 300,
+  activationAttack: 0.055,
+  activationRelease: 0.34,
 };
 
 const lines = [
@@ -43,7 +55,11 @@ const lines = [
 
 type Pointer = { x: number; y: number };
 
-const pointer: Pointer = { x: 0.37, y: 0.458 };
+const initialPointer = {
+  x: QA_POINTER_LOCKED ? THREE.MathUtils.clamp(qaPointerX, 0, 1) : 0.37,
+  y: QA_POINTER_LOCKED ? THREE.MathUtils.clamp(qaPointerY, 0, 1) : 0.458,
+};
+const pointer: Pointer = { ...initialPointer };
 const pointerTarget: Pointer = { ...pointer };
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
 let startTime = performance.now();
@@ -51,8 +67,8 @@ let previousTime = startTime;
 let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const textCanvas = document.createElement('canvas');
-textCanvas.width = FIELD_WIDTH;
-textCanvas.height = FIELD_HEIGHT;
+textCanvas.width = ART_WIDTH * TEXTURE_SCALE;
+textCanvas.height = ART_HEIGHT * TEXTURE_SCALE;
 const textContext = textCanvas.getContext('2d', { alpha: true });
 if (!textContext) throw new Error('Unable to create the text mask.');
 
@@ -70,7 +86,7 @@ function drawTrackedLine(
 }
 
 function bakeTextMask(): void {
-  textContext.setTransform(FIELD_SCALE, 0, 0, FIELD_SCALE, 0, 0);
+  textContext.setTransform(TEXTURE_SCALE, 0, 0, TEXTURE_SCALE, 0, 0);
   textContext.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
   textContext.save();
   textContext.fillStyle = '#ffffff';
@@ -118,27 +134,33 @@ const vertexShader = `
 
 const textTexture = new THREE.CanvasTexture(textCanvas);
 textTexture.colorSpace = THREE.NoColorSpace;
-textTexture.minFilter = THREE.LinearMipmapLinearFilter;
+textTexture.minFilter = THREE.LinearFilter;
 textTexture.magFilter = THREE.LinearFilter;
-textTexture.generateMipmaps = true;
+textTexture.generateMipmaps = false;
 
-const renderTargetOptions: THREE.RenderTargetOptions = {
+const linearTargetOptions: THREE.RenderTargetOptions = {
   depthBuffer: false,
   stencilBuffer: false,
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
-  format: THREE.RedFormat,
+  format: THREE.RGBAFormat,
   type: THREE.HalfFloatType,
   colorSpace: THREE.NoColorSpace,
 };
 
-const sourceTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
-const historyTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
-const historyTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
-const horizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
-const densityTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, renderTargetOptions);
-densityTarget.texture.minFilter = THREE.LinearMipmapLinearFilter;
-densityTarget.texture.generateMipmaps = true;
+const nearestTargetOptions: THREE.RenderTargetOptions = {
+  ...linearTargetOptions,
+  minFilter: THREE.NearestFilter,
+  magFilter: THREE.NearestFilter,
+};
+
+const sourceTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const historyTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const historyTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const colorHorizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const colorFieldTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const nearestTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, nearestTargetOptions);
+const nearestTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, nearestTargetOptions);
 
 const sourceMaterial = new THREE.ShaderMaterial({
   vertexShader,
@@ -150,19 +172,21 @@ const sourceMaterial = new THREE.ShaderMaterial({
     uniform vec2 uPointer;
     uniform vec2 uArtSize;
     uniform vec2 uRadius;
+    uniform float uRadiusYBelow;
     uniform float uFalloff;
 
     void main() {
       float textMask = texture2D(uText, vUv).a;
       vec2 delta = (vUv - uPointer) * uArtSize;
-      float verticalRatio = abs(delta.y) / max(uRadius.y, 0.001);
+      float verticalRadius = delta.y < 0.0 ? uRadiusYBelow : uRadius.y;
+      float verticalRatio = abs(delta.y) / max(verticalRadius, 0.001);
       float horizontalTaper = mix(1.0, 0.55, smoothstep(0.25, 0.85, verticalRatio));
-      vec2 effectiveRadius = vec2(uRadius.x * horizontalTaper, uRadius.y);
+      vec2 effectiveRadius = vec2(uRadius.x * horizontalTaper, verticalRadius);
       float normalizedDistance = length(delta / max(effectiveRadius, vec2(0.001)));
       float light = 1.0 - smoothstep(uFalloff, 1.0, normalizedDistance);
       light *= smoothstep(1.04, 0.84, normalizedDistance);
       float excitedInk = textMask * pow(max(light, 0.0), 1.22);
-      gl_FragColor = vec4(vec3(excitedInk), 1.0);
+      gl_FragColor = vec4(excitedInk, textMask, 0.0, 1.0);
     }
   `,
   uniforms: {
@@ -170,6 +194,7 @@ const sourceMaterial = new THREE.ShaderMaterial({
     uPointer: { value: new THREE.Vector2(pointer.x, pointer.y) },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uRadius: { value: new THREE.Vector2(state.radiusX, state.radiusY) },
+    uRadiusYBelow: { value: state.radiusYBelow },
     uFalloff: { value: state.lightFalloff },
   },
   depthTest: false,
@@ -184,25 +209,29 @@ const temporalMaterial = new THREE.ShaderMaterial({
     varying vec2 vUv;
     uniform sampler2D uCurrent;
     uniform sampler2D uHistory;
-    uniform float uRetention;
+    uniform float uAttackBlend;
+    uniform float uReleaseBlend;
 
     void main() {
       float currentInk = texture2D(uCurrent, vUv).r;
-      float retainedInk = texture2D(uHistory, vUv).r * uRetention;
-      float persistentInk = max(currentInk, retainedInk);
-      gl_FragColor = vec4(persistentInk, 0.0, 0.0, 1.0);
+      vec4 history = texture2D(uHistory, vUv);
+      float blendAmount = currentInk > history.r ? uAttackBlend : uReleaseBlend;
+      float activation = mix(history.r, currentInk, blendAmount);
+      float textMask = texture2D(uCurrent, vUv).g;
+      gl_FragColor = vec4(activation * step(0.001, textMask), textMask, 0.0, 1.0);
     }
   `,
   uniforms: {
     uCurrent: { value: sourceTarget.texture },
     uHistory: { value: historyTargetA.texture },
-    uRetention: { value: 0 },
+    uAttackBlend: { value: 1 },
+    uReleaseBlend: { value: 1 },
   },
   depthTest: false,
   depthWrite: false,
 });
 
-const blurMaterial = new THREE.ShaderMaterial({
+const colorBlurMaterial = new THREE.ShaderMaterial({
   vertexShader,
   fragmentShader: `
     precision highp float;
@@ -216,25 +245,93 @@ const blurMaterial = new THREE.ShaderMaterial({
     void main() {
       float sigmaSquared = max(uSigma * uSigma, 0.001);
       float totalWeight = 0.0;
-      float density = 0.0;
+      vec2 colorField = vec2(0.0);
 
-      for (int index = -${BLUR_TAPS}; index <= ${BLUR_TAPS}; index++) {
+      for (int index = -${COLOR_BLUR_TAPS}; index <= ${COLOR_BLUR_TAPS}; index++) {
         float offsetIndex = float(index);
         float sampleDistance = offsetIndex * uStep;
         float weight = exp(-0.5 * sampleDistance * sampleDistance / sigmaSquared);
-        density += texture2D(uInput, vUv + uDirection * sampleDistance).r * weight;
+        colorField += texture2D(uInput, vUv + uDirection * sampleDistance).rg * weight;
         totalWeight += weight;
       }
 
-      density /= max(totalWeight, 0.001);
-      gl_FragColor = vec4(vec3(density), 1.0);
+      colorField /= max(totalWeight, 0.001);
+      gl_FragColor = vec4(colorField, 0.0, 1.0);
     }
   `,
   uniforms: {
     uInput: { value: sourceTarget.texture },
     uDirection: { value: new THREE.Vector2(1 / ART_WIDTH, 0) },
-    uSigma: { value: state.blurSigma },
-    uStep: { value: state.blurStep },
+    uSigma: { value: state.colorBlurSigma },
+    uStep: { value: state.colorBlurStep },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
+const nearestSeedMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uActivation;
+    uniform float uSeedThreshold;
+
+    void main() {
+      vec2 field = texture2D(uActivation, vUv).rg;
+      float valid = step(uSeedThreshold, field.r) * step(0.18, field.g);
+      gl_FragColor = valid > 0.5
+        ? vec4(vUv, field.r, 1.0)
+        : vec4(0.0);
+    }
+  `,
+  uniforms: {
+    uActivation: { value: historyTargetA.texture },
+    uSeedThreshold: { value: state.seedThreshold },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
+const jumpFloodMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uNearest;
+    uniform vec2 uFieldSize;
+    uniform float uJump;
+
+    void main() {
+      vec4 best = texture2D(uNearest, vUv);
+      float bestDistance = best.a > 0.5
+        ? dot((best.xy - vUv) * uFieldSize, (best.xy - vUv) * uFieldSize)
+        : 1.0e20;
+
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          vec2 sampleUv = vUv + vec2(float(x), float(y)) * uJump / uFieldSize;
+          if (sampleUv.x >= 0.0 && sampleUv.x <= 1.0 && sampleUv.y >= 0.0 && sampleUv.y <= 1.0) {
+            vec4 candidate = texture2D(uNearest, sampleUv);
+            vec2 delta = (candidate.xy - vUv) * uFieldSize;
+            float candidateDistance = dot(delta, delta);
+            if (candidate.a > 0.5 && candidateDistance < bestDistance) {
+              best = candidate;
+              bestDistance = candidateDistance;
+            }
+          }
+        }
+      }
+
+      gl_FragColor = best;
+    }
+  `,
+  uniforms: {
+    uNearest: { value: nearestTargetA.texture },
+    uFieldSize: { value: new THREE.Vector2(FIELD_WIDTH, FIELD_HEIGHT) },
+    uJump: { value: JFA_JUMPS[0] },
   },
   depthTest: false,
   depthWrite: false,
@@ -247,17 +344,19 @@ const finalMaterial = new THREE.ShaderMaterial({
 
     varying vec2 vUv;
     uniform sampler2D uText;
-    uniform sampler2D uDensity;
+    uniform sampler2D uNearest;
+    uniform sampler2D uColorField;
     uniform vec2 uResolution;
     uniform vec2 uPosterOffset;
     uniform vec2 uPosterSize;
-    uniform float uThreshold;
-    uniform float uSoftness;
-    uniform float uDensityRange;
+    uniform vec2 uArtSize;
+    uniform float uBodyRadius;
+    uniform float uRimWidth;
+    uniform float uColorFloor;
+    uniform float uColorRange;
     uniform float uHueBands;
     uniform float uTime;
     uniform float uColorCycle;
-    uniform float uFringe;
 
     vec3 hsvToRgb(vec3 hsv) {
       vec3 rgb = clamp(abs(mod(hsv.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
@@ -280,50 +379,78 @@ const finalMaterial = new THREE.ShaderMaterial({
       }
 
       float textMask = texture2D(uText, artUv).a;
-      float density = texture2D(uDensity, artUv).r;
+      vec4 nearest = texture2D(uNearest, artUv);
+      float coverage = 0.0;
+      float rimMix = 0.0;
+      float colorEnergy = 0.0;
+      float distanceToStroke = uBodyRadius + 2.0;
 
-      float antialiasWidth = max(uSoftness, fwidth(density) * 1.35);
-      float alpha = smoothstep(uThreshold - antialiasWidth, uThreshold + antialiasWidth, density);
-      float fringeAlpha = smoothstep(uThreshold * 0.24, uThreshold, density) * (1.0 - alpha);
-      float normalizedDensity = clamp((density - uThreshold) / max(uDensityRange, 0.001), 0.0, 1.0);
-      float underprintFade = smoothstep(uThreshold * 0.34, uThreshold * 0.82, density);
-      float visibleText = textMask * 0.92 * (1.0 - underprintFade);
+      if (nearest.a > 0.5) {
+        distanceToStroke = length((artUv - nearest.xy) * uArtSize);
+        vec2 blurredField = texture2D(uColorField, artUv).rg;
+        colorEnergy = blurredField.r / max(blurredField.g, 0.004);
+        float antialiasWidth = max(1.55, fwidth(distanceToStroke) * 1.28);
+        coverage = 1.0 - smoothstep(
+          uBodyRadius - antialiasWidth,
+          uBodyRadius + antialiasWidth,
+          distanceToStroke
+        );
+        rimMix = smoothstep(
+          uBodyRadius - uRimWidth - antialiasWidth,
+          uBodyRadius - 0.35 * antialiasWidth,
+          distanceToStroke
+        );
+      }
+
+      float visibleText = textMask * 0.92 * (1.0 - coverage);
       vec3 base = mix(background, vec3(0.155, 0.153, 0.148), visibleText);
 
       float cycle = max(uColorCycle, 0.1);
       float palettePhase = fract(0.84 + uTime / cycle);
-      float bandProgress = smoothstep(0.04, 0.90, normalizedDensity);
-      float hue = fract(palettePhase + bandProgress * uHueBands);
-      float saturation = mix(0.44, 0.76, smoothstep(0.50, 1.0, normalizedDensity));
+      float normalizedEnergy = clamp(
+        (colorEnergy - uColorFloor) / max(uColorRange, 0.001),
+        0.0,
+        1.0
+      );
+      float strokeOffset = distanceToStroke / 5.2;
+      float strokeProximity = exp(-0.5 * strokeOffset * strokeOffset);
+      float transportedEnergy = normalizedEnergy * mix(0.18, 1.0, strokeProximity);
+      float bandProgress = smoothstep(0.02, 0.96, transportedEnergy);
+      float hueOffset = mix(-0.25, uHueBands, bandProgress);
+      float hue = fract(palettePhase + hueOffset);
+      float middleOffset = (transportedEnergy - 0.34) / 0.20;
+      float middleWash = exp(-(middleOffset * middleOffset));
+      float saturation = mix(0.48, 0.80, smoothstep(0.35, 1.0, transportedEnergy));
+      saturation *= 1.0 - middleWash * 0.55;
       vec3 goo = hsvToRgb(vec3(hue, saturation, 1.0));
-      float hotStrength = smoothstep(0.78, 1.0, normalizedDensity);
+      float hotStrength = smoothstep(0.78, 1.0, transportedEnergy);
       vec3 hotColor = hsvToRgb(vec3(fract(palettePhase + 0.025), 0.68, 1.0));
-      goo = mix(goo, hotColor, hotStrength * 0.14);
+      goo = mix(goo, hotColor, hotStrength * 0.12);
 
-      float fringeHue = fract(palettePhase + 0.09);
-      vec3 fringeColor = hsvToRgb(vec3(fringeHue, 0.90, 0.66));
-      vec3 withFringe = mix(base, fringeColor, fringeAlpha * uFringe);
-      vec3 result = mix(withFringe, goo, alpha);
-      float coloredCoverage = max(alpha, fringeAlpha);
+      vec3 rimColor = hsvToRgb(vec3(fract(palettePhase + 0.10), 0.88, 0.62));
+      vec3 strokeColor = mix(goo, rimColor, rimMix);
+      vec3 result = mix(base, strokeColor, coverage);
       float dither = (interleavedGradientNoise(fragment) - 0.5) / 255.0;
-      result += vec3(dither * coloredCoverage * 0.85);
+      result += vec3(dither * coverage * 0.45);
 
       gl_FragColor = vec4(result, 1.0);
     }
   `,
   uniforms: {
     uText: { value: textTexture },
-    uDensity: { value: densityTarget.texture },
+    uNearest: { value: nearestTargetA.texture },
+    uColorField: { value: colorFieldTarget.texture },
     uResolution: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uPosterOffset: { value: new THREE.Vector2(0, 0) },
     uPosterSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
-    uThreshold: { value: state.threshold },
-    uSoftness: { value: state.softness },
-    uDensityRange: { value: state.densityRange },
+    uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
+    uBodyRadius: { value: state.bodyRadius },
+    uRimWidth: { value: state.rimWidth },
+    uColorFloor: { value: state.colorFloor },
+    uColorRange: { value: state.colorRange },
     uHueBands: { value: state.hueBands },
     uTime: { value: 0 },
     uColorCycle: { value: state.colorCycle },
-    uFringe: { value: state.fringe },
   },
   depthTest: false,
   depthWrite: false,
@@ -334,6 +461,8 @@ const passQuad = new THREE.Mesh(geometry, sourceMaterial);
 passScene.add(passQuad);
 let historyRead = historyTargetA;
 let historyWrite = historyTargetB;
+let nearestRead = nearestTargetA;
+let nearestWrite = nearestTargetB;
 
 function renderPass(material: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null): void {
   passQuad.material = material;
@@ -349,6 +478,8 @@ function clearTarget(target: THREE.WebGLRenderTarget): void {
 
 clearTarget(historyTargetA);
 clearTarget(historyTargetB);
+clearTarget(nearestTargetA);
+clearTarget(nearestTargetB);
 renderer.setClearColor(0xfbfbfa, 1);
 renderer.setRenderTarget(null);
 
@@ -389,13 +520,15 @@ function setPointerFromClient(clientX: number, clientY: number): void {
   pointerTarget.y = 1 - yFromTop;
 }
 
-window.addEventListener('pointermove', (event) => {
-  setPointerFromClient(event.clientX, event.clientY);
-}, { passive: true });
+if (!QA_POINTER_LOCKED) {
+  window.addEventListener('pointermove', (event) => {
+    setPointerFromClient(event.clientX, event.clientY);
+  }, { passive: true });
 
-window.addEventListener('pointerdown', (event) => {
-  setPointerFromClient(event.clientX, event.clientY);
-}, { passive: true });
+  window.addEventListener('pointerdown', (event) => {
+    setPointerFromClient(event.clientX, event.clientY);
+  }, { passive: true });
+}
 
 window.addEventListener('resize', updateLayout);
 window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', (event) => {
@@ -410,23 +543,32 @@ function bindGui(): void {
   gui.add(state, 'radiusY', 70, 230, 1).onChange((value: number) => {
     sourceMaterial.uniforms.uRadius.value.y = value;
   });
+  gui.add(state, 'radiusYBelow', 70, 250, 1).onChange((value: number) => {
+    sourceMaterial.uniforms.uRadiusYBelow.value = value;
+  });
   gui.add(state, 'lightFalloff', 0.15, 0.95, 0.01).onChange((value: number) => {
     sourceMaterial.uniforms.uFalloff.value = value;
   });
-  gui.add(state, 'blurSigma', 2, 18, 0.1).onChange((value: number) => {
-    blurMaterial.uniforms.uSigma.value = value;
+  gui.add(state, 'seedThreshold', 0.01, 0.30, 0.005).onChange((value: number) => {
+    nearestSeedMaterial.uniforms.uSeedThreshold.value = value;
   });
-  gui.add(state, 'blurStep', 0.5, 2.4, 0.05).onChange((value: number) => {
-    blurMaterial.uniforms.uStep.value = value;
+  gui.add(state, 'bodyRadius', 4, 24, 0.1).onChange((value: number) => {
+    finalMaterial.uniforms.uBodyRadius.value = value;
   });
-  gui.add(state, 'threshold', 0.005, 0.12, 0.001).onChange((value: number) => {
-    finalMaterial.uniforms.uThreshold.value = value;
+  gui.add(state, 'rimWidth', 0.5, 6, 0.1).onChange((value: number) => {
+    finalMaterial.uniforms.uRimWidth.value = value;
   });
-  gui.add(state, 'softness', 0.001, 0.04, 0.001).onChange((value: number) => {
-    finalMaterial.uniforms.uSoftness.value = value;
+  gui.add(state, 'colorBlurSigma', 0.5, 7, 0.1).onChange((value: number) => {
+    colorBlurMaterial.uniforms.uSigma.value = value;
   });
-  gui.add(state, 'densityRange', 0.02, 0.18, 0.002).onChange((value: number) => {
-    finalMaterial.uniforms.uDensityRange.value = value;
+  gui.add(state, 'colorBlurStep', 0.5, 2, 0.05).onChange((value: number) => {
+    colorBlurMaterial.uniforms.uStep.value = value;
+  });
+  gui.add(state, 'colorFloor', 0, 0.3, 0.005).onChange((value: number) => {
+    finalMaterial.uniforms.uColorFloor.value = value;
+  });
+  gui.add(state, 'colorRange', 0.1, 1, 0.01).onChange((value: number) => {
+    finalMaterial.uniforms.uColorRange.value = value;
   });
   gui.add(state, 'hueBands', 0.1, 0.8, 0.01).onChange((value: number) => {
     finalMaterial.uniforms.uHueBands.value = value;
@@ -434,12 +576,10 @@ function bindGui(): void {
   gui.add(state, 'colorCycle', 2, 20, 0.1).onChange((value: number) => {
     finalMaterial.uniforms.uColorCycle.value = value;
   });
-  gui.add(state, 'fringe', 0, 1, 0.01).onChange((value: number) => {
-    finalMaterial.uniforms.uFringe.value = value;
-  });
   gui.add(state, 'pointerEase', 1, 16, 0.1);
   gui.add(state, 'pointerMaxSpeed', 80, 720, 10);
-  gui.add(state, 'trailPersistence', 0.08, 0.8, 0.01);
+  gui.add(state, 'activationAttack', 0.01, 0.3, 0.005);
+  gui.add(state, 'activationRelease', 0.08, 1.2, 0.01);
   gui.hide();
 
   window.addEventListener('keydown', (event) => {
@@ -473,19 +613,33 @@ function animate(now: number): void {
   renderPass(sourceMaterial, sourceTarget);
   temporalMaterial.uniforms.uCurrent.value = sourceTarget.texture;
   temporalMaterial.uniforms.uHistory.value = historyRead.texture;
-  temporalMaterial.uniforms.uRetention.value = Math.exp(-delta / state.trailPersistence);
+  temporalMaterial.uniforms.uAttackBlend.value = 1 - Math.exp(-delta / state.activationAttack);
+  temporalMaterial.uniforms.uReleaseBlend.value = 1 - Math.exp(-delta / state.activationRelease);
   renderPass(temporalMaterial, historyWrite);
   [historyRead, historyWrite] = [historyWrite, historyRead];
 
-  blurMaterial.uniforms.uInput.value = historyRead.texture;
-  blurMaterial.uniforms.uDirection.value.set(1 / ART_WIDTH, 0);
-  renderPass(blurMaterial, horizontalTarget);
-  blurMaterial.uniforms.uInput.value = horizontalTarget.texture;
-  blurMaterial.uniforms.uDirection.value.set(0, 1 / ART_HEIGHT);
-  renderPass(blurMaterial, densityTarget);
+  colorBlurMaterial.uniforms.uInput.value = historyRead.texture;
+  colorBlurMaterial.uniforms.uDirection.value.set(1 / FIELD_WIDTH, 0);
+  renderPass(colorBlurMaterial, colorHorizontalTarget);
+  colorBlurMaterial.uniforms.uInput.value = colorHorizontalTarget.texture;
+  colorBlurMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
+  renderPass(colorBlurMaterial, colorFieldTarget);
+
+  nearestSeedMaterial.uniforms.uActivation.value = historyRead.texture;
+  renderPass(nearestSeedMaterial, nearestTargetA);
+  nearestRead = nearestTargetA;
+  nearestWrite = nearestTargetB;
+  for (const jump of JFA_JUMPS) {
+    jumpFloodMaterial.uniforms.uNearest.value = nearestRead.texture;
+    jumpFloodMaterial.uniforms.uJump.value = jump;
+    renderPass(jumpFloodMaterial, nearestWrite);
+    [nearestRead, nearestWrite] = [nearestWrite, nearestRead];
+  }
 
   const elapsed = reduceMotion || QA_MODE ? 0 : (now - startTime) / 1000;
   finalMaterial.uniforms.uTime.value = elapsed;
+  finalMaterial.uniforms.uNearest.value = nearestRead.texture;
+  finalMaterial.uniforms.uColorField.value = colorFieldTarget.texture;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);

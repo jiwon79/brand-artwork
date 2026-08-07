@@ -11,29 +11,44 @@
 1. Bake the nine text lines into a static 1440 × 1800 alpha texture, preserving
    the 480 × 600 artwork coordinate system at 3× sampling density.
 2. Multiply the text alpha by a soft radial light centered at the cursor.
-3. Retain the activated strokes briefly in a half-float temporal buffer so a
-   letter stays excited for a moment after the light begins moving away.
-4. Blur the retained strokes with horizontal and vertical Gaussian passes.
-5. Convert the half-float density into an antialiased, thresholded alpha field.
-6. Map low, middle, and peak density to pink, yellow, and pink-hotspot colors.
-7. Add sub-pixel dithering only inside the colored field to prevent banding.
-8. Animate the complete palette over time.
-9. Composite the opaque goo above the unchanged charcoal text.
+3. Retain activation only on the original glyph pixels in a half-float temporal
+   buffer. Attack and release use separate exponential rates; the buffer is no
+   longer a blurred image-space maximum.
+4. Threshold the retained glyph pixels into seeds and run jump flooding down to
+   one-pixel steps. Every artwork pixel now stores its nearest active glyph
+   coordinate.
+5. Build the visible silhouette from the exact distance to that nearest glyph.
+   The body and rim therefore expand each stroke by a nearly constant width,
+   including through `Y` junctions, instead of accumulating a Gaussian hotspot
+   where multiple strokes meet.
+6. Build color in a separate field. A small Gaussian filter blurs both
+   `activation × glyph` and `glyph`; dividing the two produces a normalized
+   energy value that stays smooth without making intersections brighter merely
+   because more stroke pixels overlap the kernel.
+7. Combine normalized energy with distance to the nearest stroke. Yellow cores
+   stay attached to letter anatomy, while pale pink/blue transitions and the
+   darker rim expand outward from it.
+8. Fully occlude the charcoal underprint inside the colored coverage, add only
+   sub-pixel dithering inside that coverage, and animate the palette over time.
 
-The light is applied before blur. This preserves the reference's small isolated
-glyph fragments around the light boundary instead of clipping a finished blob
-with an obvious circle.
+Geometry and color are deliberately independent. Geometry is a nearest-stroke
+distance field; Gaussian filtering is used only to smooth the color carried by
+those strokes. This is the key difference from the former thresholded-blur
+implementation, which produced a round central blob at `Y` intersections.
 
 ## Interaction
 
 - Pointer and touch position control the target of the light center.
-- The light uses eased tracking plus a 360 artwork-pixel-per-second speed cap,
+- The light uses eased tracking plus a 300 artwork-pixel-per-second speed cap,
   creating the delayed motion visible in the reference instead of snapping.
-- Excited strokes persist for 0.22 seconds and then cross a tight density
-  threshold, producing a short hold followed by a comparatively sudden cutoff.
+- Glyph activation attacks over 55 ms and releases over 340 ms. A seed remains
+  geometrically present until it crosses the 0.085 cutoff, producing a visible
+  hold followed by the reference's comparatively sudden local disappearance.
 - The last pointer location persists after leaving the artwork.
 - The palette completes a smooth cycle every eight seconds.
 - `?qa` freezes the palette at the reference's pink/yellow phase.
+- `?qa&qaX=0.37&qaY=0.458` also locks the pointer in normalized artwork space
+  for deterministic reference comparisons.
 - Press `g` to reveal the hidden tuning panel.
 
 ## Reference-space defaults
@@ -41,10 +56,13 @@ with an obvious circle.
 - Font: Helvetica Neue Light fallback stack, 43 px
 - Character advance: 31.8 px
 - Line height: 42.2 px
-- Light radius: 175 × 205 px, with horizontal taper toward the vertical edges
-- Field resolution: 1440 × 1800, half-float single-channel render targets
-- Blur sigma: 8.5 px
-- Blur sample step: 1.4 px
-- Density threshold: 0.047
-- Pointer maximum speed: 360 reference px/s
-- Temporal persistence: 0.22 s
+- Light radius: 175 × 155 px above and 175 × 180 px below, with horizontal
+  taper toward the vertical edges
+- Geometry/color field resolution: 480 × 600, half-float RGBA render targets
+- Nearest-stroke solver: local jump flooding from 16 px to 1 px plus one cleanup
+  pass (the visible body ends at 10.2 px, so distant propagation is unnecessary)
+- Stroke expansion radius: 10.2 px
+- Rim width: 3.6 px with derivative-based antialiasing
+- Normalized color blur sigma: 4 px
+- Pointer maximum speed: 300 reference px/s
+- Activation attack/release: 55 ms / 340 ms
