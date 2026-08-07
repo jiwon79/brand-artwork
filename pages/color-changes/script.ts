@@ -8,10 +8,12 @@ const FIELD_WIDTH = ART_WIDTH;
 const FIELD_HEIGHT = ART_HEIGHT;
 const COLOR_BLUR_TAPS = 20;
 const SURFACE_BLUR_TAPS = 13;
+const STROKE_SPREAD_PASSES = 8;
 // The weighted stroke body stays inside the local search radius before surface smoothing.
 const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
 const searchParams = new URLSearchParams(window.location.search);
 const QA_MODE = searchParams.has('qa');
+const QA_LABEL_MODE = searchParams.has('qaLabels');
 const qaPointerX = Number(searchParams.get('qaX'));
 const qaPointerY = Number(searchParams.get('qaY'));
 const QA_POINTER_LOCKED = searchParams.has('qaX')
@@ -19,20 +21,37 @@ const QA_POINTER_LOCKED = searchParams.has('qaX')
   && Number.isFinite(qaPointerX)
   && Number.isFinite(qaPointerY);
 
+function qaNumber(name: string, fallback: number): number {
+  if (!QA_MODE) return fallback;
+  const rawValue = searchParams.get(name);
+  if (rawValue === null) return fallback;
+  const value = Number(rawValue);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const error = document.getElementById('error') as HTMLParagraphElement;
 
 const state = {
-  radiusX: 175,
-  radiusY: 155,
-  radiusYBelow: 180,
-  lightFalloff: 0.12,
-  seedThreshold: 0.085,
-  bodyRadius: 13.6,
-  bodyRadiusMin: 6.4,
-  surfaceBlurSigma: 5.2,
-  surfaceThreshold: 0.44,
-  surfaceSoftness: 0.085,
+  radiusX: qaNumber('qaRadiusX', 145),
+  radiusY: qaNumber('qaRadiusY', 150),
+  radiusYBelow: qaNumber('qaRadiusYBelow', 165),
+  taperAbove: qaNumber('qaTaperAbove', 0.55),
+  taperBelow: qaNumber('qaTaperBelow', 0.55),
+  taperStart: qaNumber('qaTaperStart', 0.25),
+  taperEnd: qaNumber('qaTaperEnd', 0.85),
+  lightFalloff: qaNumber('qaLightFalloff', 0.12),
+  seedThreshold: qaNumber('qaSeedThreshold', 0.05),
+  bodyRadius: qaNumber('qaBody', 6.0),
+  bodyRadiusMin: qaNumber('qaBodyMin', 2.8),
+  bodyRadiusExponent: qaNumber('qaBodyExponent', 1.5),
+  bodyStrengthFloor: qaNumber('qaBodyStrengthFloor', 0.72),
+  coreRadius: qaNumber('qaCore', 1.2),
+  coreRadiusMin: qaNumber('qaCoreMin', 0.4),
+  coreRadiusExponent: qaNumber('qaCoreExponent', 0.25),
+  surfaceBlurSigma: qaNumber('qaSurfaceSigma', 5.8),
+  surfaceThreshold: qaNumber('qaSurfaceThreshold', 0.36),
+  surfaceSoftness: qaNumber('qaSurfaceSoftness', 0.035),
   colorBlurSigma: 9.0,
   colorBlurStep: 1.0,
   colorFloor: 0.035,
@@ -161,6 +180,8 @@ const nearestTargetOptions: THREE.RenderTargetOptions = {
 const sourceTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const historyTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const historyTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const strokeSpreadTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const strokeSpreadTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const colorHorizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const colorFieldTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const nearestTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, nearestTargetOptions);
@@ -181,13 +202,22 @@ const sourceMaterial = new THREE.ShaderMaterial({
     uniform vec2 uRadius;
     uniform float uRadiusYBelow;
     uniform float uFalloff;
+    uniform float uTaperAbove;
+    uniform float uTaperBelow;
+    uniform float uTaperStart;
+    uniform float uTaperEnd;
 
     void main() {
       float textMask = texture2D(uText, vUv).a;
       vec2 delta = (vUv - uPointer) * uArtSize;
       float verticalRadius = delta.y < 0.0 ? uRadiusYBelow : uRadius.y;
       float verticalRatio = abs(delta.y) / max(verticalRadius, 0.001);
-      float horizontalTaper = mix(1.0, 0.55, smoothstep(0.25, 0.85, verticalRatio));
+      float taperFloor = delta.y < 0.0 ? uTaperBelow : uTaperAbove;
+      float horizontalTaper = mix(
+        1.0,
+        taperFloor,
+        smoothstep(uTaperStart, uTaperEnd, verticalRatio)
+      );
       vec2 effectiveRadius = vec2(uRadius.x * horizontalTaper, verticalRadius);
       float normalizedDistance = length(delta / max(effectiveRadius, vec2(0.001)));
       float light = 1.0 - smoothstep(uFalloff, 1.0, normalizedDistance);
@@ -203,6 +233,10 @@ const sourceMaterial = new THREE.ShaderMaterial({
     uRadius: { value: new THREE.Vector2(state.radiusX, state.radiusY) },
     uRadiusYBelow: { value: state.radiusYBelow },
     uFalloff: { value: state.lightFalloff },
+    uTaperAbove: { value: state.taperAbove },
+    uTaperBelow: { value: state.taperBelow },
+    uTaperStart: { value: state.taperStart },
+    uTaperEnd: { value: state.taperEnd },
   },
   depthTest: false,
   depthWrite: false,
@@ -233,6 +267,53 @@ const temporalMaterial = new THREE.ShaderMaterial({
     uHistory: { value: historyTargetA.texture },
     uAttackBlend: { value: 1 },
     uReleaseBlend: { value: 1 },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
+const strokeSpreadMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uInput;
+    uniform vec2 uTexel;
+
+    void main() {
+      vec4 center = texture2D(uInput, vUv);
+      float textMask = center.g;
+      if (textMask < 0.02) {
+        gl_FragColor = vec4(0.0, textMask, 0.0, 1.0);
+        return;
+      }
+
+      vec2 stepOffset = uTexel * 2.0;
+      float spread = center.r;
+      spread = max(spread, texture2D(uInput, vUv + vec2(stepOffset.x, 0.0)).r * 0.96);
+      spread = max(spread, texture2D(uInput, vUv - vec2(stepOffset.x, 0.0)).r * 0.96);
+      spread = max(spread, texture2D(uInput, vUv + vec2(0.0, stepOffset.y)).r * 0.96);
+      spread = max(spread, texture2D(uInput, vUv - vec2(0.0, stepOffset.y)).r * 0.96);
+      spread = max(spread, texture2D(uInput, vUv + stepOffset).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv - stepOffset).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + vec2(stepOffset.x, -stepOffset.y)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + vec2(-stepOffset.x, stepOffset.y)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(2.0, 1.0)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(2.0, -1.0)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(-2.0, 1.0)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(-2.0, -1.0)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(1.0, 2.0)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(-1.0, 2.0)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(1.0, -2.0)).r * 0.955);
+      spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(-1.0, -2.0)).r * 0.955);
+
+      gl_FragColor = vec4(spread, textMask, 0.0, 1.0);
+    }
+  `,
+  uniforms: {
+    uInput: { value: historyTargetA.texture },
+    uTexel: { value: new THREE.Vector2(1 / FIELD_WIDTH, 1 / FIELD_HEIGHT) },
   },
   depthTest: false,
   depthWrite: false,
@@ -354,6 +435,8 @@ const surfaceSourceMaterial = new THREE.ShaderMaterial({
     uniform vec2 uArtSize;
     uniform float uBodyRadius;
     uniform float uBodyRadiusMin;
+    uniform float uBodyRadiusExponent;
+    uniform float uBodyStrengthFloor;
     uniform float uSeedThreshold;
 
     void main() {
@@ -364,10 +447,10 @@ const surfaceSourceMaterial = new THREE.ShaderMaterial({
       }
 
       float strength = smoothstep(uSeedThreshold, 0.72, nearest.z);
-      float localRadius = mix(uBodyRadiusMin, uBodyRadius, pow(strength, 0.72));
+      float localRadius = mix(uBodyRadiusMin, uBodyRadius, pow(strength, uBodyRadiusExponent));
       float distanceToStroke = length((vUv - nearest.xy) * uArtSize);
       float strokeBody = 1.0 - smoothstep(localRadius - 0.8, localRadius + 0.8, distanceToStroke);
-      strokeBody *= mix(0.62, 1.0, strength);
+      strokeBody *= mix(uBodyStrengthFloor, 1.0, strength);
       gl_FragColor = vec4(strokeBody, 0.0, 0.0, 1.0);
     }
   `,
@@ -376,6 +459,8 @@ const surfaceSourceMaterial = new THREE.ShaderMaterial({
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uBodyRadius: { value: state.bodyRadius },
     uBodyRadiusMin: { value: state.bodyRadiusMin },
+    uBodyRadiusExponent: { value: state.bodyRadiusExponent },
+    uBodyStrengthFloor: { value: state.bodyStrengthFloor },
     uSeedThreshold: { value: state.seedThreshold },
   },
   depthTest: false,
@@ -433,11 +518,16 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform vec2 uArtSize;
     uniform float uSurfaceThreshold;
     uniform float uSurfaceSoftness;
+    uniform float uSeedThreshold;
+    uniform float uCoreRadius;
+    uniform float uCoreRadiusMin;
+    uniform float uCoreRadiusExponent;
     uniform float uColorFloor;
     uniform float uColorRange;
     uniform float uHueBands;
     uniform float uTime;
     uniform float uColorCycle;
+    uniform float uLabelMode;
 
     vec3 hsvToRgb(vec3 hsv) {
       vec3 rgb = clamp(abs(mod(hsv.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
@@ -474,9 +564,38 @@ const finalMaterial = new THREE.ShaderMaterial({
 
       if (nearest.a > 0.5) {
         distanceToStroke = length((artUv - nearest.xy) * uArtSize);
+        float coreStrength = smoothstep(uSeedThreshold, 0.56, nearest.z);
+        float coreRadius = mix(
+          uCoreRadiusMin,
+          uCoreRadius,
+          pow(coreStrength, uCoreRadiusExponent)
+        );
+        float coreEdge = max(0.55, fwidth(distanceToStroke) * 0.85);
+        float strokeCore = 1.0 - smoothstep(
+          coreRadius - coreEdge,
+          coreRadius + coreEdge,
+          distanceToStroke
+        );
+        float coreGate = smoothstep(
+          uSeedThreshold,
+          uSeedThreshold + 0.015,
+          nearest.z
+        );
+        strokeCore *= coreGate;
+        coverage = max(coverage, strokeCore);
         vec2 blurredField = texture2D(uColorField, artUv).rg;
         colorEnergy = blurredField.r / max(blurredField.g, 0.004);
         strokeDensity = blurredField.g;
+      }
+
+      if (uLabelMode > 0.5) {
+        // Match the first visibly chromatic pixel, not only the 50% alpha core.
+        float effectLabel = step(0.001, coverage);
+        float textLabel = step(0.22, textMask) * (1.0 - effectLabel);
+        vec3 semanticLabel = mix(vec3(1.0), vec3(0.5), textLabel);
+        semanticLabel = mix(semanticLabel, vec3(0.0), effectLabel);
+        gl_FragColor = vec4(semanticLabel, 1.0);
+        return;
       }
 
       float visibleText = textMask * 0.92 * (1.0 - coverage);
@@ -520,11 +639,16 @@ const finalMaterial = new THREE.ShaderMaterial({
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uSurfaceThreshold: { value: state.surfaceThreshold },
     uSurfaceSoftness: { value: state.surfaceSoftness },
+    uSeedThreshold: { value: state.seedThreshold },
+    uCoreRadius: { value: state.coreRadius },
+    uCoreRadiusMin: { value: state.coreRadiusMin },
+    uCoreRadiusExponent: { value: state.coreRadiusExponent },
     uColorFloor: { value: state.colorFloor },
     uColorRange: { value: state.colorRange },
     uHueBands: { value: state.hueBands },
     uTime: { value: 0 },
     uColorCycle: { value: state.colorCycle },
+    uLabelMode: { value: QA_LABEL_MODE ? 1 : 0 },
   },
   depthTest: false,
   depthWrite: false,
@@ -535,6 +659,8 @@ const passQuad = new THREE.Mesh(geometry, sourceMaterial);
 passScene.add(passQuad);
 let historyRead = historyTargetA;
 let historyWrite = historyTargetB;
+let strokeSpreadRead = strokeSpreadTargetA;
+let strokeSpreadWrite = strokeSpreadTargetB;
 let nearestRead = nearestTargetA;
 let nearestWrite = nearestTargetB;
 
@@ -552,6 +678,8 @@ function clearTarget(target: THREE.WebGLRenderTarget): void {
 
 clearTarget(historyTargetA);
 clearTarget(historyTargetB);
+clearTarget(strokeSpreadTargetA);
+clearTarget(strokeSpreadTargetB);
 clearTarget(nearestTargetA);
 clearTarget(nearestTargetB);
 renderer.setClearColor(0xfbfbfa, 1);
@@ -620,18 +748,40 @@ function bindGui(): void {
   gui.add(state, 'radiusYBelow', 70, 250, 1).onChange((value: number) => {
     sourceMaterial.uniforms.uRadiusYBelow.value = value;
   });
+  gui.add(state, 'taperAbove', 0.15, 1, 0.01).onChange((value: number) => {
+    sourceMaterial.uniforms.uTaperAbove.value = value;
+  });
+  gui.add(state, 'taperBelow', 0.15, 1, 0.01).onChange((value: number) => {
+    sourceMaterial.uniforms.uTaperBelow.value = value;
+  });
   gui.add(state, 'lightFalloff', 0.15, 0.95, 0.01).onChange((value: number) => {
     sourceMaterial.uniforms.uFalloff.value = value;
   });
   gui.add(state, 'seedThreshold', 0.01, 0.30, 0.005).onChange((value: number) => {
     nearestSeedMaterial.uniforms.uSeedThreshold.value = value;
     surfaceSourceMaterial.uniforms.uSeedThreshold.value = value;
+    finalMaterial.uniforms.uSeedThreshold.value = value;
   });
   gui.add(state, 'bodyRadius', 4, 24, 0.1).onChange((value: number) => {
     surfaceSourceMaterial.uniforms.uBodyRadius.value = value;
   });
   gui.add(state, 'bodyRadiusMin', 1, 14, 0.1).onChange((value: number) => {
     surfaceSourceMaterial.uniforms.uBodyRadiusMin.value = value;
+  });
+  gui.add(state, 'bodyRadiusExponent', 0.3, 2.4, 0.05).onChange((value: number) => {
+    surfaceSourceMaterial.uniforms.uBodyRadiusExponent.value = value;
+  });
+  gui.add(state, 'bodyStrengthFloor', 0.5, 1, 0.01).onChange((value: number) => {
+    surfaceSourceMaterial.uniforms.uBodyStrengthFloor.value = value;
+  });
+  gui.add(state, 'coreRadius', 1, 8, 0.1).onChange((value: number) => {
+    finalMaterial.uniforms.uCoreRadius.value = value;
+  });
+  gui.add(state, 'coreRadiusMin', 0.1, 5, 0.1).onChange((value: number) => {
+    finalMaterial.uniforms.uCoreRadiusMin.value = value;
+  });
+  gui.add(state, 'coreRadiusExponent', 0.2, 1.5, 0.05).onChange((value: number) => {
+    finalMaterial.uniforms.uCoreRadiusExponent.value = value;
   });
   gui.add(state, 'surfaceBlurSigma', 0.5, 10, 0.1).onChange((value: number) => {
     surfaceBlurMaterial.uniforms.uSigma.value = value;
@@ -709,7 +859,17 @@ function animate(now: number): void {
   colorBlurMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
   renderPass(colorBlurMaterial, colorFieldTarget);
 
-  nearestSeedMaterial.uniforms.uActivation.value = historyRead.texture;
+  strokeSpreadRead = strokeSpreadTargetA;
+  strokeSpreadWrite = strokeSpreadTargetB;
+  strokeSpreadMaterial.uniforms.uInput.value = historyRead.texture;
+  renderPass(strokeSpreadMaterial, strokeSpreadRead);
+  for (let pass = 1; pass < STROKE_SPREAD_PASSES; pass += 1) {
+    strokeSpreadMaterial.uniforms.uInput.value = strokeSpreadRead.texture;
+    renderPass(strokeSpreadMaterial, strokeSpreadWrite);
+    [strokeSpreadRead, strokeSpreadWrite] = [strokeSpreadWrite, strokeSpreadRead];
+  }
+
+  nearestSeedMaterial.uniforms.uActivation.value = strokeSpreadRead.texture;
   renderPass(nearestSeedMaterial, nearestTargetA);
   nearestRead = nearestTargetA;
   nearestWrite = nearestTargetB;

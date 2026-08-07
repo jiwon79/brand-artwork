@@ -5,9 +5,16 @@
 - Source visual truth: `pages/color-changes/assets/reference-frame.png`
 - Source motion truth: `pages/color-changes/assets/reference.mp4`
 - Final deterministic implementation:
-  `pages/color-changes/qa/implementation-distance-final.png`
+  `pages/color-changes/qa/silhouette-final-default.png`
 - Equal-size reference/implementation comparison:
-  `pages/color-changes/qa/compare-distance-final.jpg`
+  `pages/color-changes/qa/silhouette-comparison-final.png`
+- Three-class background/text/effect comparison:
+  `pages/color-changes/qa/silhouette-semantic-comparison-final.png`
+- Focused three-class `Y` comparison:
+  `pages/color-changes/qa/silhouette-y-semantic-comparison-final.png`
+- Reproducible metrics and analyzer:
+  `pages/color-changes/qa/silhouette-metrics-final.json` and
+  `pages/color-changes/qa/analyze-silhouette.mjs`
 - Reference / previous constant-radius / final surface comparison:
   `pages/color-changes/qa/surface-tension-final.jpg`
 - Focused user-reference surface crop:
@@ -18,11 +25,12 @@
   `pages/color-changes/qa/y-legibility-final.jpg`
 - Four-state motion evidence:
   `pages/color-changes/qa/motion-distance-final.jpg`
-- Route: `/pages/color-changes/?qa=1&qaX=0.37&qaY=0.458`
+- Route: `/pages/color-changes/?qa=1&qaX=0.39&qaY=0.458`
+- Three-class route: append `&qaLabels=1`
 - Browser: existing user Chrome window
 
-The browser viewport was 1265 × 746 CSS px at DPR 2. The contained artwork
-occupied 597 × 746 px and was Lanczos-normalized to the source's 480 × 600
+The browser viewport was 1265 × 694 CSS px at DPR 2. The contained artwork
+occupied 555 × 694 px and was Lanczos-normalized to the source's 480 × 600
 frame before comparison. The reference and implementation in the combined
 image therefore use the same crop, dimensions, and frozen palette state.
 
@@ -49,11 +57,11 @@ image therefore use the same crop, dimensions, and frozen palette state.
   accumulated neighboring stroke energy, enlarged intersections, exposed
   square density cells, and produced a cloudy center detached from the glyph.
 - Final implementation evidence: the focused `Y` crop has no isolated round
-  hotspot at the junction. Geometry begins with distance to the nearest active
-  glyph seed, but retained activation now varies each seed's radius from 6.4 to
-  13.6 px. A short surface-field relaxation then joins nearby pools and rounds
-  the contour before coverage is extracted. The result has narrow necks, uneven
-  pools, and hanging droplets instead of a row of equal circular caps.
+  hotspot at the junction. Activation first propagates along connected pixels of
+  the same glyph, so touching the stem reaches both `Y` arms without crossing to
+  adjacent letters. Nearest-stroke distance then varies the body radius from
+  2.8 to 6 px. A 5.8 px surface relaxation forms the broad pools, while a
+  0.4–1.2 px continuity core preserves the stroke-led branch and narrow neck.
 - `surface-tension-final.jpg` shows reference / previous constant-radius pass /
   final pass at equal size. The previous implementation has regularly repeated
   semicircles along every line; the final pass removes that rhythm while keeping
@@ -62,10 +70,14 @@ image therefore use the same crop, dimensions, and frozen palette state.
   the implementation now forms a continuous neck and gravity-like terminal
   rather than a circle merely stamped over a character.
 - The 1440 × 1800 text mask remains high resolution. The 480 × 600 half-float
-  geometry field matches the native source resolution. A local 16 px jump flood
-  covers the 13.6 px maximum pre-relaxation body radius and receives a second
-  one-pixel cleanup pass. The 5.2 px surface blur uses 13 taps per side, then a
-  soft 0.44 isosurface removes residual one-pixel steps.
+  geometry field matches the native source resolution. Eight masked propagation
+  passes follow axial, diagonal, and 2:1 stroke directions before the local
+  16 px jump flood. The 5.8 px surface blur uses 13 taps per side, then a soft
+  0.36 isosurface removes residual one-pixel steps.
+- Palette-independent segmentation assigns background = 0, unaffected text = 1,
+  and effect = 2. Reference / previous / final effect areas are 25,180 / 30,553 /
+  24,824 px; box occupancies are 0.457 / 0.569 / 0.449. The final is 1.41%
+  narrower in filled area than the reference instead of 21.34% wider.
 
 ### Color and gradients
 
@@ -98,7 +110,7 @@ image therefore use the same crop, dimensions, and frozen palette state.
   cloud.
 - Pointer tracking is eased and capped at 300 reference px/s. Glyph activation
   attacks over 55 ms, releases over 340 ms, and disappears geometrically below
-  the 0.085 seed threshold.
+  the 0.05 seed threshold.
 - During release, the same retained activation also contracts local pool radii,
   so trails neck down before the seed cutoff instead of retaining identical
   circles until they disappear.
@@ -174,6 +186,19 @@ image therefore use the same crop, dimensions, and frozen palette state.
    - Verification: the three-way and focused comparisons show unequal pool sizes,
      continuous necks, and tapered terminals. OCR on the final `Y` capture reads
      only unaffected copy below the colored area, not covered words.
+9. Three-class silhouette and connected-stroke comparison.
+   - Finding after handoff — P1: the total reach was close, but the previous
+     30,553 px effect occupied 21.34% more area than the 25,180 px reference and
+     filled 0.569 of its bounding box versus 0.457. It therefore remained wide
+     and blunt. Reducing radius alone also erased the weak arms of `Y`.
+   - Fix: narrow the distance body to 2.8–6 px, raise the isovalue, and add masked
+     activation propagation that can travel only through connected pixels of a
+     glyph. Use a 0.4–1.2 px continuity core so the propagated `Y` remains part of
+     the surface without rebuilding all covered copy as thick colored type.
+   - Verification: the final visible effect is 24,824 px with 0.449 box occupancy;
+     bounding-box width/height differ from the reference by +3.26% / -2.73%.
+     In the exact label map, the first `E·V` remain text while the following
+     `E·R·Y` belong to the effect and the `Y` arms connect through its stem.
 
 ## Findings
 
