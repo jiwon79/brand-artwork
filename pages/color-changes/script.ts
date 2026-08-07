@@ -6,7 +6,7 @@ const ART_HEIGHT = 600;
 const TEXTURE_SCALE = 3;
 const FIELD_WIDTH = ART_WIDTH;
 const FIELD_HEIGHT = ART_HEIGHT;
-const COLOR_BLUR_TAPS = 8;
+const COLOR_BLUR_TAPS = 12;
 // Coverage stops at 10.2 artwork pixels, so a local 16→1 flood is sufficient.
 const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
 const searchParams = new URLSearchParams(window.location.search);
@@ -27,9 +27,9 @@ const state = {
   radiusYBelow: 180,
   lightFalloff: 0.12,
   seedThreshold: 0.085,
-  bodyRadius: 10.2,
+  bodyRadius: 13.4,
   rimWidth: 3.6,
-  colorBlurSigma: 4.0,
+  colorBlurSigma: 6.0,
   colorBlurStep: 1.0,
   colorFloor: 0.055,
   colorRange: 0.64,
@@ -368,6 +368,16 @@ const finalMaterial = new THREE.ShaderMaterial({
       return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
     }
 
+    float coverageAt(vec2 sampleUv) {
+      if (sampleUv.x < 0.0 || sampleUv.x > 1.0 || sampleUv.y < 0.0 || sampleUv.y > 1.0) {
+        return 0.0;
+      }
+      vec4 sampleNearest = texture2D(uNearest, sampleUv);
+      if (sampleNearest.a < 0.5) return 0.0;
+      float sampleDistance = length((sampleUv - sampleNearest.xy) * uArtSize);
+      return 1.0 - smoothstep(uBodyRadius - 1.1, uBodyRadius + 1.1, sampleDistance);
+    }
+
     void main() {
       vec2 fragment = vUv * uResolution;
       vec2 artUv = (fragment - uPosterOffset) / uPosterSize;
@@ -383,23 +393,31 @@ const finalMaterial = new THREE.ShaderMaterial({
       float coverage = 0.0;
       float rimMix = 0.0;
       float colorEnergy = 0.0;
+      float strokeDensity = 0.0;
       float distanceToStroke = uBodyRadius + 2.0;
 
       if (nearest.a > 0.5) {
         distanceToStroke = length((artUv - nearest.xy) * uArtSize);
         vec2 blurredField = texture2D(uColorField, artUv).rg;
         colorEnergy = blurredField.r / max(blurredField.g, 0.004);
+        strokeDensity = blurredField.g;
         float antialiasWidth = max(1.55, fwidth(distanceToStroke) * 1.28);
         coverage = 1.0 - smoothstep(
           uBodyRadius - antialiasWidth,
           uBodyRadius + antialiasWidth,
           distanceToStroke
         );
-        rimMix = smoothstep(
-          uBodyRadius - uRimWidth - antialiasWidth,
-          uBodyRadius - 0.35 * antialiasWidth,
-          distanceToStroke
-        );
+        vec2 rimStep = vec2(uRimWidth) / uArtSize;
+        float erodedCoverage = 1.0;
+        erodedCoverage = min(erodedCoverage, coverageAt(artUv + vec2( rimStep.x, 0.0)));
+        erodedCoverage = min(erodedCoverage, coverageAt(artUv + vec2(-rimStep.x, 0.0)));
+        erodedCoverage = min(erodedCoverage, coverageAt(artUv + vec2(0.0,  rimStep.y)));
+        erodedCoverage = min(erodedCoverage, coverageAt(artUv + vec2(0.0, -rimStep.y)));
+        erodedCoverage = min(erodedCoverage, coverageAt(artUv + vec2( rimStep.x,  rimStep.y) * 0.7071));
+        erodedCoverage = min(erodedCoverage, coverageAt(artUv + vec2(-rimStep.x,  rimStep.y) * 0.7071));
+        erodedCoverage = min(erodedCoverage, coverageAt(artUv + vec2( rimStep.x, -rimStep.y) * 0.7071));
+        erodedCoverage = min(erodedCoverage, coverageAt(artUv + vec2(-rimStep.x, -rimStep.y) * 0.7071));
+        rimMix = 1.0 - smoothstep(0.08, 0.92, erodedCoverage);
       }
 
       float visibleText = textMask * 0.92 * (1.0 - coverage);
@@ -412,9 +430,11 @@ const finalMaterial = new THREE.ShaderMaterial({
         0.0,
         1.0
       );
-      float strokeOffset = distanceToStroke / 5.2;
-      float strokeProximity = exp(-0.5 * strokeOffset * strokeOffset);
-      float transportedEnergy = normalizedEnergy * mix(0.18, 1.0, strokeProximity);
+      float strokeCarrier = smoothstep(0.025, 0.16, strokeDensity);
+      float fineOffset = distanceToStroke / 3.8;
+      float fineCarrier = exp(-0.5 * fineOffset * fineOffset);
+      float combinedCarrier = mix(strokeCarrier, fineCarrier, 0.16);
+      float transportedEnergy = normalizedEnergy * mix(0.22, 1.0, combinedCarrier);
       float bandProgress = smoothstep(0.02, 0.96, transportedEnergy);
       float hueOffset = mix(-0.25, uHueBands, bandProgress);
       float hue = fract(palettePhase + hueOffset);
@@ -558,7 +578,7 @@ function bindGui(): void {
   gui.add(state, 'rimWidth', 0.5, 6, 0.1).onChange((value: number) => {
     finalMaterial.uniforms.uRimWidth.value = value;
   });
-  gui.add(state, 'colorBlurSigma', 0.5, 7, 0.1).onChange((value: number) => {
+  gui.add(state, 'colorBlurSigma', 0.5, 12, 0.1).onChange((value: number) => {
     colorBlurMaterial.uniforms.uSigma.value = value;
   });
   gui.add(state, 'colorBlurStep', 0.5, 2, 0.05).onChange((value: number) => {

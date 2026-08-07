@@ -10,6 +10,8 @@
   `pages/color-changes/qa/compare-distance-final.jpg`
 - Focused `Y`-junction evidence:
   `pages/color-changes/qa/y-stroke-distance-final.png`
+- User-reference legibility crop:
+  `pages/color-changes/qa/y-legibility-final.jpg`
 - Four-state motion evidence:
   `pages/color-changes/qa/motion-distance-final.jpg`
 - Route: `/pages/color-changes/?qa=1&qaX=0.37&qaY=0.458`
@@ -42,25 +44,28 @@ image therefore use the same crop, dimensions, and frozen palette state.
 - Baseline implementation evidence: thresholding one large Gaussian density
   accumulated neighboring stroke energy, enlarged intersections, exposed
   square density cells, and produced a cloudy center detached from the glyph.
-- Final implementation evidence: the focused `Y` crop shows the bright core
-  following the complete `Y` skeleton. Geometry comes from distance to the
-  nearest active glyph seed, with 1.55 px derivative antialiasing at the final
-  edge. No square texels or stepped contours remain at the native 480 × 600
-  output or in the DPR 2 browser capture.
+- Final implementation evidence: the focused `Y` crop has no isolated round
+  hotspot at the junction. Geometry still comes from distance to the nearest
+  active glyph seed, while the fine carrier adds only a directional bias inside
+  a broader low-frequency color field. The 1.55 px derivative antialiasing shows
+  no square texels or stepped contours at native output or in the DPR 2 capture.
 - The 1440 × 1800 text mask remains high resolution. The 480 × 600 half-float
   geometry field matches the native source resolution. A local 16 px jump flood
-  covers the 10.2 px body radius and receives a second one-pixel cleanup pass.
+  covers the 13.4 px body radius and receives a second one-pixel cleanup pass.
 
 ### Color and gradients
 
 - Result: passed.
 - Color is no longer derived from the silhouette density. A normalized field
-  separately blurs `activation × glyph` and `glyph`, divides them, and combines
-  the result with nearest-stroke distance.
-- This keeps yellow cores attached to glyph anatomy while allowing pale
-  pink/blue transitions and a dark cycling rim to remain smooth across merged
-  letters. Intersections no longer become hot merely because more glyph pixels
-  occupy the filter kernel.
+  separately blurs `activation × glyph` and `glyph`, divides them, and uses the
+  blurred glyph denominator as its main low-frequency carrier.
+- The six-pixel carrier merges individual character details before palette
+  mapping. Only 16% of the fine nearest-stroke signal remains, enough to preserve
+  directional junction behavior without making `THE`, `ON`, or `DEPENDING`
+  legible as thick colored typography.
+- The dark rim now comes from erosion of the union coverage, rather than from a
+  distance band around every seed. Internal seams between neighboring letters
+  therefore disappear while the outer silhouette and true holes retain a rim.
 - The charcoal underprint is fully occluded inside colored coverage, removing
   the previous comb-line interference.
 
@@ -112,8 +117,18 @@ image therefore use the same crop, dimensions, and frozen palette state.
    - Fix: require both query keys before enabling deterministic pointer lock;
      live movement and delayed cutoff were then recaptured in Chrome.
 5. Final comparison.
-   - No actionable P0, P1, or P2 mismatch remains for the requested
-     stroke-dependent geometry, smooth contours, gradient continuity, or delay.
+   - Finding after handoff — P1: nearest-stroke color modulation and a rim band
+     around every expansion preserved complete word shapes; the effect read as
+     a colored display font, while the reference obscures the source text.
+   - Fix: derive the rim from the union silhouette, raise body radius to 13.4 px,
+     and replace direct distance color with a six-pixel glyph-density carrier.
+6. Final legibility comparison.
+   - The colored region no longer exposes complete word shapes. Under the same
+     page segmentation mode, Tesseract previously recovered several affected
+     words including `DEPENDING`; the revised capture recovers only unaffected
+     top copy and fragments outside the colored coverage, not words inside it.
+   - No actionable P0, P1, or P2 mismatch remains for stroke-dependent geometry,
+     non-legible color diffusion, smooth contours, gradient continuity, or delay.
 
 ## Findings
 

@@ -18,16 +18,19 @@
    one-pixel steps. Every artwork pixel now stores its nearest active glyph
    coordinate.
 5. Build the visible silhouette from the exact distance to that nearest glyph.
-   The body and rim therefore expand each stroke by a nearly constant width,
-   including through `Y` junctions, instead of accumulating a Gaussian hotspot
-   where multiple strokes meet.
+   The body expands each stroke by a nearly constant width, including through
+   `Y` junctions, instead of accumulating a Gaussian hotspot where multiple
+   strokes meet. Derive the dark rim by eroding the complete union silhouette;
+   this avoids outlining every character separately where neighboring expansions
+   overlap.
 6. Build color in a separate field. A small Gaussian filter blurs both
    `activation × glyph` and `glyph`; dividing the two produces a normalized
    energy value that stays smooth without making intersections brighter merely
    because more stroke pixels overlap the kernel.
-7. Combine normalized energy with distance to the nearest stroke. Yellow cores
-   stay attached to letter anatomy, while pale pink/blue transitions and the
-   darker rim expand outward from it.
+7. Drive the color core mostly from the six-pixel Gaussian glyph-density field,
+   with only a 16% fine nearest-stroke carrier. The low-frequency carrier keeps
+   the `Y` response directional but merges adjacent character details, so the
+   colored area reads as light/goo rather than as a thick display font.
 8. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate the palette over time.
 
@@ -60,9 +63,9 @@ implementation, which produced a round central blob at `Y` intersections.
   taper toward the vertical edges
 - Geometry/color field resolution: 480 × 600, half-float RGBA render targets
 - Nearest-stroke solver: local jump flooding from 16 px to 1 px plus one cleanup
-  pass (the visible body ends at 10.2 px, so distant propagation is unnecessary)
-- Stroke expansion radius: 10.2 px
+  pass (the complete sequence propagates farther than the visible body and rim)
+- Stroke expansion radius: 13.4 px
 - Rim width: 3.6 px with derivative-based antialiasing
-- Normalized color blur sigma: 4 px
+- Normalized color/glyph-density blur sigma: 6 px
 - Pointer maximum speed: 300 reference px/s
 - Activation attack/release: 55 ms / 340 ms
