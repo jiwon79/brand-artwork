@@ -8,6 +8,10 @@
   `pages/color-changes/qa/implementation-distance-final.png`
 - Equal-size reference/implementation comparison:
   `pages/color-changes/qa/compare-distance-final.jpg`
+- Reference / previous constant-radius / final surface comparison:
+  `pages/color-changes/qa/surface-tension-final.jpg`
+- Focused user-reference surface crop:
+  `pages/color-changes/qa/surface-tension-crop-final.jpg`
 - Focused `Y`-junction evidence:
   `pages/color-changes/qa/y-stroke-distance-final.png`
 - User-reference legibility crop:
@@ -45,14 +49,23 @@ image therefore use the same crop, dimensions, and frozen palette state.
   accumulated neighboring stroke energy, enlarged intersections, exposed
   square density cells, and produced a cloudy center detached from the glyph.
 - Final implementation evidence: the focused `Y` crop has no isolated round
-  hotspot at the junction. Geometry still comes from distance to the nearest
-  active glyph seed, while the fine carrier adds only a directional bias inside
-  a broader low-frequency color field. The 2.35 px derivative-aware transition
-  shows no square texels, stepped contours, or one-pixel outline at native output
-  or in the DPR 2 capture.
+  hotspot at the junction. Geometry begins with distance to the nearest active
+  glyph seed, but retained activation now varies each seed's radius from 6.4 to
+  13.6 px. A short surface-field relaxation then joins nearby pools and rounds
+  the contour before coverage is extracted. The result has narrow necks, uneven
+  pools, and hanging droplets instead of a row of equal circular caps.
+- `surface-tension-final.jpg` shows reference / previous constant-radius pass /
+  final pass at equal size. The previous implementation has regularly repeated
+  semicircles along every line; the final pass removes that rhythm while keeping
+  the stroke-led topology and real interior openings.
+- `surface-tension-crop-final.jpg` confirms the user-reported detail at 3×:
+  the implementation now forms a continuous neck and gravity-like terminal
+  rather than a circle merely stamped over a character.
 - The 1440 × 1800 text mask remains high resolution. The 480 × 600 half-float
   geometry field matches the native source resolution. A local 16 px jump flood
-  covers the 13.4 px body radius and receives a second one-pixel cleanup pass.
+  covers the 13.6 px maximum pre-relaxation body radius and receives a second
+  one-pixel cleanup pass. The 5.2 px surface blur uses 13 taps per side, then a
+  soft 0.44 isosurface removes residual one-pixel steps.
 
 ### Color and gradients
 
@@ -86,6 +99,9 @@ image therefore use the same crop, dimensions, and frozen palette state.
 - Pointer tracking is eased and capped at 300 reference px/s. Glyph activation
   attacks over 55 ms, releases over 340 ms, and disappears geometrically below
   the 0.085 seed threshold.
+- During release, the same retained activation also contracts local pool radii,
+  so trails neck down before the seed cutoff instead of retaining identical
+  circles until they disappear.
 - Deterministic QA coordinates are opt-in. A missing `qaX`/`qaY` pair no longer
   resolves to `(0, 0)` and disable live pointer interaction.
 
@@ -145,6 +161,19 @@ image therefore use the same crop, dimensions, and frozen palette state.
      now changes continuously from background to rose and then pale pink; there
      is no fixed-color contour. In `y-legibility-final.jpg`, the central color
      follows the junction region but does not reconstruct complete colored words.
+8. Surface-tension comparison.
+   - Finding after handoff — P1: constant 13.4 px dilation gave every active
+     glyph pixel the same influence. Although the boundary was smooth, repeated
+     semicircular caps made the effect read as large dots laid over the letters.
+   - Fix: retain nearest-stroke topology but weight dilation radius by temporal
+     activation, then blur only that constructed body and extract a soft
+     isosurface. This separates stroke following from surface relaxation.
+   - Three parameter passes compared 4.2–5.8 px relaxation kernels and 0.38–0.46
+     isovalues. The selected 5.2 / 0.44 pair best preserves holes and thin necks
+     while removing the per-character scallop rhythm.
+   - Verification: the three-way and focused comparisons show unequal pool sizes,
+     continuous necks, and tapered terminals. OCR on the final `Y` capture reads
+     only unaffected copy below the colored area, not covered words.
 
 ## Findings
 
