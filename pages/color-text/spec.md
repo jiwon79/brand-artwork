@@ -113,9 +113,9 @@ The reproducible measurements and label-map generator are stored in
   the opposite direction; key `1` selects it.
 - `interaction=thermal` grows taller, hotter color centers after a local dwell;
   key `2` selects it.
-- `interaction=drip` waits for a click or touch, fixes that point as an anchor,
-  then pulls a viscous strand downward. The end bead accelerates under gravity,
-  the neck pinches, and the detached drop fades; key `3` selects it.
+- `interaction=drip` snapshots every glyph pixel activated by the touched
+  falloff, then advects and stretches that whole field downward. The transformed
+  field is rendered by the existing metaball passes; key `3` selects it.
 - `interaction=classic` preserves the approved reference recreation without an
   extension. Only one interaction mode is evaluated per frame.
 - `?qa` freezes the palette at the reference's pink/yellow phase.
@@ -125,8 +125,8 @@ The reproducible measurements and label-map generator are stored in
   palette information.
 - Add `&qaInteractionSpeed=1&qaVelocityX=1&qaVelocityY=0` to freeze a viscous
   wake, or `&qaDwell=1` to freeze a fully heated thermal bloom.
-- Add `&qaDripAge=1.45&qaDrip=1` with `interaction=drip` to freeze the connected
-  strand, or use `qaDripAge=2.05` to inspect the pinched, detached drop.
+- Add `&qaDripAge=1&qaDrip=1` with `interaction=drip` to freeze the first flowed
+  state, or use `qaDripAge=1.7` to inspect the longer whole-field deformation.
 - Press `g` to hide or reveal the tuning panel.
 
 ## Reference-space defaults
@@ -155,5 +155,5 @@ The reproducible measurements and label-map generator are stored in
   0.46 breakup
 - Thermal bloom: 0.9 vertical stretch, 0.82 energy, 72 × 110 px local radius,
   0.62 s heat buildup, 0.2 s cooling, 54 px/s dwell threshold
-- Touch drip: 78 px/s² gravity, 4.4 px neck width, 12 px end-drop radius,
-  0.92 strength, 1.45 s pinch time, 4 s lifetime, 0.14 s residual release
+- Touch drip: 78 px/s² gravity, 0.34 vertical stretch, 0.72 column-flow
+  variation, 0.92 metaball input strength, 1.45 s breakup onset, 4 s lifetime

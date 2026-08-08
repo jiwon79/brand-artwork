@@ -394,28 +394,31 @@ final result: passed
 
 ---
 
-## Touch-driven viscous drip — 2026-08-08
+## Touch-driven metaball field flow — 2026-08-08
 
 ## Evidence
 
 - Fixed-time sequence: `pages/color-text/qa/interaction-drip-sequence.png`
-- Sequence times: 0.65 s growth, 1.45 s connected strand, 2.05 s detached drop
-- Fixed QA anchor: `qaX=0.50`, `qaY=0.72`
-- The QA light radius was reduced to 24 px only to isolate the new silhouette from the existing large falloff body.
+- Live state before touch: `pages/color-text/qa/interaction-drip-field-before-full.jpg`
+- Live state 120 ms after touch: `pages/color-text/qa/interaction-drip-field-early-full.jpg`
+- Sequence times: 0 s snapshot, 1 s flow, 1.7 s extended flow
+- Fixed QA anchor: `qaX=0.50`, `qaY=0.70`
+- Live before/after captures used the normal reference falloff and palette.
 
 ## Findings
 
-- A click or touch stores one fixed anchor; later pointer movement does not redirect the active drip.
-- The lower bead accelerates with elapsed time, while the connecting strand keeps a narrow surface-tension neck.
-- The strand has a small continuous S-curve and width pulse, avoiding a pixel-stepped or perfectly rigid line.
-- At the pinch time, a localized gap opens before the heavy end bead; the remaining field then fades over the configured lifetime.
-- The drip uses the direct derivative-antialiased coverage channel, so it does not become a broad metaball wedge.
+- A click or touch snapshots every glyph pixel activated by that falloff, rather than creating one analytic strand at the pointer center.
+- The full snapshot moves downward under the same gravity value, stretches vertically, and develops continuous per-column speed differences.
+- The deformation writes only the input activation and color-center fields. The existing 192-sample metaball and smoothing passes still create the visible silhouette.
+- The drip no longer writes to the direct derivative-antialiased trail channel.
+- No fallback color is injected at the anchor, and pointer-down no longer clears render targets outside the animation frame.
+- The untouched 300 px left background strip was pixel-identical immediately before and 120 ms after the live touch (infinite PSNR), confirming the full-screen color flash is gone.
 - The three modes remain independent, and the GUI/query/keyboard selector exposes the new mode as `3 · 터치 드립` / `interaction=drip` / key `3`.
 
 ## Runtime checks
 
 - Live pointer-down was tested in the existing Chrome artwork tab.
-- Fixed QA frames were checked at the growth, connected, and detached phases.
+- Fixed QA frames were checked at the snapshot, first-flow, and extended-flow phases.
 - Browser console warnings and errors: none.
 - TypeScript typecheck and the production Vite build passed before final documentation updates.
 

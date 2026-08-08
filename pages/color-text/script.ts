@@ -100,12 +100,11 @@ const state = {
   dwellReleaseTime: qaNumber('qaDwellReleaseTime', 0.2),
   dwellSpeedThreshold: qaNumber('qaDwellSpeedThreshold', 54),
   dripGravity: qaNumber('qaDripGravity', 78),
-  dripWidth: qaNumber('qaDripWidth', 4.4),
-  dripHeadRadius: qaNumber('qaDripHeadRadius', 12),
+  dripStretch: qaNumber('qaDripStretch', 0.34),
+  dripTurbulence: qaNumber('qaDripTurbulence', 0.72),
   dripStrength: qaNumber('qaDripStrength', 0.92),
   dripPinchTime: qaNumber('qaDripPinchTime', 1.45),
   dripLifetime: qaNumber('qaDripLifetime', 4.0),
-  dripRelease: qaNumber('qaDripRelease', 0.14),
 };
 const qaInteractionSpeed = qaNumber('qaInteractionSpeed', 0);
 const qaVelocityX = qaNumber('qaVelocityX', 1);
@@ -145,6 +144,7 @@ let interactionSpeed = 0;
 let dwellAmount = 0;
 let dripAge = Number.POSITIVE_INFINITY;
 let dripEnergy = 0;
+let dripCaptureRequested = QA_MODE && state.interactionMode === 'drip';
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
 let startTime = performance.now();
 let previousTime = startTime;
@@ -385,6 +385,11 @@ const historyTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, li
 const historyTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const interactionTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const interactionTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const dripSnapshotTarget = new THREE.WebGLRenderTarget(
+  FIELD_WIDTH,
+  FIELD_HEIGHT,
+  linearTargetOptions,
+);
 const strokeSpreadTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const strokeSpreadTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const colorHorizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
@@ -490,6 +495,25 @@ const temporalMaterial = new THREE.ShaderMaterial({
   depthWrite: false,
 });
 
+const snapshotMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uInput;
+
+    void main() {
+      gl_FragColor = texture2D(uInput, vUv);
+    }
+  `,
+  uniforms: {
+    uInput: { value: sourceTarget.texture },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
 const interactionFieldMaterial = new THREE.ShaderMaterial({
   vertexShader,
   fragmentShader: `
@@ -498,6 +522,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     varying vec2 vUv;
     uniform sampler2D uHistory;
     uniform sampler2D uPrevious;
+    uniform sampler2D uDripSnapshot;
     uniform vec2 uArtSize;
     uniform vec2 uPointer;
     uniform vec2 uVelocityDirection;
@@ -516,8 +541,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uDripAge;
     uniform float uDripEnergy;
     uniform float uDripGravity;
-    uniform float uDripWidth;
-    uniform float uDripHeadRadius;
+    uniform float uDripStretch;
+    uniform float uDripTurbulence;
     uniform float uDripStrength;
     uniform float uDripPinchTime;
     uniform float uTime;
@@ -636,96 +661,54 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
           thermalMix
         );
       } else if (uMode > 2.5) {
-        float anchorInk = texture2D(uHistory, uDripAnchor).r;
-        float anchorColor = texture2D(uHistory, uDripAnchor).b;
-        vec2 nearX = vec2(14.0 / uArtSize.x, 0.0);
-        vec2 nearY = vec2(0.0, 14.0 / uArtSize.y);
-        anchorInk = max(anchorInk, texture2D(uHistory, uDripAnchor + nearX).r);
-        anchorInk = max(anchorInk, texture2D(uHistory, uDripAnchor - nearX).r);
-        anchorInk = max(anchorInk, texture2D(uHistory, uDripAnchor + nearY).r);
-        anchorInk = max(anchorInk, texture2D(uHistory, uDripAnchor - nearY).r);
-        anchorColor = max(anchorColor, texture2D(uHistory, uDripAnchor + nearX).b);
-        anchorColor = max(anchorColor, texture2D(uHistory, uDripAnchor - nearX).b);
-        anchorColor = max(anchorColor, texture2D(uHistory, uDripAnchor + nearY).b);
-        anchorColor = max(anchorColor, texture2D(uHistory, uDripAnchor - nearY).b);
-
         float age = max(uDripAge, 0.0);
-        float dropLength = min(
-          24.0 * age + 0.5 * uDripGravity * age * age,
-          uArtSize.y * 0.58
+        float fallDistance = min(
+          18.0 * age + 0.5 * uDripGravity * age * age,
+          uArtSize.y * 0.62
         );
-        float down = (uDripAnchor.y - vUv.y) * uArtSize.y;
-        float across = (vUv.x - uDripAnchor.x) * uArtSize.x;
-        float ratio = clamp(down / max(dropLength, 1.0), 0.0, 1.0);
-        float segmentGate = smoothstep(-1.5, 0.5, down)
-          * (1.0 - smoothstep(dropLength - 0.5, dropLength + 1.8, down));
-
-        float wobble = (
-          sin(ratio * 4.1 + age * 0.7) - sin(age * 0.7)
-        ) * uDripWidth * 0.95 * (0.34 + ratio * 0.66);
-        float distanceToStream = abs(across - wobble);
-        float shoulder = pow(1.0 - ratio, 2.0);
-        float headShoulder = smoothstep(0.72, 1.0, ratio);
-        float streamWidth = uDripWidth * (
-          0.46 + shoulder * 0.88 + headShoulder * 0.22
-        );
-        float widthPulse = 1.0 + 0.11
-          * sin(ratio * 12.5663706 - age * 1.9)
-          * sin(ratio * 3.14159265);
-        streamWidth *= widthPulse;
-
-        float pinch = smoothstep(
+        float localX = (vUv.x - uDripAnchor.x) * uArtSize.x;
+        float broadLane = 0.5 + 0.5 * sin(localX * 0.052 + uDripAnchor.x * 19.7);
+        float fineLane = 0.5 + 0.5 * sin(localX * 0.137 - uDripAnchor.y * 23.1);
+        float laneNoise = mix(broadLane, fineLane, 0.34);
+        float breakup = smoothstep(
           uDripPinchTime - 0.16,
-          uDripPinchTime + 0.52,
+          uDripPinchTime + 0.72,
           age
         );
-        float pinchCenter = mix(0.78, 0.68, pinch);
-        float distanceToPinch = abs(ratio - pinchCenter);
-        float gapHalfWidth = mix(0.012, 0.072, pinch);
-        float gap = smoothstep(gapHalfWidth, gapHalfWidth + 0.022, distanceToPinch);
-        float neck = mix(1.0, gap, pinch);
-        streamWidth *= 1.0 - 0.34 * pinch
-          * exp(-distanceToPinch * distanceToPinch * 620.0);
+        float laneSpeed = mix(1.0, mix(0.78, 1.16, laneNoise), uDripTurbulence);
+        laneSpeed += sin(localX * 0.11 + age * 0.58)
+          * 0.08 * uDripTurbulence * breakup;
 
-        float stream = 1.0 - smoothstep(
-          streamWidth,
-          streamWidth + 1.15,
-          distanceToStream
-        );
-        stream *= segmentGate * neck;
+        float outputDown = (uDripAnchor.y - vUv.y) * uArtSize.y;
+        float verticalStretch = 1.0 + age * uDripStretch
+          * mix(0.78, 1.16, broadLane);
+        float sourceDown = (
+          outputDown - fallDistance * laneSpeed
+        ) / max(verticalStretch, 1.0);
+        float lateralWarp = (
+          sin(sourceDown * 0.035 + localX * 0.018 + age * 1.08)
+          - sin(localX * 0.018 + age * 1.08)
+        ) * 3.4 * uDripTurbulence;
 
-        float headX = (
-          sin(4.1 + age * 0.7) - sin(age * 0.7)
-        ) * uDripWidth * 0.95;
-        float grownHeadRadius = mix(
-          uDripWidth * 1.15,
-          uDripHeadRadius,
-          smoothstep(0.08, 0.9, age)
+        vec2 sourceUv = vec2(
+          vUv.x - lateralWarp / uArtSize.x,
+          uDripAnchor.y - sourceDown / uArtSize.y
         );
-        vec2 headDelta = vec2(
-          across - headX,
-          down - dropLength
+        float inBounds = step(0.0, sourceUv.x) * step(sourceUv.x, 1.0)
+          * step(0.0, sourceUv.y) * step(sourceUv.y, 1.0);
+        vec4 movedField = texture2D(
+          uDripSnapshot,
+          clamp(sourceUv, vec2(0.0), vec2(1.0))
         );
-        vec2 headShape = headDelta / vec2(
-          max(grownHeadRadius * 0.82, 1.0),
-          max(grownHeadRadius * 1.16, 1.0)
-        );
-        float head = 1.0 - smoothstep(0.86, 1.08, length(headShape));
+        movedField *= inBounds;
 
-        vec2 anchorShape = vec2(across, down * 0.78) / max(uDripWidth * 1.42, 1.0);
-        float anchorBead = 1.0 - smoothstep(0.84, 1.08, length(anchorShape));
-        float liquidDrip = max(max(stream, head), anchorBead);
-        float sourceStrength = mix(0.74, 1.0, clamp(anchorInk * 1.45, 0.0, 1.0));
-        float analyticDrip = liquidDrip * uDripEnergy * sourceStrength;
-
-        vec4 previous = texture2D(uPrevious, vUv);
-        float persistentDrip = previous.a * uTrailRetention;
-        trail = max(analyticDrip, persistentDrip);
-        float dripColor = max(anchorColor, max(anchorInk * 0.58, 0.46));
-        colorActivation = max(
-          colorActivation,
-          trail * dripColor * uDripStrength
-        );
+        float densityPulse = 1.0 - breakup * uDripTurbulence * 0.12
+          * (0.5 + 0.5 * sin(outputDown * 0.071 + localX * 0.043));
+        float movedSurface = movedField.r * uDripStrength * densityPulse;
+        float dripMix = clamp(uDripEnergy, 0.0, 1.0);
+        surfaceActivation = mix(surfaceActivation, movedSurface, dripMix);
+        colorActivation = mix(colorActivation, movedField.b * densityPulse, dripMix);
+        trail = 0.0;
       }
 
       gl_FragColor = vec4(
@@ -739,6 +722,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
   uniforms: {
     uHistory: { value: historyTargetA.texture },
     uPrevious: { value: interactionTargetA.texture },
+    uDripSnapshot: { value: dripSnapshotTarget.texture },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uPointer: { value: new THREE.Vector2(pointer.x, pointer.y) },
     uVelocityDirection: { value: new THREE.Vector2(1, 0) },
@@ -757,8 +741,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uDripAge: { value: 0 },
     uDripEnergy: { value: 0 },
     uDripGravity: { value: state.dripGravity },
-    uDripWidth: { value: state.dripWidth },
-    uDripHeadRadius: { value: state.dripHeadRadius },
+    uDripStretch: { value: state.dripStretch },
+    uDripTurbulence: { value: state.dripTurbulence },
     uDripStrength: { value: state.dripStrength },
     uDripPinchTime: { value: state.dripPinchTime },
     uTime: { value: 0 },
@@ -1107,8 +1091,7 @@ const finalMaterial = new THREE.ShaderMaterial({
       float trailEdge = max(0.018, fwidth(directTrail) * 1.15);
       float trailCoverage = smoothstep(0.045 - trailEdge, 0.115 + trailEdge, directTrail);
       float viscousMode = 1.0 - step(0.5, abs(uInteractionMode - 1.0));
-      float dripMode = 1.0 - step(0.5, abs(uInteractionMode - 3.0));
-      coverage = max(coverage, trailCoverage * max(viscousMode, dripMode));
+      coverage = max(coverage, trailCoverage * viscousMode);
       float distanceToStroke = 16.0;
 
       if (nearest.a > 0.5) {
@@ -1232,6 +1215,7 @@ clearTarget(historyTargetA);
 clearTarget(historyTargetB);
 clearTarget(interactionTargetA);
 clearTarget(interactionTargetB);
+clearTarget(dripSnapshotTarget);
 clearTarget(strokeSpreadTargetA);
 clearTarget(strokeSpreadTargetB);
 clearTarget(nearestTargetA);
@@ -1277,11 +1261,11 @@ function setPointerFromClient(clientX: number, clientY: number): void {
 }
 
 function startDrip(): void {
-  resetInteractionField();
   dripAnchor.x = pointerTarget.x;
   dripAnchor.y = pointerTarget.y;
-  dripAge = 0;
-  dripEnergy = 1;
+  dripAge = Number.POSITIVE_INFINITY;
+  dripEnergy = 0;
+  dripCaptureRequested = true;
 }
 
 if (!QA_POINTER_LOCKED) {
@@ -1311,11 +1295,13 @@ function interactionModeCode(mode: InteractionMode): number {
 function resetInteractionField(): void {
   clearTarget(interactionTargetA);
   clearTarget(interactionTargetB);
+  clearTarget(dripSnapshotTarget);
   interactionRead = interactionTargetA;
   interactionWrite = interactionTargetB;
   dwellAmount = 0;
   dripAge = Number.POSITIVE_INFINITY;
   dripEnergy = 0;
+  dripCaptureRequested = false;
   renderer.setClearColor(0xfbfbfa, 1);
   renderer.setRenderTarget(null);
 }
@@ -1340,10 +1326,10 @@ function bindGui(): void {
   interactionFolder.add(state, 'dwellBuildTime', 0.1, 2, 0.01).name('열 축적 시간');
   interactionFolder.add(state, 'dwellReleaseTime', 0.05, 1, 0.01).name('열 냉각 시간');
   interactionFolder.add(state, 'dripGravity', 20, 150, 1).name('드립 중력');
-  interactionFolder.add(state, 'dripWidth', 1.5, 10, 0.1).name('드립 목 폭');
-  interactionFolder.add(state, 'dripHeadRadius', 4, 24, 0.5).name('끝 방울 크기');
-  interactionFolder.add(state, 'dripStrength', 0, 1.4, 0.01).name('드립 장력');
-  interactionFolder.add(state, 'dripPinchTime', 0.4, 3, 0.05).name('끊어지는 시점');
+  interactionFolder.add(state, 'dripStretch', 0, 1.2, 0.01).name('영역 세로 신장');
+  interactionFolder.add(state, 'dripTurbulence', 0, 1.5, 0.01).name('흐름 속도 차이');
+  interactionFolder.add(state, 'dripStrength', 0, 1.4, 0.01).name('Metaball 입력량');
+  interactionFolder.add(state, 'dripPinchTime', 0.4, 3, 0.05).name('영역 분리 시점');
   interactionFolder.add(state, 'dripLifetime', 1.5, 7, 0.1).name('드립 수명');
 
   const lightFolder = gui.addFolder('광원 / Falloff');
@@ -1569,10 +1555,6 @@ function animate(now: number): void {
     );
     if (dripAge >= state.dripLifetime) dripEnergy = 0;
   }
-  const renderedDripAge = QA_MODE ? qaDripAge : dripAge;
-  const renderedDripEnergy = QA_MODE
-    ? THREE.MathUtils.clamp(qaDripEnergy, 0, 1)
-    : dripEnergy;
 
   sourceMaterial.uniforms.uPointer.value.set(pointer.x, pointer.y);
 
@@ -1583,6 +1565,24 @@ function animate(now: number): void {
   temporalMaterial.uniforms.uReleaseBlend.value = 1 - Math.exp(-delta / state.activationRelease);
   renderPass(temporalMaterial, historyWrite);
   [historyRead, historyWrite] = [historyWrite, historyRead];
+
+  if (dripCaptureRequested) {
+    sourceMaterial.uniforms.uPointer.value.set(dripAnchor.x, dripAnchor.y);
+    renderPass(sourceMaterial, sourceTarget);
+    snapshotMaterial.uniforms.uInput.value = sourceTarget.texture;
+    renderPass(snapshotMaterial, dripSnapshotTarget);
+    sourceMaterial.uniforms.uPointer.value.set(pointer.x, pointer.y);
+    if (!QA_MODE) {
+      dripAge = 0;
+      dripEnergy = 1;
+    }
+    dripCaptureRequested = false;
+  }
+
+  const renderedDripAge = QA_MODE ? qaDripAge : dripAge;
+  const renderedDripEnergy = QA_MODE
+    ? THREE.MathUtils.clamp(qaDripEnergy, 0, 1)
+    : dripEnergy;
 
   interactionFieldMaterial.uniforms.uHistory.value = historyRead.texture;
   interactionFieldMaterial.uniforms.uPrevious.value = interactionRead.texture;
@@ -1598,10 +1598,7 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uWakeWidth.value = state.viscousWakeWidth;
   interactionFieldMaterial.uniforms.uWakeStrength.value = state.viscousWakeStrength;
   interactionFieldMaterial.uniforms.uTrailRetention.value = Math.exp(
-    -delta / Math.max(
-      state.interactionMode === 'drip' ? state.dripRelease : state.viscousWakeRelease,
-      0.001,
-    ),
+    -delta / Math.max(state.viscousWakeRelease, 0.001),
   );
   interactionFieldMaterial.uniforms.uBreakup.value = state.viscousBreakup;
   interactionFieldMaterial.uniforms.uThermalStretch.value = state.thermalStretch;
@@ -1614,8 +1611,8 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uDripAge.value = renderedDripAge;
   interactionFieldMaterial.uniforms.uDripEnergy.value = renderedDripEnergy;
   interactionFieldMaterial.uniforms.uDripGravity.value = state.dripGravity;
-  interactionFieldMaterial.uniforms.uDripWidth.value = state.dripWidth;
-  interactionFieldMaterial.uniforms.uDripHeadRadius.value = state.dripHeadRadius;
+  interactionFieldMaterial.uniforms.uDripStretch.value = state.dripStretch;
+  interactionFieldMaterial.uniforms.uDripTurbulence.value = state.dripTurbulence;
   interactionFieldMaterial.uniforms.uDripStrength.value = state.dripStrength;
   interactionFieldMaterial.uniforms.uDripPinchTime.value = state.dripPinchTime;
   interactionFieldMaterial.uniforms.uTime.value = elapsed;
@@ -1680,9 +1677,7 @@ function animate(now: number): void {
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
   finalMaterial.uniforms.uInteractionField.value = interactionRead.texture;
   finalMaterial.uniforms.uInteractionMode.value = interactionModeCode(state.interactionMode);
-  finalMaterial.uniforms.uTrailStrength.value = state.interactionMode === 'drip'
-    ? state.dripStrength
-    : state.viscousWakeStrength;
+  finalMaterial.uniforms.uTrailStrength.value = state.viscousWakeStrength;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);

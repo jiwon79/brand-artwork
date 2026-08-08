@@ -207,21 +207,21 @@ release 시간 = 0.34 s
 
 #### 터치 드립 모드
 
-클릭하거나 터치한 순간의 위치를 `dripAnchor`에 복사하고, 그 뒤에는 움직이는 커서 대신 이 고정점과 `dripAge`를 사용한다. 따라서 손을 떼거나 커서를 다른 곳으로 옮겨도 같은 자리에서 액체가 계속 흘러내린다.
+클릭하거나 터치한 순간의 위치를 `dripAnchor`에 복사한다. 동시에 그 위치의 Falloff가 활성화한 **모든 글자 픽셀**을 `dripSnapshotTarget`에 한 장의 field로 저장한다. 이후에는 움직이는 커서가 아니라 이 고정된 전체 field와 `dripAge`를 사용한다.
 
 ```text
-터치 위치 → 고정점 저장
-경과 시간 + 중력 → 아래로 내려간 끝 방울의 거리
-고정점과 끝 방울 사이의 각 출력 픽셀 → 가는 액체 줄기
-약 1.45초 경과 → 줄기 중간의 목이 잘록해지고 분리
-약 4초 경과 → 남은 field가 사라짐
+터치 위치 → Falloff 안의 활성 픽셀 전체를 저장
+경과 시간 + 중력 → field 전체의 아래 이동 거리
+가로 위치별 속도 차이 → 같은 덩어리 안에서 부분별 하강량 변화
+세로 신장 + 작은 좌우 굴곡 → 늘어지고 갈라지는 활성 field
+변형 field → 기존 Metaball 입력 → 기존 방식으로 실루엣 렌더링
 ```
 
-이 모드도 실제 입자나 점을 떨어뜨리지 않는다. 각 출력 픽셀에서 고정점까지의 가로 거리와 아래 방향 거리를 연속적으로 계산한다. 줄기는 아래로 갈수록 좌우 편차가 커지는 S자 곡선을 따르고, 폭에는 작은 맥동을 더한다. 끝에는 세로로 조금 긴 타원을 계산해 무거운 방울을 만든다. 시간이 `dripPinchTime`을 지나면 줄기 중간의 아주 좁은 구간을 0에 가깝게 줄여 목이 끊어진 것처럼 보이게 한다.
+이 모드는 완전한 유체 시뮬레이션이 아니다. 각 출력 픽셀이 “변형 전 스냅샷의 어느 픽셀을 읽어야 하는가”를 역으로 계산한다. 기본적으로 중력 시간식으로 전체 field를 아래로 옮기고, 가로 위치마다 조금 다른 속도와 세로 확대율을 준다. 그래서 하나의 작은 점이 새로 생기는 대신, 터치로 활성화됐던 글자 픽셀 덩어리 전체가 아래로 미끄러지고 늘어진다.
 
-드립은 Metaball 주변 조사를 다시 통과시키면 가는 목이 뭉툭해지므로 점성 꼬리와 같은 별도 알파 채널에 저장한다. `finalMaterial`에서 미분 기반 안티앨리어싱을 적용해 기존 액체 실루엣 위에 합친다. 이전 프레임의 알파는 기본 `0.14초` 동안만 남겨 줄기가 프레임 사이에서 떨리지 않도록 한다.
+중요한 점은 이 변형 결과를 화면에 직접 그리지 않는다는 것이다. 변형된 활성값은 `interactionFieldMaterial`의 R 채널에 들어간 뒤 `surfaceSourceMaterial → surfaceBlurMaterial → surfaceSmoothMaterial`을 그대로 통과한다. 즉 흐르는 영역만 유체처럼 계산하고, 최종 외곽선의 합쳐짐·둥근 연결·매끄러움은 기존 `192`개 황금각 표본 Metaball이 계속 담당한다. 색 중심도 같은 스냅샷의 B 채널을 같은 좌표로 이동하므로 터치 순간 별도 고정색을 주입하지 않는다.
 
-![터치 직후, 연결된 줄기, 목이 끊어진 방울의 세 단계](../../../pages/color-text/qa/interaction-drip-sequence.png)
+![터치 직후의 전체 영역, 아래로 신장된 영역, 더 멀리 흐른 Metaball 영역](../../../pages/color-text/qa/interaction-drip-sequence.png)
 
 ### 5.4 너무 약한 활성 픽셀은 field 입력에서 제외한다
 
@@ -334,7 +334,8 @@ WebGL의 렌더 타깃은 GPU 안에서 다음 계산으로 넘겨줄 중간 이
 | --- | --- | --- |
 | `sourceTarget` | 글자 마스크 픽셀과 커서 Falloff를 곱한 현재 활성 이미지 | 시간 기억 |
 | `historyTargetA/B` | 각 글자 픽셀의 이전 값과 현재 값을 섞은 활성 기억 | 입력 감지 |
-| `interactionTargetA/B` | 선택한 모드로 변형한 실루엣·색 활성값과 점성 꼬리 기억 | 입력 감지와 최종 꼬리 합성 |
+| `dripSnapshotTarget` | 터치 순간 Falloff가 활성화한 전체 글자 픽셀과 색 중심 | 터치 드립의 좌표 변형 |
+| `interactionTargetA/B` | 선택한 모드로 변형한 실루엣·색 활성값과 점성 꼬리 기억 | Metaball 입력과 점성 꼬리 합성 |
 | `surfaceSourceTarget` | 임계값을 통과한 활성 픽셀 | 황금각 주변 표본 |
 | `metaballRawTarget` | 출력 픽셀마다 192개 주변 표본을 합친 원래 field | 가로 smoothing |
 | `surfaceHorizontalTarget` | 가로 방향으로 매끄러워진 높이 | 세로 smoothing |
@@ -358,6 +359,13 @@ function animate(now) {
   // 3. 각 픽셀을 이전 활성값과 섞고 history A/B를 교환한다.
   renderPass(temporalMaterial, historyWrite);
   swap(historyRead, historyWrite);
+
+  // 터치가 발생한 프레임에만 Falloff의 전체 활성 field를 저장한다.
+  if (dripCaptureRequested) {
+    sourceMaterial.pointer = dripAnchor;
+    renderPass(sourceMaterial, sourceTarget);
+    renderPass(snapshotMaterial, dripSnapshotTarget);
+  }
 
   // 4. 선택한 확장 모드 하나만 적용하고 interaction A/B를 교환한다.
   renderPass(interactionFieldMaterial, interactionWrite);
@@ -475,11 +483,11 @@ function animate(now) {
 | `thermalStrength` | `0.82` | 열꽃의 실루엣·색 에너지 강도 |
 | `dwellBuildTime` | `0.62 s` | 멈춘 뒤 열이 쌓이는 시간 |
 | `dwellReleaseTime` | `0.2 s` | 다시 움직일 때 열이 식는 시간 |
-| `dripGravity` | `78` | 터치 뒤 끝 방울이 아래로 가속되는 정도 |
-| `dripWidth` | `4.4 px` | 점성 줄기의 기본 목 폭 |
-| `dripHeadRadius` | `12 px` | 아래쪽에 맺히는 무거운 방울의 반경 |
-| `dripStrength` | `0.92` | 드립 실루엣이 화면에 합쳐지는 강도 |
-| `dripPinchTime` | `1.45 s` | 줄기 중간의 목이 끊어지기 시작하는 시점 |
+| `dripGravity` | `78` | 저장한 활성 field 전체가 아래로 가속되는 정도 |
+| `dripStretch` | `0.34` | 흐르면서 field가 세로로 늘어나는 비율 |
+| `dripTurbulence` | `0.72` | 가로 위치별 하강 속도와 좌우 굴곡의 차이 |
+| `dripStrength` | `0.92` | 변형 field가 기존 Metaball에 들어가는 양 |
+| `dripPinchTime` | `1.45 s` | 영역 안의 밀도 차이가 더 강해지기 시작하는 시점 |
 | `dripLifetime` | `4 s` | 터치 한 번으로 만든 드립이 남는 전체 시간 |
 | `colorCenterRadiusX` | `9` | 글자 통계로 변형하기 전 색 타원의 기준 가로 반경 |
 | `colorCenterRadiusY` | `16` | 글자 통계로 변형하기 전 색 타원의 기준 세로 반경 |
