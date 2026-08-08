@@ -57,13 +57,16 @@ const state = {
   coreMix: qaNumber('qaCoreMix', 0.0),
   surfaceThreshold: qaNumber('qaSurfaceThreshold', 0.07),
   surfaceSoftness: qaNumber('qaSurfaceSoftness', 0.012),
-  colorCenterRadiusX: qaNumber('qaColorCenterRadiusX', 20.0),
-  colorCenterRadiusY: qaNumber('qaColorCenterRadiusY', 13.0),
+  colorSourceMode: qaNumber('qaColorSourceMode', 0),
+  colorCenterRadiusX: qaNumber('qaColorCenterRadiusX', 9.0),
+  colorCenterRadiusY: qaNumber('qaColorCenterRadiusY', 16.0),
+  colorCenterVariation: qaNumber('qaColorCenterVariation', 1.0),
+  colorGlyphInfluence: qaNumber('qaColorGlyphInfluence', 0.2),
   colorBlurSigma: qaNumber('qaColorBlurSigma', 2.5),
-  colorBlurAspect: qaNumber('qaColorBlurAspect', 0.8),
+  colorBlurAspect: qaNumber('qaColorBlurAspect', 1.1),
   colorBlurStep: qaNumber('qaColorBlurStep', 1.0),
-  colorFloor: qaNumber('qaColorFloor', 0.02),
-  colorRange: qaNumber('qaColorRange', 0.55),
+  colorFloor: qaNumber('qaColorFloor', 0.015),
+  colorRange: qaNumber('qaColorRange', 0.48),
   hueBands: qaNumber('qaHueBands', 0.31),
   colorCycle: qaNumber('qaColorCycle', 8.0),
   pointerEase: 4.3,
@@ -148,10 +151,14 @@ function drawColorCenter(
   context: CanvasRenderingContext2D,
   centerX: number,
   centerY: number,
+  radiusX: number,
+  radiusY: number,
+  opacity: number,
 ): void {
   context.save();
   context.translate(centerX, centerY);
-  context.scale(state.colorCenterRadiusX, state.colorCenterRadiusY);
+  context.scale(radiusX, radiusY);
+  context.globalAlpha = opacity;
   const gradient = context.createRadialGradient(0, 0, 0, 0, 0, 1);
   gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
   gradient.addColorStop(0.42, 'rgba(255, 255, 255, 0.96)');
@@ -164,23 +171,111 @@ function drawColorCenter(
   context.restore();
 }
 
-function bakeColorCenterMask(): void {
-  colorCenterContext.setTransform(TEXTURE_SCALE, 0, 0, TEXTURE_SCALE, 0, 0);
-  colorCenterContext.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
+type GlyphCenterStats = {
+  centerX: number;
+  centerY: number;
+  centroidX: number;
+  centroidY: number;
+  inkMass: number;
+  width: number;
+  height: number;
+};
+
+function measureGlyphCenters(): GlyphCenterStats[] {
+  const image = textContext.getImageData(0, 0, textCanvas.width, textCanvas.height);
+  const stats: GlyphCenterStats[] = [];
+
   lines.forEach((line, lineIndex) => {
     const startX = ART_WIDTH / 2 - ((line.length - 1) * CHARACTER_ADVANCE) / 2;
     for (let characterIndex = 0; characterIndex < line.length; characterIndex += 1) {
       if (line[characterIndex] === ' ') continue;
-      drawColorCenter(
-        colorCenterContext,
-        startX + characterIndex * CHARACTER_ADVANCE,
-        FIRST_LINE_Y + lineIndex * LINE_HEIGHT,
+      const centerX = startX + characterIndex * CHARACTER_ADVANCE;
+      const centerY = FIRST_LINE_Y + lineIndex * LINE_HEIGHT;
+      const minCellX = Math.max(0, Math.floor((centerX - CHARACTER_ADVANCE / 2) * TEXTURE_SCALE));
+      const maxCellX = Math.min(
+        textCanvas.width - 1,
+        Math.ceil((centerX + CHARACTER_ADVANCE / 2) * TEXTURE_SCALE),
       );
+      const minCellY = Math.max(0, Math.floor((centerY - LINE_HEIGHT / 2) * TEXTURE_SCALE));
+      const maxCellY = Math.min(
+        textCanvas.height - 1,
+        Math.ceil((centerY + LINE_HEIGHT / 2) * TEXTURE_SCALE),
+      );
+      let inkMass = 0;
+      let weightedX = 0;
+      let weightedY = 0;
+      let minInkX = maxCellX;
+      let maxInkX = minCellX;
+      let minInkY = maxCellY;
+      let maxInkY = minCellY;
+
+      for (let pixelY = minCellY; pixelY <= maxCellY; pixelY += 1) {
+        for (let pixelX = minCellX; pixelX <= maxCellX; pixelX += 1) {
+          const alpha = image.data[(pixelY * textCanvas.width + pixelX) * 4 + 3] / 255;
+          if (alpha < 0.01) continue;
+          inkMass += alpha;
+          weightedX += (pixelX / TEXTURE_SCALE) * alpha;
+          weightedY += (pixelY / TEXTURE_SCALE) * alpha;
+          if (alpha > 0.08) {
+            minInkX = Math.min(minInkX, pixelX);
+            maxInkX = Math.max(maxInkX, pixelX);
+            minInkY = Math.min(minInkY, pixelY);
+            maxInkY = Math.max(maxInkY, pixelY);
+          }
+        }
+      }
+
+      const safeMass = Math.max(inkMass, 0.001);
+      stats.push({
+        centerX,
+        centerY,
+        centroidX: weightedX / safeMass,
+        centroidY: weightedY / safeMass,
+        inkMass: inkMass / (TEXTURE_SCALE * TEXTURE_SCALE),
+        width: Math.max((maxInkX - minInkX + 1) / TEXTURE_SCALE, 1),
+        height: Math.max((maxInkY - minInkY + 1) / TEXTURE_SCALE, 1),
+      });
     }
+  });
+
+  return stats;
+}
+
+let glyphCenterStats: GlyphCenterStats[] = [];
+
+function bakeColorCenterMask(): void {
+  colorCenterContext.setTransform(TEXTURE_SCALE, 0, 0, TEXTURE_SCALE, 0, 0);
+  colorCenterContext.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
+  const masses = glyphCenterStats.map((stats) => stats.inkMass);
+  const minMass = Math.min(...masses);
+  const maxMass = Math.max(...masses);
+  glyphCenterStats.forEach((stats) => {
+    const massRatio = (stats.inkMass - minMass) / Math.max(maxMass - minMass, 0.001);
+    const widthRatio = THREE.MathUtils.clamp((stats.width - 4) / 27, 0, 1);
+    const heightRatio = THREE.MathUtils.clamp((stats.height - 18) / 20, 0, 1);
+    const widthSignal = massRatio * 0.35 + widthRatio * 0.65;
+    const heightSignal = massRatio * 0.5 + heightRatio * 0.5;
+    const variation = state.colorCenterVariation;
+    const radiusX = state.colorCenterRadiusX * THREE.MathUtils.lerp(
+      1,
+      0.32 + widthSignal * 1.35,
+      variation,
+    );
+    const radiusY = state.colorCenterRadiusY * THREE.MathUtils.lerp(
+      1,
+      0.42 + heightSignal * 1.3,
+      variation,
+    );
+    const centroidMix = variation * 0.35;
+    const centerX = THREE.MathUtils.lerp(stats.centerX, stats.centroidX, centroidMix);
+    const centerY = THREE.MathUtils.lerp(stats.centerY, stats.centroidY, centroidMix);
+    const opacity = THREE.MathUtils.lerp(1, 0.45 + massRatio * 0.55, variation);
+    drawColorCenter(colorCenterContext, centerX, centerY, radiusX, radiusY, opacity);
   });
 }
 
 bakeTextMask();
+glyphCenterStats = measureGlyphCenters();
 bakeColorCenterMask();
 
 let renderer: THREE.WebGLRenderer;
@@ -935,16 +1030,21 @@ function bindGui(): void {
   motionFolder.add(state, 'activationRelease', 0.08, 1.2, 0.01).name('활성 Release');
 
   const colorFolder = gui.addFolder('색상');
-  colorFolder.add(state, 'colorCenterRadiusX', 4, 30, 0.5).name('타원 가로 반경').onChange(() => {
+  colorFolder.add(state, 'colorCenterRadiusX', 3, 20, 0.5).name('기준 타원 가로 반경').onChange(() => {
     bakeColorCenterMask();
     colorCenterTexture.needsUpdate = true;
   });
-  colorFolder.add(state, 'colorCenterRadiusY', 3, 24, 0.5).name('타원 세로 반경').onChange(() => {
+  colorFolder.add(state, 'colorCenterRadiusY', 6, 28, 0.5).name('기준 타원 세로 반경').onChange(() => {
     bakeColorCenterMask();
     colorCenterTexture.needsUpdate = true;
   });
+  colorFolder.add(state, 'colorCenterVariation', 0, 1, 0.01).name('글자별 크기 차이').onChange(() => {
+    bakeColorCenterMask();
+    colorCenterTexture.needsUpdate = true;
+  });
+  colorFolder.add(state, 'colorGlyphInfluence', 0, 0.6, 0.01).name('글자 픽셀 변형');
   colorFolder.add(state, 'colorBlurSigma', 0.5, 16, 0.1).name('중심 타원 가로 blur');
-  colorFolder.add(state, 'colorBlurAspect', 0.2, 1, 0.01).name('중심 타원 세로 비율');
+  colorFolder.add(state, 'colorBlurAspect', 0.2, 3, 0.01).name('중심 타원 세로 비율');
   colorFolder.add(state, 'colorBlurStep', 0.5, 2, 0.05).name('색 blur 간격').onChange((value: number) => {
     colorBlurMaterial.uniforms.uStep.value = value;
   });
@@ -1054,9 +1154,18 @@ function animate(now: number): void {
   surfaceSmoothMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
   renderPass(surfaceSmoothMaterial, surfaceFieldTarget);
 
-  colorBlurMaterial.uniforms.uInput.value = historyRead.texture;
+  const colorUsesSurfaceField = state.colorSourceMode === 2;
+  colorBlurMaterial.uniforms.uInput.value = colorUsesSurfaceField
+    ? surfaceFieldTarget.texture
+    : historyRead.texture;
   colorBlurMaterial.uniforms.uSigma.value = state.colorBlurSigma;
-  colorBlurMaterial.uniforms.uChannel.value.set(0, 0, 1, 0);
+  const glyphInfluence = state.colorSourceMode === 0 ? state.colorGlyphInfluence : 0;
+  colorBlurMaterial.uniforms.uChannel.value.set(
+    state.colorSourceMode === 0 ? glyphInfluence : 1,
+    0,
+    state.colorSourceMode === 0 ? 1 - glyphInfluence : 0,
+    0,
+  );
   colorBlurMaterial.uniforms.uDirection.value.set(1 / FIELD_WIDTH, 0);
   renderPass(colorBlurMaterial, colorHorizontalTarget);
   colorBlurMaterial.uniforms.uInput.value = colorHorizontalTarget.texture;

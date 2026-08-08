@@ -33,26 +33,28 @@
 7. Extract the 0.07 isosurface with 0.012 softness. The nearest-stroke continuity
    core is disabled (`coreMix = 0`), so there is no explicit outline, fixed-radius
    body, or glyph-shaped union hidden underneath the metaball silhouette.
-8. Build color in a field independent from silhouette geometry. Bake one soft
-   ellipse at the layout center of every non-space character. The default ellipse
-   radii are 20 × 13 px; its center is nearly opaque and its halo falls
-   continuously to zero. Multiply this mask by the same cursor falloff and store
-   it in the temporal buffer's blue channel, so color centers use the same attack
-   and release memory as the activated glyph pixels.
-9. Smooth the remembered ellipse field with a separable Gaussian filter
-   (horizontal sigma 2.5, vertical ratio 0.8). Neighboring halos can blend into a
-   continuous mid-color region while their high-energy centers remain separate
-   ovals. Read this field everywhere inside the metaball coverage—there is no
-   nearest-seed validity gate—then map it through overlapping rose, pale-pink,
-   and hot-color blends. This removes the old discontinuous color cutoff.
+8. Build color in a field independent from silhouette geometry. Measure the
+   actual alpha pixels inside every non-space character cell: ink mass, visible
+   width and height, and alpha-weighted centroid. Use those measurements to bake
+   a different soft vertical ellipse for each character. The 9 × 16 px default
+   radii are only a baseline; sparse/narrow characters produce smaller peaks,
+   dense/wide characters produce larger peaks, and each peak shifts slightly
+   toward its glyph centroid. Multiply this field by the same cursor falloff and
+   retain it in the temporal buffer's blue channel.
+9. Mix 20% of the remembered glyph-pixel activation back into the statistical
+   ellipse field so the peaks inherit subtle character-dependent deformation
+   without becoming readable letters. Smooth the result with a separable
+   Gaussian filter (horizontal sigma 2.5, vertical ratio 1.1). Read this field
+   everywhere inside the metaball coverage—there is no nearest-seed validity
+   gate—then map it through overlapping rose, pale-pink, and hot-color blends.
 10. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
 
 Geometry and color are deliberately independent. Geometry is falloff-masked
 stroke alpha → sampled metaball influence → smoothing → isocontour. Color is a
-temporally remembered field of soft character-center ellipses, clipped by that
-coverage. The old nearest-stroke distance construction could only ask which
+temporally remembered field of glyph-statistics-driven vertical peaks, clipped
+by that coverage. The old nearest-stroke distance construction could only ask which
 source pixel was closest, so the `Y` junction became a convex cap. The
 accumulated geometry field preserves the influence of both arms at once; their
 competing gradients create the concave saddle visible in the reference.
@@ -121,8 +123,10 @@ The reproducible measurements and label-map generator are stored in
 - Surface isovalue / edge softness: 0.07 / 0.012
 - Nearest-stroke geometry core: disabled; jump flooding is retained only for
   that optional core
-- Character-center color ellipse: 20 × 13 px radius with a continuous halo
-- Color ellipse blur: sigma 2.5 horizontally, 2.0 vertically, 20 taps per side
-- Color field floor / range: 0.02 / 0.55
+- Character-center color ellipse baseline: 9 × 16 px radius; actual dimensions
+  vary by glyph ink mass, bounds, and centroid
+- Glyph-pixel deformation mixed into color peaks: 20%
+- Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
+- Color field floor / range: 0.015 / 0.48
 - Pointer maximum speed: 300 reference px/s
 - Activation attack/release: 55 ms / 340 ms

@@ -236,6 +236,7 @@ image therefore use the same crop, dimensions, and frozen palette state.
   Light fallback remains the closest installed match.
 
 final result: passed
+
 ---
 
 ## Color distribution revision — 2026-08-08
@@ -289,5 +290,51 @@ final result: passed
 ## Follow-up polish
 
 - P3 only: retune palette anchors for a particular frame if one exact animation timestamp becomes the acceptance target.
+
+final result: passed
+
+---
+
+## Vertical variable color peaks revision — 2026-08-08
+
+## Evidence
+
+- Reference frame: `pages/color-text/qa/reference-color-vertical-06.png`
+- Browser-rendered implementation: `pages/color-text/qa/color-vertical-final-full.png`
+- Normalized implementation crop: `pages/color-text/qa/color-vertical-final.png`
+- Side-by-side comparison: `pages/color-text/qa/color-vertical-comparison-final.png`
+- Reference and normalized implementation: 480 × 600 px each
+- Comparison input: 960 × 600 px, reference on the left and implementation on the right
+- Browser capture: 1265 × 694 CSS px at device pixel ratio 2; canvas buffer 2530 × 1388
+- State: fixed QA palette with pointer locked at `qaX=0.50`, `qaY=0.70`
+
+## Findings
+
+- No actionable P0, P1, or P2 differences remain for the requested color-peak geometry change.
+- Typography, copy, spacing, line breaks, and the previously approved liquid silhouette are unchanged.
+- The former fixed 20 × 13 px horizontal centers were visibly identical across letters and failed the reference's vertical, character-dependent variation.
+- Each character now derives a distinct color center from its actual alpha-pixel mass, visible width, visible height, and alpha-weighted centroid. The baseline center is a 9 × 16 px vertical ellipse, then width and height vary independently per character.
+- The final source mixes 80% character-statistics ellipse with 20% remembered glyph activation. This keeps the vertical oval readable while bending it slightly with each character's pixels.
+- The side-by-side comparison confirms separate vertical peaks with differing widths, heights, positions, and intensities rather than repeated horizontal capsules.
+- The half-float render targets, 3× baked center mask, and linear filtering preserve continuous gradients without rectangular or nearest-seed cutoffs.
+
+## Experiment history
+
+1. Raw remembered glyph activation produced varied vertical forms but made individual letters too legible, so it was rejected.
+2. Metaball surface energy produced broad connected word bands and lost the reference's separate inner peaks, so it was rejected.
+3. Character-statistics vertical ellipses produced the closest overall topology and were selected.
+4. Glyph influence was compared at 0%, 20%, and 40%. At 0% the centers looked too regular; at 40% they became letter-shaped. The 20% hybrid was selected.
+
+## Interaction and runtime checks
+
+- Pointer movement was tested at two distant artwork positions; the captured frames differed and the delayed field followed the cursor.
+- The `글자별 크기 차이` lil-gui control was changed from 1 to 0.75 and restored to 1 without reload.
+- The color folder exposes the 9 px horizontal baseline, 16 px vertical baseline, per-character variation, and glyph-pixel deformation controls.
+- TypeScript typecheck and the production Vite build passed.
+- Browser console warnings and errors: none.
+
+## Follow-up polish
+
+- P3 only: if one exact source timestamp becomes the acceptance frame, the four geometry controls can be tuned against that frame without changing the rendering architecture.
 
 final result: passed
