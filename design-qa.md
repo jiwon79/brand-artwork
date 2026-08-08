@@ -391,3 +391,32 @@ final result: passed
 - P3 only: terminal bead size can be increased if the user prefers more visible droplets over the current restrained breakup.
 
 final result: passed
+
+---
+
+## Touch-driven viscous drip — 2026-08-08
+
+## Evidence
+
+- Fixed-time sequence: `pages/color-text/qa/interaction-drip-sequence.png`
+- Sequence times: 0.65 s growth, 1.45 s connected strand, 2.05 s detached drop
+- Fixed QA anchor: `qaX=0.50`, `qaY=0.72`
+- The QA light radius was reduced to 24 px only to isolate the new silhouette from the existing large falloff body.
+
+## Findings
+
+- A click or touch stores one fixed anchor; later pointer movement does not redirect the active drip.
+- The lower bead accelerates with elapsed time, while the connecting strand keeps a narrow surface-tension neck.
+- The strand has a small continuous S-curve and width pulse, avoiding a pixel-stepped or perfectly rigid line.
+- At the pinch time, a localized gap opens before the heavy end bead; the remaining field then fades over the configured lifetime.
+- The drip uses the direct derivative-antialiased coverage channel, so it does not become a broad metaball wedge.
+- The three modes remain independent, and the GUI/query/keyboard selector exposes the new mode as `3 · 터치 드립` / `interaction=drip` / key `3`.
+
+## Runtime checks
+
+- Live pointer-down was tested in the existing Chrome artwork tab.
+- Fixed QA frames were checked at the growth, connected, and detached phases.
+- Browser console warnings and errors: none.
+- TypeScript typecheck and the production Vite build passed before final documentation updates.
+
+final result: passed

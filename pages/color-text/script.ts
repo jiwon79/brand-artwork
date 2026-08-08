@@ -23,11 +23,16 @@ const QA_POINTER_LOCKED = searchParams.has('qaX')
   && Number.isFinite(qaPointerX)
   && Number.isFinite(qaPointerY);
 
-type InteractionMode = 'classic' | 'viscous' | 'thermal';
+type InteractionMode = 'classic' | 'viscous' | 'thermal' | 'drip';
 
 function interactionModeFromQuery(): InteractionMode {
   const requestedMode = searchParams.get('interaction');
-  if (requestedMode === 'classic' || requestedMode === 'thermal') return requestedMode;
+  if (
+    requestedMode === 'classic'
+    || requestedMode === 'viscous'
+    || requestedMode === 'thermal'
+    || requestedMode === 'drip'
+  ) return requestedMode;
   return 'viscous';
 }
 
@@ -94,11 +99,20 @@ const state = {
   dwellBuildTime: qaNumber('qaDwellBuildTime', 0.62),
   dwellReleaseTime: qaNumber('qaDwellReleaseTime', 0.2),
   dwellSpeedThreshold: qaNumber('qaDwellSpeedThreshold', 54),
+  dripGravity: qaNumber('qaDripGravity', 78),
+  dripWidth: qaNumber('qaDripWidth', 4.4),
+  dripHeadRadius: qaNumber('qaDripHeadRadius', 12),
+  dripStrength: qaNumber('qaDripStrength', 0.92),
+  dripPinchTime: qaNumber('qaDripPinchTime', 1.45),
+  dripLifetime: qaNumber('qaDripLifetime', 4.0),
+  dripRelease: qaNumber('qaDripRelease', 0.14),
 };
 const qaInteractionSpeed = qaNumber('qaInteractionSpeed', 0);
 const qaVelocityX = qaNumber('qaVelocityX', 1);
 const qaVelocityY = qaNumber('qaVelocityY', 0);
 const qaDwellAmount = qaNumber('qaDwell', 0);
+const qaDripAge = qaNumber('qaDripAge', 1.45);
+const qaDripEnergy = qaNumber('qaDrip', 1);
 
 const lines = [
   'COLOR',
@@ -123,11 +137,14 @@ const initialPointer = {
 };
 const pointer: Pointer = { ...initialPointer };
 const pointerTarget: Pointer = { ...pointer };
+const dripAnchor: Pointer = { ...pointer };
 const velocityDirection: Pointer = { x: 1, y: 0 };
 let smoothedVelocityX = 0;
 let smoothedVelocityY = 0;
 let interactionSpeed = 0;
 let dwellAmount = 0;
+let dripAge = Number.POSITIVE_INFINITY;
+let dripEnergy = 0;
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
 let startTime = performance.now();
 let previousTime = startTime;
@@ -495,6 +512,14 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uThermalStretch;
     uniform float uThermalStrength;
     uniform vec2 uThermalRadius;
+    uniform vec2 uDripAnchor;
+    uniform float uDripAge;
+    uniform float uDripEnergy;
+    uniform float uDripGravity;
+    uniform float uDripWidth;
+    uniform float uDripHeadRadius;
+    uniform float uDripStrength;
+    uniform float uDripPinchTime;
     uniform float uTime;
 
     void main() {
@@ -585,7 +610,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
 
         float wakeColorField = max(analyticColor * uSpeed, persistentTrail * anchorColor);
         colorActivation = max(colorActivation, wakeColorField * uWakeStrength);
-      } else if (uMode > 1.5) {
+      } else if (uMode > 1.5 && uMode < 2.5) {
         vec2 deltaPixels = (vUv - uPointer) * uArtSize;
         vec2 normalizedDelta = deltaPixels / max(uThermalRadius, vec2(1.0));
         float localGate = exp(-dot(normalizedDelta, normalizedDelta) * 1.45);
@@ -609,6 +634,97 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
           colorActivation,
           max(colorActivation, warped.b * colorGain),
           thermalMix
+        );
+      } else if (uMode > 2.5) {
+        float anchorInk = texture2D(uHistory, uDripAnchor).r;
+        float anchorColor = texture2D(uHistory, uDripAnchor).b;
+        vec2 nearX = vec2(14.0 / uArtSize.x, 0.0);
+        vec2 nearY = vec2(0.0, 14.0 / uArtSize.y);
+        anchorInk = max(anchorInk, texture2D(uHistory, uDripAnchor + nearX).r);
+        anchorInk = max(anchorInk, texture2D(uHistory, uDripAnchor - nearX).r);
+        anchorInk = max(anchorInk, texture2D(uHistory, uDripAnchor + nearY).r);
+        anchorInk = max(anchorInk, texture2D(uHistory, uDripAnchor - nearY).r);
+        anchorColor = max(anchorColor, texture2D(uHistory, uDripAnchor + nearX).b);
+        anchorColor = max(anchorColor, texture2D(uHistory, uDripAnchor - nearX).b);
+        anchorColor = max(anchorColor, texture2D(uHistory, uDripAnchor + nearY).b);
+        anchorColor = max(anchorColor, texture2D(uHistory, uDripAnchor - nearY).b);
+
+        float age = max(uDripAge, 0.0);
+        float dropLength = min(
+          24.0 * age + 0.5 * uDripGravity * age * age,
+          uArtSize.y * 0.58
+        );
+        float down = (uDripAnchor.y - vUv.y) * uArtSize.y;
+        float across = (vUv.x - uDripAnchor.x) * uArtSize.x;
+        float ratio = clamp(down / max(dropLength, 1.0), 0.0, 1.0);
+        float segmentGate = smoothstep(-1.5, 0.5, down)
+          * (1.0 - smoothstep(dropLength - 0.5, dropLength + 1.8, down));
+
+        float wobble = (
+          sin(ratio * 4.1 + age * 0.7) - sin(age * 0.7)
+        ) * uDripWidth * 0.95 * (0.34 + ratio * 0.66);
+        float distanceToStream = abs(across - wobble);
+        float shoulder = pow(1.0 - ratio, 2.0);
+        float headShoulder = smoothstep(0.72, 1.0, ratio);
+        float streamWidth = uDripWidth * (
+          0.46 + shoulder * 0.88 + headShoulder * 0.22
+        );
+        float widthPulse = 1.0 + 0.11
+          * sin(ratio * 12.5663706 - age * 1.9)
+          * sin(ratio * 3.14159265);
+        streamWidth *= widthPulse;
+
+        float pinch = smoothstep(
+          uDripPinchTime - 0.16,
+          uDripPinchTime + 0.52,
+          age
+        );
+        float pinchCenter = mix(0.78, 0.68, pinch);
+        float distanceToPinch = abs(ratio - pinchCenter);
+        float gapHalfWidth = mix(0.012, 0.072, pinch);
+        float gap = smoothstep(gapHalfWidth, gapHalfWidth + 0.022, distanceToPinch);
+        float neck = mix(1.0, gap, pinch);
+        streamWidth *= 1.0 - 0.34 * pinch
+          * exp(-distanceToPinch * distanceToPinch * 620.0);
+
+        float stream = 1.0 - smoothstep(
+          streamWidth,
+          streamWidth + 1.15,
+          distanceToStream
+        );
+        stream *= segmentGate * neck;
+
+        float headX = (
+          sin(4.1 + age * 0.7) - sin(age * 0.7)
+        ) * uDripWidth * 0.95;
+        float grownHeadRadius = mix(
+          uDripWidth * 1.15,
+          uDripHeadRadius,
+          smoothstep(0.08, 0.9, age)
+        );
+        vec2 headDelta = vec2(
+          across - headX,
+          down - dropLength
+        );
+        vec2 headShape = headDelta / vec2(
+          max(grownHeadRadius * 0.82, 1.0),
+          max(grownHeadRadius * 1.16, 1.0)
+        );
+        float head = 1.0 - smoothstep(0.86, 1.08, length(headShape));
+
+        vec2 anchorShape = vec2(across, down * 0.78) / max(uDripWidth * 1.42, 1.0);
+        float anchorBead = 1.0 - smoothstep(0.84, 1.08, length(anchorShape));
+        float liquidDrip = max(max(stream, head), anchorBead);
+        float sourceStrength = mix(0.74, 1.0, clamp(anchorInk * 1.45, 0.0, 1.0));
+        float analyticDrip = liquidDrip * uDripEnergy * sourceStrength;
+
+        vec4 previous = texture2D(uPrevious, vUv);
+        float persistentDrip = previous.a * uTrailRetention;
+        trail = max(analyticDrip, persistentDrip);
+        float dripColor = max(anchorColor, max(anchorInk * 0.58, 0.46));
+        colorActivation = max(
+          colorActivation,
+          trail * dripColor * uDripStrength
         );
       }
 
@@ -637,6 +753,14 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uThermalStretch: { value: state.thermalStretch },
     uThermalStrength: { value: state.thermalStrength },
     uThermalRadius: { value: new THREE.Vector2(state.thermalRadiusX, state.thermalRadiusY) },
+    uDripAnchor: { value: new THREE.Vector2(dripAnchor.x, dripAnchor.y) },
+    uDripAge: { value: 0 },
+    uDripEnergy: { value: 0 },
+    uDripGravity: { value: state.dripGravity },
+    uDripWidth: { value: state.dripWidth },
+    uDripHeadRadius: { value: state.dripHeadRadius },
+    uDripStrength: { value: state.dripStrength },
+    uDripPinchTime: { value: state.dripPinchTime },
     uTime: { value: 0 },
   },
   depthTest: false,
@@ -983,7 +1107,8 @@ const finalMaterial = new THREE.ShaderMaterial({
       float trailEdge = max(0.018, fwidth(directTrail) * 1.15);
       float trailCoverage = smoothstep(0.045 - trailEdge, 0.115 + trailEdge, directTrail);
       float viscousMode = 1.0 - step(0.5, abs(uInteractionMode - 1.0));
-      coverage = max(coverage, trailCoverage * viscousMode);
+      float dripMode = 1.0 - step(0.5, abs(uInteractionMode - 3.0));
+      coverage = max(coverage, trailCoverage * max(viscousMode, dripMode));
       float distanceToStroke = 16.0;
 
       if (nearest.a > 0.5) {
@@ -1151,13 +1276,23 @@ function setPointerFromClient(clientX: number, clientY: number): void {
   pointerTarget.y = 1 - yFromTop;
 }
 
+function startDrip(): void {
+  resetInteractionField();
+  dripAnchor.x = pointerTarget.x;
+  dripAnchor.y = pointerTarget.y;
+  dripAge = 0;
+  dripEnergy = 1;
+}
+
 if (!QA_POINTER_LOCKED) {
   window.addEventListener('pointermove', (event) => {
     setPointerFromClient(event.clientX, event.clientY);
   }, { passive: true });
 
   window.addEventListener('pointerdown', (event) => {
+    if (event.target instanceof Element && event.target.closest('.lil-gui')) return;
     setPointerFromClient(event.clientX, event.clientY);
+    if (state.interactionMode === 'drip') startDrip();
   }, { passive: true });
 }
 
@@ -1169,6 +1304,7 @@ window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',
 function interactionModeCode(mode: InteractionMode): number {
   if (mode === 'viscous') return 1;
   if (mode === 'thermal') return 2;
+  if (mode === 'drip') return 3;
   return 0;
 }
 
@@ -1178,6 +1314,8 @@ function resetInteractionField(): void {
   interactionRead = interactionTargetA;
   interactionWrite = interactionTargetB;
   dwellAmount = 0;
+  dripAge = Number.POSITIVE_INFINITY;
+  dripEnergy = 0;
   renderer.setClearColor(0xfbfbfa, 1);
   renderer.setRenderTarget(null);
 }
@@ -1190,6 +1328,7 @@ function bindGui(): void {
     '기본 작품': 'classic',
     '1 · 점성 꼬리': 'viscous',
     '2 · 체류 열꽃': 'thermal',
+    '3 · 터치 드립': 'drip',
   }).name('독립 모드').onChange(resetInteractionField);
   interactionFolder.add(state, 'viscousWakeLength', 16, 120, 1).name('꼬리 길이');
   interactionFolder.add(state, 'viscousWakeWidth', 1.5, 10, 0.1).name('꼬리 폭');
@@ -1200,6 +1339,12 @@ function bindGui(): void {
   interactionFolder.add(state, 'thermalStrength', 0, 1.5, 0.01).name('열꽃 에너지');
   interactionFolder.add(state, 'dwellBuildTime', 0.1, 2, 0.01).name('열 축적 시간');
   interactionFolder.add(state, 'dwellReleaseTime', 0.05, 1, 0.01).name('열 냉각 시간');
+  interactionFolder.add(state, 'dripGravity', 20, 150, 1).name('드립 중력');
+  interactionFolder.add(state, 'dripWidth', 1.5, 10, 0.1).name('드립 목 폭');
+  interactionFolder.add(state, 'dripHeadRadius', 4, 24, 0.5).name('끝 방울 크기');
+  interactionFolder.add(state, 'dripStrength', 0, 1.4, 0.01).name('드립 장력');
+  interactionFolder.add(state, 'dripPinchTime', 0.4, 3, 0.05).name('끊어지는 시점');
+  interactionFolder.add(state, 'dripLifetime', 1.5, 7, 0.1).name('드립 수명');
 
   const lightFolder = gui.addFolder('광원 / Falloff');
   lightFolder.add(state, 'radiusX', 40, 260, 1).name('가로 반경').onChange((value: number) => {
@@ -1350,6 +1495,11 @@ function bindGui(): void {
       resetInteractionField();
       gui.controllersRecursive().forEach((controller) => controller.updateDisplay());
     }
+    if (event.key === '3') {
+      state.interactionMode = 'drip';
+      resetInteractionField();
+      gui.controllersRecursive().forEach((controller) => controller.updateDisplay());
+    }
     if (event.key.toLowerCase() === 'g') gui.show(gui.domElement.style.display === 'none');
   });
 }
@@ -1409,6 +1559,21 @@ function animate(now: number): void {
     }
   }
 
+  if (!QA_MODE && dripEnergy > 0) {
+    dripAge += delta;
+    const fadeStart = Math.max(state.dripLifetime - 0.9, 0);
+    dripEnergy = 1 - THREE.MathUtils.smoothstep(
+      dripAge,
+      fadeStart,
+      state.dripLifetime,
+    );
+    if (dripAge >= state.dripLifetime) dripEnergy = 0;
+  }
+  const renderedDripAge = QA_MODE ? qaDripAge : dripAge;
+  const renderedDripEnergy = QA_MODE
+    ? THREE.MathUtils.clamp(qaDripEnergy, 0, 1)
+    : dripEnergy;
+
   sourceMaterial.uniforms.uPointer.value.set(pointer.x, pointer.y);
 
   renderPass(sourceMaterial, sourceTarget);
@@ -1433,7 +1598,10 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uWakeWidth.value = state.viscousWakeWidth;
   interactionFieldMaterial.uniforms.uWakeStrength.value = state.viscousWakeStrength;
   interactionFieldMaterial.uniforms.uTrailRetention.value = Math.exp(
-    -delta / Math.max(state.viscousWakeRelease, 0.001),
+    -delta / Math.max(
+      state.interactionMode === 'drip' ? state.dripRelease : state.viscousWakeRelease,
+      0.001,
+    ),
   );
   interactionFieldMaterial.uniforms.uBreakup.value = state.viscousBreakup;
   interactionFieldMaterial.uniforms.uThermalStretch.value = state.thermalStretch;
@@ -1442,6 +1610,14 @@ function animate(now: number): void {
     state.thermalRadiusX,
     state.thermalRadiusY,
   );
+  interactionFieldMaterial.uniforms.uDripAnchor.value.set(dripAnchor.x, dripAnchor.y);
+  interactionFieldMaterial.uniforms.uDripAge.value = renderedDripAge;
+  interactionFieldMaterial.uniforms.uDripEnergy.value = renderedDripEnergy;
+  interactionFieldMaterial.uniforms.uDripGravity.value = state.dripGravity;
+  interactionFieldMaterial.uniforms.uDripWidth.value = state.dripWidth;
+  interactionFieldMaterial.uniforms.uDripHeadRadius.value = state.dripHeadRadius;
+  interactionFieldMaterial.uniforms.uDripStrength.value = state.dripStrength;
+  interactionFieldMaterial.uniforms.uDripPinchTime.value = state.dripPinchTime;
   interactionFieldMaterial.uniforms.uTime.value = elapsed;
   renderPass(interactionFieldMaterial, interactionWrite);
   [interactionRead, interactionWrite] = [interactionWrite, interactionRead];
@@ -1504,7 +1680,9 @@ function animate(now: number): void {
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
   finalMaterial.uniforms.uInteractionField.value = interactionRead.texture;
   finalMaterial.uniforms.uInteractionMode.value = interactionModeCode(state.interactionMode);
-  finalMaterial.uniforms.uTrailStrength.value = state.viscousWakeStrength;
+  finalMaterial.uniforms.uTrailStrength.value = state.interactionMode === 'drip'
+    ? state.dripStrength
+    : state.viscousWakeStrength;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);
