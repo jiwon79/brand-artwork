@@ -399,28 +399,32 @@ final result: passed
 ## Evidence
 
 - Fixed-time sequence: `pages/color-text/qa/interaction-drip-sequence.png`
+- Fixed release sequence: `pages/color-text/qa/interaction-drip-release-sequence.png`
 - Live state before touch: `pages/color-text/qa/interaction-drip-field-before-full.jpg`
-- Live state 120 ms after touch: `pages/color-text/qa/interaction-drip-field-early-full.jpg`
-- Live state about 1 s after touch: `pages/color-text/qa/interaction-drip-field-live-full.jpg`
-- Sequence times: 0 s original falloff, 1 s flow, 1.7 s extended flow
+- Live state 120 ms after a sustained press ended: `pages/color-text/qa/interaction-drip-field-early-full.jpg`
+- Live state about 1 s after release: `pages/color-text/qa/interaction-drip-field-live-full.jpg`
+- Hold sequence times: 0.18 s, 0.8 s, 1.6 s, and 2.4 s
+- Release sequence: 1.6-second hold followed by 0 s, 0.4 s, 0.9 s, and 1.5 s of release
 - Fixed QA anchor: `qaX=0.50`, `qaY=0.70`
 - Live before/after captures used the normal reference falloff and palette.
 
 ## Findings
 
 - A click or touch stores only the anchor and elapsed time. No activated glyph-pixel snapshot is created.
-- The asymmetric cursor falloff itself moves downward under gravity, stretches vertically, and develops continuous per-column speed differences.
+- Holding emits a continuous age window of asymmetric cursor falloffs. A fresh age remains at the anchor while older ages accelerate downward, so the flow grows from the touched position instead of moving one ellipse as a rigid body.
+- The shader evaluates 18 representative ages per output pixel. Older ages narrow to 44% width, the leading age bulges, and traveling neck, per-column speed, and center-meander terms remove the repeated-ellipse rhythm.
+- Releasing stops new age-zero emission. The release sequence confirms that the source end clears first while the already emitted front continues downward.
 - At every frame, the moved falloff is multiplied by the glyph mask at its new position. The sequence therefore changes from upper-line glyph pixels to newly encountered lower-line glyph pixels instead of translating the original silhouette.
 - This new activation field enters the existing 192-sample metaball and smoothing passes, which still create the visible silhouette.
 - The drip no longer writes to the direct derivative-antialiased trail channel.
 - No fallback color is injected at the anchor, and pointer-down no longer clears render targets outside the animation frame.
-- The untouched 300 px left background strip was pixel-identical immediately before and 120 ms after the live touch (infinite PSNR), confirming the full-screen color flash is gone.
+- A cursor-excluded 250 × 644 px left background region was pixel-identical immediately before the sustained press and 120 ms after release (infinite PSNR), confirming the full-screen color flash is gone.
 - The three modes remain independent, and the GUI/query/keyboard selector exposes the new mode as `3 · 터치 드립` / `interaction=drip` / key `3`.
 
 ## Runtime checks
 
-- Live pointer-down was tested in the existing Chrome artwork tab.
-- Fixed QA frames were checked at the original-falloff, first-flow, and extended-flow phases. The visible letter topology changes between frames, confirming that the initial glyph result is not being copied downward.
+- A sustained pointer-down and release were tested in the existing Chrome artwork tab. The live held state connected the anchor to lower text rows; about one second after release, only the lower moving stream remained.
+- Fixed QA frames were checked through both the growing hold window and the closing release window. The visible letter topology changes between frames, confirming that the initial glyph result is not being copied downward.
 - Browser console warnings and errors: none.
 - TypeScript typecheck and the production Vite build passed before final documentation updates.
 
