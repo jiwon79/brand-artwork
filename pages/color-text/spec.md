@@ -47,7 +47,15 @@
    Gaussian filter (horizontal sigma 2.5, vertical ratio 1.1). Read this field
    everywhere inside the metaball coverage—there is no nearest-seed validity
    gate—then map it through overlapping rose, pale-pink, and hot-color blends.
-10. Fully occlude the charcoal underprint inside the colored coverage, add only
+10. Route the remembered glyph and color fields through one mutually exclusive
+    interaction mode. `viscous` writes a directional 96 px wake opposite cursor
+    velocity into a separate alpha field, retains it for about 0.2 seconds, and
+    composites three antialiased necks plus bead seeds after the broad metaball
+    pass so they stay thin. `thermal` builds dwell over 0.62 seconds below
+    54 px/s, then locally stretches the field vertically before metaball
+    accumulation and amplifies its color centers. `classic` passes the remembered
+    field through unchanged. The two extensions never mix.
+11. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
 
@@ -101,11 +109,19 @@ The reproducible measurements and label-map generator are stored in
   optional nearest-stroke continuity core.
 - The last pointer location persists after leaving the artwork.
 - The palette completes a smooth cycle every eight seconds.
+- `interaction=viscous` is the default. Fast motion creates an elastic wake in
+  the opposite direction; key `1` selects it.
+- `interaction=thermal` grows taller, hotter color centers after a local dwell;
+  key `2` selects it.
+- `interaction=classic` preserves the approved reference recreation without an
+  extension. Only one interaction mode is evaluated per frame.
 - `?qa` freezes the palette at the reference's pink/yellow phase.
 - `?qa&qaX=0.37&qaY=0.52` also locks the pointer in normalized artwork space
   for deterministic reference comparisons.
 - Add `&qaLabels=1` to render the exact background/text/effect class map without
   palette information.
+- Add `&qaInteractionSpeed=1&qaVelocityX=1&qaVelocityY=0` to freeze a viscous
+  wake, or `&qaDwell=1` to freeze a fully heated thermal bloom.
 - Press `g` to hide or reveal the tuning panel.
 
 ## Reference-space defaults
@@ -130,3 +146,7 @@ The reproducible measurements and label-map generator are stored in
 - Color field floor / range: 0.015 / 0.48
 - Pointer maximum speed: 300 reference px/s
 - Activation attack/release: 55 ms / 340 ms
+- Viscous wake: 96 px length, 2.6 px source width, 0.65 strength, 0.2 s release,
+  0.46 breakup
+- Thermal bloom: 0.9 vertical stretch, 0.82 energy, 72 × 110 px local radius,
+  0.62 s heat buildup, 0.2 s cooling, 54 px/s dwell threshold

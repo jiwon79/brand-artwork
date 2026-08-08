@@ -23,6 +23,14 @@ const QA_POINTER_LOCKED = searchParams.has('qaX')
   && Number.isFinite(qaPointerX)
   && Number.isFinite(qaPointerY);
 
+type InteractionMode = 'classic' | 'viscous' | 'thermal';
+
+function interactionModeFromQuery(): InteractionMode {
+  const requestedMode = searchParams.get('interaction');
+  if (requestedMode === 'classic' || requestedMode === 'thermal') return requestedMode;
+  return 'viscous';
+}
+
 function qaNumber(name: string, fallback: number): number {
   if (!QA_MODE) return fallback;
   const rawValue = searchParams.get(name);
@@ -35,6 +43,7 @@ const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const error = document.getElementById('error') as HTMLParagraphElement;
 
 const state = {
+  interactionMode: interactionModeFromQuery() as InteractionMode,
   radiusX: qaNumber('qaRadiusX', 107),
   radiusY: qaNumber('qaRadiusY', 80),
   radiusYBelow: qaNumber('qaRadiusYBelow', 160),
@@ -73,7 +82,23 @@ const state = {
   pointerMaxSpeed: 300,
   activationAttack: 0.055,
   activationRelease: 0.34,
+  viscousWakeLength: qaNumber('qaViscousWakeLength', 96),
+  viscousWakeWidth: qaNumber('qaViscousWakeWidth', 2.6),
+  viscousWakeStrength: qaNumber('qaViscousWakeStrength', 0.65),
+  viscousWakeRelease: qaNumber('qaViscousWakeRelease', 0.2),
+  viscousBreakup: qaNumber('qaViscousBreakup', 0.46),
+  thermalStretch: qaNumber('qaThermalStretch', 0.9),
+  thermalStrength: qaNumber('qaThermalStrength', 0.82),
+  thermalRadiusX: qaNumber('qaThermalRadiusX', 72),
+  thermalRadiusY: qaNumber('qaThermalRadiusY', 110),
+  dwellBuildTime: qaNumber('qaDwellBuildTime', 0.62),
+  dwellReleaseTime: qaNumber('qaDwellReleaseTime', 0.2),
+  dwellSpeedThreshold: qaNumber('qaDwellSpeedThreshold', 54),
 };
+const qaInteractionSpeed = qaNumber('qaInteractionSpeed', 0);
+const qaVelocityX = qaNumber('qaVelocityX', 1);
+const qaVelocityY = qaNumber('qaVelocityY', 0);
+const qaDwellAmount = qaNumber('qaDwell', 0);
 
 const lines = [
   'COLOR',
@@ -98,6 +123,11 @@ const initialPointer = {
 };
 const pointer: Pointer = { ...initialPointer };
 const pointerTarget: Pointer = { ...pointer };
+const velocityDirection: Pointer = { x: 1, y: 0 };
+let smoothedVelocityX = 0;
+let smoothedVelocityY = 0;
+let interactionSpeed = 0;
+let dwellAmount = 0;
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
 let startTime = performance.now();
 let previousTime = startTime;
@@ -336,6 +366,8 @@ const nearestTargetOptions: THREE.RenderTargetOptions = {
 const sourceTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const historyTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const historyTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const interactionTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const interactionTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const strokeSpreadTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const strokeSpreadTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const colorHorizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
@@ -436,6 +468,176 @@ const temporalMaterial = new THREE.ShaderMaterial({
     uHistory: { value: historyTargetA.texture },
     uAttackBlend: { value: 1 },
     uReleaseBlend: { value: 1 },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
+const interactionFieldMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uHistory;
+    uniform sampler2D uPrevious;
+    uniform vec2 uArtSize;
+    uniform vec2 uPointer;
+    uniform vec2 uVelocityDirection;
+    uniform float uMode;
+    uniform float uSpeed;
+    uniform float uDwell;
+    uniform float uWakeLength;
+    uniform float uWakeWidth;
+    uniform float uWakeStrength;
+    uniform float uTrailRetention;
+    uniform float uBreakup;
+    uniform float uThermalStretch;
+    uniform float uThermalStrength;
+    uniform vec2 uThermalRadius;
+    uniform float uTime;
+
+    void main() {
+      vec4 history = texture2D(uHistory, vUv);
+      float surfaceActivation = history.r;
+      float colorActivation = history.b;
+      float trail = 0.0;
+
+      if (uMode > 0.5 && uMode < 1.5) {
+        float anchorInk = texture2D(uHistory, uPointer).r;
+        float anchorColor = texture2D(uHistory, uPointer).b;
+        vec2 nearX = vec2(16.0 / uArtSize.x, 0.0);
+        vec2 nearY = vec2(0.0, 16.0 / uArtSize.y);
+        anchorInk = max(anchorInk, texture2D(uHistory, uPointer + nearX).r);
+        anchorInk = max(anchorInk, texture2D(uHistory, uPointer - nearX).r);
+        anchorInk = max(anchorInk, texture2D(uHistory, uPointer + nearY).r);
+        anchorInk = max(anchorInk, texture2D(uHistory, uPointer - nearY).r);
+        anchorColor = max(anchorColor, texture2D(uHistory, uPointer + nearX).b);
+        anchorColor = max(anchorColor, texture2D(uHistory, uPointer - nearX).b);
+        anchorColor = max(anchorColor, texture2D(uHistory, uPointer + nearY).b);
+        anchorColor = max(anchorColor, texture2D(uHistory, uPointer - nearY).b);
+
+        vec2 deltaPixels = (vUv - uPointer) * uArtSize;
+        vec2 behindDirection = -uVelocityDirection;
+        float alongTrail = dot(deltaPixels, behindDirection);
+        float signedAcrossTrail =
+          deltaPixels.x * behindDirection.y - deltaPixels.y * behindDirection.x;
+        float acrossTrail = abs(signedAcrossTrail);
+        float trailRatio = clamp(alongTrail / max(uWakeLength, 1.0), 0.0, 1.0);
+        float surfaceTensionBulge = sin(trailRatio * 3.14159265);
+        float taperedWidth = uWakeWidth * mix(0.34, 1.0, surfaceTensionBulge);
+        float neckPulse = 0.76 + 0.24 * cos(trailRatio * 12.5663706);
+        taperedWidth *= mix(1.0, neckPulse, uBreakup);
+        float trailBody = 1.0 - smoothstep(taperedWidth, taperedWidth + 1.2, acrossTrail);
+        trailBody *= smoothstep(-2.0, 2.0, alongTrail);
+        trailBody *= 1.0 - smoothstep(uWakeLength * 0.74, uWakeLength, alongTrail);
+
+        float curvedOffset = sin(trailRatio * 1.2) * uWakeWidth * 7.0;
+        float secondaryAcross = abs(signedAcrossTrail - curvedOffset);
+        float secondaryWidth = uWakeWidth * 0.42 * mix(0.3, 1.0, surfaceTensionBulge);
+        float secondaryTrail = 1.0 - smoothstep(
+          secondaryWidth,
+          secondaryWidth + 1.0,
+          secondaryAcross
+        );
+        secondaryTrail *= smoothstep(3.0, 8.0, alongTrail);
+        secondaryTrail *= 1.0 - smoothstep(uWakeLength * 0.54, uWakeLength * 0.72, alongTrail);
+
+        float tertiaryAcross = abs(signedAcrossTrail + curvedOffset * 0.78);
+        float tertiaryWidth = uWakeWidth * 0.34 * mix(0.28, 1.0, surfaceTensionBulge);
+        float tertiaryTrail = 1.0 - smoothstep(
+          tertiaryWidth,
+          tertiaryWidth + 0.9,
+          tertiaryAcross
+        );
+        tertiaryTrail *= smoothstep(5.0, 10.0, alongTrail);
+        tertiaryTrail *= 1.0 - smoothstep(uWakeLength * 0.68, uWakeLength * 0.9, alongTrail);
+
+        vec2 firstDropCenter = behindDirection * uWakeLength * 1.2;
+        vec2 secondDropCenter = behindDirection * uWakeLength * 1.52
+          + vec2(-behindDirection.y, behindDirection.x) * uWakeWidth * 1.3;
+        float firstDrop = 1.0 - smoothstep(
+          uWakeWidth * 0.62,
+          uWakeWidth * 0.62 + 1.0,
+          length(deltaPixels - firstDropCenter)
+        );
+        float secondDrop = 1.0 - smoothstep(
+          uWakeWidth * 0.44,
+          uWakeWidth * 0.44 + 1.0,
+          length(deltaPixels - secondDropCenter)
+        );
+        float satelliteDrops = max(firstDrop, secondDrop) * uBreakup;
+        float liquidWake = max(
+          max(max(trailBody, secondaryTrail * 1.35), tertiaryTrail * 1.25),
+          satelliteDrops * 2.35
+        );
+        float analyticTrail = liquidWake * anchorInk;
+        float analyticColor = liquidWake * max(anchorColor, anchorInk * 0.55);
+
+        vec2 advectPixels = uVelocityDirection * min(uWakeLength * 0.08, 2.8);
+        vec4 previous = texture2D(uPrevious, vUv + advectPixels / uArtSize);
+        float persistentTrail = previous.a * uTrailRetention;
+        trail = max(analyticTrail * uSpeed, persistentTrail);
+
+        float alongWake = dot((vUv - uPointer) * uArtSize, uVelocityDirection);
+        float neckPattern = 0.78 + 0.22 * cos(alongWake * 0.38);
+        trail *= mix(1.0, neckPattern, uBreakup * uSpeed);
+
+        float wakeColorField = max(analyticColor * uSpeed, persistentTrail * anchorColor);
+        colorActivation = max(colorActivation, wakeColorField * uWakeStrength);
+      } else if (uMode > 1.5) {
+        vec2 deltaPixels = (vUv - uPointer) * uArtSize;
+        vec2 normalizedDelta = deltaPixels / max(uThermalRadius, vec2(1.0));
+        float localGate = exp(-dot(normalizedDelta, normalizedDelta) * 1.45);
+        float thermalPulse = 1.0 + sin(uTime * 3.1) * 0.065 * uDwell;
+        float thermalMix = clamp(uDwell * localGate * thermalPulse, 0.0, 1.0);
+        float stretch = 1.0 + uThermalStretch * thermalMix;
+        float upwardLift = 8.0 * uThermalStrength * thermalMix;
+        vec2 warpedDelta = vec2(
+          deltaPixels.x,
+          (deltaPixels.y - upwardLift) / max(stretch, 1.0)
+        );
+        vec4 warped = texture2D(uHistory, uPointer + warpedDelta / uArtSize);
+        float surfaceGain = 1.0 + uThermalStrength * uDwell * 0.34;
+        float colorGain = 1.0 + uThermalStrength * uDwell * 1.15;
+        surfaceActivation = mix(
+          surfaceActivation,
+          max(surfaceActivation, warped.r * surfaceGain),
+          thermalMix
+        );
+        colorActivation = mix(
+          colorActivation,
+          max(colorActivation, warped.b * colorGain),
+          thermalMix
+        );
+      }
+
+      gl_FragColor = vec4(
+        surfaceActivation,
+        history.g,
+        colorActivation,
+        trail
+      );
+    }
+  `,
+  uniforms: {
+    uHistory: { value: historyTargetA.texture },
+    uPrevious: { value: interactionTargetA.texture },
+    uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
+    uPointer: { value: new THREE.Vector2(pointer.x, pointer.y) },
+    uVelocityDirection: { value: new THREE.Vector2(1, 0) },
+    uMode: { value: 1 },
+    uSpeed: { value: 0 },
+    uDwell: { value: 0 },
+    uWakeLength: { value: state.viscousWakeLength },
+    uWakeWidth: { value: state.viscousWakeWidth },
+    uWakeStrength: { value: state.viscousWakeStrength },
+    uTrailRetention: { value: 0 },
+    uBreakup: { value: state.viscousBreakup },
+    uThermalStretch: { value: state.thermalStretch },
+    uThermalStrength: { value: state.thermalStrength },
+    uThermalRadius: { value: new THREE.Vector2(state.thermalRadiusX, state.thermalRadiusY) },
+    uTime: { value: 0 },
   },
   depthTest: false,
   depthWrite: false,
@@ -617,7 +819,9 @@ const surfaceSourceMaterial = new THREE.ShaderMaterial({
         uInputThreshold + uInputSoftness,
         activation.r
       );
-      float sourceAlpha = activation.r * detected * step(0.08, activation.g);
+      // The base mode is already zero outside the text. Interaction modes may
+      // deliberately stretch that activation beyond the glyph pixels.
+      float sourceAlpha = activation.r * detected;
       gl_FragColor = vec4(sourceAlpha, activation.g, 0.0, 1.0);
     }
   `,
@@ -725,6 +929,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform sampler2D uNearest;
     uniform sampler2D uColorField;
     uniform sampler2D uSurfaceField;
+    uniform sampler2D uInteractionField;
     uniform vec2 uResolution;
     uniform vec2 uPosterOffset;
     uniform vec2 uPosterSize;
@@ -742,6 +947,8 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform float uTime;
     uniform float uColorCycle;
     uniform float uLabelMode;
+    uniform float uInteractionMode;
+    uniform float uTrailStrength;
 
     vec3 hsvToRgb(vec3 hsv) {
       vec3 rgb = clamp(abs(mod(hsv.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
@@ -772,6 +979,11 @@ const finalMaterial = new THREE.ShaderMaterial({
         uSurfaceThreshold + surfaceEdge,
         surfaceField
       );
+      float directTrail = texture2D(uInteractionField, artUv).a * uTrailStrength;
+      float trailEdge = max(0.018, fwidth(directTrail) * 1.15);
+      float trailCoverage = smoothstep(0.045 - trailEdge, 0.115 + trailEdge, directTrail);
+      float viscousMode = 1.0 - step(0.5, abs(uInteractionMode - 1.0));
+      coverage = max(coverage, trailCoverage * viscousMode);
       float distanceToStroke = 16.0;
 
       if (nearest.a > 0.5) {
@@ -842,6 +1054,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     uNearest: { value: nearestTargetA.texture },
     uColorField: { value: colorFieldTarget.texture },
     uSurfaceField: { value: surfaceFieldTarget.texture },
+    uInteractionField: { value: interactionTargetA.texture },
     uResolution: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uPosterOffset: { value: new THREE.Vector2(0, 0) },
     uPosterSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
@@ -859,6 +1072,8 @@ const finalMaterial = new THREE.ShaderMaterial({
     uTime: { value: 0 },
     uColorCycle: { value: state.colorCycle },
     uLabelMode: { value: QA_LABEL_MODE ? 1 : 0 },
+    uInteractionMode: { value: interactionModeCode(state.interactionMode) },
+    uTrailStrength: { value: state.viscousWakeStrength },
   },
   depthTest: false,
   depthWrite: false,
@@ -869,6 +1084,8 @@ const passQuad = new THREE.Mesh(geometry, sourceMaterial);
 passScene.add(passQuad);
 let historyRead = historyTargetA;
 let historyWrite = historyTargetB;
+let interactionRead = interactionTargetA;
+let interactionWrite = interactionTargetB;
 let strokeSpreadRead = strokeSpreadTargetA;
 let strokeSpreadWrite = strokeSpreadTargetB;
 let nearestRead = nearestTargetA;
@@ -888,6 +1105,8 @@ function clearTarget(target: THREE.WebGLRenderTarget): void {
 
 clearTarget(historyTargetA);
 clearTarget(historyTargetB);
+clearTarget(interactionTargetA);
+clearTarget(interactionTargetB);
 clearTarget(strokeSpreadTargetA);
 clearTarget(strokeSpreadTargetB);
 clearTarget(nearestTargetA);
@@ -947,8 +1166,40 @@ window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',
   reduceMotion = event.matches;
 });
 
+function interactionModeCode(mode: InteractionMode): number {
+  if (mode === 'viscous') return 1;
+  if (mode === 'thermal') return 2;
+  return 0;
+}
+
+function resetInteractionField(): void {
+  clearTarget(interactionTargetA);
+  clearTarget(interactionTargetB);
+  interactionRead = interactionTargetA;
+  interactionWrite = interactionTargetB;
+  dwellAmount = 0;
+  renderer.setClearColor(0xfbfbfa, 1);
+  renderer.setRenderTarget(null);
+}
+
 function bindGui(): void {
   const gui = new GUI({ title: 'Color Text controls', width: 320 });
+
+  const interactionFolder = gui.addFolder('확장 인터랙션');
+  interactionFolder.add(state, 'interactionMode', {
+    '기본 작품': 'classic',
+    '1 · 점성 꼬리': 'viscous',
+    '2 · 체류 열꽃': 'thermal',
+  }).name('독립 모드').onChange(resetInteractionField);
+  interactionFolder.add(state, 'viscousWakeLength', 16, 120, 1).name('꼬리 길이');
+  interactionFolder.add(state, 'viscousWakeWidth', 1.5, 10, 0.1).name('꼬리 폭');
+  interactionFolder.add(state, 'viscousWakeStrength', 0, 1.4, 0.01).name('꼬리 장력');
+  interactionFolder.add(state, 'viscousWakeRelease', 0.06, 0.8, 0.01).name('꼬리 복원 시간');
+  interactionFolder.add(state, 'viscousBreakup', 0, 1, 0.01).name('방울 분리');
+  interactionFolder.add(state, 'thermalStretch', 0, 1.8, 0.01).name('열꽃 세로 팽창');
+  interactionFolder.add(state, 'thermalStrength', 0, 1.5, 0.01).name('열꽃 에너지');
+  interactionFolder.add(state, 'dwellBuildTime', 0.1, 2, 0.01).name('열 축적 시간');
+  interactionFolder.add(state, 'dwellReleaseTime', 0.05, 1, 0.01).name('열 냉각 시간');
 
   const lightFolder = gui.addFolder('광원 / Falloff');
   lightFolder.add(state, 'radiusX', 40, 260, 1).name('가로 반경').onChange((value: number) => {
@@ -1080,6 +1331,7 @@ function bindGui(): void {
   });
 
   lightFolder.close();
+  surfaceFolder.close();
   motionFolder.close();
   colorFolder.close();
   advancedFolder.close();
@@ -1087,6 +1339,17 @@ function bindGui(): void {
   if (QA_MODE) gui.hide();
 
   window.addEventListener('keydown', (event) => {
+    if (event.target instanceof HTMLInputElement) return;
+    if (event.key === '1') {
+      state.interactionMode = 'viscous';
+      resetInteractionField();
+      gui.controllersRecursive().forEach((controller) => controller.updateDisplay());
+    }
+    if (event.key === '2') {
+      state.interactionMode = 'thermal';
+      resetInteractionField();
+      gui.controllersRecursive().forEach((controller) => controller.updateDisplay());
+    }
     if (event.key.toLowerCase() === 'g') gui.show(gui.domElement.style.display === 'none');
   });
 }
@@ -1096,7 +1359,10 @@ updateLayout();
 
 function animate(now: number): void {
   const delta = Math.min((now - previousTime) / 1000, 0.1);
+  const elapsed = reduceMotion || QA_MODE ? 0 : (now - startTime) / 1000;
   previousTime = now;
+  const previousPointerX = pointer.x;
+  const previousPointerY = pointer.y;
   const ease = 1 - Math.exp(-state.pointerEase * delta);
   const pointerDeltaX = pointerTarget.x - pointer.x;
   const pointerDeltaY = pointerTarget.y - pointer.y;
@@ -1112,6 +1378,37 @@ function animate(now: number): void {
     pointer.y += pointerDeltaY * pointerStep;
   }
 
+  const safeDelta = Math.max(delta, 0.001);
+  const frameVelocityX = (pointer.x - previousPointerX) * ART_WIDTH / safeDelta;
+  const frameVelocityY = (pointer.y - previousPointerY) * ART_HEIGHT / safeDelta;
+  const velocityBlend = 1 - Math.exp(-12 * delta);
+  smoothedVelocityX = THREE.MathUtils.lerp(smoothedVelocityX, frameVelocityX, velocityBlend);
+  smoothedVelocityY = THREE.MathUtils.lerp(smoothedVelocityY, frameVelocityY, velocityBlend);
+  const speedPixels = Math.hypot(smoothedVelocityX, smoothedVelocityY);
+  if (speedPixels > 0.5) {
+    velocityDirection.x = smoothedVelocityX / speedPixels;
+    velocityDirection.y = smoothedVelocityY / speedPixels;
+  }
+  interactionSpeed = THREE.MathUtils.clamp(
+    speedPixels / Math.max(state.pointerMaxSpeed * 0.72, 1),
+    0,
+    1,
+  );
+  const dwellTarget = speedPixels < state.dwellSpeedThreshold ? 1 : 0;
+  const dwellTime = dwellTarget > dwellAmount ? state.dwellBuildTime : state.dwellReleaseTime;
+  const dwellBlend = 1 - Math.exp(-delta / Math.max(dwellTime, 0.001));
+  dwellAmount = THREE.MathUtils.lerp(dwellAmount, dwellTarget, dwellBlend);
+
+  if (QA_MODE) {
+    interactionSpeed = THREE.MathUtils.clamp(qaInteractionSpeed, 0, 1);
+    dwellAmount = THREE.MathUtils.clamp(qaDwellAmount, 0, 1);
+    const qaVelocityLength = Math.hypot(qaVelocityX, qaVelocityY);
+    if (qaVelocityLength > 0.001) {
+      velocityDirection.x = qaVelocityX / qaVelocityLength;
+      velocityDirection.y = qaVelocityY / qaVelocityLength;
+    }
+  }
+
   sourceMaterial.uniforms.uPointer.value.set(pointer.x, pointer.y);
 
   renderPass(sourceMaterial, sourceTarget);
@@ -1121,6 +1418,33 @@ function animate(now: number): void {
   temporalMaterial.uniforms.uReleaseBlend.value = 1 - Math.exp(-delta / state.activationRelease);
   renderPass(temporalMaterial, historyWrite);
   [historyRead, historyWrite] = [historyWrite, historyRead];
+
+  interactionFieldMaterial.uniforms.uHistory.value = historyRead.texture;
+  interactionFieldMaterial.uniforms.uPrevious.value = interactionRead.texture;
+  interactionFieldMaterial.uniforms.uPointer.value.set(pointer.x, pointer.y);
+  interactionFieldMaterial.uniforms.uVelocityDirection.value.set(
+    velocityDirection.x,
+    velocityDirection.y,
+  );
+  interactionFieldMaterial.uniforms.uMode.value = interactionModeCode(state.interactionMode);
+  interactionFieldMaterial.uniforms.uSpeed.value = interactionSpeed;
+  interactionFieldMaterial.uniforms.uDwell.value = dwellAmount;
+  interactionFieldMaterial.uniforms.uWakeLength.value = state.viscousWakeLength;
+  interactionFieldMaterial.uniforms.uWakeWidth.value = state.viscousWakeWidth;
+  interactionFieldMaterial.uniforms.uWakeStrength.value = state.viscousWakeStrength;
+  interactionFieldMaterial.uniforms.uTrailRetention.value = Math.exp(
+    -delta / Math.max(state.viscousWakeRelease, 0.001),
+  );
+  interactionFieldMaterial.uniforms.uBreakup.value = state.viscousBreakup;
+  interactionFieldMaterial.uniforms.uThermalStretch.value = state.thermalStretch;
+  interactionFieldMaterial.uniforms.uThermalStrength.value = state.thermalStrength;
+  interactionFieldMaterial.uniforms.uThermalRadius.value.set(
+    state.thermalRadiusX,
+    state.thermalRadiusY,
+  );
+  interactionFieldMaterial.uniforms.uTime.value = elapsed;
+  renderPass(interactionFieldMaterial, interactionWrite);
+  [interactionRead, interactionWrite] = [interactionWrite, interactionRead];
 
   strokeSpreadRead = strokeSpreadTargetA;
   strokeSpreadWrite = strokeSpreadTargetB;
@@ -1143,7 +1467,7 @@ function animate(now: number): void {
     [nearestRead, nearestWrite] = [nearestWrite, nearestRead];
   }
 
-  surfaceSourceMaterial.uniforms.uActivation.value = historyRead.texture;
+  surfaceSourceMaterial.uniforms.uActivation.value = interactionRead.texture;
   renderPass(surfaceSourceMaterial, surfaceSourceTarget);
   surfaceBlurMaterial.uniforms.uInput.value = surfaceSourceTarget.texture;
   renderPass(surfaceBlurMaterial, metaballRawTarget);
@@ -1157,7 +1481,7 @@ function animate(now: number): void {
   const colorUsesSurfaceField = state.colorSourceMode === 2;
   colorBlurMaterial.uniforms.uInput.value = colorUsesSurfaceField
     ? surfaceFieldTarget.texture
-    : historyRead.texture;
+    : interactionRead.texture;
   colorBlurMaterial.uniforms.uSigma.value = state.colorBlurSigma;
   const glyphInfluence = state.colorSourceMode === 0 ? state.colorGlyphInfluence : 0;
   colorBlurMaterial.uniforms.uChannel.value.set(
@@ -1174,11 +1498,13 @@ function animate(now: number): void {
   colorBlurMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
   renderPass(colorBlurMaterial, colorFieldTarget);
 
-  const elapsed = reduceMotion || QA_MODE ? 0 : (now - startTime) / 1000;
   finalMaterial.uniforms.uTime.value = elapsed;
   finalMaterial.uniforms.uNearest.value = nearestRead.texture;
   finalMaterial.uniforms.uColorField.value = colorFieldTarget.texture;
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
+  finalMaterial.uniforms.uInteractionField.value = interactionRead.texture;
+  finalMaterial.uniforms.uInteractionMode.value = interactionModeCode(state.interactionMode);
+  finalMaterial.uniforms.uTrailStrength.value = state.viscousWakeStrength;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);

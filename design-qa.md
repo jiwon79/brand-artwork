@@ -338,3 +338,56 @@ final result: passed
 - P3 only: if one exact source timestamp becomes the acceptance frame, the four geometry controls can be tuned against that frame without changing the rendering architecture.
 
 final result: passed
+
+---
+
+## Independent interaction modes — 2026-08-08
+
+## Evidence
+
+- Viscous source visual: `pages/color-text/qa/interaction-viscous-reference.png`
+- Viscous implementation: `pages/color-text/qa/interaction-viscous-final-full.png`
+- Viscous normalized crop: `pages/color-text/qa/interaction-viscous-final.png`
+- Viscous side-by-side comparison: `pages/color-text/qa/interaction-viscous-comparison.png`
+- Thermal source visual: `pages/color-text/qa/interaction-thermal-reference.png`
+- Thermal implementation: `pages/color-text/qa/interaction-thermal-final-full.png`
+- Thermal normalized crop: `pages/color-text/qa/interaction-thermal-final.png`
+- Thermal side-by-side comparison: `pages/color-text/qa/interaction-thermal-comparison.png`
+- Generated source originals: 1122 × 1402 px. Each was center-cropped to 1120 × 1400 and downsampled to 480 × 600 with Lanczos filtering.
+- Browser capture: 1265 × 694 CSS px at device pixel ratio 2; canvas buffer 2530 × 1388. The centered 555 × 694 artwork region was cropped and downsampled to 480 × 600.
+- Comparison inputs: 960 × 600 px, source on the left and implementation on the right.
+- Viscous state: `qa=1`, pointer `0.50/0.64`, speed `1`, velocity `1/-0.28`.
+- Thermal state: `qa=1`, pointer `0.50/0.64`, dwell `1`.
+- A separate focused crop was not needed: the new effect is one compact central region, and its thin wake contours and vertical peaks remain clearly readable in the normalized 480 × 600 full view.
+
+## Findings
+
+- No actionable P0, P1, or P2 differences remain for the requested independent interaction concepts.
+- Fonts and typography: the established Helvetica Neue Light stack, weight, size, tracking, line height, wording, and line breaks are unchanged in all three modes.
+- Spacing and layout rhythm: the 480 × 600 poster, centered composition, and whitespace remain unchanged. Only the selected interaction field extends beyond the activated text.
+- Colors and visual tokens: both modes reuse the approved animated palette and character-dependent vertical color peaks. The concept images are treated as geometry and motion references, not exact palette frames.
+- Image quality and asset fidelity: the final result remains a half-float WebGL field rather than a raster overlay. The viscous strands use derivative antialiasing, and the thermal bloom reuses the linearly filtered activation field without pixel blocks or hard rings.
+- Copy and content: all nine lines remain unchanged and no explanatory UI was added to the poster.
+- Viscous mode preserves a compact main body while fast motion produces three narrow directional strands, concave attachment necks, and small terminal beads. They retract independently through a 0.2-second trail buffer.
+- Thermal mode preserves the baseline while dwell locally stretches only the nearby field and its vertical color centers. The live comparison showed a clear early state and a hotter, taller state after the 0.62-second buildup.
+
+## Comparison history
+
+1. The first viscous pass fed the entire directional wake through the 30 px metaball neighborhood. It produced one broad triangular wedge, a P2 mismatch with the selected concept's thin surface-tension strands.
+2. The fix retained the approved metaball body but moved the wake to a separate antialiased coverage path. Three curved narrow strands and terminal bead seeds now attach directly to the body without inflating the whole silhouette. The post-fix evidence is `interaction-viscous-comparison.png`.
+3. Thermal geometry was evaluated at full dwell and in live early/built states. Its local vertical expansion, brighter inner peaks, and upward pressure matched the selected concept without requiring a structural fix.
+
+## Interaction and runtime checks
+
+- Live viscous test: the cursor was moved rapidly between distant artwork positions; the strands appeared opposite motion and disappeared after settling.
+- Live thermal test: the same area was captured immediately after arrival and after 1.1 seconds; the later frame showed the expected local vertical bloom.
+- The lil-gui `독립 모드` selector changed from viscous to thermal and back successfully.
+- Keyboard `2` selected thermal and keyboard `1` restored viscous.
+- TypeScript typecheck and the production Vite build passed.
+- Browser console warnings and errors: none.
+
+## Follow-up polish
+
+- P3 only: terminal bead size can be increased if the user prefers more visible droplets over the current restrained breakup.
+
+final result: passed
