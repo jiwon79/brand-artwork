@@ -61,7 +61,7 @@ temporalMaterial
         │
         ▼
 interactionFieldMaterial
-선택한 확장 모드의 점성 꼬리 또는 체류 열꽃 생성
+기본 활성값 통과 또는 터치 드립 흐름 생성
         │
         ▼
 surfaceSourceMaterial
@@ -177,35 +177,9 @@ release 시간 = 0.34 s
 
 위치 지연만 있으면 “느리게 움직이는 손전등”에 가깝다. `temporalMaterial`까지 있어야 이전에 빛을 받은 글자 픽셀과 현재 빛을 받는 픽셀이 동시에 존재해 늘어지는 액체 같은 형태를 만들 수 있다. 기억 값은 연속적으로 줄어들지만, 뒤의 임계값을 통과하지 못하는 순간 화면에서는 비교적 빠르게 사라져 보인다.
 
-### 5.3.3 세 확장 인터랙션은 서로 섞이지 않는다
+### 5.3.3 터치 드립 모드
 
-`interactionFieldMaterial`은 시간 기억 다음에 실행되며 `classic`, `viscous`, `thermal`, `drip` 중 하나만 계산한다. 따라서 점성 꼬리, 체류 열꽃, 터치 드립은 같은 프레임에 동시에 적용되지 않는다.
-
-#### 점성 꼬리 모드
-
-렌더링에 사용하는 커서가 한 프레임 동안 얼마나 움직였는지 계산해 속도와 방향을 얻는다. 빠르게 움직일수록 커서 뒤쪽에 가늘고 긴 활성 field를 추가한다.
-
-```text
-현재 커서 속도 → 0~1 점성 강도
-현재 커서 방향의 반대쪽 → 꼬리가 놓일 방향
-이전 꼬리 × 프레임별 감쇠 → 잠깐 남았다가 수축하는 꼬리
-```
-
-꼬리는 글자 픽셀을 옮겨 붙인 이미지가 아니다. 커서 뒤쪽의 각 출력 픽셀에서 길이 방향 거리와 수직 거리를 계산해 만든 연속적인 숫자 field다. 시작과 끝은 좁고 중간은 조금 볼록하게 만들며, 세 갈래의 가는 목과 작은 두 덩어리를 따로 계산한다. 이 꼬리는 `30 px` 주변 조사를 통과시키면 너무 굵어지므로 알파 채널에 별도로 저장하고, `finalMaterial`에서 안티앨리어싱한 뒤 기존 Metaball 본체와 합친다. 기본 길이는 `96 px`, 중심 폭은 `2.6 px`, 기억 시간은 약 `0.2초`다.
-
-#### 체류 열꽃 모드
-
-커서 속도가 초당 `54 px`보다 느리면 체류값이 올라가고, 다시 움직이면 내려간다.
-
-```text
-천천히 머무름 → 약 0.62초 동안 열 축적
-빠르게 움직임 → 약 0.2초 동안 냉각
-열이 높은 위치 → 픽셀 field를 세로로 늘리고 조금 위로 이동
-```
-
-이 모드는 커서 주변 `72 × 110 px` 안에서만 시간 기억 이미지를 세로로 다시 표본화한다. 그래서 전체 작품이 커지는 것이 아니라 머문 위치의 실루엣과 색 중심만 위쪽으로 부풀어 오른다. 열이 충분히 쌓이면 아주 약한 호흡 주기도 추가된다. `prefers-reduced-motion`에서는 이 주기를 멈춘다.
-
-#### 터치 드립 모드
+`interactionFieldMaterial`은 시간 기억 다음에 실행된다. `classic`에서는 기억 값을 그대로 통과시키고, `drip`에서만 아래의 연속 방출 계산을 적용한다.
 
 클릭하거나 터치한 순간에는 위치를 `dripAnchor`에 복사한다. **활성화된 글자 픽셀 이미지는 저장하지 않는다.** 이후 움직이는 것은 터치 결과로 나온 실루엣이 아니라, 원래 커서 주위에 있던 아래로 긴 Falloff 영역이다.
 
@@ -349,7 +323,7 @@ WebGL의 렌더 타깃은 GPU 안에서 다음 계산으로 넘겨줄 중간 이
 | --- | --- | --- |
 | `sourceTarget` | 글자 마스크 픽셀과 커서 Falloff를 곱한 현재 활성 이미지 | 시간 기억 |
 | `historyTargetA/B` | 각 글자 픽셀의 이전 값과 현재 값을 섞은 활성 기억 | 입력 감지 |
-| `interactionTargetA/B` | 선택한 모드로 변형한 실루엣·색 활성값과 점성 꼬리 기억 | Metaball 입력과 점성 꼬리 합성 |
+| `interactionTarget` | 기본 활성값 또는 드립으로 변형한 활성값 | Metaball 입력 |
 | `surfaceSourceTarget` | 임계값을 통과한 활성 픽셀 | 황금각 주변 표본 |
 | `metaballRawTarget` | 출력 픽셀마다 192개 주변 표본을 합친 원래 field | 가로 smoothing |
 | `surfaceHorizontalTarget` | 가로 방향으로 매끄러워진 높이 | 세로 smoothing |
@@ -374,10 +348,9 @@ function animate(now) {
   renderPass(temporalMaterial, historyWrite);
   swap(historyRead, historyWrite);
 
-  // 4. 선택한 확장 모드 하나만 적용한다.
+  // 4. 기본값을 통과시키거나 드립을 적용한다.
   // drip이면 흐른 Falloff와 현재 글자 픽셀을 다시 곱한다.
-  renderPass(interactionFieldMaterial, interactionWrite);
-  swap(interactionRead, interactionWrite);
+  renderPass(interactionFieldMaterial, interactionTarget);
 
   // 5. 약한 활성 픽셀을 제거한다.
   renderPass(surfaceSourceMaterial, surfaceSourceTarget);
@@ -408,12 +381,7 @@ function animate(now) {
 
 그래서 데스크톱과 모바일에서 같은 글자 위치를 가리킬 수 있다. `pointermove`와 `pointerdown`을 모두 받으므로 마우스와 터치 입력이 같은 경로를 사용한다.
 
-- 숫자 키 `1`: 점성 꼬리 모드
-- 숫자 키 `2`: 체류 열꽃 모드
-- 숫자 키 `3`: 터치 드립 모드. 누르는 동안 계속 방출하고 손을 떼면 방출을 중단
 - `?interaction=classic`: 확장 효과 없이 기존 작품만 표시
-- `?interaction=viscous`: 점성 꼬리 모드로 바로 열기
-- `?interaction=thermal`: 체류 열꽃 모드로 바로 열기
 - `?interaction=drip`: 터치 드립 모드로 바로 열기
 
 ## 10. QA 모드와 검증 순서
@@ -435,8 +403,8 @@ function animate(now) {
 - `qa=1`: 움직이는 상태를 고정해 비교하기 쉽게 만든다.
 - `qaX`, `qaY`: 커서 위치를 작품 좌표로 고정한다.
 - `qaLabels=1`: 배경, 텍스트, 효과만 남긴 실루엣 지도 모드다.
-- `qaInteractionSpeed=1`, `qaVelocityX`, `qaVelocityY`: 점성 꼬리의 속도와 방향을 고정한다.
-- `qaDwell=1`: 체류 열꽃의 열 축적을 최댓값으로 고정한다.
+- `qaDripAge`: 누르고 있던 방출 시간을 고정한다.
+- `qaDripReleaseAge`: 손을 뗀 뒤 흐른 시간을 고정한다.
 
 검증은 다음 순서로 진행했다.
 
@@ -481,16 +449,7 @@ function animate(now) {
 | `pointerMaxSpeed` | `300` | 커서 빛이 따라가는 최대 속도 |
 | `activationAttack` | `0.055 s` | 새 효과가 생기는 시간 |
 | `activationRelease` | `0.34 s` | 옛 효과가 약해지는 시간 |
-| `interactionMode` | `viscous` | 기본 작품, 점성 꼬리, 체류 열꽃, 터치 드립 중 한 모드 선택 |
-| `viscousWakeLength` | `96` | 빠르게 움직일 때 커서 뒤로 늘어나는 꼬리 길이 |
-| `viscousWakeWidth` | `2.6` | 꼬리 중심 field의 폭 |
-| `viscousWakeStrength` | `0.65` | 점성 꼬리가 Metaball 실루엣에 합쳐지는 강도 |
-| `viscousWakeRelease` | `0.2 s` | 꼬리가 원래 형태로 수축하는 시간 |
-| `viscousBreakup` | `0.46` | 목의 굴곡과 작은 방울 분리 정도 |
-| `thermalStretch` | `0.9` | 머문 위치가 세로로 팽창하는 정도 |
-| `thermalStrength` | `0.82` | 열꽃의 실루엣·색 에너지 강도 |
-| `dwellBuildTime` | `0.62 s` | 멈춘 뒤 열이 쌓이는 시간 |
-| `dwellReleaseTime` | `0.2 s` | 다시 움직일 때 열이 식는 시간 |
+| `interactionMode` | `classic` | 기본 작품과 터치 드립 중 선택 |
 | `dripGravity` | `78` | 오래된 Falloff 방출 영역이 아래로 가속되는 정도 |
 | `dripStretch` | `0.34` | 각 방출 영역이 흐르면서 세로로 늘어나는 비율 |
 | `dripTurbulence` | `0.72` | 가로 위치별 하강 속도와 좌우 굴곡의 차이 |
@@ -505,7 +464,7 @@ function animate(now) {
 | `colorBlurSigma` | `2.5` | 타원과 주변 중간색을 연결하는 부드러움 |
 | `colorBlurAspect` | `1.1` | 세로 방향 색 blur의 가로 대비 비율 |
 
-일반 화면에서는 `lil-gui` 패널이 보이며, `확장 인터랙션`, `광원 / Falloff`, `액체 실루엣`, `움직임 / 시간 기억`, `색상`, `고급 설정` 폴더로 나뉜다. `확장 인터랙션`만 처음부터 열려 있어 세 확장 모드를 바로 비교할 수 있다. 키보드의 `g`를 누르면 패널을 숨기거나 다시 열 수 있다. 자동 비교용 QA 모드에서는 이미지 비교를 가리지 않도록 패널이 처음부터 숨겨진다. 실루엣을 조절할 때는 한 번에 하나의 값을 바꾸고 Y 교차부를 먼저 확인하는 것이 안전하다.
+일반 화면에서는 `lil-gui` 패널이 보이며, `확장 인터랙션`, `광원 / Falloff`, `액체 실루엣`, `움직임 / 시간 기억`, `색상`, `고급 설정` 폴더로 나뉜다. `확장 인터랙션`만 처음부터 열려 있어 기본 작품과 터치 드립을 바로 비교할 수 있다. 키보드의 `g`를 누르면 패널을 숨기거나 다시 열 수 있다. 자동 비교용 QA 모드에서는 이미지 비교를 가리지 않도록 패널이 처음부터 숨겨진다. 실루엣을 조절할 때는 한 번에 하나의 값을 바꾸고 Y 교차부를 먼저 확인하는 것이 안전하다.
 
 ## 13. 용어 정리
 
