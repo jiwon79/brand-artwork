@@ -2,7 +2,7 @@
 
 이 문서는 `pages/color-changes/`에 구현된 인터랙티브 작품의 **실루엣 생성 구조와 움직임**을 설명한다. 고등학생도 이해할 수 있도록 먼저 비유로 설명하고, 뒤에서 실제 WebGL 렌더 패스와 코드 구조를 연결한다.
 
-> 문서 범위: 글자 모양, 커서 Falloff, 잔상, Metaball field, 외곽선 추출, 검증 방법  
+> 문서 범위: 글자 모양, 커서 Falloff, 잔상, Metaball field, 외곽선 추출, 검증 방법
 > 제외 범위: 실루엣 내부의 색을 계산하는 방법
 
 ## 1. 한 문장으로 이해하기
@@ -381,4 +381,3 @@ function animate(now) {
 - [Cavalry — Falloff documentation](https://cavalry.studio/docs/nodes/utilities/falloff/)
 - 구현: [`pages/color-changes/script.ts`](../../pages/color-changes/script.ts)
 - 수치 및 비교 기록: [`pages/color-changes/spec.md`](../../pages/color-changes/spec.md)
-
