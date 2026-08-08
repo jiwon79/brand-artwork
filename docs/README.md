@@ -14,9 +14,9 @@ docs/
 
 ## Artworks
 
-### Artowkr
+### Color Text
 
-- [`architecture.md`](./artworks/artowkr/architecture.md) - Color Changes의 Falloff, 시간 기억, Metaball field, 실루엣 추출 구조
+- [`architecture.md`](./artworks/color-text/architecture.md) - Color Text의 Falloff, 시간 기억, Metaball field, 실루엣 추출 구조
 
 ### Guseul
 

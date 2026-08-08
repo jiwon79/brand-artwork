@@ -1,4 +1,4 @@
-# Artowkr 액체 타이포그래피 아키텍처
+# Color Text 액체 타이포그래피 아키텍처
 
 이 문서는 `pages/color-changes/`에 구현된 인터랙티브 작품의 **실루엣 생성 구조와 움직임**을 설명한다. 고등학생도 이해할 수 있도록 먼저 비유로 설명하고, 뒤에서 실제 WebGL 렌더 패스와 코드 구조를 연결한다.
 
@@ -15,7 +15,7 @@
 
 ```text
 brand-artwork/
-├── docs/artworks/artowkr/
+├── docs/artworks/color-text/
 │   ├── architecture.md            # 지금 읽고 있는 문서
 │   └── figures/                    # 문서용 SVG 도해
 └── pages/color-changes/
