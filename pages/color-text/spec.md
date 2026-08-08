@@ -33,26 +33,29 @@
 7. Extract the 0.07 isosurface with 0.012 softness. The nearest-stroke continuity
    core is disabled (`coreMix = 0`), so there is no explicit outline, fixed-radius
    body, or glyph-shaped union hidden underneath the metaball silhouette.
-8. Build color in a separate field. A nine-pixel Gaussian filter blurs both
-   `activation × glyph` and `glyph`; dividing the two produces a normalized
-   energy value that stays smooth without making intersections brighter merely
-   because more stroke pixels overlap the kernel.
-9. Drive the color core from that low-frequency density field, retaining only a
-   4% fine nearest-stroke carrier. The connected-stroke propagation and jump
-   flooding passes remain only for this subtle color detail; they do not affect
-   silhouette geometry. Map energy through overlapping rose, pale-pink, and
-   hot-color RGB blends instead of a single HSV ramp. The boundary color is the
-   low-energy end of the same continuous field, not a fixed stroke.
+8. Build color in a field independent from silhouette geometry. Bake one soft
+   ellipse at the layout center of every non-space character. The default ellipse
+   radii are 20 × 13 px; its center is nearly opaque and its halo falls
+   continuously to zero. Multiply this mask by the same cursor falloff and store
+   it in the temporal buffer's blue channel, so color centers use the same attack
+   and release memory as the activated glyph pixels.
+9. Smooth the remembered ellipse field with a separable Gaussian filter
+   (horizontal sigma 2.5, vertical ratio 0.8). Neighboring halos can blend into a
+   continuous mid-color region while their high-energy centers remain separate
+   ovals. Read this field everywhere inside the metaball coverage—there is no
+   nearest-seed validity gate—then map it through overlapping rose, pale-pink,
+   and hot-color blends. This removes the old discontinuous color cutoff.
 10. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
 
 Geometry and color are deliberately independent. Geometry is falloff-masked
-stroke alpha → sampled metaball influence → smoothing → isocontour. Color uses a
-broader normalized energy field. The old nearest-stroke distance construction
-could only ask which source pixel was closest, so the `Y` junction became a
-convex cap. The accumulated field preserves the influence of both arms at once;
-their competing gradients create the concave saddle visible in the reference.
+stroke alpha → sampled metaball influence → smoothing → isocontour. Color is a
+temporally remembered field of soft character-center ellipses, clipped by that
+coverage. The old nearest-stroke distance construction could only ask which
+source pixel was closest, so the `Y` junction became a convex cap. The
+accumulated geometry field preserves the influence of both arms at once; their
+competing gradients create the concave saddle visible in the reference.
 
 This interpretation is grounded in the supplied Instagram caption and the
 official tools it names: Scenery's [Metaball overview](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ),
@@ -89,11 +92,11 @@ The reproducible measurements and label-map generator are stored in
 - Pointer and touch position control the target of the light center.
 - The light uses eased tracking plus a 300 artwork-pixel-per-second speed cap,
   creating the delayed motion visible in the reference instead of snapping.
-- Glyph activation attacks over 55 ms and releases over 340 ms. Metaball source
+- Glyph and color-center activation attack over 55 ms and release over 340 ms. Metaball source
   alpha is suppressed below the 0.02 detection threshold (with a 0.025
   transition), producing a visible hold followed by the reference's
-  comparatively sudden local disappearance. The 0.05 cutoff now applies only to
-  the fine nearest-stroke color carrier.
+  comparatively sudden local disappearance. The 0.05 cutoff applies only to the
+  optional nearest-stroke continuity core.
 - The last pointer location persists after leaving the artwork.
 - The palette completes a smooth cycle every eight seconds.
 - `?qa` freezes the palette at the reference's pink/yellow phase.
@@ -101,14 +104,14 @@ The reproducible measurements and label-map generator are stored in
   for deterministic reference comparisons.
 - Add `&qaLabels=1` to render the exact background/text/effect class map without
   palette information.
-- Press `g` to reveal the hidden tuning panel.
+- Press `g` to hide or reveal the tuning panel.
 
 ## Reference-space defaults
 
 - Font: Helvetica Neue Light fallback stack, 43 px
 - Character advance: 31.8 px
 - Line height: 42.2 px
-- Light radius: 160 × 120 px above and 160 × 240 px below, with 0.55 horizontal
+- Light radius: 107 × 80 px above and 107 × 160 px below, with 0.55 horizontal
   taper toward the vertical edges
 - Geometry/color field resolution: 480 × 600, half-float RGBA render targets
 - Metaball input threshold / softness: 0.02 / 0.025
@@ -116,8 +119,10 @@ The reproducible measurements and label-map generator are stored in
 - Metaball falloff power / source gain / field gain: 3.2 / 0.55 / 2.2
 - Metaball smoothing: sigma 1.8, five taps per axis
 - Surface isovalue / edge softness: 0.07 / 0.012
-- Nearest-stroke geometry core: disabled; jump flooding serves color only
-- Normalized color/glyph-density blur sigma: 9 px, 20 taps per side
-- Fine nearest-stroke color carrier: 4%
+- Nearest-stroke geometry core: disabled; jump flooding is retained only for
+  that optional core
+- Character-center color ellipse: 20 × 13 px radius with a continuous halo
+- Color ellipse blur: sigma 2.5 horizontally, 2.0 vertically, 20 taps per side
+- Color field floor / range: 0.02 / 0.55
 - Pointer maximum speed: 300 reference px/s
 - Activation attack/release: 55 ms / 340 ms

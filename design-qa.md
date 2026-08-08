@@ -236,3 +236,58 @@ image therefore use the same crop, dimensions, and frozen palette state.
   Light fallback remains the closest installed match.
 
 final result: passed
+---
+
+## Color distribution revision — 2026-08-08
+
+## Evidence
+
+- Source visual truth: `pages/color-text/assets/reference-frame.png`
+- Browser-rendered implementation: `pages/color-text/qa/color-distribution-final-full.png`
+- Normalized implementation crop: `pages/color-text/qa/color-distribution-final.png`
+- Full-view comparison: `pages/color-text/qa/color-distribution-comparison-final.png`
+- Focused color comparison: `pages/color-text/qa/color-distribution-focused-comparison.png`
+- Source pixels: 480 × 600
+- Implementation capture: 1265 × 694 CSS px at device pixel ratio 2; canvas buffer 2530 × 1388
+- Density normalization: the centered 555 × 694 artwork region was cropped from the browser capture and downsampled to 480 × 600 with Lanczos filtering
+- State: fixed QA palette, pointer locked at `qaX=0.37`, `qaY=0.52`
+- Intentional state difference: the implementation falloff radii were reduced to approximately two-thirds of the previous values at the user's request, so effect extent is not expected to match the older source frame. The focused comparison judges the internal color topology and continuity.
+
+## Findings
+
+- No actionable P0, P1, or P2 differences remain for the requested change.
+- Fonts and typography: family, weight, size, tracking, line height, line breaks, and copy remain unchanged from the established 480 × 600 implementation.
+- Spacing and layout rhythm: poster centering and nine-line composition remain stable. The smaller activation footprint is intentional.
+- Colors and visual tokens: the implementation now shows a dark outer body, a continuous pale transition, and localized bright oval centers. Color is sampled everywhere inside coverage, so there is no nearest-seed cutoff or rectangular discontinuity.
+- Image quality and asset fidelity: the effect is rendered from half-float WebGL fields; the oval center mask is baked at 3× and linearly filtered. The focused comparison shows smooth center-to-edge transitions without block artifacts.
+- Copy and content: all nine source lines are unchanged.
+- [P3] Exact hotspot count and palette hue differ across animation frames and pointer positions. This is expected for the time-varying source; the structural requirement—separate oval peaks inside a connected liquid silhouette—is preserved.
+
+## Comparison history
+
+1. Earlier implementation used a Gaussian-blurred activation field divided by blurred glyph density, then gated color through nearest-seed validity. This flattened letter-local peaks into a broad blur and could end color abruptly.
+2. Mapping color directly from the metaball surface removed the cutoff but merged a whole word into one color band. This remained a P2 mismatch with the reference's separate inner ovals.
+3. Mapping raw glyph activation preserved local detail but made the bright region spell the letter shapes instead of forming soft centers.
+4. Final fix: each non-space character now contributes a continuous 20 × 13 px radial ellipse to the temporal buffer. A 2.5 px horizontal / 2.0 px vertical Gaussian pass blends the low-energy halos while preserving separate high-energy centers. Post-fix evidence is recorded in both comparison images above.
+
+## Interaction and runtime checks
+
+- Pointer movement was tested at upper and lower artwork positions; the delayed light and oval color field followed correctly.
+- The new `타원 가로 반경` lil-gui control was changed from 20 to 18 and restored to 20; the center mask rebuilt without reload.
+- TypeScript typecheck and the production Vite build passed.
+- Browser console warnings and errors: none.
+
+## Implementation checklist
+
+- [x] Reduce falloff radii to 107 / 80 / 160.
+- [x] Replace density-normalized diffuse color with local oval center energy.
+- [x] Preserve temporal attack and release for color centers.
+- [x] Remove nearest-seed gating from visible color.
+- [x] Expose ellipse radius and smoothing controls in lil-gui.
+- [x] Verify fixed QA state, live pointer movement, GUI updates, build, and console.
+
+## Follow-up polish
+
+- P3 only: retune palette anchors for a particular frame if one exact animation timestamp becomes the acceptance target.
+
+final result: passed

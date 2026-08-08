@@ -10,7 +10,7 @@ const COLOR_BLUR_TAPS = 20;
 const METABALL_SAMPLES = 192;
 const METABALL_SMOOTH_TAPS = 5;
 const STROKE_SPREAD_PASSES = 8;
-// Jump flooding is retained only for the subtle color carrier. The visible
+// Jump flooding is retained only for the optional continuity core. The visible
 // silhouette comes from the accumulated metaball field below.
 const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
 const searchParams = new URLSearchParams(window.location.search);
@@ -35,9 +35,9 @@ const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const error = document.getElementById('error') as HTMLParagraphElement;
 
 const state = {
-  radiusX: qaNumber('qaRadiusX', 160),
-  radiusY: qaNumber('qaRadiusY', 120),
-  radiusYBelow: qaNumber('qaRadiusYBelow', 240),
+  radiusX: qaNumber('qaRadiusX', 107),
+  radiusY: qaNumber('qaRadiusY', 80),
+  radiusYBelow: qaNumber('qaRadiusYBelow', 160),
   taperAbove: qaNumber('qaTaperAbove', 0.55),
   taperBelow: qaNumber('qaTaperBelow', 0.55),
   taperStart: qaNumber('qaTaperStart', 0.25),
@@ -57,12 +57,15 @@ const state = {
   coreMix: qaNumber('qaCoreMix', 0.0),
   surfaceThreshold: qaNumber('qaSurfaceThreshold', 0.07),
   surfaceSoftness: qaNumber('qaSurfaceSoftness', 0.012),
-  colorBlurSigma: 9.0,
-  colorBlurStep: 1.0,
-  colorFloor: 0.035,
-  colorRange: 0.55,
-  hueBands: 0.31,
-  colorCycle: 8.0,
+  colorCenterRadiusX: qaNumber('qaColorCenterRadiusX', 20.0),
+  colorCenterRadiusY: qaNumber('qaColorCenterRadiusY', 13.0),
+  colorBlurSigma: qaNumber('qaColorBlurSigma', 2.5),
+  colorBlurAspect: qaNumber('qaColorBlurAspect', 0.8),
+  colorBlurStep: qaNumber('qaColorBlurStep', 1.0),
+  colorFloor: qaNumber('qaColorFloor', 0.02),
+  colorRange: qaNumber('qaColorRange', 0.55),
+  hueBands: qaNumber('qaHueBands', 0.31),
+  colorCycle: qaNumber('qaColorCycle', 8.0),
   pointerEase: 4.3,
   pointerMaxSpeed: 300,
   activationAttack: 0.055,
@@ -80,6 +83,9 @@ const lines = [
   'TOUCHES',
   'IT',
 ];
+const FIRST_LINE_Y = 132;
+const LINE_HEIGHT = 42.2;
+const CHARACTER_ADVANCE = 31.8;
 
 type Pointer = { x: number; y: number };
 
@@ -99,6 +105,11 @@ textCanvas.width = ART_WIDTH * TEXTURE_SCALE;
 textCanvas.height = ART_HEIGHT * TEXTURE_SCALE;
 const textContext = textCanvas.getContext('2d', { alpha: true });
 if (!textContext) throw new Error('Unable to create the text mask.');
+const colorCenterCanvas = document.createElement('canvas');
+colorCenterCanvas.width = ART_WIDTH * TEXTURE_SCALE;
+colorCenterCanvas.height = ART_HEIGHT * TEXTURE_SCALE;
+const colorCenterContext = colorCenterCanvas.getContext('2d', { alpha: true });
+if (!colorCenterContext) throw new Error('Unable to create the color-center mask.');
 
 function drawTrackedLine(
   context: CanvasRenderingContext2D,
@@ -121,16 +132,56 @@ function bakeTextMask(): void {
   textContext.font = '300 43px "Helvetica Neue", "Arial", sans-serif';
   textContext.textAlign = 'center';
   textContext.textBaseline = 'middle';
-  const firstLineY = 132;
-  const lineHeight = 42.2;
-  const characterAdvance = 31.8;
   lines.forEach((line, index) => {
-    drawTrackedLine(textContext, line, ART_WIDTH / 2, firstLineY + index * lineHeight, characterAdvance);
+    drawTrackedLine(
+      textContext,
+      line,
+      ART_WIDTH / 2,
+      FIRST_LINE_Y + index * LINE_HEIGHT,
+      CHARACTER_ADVANCE,
+    );
   });
   textContext.restore();
 }
 
+function drawColorCenter(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+): void {
+  context.save();
+  context.translate(centerX, centerY);
+  context.scale(state.colorCenterRadiusX, state.colorCenterRadiusY);
+  const gradient = context.createRadialGradient(0, 0, 0, 0, 0, 1);
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  gradient.addColorStop(0.42, 'rgba(255, 255, 255, 0.96)');
+  gradient.addColorStop(0.74, 'rgba(255, 255, 255, 0.52)');
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  context.fillStyle = gradient;
+  context.beginPath();
+  context.arc(0, 0, 1, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function bakeColorCenterMask(): void {
+  colorCenterContext.setTransform(TEXTURE_SCALE, 0, 0, TEXTURE_SCALE, 0, 0);
+  colorCenterContext.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
+  lines.forEach((line, lineIndex) => {
+    const startX = ART_WIDTH / 2 - ((line.length - 1) * CHARACTER_ADVANCE) / 2;
+    for (let characterIndex = 0; characterIndex < line.length; characterIndex += 1) {
+      if (line[characterIndex] === ' ') continue;
+      drawColorCenter(
+        colorCenterContext,
+        startX + characterIndex * CHARACTER_ADVANCE,
+        FIRST_LINE_Y + lineIndex * LINE_HEIGHT,
+      );
+    }
+  });
+}
+
 bakeTextMask();
+bakeColorCenterMask();
 
 let renderer: THREE.WebGLRenderer;
 try {
@@ -165,6 +216,11 @@ textTexture.colorSpace = THREE.NoColorSpace;
 textTexture.minFilter = THREE.LinearFilter;
 textTexture.magFilter = THREE.LinearFilter;
 textTexture.generateMipmaps = false;
+const colorCenterTexture = new THREE.CanvasTexture(colorCenterCanvas);
+colorCenterTexture.colorSpace = THREE.NoColorSpace;
+colorCenterTexture.minFilter = THREE.LinearFilter;
+colorCenterTexture.magFilter = THREE.LinearFilter;
+colorCenterTexture.generateMipmaps = false;
 
 const linearTargetOptions: THREE.RenderTargetOptions = {
   depthBuffer: false,
@@ -203,6 +259,7 @@ const sourceMaterial = new THREE.ShaderMaterial({
 
     varying vec2 vUv;
     uniform sampler2D uText;
+    uniform sampler2D uColorCenters;
     uniform vec2 uPointer;
     uniform vec2 uArtSize;
     uniform vec2 uRadius;
@@ -215,6 +272,7 @@ const sourceMaterial = new THREE.ShaderMaterial({
 
     void main() {
       float textMask = texture2D(uText, vUv).a;
+      float colorCenterMask = texture2D(uColorCenters, vUv).a;
       vec2 delta = (vUv - uPointer) * uArtSize;
       float verticalRadius = delta.y < 0.0 ? uRadiusYBelow : uRadius.y;
       float verticalRatio = abs(delta.y) / max(verticalRadius, 0.001);
@@ -229,11 +287,13 @@ const sourceMaterial = new THREE.ShaderMaterial({
       float light = 1.0 - smoothstep(uFalloff, 1.0, normalizedDistance);
       light *= smoothstep(1.04, 0.84, normalizedDistance);
       float excitedInk = textMask * pow(max(light, 0.0), 1.22);
-      gl_FragColor = vec4(excitedInk, textMask, 0.0, 1.0);
+      float excitedColorCenter = colorCenterMask * pow(max(light, 0.0), 1.12);
+      gl_FragColor = vec4(excitedInk, textMask, excitedColorCenter, 1.0);
     }
   `,
   uniforms: {
     uText: { value: textTexture },
+    uColorCenters: { value: colorCenterTexture },
     uPointer: { value: new THREE.Vector2(pointer.x, pointer.y) },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uRadius: { value: new THREE.Vector2(state.radiusX, state.radiusY) },
@@ -261,11 +321,19 @@ const temporalMaterial = new THREE.ShaderMaterial({
 
     void main() {
       float currentInk = texture2D(uCurrent, vUv).r;
+      float currentColorCenter = texture2D(uCurrent, vUv).b;
       vec4 history = texture2D(uHistory, vUv);
       float blendAmount = currentInk > history.r ? uAttackBlend : uReleaseBlend;
       float activation = mix(history.r, currentInk, blendAmount);
+      float colorBlendAmount = currentColorCenter > history.b ? uAttackBlend : uReleaseBlend;
+      float colorCenter = mix(history.b, currentColorCenter, colorBlendAmount);
       float textMask = texture2D(uCurrent, vUv).g;
-      gl_FragColor = vec4(activation * step(0.001, textMask), textMask, 0.0, 1.0);
+      gl_FragColor = vec4(
+        activation * step(0.001, textMask),
+        textMask,
+        colorCenter,
+        1.0
+      );
     }
   `,
   uniforms: {
@@ -335,22 +403,27 @@ const colorBlurMaterial = new THREE.ShaderMaterial({
     uniform vec2 uDirection;
     uniform float uSigma;
     uniform float uStep;
+    uniform vec4 uChannel;
 
     void main() {
       float sigmaSquared = max(uSigma * uSigma, 0.001);
       float totalWeight = 0.0;
-      vec2 colorField = vec2(0.0);
+      float colorField = 0.0;
 
       for (int index = -${COLOR_BLUR_TAPS}; index <= ${COLOR_BLUR_TAPS}; index++) {
         float offsetIndex = float(index);
         float sampleDistance = offsetIndex * uStep;
         float weight = exp(-0.5 * sampleDistance * sampleDistance / sigmaSquared);
-        colorField += texture2D(uInput, vUv + uDirection * sampleDistance).rg * weight;
+        float sampleValue = dot(
+          texture2D(uInput, vUv + uDirection * sampleDistance),
+          uChannel
+        );
+        colorField += sampleValue * weight;
         totalWeight += weight;
       }
 
       colorField /= max(totalWeight, 0.001);
-      gl_FragColor = vec4(colorField, 0.0, 1.0);
+      gl_FragColor = vec4(colorField, 0.0, 0.0, 1.0);
     }
   `,
   uniforms: {
@@ -358,6 +431,7 @@ const colorBlurMaterial = new THREE.ShaderMaterial({
     uDirection: { value: new THREE.Vector2(1 / ART_WIDTH, 0) },
     uSigma: { value: state.colorBlurSigma },
     uStep: { value: state.colorBlurStep },
+    uChannel: { value: new THREE.Vector4(0, 0, 1, 0) },
   },
   depthTest: false,
   depthWrite: false,
@@ -603,8 +677,6 @@ const finalMaterial = new THREE.ShaderMaterial({
         uSurfaceThreshold + surfaceEdge,
         surfaceField
       );
-      float colorEnergy = 0.0;
-      float strokeDensity = 0.0;
       float distanceToStroke = 16.0;
 
       if (nearest.a > 0.5) {
@@ -628,9 +700,6 @@ const finalMaterial = new THREE.ShaderMaterial({
         );
         strokeCore *= coreGate;
         coverage = max(coverage, strokeCore * uCoreMix);
-        vec2 blurredField = texture2D(uColorField, artUv).rg;
-        colorEnergy = blurredField.r / max(blurredField.g, 0.004);
-        strokeDensity = blurredField.g;
       }
 
       if (uLabelMode > 0.5) {
@@ -648,27 +717,27 @@ const finalMaterial = new THREE.ShaderMaterial({
 
       float cycle = max(uColorCycle, 0.1);
       float palettePhase = fract(0.84 + uTime / cycle);
+      float colorField = texture2D(uColorField, artUv).r;
       float normalizedEnergy = clamp(
-        (colorEnergy - uColorFloor) / max(uColorRange, 0.001),
+        (colorField - uColorFloor) / max(uColorRange, 0.001),
         0.0,
         1.0
       );
-      float strokeCarrier = smoothstep(0.01, 0.28, strokeDensity);
-      float fineOffset = distanceToStroke / 4.8;
-      float fineCarrier = exp(-0.5 * fineOffset * fineOffset);
-      float combinedCarrier = mix(strokeCarrier, fineCarrier, 0.04);
-      float transportedEnergy = normalizedEnergy * mix(0.36, 1.0, combinedCarrier);
+      float contourEnergy = normalizedEnergy;
       vec3 edgeRose = hsvToRgb(vec3(fract(palettePhase + 0.095), 0.80, 0.76));
+      vec3 bodyRose = hsvToRgb(vec3(fract(palettePhase + 0.105), 0.62, 0.96));
       vec3 pinkMist = hsvToRgb(vec3(fract(palettePhase + 0.115), 0.22, 1.0));
       vec3 hotColor = hsvToRgb(vec3(fract(palettePhase + uHueBands), 0.86, 1.0));
-      float mistBlend = smoothstep(0.00, 0.58, transportedEnergy);
-      float hotBlend = smoothstep(0.34, 0.82, transportedEnergy);
-      vec3 goo = mix(edgeRose, pinkMist, mistBlend);
+      float bodyBlend = smoothstep(0.0, 0.48, contourEnergy);
+      float mistBlend = smoothstep(0.16, 0.78, contourEnergy);
+      float hotBlend = smoothstep(0.48, 0.98, contourEnergy);
+      vec3 goo = mix(edgeRose, bodyRose, bodyBlend);
+      goo = mix(goo, pinkMist, mistBlend);
       goo = mix(goo, hotColor, hotBlend);
 
       vec3 result = mix(base, goo, coverage);
       float dither = (interleavedGradientNoise(fragment) - 0.5) / 255.0;
-      result += vec3(dither * coverage * 0.45);
+      result += vec3(dither * coverage * 0.3);
 
       gl_FragColor = vec4(result, 1.0);
     }
@@ -866,9 +935,16 @@ function bindGui(): void {
   motionFolder.add(state, 'activationRelease', 0.08, 1.2, 0.01).name('활성 Release');
 
   const colorFolder = gui.addFolder('색상');
-  colorFolder.add(state, 'colorBlurSigma', 0.5, 16, 0.1).name('색 에너지 blur').onChange((value: number) => {
-    colorBlurMaterial.uniforms.uSigma.value = value;
+  colorFolder.add(state, 'colorCenterRadiusX', 4, 30, 0.5).name('타원 가로 반경').onChange(() => {
+    bakeColorCenterMask();
+    colorCenterTexture.needsUpdate = true;
   });
+  colorFolder.add(state, 'colorCenterRadiusY', 3, 24, 0.5).name('타원 세로 반경').onChange(() => {
+    bakeColorCenterMask();
+    colorCenterTexture.needsUpdate = true;
+  });
+  colorFolder.add(state, 'colorBlurSigma', 0.5, 16, 0.1).name('중심 타원 가로 blur');
+  colorFolder.add(state, 'colorBlurAspect', 0.2, 1, 0.01).name('중심 타원 세로 비율');
   colorFolder.add(state, 'colorBlurStep', 0.5, 2, 0.05).name('색 blur 간격').onChange((value: number) => {
     colorBlurMaterial.uniforms.uStep.value = value;
   });
@@ -946,13 +1022,6 @@ function animate(now: number): void {
   renderPass(temporalMaterial, historyWrite);
   [historyRead, historyWrite] = [historyWrite, historyRead];
 
-  colorBlurMaterial.uniforms.uInput.value = historyRead.texture;
-  colorBlurMaterial.uniforms.uDirection.value.set(1 / FIELD_WIDTH, 0);
-  renderPass(colorBlurMaterial, colorHorizontalTarget);
-  colorBlurMaterial.uniforms.uInput.value = colorHorizontalTarget.texture;
-  colorBlurMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
-  renderPass(colorBlurMaterial, colorFieldTarget);
-
   strokeSpreadRead = strokeSpreadTargetA;
   strokeSpreadWrite = strokeSpreadTargetB;
   strokeSpreadMaterial.uniforms.uInput.value = historyRead.texture;
@@ -984,6 +1053,17 @@ function animate(now: number): void {
   surfaceSmoothMaterial.uniforms.uInput.value = surfaceHorizontalTarget.texture;
   surfaceSmoothMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
   renderPass(surfaceSmoothMaterial, surfaceFieldTarget);
+
+  colorBlurMaterial.uniforms.uInput.value = historyRead.texture;
+  colorBlurMaterial.uniforms.uSigma.value = state.colorBlurSigma;
+  colorBlurMaterial.uniforms.uChannel.value.set(0, 0, 1, 0);
+  colorBlurMaterial.uniforms.uDirection.value.set(1 / FIELD_WIDTH, 0);
+  renderPass(colorBlurMaterial, colorHorizontalTarget);
+  colorBlurMaterial.uniforms.uInput.value = colorHorizontalTarget.texture;
+  colorBlurMaterial.uniforms.uSigma.value = state.colorBlurSigma * state.colorBlurAspect;
+  colorBlurMaterial.uniforms.uChannel.value.set(1, 0, 0, 0);
+  colorBlurMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
+  renderPass(colorBlurMaterial, colorFieldTarget);
 
   const elapsed = reduceMotion || QA_MODE ? 0 : (now - startTime) / 1000;
   finalMaterial.uniforms.uTime.value = elapsed;

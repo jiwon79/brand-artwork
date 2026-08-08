@@ -384,9 +384,9 @@ function animate(now) {
 
 | 상태값 | 기본값 | 모양에 미치는 영향 |
 | --- | ---: | --- |
-| `radiusX` | `160` | 커서 영향 범위의 가로 폭 |
-| `radiusY` | `120` | 커서 위쪽 영향 범위 |
-| `radiusYBelow` | `240` | 커서 아래쪽 영향 범위 |
+| `radiusX` | `107` | 커서 영향 범위의 가로 폭 |
+| `radiusY` | `80` | 커서 위쪽 영향 범위 |
+| `radiusYBelow` | `160` | 커서 아래쪽 영향 범위 |
 | `metaballInputThreshold` | `0.02` | Metaball 출발점으로 인정할 최소 활성도 |
 | `metaballInputSoftness` | `0.025` | 입력이 켜지고 꺼지는 전환 폭 |
 | `metaballBlurRadius` | `30` | 각 출력 픽셀이 주변 활성 픽셀을 조사하는 거리 |
@@ -400,6 +400,10 @@ function animate(now) {
 | `pointerMaxSpeed` | `300` | 커서 빛이 따라가는 최대 속도 |
 | `activationAttack` | `0.055 s` | 새 효과가 생기는 시간 |
 | `activationRelease` | `0.34 s` | 옛 효과가 약해지는 시간 |
+| `colorCenterRadiusX` | `20` | 글자 셀 중심에 놓는 색 타원의 가로 반경 |
+| `colorCenterRadiusY` | `13` | 글자 셀 중심에 놓는 색 타원의 세로 반경 |
+| `colorBlurSigma` | `2.5` | 타원과 주변 중간색을 연결하는 부드러움 |
+| `colorBlurAspect` | `0.8` | 세로 방향 색 blur의 가로 대비 비율 |
 
 일반 화면에서는 `lil-gui` 패널이 보이며, `광원 / Falloff`, `액체 실루엣`, `움직임 / 시간 기억`, `색상`, `고급 설정` 폴더로 나뉜다. 키보드의 `g`를 누르면 패널을 숨기거나 다시 열 수 있다. 자동 비교용 QA 모드에서는 이미지 비교를 가리지 않도록 패널이 처음부터 숨겨진다. 실루엣을 조절할 때는 한 번에 하나의 값을 바꾸고 Y 교차부를 먼저 확인하는 것이 안전하다.
 
