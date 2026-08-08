@@ -10,13 +10,16 @@
 
 1. Bake the nine text lines into a static 1440 × 1800 alpha texture, preserving
    the 480 × 600 artwork coordinate system at 3× sampling density.
-2. Multiply the text alpha by an asymmetric elliptical falloff centered at the
-   delayed cursor. This is the Cavalry-style “reveal the typography stroke using
-   a falloff” stage described by the artist.
-3. Retain activation only on the original glyph pixels in a half-float temporal
-   buffer. Attack and release use separate exponential rates; the buffer is no
-   longer a blurred image-space maximum.
-4. Detect the retained alpha with a low 0.02 threshold and 0.025 transition.
+2. Treat touch drip as the only interaction. While pressed, maintain a continuous
+   age window of asymmetric elliptical falloffs. Evaluate 18 representative ages,
+   advect them downward with gravity, narrow older parcels into traveling necks,
+   and join them with a maximum field. Touch energy attacks from zero over 180 ms
+   and is squared before entering the field so the earliest frames stay restrained.
+3. Multiply the joined flowing falloff by the glyph alpha and character-center
+   mask at each current output position. No glyph snapshot or temporal activation
+   texture is retained. Releasing closes the age window while its existing ages
+   continue downward.
+4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
    Detection happens before the liquid field is built, matching the Metaball
    plugin's alpha/luminance input-detection stage instead of first turning every
    glyph pixel into a fixed-radius circle.
@@ -39,30 +42,26 @@
    a different soft vertical ellipse for each character. The 9 × 16 px default
    radii are only a baseline; sparse/narrow characters produce smaller peaks,
    dense/wide characters produce larger peaks, and each peak shifts slightly
-   toward its glyph centroid. Multiply this field by the same cursor falloff and
-   retain it in the temporal buffer's blue channel.
-9. Mix 20% of the remembered glyph-pixel activation back into the statistical
+   toward its glyph centroid. Multiply this field by the same flowing falloff and
+   store it in the touch-drip target's blue channel.
+9. Mix 20% of the current drip-activated glyph pixels back into the statistical
    ellipse field so the peaks inherit subtle character-dependent deformation
    without becoming readable letters. Smooth the result with a separable
    Gaussian filter (horizontal sigma 2.5, vertical ratio 1.1). Read this field
    everywhere inside the metaball coverage—there is no nearest-seed validity
    gate—then map it through overlapping rose, pale-pink, and hot-color blends.
-10. Route the remembered glyph and color fields through the interaction stage.
-    `classic` passes them through unchanged. `drip` stores only the touched
-    anchor and continuously emits falloff ages while the pointer stays down.
-    Eighteen representative ages are advected downward, narrowed into traveling
-    necks, joined by a maximum field, and re-multiplied by the glyph pixels at
-    each output position before metaball accumulation. Releasing the pointer
-    closes the emission window while its existing ages keep falling. It never
-    snapshots or translates the initially activated glyph shape.
+10. During a held drag, follow the pointer with time-based easing and shorten the
+    old age window in proportion to travel distance, so the previous long stream
+    clears while a new one grows at the new position. Capture the active pointer
+    and suppress browser selection/callout behavior for uninterrupted movement.
 11. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
 
-Geometry and color are deliberately independent. Geometry is falloff-masked
+Geometry and color are deliberately independent. Geometry is flowing-falloff-masked
 stroke alpha → sampled metaball influence → smoothing → isocontour. Color is a
-temporally remembered field of glyph-statistics-driven vertical peaks, clipped
-by that coverage. The old nearest-stroke distance construction could only ask which
+field of glyph-statistics-driven vertical peaks masked by the same flowing falloff
+and clipped by that coverage. The old nearest-stroke distance construction could only ask which
 source pixel was closest, so the `Y` junction became a convex cap. The
 accumulated geometry field preserves the influence of both arms at once; their
 competing gradients create the concave saddle visible in the reference.
@@ -99,30 +98,31 @@ The reproducible measurements and label-map generator are stored in
 
 ## Interaction
 
-- Pointer and touch position control the target of the light center.
-- The light uses eased tracking plus a 300 artwork-pixel-per-second speed cap,
-  creating the delayed motion visible in the reference instead of snapping.
-- Glyph and color-center activation attack over 55 ms and release over 340 ms. Metaball source
-  alpha is suppressed below the 0.02 detection threshold (with a 0.025
-  transition), producing a visible hold followed by the reference's
-  comparatively sudden local disappearance. The 0.05 cutoff applies only to the
-  optional nearest-stroke continuity core.
-- The last pointer location persists after leaving the artwork.
+- Pointer and touch position control the emitter while the primary pointer is held.
+- Metaball source alpha is suppressed below the 0.02 detection threshold with a
+  0.025 transition. The 0.05 cutoff applies only to the optional nearest-stroke
+  continuity core.
 - The palette completes a smooth cycle every eight seconds.
-- `interaction=classic` is the default and preserves the approved reference
-  recreation without an extension.
-- `interaction=drip` advects and vertically stretches the touched cursor falloff
-  itself. Holding continuously emits new falloff ages at the touch anchor;
+- Touch drip is the only interaction. It advects and vertically stretches the
+  touched cursor falloff itself. Holding continuously emits new falloff ages;
   releasing stops emission while the existing stream continues downward. Every
   frame, the joined moving falloff is multiplied by the glyph mask at its current
   position, and those newly activated pixels enter the existing metaball passes.
+- The emitter follows a held drag with exponential easing. Travel distance removes
+  the oldest part of the emission window, preventing the lowered stream from moving
+  sideways as one rigid shape.
+- Touch strength attacks over 180 ms instead of appearing at full strength on the
+  first frame.
+- Pointer capture keeps drag updates continuous outside the initial touch point.
+  Native selection, callouts, dragging, and the context menu are suppressed on the
+  artwork canvas.
 - `?qa` freezes the palette at the reference's pink/yellow phase.
 - `?qa&qaX=0.37&qaY=0.52` also locks the pointer in normalized artwork space
   for deterministic reference comparisons.
 - Add `&qaLabels=1` to render the exact background/text/effect class map without
   palette information.
-- Add `&qaDripAge=1.6&qaDrip=1` with `interaction=drip` to freeze a 1.6-second
-  held stream. Add `&qaDripReleaseAge=0.9` to inspect that stream 0.9 seconds
+- Add `&qaDripAge=1.6&qaDrip=1` to freeze a 1.6-second held stream. Add
+  `&qaDripReleaseAge=0.9` to inspect that stream 0.9 seconds
   after emission stopped.
 - Press `g` to hide or reveal the tuning panel.
 
@@ -146,8 +146,7 @@ The reproducible measurements and label-map generator are stored in
 - Glyph-pixel deformation mixed into color peaks: 20%
 - Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
 - Color field floor / range: 0.015 / 0.48
-- Pointer maximum speed: 300 reference px/s
-- Activation attack/release: 55 ms / 340 ms
 - Touch drip: 18 emission-age samples, 78 px/s² gravity, 0.34 vertical stretch,
   0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,
-  1.45 s stream formation, 4 s per-emission lifetime
+  1.45 s stream formation, 4 s per-emission lifetime, 180 ms touch attack,
+  13 s⁻¹ drag follow rate, and 0.012 s of old emission cleared per pixel traveled

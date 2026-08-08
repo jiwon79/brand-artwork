@@ -357,7 +357,7 @@ final result: passed
 
 ## Findings
 
-- A click or touch stores only the anchor and elapsed time. No activated glyph-pixel snapshot is created.
+- A click or touch stores only the emitter position and elapsed time. No activated glyph-pixel snapshot is created.
 - Holding emits a continuous age window of asymmetric cursor falloffs. A fresh age remains at the anchor while older ages accelerate downward, so the flow grows from the touched position instead of moving one ellipse as a rigid body.
 - The shader evaluates 18 representative ages per output pixel. Older ages narrow to 44% width, the leading age bulges, and traveling neck, per-column speed, and center-meander terms remove the repeated-ellipse rhythm.
 - Releasing stops new age-zero emission. The release sequence confirms that the source end clears first while the already emitted front continues downward.
@@ -365,12 +365,20 @@ final result: passed
 - This new activation field enters the existing 192-sample metaball and smoothing passes, which still create the visible silhouette.
 - No fallback color is injected at the anchor, and pointer-down no longer clears render targets outside the animation frame.
 - A cursor-excluded 250 × 644 px left background region was pixel-identical immediately before the sustained press and 120 ms after release (infinite PSNR), confirming the full-screen color flash is gone.
-- The GUI and query now expose only the approved base artwork and `interaction=drip`.
+- Touch drip is now the only interaction; the mode selector and interaction query are removed.
+- The emitter follows a held drag continuously. Distance traveled shortens the old emission window, so the lowered portion clears instead of sliding sideways with the pointer.
+- Drip energy attacks over 180 ms and is squared before field accumulation, avoiding a full silhouette on the first touched frame.
+- Pointer capture and native callout/selection suppression keep long-press dragging inside the artwork interaction.
 
 ## Runtime checks
 
 - A sustained pointer-down and release were tested in the existing Chrome artwork tab. The live held state connected the anchor to lower text rows; about one second after release, only the lower moving stream remained.
 - Fixed QA frames were checked through both the growing hold window and the closing release window. The visible letter topology changes between frames, confirming that the initial glyph result is not being copied downward.
+- The mode selector is gone and the normal page starts with only the charcoal text. Touch drip is the sole activation path.
+- A held drag from the upper-left text area to a lower-right point produced its mature downward stream at the final pointer. The old lowered portion did not remain at the start point or slide across the page as a rigid body.
+- At the 50 ms attack approximation, squared input energy stayed below the visible Metaball threshold. At 100 ms, a smaller glyph-dependent region had emerged; the same state at full energy produced the complete broad silhouette.
+- Canvas pointer capture was exercised through a multi-point drag. A secondary-button context-menu attempt on the canvas showed no browser menu, and the canvas computed `touch-action` was `none`.
+- The GUI contains no `<select>` and exposes the new `터치 시작 시간`, `드래그 따라가기`, and `이전 흐름 지우기` controls.
 - Browser console warnings and errors: none.
 - TypeScript typecheck and the production Vite build passed before final documentation updates.
 

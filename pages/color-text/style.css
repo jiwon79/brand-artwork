@@ -9,6 +9,7 @@
   padding: 0;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -19,6 +20,7 @@ main {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
+  touch-action: none;
 }
 
 body {
@@ -26,7 +28,6 @@ body {
   inset: 0;
   background: #fbfbfa;
   cursor: none;
-  touch-action: none;
 }
 
 #artwork {
@@ -35,6 +36,10 @@ body {
   display: block;
   width: 100%;
   height: 100%;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 #error {
