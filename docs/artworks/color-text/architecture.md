@@ -1,6 +1,6 @@
 # Color Text 액체 타이포그래피 아키텍처
 
-이 문서는 `pages/color-changes/`에 구현된 인터랙티브 작품의 **실루엣 생성 구조와 움직임**을 설명한다. 고등학생도 이해할 수 있도록 먼저 비유로 설명하고, 뒤에서 실제 WebGL 렌더 패스와 코드 구조를 연결한다.
+이 문서는 `pages/color-text/`에 구현된 인터랙티브 작품의 **실루엣 생성 구조와 움직임**을 설명한다. 고등학생도 이해할 수 있도록 먼저 비유로 설명하고, 뒤에서 실제 WebGL 렌더 패스와 코드 구조를 연결한다.
 
 > 문서 범위: 글자 모양, 커서 Falloff, 잔상, Metaball field, 외곽선 추출, 검증 방법
 > 제외 범위: 실루엣 내부의 색을 계산하는 방법
@@ -18,7 +18,7 @@ brand-artwork/
 ├── docs/artworks/color-text/
 │   ├── architecture.md            # 지금 읽고 있는 문서
 │   └── figures/                    # 문서용 SVG 도해
-└── pages/color-changes/
+└── pages/color-text/
     ├── index.html                  # canvas와 오류 메시지
     ├── style.css                   # 전체 화면 레이아웃과 입력 관련 CSS
     ├── script.ts                   # 입력, WebGL 패스, 애니메이션의 중심
@@ -27,7 +27,7 @@ brand-artwork/
     └── qa/                         # 실루엣 비교 이미지와 측정 스크립트
 ```
 
-실제 작품의 대부분은 `pages/color-changes/script.ts`에 들어 있다. `index.html`은 WebGL이 그릴 `<canvas>`를 제공하고, `style.css`는 캔버스를 화면에 맞게 고정한다.
+실제 작품의 대부분은 `pages/color-text/script.ts`에 들어 있다. `index.html`은 WebGL이 그릴 `<canvas>`를 제공하고, `style.css`는 캔버스를 화면에 맞게 고정한다.
 
 ## 3. 가장 쉬운 비유: 글자 획 위의 투명 구슬
 
@@ -305,7 +305,7 @@ function animate(now) {
 재현 가능한 비교 주소의 예시는 다음과 같다.
 
 ```text
-/pages/color-changes/?qa=1&qaX=0.37&qaY=0.52&qaLabels=1
+/pages/color-text/?qa=1&qaX=0.37&qaY=0.52&qaLabels=1
 ```
 
 - `qa=1`: 움직이는 상태를 고정해 비교하기 쉽게 만든다.
@@ -379,5 +379,5 @@ function animate(now) {
 - [Scenery — Metaball overview](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ)
 - [Scenery — Metaball manual](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ/manual)
 - [Cavalry — Falloff documentation](https://cavalry.studio/docs/nodes/utilities/falloff/)
-- 구현: [`pages/color-changes/script.ts`](../../../pages/color-changes/script.ts)
-- 수치 및 비교 기록: [`pages/color-changes/spec.md`](../../../pages/color-changes/spec.md)
+- 구현: [`pages/color-text/script.ts`](../../../pages/color-text/script.ts)
+- 수치 및 비교 기록: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)

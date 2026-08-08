@@ -1,31 +1,31 @@
-# Color Changes — Design QA
+# Color Text — Design QA
 
 ## Comparison target and evidence
 
-- Source visual truth: `pages/color-changes/assets/reference-frame.png`
-- Source motion truth: `pages/color-changes/assets/reference.mp4`
+- Source visual truth: `pages/color-text/assets/reference-frame.png`
+- Source motion truth: `pages/color-text/assets/reference.mp4`
 - Final deterministic implementation:
-  `pages/color-changes/qa/silhouette-final-default.png`
+  `pages/color-text/qa/silhouette-final-default.png`
 - Equal-size reference/implementation comparison:
-  `pages/color-changes/qa/silhouette-comparison-final.png`
+  `pages/color-text/qa/silhouette-comparison-final.png`
 - Three-class background/text/effect comparison:
-  `pages/color-changes/qa/silhouette-semantic-comparison-final.png`
+  `pages/color-text/qa/silhouette-semantic-comparison-final.png`
 - Focused three-class `Y` comparison:
-  `pages/color-changes/qa/silhouette-y-semantic-comparison-final.png`
+  `pages/color-text/qa/silhouette-y-semantic-comparison-final.png`
 - Reproducible metrics and analyzer:
-  `pages/color-changes/qa/silhouette-metrics-final.json` and
-  `pages/color-changes/qa/analyze-silhouette.mjs`
+  `pages/color-text/qa/silhouette-metrics-final.json` and
+  `pages/color-text/qa/analyze-silhouette.mjs`
 - Reference / previous constant-radius / final surface comparison:
-  `pages/color-changes/qa/surface-tension-final.jpg`
+  `pages/color-text/qa/surface-tension-final.jpg`
 - Focused user-reference surface crop:
-  `pages/color-changes/qa/surface-tension-crop-final.jpg`
+  `pages/color-text/qa/surface-tension-crop-final.jpg`
 - Focused `Y`-junction evidence:
-  `pages/color-changes/qa/y-stroke-distance-final.png`
+  `pages/color-text/qa/y-stroke-distance-final.png`
 - User-reference legibility crop:
-  `pages/color-changes/qa/y-legibility-final.jpg`
+  `pages/color-text/qa/y-legibility-final.jpg`
 - Four-state motion evidence:
-  `pages/color-changes/qa/motion-distance-final.jpg`
-- Route: `/pages/color-changes/?qa=1&qaX=0.37&qaY=0.52`
+  `pages/color-text/qa/motion-distance-final.jpg`
+- Route: `/pages/color-text/?qa=1&qaX=0.37&qaY=0.52`
 - Three-class route: append `&qaLabels=1`
 - Browser: existing user Chrome window
 

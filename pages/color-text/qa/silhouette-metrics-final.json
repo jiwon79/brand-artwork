@@ -1,6 +1,6 @@
 {
-  "input": "pages/color-changes/qa/silhouette-reference-semantic.png",
-  "output": "pages/color-changes/qa/silhouette-reference-semantic-labels.png",
+  "input": "pages/color-text/qa/silhouette-reference-semantic.png",
+  "output": "pages/color-text/qa/silhouette-reference-semantic-labels.png",
   "area": 25180,
   "centroid": [
     190.80555996822875,
@@ -160,8 +160,8 @@
   }
 }
 {
-  "input": "pages/color-changes/qa/silhouette-final-default-semantic.png",
-  "output": "pages/color-changes/qa/silhouette-final-default-semantic-labels.png",
+  "input": "pages/color-text/qa/silhouette-final-default-semantic.png",
+  "output": "pages/color-text/qa/silhouette-final-default-semantic-labels.png",
   "area": 25836,
   "centroid": [
     191.98970428858956,

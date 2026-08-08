@@ -1,4 +1,4 @@
-# Color Changes — implementation spec
+# Color Text — implementation spec
 
 ## Reference
 
