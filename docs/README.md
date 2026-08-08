@@ -6,18 +6,17 @@
 
 ```text
 docs/
-├── artowkr/    Color Changes 프로젝트의 아키텍처 문서와 전용 도식
 ├── artworks/   실제 작품의 현재 구조와 구현 이력
 ├── concepts/   여러 작품에 재사용할 수 있는 그래픽 원리
 ├── research/   외부 구현과 레퍼런스 조사
 └── assets/     문서에서 사용하는 이미지와 도식
 ```
 
-## Artowkr
-
-- [`architecture.md`](./artowkr/architecture.md) - Color Changes의 Falloff, 시간 기억, Metaball field, 실루엣 추출 구조
-
 ## Artworks
+
+### Artowkr
+
+- [`architecture.md`](./artworks/artowkr/architecture.md) - Color Changes의 Falloff, 시간 기억, Metaball field, 실루엣 추출 구조
 
 ### Guseul
 

@@ -15,7 +15,7 @@
 
 ```text
 brand-artwork/
-├── docs/artowkr/
+├── docs/artworks/artowkr/
 │   ├── architecture.md            # 지금 읽고 있는 문서
 │   └── figures/                    # 문서용 SVG 도해
 └── pages/color-changes/
@@ -379,5 +379,5 @@ function animate(now) {
 - [Scenery — Metaball overview](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ)
 - [Scenery — Metaball manual](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ/manual)
 - [Cavalry — Falloff documentation](https://cavalry.studio/docs/nodes/utilities/falloff/)
-- 구현: [`pages/color-changes/script.ts`](../../pages/color-changes/script.ts)
-- 수치 및 비교 기록: [`pages/color-changes/spec.md`](../../pages/color-changes/spec.md)
+- 구현: [`pages/color-changes/script.ts`](../../../pages/color-changes/script.ts)
+- 수치 및 비교 기록: [`pages/color-changes/spec.md`](../../../pages/color-changes/spec.md)
