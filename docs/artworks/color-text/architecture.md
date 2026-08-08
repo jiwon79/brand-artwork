@@ -207,21 +207,27 @@ release 시간 = 0.34 s
 
 #### 터치 드립 모드
 
-클릭하거나 터치한 순간의 위치를 `dripAnchor`에 복사한다. 동시에 그 위치의 Falloff가 활성화한 **모든 글자 픽셀**을 `dripSnapshotTarget`에 한 장의 field로 저장한다. 이후에는 움직이는 커서가 아니라 이 고정된 전체 field와 `dripAge`를 사용한다.
+클릭하거나 터치한 순간에는 위치를 `dripAnchor`에 복사하고 경과 시간 `dripAge`를 `0`으로 만든다. **활성화된 글자 픽셀 이미지는 저장하지 않는다.** 이후 움직이는 것은 터치 결과로 나온 실루엣이 아니라, 원래 커서 주위에 있던 아래로 긴 Falloff 영역이다.
 
 ```text
-터치 위치 → Falloff 안의 활성 픽셀 전체를 저장
-경과 시간 + 중력 → field 전체의 아래 이동 거리
-가로 위치별 속도 차이 → 같은 덩어리 안에서 부분별 하강량 변화
-세로 신장 + 작은 좌우 굴곡 → 늘어지고 갈라지는 활성 field
-변형 field → 기존 Metaball 입력 → 기존 방식으로 실루엣 렌더링
+터치 위치 + 경과 시간 → 아래로 흐르는 Falloff 영역
+흐르는 Falloff × 현재 위치의 글자 픽셀 → 매 프레임 새로운 활성 픽셀
+활성 픽셀 → 기존 Metaball → 화면의 액체 실루엣
 ```
 
-이 모드는 완전한 유체 시뮬레이션이 아니다. 각 출력 픽셀이 “변형 전 스냅샷의 어느 픽셀을 읽어야 하는가”를 역으로 계산한다. 기본적으로 중력 시간식으로 전체 field를 아래로 옮기고, 가로 위치마다 조금 다른 속도와 세로 확대율을 준다. 그래서 하나의 작은 점이 새로 생기는 대신, 터치로 활성화됐던 글자 픽셀 덩어리 전체가 아래로 미끄러지고 늘어진다.
+계산은 각 출력 픽셀에서 연속적으로 이루어진다. 화면의 픽셀 `p`가 흐르기 전 Falloff의 어느 위치 `q`에서 왔는지를 중력, 세로 신장, 가로 위치별 속도 차이, 작은 좌우 굴곡으로 역산한다. 그런 다음 `q`에서 원래의 비대칭 타원 Falloff 값을 계산한다.
 
-중요한 점은 이 변형 결과를 화면에 직접 그리지 않는다는 것이다. 변형된 활성값은 `interactionFieldMaterial`의 R 채널에 들어간 뒤 `surfaceSourceMaterial → surfaceBlurMaterial → surfaceSmoothMaterial`을 그대로 통과한다. 즉 흐르는 영역만 유체처럼 계산하고, 최종 외곽선의 합쳐짐·둥근 연결·매끄러움은 기존 `192`개 황금각 표본 Metaball이 계속 담당한다. 색 중심도 같은 스냅샷의 B 채널을 같은 좌표로 이동하므로 터치 순간 별도 고정색을 주입하지 않는다.
+```text
+q = flowInverse(p, dripAnchor, dripAge)
+흐른 Falloff 값 = falloff(q, dripAnchor)
+드립 활성값(p) = 현재 글자 마스크(p) × 흐른 Falloff 값
+```
 
-![터치 직후의 전체 영역, 아래로 신장된 영역, 더 멀리 흐른 Metaball 영역](../../../pages/color-text/qa/interaction-drip-sequence.png)
+여기서 글자 마스크는 `q`가 아니라 **현재 출력 위치 `p`**에서 읽는다. 이 차이가 중요하다. 처음 닿았던 글자 픽셀을 아래로 복사하면 같은 덩어리가 통째로 미끄러지지만, 현재 방식은 흐르는 Falloff가 새 행을 지날 때 그곳의 새 글자 픽셀이 활성화된다. 따라서 `CHANGES`에서 만들어진 모양을 복사해 `THE LIGHT`로 내리는 것이 아니라, 내려온 영역과 `THE LIGHT`의 픽셀이 만나 전혀 새로운 실루엣이 생긴다.
+
+Falloff 자체는 화면에 직접 그리지 않는다. 위 곱셈의 결과만 `interactionFieldMaterial`의 R 채널에 넣고 `surfaceSourceMaterial → surfaceBlurMaterial → surfaceSmoothMaterial`을 그대로 통과시킨다. 흐르는 영향 영역의 움직임은 유체처럼 계산하지만, 글자 픽셀의 합쳐짐·둥근 연결·매끄러운 외곽선은 기존 `192`개 황금각 표본 Metaball이 계속 담당한다.
+
+![터치 직후 Falloff가 만난 글자, 아래로 흐르며 새로 만난 글자, 더 멀리 흐른 영역의 Metaball 실루엣](../../../pages/color-text/qa/interaction-drip-sequence.png)
 
 ### 5.4 너무 약한 활성 픽셀은 field 입력에서 제외한다
 
@@ -334,7 +340,6 @@ WebGL의 렌더 타깃은 GPU 안에서 다음 계산으로 넘겨줄 중간 이
 | --- | --- | --- |
 | `sourceTarget` | 글자 마스크 픽셀과 커서 Falloff를 곱한 현재 활성 이미지 | 시간 기억 |
 | `historyTargetA/B` | 각 글자 픽셀의 이전 값과 현재 값을 섞은 활성 기억 | 입력 감지 |
-| `dripSnapshotTarget` | 터치 순간 Falloff가 활성화한 전체 글자 픽셀과 색 중심 | 터치 드립의 좌표 변형 |
 | `interactionTargetA/B` | 선택한 모드로 변형한 실루엣·색 활성값과 점성 꼬리 기억 | Metaball 입력과 점성 꼬리 합성 |
 | `surfaceSourceTarget` | 임계값을 통과한 활성 픽셀 | 황금각 주변 표본 |
 | `metaballRawTarget` | 출력 픽셀마다 192개 주변 표본을 합친 원래 field | 가로 smoothing |
@@ -360,14 +365,8 @@ function animate(now) {
   renderPass(temporalMaterial, historyWrite);
   swap(historyRead, historyWrite);
 
-  // 터치가 발생한 프레임에만 Falloff의 전체 활성 field를 저장한다.
-  if (dripCaptureRequested) {
-    sourceMaterial.pointer = dripAnchor;
-    renderPass(sourceMaterial, sourceTarget);
-    renderPass(snapshotMaterial, dripSnapshotTarget);
-  }
-
-  // 4. 선택한 확장 모드 하나만 적용하고 interaction A/B를 교환한다.
+  // 4. 선택한 확장 모드 하나만 적용한다.
+  // drip이면 흐른 Falloff와 현재 글자 픽셀을 다시 곱한다.
   renderPass(interactionFieldMaterial, interactionWrite);
   swap(interactionRead, interactionWrite);
 

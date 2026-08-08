@@ -144,7 +144,6 @@ let interactionSpeed = 0;
 let dwellAmount = 0;
 let dripAge = Number.POSITIVE_INFINITY;
 let dripEnergy = 0;
-let dripCaptureRequested = QA_MODE && state.interactionMode === 'drip';
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
 let startTime = performance.now();
 let previousTime = startTime;
@@ -385,11 +384,6 @@ const historyTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, li
 const historyTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const interactionTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const interactionTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
-const dripSnapshotTarget = new THREE.WebGLRenderTarget(
-  FIELD_WIDTH,
-  FIELD_HEIGHT,
-  linearTargetOptions,
-);
 const strokeSpreadTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const strokeSpreadTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const colorHorizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
@@ -495,25 +489,6 @@ const temporalMaterial = new THREE.ShaderMaterial({
   depthWrite: false,
 });
 
-const snapshotMaterial = new THREE.ShaderMaterial({
-  vertexShader,
-  fragmentShader: `
-    precision highp float;
-
-    varying vec2 vUv;
-    uniform sampler2D uInput;
-
-    void main() {
-      gl_FragColor = texture2D(uInput, vUv);
-    }
-  `,
-  uniforms: {
-    uInput: { value: sourceTarget.texture },
-  },
-  depthTest: false,
-  depthWrite: false,
-});
-
 const interactionFieldMaterial = new THREE.ShaderMaterial({
   vertexShader,
   fragmentShader: `
@@ -522,7 +497,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     varying vec2 vUv;
     uniform sampler2D uHistory;
     uniform sampler2D uPrevious;
-    uniform sampler2D uDripSnapshot;
+    uniform sampler2D uText;
+    uniform sampler2D uColorCenters;
     uniform vec2 uArtSize;
     uniform vec2 uPointer;
     uniform vec2 uVelocityDirection;
@@ -545,6 +521,13 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uDripTurbulence;
     uniform float uDripStrength;
     uniform float uDripPinchTime;
+    uniform vec2 uLightRadius;
+    uniform float uLightRadiusYBelow;
+    uniform float uLightFalloff;
+    uniform float uLightTaperAbove;
+    uniform float uLightTaperBelow;
+    uniform float uLightTaperStart;
+    uniform float uLightTaperEnd;
     uniform float uTime;
 
     void main() {
@@ -688,26 +671,56 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         float lateralWarp = (
           sin(sourceDown * 0.035 + localX * 0.018 + age * 1.08)
           - sin(localX * 0.018 + age * 1.08)
-        ) * 3.4 * uDripTurbulence;
+        ) * 3.4 * uDripTurbulence
+          * smoothstep(0.05, max(uDripPinchTime, 0.06), age);
 
         vec2 sourceUv = vec2(
           vUv.x - lateralWarp / uArtSize.x,
           uDripAnchor.y - sourceDown / uArtSize.y
         );
-        float inBounds = step(0.0, sourceUv.x) * step(sourceUv.x, 1.0)
-          * step(0.0, sourceUv.y) * step(sourceUv.y, 1.0);
-        vec4 movedField = texture2D(
-          uDripSnapshot,
-          clamp(sourceUv, vec2(0.0), vec2(1.0))
+
+        vec2 falloffDelta = (sourceUv - uDripAnchor) * uArtSize;
+        float verticalRadius = falloffDelta.y < 0.0
+          ? uLightRadiusYBelow
+          : uLightRadius.y;
+        float verticalRatio = abs(falloffDelta.y) / max(verticalRadius, 0.001);
+        float taperFloor = falloffDelta.y < 0.0
+          ? uLightTaperBelow
+          : uLightTaperAbove;
+        float horizontalTaper = mix(
+          1.0,
+          taperFloor,
+          smoothstep(uLightTaperStart, uLightTaperEnd, verticalRatio)
         );
-        movedField *= inBounds;
+        vec2 effectiveRadius = vec2(
+          uLightRadius.x * horizontalTaper,
+          verticalRadius
+        );
+        float normalizedDistance = length(
+          falloffDelta / max(effectiveRadius, vec2(0.001))
+        );
+        float flowedLight = 1.0 - smoothstep(
+          uLightFalloff,
+          1.0,
+          normalizedDistance
+        );
+        flowedLight *= smoothstep(1.04, 0.84, normalizedDistance);
+
+        float textMask = texture2D(uText, vUv).a;
+        float colorCenterMask = texture2D(uColorCenters, vUv).a;
 
         float densityPulse = 1.0 - breakup * uDripTurbulence * 0.12
           * (0.5 + 0.5 * sin(outputDown * 0.071 + localX * 0.043));
-        float movedSurface = movedField.r * uDripStrength * densityPulse;
+        float movedSurface = textMask
+          * pow(max(flowedLight, 0.0), 1.22)
+          * uDripStrength
+          * densityPulse;
+        float movedColor = colorCenterMask
+          * pow(max(flowedLight, 0.0), 1.12)
+          * densityPulse;
         float dripMix = clamp(uDripEnergy, 0.0, 1.0);
         surfaceActivation = mix(surfaceActivation, movedSurface, dripMix);
-        colorActivation = mix(colorActivation, movedField.b * densityPulse, dripMix);
+        colorActivation = mix(colorActivation, movedColor, dripMix);
         trail = 0.0;
       }
 
@@ -722,7 +735,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
   uniforms: {
     uHistory: { value: historyTargetA.texture },
     uPrevious: { value: interactionTargetA.texture },
-    uDripSnapshot: { value: dripSnapshotTarget.texture },
+    uText: { value: textTexture },
+    uColorCenters: { value: colorCenterTexture },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uPointer: { value: new THREE.Vector2(pointer.x, pointer.y) },
     uVelocityDirection: { value: new THREE.Vector2(1, 0) },
@@ -745,6 +759,13 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uDripTurbulence: { value: state.dripTurbulence },
     uDripStrength: { value: state.dripStrength },
     uDripPinchTime: { value: state.dripPinchTime },
+    uLightRadius: { value: new THREE.Vector2(state.radiusX, state.radiusY) },
+    uLightRadiusYBelow: { value: state.radiusYBelow },
+    uLightFalloff: { value: state.lightFalloff },
+    uLightTaperAbove: { value: state.taperAbove },
+    uLightTaperBelow: { value: state.taperBelow },
+    uLightTaperStart: { value: state.taperStart },
+    uLightTaperEnd: { value: state.taperEnd },
     uTime: { value: 0 },
   },
   depthTest: false,
@@ -1215,7 +1236,6 @@ clearTarget(historyTargetA);
 clearTarget(historyTargetB);
 clearTarget(interactionTargetA);
 clearTarget(interactionTargetB);
-clearTarget(dripSnapshotTarget);
 clearTarget(strokeSpreadTargetA);
 clearTarget(strokeSpreadTargetB);
 clearTarget(nearestTargetA);
@@ -1263,9 +1283,8 @@ function setPointerFromClient(clientX: number, clientY: number): void {
 function startDrip(): void {
   dripAnchor.x = pointerTarget.x;
   dripAnchor.y = pointerTarget.y;
-  dripAge = Number.POSITIVE_INFINITY;
-  dripEnergy = 0;
-  dripCaptureRequested = true;
+  dripAge = 0;
+  dripEnergy = 1;
 }
 
 if (!QA_POINTER_LOCKED) {
@@ -1295,13 +1314,11 @@ function interactionModeCode(mode: InteractionMode): number {
 function resetInteractionField(): void {
   clearTarget(interactionTargetA);
   clearTarget(interactionTargetB);
-  clearTarget(dripSnapshotTarget);
   interactionRead = interactionTargetA;
   interactionWrite = interactionTargetB;
   dwellAmount = 0;
   dripAge = Number.POSITIVE_INFINITY;
   dripEnergy = 0;
-  dripCaptureRequested = false;
   renderer.setClearColor(0xfbfbfa, 1);
   renderer.setRenderTarget(null);
 }
@@ -1566,19 +1583,6 @@ function animate(now: number): void {
   renderPass(temporalMaterial, historyWrite);
   [historyRead, historyWrite] = [historyWrite, historyRead];
 
-  if (dripCaptureRequested) {
-    sourceMaterial.uniforms.uPointer.value.set(dripAnchor.x, dripAnchor.y);
-    renderPass(sourceMaterial, sourceTarget);
-    snapshotMaterial.uniforms.uInput.value = sourceTarget.texture;
-    renderPass(snapshotMaterial, dripSnapshotTarget);
-    sourceMaterial.uniforms.uPointer.value.set(pointer.x, pointer.y);
-    if (!QA_MODE) {
-      dripAge = 0;
-      dripEnergy = 1;
-    }
-    dripCaptureRequested = false;
-  }
-
   const renderedDripAge = QA_MODE ? qaDripAge : dripAge;
   const renderedDripEnergy = QA_MODE
     ? THREE.MathUtils.clamp(qaDripEnergy, 0, 1)
@@ -1615,6 +1619,13 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uDripTurbulence.value = state.dripTurbulence;
   interactionFieldMaterial.uniforms.uDripStrength.value = state.dripStrength;
   interactionFieldMaterial.uniforms.uDripPinchTime.value = state.dripPinchTime;
+  interactionFieldMaterial.uniforms.uLightRadius.value.set(state.radiusX, state.radiusY);
+  interactionFieldMaterial.uniforms.uLightRadiusYBelow.value = state.radiusYBelow;
+  interactionFieldMaterial.uniforms.uLightFalloff.value = state.lightFalloff;
+  interactionFieldMaterial.uniforms.uLightTaperAbove.value = state.taperAbove;
+  interactionFieldMaterial.uniforms.uLightTaperBelow.value = state.taperBelow;
+  interactionFieldMaterial.uniforms.uLightTaperStart.value = state.taperStart;
+  interactionFieldMaterial.uniforms.uLightTaperEnd.value = state.taperEnd;
   interactionFieldMaterial.uniforms.uTime.value = elapsed;
   renderPass(interactionFieldMaterial, interactionWrite);
   [interactionRead, interactionWrite] = [interactionWrite, interactionRead];

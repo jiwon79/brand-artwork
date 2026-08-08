@@ -53,8 +53,12 @@
     composites three antialiased necks plus bead seeds after the broad metaball
     pass so they stay thin. `thermal` builds dwell over 0.62 seconds below
     54 px/s, then locally stretches the field vertically before metaball
-    accumulation and amplifies its color centers. `classic` passes the remembered
-    field through unchanged. The two extensions never mix.
+    accumulation and amplifies its color centers. `drip` stores only the touched
+    anchor and age, advects the asymmetric cursor falloff downward, and
+    re-multiplies that moving falloff by the glyph pixels at each new output
+    position before metaball accumulation. It never snapshots or translates the
+    initially activated glyph shape. `classic` passes the remembered field
+    through unchanged. The three extensions never mix.
 11. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
@@ -113,9 +117,10 @@ The reproducible measurements and label-map generator are stored in
   the opposite direction; key `1` selects it.
 - `interaction=thermal` grows taller, hotter color centers after a local dwell;
   key `2` selects it.
-- `interaction=drip` snapshots every glyph pixel activated by the touched
-  falloff, then advects and stretches that whole field downward. The transformed
-  field is rendered by the existing metaball passes; key `3` selects it.
+- `interaction=drip` advects and vertically stretches the touched cursor falloff
+  itself. Every frame, the moved falloff is multiplied by the glyph mask at its
+  current position, and those newly activated pixels enter the existing metaball
+  passes; key `3` selects it.
 - `interaction=classic` preserves the approved reference recreation without an
   extension. Only one interaction mode is evaluated per frame.
 - `?qa` freezes the palette at the reference's pink/yellow phase.
@@ -126,7 +131,8 @@ The reproducible measurements and label-map generator are stored in
 - Add `&qaInteractionSpeed=1&qaVelocityX=1&qaVelocityY=0` to freeze a viscous
   wake, or `&qaDwell=1` to freeze a fully heated thermal bloom.
 - Add `&qaDripAge=1&qaDrip=1` with `interaction=drip` to freeze the first flowed
-  state, or use `qaDripAge=1.7` to inspect the longer whole-field deformation.
+  falloff state, or use `qaDripAge=1.7` to inspect which lower glyph pixels the
+  stretched falloff activates.
 - Press `g` to hide or reveal the tuning panel.
 
 ## Reference-space defaults

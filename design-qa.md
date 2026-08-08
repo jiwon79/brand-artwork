@@ -401,15 +401,17 @@ final result: passed
 - Fixed-time sequence: `pages/color-text/qa/interaction-drip-sequence.png`
 - Live state before touch: `pages/color-text/qa/interaction-drip-field-before-full.jpg`
 - Live state 120 ms after touch: `pages/color-text/qa/interaction-drip-field-early-full.jpg`
-- Sequence times: 0 s snapshot, 1 s flow, 1.7 s extended flow
+- Live state about 1 s after touch: `pages/color-text/qa/interaction-drip-field-live-full.jpg`
+- Sequence times: 0 s original falloff, 1 s flow, 1.7 s extended flow
 - Fixed QA anchor: `qaX=0.50`, `qaY=0.70`
 - Live before/after captures used the normal reference falloff and palette.
 
 ## Findings
 
-- A click or touch snapshots every glyph pixel activated by that falloff, rather than creating one analytic strand at the pointer center.
-- The full snapshot moves downward under the same gravity value, stretches vertically, and develops continuous per-column speed differences.
-- The deformation writes only the input activation and color-center fields. The existing 192-sample metaball and smoothing passes still create the visible silhouette.
+- A click or touch stores only the anchor and elapsed time. No activated glyph-pixel snapshot is created.
+- The asymmetric cursor falloff itself moves downward under gravity, stretches vertically, and develops continuous per-column speed differences.
+- At every frame, the moved falloff is multiplied by the glyph mask at its new position. The sequence therefore changes from upper-line glyph pixels to newly encountered lower-line glyph pixels instead of translating the original silhouette.
+- This new activation field enters the existing 192-sample metaball and smoothing passes, which still create the visible silhouette.
 - The drip no longer writes to the direct derivative-antialiased trail channel.
 - No fallback color is injected at the anchor, and pointer-down no longer clears render targets outside the animation frame.
 - The untouched 300 px left background strip was pixel-identical immediately before and 120 ms after the live touch (infinite PSNR), confirming the full-screen color flash is gone.
@@ -418,7 +420,7 @@ final result: passed
 ## Runtime checks
 
 - Live pointer-down was tested in the existing Chrome artwork tab.
-- Fixed QA frames were checked at the snapshot, first-flow, and extended-flow phases.
+- Fixed QA frames were checked at the original-falloff, first-flow, and extended-flow phases. The visible letter topology changes between frames, confirming that the initial glyph result is not being copied downward.
 - Browser console warnings and errors: none.
 - TypeScript typecheck and the production Vite build passed before final documentation updates.
 
