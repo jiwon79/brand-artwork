@@ -784,91 +784,131 @@ window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',
 });
 
 function bindGui(): void {
-  const gui = new GUI({ title: 'Light field' });
-  gui.add(state, 'radiusX', 70, 230, 1).onChange((value: number) => {
+  const gui = new GUI({ title: 'Color Text controls', width: 320 });
+
+  const lightFolder = gui.addFolder('광원 / Falloff');
+  lightFolder.add(state, 'radiusX', 40, 260, 1).name('가로 반경').onChange((value: number) => {
     sourceMaterial.uniforms.uRadius.value.x = value;
   });
-  gui.add(state, 'radiusY', 70, 230, 1).onChange((value: number) => {
+  lightFolder.add(state, 'radiusY', 40, 260, 1).name('위쪽 반경').onChange((value: number) => {
     sourceMaterial.uniforms.uRadius.value.y = value;
   });
-  gui.add(state, 'radiusYBelow', 70, 250, 1).onChange((value: number) => {
+  lightFolder.add(state, 'radiusYBelow', 40, 320, 1).name('아래쪽 반경').onChange((value: number) => {
     sourceMaterial.uniforms.uRadiusYBelow.value = value;
   });
-  gui.add(state, 'taperAbove', 0.15, 1, 0.01).onChange((value: number) => {
-    sourceMaterial.uniforms.uTaperAbove.value = value;
-  });
-  gui.add(state, 'taperBelow', 0.15, 1, 0.01).onChange((value: number) => {
-    sourceMaterial.uniforms.uTaperBelow.value = value;
-  });
-  gui.add(state, 'lightFalloff', 0.15, 0.95, 0.01).onChange((value: number) => {
+  lightFolder.add(state, 'lightFalloff', 0.02, 0.95, 0.01).name('Falloff 시작').onChange((value: number) => {
     sourceMaterial.uniforms.uFalloff.value = value;
   });
-  gui.add(state, 'seedThreshold', 0.01, 0.30, 0.005).onChange((value: number) => {
+  lightFolder.add(state, 'taperAbove', 0.15, 1, 0.01).name('위쪽 폭 비율').onChange((value: number) => {
+    sourceMaterial.uniforms.uTaperAbove.value = value;
+  });
+  lightFolder.add(state, 'taperBelow', 0.15, 1, 0.01).name('아래쪽 폭 비율').onChange((value: number) => {
+    sourceMaterial.uniforms.uTaperBelow.value = value;
+  });
+  lightFolder.add(state, 'taperStart', 0, 0.8, 0.01).name('폭 축소 시작').onChange((value: number) => {
+    sourceMaterial.uniforms.uTaperStart.value = value;
+  });
+  lightFolder.add(state, 'taperEnd', 0.2, 1, 0.01).name('폭 축소 끝').onChange((value: number) => {
+    sourceMaterial.uniforms.uTaperEnd.value = value;
+  });
+
+  const surfaceFolder = gui.addFolder('액체 실루엣');
+  surfaceFolder.add(state, 'metaballInputThreshold', 0, 0.12, 0.0025)
+    .name('입력 임계값')
+    .onChange((value: number) => {
+      surfaceSourceMaterial.uniforms.uInputThreshold.value = value;
+    });
+  surfaceFolder.add(state, 'metaballInputSoftness', 0.005, 0.12, 0.0025)
+    .name('입력 부드러움')
+    .onChange((value: number) => {
+      surfaceSourceMaterial.uniforms.uInputSoftness.value = value;
+    });
+  surfaceFolder.add(state, 'metaballBlurRadius', 4, 60, 0.5)
+    .name('주변 조사 반경')
+    .onChange((value: number) => {
+      surfaceBlurMaterial.uniforms.uBlurRadius.value = value;
+    });
+  surfaceFolder.add(state, 'metaballFalloffPower', 0.5, 8, 0.1)
+    .name('거리 감쇠 지수')
+    .onChange((value: number) => {
+      surfaceBlurMaterial.uniforms.uFalloffPower.value = value;
+    });
+  surfaceFolder.add(state, 'metaballSourceGain', 0, 2, 0.02)
+    .name('중심 픽셀 비율')
+    .onChange((value: number) => {
+      surfaceBlurMaterial.uniforms.uSourceGain.value = value;
+    });
+  surfaceFolder.add(state, 'metaballFieldGain', 0.5, 4, 0.05)
+    .name('주변 field 비율')
+    .onChange((value: number) => {
+      surfaceBlurMaterial.uniforms.uFieldGain.value = value;
+    });
+  surfaceFolder.add(state, 'metaballSmoothing', 0.5, 4, 0.1)
+    .name('Field smoothing')
+    .onChange((value: number) => {
+      surfaceSmoothMaterial.uniforms.uSigma.value = value;
+    });
+  surfaceFolder.add(state, 'surfaceThreshold', 0.01, 0.3, 0.0025)
+    .name('실루엣 임계값')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uSurfaceThreshold.value = value;
+    });
+  surfaceFolder.add(state, 'surfaceSoftness', 0.002, 0.08, 0.002)
+    .name('경계 부드러움')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uSurfaceSoftness.value = value;
+    });
+
+  const motionFolder = gui.addFolder('움직임 / 시간 기억');
+  motionFolder.add(state, 'pointerEase', 1, 16, 0.1).name('광원 추종 속도');
+  motionFolder.add(state, 'pointerMaxSpeed', 80, 720, 10).name('광원 최대 속도');
+  motionFolder.add(state, 'activationAttack', 0.01, 0.3, 0.005).name('활성 Attack');
+  motionFolder.add(state, 'activationRelease', 0.08, 1.2, 0.01).name('활성 Release');
+
+  const colorFolder = gui.addFolder('색상');
+  colorFolder.add(state, 'colorBlurSigma', 0.5, 16, 0.1).name('색 에너지 blur').onChange((value: number) => {
+    colorBlurMaterial.uniforms.uSigma.value = value;
+  });
+  colorFolder.add(state, 'colorBlurStep', 0.5, 2, 0.05).name('색 blur 간격').onChange((value: number) => {
+    colorBlurMaterial.uniforms.uStep.value = value;
+  });
+  colorFolder.add(state, 'colorFloor', 0, 0.3, 0.005).name('색 에너지 시작').onChange((value: number) => {
+    finalMaterial.uniforms.uColorFloor.value = value;
+  });
+  colorFolder.add(state, 'colorRange', 0.1, 1, 0.01).name('색 에너지 범위').onChange((value: number) => {
+    finalMaterial.uniforms.uColorRange.value = value;
+  });
+  colorFolder.add(state, 'hueBands', 0.1, 0.8, 0.01).name('고온 색상 간격').onChange((value: number) => {
+    finalMaterial.uniforms.uHueBands.value = value;
+  });
+  colorFolder.add(state, 'colorCycle', 2, 20, 0.1).name('색 순환 시간').onChange((value: number) => {
+    finalMaterial.uniforms.uColorCycle.value = value;
+  });
+
+  const advancedFolder = gui.addFolder('고급 설정');
+  advancedFolder.add(state, 'seedThreshold', 0.01, 0.30, 0.005).name('Seed 임계값').onChange((value: number) => {
     nearestSeedMaterial.uniforms.uSeedThreshold.value = value;
     finalMaterial.uniforms.uSeedThreshold.value = value;
   });
-  gui.add(state, 'metaballInputThreshold', 0, 0.4, 0.005).onChange((value: number) => {
-    surfaceSourceMaterial.uniforms.uInputThreshold.value = value;
-  });
-  gui.add(state, 'metaballInputSoftness', 0.005, 0.2, 0.005).onChange((value: number) => {
-    surfaceSourceMaterial.uniforms.uInputSoftness.value = value;
-  });
-  gui.add(state, 'metaballBlurRadius', 4, 40, 0.5).onChange((value: number) => {
-    surfaceBlurMaterial.uniforms.uBlurRadius.value = value;
-  });
-  gui.add(state, 'metaballFalloffPower', 0.5, 8, 0.1).onChange((value: number) => {
-    surfaceBlurMaterial.uniforms.uFalloffPower.value = value;
-  });
-  gui.add(state, 'metaballSourceGain', 0, 2, 0.02).onChange((value: number) => {
-    surfaceBlurMaterial.uniforms.uSourceGain.value = value;
-  });
-  gui.add(state, 'metaballFieldGain', 0.5, 4, 0.05).onChange((value: number) => {
-    surfaceBlurMaterial.uniforms.uFieldGain.value = value;
-  });
-  gui.add(state, 'metaballSmoothing', 0.5, 4, 0.1).onChange((value: number) => {
-    surfaceSmoothMaterial.uniforms.uSigma.value = value;
-  });
-  gui.add(state, 'coreRadius', 1, 8, 0.1).onChange((value: number) => {
+  advancedFolder.add(state, 'coreRadius', 0.1, 8, 0.1).name('Core 반경').onChange((value: number) => {
     finalMaterial.uniforms.uCoreRadius.value = value;
   });
-  gui.add(state, 'coreRadiusMin', 0.1, 5, 0.1).onChange((value: number) => {
+  advancedFolder.add(state, 'coreRadiusMin', 0.1, 5, 0.1).name('Core 최소 반경').onChange((value: number) => {
     finalMaterial.uniforms.uCoreRadiusMin.value = value;
   });
-  gui.add(state, 'coreRadiusExponent', 0.2, 1.5, 0.05).onChange((value: number) => {
+  advancedFolder.add(state, 'coreRadiusExponent', 0.1, 1.5, 0.05).name('Core 강도 지수').onChange((value: number) => {
     finalMaterial.uniforms.uCoreRadiusExponent.value = value;
   });
-  gui.add(state, 'coreMix', 0, 1, 0.01).onChange((value: number) => {
+  advancedFolder.add(state, 'coreMix', 0, 1, 0.01).name('Core 혼합').onChange((value: number) => {
     finalMaterial.uniforms.uCoreMix.value = value;
   });
-  gui.add(state, 'surfaceThreshold', 0.01, 0.3, 0.0025).onChange((value: number) => {
-    finalMaterial.uniforms.uSurfaceThreshold.value = value;
-  });
-  gui.add(state, 'surfaceSoftness', 0.01, 0.25, 0.005).onChange((value: number) => {
-    finalMaterial.uniforms.uSurfaceSoftness.value = value;
-  });
-  gui.add(state, 'colorBlurSigma', 0.5, 12, 0.1).onChange((value: number) => {
-    colorBlurMaterial.uniforms.uSigma.value = value;
-  });
-  gui.add(state, 'colorBlurStep', 0.5, 2, 0.05).onChange((value: number) => {
-    colorBlurMaterial.uniforms.uStep.value = value;
-  });
-  gui.add(state, 'colorFloor', 0, 0.3, 0.005).onChange((value: number) => {
-    finalMaterial.uniforms.uColorFloor.value = value;
-  });
-  gui.add(state, 'colorRange', 0.1, 1, 0.01).onChange((value: number) => {
-    finalMaterial.uniforms.uColorRange.value = value;
-  });
-  gui.add(state, 'hueBands', 0.1, 0.8, 0.01).onChange((value: number) => {
-    finalMaterial.uniforms.uHueBands.value = value;
-  });
-  gui.add(state, 'colorCycle', 2, 20, 0.1).onChange((value: number) => {
-    finalMaterial.uniforms.uColorCycle.value = value;
-  });
-  gui.add(state, 'pointerEase', 1, 16, 0.1);
-  gui.add(state, 'pointerMaxSpeed', 80, 720, 10);
-  gui.add(state, 'activationAttack', 0.01, 0.3, 0.005);
-  gui.add(state, 'activationRelease', 0.08, 1.2, 0.01);
-  gui.hide();
+
+  lightFolder.close();
+  motionFolder.close();
+  colorFolder.close();
+  advancedFolder.close();
+
+  if (QA_MODE) gui.hide();
 
   window.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() === 'g') gui.show(gui.domElement.style.display === 'none');
