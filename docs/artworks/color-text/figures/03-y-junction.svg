@@ -16,9 +16,11 @@
   <rect x="80" y="126" width="104" height="32" rx="16" fill="#eceff3"/>
   <text class="tag" x="132" y="148" fill="#5b6675">이전 방식</text>
   <text class="head" x="308" y="190">가장 가까운 활성 픽셀만 선택</text>
-  <path d="M182 252 L308 355 L434 252 M308 355 L308 468" fill="none" stroke="#9aa4b2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M152 262 C168 210 229 202 279 246 C295 259 320 259 337 245 C387 203 448 212 464 264 C477 307 435 340 379 348 C340 353 353 405 349 458 C346 497 272 497 269 458 C265 405 278 354 238 348 C182 340 140 306 152 262Z" fill="#cfd6df" stroke="#7e8997" stroke-width="3"/>
-  <circle cx="308" cy="350" r="74" fill="#7e8997" fill-opacity=".75"/>
+  <g transform="translate(46 28) scale(.85)">
+    <path d="M182 252 L308 355 L434 252 M308 355 L308 468" fill="none" stroke="#9aa4b2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M152 262 C168 210 229 202 279 246 C295 259 320 259 337 245 C387 203 448 212 464 264 C477 307 435 340 379 348 C340 353 353 405 349 458 C346 497 272 497 269 458 C265 405 278 354 238 348 C182 340 140 306 152 262Z" fill="#cfd6df" stroke="#7e8997" stroke-width="3"/>
+    <circle cx="308" cy="350" r="74" fill="#7e8997" fill-opacity=".75"/>
+  </g>
   <text class="body" x="308" y="492">교차점에 큰 원을 찍은 것처럼</text>
   <text class="body" x="308" y="516">중심이 밖으로 부풀어 오른다.</text>
 
@@ -26,10 +28,12 @@
   <rect x="664" y="126" width="104" height="32" rx="16" fill="#e8f0ff"/>
   <text class="tag" x="716" y="148" fill="#315f9f">현재 방식</text>
   <text class="head" x="892" y="190">주변 활성 픽셀을 함께 조사</text>
-  <path d="M766 252 L892 355 L1018 252 M892 355 L892 468" fill="none" stroke="#9aa4b2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M736 264 C751 212 811 202 858 242 C874 255 881 278 892 299 C903 278 910 255 926 242 C973 202 1033 212 1048 264 C1061 309 1023 339 979 348 C945 355 942 393 950 448 C956 492 920 511 892 480 C864 511 828 492 834 448 C842 393 839 355 805 348 C761 339 723 309 736 264Z" fill="#b9cbed" stroke="#4c78c2" stroke-width="3"/>
-  <path d="M854 257 C867 275 879 306 892 330 C905 306 917 275 930 257" fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round"/>
-  <path d="M892 314 C873 352 874 397 892 425 C910 397 911 352 892 314Z" fill="#ffffff"/>
+  <g transform="translate(134 28) scale(.85)">
+    <path d="M766 252 L892 355 L1018 252 M892 355 L892 468" fill="none" stroke="#9aa4b2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M736 264 C751 212 811 202 858 242 C874 255 881 278 892 299 C903 278 910 255 926 242 C973 202 1033 212 1048 264 C1061 309 1023 339 979 348 C945 355 942 393 950 448 C956 492 920 511 892 480 C864 511 828 492 834 448 C842 393 839 355 805 348 C761 339 723 309 736 264Z" fill="#b9cbed" stroke="#4c78c2" stroke-width="3"/>
+    <path d="M854 257 C867 275 879 306 892 330 C905 306 917 275 930 257" fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round"/>
+    <path d="M892 314 C873 352 874 397 892 425 C910 397 911 352 892 314Z" fill="#ffffff"/>
+  </g>
   <text class="body" x="892" y="492">두 팔의 기울기가 만나는 곳에 안장점이 생겨</text>
   <text class="body" x="892" y="516">흰 공간이 줄기를 따라 오목하게 내려온다.</text>
 
