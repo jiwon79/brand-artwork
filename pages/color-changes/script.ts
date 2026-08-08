@@ -7,9 +7,11 @@ const TEXTURE_SCALE = 3;
 const FIELD_WIDTH = ART_WIDTH;
 const FIELD_HEIGHT = ART_HEIGHT;
 const COLOR_BLUR_TAPS = 20;
-const SURFACE_BLUR_TAPS = 13;
+const METABALL_SAMPLES = 192;
+const METABALL_SMOOTH_TAPS = 5;
 const STROKE_SPREAD_PASSES = 8;
-// The weighted stroke body stays inside the local search radius before surface smoothing.
+// Jump flooding is retained only for the subtle color carrier. The visible
+// silhouette comes from the accumulated metaball field below.
 const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
 const searchParams = new URLSearchParams(window.location.search);
 const QA_MODE = searchParams.has('qa');
@@ -33,25 +35,28 @@ const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const error = document.getElementById('error') as HTMLParagraphElement;
 
 const state = {
-  radiusX: qaNumber('qaRadiusX', 145),
-  radiusY: qaNumber('qaRadiusY', 150),
-  radiusYBelow: qaNumber('qaRadiusYBelow', 165),
+  radiusX: qaNumber('qaRadiusX', 160),
+  radiusY: qaNumber('qaRadiusY', 120),
+  radiusYBelow: qaNumber('qaRadiusYBelow', 240),
   taperAbove: qaNumber('qaTaperAbove', 0.55),
   taperBelow: qaNumber('qaTaperBelow', 0.55),
   taperStart: qaNumber('qaTaperStart', 0.25),
   taperEnd: qaNumber('qaTaperEnd', 0.85),
   lightFalloff: qaNumber('qaLightFalloff', 0.12),
   seedThreshold: qaNumber('qaSeedThreshold', 0.05),
-  bodyRadius: qaNumber('qaBody', 6.0),
-  bodyRadiusMin: qaNumber('qaBodyMin', 2.8),
-  bodyRadiusExponent: qaNumber('qaBodyExponent', 1.5),
-  bodyStrengthFloor: qaNumber('qaBodyStrengthFloor', 0.72),
+  metaballInputThreshold: qaNumber('qaMetaballInput', 0.02),
+  metaballInputSoftness: qaNumber('qaMetaballInputSoftness', 0.025),
+  metaballBlurRadius: qaNumber('qaMetaballBlur', 30.0),
+  metaballFalloffPower: qaNumber('qaMetaballPower', 3.2),
+  metaballSourceGain: qaNumber('qaMetaballSourceGain', 0.55),
+  metaballFieldGain: qaNumber('qaMetaballFieldGain', 2.2),
+  metaballSmoothing: qaNumber('qaMetaballSmoothing', 1.8),
   coreRadius: qaNumber('qaCore', 1.2),
   coreRadiusMin: qaNumber('qaCoreMin', 0.4),
   coreRadiusExponent: qaNumber('qaCoreExponent', 0.25),
-  surfaceBlurSigma: qaNumber('qaSurfaceSigma', 5.8),
-  surfaceThreshold: qaNumber('qaSurfaceThreshold', 0.36),
-  surfaceSoftness: qaNumber('qaSurfaceSoftness', 0.035),
+  coreMix: qaNumber('qaCoreMix', 0.0),
+  surfaceThreshold: qaNumber('qaSurfaceThreshold', 0.07),
+  surfaceSoftness: qaNumber('qaSurfaceSoftness', 0.012),
   colorBlurSigma: 9.0,
   colorBlurStep: 1.0,
   colorFloor: 0.035,
@@ -80,7 +85,7 @@ type Pointer = { x: number; y: number };
 
 const initialPointer = {
   x: QA_POINTER_LOCKED ? THREE.MathUtils.clamp(qaPointerX, 0, 1) : 0.37,
-  y: QA_POINTER_LOCKED ? THREE.MathUtils.clamp(qaPointerY, 0, 1) : 0.458,
+  y: QA_POINTER_LOCKED ? THREE.MathUtils.clamp(qaPointerY, 0, 1) : 0.52,
 };
 const pointer: Pointer = { ...initialPointer };
 const pointerTarget: Pointer = { ...pointer };
@@ -187,6 +192,7 @@ const colorFieldTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, 
 const nearestTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, nearestTargetOptions);
 const nearestTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, nearestTargetOptions);
 const surfaceSourceTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const metaballRawTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const surfaceHorizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const surfaceFieldTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 
@@ -431,37 +437,25 @@ const surfaceSourceMaterial = new THREE.ShaderMaterial({
     precision highp float;
 
     varying vec2 vUv;
-    uniform sampler2D uNearest;
-    uniform vec2 uArtSize;
-    uniform float uBodyRadius;
-    uniform float uBodyRadiusMin;
-    uniform float uBodyRadiusExponent;
-    uniform float uBodyStrengthFloor;
-    uniform float uSeedThreshold;
+    uniform sampler2D uActivation;
+    uniform float uInputThreshold;
+    uniform float uInputSoftness;
 
     void main() {
-      vec4 nearest = texture2D(uNearest, vUv);
-      if (nearest.a < 0.5) {
-        gl_FragColor = vec4(0.0);
-        return;
-      }
-
-      float strength = smoothstep(uSeedThreshold, 0.72, nearest.z);
-      float localRadius = mix(uBodyRadiusMin, uBodyRadius, pow(strength, uBodyRadiusExponent));
-      float distanceToStroke = length((vUv - nearest.xy) * uArtSize);
-      float strokeBody = 1.0 - smoothstep(localRadius - 0.8, localRadius + 0.8, distanceToStroke);
-      strokeBody *= mix(uBodyStrengthFloor, 1.0, strength);
-      gl_FragColor = vec4(strokeBody, 0.0, 0.0, 1.0);
+      vec2 activation = texture2D(uActivation, vUv).rg;
+      float detected = smoothstep(
+        uInputThreshold,
+        uInputThreshold + uInputSoftness,
+        activation.r
+      );
+      float sourceAlpha = activation.r * detected * step(0.08, activation.g);
+      gl_FragColor = vec4(sourceAlpha, activation.g, 0.0, 1.0);
     }
   `,
   uniforms: {
-    uNearest: { value: nearestTargetA.texture },
-    uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
-    uBodyRadius: { value: state.bodyRadius },
-    uBodyRadiusMin: { value: state.bodyRadiusMin },
-    uBodyRadiusExponent: { value: state.bodyRadiusExponent },
-    uBodyStrengthFloor: { value: state.bodyStrengthFloor },
-    uSeedThreshold: { value: state.seedThreshold },
+    uActivation: { value: historyTargetA.texture },
+    uInputThreshold: { value: state.metaballInputThreshold },
+    uInputSoftness: { value: state.metaballInputSoftness },
   },
   depthTest: false,
   depthWrite: false,
@@ -474,29 +468,79 @@ const surfaceBlurMaterial = new THREE.ShaderMaterial({
 
     varying vec2 vUv;
     uniform sampler2D uInput;
+    uniform vec2 uArtSize;
+    uniform float uBlurRadius;
+    uniform float uFalloffPower;
+    uniform float uSourceGain;
+    uniform float uFieldGain;
+
+    void main() {
+      const float goldenAngle = 2.39996323;
+      float sourceAlpha = texture2D(uInput, vUv).r;
+      float weightedField = sourceAlpha;
+      float totalWeight = 1.0;
+
+      for (int index = 0; index < ${METABALL_SAMPLES}; index++) {
+        float sampleRatio = (float(index) + 0.5) / float(${METABALL_SAMPLES});
+        float radiusRatio = sqrt(sampleRatio);
+        float angle = float(index) * goldenAngle;
+        float sampleRadius = radiusRatio * uBlurRadius;
+        vec2 offsetPixels = vec2(cos(angle), sin(angle)) * sampleRadius;
+        vec2 sampleUv = vUv + offsetPixels / uArtSize;
+        float radialWeight = pow(max(1.0 - radiusRatio, 0.0), uFalloffPower);
+        weightedField += texture2D(uInput, sampleUv).r * radialWeight;
+        totalWeight += radialWeight;
+      }
+
+      float metaballField = sourceAlpha * uSourceGain
+        + weightedField / max(totalWeight, 0.001) * uFieldGain;
+      gl_FragColor = vec4(metaballField, 0.0, 0.0, 1.0);
+    }
+  `,
+  uniforms: {
+    uInput: { value: surfaceSourceTarget.texture },
+    uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
+    uBlurRadius: { value: state.metaballBlurRadius },
+    uFalloffPower: { value: state.metaballFalloffPower },
+    uSourceGain: { value: state.metaballSourceGain },
+    uFieldGain: { value: state.metaballFieldGain },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
+const surfaceSmoothMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uInput;
     uniform vec2 uDirection;
     uniform float uSigma;
 
     void main() {
       float sigmaSquared = max(uSigma * uSigma, 0.001);
       float totalWeight = 0.0;
-      float surfaceField = 0.0;
+      float smoothedField = 0.0;
 
-      for (int index = -${SURFACE_BLUR_TAPS}; index <= ${SURFACE_BLUR_TAPS}; index++) {
-        float sampleDistance = float(index);
-        float weight = exp(-0.5 * sampleDistance * sampleDistance / sigmaSquared);
-        surfaceField += texture2D(uInput, vUv + uDirection * sampleDistance).r * weight;
+      for (int index = -${METABALL_SMOOTH_TAPS}; index <= ${METABALL_SMOOTH_TAPS}; index++) {
+        float distancePixels = float(index);
+        float weight = exp(-0.5 * distancePixels * distancePixels / sigmaSquared);
+        smoothedField += texture2D(
+          uInput,
+          vUv + uDirection * distancePixels
+        ).r * weight;
         totalWeight += weight;
       }
 
-      surfaceField /= max(totalWeight, 0.001);
-      gl_FragColor = vec4(surfaceField, 0.0, 0.0, 1.0);
+      gl_FragColor = vec4(smoothedField / max(totalWeight, 0.001), 0.0, 0.0, 1.0);
     }
   `,
   uniforms: {
-    uInput: { value: surfaceSourceTarget.texture },
-    uDirection: { value: new THREE.Vector2(1 / ART_WIDTH, 0) },
-    uSigma: { value: state.surfaceBlurSigma },
+    uInput: { value: metaballRawTarget.texture },
+    uDirection: { value: new THREE.Vector2(1 / FIELD_WIDTH, 0) },
+    uSigma: { value: state.metaballSmoothing },
   },
   depthTest: false,
   depthWrite: false,
@@ -522,6 +566,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform float uCoreRadius;
     uniform float uCoreRadiusMin;
     uniform float uCoreRadiusExponent;
+    uniform float uCoreMix;
     uniform float uColorFloor;
     uniform float uColorRange;
     uniform float uHueBands;
@@ -582,7 +627,7 @@ const finalMaterial = new THREE.ShaderMaterial({
           nearest.z
         );
         strokeCore *= coreGate;
-        coverage = max(coverage, strokeCore);
+        coverage = max(coverage, strokeCore * uCoreMix);
         vec2 blurredField = texture2D(uColorField, artUv).rg;
         colorEnergy = blurredField.r / max(blurredField.g, 0.004);
         strokeDensity = blurredField.g;
@@ -643,6 +688,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     uCoreRadius: { value: state.coreRadius },
     uCoreRadiusMin: { value: state.coreRadiusMin },
     uCoreRadiusExponent: { value: state.coreRadiusExponent },
+    uCoreMix: { value: state.coreMix },
     uColorFloor: { value: state.colorFloor },
     uColorRange: { value: state.colorRange },
     uHueBands: { value: state.hueBands },
@@ -759,20 +805,28 @@ function bindGui(): void {
   });
   gui.add(state, 'seedThreshold', 0.01, 0.30, 0.005).onChange((value: number) => {
     nearestSeedMaterial.uniforms.uSeedThreshold.value = value;
-    surfaceSourceMaterial.uniforms.uSeedThreshold.value = value;
     finalMaterial.uniforms.uSeedThreshold.value = value;
   });
-  gui.add(state, 'bodyRadius', 4, 24, 0.1).onChange((value: number) => {
-    surfaceSourceMaterial.uniforms.uBodyRadius.value = value;
+  gui.add(state, 'metaballInputThreshold', 0, 0.4, 0.005).onChange((value: number) => {
+    surfaceSourceMaterial.uniforms.uInputThreshold.value = value;
   });
-  gui.add(state, 'bodyRadiusMin', 1, 14, 0.1).onChange((value: number) => {
-    surfaceSourceMaterial.uniforms.uBodyRadiusMin.value = value;
+  gui.add(state, 'metaballInputSoftness', 0.005, 0.2, 0.005).onChange((value: number) => {
+    surfaceSourceMaterial.uniforms.uInputSoftness.value = value;
   });
-  gui.add(state, 'bodyRadiusExponent', 0.3, 2.4, 0.05).onChange((value: number) => {
-    surfaceSourceMaterial.uniforms.uBodyRadiusExponent.value = value;
+  gui.add(state, 'metaballBlurRadius', 4, 40, 0.5).onChange((value: number) => {
+    surfaceBlurMaterial.uniforms.uBlurRadius.value = value;
   });
-  gui.add(state, 'bodyStrengthFloor', 0.5, 1, 0.01).onChange((value: number) => {
-    surfaceSourceMaterial.uniforms.uBodyStrengthFloor.value = value;
+  gui.add(state, 'metaballFalloffPower', 0.5, 8, 0.1).onChange((value: number) => {
+    surfaceBlurMaterial.uniforms.uFalloffPower.value = value;
+  });
+  gui.add(state, 'metaballSourceGain', 0, 2, 0.02).onChange((value: number) => {
+    surfaceBlurMaterial.uniforms.uSourceGain.value = value;
+  });
+  gui.add(state, 'metaballFieldGain', 0.5, 4, 0.05).onChange((value: number) => {
+    surfaceBlurMaterial.uniforms.uFieldGain.value = value;
+  });
+  gui.add(state, 'metaballSmoothing', 0.5, 4, 0.1).onChange((value: number) => {
+    surfaceSmoothMaterial.uniforms.uSigma.value = value;
   });
   gui.add(state, 'coreRadius', 1, 8, 0.1).onChange((value: number) => {
     finalMaterial.uniforms.uCoreRadius.value = value;
@@ -783,10 +837,10 @@ function bindGui(): void {
   gui.add(state, 'coreRadiusExponent', 0.2, 1.5, 0.05).onChange((value: number) => {
     finalMaterial.uniforms.uCoreRadiusExponent.value = value;
   });
-  gui.add(state, 'surfaceBlurSigma', 0.5, 10, 0.1).onChange((value: number) => {
-    surfaceBlurMaterial.uniforms.uSigma.value = value;
+  gui.add(state, 'coreMix', 0, 1, 0.01).onChange((value: number) => {
+    finalMaterial.uniforms.uCoreMix.value = value;
   });
-  gui.add(state, 'surfaceThreshold', 0.1, 0.8, 0.005).onChange((value: number) => {
+  gui.add(state, 'surfaceThreshold', 0.01, 0.3, 0.0025).onChange((value: number) => {
     finalMaterial.uniforms.uSurfaceThreshold.value = value;
   });
   gui.add(state, 'surfaceSoftness', 0.01, 0.25, 0.005).onChange((value: number) => {
@@ -880,14 +934,16 @@ function animate(now: number): void {
     [nearestRead, nearestWrite] = [nearestWrite, nearestRead];
   }
 
-  surfaceSourceMaterial.uniforms.uNearest.value = nearestRead.texture;
+  surfaceSourceMaterial.uniforms.uActivation.value = historyRead.texture;
   renderPass(surfaceSourceMaterial, surfaceSourceTarget);
   surfaceBlurMaterial.uniforms.uInput.value = surfaceSourceTarget.texture;
-  surfaceBlurMaterial.uniforms.uDirection.value.set(1 / FIELD_WIDTH, 0);
-  renderPass(surfaceBlurMaterial, surfaceHorizontalTarget);
-  surfaceBlurMaterial.uniforms.uInput.value = surfaceHorizontalTarget.texture;
-  surfaceBlurMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
-  renderPass(surfaceBlurMaterial, surfaceFieldTarget);
+  renderPass(surfaceBlurMaterial, metaballRawTarget);
+  surfaceSmoothMaterial.uniforms.uInput.value = metaballRawTarget.texture;
+  surfaceSmoothMaterial.uniforms.uDirection.value.set(1 / FIELD_WIDTH, 0);
+  renderPass(surfaceSmoothMaterial, surfaceHorizontalTarget);
+  surfaceSmoothMaterial.uniforms.uInput.value = surfaceHorizontalTarget.texture;
+  surfaceSmoothMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
+  renderPass(surfaceSmoothMaterial, surfaceFieldTarget);
 
   const elapsed = reduceMotion || QA_MODE ? 0 : (now - startTime) / 1000;
   finalMaterial.uniforms.uTime.value = elapsed;

@@ -25,7 +25,7 @@
   `pages/color-changes/qa/y-legibility-final.jpg`
 - Four-state motion evidence:
   `pages/color-changes/qa/motion-distance-final.jpg`
-- Route: `/pages/color-changes/?qa=1&qaX=0.39&qaY=0.458`
+- Route: `/pages/color-changes/?qa=1&qaX=0.37&qaY=0.52`
 - Three-class route: append `&qaLabels=1`
 - Browser: existing user Chrome window
 
@@ -56,12 +56,16 @@ image therefore use the same crop, dimensions, and frozen palette state.
 - Baseline implementation evidence: thresholding one large Gaussian density
   accumulated neighboring stroke energy, enlarged intersections, exposed
   square density cells, and produced a cloudy center detached from the glyph.
-- Final implementation evidence: the focused `Y` crop has no isolated round
-  hotspot at the junction. Activation first propagates along connected pixels of
-  the same glyph, so touching the stem reaches both `Y` arms without crossing to
-  adjacent letters. Nearest-stroke distance then varies the body radius from
-  2.8 to 6 px. A 5.8 px surface relaxation forms the broad pools, while a
-  0.4–1.2 px continuity core preserves the stroke-led branch and narrow neck.
+- The nearest-stroke revision fixed the detached blur but still had a structural
+  limitation: one output pixel retained only one closest glyph coordinate. At a
+  `Y` junction this max/nearest construction could expand only outward and made
+  a convex cap; it had no summed field in which an interior saddle could form.
+- Final implementation evidence: the focused `Y` crop was accepted before the
+  full silhouette was evaluated. Detected stroke alpha is sampled 192 times on
+  a 30 px Fibonacci spiral and accumulated into a scalar metaball field. Both
+  arms influence the same output region, so their gradients create a smooth,
+  downward concavity through the junction. No `Y`-specific mask or hard-coded
+  notch is used.
 - `surface-tension-final.jpg` shows reference / previous constant-radius pass /
   final pass at equal size. The previous implementation has regularly repeated
   semicircles along every line; the final pass removes that rhythm while keeping
@@ -70,14 +74,15 @@ image therefore use the same crop, dimensions, and frozen palette state.
   the implementation now forms a continuous neck and gravity-like terminal
   rather than a circle merely stamped over a character.
 - The 1440 × 1800 text mask remains high resolution. The 480 × 600 half-float
-  geometry field matches the native source resolution. Eight masked propagation
-  passes follow axial, diagonal, and 2:1 stroke directions before the local
-  16 px jump flood. The 5.8 px surface blur uses 13 taps per side, then a soft
-  0.36 isosurface removes residual one-pixel steps.
+  geometry field matches the native source resolution. The 192-sample field is
+  independently smoothed with a five-tap Gaussian at sigma 1.8, then a soft 0.07
+  isosurface with 0.012 transition removes residual one-pixel steps. The
+  nearest-stroke core is disabled, so no explicit outline remains.
 - Palette-independent segmentation assigns background = 0, unaffected text = 1,
-  and effect = 2. Reference / previous / final effect areas are 25,180 / 30,553 /
-  24,824 px; box occupancies are 0.457 / 0.569 / 0.449. The final is 1.41%
-  narrower in filled area than the reference instead of 21.34% wider.
+  and effect = 2. Reference / broad baseline / final effect areas are 25,180 /
+  30,553 / 25,836 px; box occupancies are 0.457 / 0.569 / 0.511. The final area
+  differs by +2.61% instead of +21.34%. Its median skeleton width is 31.80 px
+  versus 32.14 px in the reference (-1.07%).
 
 ### Color and gradients
 
@@ -109,8 +114,9 @@ image therefore use the same crop, dimensions, and frozen palette state.
   the cutoff and disappear rather than leaving an indefinitely fading raster
   cloud.
 - Pointer tracking is eased and capped at 300 reference px/s. Glyph activation
-  attacks over 55 ms, releases over 340 ms, and disappears geometrically below
-  the 0.05 seed threshold.
+  attacks over 55 ms, releases over 340 ms, and is removed from the geometry by
+  the 0.02 input-detection threshold plus a 0.025 soft transition. The 0.05 seed
+  threshold affects only the fine color carrier.
 - During release, the same retained activation also contracts local pool radii,
   so trails neck down before the seed cutoff instead of retaining identical
   circles until they disappear.
@@ -199,6 +205,26 @@ image therefore use the same crop, dimensions, and frozen palette state.
      bounding-box width/height differ from the reference by +3.26% / -2.73%.
      In the exact label map, the first `E·V` remain text while the following
      `E·R·Y` belong to the effect and the `Y` arms connect through its stem.
+10. Source-informed metaball reconstruction and `Y`-first gate.
+   - New evidence: the supplied Instagram caption names Shody's Metaball plugin
+     and says the typography stroke is revealed with a falloff. The official
+     Metaball manual describes input detection, Fibonacci sampling, threshold,
+     falloff power, blur, and smoothing as separate stages.
+   - Finding — P1: the nearest-stroke/surface-relaxation pass still created a
+     convex lobe at the `Y` center. Because jump flooding stores only the closest
+     seed, the two arms never coexist in one scalar field and cannot create the
+     concave saddle seen in the reference.
+   - Fix: detect falloff-masked text alpha, accumulate a 192-sample Fibonacci
+     metaball field over 30 px, smooth it independently at sigma 1.8, and extract
+     a soft isocontour. Disable the nearest-stroke geometry core; retain jump
+     flooding only as a 4% color carrier.
+   - `silhouette-y-semantic-comparison-final.png` was checked first. It shows the
+     continuous white inlet descending through the `Y` junction instead of the
+     former round protrusion. Only after this passed was
+     `silhouette-semantic-comparison-final.png` checked as a whole.
+   - Final semantic metrics: 25,836 effect pixels (+2.61%), 204 × 248 extent
+     (-5.12% / -3.13%), 25.13 px equivalent strip width (-6.78%), and 31.80 px
+     skeleton-width median (-1.07%) relative to the reference.
 
 ## Findings
 

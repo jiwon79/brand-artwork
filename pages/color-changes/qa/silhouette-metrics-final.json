@@ -1,6 +1,6 @@
 {
-  "input": "pages/color-changes/assets/reference-frame.png",
-  "output": "pages/color-changes/assets/reference-frame-labels.png",
+  "input": "pages/color-changes/qa/silhouette-reference-semantic.png",
+  "output": "pages/color-changes/qa/silhouette-reference-semantic-labels.png",
   "area": 25180,
   "centroid": [
     190.80555996822875,
@@ -160,134 +160,90 @@
   }
 }
 {
-  "input": "pages/color-changes/qa/silhouette-final-default.png",
-  "output": "pages/color-changes/qa/silhouette-final-default-labels.png",
-  "area": 24824,
+  "input": "pages/color-changes/qa/silhouette-final-default-semantic.png",
+  "output": "pages/color-changes/qa/silhouette-final-default-semantic-labels.png",
+  "area": 25836,
   "centroid": [
-    202.2580567193039,
-    321.81598453109893
+    191.98970428858956,
+    311.95239201114725
   ],
   "bbox": [
-    96,
-    194,
-    222,
-    249
+    94,
+    197,
+    204,
+    248
   ],
-  "occupancy": 0.4490755816057021,
-  "perimeter": 4120,
-  "equivalentStripWidth": 12.050485436893204,
-  "skeletonPixels": 2176,
-  "endpoints": 187,
-  "branchPixels": 771,
-  "skeletonWidthP25": 4,
-  "skeletonWidthMedian": 12,
-  "skeletonWidthP75": 26.62741470336914,
-  "skeletonWidthP90": 40.284263610839844,
-  "skeletonWidthMax": 60.7695426940918,
+  "occupancy": 0.510673624288425,
+  "perimeter": 2056,
+  "equivalentStripWidth": 25.132295719844358,
+  "skeletonPixels": 1002,
+  "endpoints": 19,
+  "branchPixels": 337,
+  "skeletonWidthP25": 15.656854629516602,
+  "skeletonWidthMedian": 31.798988342285156,
+  "skeletonWidthP75": 46,
+  "skeletonWidthP90": 61.65685272216797,
+  "skeletonWidthMax": 76.9705581665039,
   "sampleRows": {
     "196": [],
     "205": [
       [
-        150,
-        153
+        149,
+        161
       ],
       [
-        178,
+        174,
         205
       ],
       [
-        214,
-        228
-      ],
-      [
-        230,
-        233
+        215,
+        216
       ]
     ],
     "215": [
       [
-        148,
-        171
+        122,
+        125
       ],
       [
-        176,
-        205
+        130,
+        137
       ],
       [
-        218,
-        229
+        143,
+        208
+      ],
+      [
+        219,
+        227
       ]
     ],
     "225": [
       [
-        150,
-        187
+        122,
+        211
       ],
       [
-        190,
-        191
-      ],
-      [
-        198,
-        205
-      ],
-      [
-        222,
-        227
+        220,
+        226
       ]
     ],
     "235": [
       [
-        138,
-        143
-      ],
-      [
-        150,
-        186
-      ],
-      [
-        190,
-        193
-      ],
-      [
-        198,
-        211
-      ],
-      [
-        222,
-        225
+        104,
+        233
       ]
     ],
     "245": [
       [
-        100,
-        240
-      ],
-      [
-        247,
-        267
+        97,
+        281
       ]
     ],
     "255": [
       [
-        100,
-        103
-      ],
-      [
-        114,
-        115
-      ],
-      [
-        118,
-        263
-      ],
-      [
-        266,
-        267
-      ],
-      [
-        276,
-        277
+        94,
+        272
       ],
       [
         279,
@@ -296,52 +252,32 @@
     ],
     "275": [
       [
-        104,
-        105
+        99,
+        173
       ],
       [
-        131,
-        172
-      ],
-      [
-        194,
-        270
-      ],
-      [
-        274,
-        277
-      ],
-      [
-        282,
-        283
+        192,
+        275
       ]
     ],
     "300": [
       [
-        201,
-        273
+        199,
+        274
       ]
     ],
     "325": [
       [
-        100,
-        193
+        99,
+        192
       ],
       [
-        221,
+        219,
         241
       ],
       [
-        268,
+        269,
         273
-      ],
-      [
-        290,
-        291
-      ],
-      [
-        294,
-        311
       ]
     ],
     "350": [
@@ -350,94 +286,42 @@
         193
       ],
       [
-        224,
-        252
+        223,
+        249
       ],
       [
-        267,
-        275
+        268,
+        274
       ],
       [
-        290,
-        317
+        291,
+        293
       ]
     ],
     "375": [
       [
-        174,
-        266
-      ],
-      [
-        272,
-        273
-      ],
-      [
-        280,
-        293
+        176,
+        264
       ]
     ],
     "400": [
       [
-        182,
-        220
+        181,
+        201
+      ],
+      [
+        207,
+        219
       ],
       [
         230,
-        248
-      ],
-      [
-        274,
-        275
-      ],
-      [
-        282,
-        283
-      ],
-      [
-        287,
-        289
+        246
       ]
     ],
     "425": [
       [
-        140,
-        149
-      ],
-      [
-        152,
-        153
-      ],
-      [
-        156,
-        169
-      ],
-      [
-        172,
-        173
-      ],
-      [
-        178,
-        179
-      ],
-      [
-        182,
-        203
-      ],
-      [
-        214,
-        232
-      ],
-      [
-        248,
-        249
-      ],
-      [
-        256,
-        257
-      ],
-      [
-        260,
-        263
+        138,
+        231
       ]
     ],
     "450": []
