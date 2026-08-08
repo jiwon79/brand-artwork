@@ -6,11 +6,16 @@
 
 ```text
 docs/
+├── artowkr/    Color Changes 프로젝트의 아키텍처 문서와 전용 도식
 ├── artworks/   실제 작품의 현재 구조와 구현 이력
 ├── concepts/   여러 작품에 재사용할 수 있는 그래픽 원리
 ├── research/   외부 구현과 레퍼런스 조사
 └── assets/     문서에서 사용하는 이미지와 도식
 ```
+
+## Artowkr
+
+- [`architecture.md`](./artowkr/architecture.md) - Color Changes의 Falloff, 시간 기억, Metaball field, 실루엣 추출 구조
 
 ## Artworks
 
@@ -33,8 +38,10 @@ docs/
 
 ## Placement Rules
 
+- 아키텍처 및 구현 원리 정리의 기본 형식은 Markdown이다. DOCX, PDF, HTML, Figma/FigJam은 사용자가 해당 형식을 명시했을 때만 만든다.
+- 사용자가 `docs/...` 경로를 명시하면 그 경로를 우선한다.
 - 특정 작품의 현재 코드와 직접 연결된 설명은 `artworks/<name>/`에 둔다.
 - 다른 작품에도 적용할 수 있는 수학 및 렌더링 원리는 `concepts/`에 둔다.
 - 외부 프로젝트, 논문, 시각 레퍼런스를 조사한 기록은 `research/`에 둔다.
-- 문서에서 직접 사용하는 SVG와 이미지는 `assets/`에 둔다.
+- 한 문서에만 쓰이는 SVG와 이미지는 문서 옆 `figures/`에 둘 수 있다. 여러 문서에서 재사용하는 도식은 `assets/`에 둔다.
 - 더 이상 현재 구조를 설명하지 않는 실험 기록과 개인 메모는 유지하지 않는다.
