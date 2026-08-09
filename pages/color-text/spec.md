@@ -225,16 +225,19 @@ The reproducible measurements and label-map generator are stored in
 
 - The five text buttons live in `index.html`; there is no separate process page.
   Switching views preserves the same pointer, particle, and glyph-spring state.
-- The fixed bottom control moves through Falloff, active pixels, Metaball field,
-  thresholded silhouette, and the final composite. Final is the default view.
+- The fixed bottom control moves through Falloff, Contact, Solver, Contour, and
+  the final composite. Final is the default view.
 - The interaction target alpha channel stores raw `streamLight` before it is
   multiplied by the text mask. The regular pipeline does not consume this channel;
   the debug Falloff view reads it directly and draws four contour bands.
-- The other views read `interactionTarget.r`, `surfaceSourceTarget.r`, and
-  `surfaceFieldTarget.r`, so the debug output cannot drift from the artwork's
-  actual intermediate values.
-- Active also draws the outermost Falloff contour from `interactionTarget.a`, so
-  the influence boundary remains visible around the activated glyph pixels.
+- Contact reads `interactionTarget.r` and `surfaceSourceTarget.r`, drawing the
+  accepted text pixels as a cobalt/cyan sample map while retaining the outermost
+  Falloff contour.
+- Solver reads the live particle positions, mass, age, velocity, source state,
+  and cohesion range. It draws compact packet envelopes, velocity vectors, and
+  the strongest 16 neighbour links over a pale trace of the raw Falloff.
+- Contour reads `surfaceFieldTarget.r` and draws four isovalue lines plus a dark
+  final threshold line instead of filling the field with a false-color heatmap.
 - Number keys 1–5 and the arrow keys mirror the bottom buttons.
 
 ## Reference-space defaults

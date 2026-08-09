@@ -11,6 +11,7 @@ const METABALL_SAMPLES = 192;
 const METABALL_SMOOTH_TAPS = 5;
 const STROKE_SPREAD_PASSES = 8;
 const LIQUID_PARTICLE_COUNT = 32;
+const SOLVER_LINK_COUNT = 16;
 const DRAG_ACTIVATION_DISTANCE = 8;
 const LIQUID_SOURCE_PACKET_MASS = 1;
 const LIQUID_OFFSCREEN_MARGIN = 260;
@@ -169,6 +170,20 @@ const dripUniformMasses = new Float32Array(LIQUID_PARTICLE_COUNT);
 const dripUniformEnergies = new Float32Array(LIQUID_PARTICLE_COUNT);
 const dripUniformGrowth = new Float32Array(LIQUID_PARTICLE_COUNT);
 const dripUniformSeeds = new Float32Array(LIQUID_PARTICLE_COUNT);
+const solverUniformParticles = Array.from(
+  { length: LIQUID_PARTICLE_COUNT },
+  () => new THREE.Vector4(-2, -2, 0, 0),
+);
+const solverUniformVelocityEnds = Array.from(
+  { length: LIQUID_PARTICLE_COUNT },
+  () => new THREE.Vector2(-2, -2),
+);
+const solverUniformLinks = Array.from(
+  { length: SOLVER_LINK_COUNT },
+  () => new THREE.Vector4(-2, -2, -2, -2),
+);
+const solverUniformLinkStrengths = new Float32Array(SOLVER_LINK_COUNT);
+const solverSourceOrigin = new THREE.Vector2(-2, -2);
 const liquidAccelerationX = new Float32Array(LIQUID_PARTICLE_COUNT);
 const liquidAccelerationDown = new Float32Array(LIQUID_PARTICLE_COUNT);
 let dripMassBudget = 0;
@@ -1584,6 +1599,33 @@ const debugMaterial = new THREE.ShaderMaterial({
     uniform float uSurfaceThreshold;
     uniform float uSurfaceSoftness;
     uniform float uMode;
+    uniform vec2 uArtSize;
+    uniform vec4 uSolverParticles[${LIQUID_PARTICLE_COUNT}];
+    uniform vec2 uSolverVelocityEnds[${LIQUID_PARTICLE_COUNT}];
+    uniform vec4 uSolverLinks[${SOLVER_LINK_COUNT}];
+    uniform float uSolverLinkStrengths[${SOLVER_LINK_COUNT}];
+    uniform vec2 uSourceOrigin;
+    uniform float uSourceActive;
+    uniform vec2 uSolverRadius;
+    uniform float uSolverRadiusBelow;
+    uniform float uSolverStretch;
+    uniform float uSolverPinchTime;
+    uniform float uSolverStreamWidth;
+
+    float segmentDistance(vec2 point, vec2 start, vec2 end) {
+      vec2 segment = end - start;
+      float lengthSquared = max(dot(segment, segment), 0.0001);
+      float progress = clamp(dot(point - start, segment) / lengthSquared, 0.0, 1.0);
+      return length(point - (start + segment * progress));
+    }
+
+    float lineMask(float distanceToLine, float thickness) {
+      return 1.0 - smoothstep(thickness, thickness + 1.15, distanceToLine);
+    }
+
+    float isoLine(float value, float level, float width) {
+      return 1.0 - smoothstep(width, width * 2.1, abs(value - level));
+    }
 
     void main() {
       vec2 fragment = vUv * uResolution;
@@ -1602,6 +1644,8 @@ const debugMaterial = new THREE.ShaderMaterial({
       float detectedPixels = texture2D(uSurfaceSource, artUv).r;
       float surfaceField = texture2D(uSurfaceField, artUv).r;
       vec3 charcoal = vec3(0.15, 0.145, 0.14);
+      vec3 cobalt = vec3(0.10, 0.25, 0.62);
+      vec3 cyan = vec3(0.30, 0.76, 0.91);
       vec3 result = background;
 
       if (uMode < 0.5) {
@@ -1624,51 +1668,170 @@ const debugMaterial = new THREE.ShaderMaterial({
         );
         result = mix(result, vec3(0.08, 0.13, 0.34), contour * influence * 0.78);
       } else if (uMode < 1.5) {
-        float activation = smoothstep(0.002, 0.42, activePixels);
-        float detected = smoothstep(0.002, 0.22, detectedPixels);
-        vec3 activeCool = vec3(0.24, 0.66, 0.94);
-        vec3 activeHot = vec3(0.95, 0.40, 0.78);
-        vec3 activeColor = mix(activeCool, activeHot, activation);
-        result = mix(result, charcoal, textMask * 0.18);
-        result = mix(result, activeColor, activation * 0.86);
-        result = mix(result, vec3(1.0, 0.91, 0.56), detected * activation * 0.34);
+        // CONTACT: the exact text pixels accepted by the touch Falloff.
+        float activation = smoothstep(0.003, 0.36, activePixels);
+        float detected = smoothstep(0.012, 0.14, detectedPixels);
+        vec3 contactColor = mix(cobalt, cyan, smoothstep(0.08, 0.72, activation));
+        result = mix(result, charcoal, textMask * 0.14);
+        result = mix(result, contactColor, activation * 0.92);
+
+        vec2 contactCell = fract(fragment / 7.0) - 0.5;
+        float contactDot = 1.0 - smoothstep(0.10, 0.24, length(contactCell));
+        result = mix(
+          result,
+          vec3(0.96, 0.99, 1.0),
+          contactDot * detected * activation * 0.74
+        );
+
+        float detectedWidth = max(fwidth(detectedPixels) * 1.3, 0.0035);
+        float detectedEdge = isoLine(detectedPixels, 0.045, detectedWidth);
+        result = mix(result, vec3(0.05, 0.18, 0.48), detectedEdge * 0.78);
         float outerContourWidth = max(fwidth(rawFalloff) * 4.0, 0.012);
         float outerContour = 1.0 - smoothstep(
           outerContourWidth,
           outerContourWidth * 2.2,
           abs(rawFalloff - 0.125)
         );
-        result = mix(result, vec3(0.08, 0.13, 0.34), outerContour * 0.82);
+        result = mix(result, vec3(0.08, 0.18, 0.45), outerContour * 0.66);
       } else if (uMode < 2.5) {
-        float normalizedField = clamp(
-          surfaceField / max(uSurfaceThreshold * 2.7, 0.001),
-          0.0,
-          1.0
+        // SOLVER: source, packet envelopes, cohesion graph, and velocities.
+        vec2 artPixel = artUv * uArtSize;
+        float rawVolume = smoothstep(0.003, 0.24, rawFalloff);
+        result = mix(result, charcoal, textMask * 0.055);
+        result = mix(result, vec3(0.80, 0.91, 0.98), rawVolume * 0.16);
+
+        float linkInk = 0.0;
+        for (int linkIndex = 0; linkIndex < ${SOLVER_LINK_COUNT}; linkIndex += 1) {
+          vec4 link = uSolverLinks[linkIndex];
+          float strength = uSolverLinkStrengths[linkIndex];
+          vec2 linkStart = link.xy * uArtSize;
+          vec2 linkEnd = link.zw * uArtSize;
+          float linkDistance = segmentDistance(artPixel, linkStart, linkEnd);
+          linkInk = max(linkInk, lineMask(linkDistance, 0.72) * strength);
+        }
+        result = mix(result, vec3(0.15, 0.52, 0.69), linkInk * 0.64);
+
+        float packetFill = 0.0;
+        float packetRing = 0.0;
+        float centerInk = 0.0;
+        float velocityInk = 0.0;
+        float velocityHead = 0.0;
+        for (int particleIndex = 0; particleIndex < ${LIQUID_PARTICLE_COUNT}; particleIndex += 1) {
+          vec4 particle = uSolverParticles[particleIndex];
+          float particleMass = particle.z;
+          if (particleMass <= 0.0001) continue;
+
+          vec2 particleOrigin = particle.xy;
+          float particleAge = particle.w;
+          vec2 delta = (artUv - particleOrigin) * uArtSize;
+          float massScale = sqrt(max(particleMass, 0.0));
+          float maturity = smoothstep(
+            uSolverPinchTime * 0.12,
+            max(uSolverPinchTime, 0.16),
+            particleAge
+          );
+          float verticalStretch = 1.0 + min(
+            particleAge * uSolverStretch * 0.38,
+            0.78
+          );
+          float horizontalRadius = uSolverRadius.x
+            * mix(1.0, uSolverStreamWidth, maturity)
+            * massScale
+            * 0.34;
+          float verticalRadius = (delta.y < 0.0
+            ? uSolverRadiusBelow
+            : uSolverRadius.y)
+            * verticalStretch
+            * massScale
+            * 0.34;
+          float packetDistance = length(
+            delta / max(vec2(horizontalRadius, verticalRadius), vec2(0.001))
+          );
+          float packetWidth = max(fwidth(packetDistance) * 1.5, 0.008);
+          packetFill = max(
+            packetFill,
+            (1.0 - smoothstep(0.94, 1.02, packetDistance)) * 0.23
+          );
+          packetRing = max(
+            packetRing,
+            1.0 - smoothstep(packetWidth, packetWidth * 2.3, abs(packetDistance - 1.0))
+          );
+
+          vec2 center = particleOrigin * uArtSize;
+          centerInk = max(centerInk, 1.0 - smoothstep(2.2, 3.8, length(artPixel - center)));
+          vec2 velocityEnd = uSolverVelocityEnds[particleIndex] * uArtSize;
+          velocityInk = max(
+            velocityInk,
+            lineMask(segmentDistance(artPixel, center, velocityEnd), 0.82)
+          );
+          velocityHead = max(
+            velocityHead,
+            1.0 - smoothstep(2.0, 3.5, length(artPixel - velocityEnd))
+          );
+        }
+        result = mix(result, vec3(0.60, 0.83, 0.95), packetFill);
+        result = mix(result, cobalt, packetRing * 0.54);
+        result = mix(result, vec3(0.06, 0.45, 0.39), velocityInk * 0.76);
+        result = mix(result, vec3(0.04, 0.31, 0.29), velocityHead * 0.92);
+        result = mix(result, vec3(0.05, 0.12, 0.30), centerInk * 0.96);
+
+        vec2 sourceDelta = (artUv - uSourceOrigin) * uArtSize;
+        float sourceDistance = length(sourceDelta);
+        float sourceRing = isoLine(sourceDistance, 7.0, 1.0)
+          + isoLine(sourceDistance, 12.0, 1.0);
+        float sourceCross = lineMask(abs(sourceDelta.x), 0.65)
+          * (1.0 - smoothstep(8.0, 14.0, abs(sourceDelta.y)));
+        sourceCross += lineMask(abs(sourceDelta.y), 0.65)
+          * (1.0 - smoothstep(8.0, 14.0, abs(sourceDelta.x)));
+        result = mix(
+          result,
+          vec3(0.03, 0.09, 0.24),
+          clamp(sourceRing + sourceCross, 0.0, 1.0) * uSourceActive
         );
-        float fieldVisible = smoothstep(0.001, 0.035, surfaceField);
-        vec3 fieldCool = vec3(0.17, 0.28, 0.72);
-        vec3 fieldMid = vec3(0.83, 0.38, 0.82);
-        vec3 fieldHot = vec3(1.0, 0.88, 0.42);
-        vec3 fieldColor = mix(fieldCool, fieldMid, smoothstep(0.0, 0.62, normalizedField));
-        fieldColor = mix(fieldColor, fieldHot, smoothstep(0.58, 1.0, normalizedField));
-        result = mix(result, charcoal, textMask * 0.08);
-        result = mix(result, fieldColor, fieldVisible * (0.3 + normalizedField * 0.62));
-        float isoWidth = max(uSurfaceSoftness * 1.8, fwidth(surfaceField) * 1.8);
-        float isoContour = 1.0 - smoothstep(
-          isoWidth,
-          isoWidth * 2.2,
-          abs(surfaceField - uSurfaceThreshold)
-        );
-        result = mix(result, vec3(0.06, 0.055, 0.05), isoContour * 0.9);
       } else {
+        // CONTOUR: the smoothed scalar field and the final threshold crossing.
+        float fieldWidth = max(fwidth(surfaceField) * 1.4, uSurfaceSoftness * 0.24);
         float surfaceEdge = max(uSurfaceSoftness, fwidth(surfaceField) * 1.2);
         float coverage = smoothstep(
           uSurfaceThreshold - surfaceEdge,
           uSurfaceThreshold + surfaceEdge,
           surfaceField
         );
-        result = mix(result, charcoal, textMask * 0.2 * (1.0 - coverage));
-        result = mix(result, vec3(0.07, 0.065, 0.06), coverage);
+        float fieldVisible = smoothstep(0.004, uSurfaceThreshold * 1.5, surfaceField);
+        result = mix(result, charcoal, textMask * 0.09 * (1.0 - coverage));
+        result = mix(result, vec3(0.80, 0.91, 0.97), fieldVisible * 0.30);
+        result = mix(result, vec3(0.66, 0.84, 0.94), coverage * 0.34);
+
+        float contourLow = isoLine(
+          surfaceField,
+          uSurfaceThreshold * 0.34,
+          fieldWidth
+        );
+        float contourMidLow = isoLine(
+          surfaceField,
+          uSurfaceThreshold * 0.58,
+          fieldWidth
+        );
+        float contourMid = isoLine(
+          surfaceField,
+          uSurfaceThreshold * 0.80,
+          fieldWidth
+        );
+        float contourHigh = isoLine(
+          surfaceField,
+          uSurfaceThreshold * 1.30,
+          fieldWidth
+        );
+        float thresholdContour = isoLine(
+          surfaceField,
+          uSurfaceThreshold,
+          max(fieldWidth, uSurfaceSoftness * 0.55)
+        );
+        result = mix(result, vec3(0.46, 0.69, 0.84), contourLow * 0.54);
+        result = mix(result, vec3(0.31, 0.57, 0.78), contourMidLow * 0.66);
+        result = mix(result, vec3(0.18, 0.40, 0.70), contourMid * 0.78);
+        result = mix(result, vec3(0.12, 0.29, 0.59), contourHigh * 0.72);
+        result = mix(result, vec3(0.04, 0.10, 0.27), thresholdContour * 0.96);
       }
 
       gl_FragColor = vec4(result, 1.0);
@@ -1685,6 +1848,18 @@ const debugMaterial = new THREE.ShaderMaterial({
     uSurfaceThreshold: { value: state.surfaceThreshold },
     uSurfaceSoftness: { value: state.surfaceSoftness },
     uMode: { value: debugStage },
+    uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
+    uSolverParticles: { value: solverUniformParticles },
+    uSolverVelocityEnds: { value: solverUniformVelocityEnds },
+    uSolverLinks: { value: solverUniformLinks },
+    uSolverLinkStrengths: { value: solverUniformLinkStrengths },
+    uSourceOrigin: { value: solverSourceOrigin },
+    uSourceActive: { value: 0 },
+    uSolverRadius: { value: new THREE.Vector2(state.radiusX, state.radiusY) },
+    uSolverRadiusBelow: { value: state.radiusYBelow },
+    uSolverStretch: { value: state.dripStretch },
+    uSolverPinchTime: { value: state.dripPinchTime },
+    uSolverStreamWidth: { value: state.dripStreamWidth },
   },
   depthTest: false,
   depthWrite: false,
@@ -2140,7 +2315,7 @@ function bindGui(): void {
   interactionFolder.add(state, 'dripCohesionRange', 24, 180, 1).name('응집 거리');
   interactionFolder.add(state, 'dripParticleBlend', 0.005, 0.25, 0.005)
     .name('입자 표면 결합');
-  interactionFolder.add(state, 'dripFollowEase', 3, 30, 0.5).name('드래그 속도 추정');
+  interactionFolder.add(state, 'dripFollowEase', 3, 30, 0.5).name('source 추종 속도');
   interactionFolder.add(state, 'dripEmissionInterval', 0.04, 0.35, 0.01).name('source 교대 시간');
 
   const textMotionFolder = gui.addFolder('텍스트 밀림');
@@ -2319,6 +2494,98 @@ bindDebugControls();
 bindGui();
 updateLayout();
 
+function updateSolverDebugData(): void {
+  for (let index = 0; index < LIQUID_PARTICLE_COUNT; index += 1) {
+    const origin = dripUniformOrigins[index];
+    const mass = dripUniformMasses[index];
+    const age = dripUniformAges[index];
+    solverUniformParticles[index].set(origin.x, origin.y, mass, age);
+
+    if (mass <= 0.0001) {
+      solverUniformVelocityEnds[index].set(-2, -2);
+      continue;
+    }
+
+    let velocityX = 0;
+    let velocityDown = state.dripInitialSpeed + state.dripGravity * age;
+    if (!QA_MODE && index < liquidParticles.length) {
+      const particle = liquidParticles[index];
+      const isAttachedSource = dripHeld && particle === liquidSourceParticle;
+      velocityX = isAttachedSource ? 0 : particle.velocityX;
+      velocityDown = isAttachedSource ? 0 : particle.velocityDown;
+    }
+
+    const arrowX = THREE.MathUtils.clamp(velocityX * 0.18, -34, 34);
+    const arrowDown = THREE.MathUtils.clamp(velocityDown * 0.18, -42, 54);
+    solverUniformVelocityEnds[index].set(
+      origin.x + arrowX / ART_WIDTH,
+      origin.y - arrowDown / ART_HEIGHT,
+    );
+  }
+
+  solverSourceOrigin.set(-2, -2);
+  const hasAttachedSource = !QA_MODE && dripHeld && liquidSourceParticle !== null;
+  if (hasAttachedSource && liquidSourceParticle) {
+    solverSourceOrigin.set(liquidSourceParticle.x, liquidSourceParticle.y);
+  }
+  debugMaterial.uniforms.uSourceActive.value = hasAttachedSource ? 1 : 0;
+
+  for (let index = 0; index < SOLVER_LINK_COUNT; index += 1) {
+    solverUniformLinks[index].set(-2, -2, -2, -2);
+    solverUniformLinkStrengths[index] = 0;
+  }
+
+  const linkCandidates: Array<{
+    firstIndex: number;
+    secondIndex: number;
+    strength: number;
+  }> = [];
+  const cohesionRange = Math.max(state.dripCohesionRange, 1);
+  const sourceIndex = hasAttachedSource && liquidSourceParticle
+    ? liquidParticles.indexOf(liquidSourceParticle)
+    : -1;
+  for (let firstIndex = 0; firstIndex < LIQUID_PARTICLE_COUNT - 1; firstIndex += 1) {
+    if (dripUniformMasses[firstIndex] <= 0.0001 || firstIndex === sourceIndex) continue;
+    for (
+      let secondIndex = firstIndex + 1;
+      secondIndex < LIQUID_PARTICLE_COUNT;
+      secondIndex += 1
+    ) {
+      if (dripUniformMasses[secondIndex] <= 0.0001 || secondIndex === sourceIndex) continue;
+      const deltaX = (
+        dripUniformOrigins[secondIndex].x - dripUniformOrigins[firstIndex].x
+      ) * ART_WIDTH;
+      const deltaY = (
+        dripUniformOrigins[secondIndex].y - dripUniformOrigins[firstIndex].y
+      ) * ART_HEIGHT;
+      const distance = Math.hypot(deltaX, deltaY);
+      if (distance <= 0.001 || distance >= cohesionRange) continue;
+
+      const firstMass = dripUniformMasses[firstIndex];
+      const secondMass = dripUniformMasses[secondIndex];
+      const restDistance = 18 * Math.sqrt((firstMass + secondMass) * 0.5);
+      const stretch = Math.max(distance - restDistance, 0);
+      const influence = 1 - distance / cohesionRange;
+      const strength = THREE.MathUtils.clamp(
+        0.16 + influence * 0.52 + Math.min(stretch / 48, 0.28),
+        0.16,
+        0.92,
+      );
+      linkCandidates.push({ firstIndex, secondIndex, strength });
+    }
+  }
+  linkCandidates.sort((first, second) => second.strength - first.strength);
+
+  const visibleLinkCount = Math.min(linkCandidates.length, SOLVER_LINK_COUNT);
+  for (let index = 0; index < visibleLinkCount; index += 1) {
+    const link = linkCandidates[index];
+    const first = dripUniformOrigins[link.firstIndex];
+    const second = dripUniformOrigins[link.secondIndex];
+    solverUniformLinks[index].set(first.x, first.y, second.x, second.y);
+    solverUniformLinkStrengths[index] = link.strength;
+  }
+}
+
 function animate(now: number): void {
   const delta = Math.min((now - previousTime) / 1000, 0.1);
   const elapsed = reduceMotion || QA_MODE ? 0 : (now - startTime) / 1000;
@@ -2380,6 +2647,8 @@ function animate(now: number): void {
       dripUniformSeeds[index] = particle.seed;
     }
   }
+  if (debugStage === 2) updateSolverDebugData();
+  else debugMaterial.uniforms.uSourceActive.value = 0;
 
   deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
   deformedGlyphMaterial.uniforms.uSource.value = glyphTextAtlasTexture;
@@ -2492,6 +2761,11 @@ function animate(now: number): void {
   debugMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
   debugMaterial.uniforms.uSurfaceThreshold.value = state.surfaceThreshold;
   debugMaterial.uniforms.uSurfaceSoftness.value = state.surfaceSoftness;
+  debugMaterial.uniforms.uSolverRadius.value.set(state.radiusX, state.radiusY);
+  debugMaterial.uniforms.uSolverRadiusBelow.value = state.radiusYBelow;
+  debugMaterial.uniforms.uSolverStretch.value = state.dripStretch;
+  debugMaterial.uniforms.uSolverPinchTime.value = state.dripPinchTime;
+  debugMaterial.uniforms.uSolverStreamWidth.value = state.dripStreamWidth;
   const outputMaterial = debugStage < DEBUG_STAGE_COUNT - 1
     ? debugMaterial
     : finalMaterial;
