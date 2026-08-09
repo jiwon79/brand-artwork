@@ -107,15 +107,15 @@ const qaDripEnergy = qaNumber('qaDrip', 1);
 const qaHasDragged = searchParams.get('qaHasDragged') === '1';
 
 const lines = [
-  'COLOR',
-  'CHANGES',
-  'EVERYTHING',
-  'DEPENDING',
-  'ON',
-  'THE LIGHT',
-  'THAT',
-  'TOUCHES',
-  'IT',
+  'WHAT',
+  'YOU TOUCH',
+  'GROWS HEAVY',
+  'FOR A MOMENT',
+  'THEN',
+  'THE LETTERS',
+  'REMEMBER',
+  'HOW TO',
+  'FLOAT',
 ];
 const LINE_COUNT = lines.length;
 const GLYPH_SLOT_COUNT = lines.reduce((total, line) => total + line.length, 0);
