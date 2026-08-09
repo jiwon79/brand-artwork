@@ -90,7 +90,7 @@ const state = {
   textPushDistance: qaNumber('qaTextPushDistance', 10.0),
   textSpringStiffness: qaNumber('qaTextSpringStiffness', 58.0),
   textSpringDamping: qaNumber('qaTextSpringDamping', 12.0),
-  textContactPadding: qaNumber('qaTextContactPadding', 4.0),
+  textContactPadding: qaNumber('qaTextContactPadding', 0.0),
   textMaxRotation: qaNumber('qaTextMaxRotation', 9.0),
   textRotationStiffness: qaNumber('qaTextRotationStiffness', 46.0),
   textRotationDamping: qaNumber('qaTextRotationDamping', 10.0),
@@ -1023,10 +1023,12 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
     varying vec2 vUv;
     uniform sampler2D uPrevious;
     uniform sampler2D uSurfaceField;
+    uniform sampler2D uText;
     uniform vec4 uGlyphCells[${GLYPH_SLOT_COUNT}];
     uniform vec2 uArtSize;
     uniform float uDelta;
     uniform float uSurfaceThreshold;
+    uniform float uSurfaceSoftness;
     uniform float uMaxDistance;
     uniform float uStiffness;
     uniform float uDamping;
@@ -1036,11 +1038,20 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
     uniform float uRotationDamping;
     uniform float uQaMode;
 
-    float fieldAt(vec2 uv) {
-      return texture2D(
+    float contactAt(vec2 uv) {
+      vec2 safeUv = clamp(uv, vec2(0.0), vec2(1.0));
+      float surfaceField = texture2D(
         uSurfaceField,
-        clamp(uv, vec2(0.0), vec2(1.0))
+        safeUv
       ).r;
+      float textMask = texture2D(uText, safeUv).a;
+      float visibleSurface = smoothstep(
+        uSurfaceThreshold,
+        uSurfaceThreshold + max(uSurfaceSoftness, 0.002),
+        surfaceField
+      );
+      float visibleInk = smoothstep(0.08, 0.32, textMask);
+      return visibleSurface * visibleInk;
     }
 
     vec2 rotateVector(vec2 value, float angle) {
@@ -1072,65 +1083,32 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
       vec2 padding = vec2(uContactPadding) / uArtSize;
       vec2 halfSize = cell.zw + padding;
       vec2 center = cell.xy - vec2(0.0, offset / uArtSize.y);
-      vec2 sampleRadius = halfSize * 0.82;
-      vec2 horizontalSample = rotateVector(
-        vec2(sampleRadius.x, 0.0),
-        angle
-      );
-      vec2 verticalSample = rotateVector(
-        vec2(0.0, sampleRadius.y),
-        angle
-      );
+      float contact = 0.0;
+      float leftContact = 0.0;
+      float rightContact = 0.0;
 
-      float centerField = fieldAt(center);
-      float leftField = fieldAt(center - horizontalSample);
-      leftField = max(
-        leftField,
-        fieldAt(center - horizontalSample + verticalSample)
-      );
-      leftField = max(
-        leftField,
-        fieldAt(center - horizontalSample - verticalSample)
-      );
-      float rightField = fieldAt(center + horizontalSample);
-      rightField = max(
-        rightField,
-        fieldAt(center + horizontalSample + verticalSample)
-      );
-      rightField = max(
-        rightField,
-        fieldAt(center + horizontalSample - verticalSample)
-      );
-      float verticalField = max(
-        fieldAt(center + verticalSample),
-        fieldAt(center - verticalSample)
-      );
-      float contactField = max(
-        max(centerField, verticalField),
-        max(leftField, rightField)
-      );
+      for (int gridY = 0; gridY < 9; gridY += 1) {
+        for (int gridX = 0; gridX < 9; gridX += 1) {
+          vec2 gridPosition = vec2(
+            float(gridX) / 8.0 * 2.0 - 1.0,
+            float(gridY) / 8.0 * 2.0 - 1.0
+          ) * 0.92;
+          vec2 localSample = gridPosition * halfSize;
+          vec2 sampleUv = center + rotateVector(localSample, angle);
+          float sampleContact = contactAt(sampleUv) * glyphPresent;
+          contact = max(contact, sampleContact);
+          if (gridX < 4) {
+            leftContact = max(leftContact, sampleContact);
+          }
+          if (gridX > 4) {
+            rightContact = max(rightContact, sampleContact);
+          }
+        }
+      }
 
-      float contact = smoothstep(
-        uSurfaceThreshold * 0.55,
-        uSurfaceThreshold * 1.18,
-        contactField
-      ) * glyphPresent;
-      float leftContact = smoothstep(
-        uSurfaceThreshold * 0.55,
-        uSurfaceThreshold * 1.18,
-        leftField
-      ) * glyphPresent;
-      float rightContact = smoothstep(
-        uSurfaceThreshold * 0.55,
-        uSurfaceThreshold * 1.18,
-        rightField
-      ) * glyphPresent;
       float sideContact = max(leftContact, rightContact);
       float pressureDifference = clamp(
-        (leftField - rightField) / max(
-          max(leftField, rightField),
-          uSurfaceThreshold
-        ),
+        (leftContact - rightContact) / max(sideContact, 0.001),
         -1.0,
         1.0
       );
@@ -1180,10 +1158,12 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
   uniforms: {
     uPrevious: { value: glyphSpringTargetA.texture },
     uSurfaceField: { value: surfaceFieldTarget.texture },
+    uText: { value: deformedTextTarget.texture },
     uGlyphCells: { value: glyphSpringCells },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uDelta: { value: 0 },
     uSurfaceThreshold: { value: state.surfaceThreshold },
+    uSurfaceSoftness: { value: state.surfaceSoftness },
     uMaxDistance: { value: state.textPushDistance },
     uStiffness: { value: state.textSpringStiffness },
     uDamping: { value: state.textSpringDamping },
@@ -1856,8 +1836,10 @@ function animate(now: number): void {
 
   glyphSpringMaterial.uniforms.uPrevious.value = glyphSpringRead.texture;
   glyphSpringMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
+  glyphSpringMaterial.uniforms.uText.value = deformedTextTarget.texture;
   glyphSpringMaterial.uniforms.uDelta.value = delta;
   glyphSpringMaterial.uniforms.uSurfaceThreshold.value = state.surfaceThreshold;
+  glyphSpringMaterial.uniforms.uSurfaceSoftness.value = state.surfaceSoftness;
   glyphSpringMaterial.uniforms.uMaxDistance.value = state.textPushDistance;
   glyphSpringMaterial.uniforms.uStiffness.value = state.textSpringStiffness;
   glyphSpringMaterial.uniforms.uDamping.value = state.textSpringDamping;

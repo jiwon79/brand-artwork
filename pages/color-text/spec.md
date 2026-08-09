@@ -143,8 +143,11 @@ The reproducible measurements and label-map generator are stored in
   first frame.
 - The visible background text moves as rigid glyphs rather than independently
   displaced pixels. Every glyph stores offset, velocity, angle, and angular
-  velocity in a 55 × 1 ping-pong spring target, while nine surface-field probes
-  determine contact and left/right torque.
+  velocity in a 55 × 1 ping-pong spring target. A 9 × 9 grid tests the product
+  of the current transformed glyph alpha and the visible surface mask, so nearby
+  invisible field and empty bounding-box space cannot move the glyph. The left
+  and right four columns determine torque; the center column only contributes
+  to vertical contact.
 - Contact pulls a glyph down by up to 10 px with stiffness 58 and damping 12;
   releasing it lets the original-position spring settle naturally.
 - Asymmetric contact rotates a glyph by up to 9 degrees. Rotation stiffness 46
@@ -194,7 +197,7 @@ The reproducible measurements and label-map generator are stored in
   0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,
   1.45 s stream formation, 4 s per-emission lifetime, 180 ms touch attack,
   and 13 s⁻¹ drag follow rate
-- Background-text spring: 55 character slots, nine contact probes per visible
-  glyph, 10 px target offset, translation stiffness 58, translation damping 12,
-  4 px contact padding, 9 degree target rotation, rotation stiffness 46, and
-  rotation damping 10
+- Background-text spring: 55 character slots, 81 ink-and-surface overlap samples
+  per visible glyph, 10 px target offset, translation stiffness 58, translation
+  damping 12, 0 px contact padding, 9 degree target rotation, rotation stiffness
+  46, and rotation damping 10
