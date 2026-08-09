@@ -41,10 +41,10 @@
    switching without the excessive broadening of an additive union. No glyph
    snapshot or temporal activation texture is retained.
    Releasing stops new parcels while existing parcels continue downward from their
-   frozen origins. The released head advects downward over 350 ms while a vertical
-   drain gate removes it from top to bottom. The final 900 ms of every parcel's
-   lifetime uses the same spatial drain instead of lowering one global opacity,
-   preventing the isocontours from collapsing into a lingering centre point.
+   frozen origins. The held head is treated as a source: on release its supply
+   stops, its final volume falls under gravity, and a falling rear-edge gate clears
+   only the region that can no longer receive new water. No in-place wipe or head
+   opacity fade is used.
 4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
    Detection happens before the liquid field is built, matching the Metaball
    plugin's alpha/luminance input-detection stage instead of first turning every
@@ -184,8 +184,8 @@ The reproducible measurements and label-map generator are stored in
   lane-speed, neck-width, meander, and density changes while retaining downward
   advection and the full spatial lane-speed differences.
 - On release, physical flow age remains real-time while lifetime age advances at
-  2×. The stream keeps its falling speed but uses its remaining lifetime twice as
-  fast; the stable head fades independently over 350 ms.
+  2×. The stream keeps its falling speed, the held source becomes the final falling
+  volume, and a gravity-driven rear edge follows it downward until the stream exits.
 - The visible background text moves as rigid glyphs rather than independently
   displaced pixels. Every glyph stores offset, velocity, angle, and angular
   velocity in a 64 × 1 ping-pong spring target. A 9 × 9 grid tests the product
@@ -260,7 +260,7 @@ The reproducible measurements and label-map generator are stored in
   0.44 mature width, 0.92 metaball input strength,
   1.45 s stream formation, 4 s per-emission lifetime, 360 ms initial-origin attack,
   one stable held head, 34 px head-protection distance, 0.08 parcel winner blend,
-  350 ms head release, 8 px immediate drag emission distance, 2× post-release
+  one gravity-driven released-source tail, 8 px immediate drag emission distance, 2× post-release
   lifetime rate, and 13 s⁻¹ drag follow rate
 - Background-text spring: 64 character slots, 81 ink-and-surface overlap samples
   per visible glyph, 10 px target offset, translation stiffness 58, translation

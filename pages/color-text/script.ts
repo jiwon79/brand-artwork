@@ -96,7 +96,6 @@ const state = {
   dripLifetime: qaNumber('qaDripLifetime', 4.0),
   dripAttack: qaNumber('qaDripAttack', 0.36),
   dripReleaseSpeed: qaNumber('qaDripReleaseSpeed', 2.0),
-  dripHeadReleaseDuration: qaNumber('qaDripHeadReleaseDuration', 0.35),
   dripHeadStabilityDistance: qaNumber('qaDripHeadStabilityDistance', 34.0),
   dripParcelBlend: qaNumber('qaDripParcelBlend', 0.08),
   dripFollowEase: qaNumber('qaDripFollowEase', 13.0),
@@ -723,7 +722,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform vec2 uDripHeadOrigin;
     uniform float uDripHeadWeight;
     uniform float uDripHeadFlowAge;
-    uniform float uDripHeadReleaseDuration;
+    uniform float uDripReleaseActive;
     uniform float uDripHeadStabilityDistance;
     uniform float uDripParcelBlend;
     uniform float uDripGravity;
@@ -754,7 +753,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     ) {
       float fallDistance = min(
         18.0 * parcelAge + 0.5 * uDripGravity * parcelAge * parcelAge,
-        uArtSize.y * 0.82
+        uArtSize.y * 1.5
       );
       float localX = (outputUv.x - parcelOrigin.x) * uArtSize.x;
       float broadLane = 0.5 + 0.5 * sin(
@@ -847,22 +846,10 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         max(uDripHeadStabilityDistance * 1.15, 2.0),
         fallDistance
       );
-      float lifeProgress = smoothstep(
+      float lifeFade = 1.0 - smoothstep(
         max(uDripLifetime - 0.9, 0.0),
         uDripLifetime,
         parcelLifeAge
-      );
-      float parcelVerticalFromTop = clamp(
-        (uLightRadius.y - falloffDelta.y)
-          / max(uLightRadius.y + uLightRadiusYBelow, 0.001),
-        0.0,
-        1.0
-      );
-      float parcelDrainFront = mix(-0.06, 1.06, lifeProgress);
-      float lifeDrainGate = 1.0 - smoothstep(
-        parcelVerticalFromTop - 0.055,
-        parcelVerticalFromTop + 0.055,
-        parcelDrainFront
       );
       float birthEnergy = 1.0 - exp(
         -parcelAge / max(uDripAttack, 0.001)
@@ -887,7 +874,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         * densityOscillation;
       return flowedLight
         * flowGate
-        * lifeDrainGate
+        * lifeFade
         * birthFade
         * densityPulse
         * clamp(parcelWeight, 0.0, 1.0)
@@ -898,7 +885,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
       float headFallDistance = min(
         72.0 * uDripHeadFlowAge
           + 0.5 * uDripGravity * uDripHeadFlowAge * uDripHeadFlowAge,
-        uArtSize.y * 0.82
+        uArtSize.y * 1.5
       );
       vec2 flowingHeadOrigin = uDripHeadOrigin
         - vec2(0.0, headFallDistance / uArtSize.y);
@@ -928,31 +915,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         normalizedDistance
       );
       headLight *= smoothstep(1.04, 0.84, normalizedDistance);
-
-      // Lowering one global weight collapses every contour toward its centre.
-      // Drain the released head from top to bottom instead, while the whole
-      // shape is advected down. Its final visible pixels therefore leave from
-      // the lower edge rather than lingering at the touch centre.
-      float releaseProgress = smoothstep(
-        0.0,
-        max(uDripHeadReleaseDuration, 0.001),
-        uDripHeadFlowAge
-      );
-      float verticalFromTop = clamp(
-        (uLightRadius.y - falloffDelta.y)
-          / max(uLightRadius.y + uLightRadiusYBelow, 0.001),
-        0.0,
-        1.0
-      );
-      float drainFront = mix(-0.06, 1.06, releaseProgress);
-      float drainGate = 1.0 - smoothstep(
-        verticalFromTop - 0.055,
-        verticalFromTop + 0.055,
-        drainFront
-      );
-      return headLight
-        * drainGate
-        * clamp(uDripHeadWeight, 0.0, 1.0);
+      return headLight * clamp(uDripHeadWeight, 0.0, 1.0);
     }
 
     void main() {
@@ -985,6 +948,28 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
       float streamLight = strongestLight
         + unionAmount * unionAmount * unionWidth * 0.25;
 
+      // The held head is a source. Releasing stops new supply and lets the
+      // source's final volume fall with gravity. This rear edge follows that
+      // volume down, clearing the accumulated stream behind it instead of
+      // fading or wiping the field in place.
+      float releaseFallDistance = min(
+        72.0 * uDripHeadFlowAge
+          + 0.5 * uDripGravity * uDripHeadFlowAge * uDripHeadFlowAge,
+        uArtSize.y * 1.5
+      );
+      float releaseRearDistance = releaseFallDistance - uLightRadius.y;
+      float outputDownFromSource = (uDripHeadOrigin.y - vUv.y) * uArtSize.y;
+      float releaseRearGate = smoothstep(
+        releaseRearDistance - 10.0,
+        releaseRearDistance + 10.0,
+        outputDownFromSource
+      );
+      streamLight *= mix(
+        1.0,
+        releaseRearGate,
+        clamp(uDripReleaseActive, 0.0, 1.0)
+      );
+
       float textMask = texture2D(uText, vUv).a;
       float colorCenterMask = texture2D(uColorCenters, vUv).a;
 
@@ -1014,7 +999,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uDripHeadOrigin: { value: new THREE.Vector2(initialPointer.x, initialPointer.y) },
     uDripHeadWeight: { value: 0 },
     uDripHeadFlowAge: { value: 0 },
-    uDripHeadReleaseDuration: { value: state.dripHeadReleaseDuration },
+    uDripReleaseActive: { value: 0 },
     uDripHeadStabilityDistance: { value: state.dripHeadStabilityDistance },
     uDripParcelBlend: { value: state.dripParcelBlend },
     uDripGravity: { value: state.dripGravity },
@@ -2066,8 +2051,6 @@ function bindGui(): void {
   interactionFolder.add(state, 'dripLifetime', 1.5, 7, 0.1).name('방출 조각 수명');
   interactionFolder.add(state, 'dripAttack', 0.05, 0.6, 0.01).name('터치 시작 시간');
   interactionFolder.add(state, 'dripReleaseSpeed', 1, 4, 0.1).name('릴리즈 소멸 배속');
-  interactionFolder.add(state, 'dripHeadReleaseDuration', 0.05, 1, 0.01)
-    .name('고정 머리 소멸 시간');
   interactionFolder.add(state, 'dripHeadStabilityDistance', 8, 80, 1)
     .name('고정 머리 보호 거리');
   interactionFolder.add(state, 'dripParcelBlend', 0.005, 0.25, 0.005)
@@ -2328,14 +2311,12 @@ function animate(now: number): void {
   let dripHeadWeight = 0;
   if (QA_MODE) {
     const qaHeadAttack = getDripHeadAttackStrength(qaDripAge, qaHasDragged);
-    const qaHeadAlive = qaDripReleaseAge < state.dripHeadReleaseDuration ? 1 : 0;
-    dripHeadWeight = qaHeadAttack * qaHeadAlive
+    dripHeadWeight = qaHeadAttack
       * THREE.MathUtils.clamp(qaDripEnergy, 0, 1);
   } else if (dripHeld) {
     dripHeadWeight = getDripHeadAttackStrength(dripHeadAge, dripHasDragged);
   } else if (Number.isFinite(dripHeadReleaseAge)) {
-    const releaseHeadAlive = dripHeadReleaseAge < state.dripHeadReleaseDuration ? 1 : 0;
-    dripHeadWeight = dripHeadReleaseStrength * releaseHeadAlive;
+    dripHeadWeight = dripHeadReleaseStrength;
   }
 
   deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
@@ -2361,9 +2342,9 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uDripHeadFlowAge.value = QA_MODE
     ? qaDripReleaseAge
     : (!dripHeld && Number.isFinite(dripHeadReleaseAge) ? dripHeadReleaseAge : 0);
-  interactionFieldMaterial.uniforms.uDripHeadReleaseDuration.value = (
-    state.dripHeadReleaseDuration
-  );
+  interactionFieldMaterial.uniforms.uDripReleaseActive.value = QA_MODE
+    ? Number(qaDripReleaseAge > 0)
+    : Number(!dripHeld && Number.isFinite(dripHeadReleaseAge));
   interactionFieldMaterial.uniforms.uDripHeadStabilityDistance.value = (
     state.dripHeadStabilityDistance
   );
