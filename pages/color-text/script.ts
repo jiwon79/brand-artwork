@@ -1620,11 +1620,41 @@ const debugMaterial = new THREE.ShaderMaterial({
     }
 
     float lineMask(float distanceToLine, float thickness) {
-      return 1.0 - smoothstep(thickness, thickness + 1.15, distanceToLine);
+      float antialias = max(fwidth(distanceToLine) * 0.9, 0.28);
+      return 1.0 - smoothstep(
+        max(thickness - antialias, 0.0),
+        thickness + antialias,
+        distanceToLine
+      );
     }
 
     float isoLine(float value, float level, float width) {
-      return 1.0 - smoothstep(width, width * 2.1, abs(value - level));
+      float antialias = max(fwidth(value) * 0.9, width * 0.18);
+      return 1.0 - smoothstep(
+        max(width - antialias, 0.0),
+        width + antialias,
+        abs(value - level)
+      );
+    }
+
+    float smoothCoverage(float value, float threshold) {
+      float antialias = max(fwidth(value) * 0.8, 0.012);
+      return smoothstep(
+        threshold - antialias,
+        threshold + antialias,
+        value
+      );
+    }
+
+    float repeatingIsoLine(float value, float bands) {
+      float scaledValue = value * bands;
+      float distanceToBand = abs(fract(scaledValue) - 0.5);
+      float antialias = max(fwidth(scaledValue) * 0.72, 0.007);
+      return 1.0 - smoothstep(
+        antialias,
+        antialias * 2.05,
+        distanceToBand
+      );
     }
 
     void main() {
@@ -1659,34 +1689,31 @@ const debugMaterial = new THREE.ShaderMaterial({
           influenceColor,
           influence * (0.24 + rawFalloff * 0.62)
         );
-        float contourDistance = abs(fract(rawFalloff * 4.0) - 0.5);
-        float contourWidth = max(fwidth(rawFalloff) * 5.0, 0.012);
-        float contour = 1.0 - smoothstep(
-          contourWidth,
-          contourWidth * 2.2,
-          contourDistance
-        );
+        float contour = repeatingIsoLine(rawFalloff, 4.0);
         result = mix(result, vec3(0.08, 0.13, 0.34), contour * influence * 0.78);
       } else if (uMode < 1.5) {
         // CONTACT: the exact text pixels accepted by the touch Falloff.
         float activation = smoothstep(0.001, 0.28, activePixels);
         float acceptedCoverage = smoothstep(0.01, 0.12, detectedPixels);
-        vec3 contactColor = mix(cobalt, cyan, smoothstep(0.08, 0.72, activation));
+        float contactEnergy = pow(max(rawFalloff, 0.0), 1.22);
+        float highResolutionInk = smoothCoverage(textMask, 0.20);
+        float contactGate = smoothCoverage(contactEnergy, 0.022);
+        float contactCoverage = highResolutionInk * contactGate;
+        float acceptedEnergy = max(activation, acceptedCoverage);
+        vec3 contactColor = mix(
+          vec3(0.16, 0.40, 0.68),
+          vec3(0.32, 0.72, 0.86),
+          smoothstep(0.06, 0.78, acceptedEnergy)
+        );
         result = mix(result, charcoal, textMask * 0.14);
         result = mix(
           result,
           contactColor,
-          max(activation, acceptedCoverage) * 0.96
+          contactCoverage * (0.86 + acceptedEnergy * 0.12)
         );
 
         float falloffInfluence = smoothstep(0.002, 0.12, rawFalloff);
-        float falloffContourDistance = abs(fract(rawFalloff * 4.0) - 0.5);
-        float falloffContourWidth = max(fwidth(rawFalloff) * 5.0, 0.012);
-        float falloffContour = 1.0 - smoothstep(
-          falloffContourWidth,
-          falloffContourWidth * 2.2,
-          falloffContourDistance
-        );
+        float falloffContour = repeatingIsoLine(rawFalloff, 4.0);
         result = mix(
           result,
           vec3(0.24, 0.43, 0.68),
@@ -1699,6 +1726,7 @@ const debugMaterial = new THREE.ShaderMaterial({
         result = mix(result, charcoal, textMask * 0.055);
         result = mix(result, vec3(0.80, 0.91, 0.98), rawVolume * 0.16);
 
+        float linkHalo = 0.0;
         float linkInk = 0.0;
         for (int linkIndex = 0; linkIndex < ${SOLVER_LINK_COUNT}; linkIndex += 1) {
           vec4 link = uSolverLinks[linkIndex];
@@ -1706,11 +1734,14 @@ const debugMaterial = new THREE.ShaderMaterial({
           vec2 linkStart = link.xy * uArtSize;
           vec2 linkEnd = link.zw * uArtSize;
           float linkDistance = segmentDistance(artPixel, linkStart, linkEnd);
-          linkInk = max(linkInk, lineMask(linkDistance, 0.72) * strength);
+          linkHalo = max(linkHalo, lineMask(linkDistance, 1.55) * strength);
+          linkInk = max(linkInk, lineMask(linkDistance, 0.68) * strength);
         }
-        result = mix(result, vec3(0.15, 0.52, 0.69), linkInk * 0.64);
+        result = mix(result, vec3(0.58, 0.83, 0.90), linkHalo * 0.17);
+        result = mix(result, vec3(0.15, 0.50, 0.62), linkInk * 0.58);
 
         float packetFill = 0.0;
+        float packetHalo = 0.0;
         float packetRing = 0.0;
         float centerInk = 0.0;
         float velocityInk = 0.0;
@@ -1746,14 +1777,31 @@ const debugMaterial = new THREE.ShaderMaterial({
           float packetDistance = length(
             delta / max(vec2(horizontalRadius, verticalRadius), vec2(0.001))
           );
-          float packetWidth = max(fwidth(packetDistance) * 1.5, 0.008);
+          float packetAntialias = max(fwidth(packetDistance) * 0.82, 0.0035);
+          float packetWidth = max(fwidth(packetDistance) * 1.38, 0.007);
           packetFill = max(
             packetFill,
-            (1.0 - smoothstep(0.94, 1.02, packetDistance)) * 0.23
+            (1.0 - smoothstep(
+              1.0 - packetAntialias,
+              1.0 + packetAntialias,
+              packetDistance
+            )) * 0.20
+          );
+          packetHalo = max(
+            packetHalo,
+            1.0 - smoothstep(
+              packetWidth * 2.2,
+              packetWidth * 2.2 + packetAntialias * 1.4,
+              abs(packetDistance - 1.0)
+            )
           );
           packetRing = max(
             packetRing,
-            1.0 - smoothstep(packetWidth, packetWidth * 2.3, abs(packetDistance - 1.0))
+            1.0 - smoothstep(
+              max(packetWidth - packetAntialias, 0.0),
+              packetWidth + packetAntialias,
+              abs(packetDistance - 1.0)
+            )
           );
 
           vec2 center = particleOrigin * uArtSize;
@@ -1768,11 +1816,12 @@ const debugMaterial = new THREE.ShaderMaterial({
             1.0 - smoothstep(2.0, 3.5, length(artPixel - velocityEnd))
           );
         }
-        result = mix(result, vec3(0.60, 0.83, 0.95), packetFill);
-        result = mix(result, cobalt, packetRing * 0.54);
-        result = mix(result, vec3(0.06, 0.45, 0.39), velocityInk * 0.76);
-        result = mix(result, vec3(0.04, 0.31, 0.29), velocityHead * 0.92);
-        result = mix(result, vec3(0.05, 0.12, 0.30), centerInk * 0.96);
+        result = mix(result, vec3(0.73, 0.88, 0.94), packetFill);
+        result = mix(result, vec3(0.66, 0.80, 0.91), packetHalo * 0.13);
+        result = mix(result, vec3(0.15, 0.33, 0.58), packetRing * 0.58);
+        result = mix(result, vec3(0.10, 0.48, 0.43), velocityInk * 0.70);
+        result = mix(result, vec3(0.06, 0.34, 0.32), velocityHead * 0.88);
+        result = mix(result, vec3(0.07, 0.16, 0.29), centerInk * 0.92);
 
         vec2 sourceDelta = (artUv - uSourceOrigin) * uArtSize;
         float sourceDistance = length(sourceDelta);

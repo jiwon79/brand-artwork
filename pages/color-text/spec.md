@@ -243,6 +243,11 @@ The reproducible measurements and label-map generator are stored in
 - Process buttons switch on `pointerdown`, not delayed `click`. A second touch can
   therefore change Solver, Contact, Contour, or Final while the primary captured
   pointer keeps dragging and emitting liquid on the canvas.
+- Solver keeps the same particles, cohesion links, packet envelopes, and velocity
+  vectors, but reconstructs their strokes with derivative-based antialiasing so
+  line quality stays stable across screen scales. Contact likewise combines the
+  low-resolution activation energy with the 3× deformed text mask, keeping the
+  accepted-pixel boundary aligned to the high-resolution glyph edge.
 
 ## Reference-space defaults
 
