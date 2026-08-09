@@ -11,6 +11,7 @@ const METABALL_SAMPLES = 192;
 const METABALL_SMOOTH_TAPS = 5;
 const STROKE_SPREAD_PASSES = 8;
 const DRIP_PARCEL_COUNT = 32;
+const DRAG_EMISSION_DISTANCE = 8;
 // Jump flooding is retained only for the optional continuity core. The visible
 // silhouette comes from the accumulated metaball field below.
 const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
@@ -85,6 +86,7 @@ const state = {
   dripStreamWidth: qaNumber('qaDripStreamWidth', 0.44),
   dripLifetime: qaNumber('qaDripLifetime', 4.0),
   dripAttack: qaNumber('qaDripAttack', 0.18),
+  dripReleaseSpeed: qaNumber('qaDripReleaseSpeed', 2.0),
   dripFollowEase: qaNumber('qaDripFollowEase', 13.0),
   dripEmissionInterval: qaNumber('qaDripEmissionInterval', 0.13),
   textPushDistance: qaNumber('qaTextPushDistance', 10.0),
@@ -98,6 +100,7 @@ const state = {
 const qaDripAge = qaNumber('qaDripAge', 1.45);
 const qaDripReleaseAge = qaNumber('qaDripReleaseAge', 0);
 const qaDripEnergy = qaNumber('qaDrip', 1);
+const qaHasDragged = searchParams.get('qaHasDragged') === '1';
 
 const lines = [
   'COLOR',
@@ -124,16 +127,27 @@ const initialPointer = {
 };
 const pointerTarget: Pointer = { ...initialPointer };
 const dripEmitter: Pointer = { ...initialPointer };
-type DripParcel = { x: number; y: number; age: number };
+const dripDragEmission: Pointer = { ...initialPointer };
+type DripParcel = {
+  x: number;
+  y: number;
+  age: number;
+  lifeAge: number;
+  delayedBirth: boolean;
+  released: boolean;
+};
 const dripParcels: DripParcel[] = [];
 const dripUniformOrigins = Array.from(
   { length: DRIP_PARCEL_COUNT },
   () => new THREE.Vector2(-2, -2),
 );
 const dripUniformAges = new Float32Array(DRIP_PARCEL_COUNT);
+const dripUniformLifeAges = new Float32Array(DRIP_PARCEL_COUNT);
+const dripUniformInstantBirths = new Float32Array(DRIP_PARCEL_COUNT);
 const dripUniformWeights = new Float32Array(DRIP_PARCEL_COUNT);
 let dripEmissionElapsed = 0;
 let dripHeld = false;
+let dripHasDragged = false;
 let activeDripPointerId: number | null = null;
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
 let startTime = performance.now();
@@ -544,6 +558,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform vec2 uArtSize;
     uniform vec2 uDripOrigins[${DRIP_PARCEL_COUNT}];
     uniform float uDripAges[${DRIP_PARCEL_COUNT}];
+    uniform float uDripLifeAges[${DRIP_PARCEL_COUNT}];
+    uniform float uDripInstantBirths[${DRIP_PARCEL_COUNT}];
     uniform float uDripWeights[${DRIP_PARCEL_COUNT}];
     uniform float uDripGravity;
     uniform float uDripStretch;
@@ -565,8 +581,10 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     float flowedFalloffAtAge(
       vec2 outputUv,
       float parcelAge,
+      float parcelLifeAge,
       vec2 parcelOrigin,
-      float parcelWeight
+      float parcelWeight,
+      float parcelInstantBirth
     ) {
       float fallDistance = min(
         18.0 * parcelAge + 0.5 * uDripGravity * parcelAge * parcelAge,
@@ -657,12 +675,16 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
       float lifeFade = 1.0 - smoothstep(
         max(uDripLifetime - 0.9, 0.0),
         uDripLifetime,
-        parcelAge
+        parcelLifeAge
       );
       float birthEnergy = 1.0 - exp(
         -parcelAge / max(uDripAttack, 0.001)
       );
-      float birthFade = birthEnergy * birthEnergy;
+      float birthFade = mix(
+        birthEnergy * birthEnergy,
+        1.0,
+        step(0.5, parcelInstantBirth)
+      );
       float flowMaturity = smoothstep(
         uDripPinchTime - 0.16,
         uDripPinchTime + 0.72,
@@ -678,7 +700,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         * birthFade
         * densityPulse
         * clamp(parcelWeight, 0.0, 1.0)
-        * step(parcelAge, uDripLifetime);
+        * step(parcelLifeAge, uDripLifetime);
     }
 
     void main() {
@@ -689,8 +711,10 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
           flowedFalloffAtAge(
             vUv,
             uDripAges[sampleIndex],
+            uDripLifeAges[sampleIndex],
             uDripOrigins[sampleIndex],
-            uDripWeights[sampleIndex]
+            uDripWeights[sampleIndex],
+            uDripInstantBirths[sampleIndex]
           )
         );
       }
@@ -718,6 +742,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uDripOrigins: { value: dripUniformOrigins },
     uDripAges: { value: dripUniformAges },
+    uDripLifeAges: { value: dripUniformLifeAges },
+    uDripInstantBirths: { value: dripUniformInstantBirths },
     uDripWeights: { value: dripUniformWeights },
     uDripGravity: { value: state.dripGravity },
     uDripStretch: { value: state.dripStretch },
@@ -1466,18 +1492,33 @@ function setPointerFromClient(clientX: number, clientY: number): void {
   pointerTarget.y = 1 - yFromTop;
 }
 
-function emitDripParcel(x: number, y: number, age = 0): void {
+function emitDripParcel(
+  x: number,
+  y: number,
+  age = 0,
+  delayedBirth = false,
+): void {
   if (dripParcels.length >= DRIP_PARCEL_COUNT) dripParcels.shift();
-  dripParcels.push({ x, y, age });
+  dripParcels.push({
+    x,
+    y,
+    age,
+    lifeAge: age,
+    delayedBirth,
+    released: false,
+  });
 }
 
 function startDrip(pointerId: number): void {
   dripEmitter.x = pointerTarget.x;
   dripEmitter.y = pointerTarget.y;
+  dripDragEmission.x = pointerTarget.x;
+  dripDragEmission.y = pointerTarget.y;
   dripEmissionElapsed = 0;
   dripHeld = true;
+  dripHasDragged = false;
   activeDripPointerId = pointerId;
-  emitDripParcel(dripEmitter.x, dripEmitter.y);
+  emitDripParcel(dripEmitter.x, dripEmitter.y, 0, true);
 }
 
 function stopDrip(pointerId: number): void {
@@ -1489,7 +1530,10 @@ function stopDrip(pointerId: number): void {
       (pointerTarget.y - latestParcel.y) * ART_HEIGHT,
     )
     : Number.POSITIVE_INFINITY;
-  if (finalTravel > 6) emitDripParcel(pointerTarget.x, pointerTarget.y);
+  if (finalTravel > 6) {
+    emitDripParcel(pointerTarget.x, pointerTarget.y, 0, !dripHasDragged);
+  }
+  for (const parcel of dripParcels) parcel.released = true;
   dripHeld = false;
   dripEmissionElapsed = 0;
   activeDripPointerId = null;
@@ -1501,13 +1545,30 @@ if (!QA_POINTER_LOCKED) {
     if (activeDripPointerId !== null && event.pointerId !== activeDripPointerId) return;
     if (activeDripPointerId !== null) event.preventDefault();
     setPointerFromClient(event.clientX, event.clientY);
+    if (activeDripPointerId !== null) {
+      const dragTravel = Math.hypot(
+        (pointerTarget.x - dripDragEmission.x) * ART_WIDTH,
+        (pointerTarget.y - dripDragEmission.y) * ART_HEIGHT,
+      );
+      if (dragTravel >= DRAG_EMISSION_DISTANCE) {
+        dripHasDragged = true;
+        emitDripParcel(pointerTarget.x, pointerTarget.y);
+        dripDragEmission.x = pointerTarget.x;
+        dripDragEmission.y = pointerTarget.y;
+      }
+    }
   }, { passive: false });
 
   canvas.addEventListener('pointerdown', (event) => {
     if (!event.isPrimary || event.button !== 0) return;
     event.preventDefault();
     setPointerFromClient(event.clientX, event.clientY);
-    canvas.setPointerCapture(event.pointerId);
+    try {
+      canvas.setPointerCapture(event.pointerId);
+    } catch {
+      // Some synthetic or embedded pointer surfaces cannot grant capture.
+      // The drip should still start and keep working while events arrive.
+    }
     startDrip(event.pointerId);
   }, { passive: false });
 
@@ -1548,6 +1609,7 @@ function bindGui(): void {
   interactionFolder.add(state, 'dripStreamWidth', 0.18, 1, 0.01).name('흐르는 영역 폭');
   interactionFolder.add(state, 'dripLifetime', 1.5, 7, 0.1).name('방출 조각 수명');
   interactionFolder.add(state, 'dripAttack', 0.05, 0.6, 0.01).name('터치 시작 시간');
+  interactionFolder.add(state, 'dripReleaseSpeed', 1, 4, 0.1).name('릴리즈 소멸 배속');
   interactionFolder.add(state, 'dripFollowEase', 3, 30, 0.5).name('드래그 따라가기');
   interactionFolder.add(state, 'dripEmissionInterval', 0.04, 0.35, 0.01).name('방출 간격');
 
@@ -1732,8 +1794,11 @@ function animate(now: number): void {
   previousTime = now;
 
   if (!QA_MODE) {
-    for (const parcel of dripParcels) parcel.age += delta;
-    while (dripParcels[0]?.age > state.dripLifetime) dripParcels.shift();
+    for (const parcel of dripParcels) {
+      parcel.age += delta;
+      parcel.lifeAge += delta * (parcel.released ? state.dripReleaseSpeed : 1);
+    }
+    while (dripParcels[0]?.lifeAge > state.dripLifetime) dripParcels.shift();
 
     if (dripHeld) {
       const emitterBlend = 1 - Math.exp(-state.dripFollowEase * delta);
@@ -1744,7 +1809,7 @@ function animate(now: number): void {
       const emissionInterval = Math.max(state.dripEmissionInterval, 0.01);
       while (dripEmissionElapsed >= emissionInterval) {
         dripEmissionElapsed -= emissionInterval;
-        emitDripParcel(dripEmitter.x, dripEmitter.y);
+        emitDripParcel(dripEmitter.x, dripEmitter.y, 0, !dripHasDragged);
       }
     }
   }
@@ -1752,6 +1817,8 @@ function animate(now: number): void {
   for (let index = 0; index < DRIP_PARCEL_COUNT; index += 1) {
     dripUniformOrigins[index].set(-2, -2);
     dripUniformAges[index] = state.dripLifetime + 1;
+    dripUniformLifeAges[index] = state.dripLifetime + 1;
+    dripUniformInstantBirths[index] = 1;
     dripUniformWeights[index] = 0;
   }
 
@@ -1762,11 +1829,18 @@ function animate(now: number): void {
     for (let index = 0; index < DRIP_PARCEL_COUNT; index += 1) {
       const streamPosition = index / (DRIP_PARCEL_COUNT - 1);
       dripUniformOrigins[index].set(initialPointer.x, initialPointer.y);
-      dripUniformAges[index] = THREE.MathUtils.lerp(
+      const flowAge = THREE.MathUtils.lerp(
         youngestAge,
         oldestAge,
         streamPosition,
       );
+      dripUniformAges[index] = flowAge;
+      dripUniformLifeAges[index] = flowAge
+        + qaDripReleaseAge * (state.dripReleaseSpeed - 1);
+      dripUniformInstantBirths[index] = qaHasDragged
+        && index !== DRIP_PARCEL_COUNT - 1
+        ? 1
+        : 0;
       dripUniformWeights[index] = qaWeight;
     }
   } else {
@@ -1774,6 +1848,8 @@ function animate(now: number): void {
       const parcel = dripParcels[index];
       dripUniformOrigins[index].set(parcel.x, parcel.y);
       dripUniformAges[index] = parcel.age;
+      dripUniformLifeAges[index] = parcel.lifeAge;
+      dripUniformInstantBirths[index] = parcel.delayedBirth ? 0 : 1;
       dripUniformWeights[index] = 1;
     }
   }

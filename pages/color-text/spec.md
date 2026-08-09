@@ -14,7 +14,9 @@
    asymmetric falloff parcel every 130 ms while pressed, up to 32 live parcels.
    Advect every parcel downward from its own creation position with gravity,
    narrow older parcels into traveling necks, and join them with a maximum field.
-   Each parcel attacks from zero over 180 ms so the earliest frames stay restrained.
+   Parcels emitted at the untouched-down origin attack from zero over 180 ms so
+   the initial silhouette stays restrained. Once dragging begins, later parcels
+   start at full birth energy.
 3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
    offset and angle into a 1440 × 1800 unsigned-byte target. Keeping this target at
    the original 3× bake resolution prevents the visible underprint from being
@@ -65,12 +67,17 @@
 10. During a held drag, follow the pointer with time-based easing and stamp each
     new parcel at the emitter's current position. Previously emitted parcels keep
     their original positions and ages, so old streams keep falling while new streams
-    start along the drag path. If the final pointer position is over 6 px from the
-    latest parcel, emit one final parcel there. Capture the active pointer and
-    suppress browser selection/callout behavior for uninterrupted movement.
+    start along the drag path. Every 8 px of pointer travel also stamps an immediate
+    full-birth parcel without waiting for the 130 ms timer. If the final pointer
+    position is over 6 px from the latest parcel, emit one final parcel there.
+    Capture the active pointer and suppress browser selection/callout behavior for
+    uninterrupted movement. After release, keep physical age advancing normally
+    but advance lifetime age at 2×, halving disappearance latency without making
+    the visible stream fall faster.
 11. Give all 55 character slots an independent four-value spring state: vertical
-    offset, vertical velocity, angle, and angular velocity. Probe the actual liquid
-    field at the transformed ink center, edges, and corners of every non-space glyph.
+    offset, vertical velocity, angle, and angular velocity. Test a 9 × 9 grid over
+    every transformed non-space glyph and only count samples where current glyph
+    alpha overlaps the visible liquid surface.
     Overall contact pulls that rigid glyph toward a 10 px downward offset. The
     left-versus-right contact difference produces torque toward an angle of up to
     9 degrees. Separate translation and rotation springs return the glyph to its
@@ -138,9 +145,14 @@ The reproducible measurements and label-map generator are stored in
   position, and those newly activated pixels enter the existing metaball passes.
 - The emitter follows a held drag with exponential easing. Each 130 ms emission
   freezes the emitter position at that instant, so already-falling streams do not
-  move sideways when the pointer moves.
-- Every parcel attacks over 180 ms instead of appearing at full strength on its
-  first frame.
+  move sideways when the pointer moves. Crossing each 8 px drag interval emits at
+  the pointer immediately, removing timer latency at a new location.
+- Before the first drag movement, parcels at the initial touch origin attack over
+  180 ms. Once the pointer has moved 8 px, newly created parcels skip the birth
+  delay.
+- On release, physical flow age remains real-time while lifetime age advances at
+  2×. The stream keeps its falling speed but uses its remaining lifetime twice as
+  fast.
 - The visible background text moves as rigid glyphs rather than independently
   displaced pixels. Every glyph stores offset, velocity, angle, and angular
   velocity in a 55 × 1 ping-pong spring target. A 9 × 9 grid tests the product
@@ -165,6 +177,7 @@ The reproducible measurements and label-map generator are stored in
 - Add `&qaDripAge=1.6&qaDrip=1` to freeze a 1.6-second held stream. Add
   `&qaDripReleaseAge=0.9` to inspect that stream 0.9 seconds
   after emission stopped.
+- Add `&qaHasDragged=1` to make post-drag parcels skip the initial birth delay.
 - Press `g` to hide or reveal the tuning panel.
 
 ## Reference-space defaults
@@ -195,8 +208,9 @@ The reproducible measurements and label-map generator are stored in
 - Touch drip: up to 32 independently anchored parcels emitted every 130 ms,
   78 px/s² gravity, 0.34 vertical stretch,
   0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,
-  1.45 s stream formation, 4 s per-emission lifetime, 180 ms touch attack,
-  and 13 s⁻¹ drag follow rate
+  1.45 s stream formation, 4 s per-emission lifetime, 180 ms initial-origin attack,
+  8 px immediate drag emission distance, 2× post-release lifetime rate, and
+  13 s⁻¹ drag follow rate
 - Background-text spring: 55 character slots, 81 ink-and-surface overlap samples
   per visible glyph, 10 px target offset, translation stiffness 58, translation
   damping 12, 0 px contact padding, 9 degree target rotation, rotation stiffness
