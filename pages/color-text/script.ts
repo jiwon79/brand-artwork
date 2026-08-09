@@ -723,6 +723,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform vec2 uDripHeadOrigin;
     uniform float uDripHeadWeight;
     uniform float uDripHeadFlowAge;
+    uniform float uDripHeadReleaseDuration;
     uniform float uDripHeadStabilityDistance;
     uniform float uDripParcelBlend;
     uniform float uDripGravity;
@@ -846,10 +847,22 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         max(uDripHeadStabilityDistance * 1.15, 2.0),
         fallDistance
       );
-      float lifeFade = 1.0 - smoothstep(
+      float lifeProgress = smoothstep(
         max(uDripLifetime - 0.9, 0.0),
         uDripLifetime,
         parcelLifeAge
+      );
+      float parcelVerticalFromTop = clamp(
+        (uLightRadius.y - falloffDelta.y)
+          / max(uLightRadius.y + uLightRadiusYBelow, 0.001),
+        0.0,
+        1.0
+      );
+      float parcelDrainFront = mix(-0.06, 1.06, lifeProgress);
+      float lifeDrainGate = 1.0 - smoothstep(
+        parcelVerticalFromTop - 0.055,
+        parcelVerticalFromTop + 0.055,
+        parcelDrainFront
       );
       float birthEnergy = 1.0 - exp(
         -parcelAge / max(uDripAttack, 0.001)
@@ -874,7 +887,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         * densityOscillation;
       return flowedLight
         * flowGate
-        * lifeFade
+        * lifeDrainGate
         * birthFade
         * densityPulse
         * clamp(parcelWeight, 0.0, 1.0)
@@ -883,7 +896,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
 
     float stationaryHeadFalloff(vec2 outputUv) {
       float headFallDistance = min(
-        18.0 * uDripHeadFlowAge
+        72.0 * uDripHeadFlowAge
           + 0.5 * uDripGravity * uDripHeadFlowAge * uDripHeadFlowAge,
         uArtSize.y * 0.82
       );
@@ -915,7 +928,31 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         normalizedDistance
       );
       headLight *= smoothstep(1.04, 0.84, normalizedDistance);
-      return headLight * clamp(uDripHeadWeight, 0.0, 1.0);
+
+      // Lowering one global weight collapses every contour toward its centre.
+      // Drain the released head from top to bottom instead, while the whole
+      // shape is advected down. Its final visible pixels therefore leave from
+      // the lower edge rather than lingering at the touch centre.
+      float releaseProgress = smoothstep(
+        0.0,
+        max(uDripHeadReleaseDuration, 0.001),
+        uDripHeadFlowAge
+      );
+      float verticalFromTop = clamp(
+        (uLightRadius.y - falloffDelta.y)
+          / max(uLightRadius.y + uLightRadiusYBelow, 0.001),
+        0.0,
+        1.0
+      );
+      float drainFront = mix(-0.06, 1.06, releaseProgress);
+      float drainGate = 1.0 - smoothstep(
+        verticalFromTop - 0.055,
+        verticalFromTop + 0.055,
+        drainFront
+      );
+      return headLight
+        * drainGate
+        * clamp(uDripHeadWeight, 0.0, 1.0);
     }
 
     void main() {
@@ -977,6 +1014,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uDripHeadOrigin: { value: new THREE.Vector2(initialPointer.x, initialPointer.y) },
     uDripHeadWeight: { value: 0 },
     uDripHeadFlowAge: { value: 0 },
+    uDripHeadReleaseDuration: { value: state.dripHeadReleaseDuration },
     uDripHeadStabilityDistance: { value: state.dripHeadStabilityDistance },
     uDripParcelBlend: { value: state.dripParcelBlend },
     uDripGravity: { value: state.dripGravity },
@@ -1965,9 +2003,17 @@ if (!QA_POINTER_LOCKED) {
   }, { passive: true });
 
   const preventNativeTouchAction = (event: Event): void => event.preventDefault();
+  const preventNativeTouchGesture = (event: TouchEvent): void => {
+    if (event.cancelable) event.preventDefault();
+  };
   canvas.addEventListener('contextmenu', preventNativeTouchAction);
   canvas.addEventListener('selectstart', preventNativeTouchAction);
   canvas.addEventListener('dragstart', preventNativeTouchAction);
+  canvas.addEventListener('dblclick', preventNativeTouchAction);
+  canvas.addEventListener('touchstart', preventNativeTouchGesture, { passive: false });
+  canvas.addEventListener('touchmove', preventNativeTouchGesture, { passive: false });
+  canvas.addEventListener('touchend', preventNativeTouchGesture, { passive: false });
+  canvas.addEventListener('touchcancel', preventNativeTouchGesture, { passive: false });
 }
 
 window.addEventListener('resize', updateLayout);
@@ -2282,22 +2328,14 @@ function animate(now: number): void {
   let dripHeadWeight = 0;
   if (QA_MODE) {
     const qaHeadAttack = getDripHeadAttackStrength(qaDripAge, qaHasDragged);
-    const qaHeadRelease = 1 - THREE.MathUtils.smoothstep(
-      qaDripReleaseAge,
-      0,
-      Math.max(state.dripHeadReleaseDuration, 0.001),
-    );
-    dripHeadWeight = qaHeadAttack * qaHeadRelease
+    const qaHeadAlive = qaDripReleaseAge < state.dripHeadReleaseDuration ? 1 : 0;
+    dripHeadWeight = qaHeadAttack * qaHeadAlive
       * THREE.MathUtils.clamp(qaDripEnergy, 0, 1);
   } else if (dripHeld) {
     dripHeadWeight = getDripHeadAttackStrength(dripHeadAge, dripHasDragged);
   } else if (Number.isFinite(dripHeadReleaseAge)) {
-    const releaseFade = 1 - THREE.MathUtils.smoothstep(
-      dripHeadReleaseAge,
-      0,
-      Math.max(state.dripHeadReleaseDuration, 0.001),
-    );
-    dripHeadWeight = dripHeadReleaseStrength * releaseFade;
+    const releaseHeadAlive = dripHeadReleaseAge < state.dripHeadReleaseDuration ? 1 : 0;
+    dripHeadWeight = dripHeadReleaseStrength * releaseHeadAlive;
   }
 
   deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
@@ -2323,6 +2361,9 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uDripHeadFlowAge.value = QA_MODE
     ? qaDripReleaseAge
     : (!dripHeld && Number.isFinite(dripHeadReleaseAge) ? dripHeadReleaseAge : 0);
+  interactionFieldMaterial.uniforms.uDripHeadReleaseDuration.value = (
+    state.dripHeadReleaseDuration
+  );
   interactionFieldMaterial.uniforms.uDripHeadStabilityDistance.value = (
     state.dripHeadStabilityDistance
   );

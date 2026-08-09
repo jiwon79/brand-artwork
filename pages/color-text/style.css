@@ -38,6 +38,7 @@ body {
   height: 100%;
   touch-action: none;
   -webkit-touch-callout: none;
+  -webkit-user-drag: none;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -88,6 +89,10 @@ body {
   font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: 0.045em;
   text-transform: uppercase;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   cursor: pointer;
   text-shadow: 0 1px 8px rgba(251, 251, 250, 0.96);
   transition: color 140ms ease, transform 140ms ease;

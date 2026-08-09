@@ -41,8 +41,10 @@
    switching without the excessive broadening of an additive union. No glyph
    snapshot or temporal activation texture is retained.
    Releasing stops new parcels while existing parcels continue downward from their
-   frozen origins. The released head also advects downward while its 350 ms fade
-   completes instead of fading in place from its center.
+   frozen origins. The released head advects downward over 350 ms while a vertical
+   drain gate removes it from top to bottom. The final 900 ms of every parcel's
+   lifetime uses the same spatial drain instead of lowering one global opacity,
+   preventing the isocontours from collapsing into a lingering centre point.
 4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
    Detection happens before the liquid field is built, matching the Metaball
    plugin's alpha/luminance input-detection stage instead of first turning every
