@@ -18,19 +18,14 @@ const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
 const searchParams = new URLSearchParams(window.location.search);
 const QA_MODE = searchParams.has('qa');
 const QA_LABEL_MODE = searchParams.has('qaLabels');
-const DEBUG_MODE = document.body.dataset.debug === 'true';
-const DEBUG_STAGE_META = [
-  { title: 'FALLOFF', description: 'Touch influence before it meets the text' },
-  { title: 'ACTIVE PIXELS', description: 'Text mask multiplied by the flowing Falloff' },
-  { title: 'METABALL FIELD', description: '192 nearby samples accumulated into a scalar field' },
-  { title: 'SILHOUETTE', description: 'The field cut at the visible surface threshold' },
-  { title: 'FINAL', description: 'Color, silhouette, and moving letter springs combined' },
-] as const;
-const DEBUG_STAGE_COUNT = DEBUG_STAGE_META.length;
-const requestedDebugStage = Number(searchParams.get('stage'));
+const DEBUG_STAGE_COUNT = 5;
+const requestedDebugStageParam = searchParams.get('stage');
+const requestedDebugStage = requestedDebugStageParam === null
+  ? Number.NaN
+  : Number(requestedDebugStageParam);
 let debugStage = Number.isFinite(requestedDebugStage)
   ? THREE.MathUtils.clamp(Math.round(requestedDebugStage), 0, DEBUG_STAGE_COUNT - 1)
-  : 0;
+  : DEBUG_STAGE_COUNT - 1;
 const qaPointerX = Number(searchParams.get('qaX'));
 const qaPointerY = Number(searchParams.get('qaY'));
 const QA_POINTER_LOCKED = searchParams.has('qaX')
@@ -135,6 +130,8 @@ const GLYPH_SLOT_COUNT = lines.reduce((total, line) => total + line.length, 0);
 const FIRST_LINE_Y = 132;
 const LINE_HEIGHT = 42.2;
 const CHARACTER_ADVANCE = 31.8;
+const TEXT_FONT = '300 43px "Helvetica Neue", "Arial", sans-serif';
+const MAX_GLYPH_HALF_WIDTH = 32;
 
 type Pointer = { x: number; y: number };
 
@@ -204,7 +201,7 @@ function bakeTextMask(): void {
   textContext.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
   textContext.save();
   textContext.fillStyle = '#ffffff';
-  textContext.font = '300 43px "Helvetica Neue", "Arial", sans-serif';
+  textContext.font = TEXT_FONT;
   textContext.textAlign = 'center';
   textContext.textBaseline = 'middle';
   lines.forEach((line, index) => {
@@ -390,6 +387,45 @@ lines.forEach((line, lineIndex) => {
   glyphSlotOffset += line.length;
 });
 
+// The deformation pass must be able to inspect a wide glyph even after its
+// pixels move outside the fixed tracking cell. R stores its real half-width;
+// G distinguishes ink glyphs from spaces.
+const glyphMetadataData = new Uint8Array(GLYPH_SLOT_COUNT * 4);
+let glyphMetadataSlot = 0;
+textContext.save();
+textContext.font = TEXT_FONT;
+for (const line of lines) {
+  for (const character of line) {
+    if (character !== ' ') {
+      const metrics = textContext.measureText(character);
+      const measuredHalfWidth = Math.max(
+        metrics.actualBoundingBoxLeft || metrics.width * 0.5,
+        metrics.actualBoundingBoxRight || metrics.width * 0.5,
+        CHARACTER_ADVANCE * 0.5,
+      ) + 1.5;
+      glyphMetadataData[glyphMetadataSlot * 4] = Math.round(
+        THREE.MathUtils.clamp(measuredHalfWidth / MAX_GLYPH_HALF_WIDTH, 0, 1) * 255,
+      );
+      glyphMetadataData[glyphMetadataSlot * 4 + 1] = 255;
+    }
+    glyphMetadataSlot += 1;
+  }
+}
+textContext.restore();
+
+const glyphMetadataTexture = new THREE.DataTexture(
+  glyphMetadataData,
+  GLYPH_SLOT_COUNT,
+  1,
+  THREE.RGBAFormat,
+  THREE.UnsignedByteType,
+);
+glyphMetadataTexture.colorSpace = THREE.NoColorSpace;
+glyphMetadataTexture.minFilter = THREE.NearestFilter;
+glyphMetadataTexture.magFilter = THREE.NearestFilter;
+glyphMetadataTexture.generateMipmaps = false;
+glyphMetadataTexture.needsUpdate = true;
+
 let renderer: THREE.WebGLRenderer;
 try {
   renderer = new THREE.WebGLRenderer({
@@ -488,10 +524,12 @@ const deformedGlyphMaterial = new THREE.ShaderMaterial({
     varying vec2 vUv;
     uniform sampler2D uSource;
     uniform sampler2D uGlyphSprings;
+    uniform sampler2D uGlyphMetadata;
     uniform vec2 uArtSize;
     uniform vec4 uLineLayouts[${LINE_COUNT}];
     uniform float uCharacterAdvance;
     uniform float uLineHalfHeight;
+    uniform float uMaxGlyphHalfWidth;
 
     vec2 rotateVector(vec2 value, float angle) {
       float cosine = cos(angle);
@@ -508,49 +546,64 @@ const deformedGlyphMaterial = new THREE.ShaderMaterial({
 
       for (int lineIndex = 0; lineIndex < ${LINE_COUNT}; lineIndex += 1) {
         vec4 lineLayout = uLineLayouts[lineIndex];
-        float characterPosition = floor(
+        float nearestCharacter = floor(
           (outputX - lineLayout.x) / uCharacterAdvance + 0.5
         );
-        float validCharacter = step(0.0, characterPosition)
-          * step(characterPosition, lineLayout.z - 1.0);
-        float safeCharacter = clamp(
-          characterPosition,
-          0.0,
-          lineLayout.z - 1.0
-        );
-        float glyphSlot = lineLayout.w + safeCharacter;
-        vec4 springState = texture2D(
-          uGlyphSprings,
-          vec2((glyphSlot + 0.5) / ${GLYPH_SLOT_COUNT}.0, 0.5)
-        );
-        vec2 originalCenter = vec2(
-          (lineLayout.x + safeCharacter * uCharacterAdvance) / uArtSize.x,
-          lineLayout.y
-        );
-        vec2 movedCenter = originalCenter
-          - vec2(0.0, springState.r / uArtSize.y);
-        vec2 outputDelta = (vUv - movedCenter) * uArtSize;
-        vec2 sourceDelta = rotateVector(outputDelta, -springState.b);
-        vec2 sourceUv = originalCenter + sourceDelta / uArtSize;
 
-        float horizontalGate = 1.0 - smoothstep(
-          uCharacterAdvance * 0.5 - 0.75,
-          uCharacterAdvance * 0.5 + 0.75,
-          abs(sourceDelta.x)
-        );
-        float verticalGate = 1.0 - smoothstep(
-          uLineHalfHeight - 0.75,
-          uLineHalfHeight + 0.75,
-          abs(sourceDelta.y)
-        );
-        float sourceMask = texture2D(
-          uSource,
-          clamp(sourceUv, vec2(0.0), vec2(1.0))
-        ).a;
-        deformedMask = max(
-          deformedMask,
-          sourceMask * validCharacter * horizontalGate * verticalGate
-        );
+        // A moving or rotating W can extend well beyond its nominal tracking
+        // cell. Inspect the nearest cell and both neighbours, then crop each
+        // candidate by its measured glyph width instead of a universal width.
+        for (int neighbourOffset = -1; neighbourOffset <= 1; neighbourOffset += 1) {
+          float characterPosition = nearestCharacter + float(neighbourOffset);
+          float validCharacter = step(0.0, characterPosition)
+            * step(characterPosition, lineLayout.z - 1.0);
+          float safeCharacter = clamp(
+            characterPosition,
+            0.0,
+            lineLayout.z - 1.0
+          );
+          float glyphSlot = lineLayout.w + safeCharacter;
+          vec2 glyphLookup = vec2(
+            (glyphSlot + 0.5) / ${GLYPH_SLOT_COUNT}.0,
+            0.5
+          );
+          vec4 glyphMetadata = texture2D(uGlyphMetadata, glyphLookup);
+          validCharacter *= step(0.5, glyphMetadata.g);
+
+          vec4 springState = texture2D(uGlyphSprings, glyphLookup);
+          vec2 originalCenter = vec2(
+            (lineLayout.x + safeCharacter * uCharacterAdvance) / uArtSize.x,
+            lineLayout.y
+          );
+          vec2 movedCenter = originalCenter
+            - vec2(0.0, springState.r / uArtSize.y);
+          vec2 outputDelta = (vUv - movedCenter) * uArtSize;
+          vec2 sourceDelta = rotateVector(outputDelta, -springState.b);
+          vec2 sourceUv = originalCenter + sourceDelta / uArtSize;
+          float glyphHalfWidth = max(
+            glyphMetadata.r * uMaxGlyphHalfWidth,
+            uCharacterAdvance * 0.5
+          );
+
+          float horizontalGate = 1.0 - smoothstep(
+            glyphHalfWidth - 0.75,
+            glyphHalfWidth + 0.75,
+            abs(sourceDelta.x)
+          );
+          float verticalGate = 1.0 - smoothstep(
+            uLineHalfHeight - 0.75,
+            uLineHalfHeight + 0.75,
+            abs(sourceDelta.y)
+          );
+          float sourceMask = texture2D(
+            uSource,
+            clamp(sourceUv, vec2(0.0), vec2(1.0))
+          ).a;
+          deformedMask = max(
+            deformedMask,
+            sourceMask * validCharacter * horizontalGate * verticalGate
+          );
+        }
       }
 
       gl_FragColor = vec4(deformedMask);
@@ -559,10 +612,12 @@ const deformedGlyphMaterial = new THREE.ShaderMaterial({
   uniforms: {
     uSource: { value: textTexture },
     uGlyphSprings: { value: glyphSpringTargetA.texture },
+    uGlyphMetadata: { value: glyphMetadataTexture },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uLineLayouts: { value: lineLayouts },
     uCharacterAdvance: { value: CHARACTER_ADVANCE },
     uLineHalfHeight: { value: LINE_HEIGHT * 0.5 },
+    uMaxGlyphHalfWidth: { value: MAX_GLYPH_HALF_WIDTH },
   },
   depthTest: false,
   depthWrite: false,
@@ -584,6 +639,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uDripWeights[${DRIP_PARCEL_COUNT}];
     uniform vec2 uDripHeadOrigin;
     uniform float uDripHeadWeight;
+    uniform float uDripHeadFlowAge;
     uniform float uDripHeadStabilityDistance;
     uniform float uDripParcelBlend;
     uniform float uDripGravity;
@@ -699,10 +755,13 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         normalizedDistance
       );
       flowedLight *= smoothstep(1.04, 0.84, normalizedDistance);
+      // Reveal the whole parcel after it has travelled away from the stable
+      // head. A gate based on outputDown cuts every parcel along a horizontal
+      // line and exposes repeated seams in the Falloff view.
       float flowGate = smoothstep(
         max(uDripHeadStabilityDistance * 0.25, 1.0),
-        max(uDripHeadStabilityDistance, 2.0),
-        outputDown
+        max(uDripHeadStabilityDistance * 1.15, 2.0),
+        fallDistance
       );
       float lifeFade = 1.0 - smoothstep(
         max(uDripLifetime - 0.9, 0.0),
@@ -740,7 +799,14 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     }
 
     float stationaryHeadFalloff(vec2 outputUv) {
-      vec2 falloffDelta = (outputUv - uDripHeadOrigin) * uArtSize;
+      float headFallDistance = min(
+        18.0 * uDripHeadFlowAge
+          + 0.5 * uDripGravity * uDripHeadFlowAge * uDripHeadFlowAge,
+        uArtSize.y * 0.82
+      );
+      vec2 flowingHeadOrigin = uDripHeadOrigin
+        - vec2(0.0, headFallDistance / uArtSize.y);
+      vec2 falloffDelta = (outputUv - flowingHeadOrigin) * uArtSize;
       float verticalRadius = falloffDelta.y < 0.0
         ? uLightRadiusYBelow
         : uLightRadius.y;
@@ -788,20 +854,16 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
           secondLight = max(secondLight, parcelLight);
         }
       }
-      float winnerGap = strongestLight - secondLight;
-      float winnerBlend = smoothstep(
-        0.0,
-        max(uDripParcelBlend, 0.001),
-        winnerGap
-      );
-      float streamLight = strongestLight;
-      if (secondLight > 0.0001) {
-        streamLight = mix(
-          (strongestLight + secondLight) * 0.5,
-          strongestLight,
-          winnerBlend
-        );
-      }
+      // Averages make the field darker precisely where the head and a parcel
+      // meet, which draws a horizontal notch. This smooth union is monotonic:
+      // overlap can gently add volume, but can never lower either contributor.
+      float unionWidth = max(uDripParcelBlend, 0.001);
+      float unionAmount = max(
+        unionWidth - abs(strongestLight - secondLight),
+        0.0
+      ) / unionWidth;
+      float streamLight = strongestLight
+        + unionAmount * unionAmount * unionWidth * 0.25;
 
       float textMask = texture2D(uText, vUv).a;
       float colorCenterMask = texture2D(uColorCenters, vUv).a;
@@ -831,6 +893,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uDripWeights: { value: dripUniformWeights },
     uDripHeadOrigin: { value: new THREE.Vector2(initialPointer.x, initialPointer.y) },
     uDripHeadWeight: { value: 0 },
+    uDripHeadFlowAge: { value: 0 },
     uDripHeadStabilityDistance: { value: state.dripHeadStabilityDistance },
     uDripParcelBlend: { value: state.dripParcelBlend },
     uDripGravity: { value: state.dripGravity },
@@ -1568,6 +1631,13 @@ const debugMaterial = new THREE.ShaderMaterial({
         result = mix(result, charcoal, textMask * 0.18);
         result = mix(result, activeColor, activation * 0.86);
         result = mix(result, vec3(1.0, 0.91, 0.56), detected * activation * 0.34);
+        float outerContourWidth = max(fwidth(rawFalloff) * 4.0, 0.012);
+        float outerContour = 1.0 - smoothstep(
+          outerContourWidth,
+          outerContourWidth * 2.2,
+          abs(rawFalloff - 0.125)
+        );
+        result = mix(result, vec3(0.08, 0.13, 0.34), outerContour * 0.82);
       } else if (uMode < 2.5) {
         float normalizedField = clamp(
           surfaceField / max(uSurfaceThreshold * 2.7, 0.001),
@@ -1830,24 +1900,15 @@ function setDebugStage(nextStage: number): void {
   );
   debugMaterial.uniforms.uMode.value = debugStage;
 
-  const metadata = DEBUG_STAGE_META[debugStage];
-  const indexElement = document.getElementById('debug-stage-index');
-  const titleElement = document.getElementById('debug-stage-title');
-  const descriptionElement = document.getElementById('debug-stage-description');
-  if (indexElement) indexElement.textContent = String(debugStage + 1).padStart(2, '0');
-  if (titleElement) titleElement.textContent = metadata.title;
-  if (descriptionElement) descriptionElement.textContent = metadata.description;
-
   document.querySelectorAll<HTMLButtonElement>('[data-debug-stage]').forEach((button) => {
     const selected = Number(button.dataset.debugStage) === debugStage;
     button.classList.toggle('active', selected);
-    button.setAttribute('aria-selected', String(selected));
-    button.tabIndex = selected ? 0 : -1;
+    if (selected) button.setAttribute('aria-current', 'step');
+    else button.removeAttribute('aria-current');
   });
 }
 
 function bindDebugControls(): void {
-  if (!DEBUG_MODE) return;
   document.querySelectorAll<HTMLButtonElement>('[data-debug-stage]').forEach((button) => {
     button.addEventListener('click', () => {
       setDebugStage(Number(button.dataset.debugStage));
@@ -1861,12 +1922,6 @@ function bindDebugControls(): void {
   });
   setDebugStage(debugStage);
 }
-
-window.addEventListener('keydown', (event) => {
-  if (event.target instanceof HTMLInputElement) return;
-  if (event.key.toLowerCase() !== 'd') return;
-  window.location.href = DEBUG_MODE ? './' : './debug.html';
-});
 
 function bindGui(): void {
   const gui = new GUI({ title: 'Color Text controls', width: 320 });
@@ -2055,7 +2110,7 @@ function bindGui(): void {
   colorFolder.close();
   advancedFolder.close();
 
-  if (QA_MODE || DEBUG_MODE) gui.hide();
+  gui.hide();
 
   window.addEventListener('keydown', (event) => {
     if (event.target instanceof HTMLInputElement) return;
@@ -2182,6 +2237,9 @@ function animate(now: number): void {
     QA_MODE ? initialPointer.y : dripHeadOrigin.y,
   );
   interactionFieldMaterial.uniforms.uDripHeadWeight.value = dripHeadWeight;
+  interactionFieldMaterial.uniforms.uDripHeadFlowAge.value = QA_MODE
+    ? qaDripReleaseAge
+    : (!dripHeld && Number.isFinite(dripHeadReleaseAge) ? dripHeadReleaseAge : 0);
   interactionFieldMaterial.uniforms.uDripHeadStabilityDistance.value = (
     state.dripHeadStabilityDistance
   );
@@ -2283,7 +2341,7 @@ function animate(now: number): void {
   debugMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
   debugMaterial.uniforms.uSurfaceThreshold.value = state.surfaceThreshold;
   debugMaterial.uniforms.uSurfaceSoftness.value = state.surfaceSoftness;
-  const outputMaterial = DEBUG_MODE && debugStage < DEBUG_STAGE_COUNT - 1
+  const outputMaterial = debugStage < DEBUG_STAGE_COUNT - 1
     ? debugMaterial
     : finalMaterial;
   renderPass(outputMaterial, null);

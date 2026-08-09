@@ -14,8 +14,8 @@
    at the current held pointer, then emit one independently anchored flowing
    parcel every 130 ms, up to 32 live parcels. Advect every parcel downward from
    its own creation position with gravity and narrow older parcels into traveling
-   necks. Suppress each flowing parcel over the first 34 px below its origin so
-   parcel birth and motion cannot disturb the held head boundary. The head and
+   necks. Fade each flowing parcel in as the entire parcel travels through its
+   first 34 px; never crop it along an output-space Y line. The head and
    untouched-down parcels attack from zero over 360 ms so the initial silhouette
    stays restrained. Once dragging begins, the existing head follows immediately
    without restarting its attack and later parcels start at full birth energy.
@@ -25,15 +25,21 @@
 3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
    offset and angle into a 1440 × 1800 unsigned-byte target. Keeping this target at
    the original 3× bake resolution prevents the visible underprint from being
-   rasterized through the 480 × 600 geometry field. Multiply the joined flowing
+   rasterized through the 480 × 600 geometry field. Measure each glyph's true
+   half-width and inspect the nearest output cell plus both neighbours during
+   inverse deformation, so wide glyphs such as W cannot be cropped at the fixed
+   tracking-cell boundary. Multiply the joined flowing
    falloff by that transformed glyph alpha and character-center mask at each current
    output position. At each pixel, track the strongest and second-strongest values
-   across the stable head and flowing parcels. Blend near-tied winners over a 0.08
-   gap, then use the strongest value outside that gap. This removes hard maximum
+   across the stable head and flowing parcels. Join near-tied winners with a
+   monotonic smooth union over a 0.08 gap, then use the strongest value outside
+   that gap. Because the union never falls below either input, it removes both
+   dark overlap seams and hard maximum
    switching without the excessive broadening of an additive union. No glyph
    snapshot or temporal activation texture is retained.
    Releasing stops new parcels while existing parcels continue downward from their
-   frozen origins.
+   frozen origins. The released head also advects downward while its 350 ms fade
+   completes instead of fading in place from its center.
 4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
    Detection happens before the liquid field is built, matching the Metaball
    plugin's alpha/luminance input-detection stage instead of first turning every
@@ -204,18 +210,19 @@ The reproducible measurements and label-map generator are stored in
 
 ## Process View
 
-- `debug.html` runs the same render loop and preserves the same pointer, parcel,
-  and glyph-spring state while switching views.
-- Its fixed bottom control moves through Falloff, active pixels, Metaball field,
-  thresholded silhouette, and the final composite.
+- The five text buttons live in `index.html`; there is no separate process page.
+  Switching views preserves the same pointer, parcel, and glyph-spring state.
+- The fixed bottom control moves through Falloff, active pixels, Metaball field,
+  thresholded silhouette, and the final composite. Final is the default view.
 - The interaction target alpha channel stores raw `streamLight` before it is
   multiplied by the text mask. The regular pipeline does not consume this channel;
   the debug Falloff view reads it directly and draws four contour bands.
 - The other views read `interactionTarget.r`, `surfaceSourceTarget.r`, and
   `surfaceFieldTarget.r`, so the debug output cannot drift from the artwork's
   actual intermediate values.
-- Number keys 1–5 and the arrow keys mirror the bottom buttons. Press `d` to move
-  between the artwork and Process View without maintaining a second implementation.
+- Active also draws the outermost Falloff contour from `interactionTarget.a`, so
+  the influence boundary remains visible around the activated glyph pixels.
+- Number keys 1–5 and the arrow keys mirror the bottom buttons.
 
 ## Reference-space defaults
 
