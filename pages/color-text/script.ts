@@ -63,6 +63,7 @@ const state = {
   colorCenterRadiusY: qaNumber('qaColorCenterRadiusY', 16.0),
   colorCenterVariation: qaNumber('qaColorCenterVariation', 1.0),
   colorGlyphInfluence: qaNumber('qaColorGlyphInfluence', 0.2),
+  colorEllipseInfluence: qaNumber('qaColorEllipseInfluence', 0.0),
   colorGlyphShapeStrength: qaNumber('qaColorGlyphShapeStrength', 0.68),
   colorGlyphShapeRadius: qaNumber('qaColorGlyphShapeRadius', 3.2),
   colorGlyphShapeEdge: qaNumber('qaColorGlyphShapeEdge', 1.0),
@@ -1223,6 +1224,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform float uColorSaturation;
     uniform float uColorBrightness;
     uniform float uColorPastelMix;
+    uniform float uColorEllipseInfluence;
     uniform float uColorGlyphShapeStrength;
     uniform float uColorGlyphShapeRadius;
     uniform float uColorGlyphShapeEdge;
@@ -1324,10 +1326,10 @@ const finalMaterial = new THREE.ShaderMaterial({
           distanceToStroke
         )
       ) * activeStrokeStrength;
-      float shapedEllipseEnergy = normalizedEnergy * mix(
-        1.0,
-        0.55,
-        uColorGlyphShapeStrength
+      float shapedEllipseEnergy = normalizedEnergy * clamp(
+        uColorEllipseInfluence,
+        0.0,
+        1.0
       );
       normalizedEnergy = max(
         shapedEllipseEnergy,
@@ -1395,6 +1397,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     uColorSaturation: { value: state.colorSaturation },
     uColorBrightness: { value: state.colorBrightness },
     uColorPastelMix: { value: state.colorPastelMix },
+    uColorEllipseInfluence: { value: state.colorEllipseInfluence },
     uColorGlyphShapeStrength: { value: state.colorGlyphShapeStrength },
     uColorGlyphShapeRadius: { value: state.colorGlyphShapeRadius },
     uColorGlyphShapeEdge: { value: state.colorGlyphShapeEdge },
@@ -1655,6 +1658,11 @@ function bindGui(): void {
     colorCenterTexture.needsUpdate = true;
   });
   colorFolder.add(state, 'colorGlyphInfluence', 0, 0.6, 0.01).name('글자 픽셀 변형');
+  colorFolder.add(state, 'colorEllipseInfluence', 0, 1, 0.01)
+    .name('타원 중심 혼합')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uColorEllipseInfluence.value = value;
+    });
   colorFolder.add(state, 'colorGlyphShapeStrength', 0, 1, 0.01)
     .name('글자형 중심 강도')
     .onChange((value: number) => {
@@ -1889,6 +1897,7 @@ function animate(now: number): void {
   finalMaterial.uniforms.uColorSaturation.value = state.colorSaturation;
   finalMaterial.uniforms.uColorBrightness.value = state.colorBrightness;
   finalMaterial.uniforms.uColorPastelMix.value = state.colorPastelMix;
+  finalMaterial.uniforms.uColorEllipseInfluence.value = state.colorEllipseInfluence;
   finalMaterial.uniforms.uColorGlyphShapeStrength.value = state.colorGlyphShapeStrength;
   finalMaterial.uniforms.uColorGlyphShapeRadius.value = state.colorGlyphShapeRadius;
   finalMaterial.uniforms.uColorGlyphShapeEdge.value = state.colorGlyphShapeEdge;

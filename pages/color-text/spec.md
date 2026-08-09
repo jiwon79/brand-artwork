@@ -47,14 +47,15 @@
    radii are only a baseline; sparse/narrow characters produce smaller peaks,
    dense/wide characters produce larger peaks, and each peak shifts slightly
    toward its glyph centroid. Multiply this field by the same flowing falloff and
-   store it in the touch-drip target's blue channel.
+   store it in the touch-drip target's blue channel. This legacy ellipse field is
+   retained for comparison but its final contribution defaults to zero.
 9. Mix 20% of the current drip-activated glyph pixels back into the statistical
    ellipse field, then smooth it with a separable Gaussian filter (horizontal
    sigma 2.5, vertical ratio 1.1). In the final pass, also measure distance to the
    nearest active glyph pixel. Keep a glyph-shaped core out to 3.2 px with strength
    0.68, then transition to zero over a bounded 1 px edge. Unlike the previous
    Gaussian tail, no residual halo remains farther away. Attenuate the old ellipse
-   energy at the same time. The hottest
+   energy at the same time. With the default ellipse influence of 0, the hottest
    area therefore follows letter branches and counters instead of remaining a row
    of identical vertical ovals. Read the combined field everywhere inside the
    metaball coverage, then map it through overlapping rose, pale-pink, and hot-color
@@ -84,9 +85,10 @@
    over time.
 
 Geometry and color are deliberately independent. Geometry is flowing-falloff-masked
-stroke alpha → sampled metaball influence → smoothing → isocontour. Color combines
-glyph-statistics-driven vertical peaks with a nearest-active-glyph distance core,
-then clips that energy by the geometry coverage. The old nearest-stroke distance
+stroke alpha → sampled metaball influence → smoothing → isocontour. Color uses a
+nearest-active-glyph distance core by default, with the old glyph-statistics-driven
+vertical peaks available only as an optional mix, then clips that energy by the
+geometry coverage. The old nearest-stroke distance
 construction could only ask which
 source pixel was closest, so the `Y` junction became a convex cap. The
 accumulated geometry field preserves the influence of both arms at once; their
@@ -181,6 +183,7 @@ The reproducible measurements and label-map generator are stored in
   that optional core
 - Character-center color ellipse baseline: 9 × 16 px radius; actual dimensions
   vary by glyph ink mass, bounds, and centroid
+- Character-center ellipse contribution: 0 by default
 - Glyph-pixel deformation mixed into color peaks: 20%
 - Glyph-shaped hot core: strength 0.68, 3.2 px radius, and 1 px bounded edge
 - Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
