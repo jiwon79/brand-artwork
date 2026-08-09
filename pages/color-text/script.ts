@@ -84,6 +84,9 @@ const state = {
   textSpringStiffness: qaNumber('qaTextSpringStiffness', 58.0),
   textSpringDamping: qaNumber('qaTextSpringDamping', 12.0),
   textContactPadding: qaNumber('qaTextContactPadding', 4.0),
+  textMaxRotation: qaNumber('qaTextMaxRotation', 9.0),
+  textRotationStiffness: qaNumber('qaTextRotationStiffness', 46.0),
+  textRotationDamping: qaNumber('qaTextRotationDamping', 10.0),
 };
 const qaDripAge = qaNumber('qaDripAge', 1.45);
 const qaDripReleaseAge = qaNumber('qaDripReleaseAge', 0);
@@ -421,6 +424,104 @@ const glyphSpringTargetB = new THREE.WebGLRenderTarget(
   1,
   nearestTargetOptions,
 );
+const deformedTextTarget = new THREE.WebGLRenderTarget(
+  FIELD_WIDTH,
+  FIELD_HEIGHT,
+  linearTargetOptions,
+);
+const deformedColorCenterTarget = new THREE.WebGLRenderTarget(
+  FIELD_WIDTH,
+  FIELD_HEIGHT,
+  linearTargetOptions,
+);
+
+const deformedGlyphMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uSource;
+    uniform sampler2D uGlyphSprings;
+    uniform vec2 uArtSize;
+    uniform vec4 uLineLayouts[${LINE_COUNT}];
+    uniform float uCharacterAdvance;
+    uniform float uLineHalfHeight;
+
+    vec2 rotateVector(vec2 value, float angle) {
+      float cosine = cos(angle);
+      float sine = sin(angle);
+      return vec2(
+        value.x * cosine - value.y * sine,
+        value.x * sine + value.y * cosine
+      );
+    }
+
+    void main() {
+      float deformedMask = 0.0;
+      float outputX = vUv.x * uArtSize.x;
+
+      for (int lineIndex = 0; lineIndex < ${LINE_COUNT}; lineIndex += 1) {
+        vec4 lineLayout = uLineLayouts[lineIndex];
+        float characterPosition = floor(
+          (outputX - lineLayout.x) / uCharacterAdvance + 0.5
+        );
+        float validCharacter = step(0.0, characterPosition)
+          * step(characterPosition, lineLayout.z - 1.0);
+        float safeCharacter = clamp(
+          characterPosition,
+          0.0,
+          lineLayout.z - 1.0
+        );
+        float glyphSlot = lineLayout.w + safeCharacter;
+        vec4 springState = texture2D(
+          uGlyphSprings,
+          vec2((glyphSlot + 0.5) / ${GLYPH_SLOT_COUNT}.0, 0.5)
+        );
+        vec2 originalCenter = vec2(
+          (lineLayout.x + safeCharacter * uCharacterAdvance) / uArtSize.x,
+          lineLayout.y
+        );
+        vec2 movedCenter = originalCenter
+          - vec2(0.0, springState.r / uArtSize.y);
+        vec2 outputDelta = (vUv - movedCenter) * uArtSize;
+        vec2 sourceDelta = rotateVector(outputDelta, -springState.b);
+        vec2 sourceUv = originalCenter + sourceDelta / uArtSize;
+
+        float horizontalGate = 1.0 - smoothstep(
+          uCharacterAdvance * 0.5 - 0.75,
+          uCharacterAdvance * 0.5 + 0.75,
+          abs(sourceDelta.x)
+        );
+        float verticalGate = 1.0 - smoothstep(
+          uLineHalfHeight - 0.75,
+          uLineHalfHeight + 0.75,
+          abs(sourceDelta.y)
+        );
+        float sourceMask = texture2D(
+          uSource,
+          clamp(sourceUv, vec2(0.0), vec2(1.0))
+        ).a;
+        deformedMask = max(
+          deformedMask,
+          sourceMask * validCharacter * horizontalGate * verticalGate
+        );
+      }
+
+      gl_FragColor = vec4(deformedMask);
+    }
+  `,
+  uniforms: {
+    uSource: { value: textTexture },
+    uGlyphSprings: { value: glyphSpringTargetA.texture },
+    uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
+    uLineLayouts: { value: lineLayouts },
+    uCharacterAdvance: { value: CHARACTER_ADVANCE },
+    uLineHalfHeight: { value: LINE_HEIGHT * 0.5 },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
 
 const interactionFieldMaterial = new THREE.ShaderMaterial({
   vertexShader,
@@ -602,8 +703,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     }
   `,
   uniforms: {
-    uText: { value: textTexture },
-    uColorCenters: { value: colorCenterTexture },
+    uText: { value: deformedTextTarget.texture },
+    uColorCenters: { value: deformedColorCenterTarget.texture },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uDripOrigins: { value: dripUniformOrigins },
     uDripAges: { value: dripUniformAges },
@@ -920,6 +1021,9 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
     uniform float uStiffness;
     uniform float uDamping;
     uniform float uContactPadding;
+    uniform float uMaxRotation;
+    uniform float uRotationStiffness;
+    uniform float uRotationDamping;
     uniform float uQaMode;
 
     float fieldAt(vec2 uv) {
@@ -927,6 +1031,15 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
         uSurfaceField,
         clamp(uv, vec2(0.0), vec2(1.0))
       ).r;
+    }
+
+    vec2 rotateVector(vec2 value, float angle) {
+      float cosine = cos(angle);
+      float sine = sin(angle);
+      return vec2(
+        value.x * cosine - value.y * sine,
+        value.x * sine + value.y * cosine
+      );
     }
 
     void main() {
@@ -943,26 +1056,48 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
       vec4 previous = texture2D(uPrevious, vUv);
       float offset = previous.r;
       float velocity = previous.g;
+      float angle = previous.b;
+      float angularVelocity = previous.a;
       float glyphPresent = step(0.00001, cell.z);
       vec2 padding = vec2(uContactPadding) / uArtSize;
       vec2 halfSize = cell.zw + padding;
       vec2 center = cell.xy - vec2(0.0, offset / uArtSize.y);
       vec2 sampleRadius = halfSize * 0.82;
-
-      float contactField = fieldAt(center);
-      contactField = max(contactField, fieldAt(center + vec2(sampleRadius.x, 0.0)));
-      contactField = max(contactField, fieldAt(center - vec2(sampleRadius.x, 0.0)));
-      contactField = max(contactField, fieldAt(center + vec2(0.0, sampleRadius.y)));
-      contactField = max(contactField, fieldAt(center - vec2(0.0, sampleRadius.y)));
-      contactField = max(contactField, fieldAt(center + sampleRadius));
-      contactField = max(contactField, fieldAt(center - sampleRadius));
-      contactField = max(
-        contactField,
-        fieldAt(center + vec2(sampleRadius.x, -sampleRadius.y))
+      vec2 horizontalSample = rotateVector(
+        vec2(sampleRadius.x, 0.0),
+        angle
       );
-      contactField = max(
-        contactField,
-        fieldAt(center + vec2(-sampleRadius.x, sampleRadius.y))
+      vec2 verticalSample = rotateVector(
+        vec2(0.0, sampleRadius.y),
+        angle
+      );
+
+      float centerField = fieldAt(center);
+      float leftField = fieldAt(center - horizontalSample);
+      leftField = max(
+        leftField,
+        fieldAt(center - horizontalSample + verticalSample)
+      );
+      leftField = max(
+        leftField,
+        fieldAt(center - horizontalSample - verticalSample)
+      );
+      float rightField = fieldAt(center + horizontalSample);
+      rightField = max(
+        rightField,
+        fieldAt(center + horizontalSample + verticalSample)
+      );
+      rightField = max(
+        rightField,
+        fieldAt(center + horizontalSample - verticalSample)
+      );
+      float verticalField = max(
+        fieldAt(center + verticalSample),
+        fieldAt(center - verticalSample)
+      );
+      float contactField = max(
+        max(centerField, verticalField),
+        max(leftField, rightField)
       );
 
       float contact = smoothstep(
@@ -970,10 +1105,32 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
         uSurfaceThreshold * 1.18,
         contactField
       ) * glyphPresent;
+      float leftContact = smoothstep(
+        uSurfaceThreshold * 0.55,
+        uSurfaceThreshold * 1.18,
+        leftField
+      ) * glyphPresent;
+      float rightContact = smoothstep(
+        uSurfaceThreshold * 0.55,
+        uSurfaceThreshold * 1.18,
+        rightField
+      ) * glyphPresent;
+      float sideContact = max(leftContact, rightContact);
+      float pressureDifference = clamp(
+        (leftField - rightField) / max(
+          max(leftField, rightField),
+          uSurfaceThreshold
+        ),
+        -1.0,
+        1.0
+      );
+      float targetAngle = pressureDifference * sideContact * uMaxRotation;
 
       if (uQaMode > 0.5) {
         offset = contact * uMaxDistance;
         velocity = 0.0;
+        angle = targetAngle;
+        angularVelocity = 0.0;
       } else {
         float timeStep = min(max(uDelta, 0.0), 1.0 / 30.0);
         float targetOffset = contact * uMaxDistance;
@@ -981,6 +1138,10 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
           - velocity * uDamping;
         velocity += acceleration * timeStep;
         offset += velocity * timeStep;
+        float angularAcceleration = (targetAngle - angle) * uRotationStiffness
+          - angularVelocity * uRotationDamping;
+        angularVelocity += angularAcceleration * timeStep;
+        angle += angularVelocity * timeStep;
 
         float minimumOffset = -uMaxDistance * 0.14;
         float maximumOffset = uMaxDistance * 1.16;
@@ -992,9 +1153,18 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
           offset = maximumOffset;
           velocity = min(velocity, 0.0);
         }
+        float maximumAngle = uMaxRotation * 1.18;
+        if (angle < -maximumAngle) {
+          angle = -maximumAngle;
+          angularVelocity = max(angularVelocity, 0.0);
+        }
+        if (angle > maximumAngle) {
+          angle = maximumAngle;
+          angularVelocity = min(angularVelocity, 0.0);
+        }
       }
 
-      gl_FragColor = vec4(offset, velocity, contact, 1.0);
+      gl_FragColor = vec4(offset, velocity, angle, angularVelocity);
     }
   `,
   uniforms: {
@@ -1008,6 +1178,9 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
     uStiffness: { value: state.textSpringStiffness },
     uDamping: { value: state.textSpringDamping },
     uContactPadding: { value: state.textContactPadding },
+    uMaxRotation: { value: THREE.MathUtils.degToRad(state.textMaxRotation) },
+    uRotationStiffness: { value: state.textRotationStiffness },
+    uRotationDamping: { value: state.textRotationDamping },
     uQaMode: { value: QA_MODE ? 1 : 0 },
   },
   depthTest: false,
@@ -1021,7 +1194,6 @@ const finalMaterial = new THREE.ShaderMaterial({
 
     varying vec2 vUv;
     uniform sampler2D uText;
-    uniform sampler2D uGlyphSprings;
     uniform sampler2D uNearest;
     uniform sampler2D uColorField;
     uniform sampler2D uSurfaceField;
@@ -1031,9 +1203,6 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform vec2 uArtSize;
     uniform float uSurfaceThreshold;
     uniform float uSurfaceSoftness;
-    uniform vec4 uLineLayouts[${LINE_COUNT}];
-    uniform float uCharacterAdvance;
-    uniform float uLineHalfHeight;
     uniform float uSeedThreshold;
     uniform float uCoreRadius;
     uniform float uCoreRadiusMin;
@@ -1054,57 +1223,6 @@ const finalMaterial = new THREE.ShaderMaterial({
 
     float interleavedGradientNoise(vec2 pixel) {
       return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
-    }
-
-    float displacedTextMask(vec2 artUv) {
-      float textMask = 0.0;
-      float outputX = artUv.x * uArtSize.x;
-
-      for (int lineIndex = 0; lineIndex < ${LINE_COUNT}; lineIndex += 1) {
-        vec4 lineLayout = uLineLayouts[lineIndex];
-        float characterPosition = floor(
-          (outputX - lineLayout.x) / uCharacterAdvance + 0.5
-        );
-        float validCharacter = step(0.0, characterPosition)
-          * step(characterPosition, lineLayout.z - 1.0);
-        float safeCharacter = clamp(
-          characterPosition,
-          0.0,
-          lineLayout.z - 1.0
-        );
-        float glyphSlot = lineLayout.w + safeCharacter;
-        float springUv = (glyphSlot + 0.5) / ${GLYPH_SLOT_COUNT}.0;
-        float offset = texture2D(
-          uGlyphSprings,
-          vec2(springUv, 0.5)
-        ).r;
-        vec2 sourceUv = artUv + vec2(0.0, offset / uArtSize.y);
-        float cellCenterX = lineLayout.x + safeCharacter * uCharacterAdvance;
-        float horizontalDistance = abs(outputX - cellCenterX);
-        float horizontalGate = 1.0 - smoothstep(
-          uCharacterAdvance * 0.5 - 0.75,
-          uCharacterAdvance * 0.5 + 0.75,
-          horizontalDistance
-        );
-        float verticalDistance = abs(
-          (sourceUv.y - lineLayout.y) * uArtSize.y
-        );
-        float verticalGate = 1.0 - smoothstep(
-          uLineHalfHeight - 0.75,
-          uLineHalfHeight + 0.75,
-          verticalDistance
-        );
-        float glyphMask = texture2D(
-          uText,
-          clamp(sourceUv, vec2(0.0), vec2(1.0))
-        ).a;
-        textMask = max(
-          textMask,
-          glyphMask * validCharacter * horizontalGate * verticalGate
-        );
-      }
-
-      return textMask;
     }
 
     void main() {
@@ -1150,7 +1268,7 @@ const finalMaterial = new THREE.ShaderMaterial({
         coverage = max(coverage, strokeCore * uCoreMix);
       }
 
-      float textMask = displacedTextMask(artUv);
+      float textMask = texture2D(uText, artUv).a;
 
       if (uLabelMode > 0.5) {
         // Match the first visibly chromatic pixel, not only the 50% alpha core.
@@ -1193,8 +1311,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     }
   `,
   uniforms: {
-    uText: { value: textTexture },
-    uGlyphSprings: { value: glyphSpringTargetA.texture },
+    uText: { value: deformedTextTarget.texture },
     uNearest: { value: nearestTargetA.texture },
     uColorField: { value: colorFieldTarget.texture },
     uSurfaceField: { value: surfaceFieldTarget.texture },
@@ -1204,9 +1321,6 @@ const finalMaterial = new THREE.ShaderMaterial({
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uSurfaceThreshold: { value: state.surfaceThreshold },
     uSurfaceSoftness: { value: state.surfaceSoftness },
-    uLineLayouts: { value: lineLayouts },
-    uCharacterAdvance: { value: CHARACTER_ADVANCE },
-    uLineHalfHeight: { value: LINE_HEIGHT * 0.5 },
     uSeedThreshold: { value: state.seedThreshold },
     uCoreRadius: { value: state.coreRadius },
     uCoreRadiusMin: { value: state.coreRadiusMin },
@@ -1245,13 +1359,21 @@ function clearTarget(target: THREE.WebGLRenderTarget): void {
   renderer.clear();
 }
 
+function clearSpringTarget(target: THREE.WebGLRenderTarget): void {
+  renderer.setRenderTarget(target);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear();
+}
+
 clearTarget(interactionTarget);
 clearTarget(strokeSpreadTargetA);
 clearTarget(strokeSpreadTargetB);
 clearTarget(nearestTargetA);
 clearTarget(nearestTargetB);
-clearTarget(glyphSpringTargetA);
-clearTarget(glyphSpringTargetB);
+clearSpringTarget(glyphSpringTargetA);
+clearSpringTarget(glyphSpringTargetB);
+clearTarget(deformedTextTarget);
+clearTarget(deformedColorCenterTarget);
 renderer.setClearColor(0xfbfbfa, 1);
 renderer.setRenderTarget(null);
 
@@ -1386,6 +1508,12 @@ function bindGui(): void {
     .name('스프링 감쇠');
   textMotionFolder.add(state, 'textContactPadding', 0, 12, 0.5)
     .name('접촉 감지 여유');
+  textMotionFolder.add(state, 'textMaxRotation', 0, 20, 0.5)
+    .name('최대 회전 각도');
+  textMotionFolder.add(state, 'textRotationStiffness', 10, 120, 1)
+    .name('회전 스프링 강성');
+  textMotionFolder.add(state, 'textRotationDamping', 2, 30, 0.5)
+    .name('회전 스프링 감쇠');
 
   const lightFolder = gui.addFolder('광원 / Falloff');
   lightFolder.add(state, 'radiusX', 40, 260, 1).name('가로 반경');
@@ -1563,6 +1691,12 @@ function animate(now: number): void {
     }
   }
 
+  deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
+  deformedGlyphMaterial.uniforms.uSource.value = textTexture;
+  renderPass(deformedGlyphMaterial, deformedTextTarget);
+  deformedGlyphMaterial.uniforms.uSource.value = colorCenterTexture;
+  renderPass(deformedGlyphMaterial, deformedColorCenterTarget);
+
   interactionFieldMaterial.uniforms.uDripGravity.value = state.dripGravity;
   interactionFieldMaterial.uniforms.uDripStretch.value = state.dripStretch;
   interactionFieldMaterial.uniforms.uDripTurbulence.value = state.dripTurbulence;
@@ -1621,6 +1755,11 @@ function animate(now: number): void {
   glyphSpringMaterial.uniforms.uStiffness.value = state.textSpringStiffness;
   glyphSpringMaterial.uniforms.uDamping.value = state.textSpringDamping;
   glyphSpringMaterial.uniforms.uContactPadding.value = state.textContactPadding;
+  glyphSpringMaterial.uniforms.uMaxRotation.value = THREE.MathUtils.degToRad(
+    state.textMaxRotation,
+  );
+  glyphSpringMaterial.uniforms.uRotationStiffness.value = state.textRotationStiffness;
+  glyphSpringMaterial.uniforms.uRotationDamping.value = state.textRotationDamping;
   renderPass(glyphSpringMaterial, glyphSpringWrite);
   [glyphSpringRead, glyphSpringWrite] = [glyphSpringWrite, glyphSpringRead];
 
@@ -1648,7 +1787,6 @@ function animate(now: number): void {
   finalMaterial.uniforms.uNearest.value = nearestRead.texture;
   finalMaterial.uniforms.uColorField.value = colorFieldTarget.texture;
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
-  finalMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);

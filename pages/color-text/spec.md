@@ -15,10 +15,11 @@
    Advect every parcel downward from its own creation position with gravity,
    narrow older parcels into traveling necks, and join them with a maximum field.
    Each parcel attacks from zero over 180 ms so the earliest frames stay restrained.
-3. Multiply the joined flowing falloff by the glyph alpha and character-center
-   mask at each current output position. No glyph snapshot or temporal activation
-   texture is retained. Releasing stops new parcels while existing parcels continue
-   downward from their frozen origins.
+3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
+   offset and angle, then multiply the joined flowing falloff by that transformed
+   glyph alpha and character-center mask at each current output position. No glyph
+   snapshot or temporal activation texture is retained. Releasing stops new parcels
+   while existing parcels continue downward from their frozen origins.
 4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
    Detection happens before the liquid field is built, matching the Metaball
    plugin's alpha/luminance input-detection stage instead of first turning every
@@ -56,13 +57,19 @@
     start along the drag path. If the final pointer position is over 6 px from the
     latest parcel, emit one final parcel there. Capture the active pointer and
     suppress browser selection/callout behavior for uninterrupted movement.
-11. Give all 55 character slots an independent two-value spring state: vertical
-    offset and velocity. Probe the actual liquid field at the ink center, edges,
-    and corners of every non-space glyph. Contact pulls that entire glyph toward
-    a 10 px downward offset; stiffness and damping return it to its original position
-    with restrained inertia when contact ends. The text mask used to generate liquid
-    remains static.
-12. Fully occlude the charcoal underprint inside the colored coverage, add only
+11. Give all 55 character slots an independent four-value spring state: vertical
+    offset, vertical velocity, angle, and angular velocity. Probe the actual liquid
+    field at the transformed ink center, edges, and corners of every non-space glyph.
+    Overall contact pulls that rigid glyph toward a 10 px downward offset. The
+    left-versus-right contact difference produces torque toward an angle of up to
+    9 degrees. Separate translation and rotation springs return the glyph to its
+    original pose with restrained inertia when contact ends.
+12. Render the transformed glyph mask into its own target before building the
+    next liquid field. Use that same target for final underprint compositing, so
+    both the visible text and the Metaball source follow the current glyph pose.
+    The feedback is delayed by one animation frame to avoid a pass reading its own
+    in-progress output.
+13. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
 
@@ -122,10 +129,15 @@ The reproducible measurements and label-map generator are stored in
 - Every parcel attacks over 180 ms instead of appearing at full strength on its
   first frame.
 - The visible background text moves as rigid glyphs rather than independently
-  displaced pixels. Every glyph stores offset and velocity in a 55 × 1 ping-pong
-  spring target, while nine surface-field probes determine contact.
+  displaced pixels. Every glyph stores offset, velocity, angle, and angular
+  velocity in a 55 × 1 ping-pong spring target, while nine surface-field probes
+  determine contact and left/right torque.
 - Contact pulls a glyph down by up to 10 px with stiffness 58 and damping 12;
   releasing it lets the original-position spring settle naturally.
+- Asymmetric contact rotates a glyph by up to 9 degrees. Rotation stiffness 46
+  and damping 10 make it lean under off-center weight and settle back naturally.
+- The transformed text mask feeds both the next Metaball field and the final
+  underprint, so the silhouette cannot remain at the glyph's original pose.
 - Pointer capture keeps drag updates continuous outside the initial touch point.
   Native selection, callouts, dragging, and the context menu are suppressed on the
   artwork canvas.
@@ -165,4 +177,6 @@ The reproducible measurements and label-map generator are stored in
   1.45 s stream formation, 4 s per-emission lifetime, 180 ms touch attack,
   and 13 s⁻¹ drag follow rate
 - Background-text spring: 55 character slots, nine contact probes per visible
-  glyph, 10 px target offset, stiffness 58, damping 12, and 4 px contact padding
+  glyph, 10 px target offset, translation stiffness 58, translation damping 12,
+  4 px contact padding, 9 degree target rotation, rotation stiffness 46, and
+  rotation damping 10
