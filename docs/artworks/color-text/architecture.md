@@ -531,7 +531,7 @@ Process View는 별도 HTML 페이지를 만들지 않고 `pages/color-text/inde
 | 버튼 | 실제로 읽는 값 | 화면에서 보이는 의미 |
 | --- | --- | --- |
 | `SOLVER` | `liquidParticles`, source 상태, 응집 거리 | 축소한 물리 패킷 반경, 중심점, 속도 벡터, 강한 이웃 연결 16개와 원본 Falloff의 옅은 흔적 |
-| `CONTACT` | `interactionTarget.r`, `surfaceSourceTarget.r`, `interactionTarget.a` | Falloff와 만난 글자 픽셀과 감지 임계선을 cobalt/cyan으로 표시하고, 원본 Falloff의 네 등고선을 뒤에 옅게 표시 |
+| `CONTACT` | `interactionTarget.r`, `surfaceSourceTarget.r`, `interactionTarget.a` | Falloff와 만난 글자 픽셀을 별도 외곽선이나 표본 점 없이 매끄러운 cobalt/cyan 면으로 표시하고, 원본 Falloff의 네 등고선을 뒤에 옅게 표시 |
 | `CONTOUR` | `deformedTextTarget`, `surfaceFieldTarget.r` | 현재 글자를 선명하게 표시하고 최종 `surfaceThreshold` 외곽선 하나만 겹쳐 표시 |
 | `FINAL` | `finalMaterial` | 색상·실루엣·글자 스프링을 모두 합친 작품 |
 

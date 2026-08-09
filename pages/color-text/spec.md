@@ -232,8 +232,8 @@ The reproducible measurements and label-map generator are stored in
   Contact reads it directly and draws its four contour bands at low opacity behind
   the accepted text pixels.
 - Contact reads `interactionTarget.r` and `surfaceSourceTarget.r`, drawing the
-  accepted text pixels as a cobalt/cyan sample map while retaining the outermost
-  Falloff contour.
+  accepted text pixels as a clean cobalt/cyan fill without threshold outlines or
+  sample dots. The four raw Falloff contours remain behind it at low opacity.
 - Solver reads the live particle positions, mass, age, velocity, source state,
   and cohesion range. It draws compact packet envelopes, velocity vectors, and
   the strongest 16 neighbour links over a pale trace of the raw Falloff.

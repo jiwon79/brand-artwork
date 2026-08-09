@@ -1669,23 +1669,15 @@ const debugMaterial = new THREE.ShaderMaterial({
         result = mix(result, vec3(0.08, 0.13, 0.34), contour * influence * 0.78);
       } else if (uMode < 1.5) {
         // CONTACT: the exact text pixels accepted by the touch Falloff.
-        float activation = smoothstep(0.003, 0.36, activePixels);
-        float detected = smoothstep(0.012, 0.14, detectedPixels);
+        float activation = smoothstep(0.001, 0.28, activePixels);
+        float acceptedCoverage = smoothstep(0.01, 0.12, detectedPixels);
         vec3 contactColor = mix(cobalt, cyan, smoothstep(0.08, 0.72, activation));
         result = mix(result, charcoal, textMask * 0.14);
-        result = mix(result, contactColor, activation * 0.92);
-
-        vec2 contactCell = fract(fragment / 7.0) - 0.5;
-        float contactDot = 1.0 - smoothstep(0.10, 0.24, length(contactCell));
         result = mix(
           result,
-          vec3(0.96, 0.99, 1.0),
-          contactDot * detected * activation * 0.74
+          contactColor,
+          max(activation, acceptedCoverage) * 0.96
         );
-
-        float detectedWidth = max(fwidth(detectedPixels) * 1.3, 0.0035);
-        float detectedEdge = isoLine(detectedPixels, 0.045, detectedWidth);
-        result = mix(result, vec3(0.05, 0.18, 0.48), detectedEdge * 0.78);
 
         float falloffInfluence = smoothstep(0.002, 0.12, rawFalloff);
         float falloffContourDistance = abs(fract(rawFalloff * 4.0) - 0.5);
