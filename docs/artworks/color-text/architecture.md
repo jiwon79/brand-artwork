@@ -20,6 +20,7 @@ brand-artwork/
 │   └── figures/                    # 문서용 SVG 도해
 └── pages/color-text/
     ├── index.html                  # canvas와 오류 메시지
+    ├── debug.html                  # 실제 중간 렌더 타깃을 단계별로 보는 Process View
     ├── style.css                   # 전체 화면 레이아웃과 입력 관련 CSS
     ├── script.ts                   # 입력, WebGL 패스, 애니메이션의 중심
     ├── spec.md                     # 수치와 비교 결과를 포함한 상세 스펙
@@ -75,7 +76,7 @@ surfaceSmoothMaterial × 2
         │
         ▼
 glyphSpringMaterial
-문자 자리 70개의 액체 접촉·좌우 차이와 스프링 상태 갱신
+문자 자리 64개의 액체 접촉·좌우 차이와 스프링 상태 갱신
         │
         ├──────── 다음 프레임의 deformedGlyphMaterial로 되먹임
         ▼
@@ -211,7 +212,7 @@ C에서 태어난 새 조각:      C 아래의 새 흐름이 됨
 
 따라서 드래그해도 이미 내려간 긴 흐름이 포인터를 따라 옆으로 통째로 끌려오지 않는다. 이전 위치의 흐름을 강제로 지우지도 않는다. 각 위치에서 나온 조각은 자기 수명 동안 독립적으로 내려가고, 새 위치에서 새 흐름이 동시에 생긴다. 포인터를 놓을 때 마지막 방출 위치와 실제 끝점이 `6 px`보다 멀면 끝점에도 조각 하나를 추가해 빠른 드래그에서도 마지막 위치가 빠지지 않게 한다.
 
-여기서 글자 마스크는 `q`가 아니라 **현재 출력 위치 `p`**에서 읽는다. 이 차이가 중요하다. 처음 닿았던 글자 픽셀을 아래로 복사하면 같은 덩어리가 통째로 미끄러지지만, 현재 방식은 흐르는 Falloff가 새 행을 지날 때 그곳의 새 글자 픽셀이 활성화된다. 따라서 `GROWS HEAVY`에서 만들어진 모양을 복사해 `HOW TO`로 내리는 것이 아니라, 내려온 영역과 `HOW TO`의 픽셀이 만나 전혀 새로운 실루엣이 생긴다.
+여기서 글자 마스크는 `q`가 아니라 **현재 출력 위치 `p`**에서 읽는다. 이 차이가 중요하다. 처음 닿았던 글자 픽셀을 아래로 복사하면 같은 덩어리가 통째로 미끄러지지만, 현재 방식은 흐르는 Falloff가 새 행을 지날 때 그곳의 새 글자 픽셀이 활성화된다. 따라서 `THE SURFACE`에서 만들어진 모양을 복사해 `TO GIVE`로 내리는 것이 아니라, 내려온 영역과 `TO GIVE`의 픽셀이 만나 전혀 새로운 실루엣이 생긴다.
 
 Falloff 자체는 화면에 직접 그리지 않는다. 위 곱셈의 결과만 `interactionFieldMaterial`의 R 채널에 넣고 `surfaceSourceMaterial → surfaceBlurMaterial → surfaceSmoothMaterial`을 그대로 통과시킨다. 흐르는 영향 영역의 움직임은 유체처럼 계산하지만, 글자 픽셀의 합쳐짐·둥근 연결·매끄러운 외곽선은 기존 `192`개 황금각 표본 Metaball이 계속 담당한다.
 
@@ -219,7 +220,7 @@ Falloff 자체는 화면에 직접 그리지 않는다. 위 곱셈의 결과만 
 
 ![1.6초 동안 누른 뒤 손을 떼면 위쪽 공급부부터 사라지고 앞부분만 계속 흐르는 과정](../../../pages/color-text/qa/interaction-drip-release-sequence.png)
 
-위 QA 시퀀스 이미지는 이전 문구로 기록한 파이프라인 기준 이미지다. 현재 문구는 `WHAT YOU TOUCH GROWS HEAVY ...`로 바뀌었지만, 머리·방출 조각·Metaball 계산 순서는 동일하다.
+위 QA 시퀀스 이미지는 이전 문구로 기록한 파이프라인 기준 이미지다. 현재 문구는 `PRESS AND HOLD THE SURFACE ...`로 바뀌었지만, 머리·방출 조각·Metaball 계산 순서는 동일하다.
 
 ### 5.4 너무 약한 활성 픽셀은 field 입력에서 제외한다
 
@@ -306,7 +307,7 @@ coverage = smoothstep(
 
 이전 방식은 화면의 각 픽셀에서 액체 field를 읽고 그 픽셀만 아래로 옮겼다. 같은 `Y` 안에서도 닿은 픽셀과 닿지 않은 픽셀의 이동량이 달라 글자가 늘어나거나 찢어져 보일 수 있었다.
 
-현재 방식은 공백을 포함한 `70개` 문자 자리를 먼저 만들고, 각 자리에 다음 네 값을 따로 저장한다.
+현재 방식은 공백을 포함한 `64개` 문자 자리를 먼저 만들고, 각 자리에 다음 네 값을 따로 저장한다.
 
 ```text
 offset          = 그 글자 전체가 원래 위치보다 내려간 거리
@@ -418,12 +419,12 @@ WebGL의 렌더 타깃은 GPU 안에서 다음 계산으로 넘겨줄 중간 이
 | 렌더 타깃 | 저장하는 값 | 다음 사용처 |
 | --- | --- | --- |
 | `deformedTextTarget` | `1440 × 1800`에서 글자별 하강·회전을 적용한 현재 글자 마스크 | 활성 픽셀 계산과 고해상도 최종 배경 글자 합성 |
-| `interactionTarget` | 터치 드립으로 활성화된 글자 픽셀값 | Metaball 입력 |
+| `interactionTarget` | R: 활성 글자 픽셀, G: 글자 마스크, B: 색 중심, A: 글자와 곱하기 전 원본 Falloff | Metaball 입력과 Process View |
 | `surfaceSourceTarget` | 임계값을 통과한 활성 픽셀 | 황금각 주변 표본 |
 | `metaballRawTarget` | 출력 픽셀마다 192개 주변 표본을 합친 원래 field | 가로 smoothing |
 | `surfaceHorizontalTarget` | 가로 방향으로 매끄러워진 높이 | 세로 smoothing |
 | `surfaceFieldTarget` | 최종으로 매끄러워진 높이 지도 | 외곽선 추출과 글자별 액체 접촉 감지 |
-| `glyphSpringTargetA/B` | 70개 문자 자리의 하강량·속도·각도·회전 속도 | 다음 프레임의 마스크 재생성과 스프링 계산 |
+| `glyphSpringTargetA/B` | 64개 문자 자리의 하강량·속도·각도·회전 속도 | 다음 프레임의 마스크 재생성과 스프링 계산 |
 | 화면 | 최종 실루엣과 변형된 배경 글자가 합성된 결과 | 사용자에게 표시 |
 
 `renderPass(material, target)`는 전체 화면 크기의 사각형 하나를 그린다. 사각형의 각 픽셀에서 해당 shader가 실행되고, 결과가 다음 렌더 타깃에 저장된다.
@@ -457,8 +458,8 @@ function animate(now) {
   renderPass(glyphSpringMaterial, glyphSpringWrite);
   swap(glyphSpringRead, glyphSpringWrite);
 
-  // 8. 기준 높이에서 경계를 꺼내고 같은 변형 글자 마스크와 합성한다.
-  renderPass(finalMaterial, null);
+  // 8. 일반 화면은 최종 합성, Process View는 선택한 중간 타깃을 화면에 그린다.
+  renderPass(debugStage < FINAL ? debugMaterial : finalMaterial, null);
 }
 ```
 
@@ -478,7 +479,23 @@ function animate(now) {
 
 모바일의 길게 누르기 선택 UI가 작품보다 먼저 입력을 가져가지 않도록 캔버스에는 `touch-action: none`, `user-select: none`, `-webkit-touch-callout: none`을 적용한다. 코드에서도 `pointerdown`, `contextmenu`, `selectstart`, `dragstart`의 브라우저 기본 동작을 막는다. GUI는 캔버스 밖의 별도 DOM이므로 계속 조작할 수 있다.
 
-## 10. QA 모드와 검증 순서
+## 10. Process View 디버그 페이지
+
+`pages/color-text/debug.html`은 최종 효과를 다시 흉내 내는 별도 구현이 아니다. 일반 작품과 같은 `script.ts`, 같은 포인터 상태, 같은 렌더 타깃을 사용하고 마지막 화면 출력 재질만 `debugMaterial`로 바꾼다. 따라서 버튼을 이동해도 흐르던 조각과 글자 스프링 상태가 초기화되지 않는다.
+
+화면 아래 버튼은 다음 다섯 단계를 선택한다.
+
+| 버튼 | 실제로 읽는 값 | 화면에서 보이는 의미 |
+| --- | --- | --- |
+| `FALLOFF` | `interactionTarget.a` | 글자와 만나기 전 터치 영향 범위와 등고선 |
+| `ACTIVE PIXELS` | `interactionTarget.r`, `surfaceSourceTarget.r` | Falloff와 글자 마스크를 곱해 켜진 픽셀과 임계값을 통과한 픽셀 |
+| `METABALL FIELD` | `surfaceFieldTarget.r` | 192개 주변 표본과 smoothing 뒤의 연속 숫자 지도, 최종 임계값 등고선 |
+| `SILHOUETTE` | `surfaceFieldTarget.r ≥ surfaceThreshold` | 색상을 제외한 최종 외곽 영역 |
+| `FINAL` | `finalMaterial` | 색상·실루엣·글자 스프링을 모두 합친 작품 |
+
+숫자키 `1~5` 또는 좌우 방향키로도 단계를 이동할 수 있다. 일반 작품에서 `d`를 누르면 Process View로 들어가고, Process View에서 다시 `d`를 누르면 일반 작품으로 돌아간다. `?stage=0`부터 `?stage=4`까지 URL로 첫 단계를 고정할 수도 있다.
+
+## 11. QA 모드와 검증 순서
 
 실루엣은 내부 표현을 제거한 세 종류의 값으로 비교한다.
 
@@ -512,7 +529,7 @@ function animate(now) {
 
 최종 측정에서 효과 면적은 레퍼런스보다 `2.61%` 컸고, 실루엣 중심부 두께의 중앙값은 `1.07%` 작았다. 숫자만 맞추지 않고 `Y`의 오목한 연결과 전체 외곽선의 연속성도 함께 확인했다.
 
-## 11. 이 구현은 실제 물 시뮬레이션이 아니다
+## 12. 이 구현은 실제 물 시뮬레이션이 아니다
 
 이 구조는 다음을 계산하지 않는다.
 
@@ -524,7 +541,7 @@ function animate(now) {
 
 대신 활성 글자 픽셀 이미지에 방사형 가중 평균을 적용한 field를 사용해 **물방울이 합쳐지는 외형**을 빠르게 흉내 낸다. 그래서 정확한 표현은 “유체 시뮬레이션”보다 “활성 픽셀 field 기반 액체 실루엣”이다.
 
-## 12. 주요 조절값
+## 13. 주요 조절값
 
 | 상태값 | 기본값 | 모양에 미치는 영향 |
 | --- | ---: | --- |
@@ -579,7 +596,7 @@ function animate(now) {
 
 일반 화면에서는 `lil-gui` 패널이 보이며, `터치 드립`, `텍스트 밀림`, `광원 / Falloff`, `액체 실루엣`, `색상`, `고급 설정` 폴더로 나뉜다. `터치 드립` 폴더에서 중력·폭·수명과 함께 하단 잔물결 양·시작 시간·고정 머리 소멸 시간·고정 머리 보호 거리·조각 전환 부드러움·드래그 추종·방출 간격을 조절할 수 있다. `텍스트 밀림`에서는 최대 하강 거리, 이동 스프링 강성·감쇠, 접촉 감지 여유와 함께 최대 회전 각도, 회전 스프링 강성·감쇠를 바꿀 수 있다. 키보드의 `g`를 누르면 패널을 숨기거나 다시 열 수 있다. 자동 비교용 QA 모드에서는 이미지 비교를 가리지 않도록 패널이 처음부터 숨겨진다. 실루엣을 조절할 때는 한 번에 하나의 값을 바꾸고 Y 교차부를 먼저 확인하는 것이 안전하다.
 
-## 13. 용어 정리
+## 14. 용어 정리
 
 | 용어 | 쉬운 뜻 |
 | --- | --- |
@@ -599,7 +616,7 @@ function animate(now) {
 | Smoothing | 작은 계단과 잡음을 부드럽게 줄이는 계산 |
 | Saddle point | 한 방향에서는 높고 다른 방향에서는 낮은 안장 모양의 지점 |
 
-## 14. 참고 자료
+## 15. 참고 자료
 
 - 작가가 제공한 Instagram 설명: Shody’s Metaball과 Falloff로 typography stroke를 드러낸다는 설명
 - [Scenery — Metaball overview](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ)

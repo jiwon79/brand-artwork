@@ -83,7 +83,7 @@
     uninterrupted movement. After release, keep physical age advancing normally
     but advance lifetime age at 2×, halving disappearance latency without making
     the visible stream fall faster.
-11. Give all 70 character slots an independent four-value spring state: vertical
+11. Give all 64 character slots an independent four-value spring state: vertical
     offset, vertical velocity, angle, and angular velocity. Test a 9 × 9 grid over
     every transformed non-space glyph and only count samples where current glyph
     alpha overlaps the visible liquid surface.
@@ -121,7 +121,7 @@ The comparison deliberately discards palette details and maps the image to three
 classes: background = 0, unaffected text = 1, effect silhouette = 2.
 
 These measurements were recorded before the copy changed from `COLOR CHANGES ...`
-to `WHAT YOU TOUCH GROWS HEAVY ...`. They remain the geometry-acceptance baseline
+to `PRESS AND HOLD THE SURFACE ...`. They remain the geometry-acceptance baseline
 for the Metaball method, not a pixel-count claim for the current letter layout.
 
 ![Reference and implementation three-class silhouettes](qa/silhouette-semantic-comparison-final.png)
@@ -177,7 +177,7 @@ The reproducible measurements and label-map generator are stored in
   fast; the stable head fades independently over 350 ms.
 - The visible background text moves as rigid glyphs rather than independently
   displaced pixels. Every glyph stores offset, velocity, angle, and angular
-  velocity in a 70 × 1 ping-pong spring target. A 9 × 9 grid tests the product
+  velocity in a 64 × 1 ping-pong spring target. A 9 × 9 grid tests the product
   of the current transformed glyph alpha and the visible surface mask, so nearby
   invisible field and empty bounding-box space cannot move the glyph. The left
   and right four columns determine torque; the center column only contributes
@@ -201,6 +201,21 @@ The reproducible measurements and label-map generator are stored in
   after emission stopped.
 - Add `&qaHasDragged=1` to make post-drag parcels skip the initial birth delay.
 - Press `g` to hide or reveal the tuning panel.
+
+## Process View
+
+- `debug.html` runs the same render loop and preserves the same pointer, parcel,
+  and glyph-spring state while switching views.
+- Its fixed bottom control moves through Falloff, active pixels, Metaball field,
+  thresholded silhouette, and the final composite.
+- The interaction target alpha channel stores raw `streamLight` before it is
+  multiplied by the text mask. The regular pipeline does not consume this channel;
+  the debug Falloff view reads it directly and draws four contour bands.
+- The other views read `interactionTarget.r`, `surfaceSourceTarget.r`, and
+  `surfaceFieldTarget.r`, so the debug output cannot drift from the artwork's
+  actual intermediate values.
+- Number keys 1–5 and the arrow keys mirror the bottom buttons. Press `d` to move
+  between the artwork and Process View without maintaining a second implementation.
 
 ## Reference-space defaults
 
@@ -235,7 +250,7 @@ The reproducible measurements and label-map generator are stored in
   one stable held head, 34 px head-protection distance, 0.08 parcel winner blend,
   350 ms head release, 8 px immediate drag emission distance, 2× post-release
   lifetime rate, and 13 s⁻¹ drag follow rate
-- Background-text spring: 70 character slots, 81 ink-and-surface overlap samples
+- Background-text spring: 64 character slots, 81 ink-and-surface overlap samples
   per visible glyph, 10 px target offset, translation stiffness 58, translation
   damping 12, 0 px contact padding, 9 degree target rotation, rotation stiffness
   46, and rotation damping 10

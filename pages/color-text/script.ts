@@ -18,6 +18,19 @@ const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
 const searchParams = new URLSearchParams(window.location.search);
 const QA_MODE = searchParams.has('qa');
 const QA_LABEL_MODE = searchParams.has('qaLabels');
+const DEBUG_MODE = document.body.dataset.debug === 'true';
+const DEBUG_STAGE_META = [
+  { title: 'FALLOFF', description: 'Touch influence before it meets the text' },
+  { title: 'ACTIVE PIXELS', description: 'Text mask multiplied by the flowing Falloff' },
+  { title: 'METABALL FIELD', description: '192 nearby samples accumulated into a scalar field' },
+  { title: 'SILHOUETTE', description: 'The field cut at the visible surface threshold' },
+  { title: 'FINAL', description: 'Color, silhouette, and moving letter springs combined' },
+] as const;
+const DEBUG_STAGE_COUNT = DEBUG_STAGE_META.length;
+const requestedDebugStage = Number(searchParams.get('stage'));
+let debugStage = Number.isFinite(requestedDebugStage)
+  ? THREE.MathUtils.clamp(Math.round(requestedDebugStage), 0, DEBUG_STAGE_COUNT - 1)
+  : 0;
 const qaPointerX = Number(searchParams.get('qaX'));
 const qaPointerY = Number(searchParams.get('qaY'));
 const QA_POINTER_LOCKED = searchParams.has('qaX')
@@ -107,15 +120,15 @@ const qaDripEnergy = qaNumber('qaDrip', 1);
 const qaHasDragged = searchParams.get('qaHasDragged') === '1';
 
 const lines = [
-  'WHAT',
-  'YOU TOUCH',
-  'GROWS HEAVY',
-  'FOR A MOMENT',
-  'THEN',
-  'THE LETTERS',
-  'REMEMBER',
-  'HOW TO',
-  'FLOAT',
+  'PRESS',
+  'AND HOLD',
+  'THE SURFACE',
+  'UNTIL',
+  'THE WORDS',
+  'BEGIN',
+  'TO GIVE',
+  'WAY',
+  'BENEATH YOU',
 ];
 const LINE_COUNT = lines.length;
 const GLYPH_SLOT_COUNT = lines.reduce((total, line) => total + line.length, 0);
@@ -803,7 +816,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         surfaceActivation,
         textMask,
         colorActivation,
-        1.0
+        streamLight
       );
     }
   `,
@@ -1491,6 +1504,121 @@ const finalMaterial = new THREE.ShaderMaterial({
   depthWrite: false,
 });
 
+const debugMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uText;
+    uniform sampler2D uInteraction;
+    uniform sampler2D uSurfaceSource;
+    uniform sampler2D uSurfaceField;
+    uniform vec2 uResolution;
+    uniform vec2 uPosterOffset;
+    uniform vec2 uPosterSize;
+    uniform float uSurfaceThreshold;
+    uniform float uSurfaceSoftness;
+    uniform float uMode;
+
+    void main() {
+      vec2 fragment = vUv * uResolution;
+      vec2 artUv = (fragment - uPosterOffset) / uPosterSize;
+      vec3 background = vec3(0.9843, 0.9843, 0.9804);
+
+      if (artUv.x < 0.0 || artUv.x > 1.0 || artUv.y < 0.0 || artUv.y > 1.0) {
+        gl_FragColor = vec4(background, 1.0);
+        return;
+      }
+
+      vec4 interaction = texture2D(uInteraction, artUv);
+      float textMask = texture2D(uText, artUv).a;
+      float rawFalloff = interaction.a;
+      float activePixels = interaction.r;
+      float detectedPixels = texture2D(uSurfaceSource, artUv).r;
+      float surfaceField = texture2D(uSurfaceField, artUv).r;
+      vec3 charcoal = vec3(0.15, 0.145, 0.14);
+      vec3 result = background;
+
+      if (uMode < 0.5) {
+        float influence = smoothstep(0.002, 0.12, rawFalloff);
+        vec3 cool = vec3(0.22, 0.55, 0.92);
+        vec3 warm = vec3(0.90, 0.48, 0.88);
+        vec3 influenceColor = mix(cool, warm, smoothstep(0.18, 0.9, rawFalloff));
+        result = mix(result, charcoal, textMask * 0.13);
+        result = mix(
+          result,
+          influenceColor,
+          influence * (0.24 + rawFalloff * 0.62)
+        );
+        float contourDistance = abs(fract(rawFalloff * 4.0) - 0.5);
+        float contourWidth = max(fwidth(rawFalloff) * 5.0, 0.012);
+        float contour = 1.0 - smoothstep(
+          contourWidth,
+          contourWidth * 2.2,
+          contourDistance
+        );
+        result = mix(result, vec3(0.08, 0.13, 0.34), contour * influence * 0.78);
+      } else if (uMode < 1.5) {
+        float activation = smoothstep(0.002, 0.42, activePixels);
+        float detected = smoothstep(0.002, 0.22, detectedPixels);
+        vec3 activeCool = vec3(0.24, 0.66, 0.94);
+        vec3 activeHot = vec3(0.95, 0.40, 0.78);
+        vec3 activeColor = mix(activeCool, activeHot, activation);
+        result = mix(result, charcoal, textMask * 0.18);
+        result = mix(result, activeColor, activation * 0.86);
+        result = mix(result, vec3(1.0, 0.91, 0.56), detected * activation * 0.34);
+      } else if (uMode < 2.5) {
+        float normalizedField = clamp(
+          surfaceField / max(uSurfaceThreshold * 2.7, 0.001),
+          0.0,
+          1.0
+        );
+        float fieldVisible = smoothstep(0.001, 0.035, surfaceField);
+        vec3 fieldCool = vec3(0.17, 0.28, 0.72);
+        vec3 fieldMid = vec3(0.83, 0.38, 0.82);
+        vec3 fieldHot = vec3(1.0, 0.88, 0.42);
+        vec3 fieldColor = mix(fieldCool, fieldMid, smoothstep(0.0, 0.62, normalizedField));
+        fieldColor = mix(fieldColor, fieldHot, smoothstep(0.58, 1.0, normalizedField));
+        result = mix(result, charcoal, textMask * 0.08);
+        result = mix(result, fieldColor, fieldVisible * (0.3 + normalizedField * 0.62));
+        float isoWidth = max(uSurfaceSoftness * 1.8, fwidth(surfaceField) * 1.8);
+        float isoContour = 1.0 - smoothstep(
+          isoWidth,
+          isoWidth * 2.2,
+          abs(surfaceField - uSurfaceThreshold)
+        );
+        result = mix(result, vec3(0.06, 0.055, 0.05), isoContour * 0.9);
+      } else {
+        float surfaceEdge = max(uSurfaceSoftness, fwidth(surfaceField) * 1.2);
+        float coverage = smoothstep(
+          uSurfaceThreshold - surfaceEdge,
+          uSurfaceThreshold + surfaceEdge,
+          surfaceField
+        );
+        result = mix(result, charcoal, textMask * 0.2 * (1.0 - coverage));
+        result = mix(result, vec3(0.07, 0.065, 0.06), coverage);
+      }
+
+      gl_FragColor = vec4(result, 1.0);
+    }
+  `,
+  uniforms: {
+    uText: { value: deformedTextTarget.texture },
+    uInteraction: { value: interactionTarget.texture },
+    uSurfaceSource: { value: surfaceSourceTarget.texture },
+    uSurfaceField: { value: surfaceFieldTarget.texture },
+    uResolution: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
+    uPosterOffset: { value: new THREE.Vector2(0, 0) },
+    uPosterSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
+    uSurfaceThreshold: { value: state.surfaceThreshold },
+    uSurfaceSoftness: { value: state.surfaceSoftness },
+    uMode: { value: debugStage },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
 const passScene = new THREE.Scene();
 const passQuad = new THREE.Mesh(geometry, interactionFieldMaterial);
 passScene.add(passQuad);
@@ -1559,6 +1687,9 @@ function updateLayout(): void {
     (drawingSize.y - posterHeight) / 2,
   );
   finalMaterial.uniforms.uPosterSize.value.set(posterWidth, posterHeight);
+  debugMaterial.uniforms.uResolution.value.copy(finalMaterial.uniforms.uResolution.value);
+  debugMaterial.uniforms.uPosterOffset.value.copy(finalMaterial.uniforms.uPosterOffset.value);
+  debugMaterial.uniforms.uPosterSize.value.copy(finalMaterial.uniforms.uPosterSize.value);
 }
 
 function setPointerFromClient(clientX: number, clientY: number): void {
@@ -1689,6 +1820,52 @@ if (!QA_POINTER_LOCKED) {
 window.addEventListener('resize', updateLayout);
 window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', (event) => {
   reduceMotion = event.matches;
+});
+
+function setDebugStage(nextStage: number): void {
+  debugStage = THREE.MathUtils.clamp(
+    Math.round(nextStage),
+    0,
+    DEBUG_STAGE_COUNT - 1,
+  );
+  debugMaterial.uniforms.uMode.value = debugStage;
+
+  const metadata = DEBUG_STAGE_META[debugStage];
+  const indexElement = document.getElementById('debug-stage-index');
+  const titleElement = document.getElementById('debug-stage-title');
+  const descriptionElement = document.getElementById('debug-stage-description');
+  if (indexElement) indexElement.textContent = String(debugStage + 1).padStart(2, '0');
+  if (titleElement) titleElement.textContent = metadata.title;
+  if (descriptionElement) descriptionElement.textContent = metadata.description;
+
+  document.querySelectorAll<HTMLButtonElement>('[data-debug-stage]').forEach((button) => {
+    const selected = Number(button.dataset.debugStage) === debugStage;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
+}
+
+function bindDebugControls(): void {
+  if (!DEBUG_MODE) return;
+  document.querySelectorAll<HTMLButtonElement>('[data-debug-stage]').forEach((button) => {
+    button.addEventListener('click', () => {
+      setDebugStage(Number(button.dataset.debugStage));
+    });
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.target instanceof HTMLInputElement) return;
+    if (/^[1-5]$/.test(event.key)) setDebugStage(Number(event.key) - 1);
+    if (event.key === 'ArrowLeft') setDebugStage(debugStage - 1);
+    if (event.key === 'ArrowRight') setDebugStage(debugStage + 1);
+  });
+  setDebugStage(debugStage);
+}
+
+window.addEventListener('keydown', (event) => {
+  if (event.target instanceof HTMLInputElement) return;
+  if (event.key.toLowerCase() !== 'd') return;
+  window.location.href = DEBUG_MODE ? './' : './debug.html';
 });
 
 function bindGui(): void {
@@ -1878,7 +2055,7 @@ function bindGui(): void {
   colorFolder.close();
   advancedFolder.close();
 
-  if (QA_MODE) gui.hide();
+  if (QA_MODE || DEBUG_MODE) gui.hide();
 
   window.addEventListener('keydown', (event) => {
     if (event.target instanceof HTMLInputElement) return;
@@ -1886,6 +2063,7 @@ function bindGui(): void {
   });
 }
 
+bindDebugControls();
 bindGui();
 updateLayout();
 
@@ -2099,7 +2277,16 @@ function animate(now: number): void {
   finalMaterial.uniforms.uColorGlyphShapeStrength.value = state.colorGlyphShapeStrength;
   finalMaterial.uniforms.uColorGlyphShapeRadius.value = state.colorGlyphShapeRadius;
   finalMaterial.uniforms.uColorGlyphShapeEdge.value = state.colorGlyphShapeEdge;
-  renderPass(finalMaterial, null);
+  debugMaterial.uniforms.uText.value = deformedTextTarget.texture;
+  debugMaterial.uniforms.uInteraction.value = interactionTarget.texture;
+  debugMaterial.uniforms.uSurfaceSource.value = surfaceSourceTarget.texture;
+  debugMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
+  debugMaterial.uniforms.uSurfaceThreshold.value = state.surfaceThreshold;
+  debugMaterial.uniforms.uSurfaceSoftness.value = state.surfaceSoftness;
+  const outputMaterial = DEBUG_MODE && debugStage < DEBUG_STAGE_COUNT - 1
+    ? debugMaterial
+    : finalMaterial;
+  renderPass(outputMaterial, null);
 
   requestAnimationFrame(animate);
 }

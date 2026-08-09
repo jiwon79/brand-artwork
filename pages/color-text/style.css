@@ -63,3 +63,133 @@ body {
     cursor: auto;
   }
 }
+
+.debug-page {
+  cursor: crosshair;
+}
+
+#debug-controls {
+  position: fixed;
+  z-index: 10;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  display: grid;
+  width: min(760px, calc(100% - 24px));
+  gap: 9px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.debug-stage-copy {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 4px;
+  color: #252422;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-transform: uppercase;
+  text-shadow: 0 1px 10px rgba(251, 251, 250, 0.9);
+}
+
+#debug-stage-index {
+  color: rgba(37, 36, 34, 0.46);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.debug-stage-text {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+#debug-stage-title {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.06em;
+}
+
+#debug-stage-description {
+  overflow: hidden;
+  color: rgba(37, 36, 34, 0.62);
+  font-size: 10px;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.debug-stage-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid rgba(37, 36, 34, 0.12);
+  border-radius: 16px;
+  background: rgba(251, 251, 250, 0.82);
+  box-shadow: 0 12px 36px rgba(32, 30, 28, 0.13);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  pointer-events: auto;
+}
+
+.debug-stage-buttons button {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: rgba(37, 36, 34, 0.58);
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+  transition: color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.debug-stage-buttons button span {
+  color: rgba(37, 36, 34, 0.34);
+  font-size: 9px;
+}
+
+.debug-stage-buttons button.active {
+  background: #252422;
+  color: #fbfbfa;
+}
+
+.debug-stage-buttons button.active span {
+  color: rgba(251, 251, 250, 0.54);
+}
+
+.debug-stage-buttons button:active {
+  transform: scale(0.97);
+}
+
+.debug-stage-buttons button:focus-visible {
+  outline: 2px solid #655ef4;
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  #debug-controls {
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: calc(100% - 16px);
+  }
+
+  .debug-stage-buttons button {
+    min-height: 44px;
+    gap: 0;
+    padding-inline: 3px;
+    font-size: 9px;
+  }
+
+  .debug-stage-buttons button span {
+    display: none;
+  }
+}

@@ -17,6 +17,14 @@ const input: Record<string, string> = {
 };
 for (const name of pageEntries) {
   input[name] = resolve(pagesDir, name, 'index.html');
+  const pageDirectory = resolve(pagesDir, name);
+  for (const entry of readdirSync(pageDirectory, { withFileTypes: true })) {
+    if (!entry.isFile() || entry.name === 'index.html' || !entry.name.endsWith('.html')) {
+      continue;
+    }
+    const entryName = entry.name.slice(0, -'.html'.length);
+    input[`${name}-${entryName}`] = resolve(pageDirectory, entry.name);
+  }
 }
 
 // pages/*/assets/ 디렉토리를 dist/pages/*/assets/ 로 복사
