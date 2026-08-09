@@ -537,6 +537,8 @@ Process View는 별도 HTML 페이지를 만들지 않고 `pages/color-text/inde
 
 기본 선택은 `FINAL`이다. 숫자키 `1~4` 또는 좌우 방향키로도 단계를 이동할 수 있고, `?stage=0`부터 `?stage=3`까지 URL로 첫 단계를 고정할 수도 있다.
 
+캔버스에서 첫 손가락이 pointer capture된 채 액체를 계속 움직여도 다른 손가락으로 하단 단계를 바꿀 수 있다. 버튼은 지연된 `click`이 아니라 두 번째 포인터의 `pointerdown`에서 즉시 `setDebugStage()`를 호출한다. 버튼 영역은 `touch-action: none`으로 브라우저 제스처를 막되, 캔버스의 활성 포인터와 source 상태는 건드리지 않는다. 키보드와 보조 기술이 만드는 `click`은 별도로 유지한다.
+
 ## 11. QA 모드와 검증 순서
 
 실루엣은 내부 표현을 제거한 세 종류의 값으로 비교한다.

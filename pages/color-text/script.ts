@@ -2259,8 +2259,20 @@ function setDebugStage(nextStage: number): void {
 
 function bindDebugControls(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-debug-stage]').forEach((button) => {
-    button.addEventListener('click', () => {
+    const selectStage = (): void => {
       setDebugStage(Number(button.dataset.debugStage));
+    };
+    // A second touch must be able to switch process views while the primary
+    // pointer remains captured by the canvas and keeps emitting liquid.
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectStage();
+    });
+    button.addEventListener('click', (event) => {
+      // Pointer input was already handled at pointerdown. Keep click for
+      // keyboard and assistive-technology activation.
+      if (event.detail === 0) selectStage();
     });
   });
   window.addEventListener('keydown', (event) => {

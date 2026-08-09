@@ -240,6 +240,9 @@ The reproducible measurements and label-map generator are stored in
 - Contour draws the deformed text clearly and only the final `surfaceThreshold`
   outline. Adding the Final palette and surface fill is therefore the last step.
 - Number keys 1–4 and the arrow keys mirror the bottom buttons.
+- Process buttons switch on `pointerdown`, not delayed `click`. A second touch can
+  therefore change Solver, Contact, Contour, or Final while the primary captured
+  pointer keeps dragging and emitting liquid on the canvas.
 
 ## Reference-space defaults
 
