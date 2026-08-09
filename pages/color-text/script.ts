@@ -87,6 +87,9 @@ const state = {
   dripLifetime: qaNumber('qaDripLifetime', 4.0),
   dripAttack: qaNumber('qaDripAttack', 0.36),
   dripReleaseSpeed: qaNumber('qaDripReleaseSpeed', 2.0),
+  dripHeadReleaseDuration: qaNumber('qaDripHeadReleaseDuration', 0.35),
+  dripHeadStabilityDistance: qaNumber('qaDripHeadStabilityDistance', 34.0),
+  dripParcelBlend: qaNumber('qaDripParcelBlend', 0.08),
   dripFollowEase: qaNumber('qaDripFollowEase', 13.0),
   dripEmissionInterval: qaNumber('qaDripEmissionInterval', 0.13),
   textPushDistance: qaNumber('qaTextPushDistance', 10.0),
@@ -128,6 +131,7 @@ const initialPointer = {
 const pointerTarget: Pointer = { ...initialPointer };
 const dripEmitter: Pointer = { ...initialPointer };
 const dripDragEmission: Pointer = { ...initialPointer };
+const dripHeadOrigin: Pointer = { ...initialPointer };
 type DripParcel = {
   x: number;
   y: number;
@@ -148,6 +152,9 @@ const dripUniformWeights = new Float32Array(DRIP_PARCEL_COUNT);
 let dripEmissionElapsed = 0;
 let dripHeld = false;
 let dripHasDragged = false;
+let dripHeadAge = 0;
+let dripHeadReleaseAge = Number.POSITIVE_INFINITY;
+let dripHeadReleaseStrength = 0;
 let activeDripPointerId: number | null = null;
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
 let startTime = performance.now();
@@ -561,6 +568,10 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uDripLifeAges[${DRIP_PARCEL_COUNT}];
     uniform float uDripInstantBirths[${DRIP_PARCEL_COUNT}];
     uniform float uDripWeights[${DRIP_PARCEL_COUNT}];
+    uniform vec2 uDripHeadOrigin;
+    uniform float uDripHeadWeight;
+    uniform float uDripHeadStabilityDistance;
+    uniform float uDripParcelBlend;
     uniform float uDripGravity;
     uniform float uDripStretch;
     uniform float uDripTurbulence;
@@ -672,6 +683,11 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         normalizedDistance
       );
       flowedLight *= smoothstep(1.04, 0.84, normalizedDistance);
+      float flowGate = smoothstep(
+        max(uDripHeadStabilityDistance * 0.25, 1.0),
+        max(uDripHeadStabilityDistance, 2.0),
+        outputDown
+      );
       float lifeFade = 1.0 - smoothstep(
         max(uDripLifetime - 0.9, 0.0),
         uDripLifetime,
@@ -696,6 +712,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
           + 0.5 * sin(outputDown * 0.071 + localX * 0.043 - uTime * 2.6)
         );
       return flowedLight
+        * flowGate
         * lifeFade
         * birthFade
         * densityPulse
@@ -703,19 +720,67 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         * step(parcelLifeAge, uDripLifetime);
     }
 
+    float stationaryHeadFalloff(vec2 outputUv) {
+      vec2 falloffDelta = (outputUv - uDripHeadOrigin) * uArtSize;
+      float verticalRadius = falloffDelta.y < 0.0
+        ? uLightRadiusYBelow
+        : uLightRadius.y;
+      float verticalRatio = abs(falloffDelta.y) / max(verticalRadius, 0.001);
+      float taperFloor = falloffDelta.y < 0.0
+        ? uLightTaperBelow
+        : uLightTaperAbove;
+      float horizontalTaper = mix(
+        1.0,
+        taperFloor,
+        smoothstep(uLightTaperStart, uLightTaperEnd, verticalRatio)
+      );
+      vec2 effectiveRadius = vec2(
+        uLightRadius.x * horizontalTaper,
+        verticalRadius
+      );
+      float normalizedDistance = length(
+        falloffDelta / max(effectiveRadius, vec2(0.001))
+      );
+      float headLight = 1.0 - smoothstep(
+        uLightFalloff,
+        1.0,
+        normalizedDistance
+      );
+      headLight *= smoothstep(1.04, 0.84, normalizedDistance);
+      return headLight * clamp(uDripHeadWeight, 0.0, 1.0);
+    }
+
     void main() {
-      float streamLight = 0.0;
+      float strongestLight = stationaryHeadFalloff(vUv);
+      float secondLight = 0.0;
       for (int sampleIndex = 0; sampleIndex < ${DRIP_PARCEL_COUNT}; sampleIndex += 1) {
-        streamLight = max(
-          streamLight,
-          flowedFalloffAtAge(
-            vUv,
-            uDripAges[sampleIndex],
-            uDripLifeAges[sampleIndex],
-            uDripOrigins[sampleIndex],
-            uDripWeights[sampleIndex],
-            uDripInstantBirths[sampleIndex]
-          )
+        float parcelLight = flowedFalloffAtAge(
+          vUv,
+          uDripAges[sampleIndex],
+          uDripLifeAges[sampleIndex],
+          uDripOrigins[sampleIndex],
+          uDripWeights[sampleIndex],
+          uDripInstantBirths[sampleIndex]
+        );
+        if (parcelLight > strongestLight) {
+          secondLight = strongestLight;
+          strongestLight = parcelLight;
+        } else {
+          secondLight = max(secondLight, parcelLight);
+        }
+      }
+      float winnerGap = strongestLight - secondLight;
+      float winnerBlend = smoothstep(
+        0.0,
+        max(uDripParcelBlend, 0.001),
+        winnerGap
+      );
+      float streamLight = strongestLight;
+      if (secondLight > 0.0001) {
+        streamLight = mix(
+          (strongestLight + secondLight) * 0.5,
+          strongestLight,
+          winnerBlend
         );
       }
 
@@ -745,6 +810,10 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uDripLifeAges: { value: dripUniformLifeAges },
     uDripInstantBirths: { value: dripUniformInstantBirths },
     uDripWeights: { value: dripUniformWeights },
+    uDripHeadOrigin: { value: new THREE.Vector2(initialPointer.x, initialPointer.y) },
+    uDripHeadWeight: { value: 0 },
+    uDripHeadStabilityDistance: { value: state.dripHeadStabilityDistance },
+    uDripParcelBlend: { value: state.dripParcelBlend },
     uDripGravity: { value: state.dripGravity },
     uDripStretch: { value: state.dripStretch },
     uDripTurbulence: { value: state.dripTurbulence },
@@ -1509,14 +1578,25 @@ function emitDripParcel(
   });
 }
 
+function getDripHeadAttackStrength(age: number, instant: boolean): number {
+  if (instant) return 1;
+  const energy = 1 - Math.exp(-age / Math.max(state.dripAttack, 0.001));
+  return energy * energy;
+}
+
 function startDrip(pointerId: number): void {
   dripEmitter.x = pointerTarget.x;
   dripEmitter.y = pointerTarget.y;
   dripDragEmission.x = pointerTarget.x;
   dripDragEmission.y = pointerTarget.y;
+  dripHeadOrigin.x = pointerTarget.x;
+  dripHeadOrigin.y = pointerTarget.y;
   dripEmissionElapsed = 0;
   dripHeld = true;
   dripHasDragged = false;
+  dripHeadAge = 0;
+  dripHeadReleaseAge = 0;
+  dripHeadReleaseStrength = 0;
   activeDripPointerId = pointerId;
   emitDripParcel(dripEmitter.x, dripEmitter.y, 0, true);
 }
@@ -1533,6 +1613,11 @@ function stopDrip(pointerId: number): void {
   if (finalTravel > 6) {
     emitDripParcel(pointerTarget.x, pointerTarget.y, 0, !dripHasDragged);
   }
+  dripHeadReleaseStrength = getDripHeadAttackStrength(
+    dripHeadAge,
+    dripHasDragged,
+  );
+  dripHeadReleaseAge = 0;
   for (const parcel of dripParcels) parcel.released = true;
   dripHeld = false;
   dripEmissionElapsed = 0;
@@ -1546,6 +1631,8 @@ if (!QA_POINTER_LOCKED) {
     if (activeDripPointerId !== null) event.preventDefault();
     setPointerFromClient(event.clientX, event.clientY);
     if (activeDripPointerId !== null) {
+      dripHeadOrigin.x = pointerTarget.x;
+      dripHeadOrigin.y = pointerTarget.y;
       const dragTravel = Math.hypot(
         (pointerTarget.x - dripDragEmission.x) * ART_WIDTH,
         (pointerTarget.y - dripDragEmission.y) * ART_HEIGHT,
@@ -1610,6 +1697,12 @@ function bindGui(): void {
   interactionFolder.add(state, 'dripLifetime', 1.5, 7, 0.1).name('방출 조각 수명');
   interactionFolder.add(state, 'dripAttack', 0.05, 0.6, 0.01).name('터치 시작 시간');
   interactionFolder.add(state, 'dripReleaseSpeed', 1, 4, 0.1).name('릴리즈 소멸 배속');
+  interactionFolder.add(state, 'dripHeadReleaseDuration', 0.05, 1, 0.01)
+    .name('고정 머리 소멸 시간');
+  interactionFolder.add(state, 'dripHeadStabilityDistance', 8, 80, 1)
+    .name('고정 머리 보호 거리');
+  interactionFolder.add(state, 'dripParcelBlend', 0.005, 0.25, 0.005)
+    .name('조각 전환 부드러움');
   interactionFolder.add(state, 'dripFollowEase', 3, 30, 0.5).name('드래그 따라가기');
   interactionFolder.add(state, 'dripEmissionInterval', 0.04, 0.35, 0.01).name('방출 간격');
 
@@ -1794,6 +1887,14 @@ function animate(now: number): void {
   previousTime = now;
 
   if (!QA_MODE) {
+    if (dripHeld) {
+      dripHeadAge += delta;
+      dripHeadOrigin.x = pointerTarget.x;
+      dripHeadOrigin.y = pointerTarget.y;
+    } else if (Number.isFinite(dripHeadReleaseAge)) {
+      dripHeadReleaseAge += delta;
+    }
+
     for (const parcel of dripParcels) {
       parcel.age += delta;
       parcel.lifeAge += delta * (parcel.released ? state.dripReleaseSpeed : 1);
@@ -1854,6 +1955,27 @@ function animate(now: number): void {
     }
   }
 
+  let dripHeadWeight = 0;
+  if (QA_MODE) {
+    const qaHeadAttack = getDripHeadAttackStrength(qaDripAge, qaHasDragged);
+    const qaHeadRelease = 1 - THREE.MathUtils.smoothstep(
+      qaDripReleaseAge,
+      0,
+      Math.max(state.dripHeadReleaseDuration, 0.001),
+    );
+    dripHeadWeight = qaHeadAttack * qaHeadRelease
+      * THREE.MathUtils.clamp(qaDripEnergy, 0, 1);
+  } else if (dripHeld) {
+    dripHeadWeight = getDripHeadAttackStrength(dripHeadAge, dripHasDragged);
+  } else if (Number.isFinite(dripHeadReleaseAge)) {
+    const releaseFade = 1 - THREE.MathUtils.smoothstep(
+      dripHeadReleaseAge,
+      0,
+      Math.max(state.dripHeadReleaseDuration, 0.001),
+    );
+    dripHeadWeight = dripHeadReleaseStrength * releaseFade;
+  }
+
   deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
   deformedGlyphMaterial.uniforms.uSource.value = textTexture;
   renderPass(deformedGlyphMaterial, deformedTextTarget);
@@ -1868,6 +1990,15 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uDripStreamWidth.value = state.dripStreamWidth;
   interactionFieldMaterial.uniforms.uDripLifetime.value = state.dripLifetime;
   interactionFieldMaterial.uniforms.uDripAttack.value = state.dripAttack;
+  interactionFieldMaterial.uniforms.uDripHeadOrigin.value.set(
+    QA_MODE ? initialPointer.x : dripHeadOrigin.x,
+    QA_MODE ? initialPointer.y : dripHeadOrigin.y,
+  );
+  interactionFieldMaterial.uniforms.uDripHeadWeight.value = dripHeadWeight;
+  interactionFieldMaterial.uniforms.uDripHeadStabilityDistance.value = (
+    state.dripHeadStabilityDistance
+  );
+  interactionFieldMaterial.uniforms.uDripParcelBlend.value = state.dripParcelBlend;
   interactionFieldMaterial.uniforms.uLightRadius.value.set(state.radiusX, state.radiusY);
   interactionFieldMaterial.uniforms.uLightRadiusYBelow.value = state.radiusYBelow;
   interactionFieldMaterial.uniforms.uLightFalloff.value = state.lightFalloff;

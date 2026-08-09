@@ -10,19 +10,25 @@
 
 1. Bake the nine text lines into a static 1440 × 1800 alpha texture, preserving
    the 480 × 600 artwork coordinate system at 3× sampling density.
-2. Treat touch drip as the only interaction. Emit one independently anchored
-   asymmetric falloff parcel every 130 ms while pressed, up to 32 live parcels.
-   Advect every parcel downward from its own creation position with gravity,
-   narrow older parcels into traveling necks, and join them with a maximum field.
-   Parcels emitted at the untouched-down origin attack from zero over 360 ms so
-   the initial silhouette stays restrained. Once dragging begins, later parcels
-   start at full birth energy.
+2. Treat touch drip as the only interaction. Keep one time-invariant falloff head
+   at the current held pointer, then emit one independently anchored flowing
+   parcel every 130 ms, up to 32 live parcels. Advect every parcel downward from
+   its own creation position with gravity and narrow older parcels into traveling
+   necks. Suppress each flowing parcel over the first 34 px below its origin so
+   parcel birth and motion cannot disturb the held head boundary. The head and
+   untouched-down parcels attack from zero over 360 ms so the initial silhouette
+   stays restrained. Once dragging begins, the existing head follows immediately
+   without restarting its attack and later parcels start at full birth energy.
 3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
    offset and angle into a 1440 × 1800 unsigned-byte target. Keeping this target at
    the original 3× bake resolution prevents the visible underprint from being
    rasterized through the 480 × 600 geometry field. Multiply the joined flowing
    falloff by that transformed glyph alpha and character-center mask at each current
-   output position. No glyph snapshot or temporal activation texture is retained.
+   output position. At each pixel, track the strongest and second-strongest values
+   across the stable head and flowing parcels. Blend near-tied winners over a 0.08
+   gap, then use the strongest value outside that gap. This removes hard maximum
+   switching without the excessive broadening of an additive union. No glyph
+   snapshot or temporal activation texture is retained.
    Releasing stops new parcels while existing parcels continue downward from their
    frozen origins.
 4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
@@ -139,7 +145,8 @@ The reproducible measurements and label-map generator are stored in
   continuity core.
 - The palette completes a smooth cycle every eight seconds.
 - Touch drip is the only interaction. It advects and vertically stretches the
-  touched cursor falloff itself. Holding continuously emits new falloff ages;
+  emitted cursor falloffs while a time-invariant head remains at the held pointer.
+  Holding continuously emits new falloff ages;
   releasing stops emission while the existing stream continues downward. Every
   frame, the joined moving falloff is multiplied by the glyph mask at its current
   position, and those newly activated pixels enter the existing metaball passes.
@@ -148,11 +155,16 @@ The reproducible measurements and label-map generator are stored in
   move sideways when the pointer moves. Crossing each 8 px drag interval emits at
   the pointer immediately, removing timer latency at a new location.
 - Before the first drag movement, parcels at the initial touch origin attack over
-  360 ms. Once the pointer has moved 8 px, newly created parcels skip the birth
-  delay.
+  360 ms together with the stable head. The head attack begins only once per touch;
+  dragging moves it immediately instead of restarting the delay. Once the pointer
+  has moved 8 px, newly created parcels skip the birth delay.
+- Flowing parcels are gated out over the first 34 px below each origin. The held
+  boundary is therefore controlled by the stable head, while parcel age, gravity,
+  and turbulence only shape the stream below it. Near-equal first and second field
+  values crossfade over 0.08 instead of switching through a hard `max()`.
 - On release, physical flow age remains real-time while lifetime age advances at
   2×. The stream keeps its falling speed but uses its remaining lifetime twice as
-  fast.
+  fast; the stable head fades independently over 350 ms.
 - The visible background text moves as rigid glyphs rather than independently
   displaced pixels. Every glyph stores offset, velocity, angle, and angular
   velocity in a 55 × 1 ping-pong spring target. A 9 × 9 grid tests the product
@@ -209,8 +221,9 @@ The reproducible measurements and label-map generator are stored in
   78 px/s² gravity, 0.34 vertical stretch,
   0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,
   1.45 s stream formation, 4 s per-emission lifetime, 360 ms initial-origin attack,
-  8 px immediate drag emission distance, 2× post-release lifetime rate, and
-  13 s⁻¹ drag follow rate
+  one stable held head, 34 px head-protection distance, 0.08 parcel winner blend,
+  350 ms head release, 8 px immediate drag emission distance, 2× post-release
+  lifetime rate, and 13 s⁻¹ drag follow rate
 - Background-text spring: 55 character slots, 81 ink-and-surface overlap samples
   per visible glyph, 10 px target offset, translation stiffness 58, translation
   damping 12, 0 px contact padding, 9 degree target rotation, rotation stiffness
