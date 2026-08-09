@@ -85,9 +85,11 @@
 10. During a held drag, follow the pointer with time-based easing and emit each
     new particle at the source's current position. Previously emitted particles keep
     their physical state, so old streams keep falling while new streams start along
-    the drag path. Every 8 px of pointer travel also emits an immediate full-energy
-    particle without waiting for the 130 ms timer. If the final pointer position is
-    over 6 px from the latest particle, emit one final particle there.
+    the drag path. Accumulate one unit of source mass per 130 ms. Every 8 px of
+    pointer travel may spend only the mass accumulated so far, clamped to 0.08–0.35
+    per path particle. If less than 0.08 is available, move only the newest still-young
+    source packet to the pointer instead of adding mass. Apply the same budget rule
+    to the final pointer position.
     Capture the active pointer and suppress browser selection/callout behavior for
     uninterrupted movement. After release, stop supply and let every existing
     particle leave through the lower off-screen sink.
@@ -164,10 +166,12 @@ The reproducible measurements and label-map generator are stored in
   releasing stops emission while every existing particle continues downward. Every
   frame, the joined moving falloff is multiplied by the glyph mask at its current
   position, and those newly activated pixels enter the existing metaball passes.
-- The emitter follows a held drag with exponential easing. Each 130 ms emission
-  freezes the emitter position at that instant, so already-falling streams do not
-  move sideways when the pointer moves. Crossing each 8 px drag interval emits at
-  the pointer immediately, removing timer latency at a new location.
+- The emitter follows a held drag with exponential easing. Each 130 ms of held time
+  supplies one unit of mass, so total liquid depends on elapsed time rather than
+  pointer distance. Crossing each 8 px drag interval resamples the path immediately,
+  but spends at most 0.35 of the accumulated mass. If there is not yet 0.08 available,
+  only the newest source packet moves to the pointer. Already-falling streams remain
+  at their physical positions.
 - Before the first drag movement, particles at the initial touch origin attack over
   360 ms. Releasing freezes growing particles at their current energy so supply
   cannot increase after the finger lifts. Once the pointer has moved 8 px, newly
@@ -254,7 +258,8 @@ The reproducible measurements and label-map generator are stored in
   0.72 shape variation, 0.3 lower-stream temporal flutter,
   0.44 mature width, 0.92 metaball input strength,
   1.45 s stream formation, 360 ms initial-source attack,
-  0.08 particle winner blend, 8 px immediate drag emission distance,
+  0.08 particle winner blend, 8 px drag path resampling distance,
+  0.08–0.35 path-particle mass, 4% horizontal source-velocity transfer,
   off-screen-only removal, closest-pair mass/momentum-preserving merge, and
   13 s⁻¹ source follow rate
 - Background-text spring: 64 character slots, 81 ink-and-surface overlap samples
