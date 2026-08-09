@@ -10,6 +10,7 @@ const COLOR_BLUR_TAPS = 20;
 const METABALL_SAMPLES = 192;
 const METABALL_SMOOTH_TAPS = 5;
 const STROKE_SPREAD_PASSES = 8;
+const DRIP_PARCEL_COUNT = 32;
 // Jump flooding is retained only for the optional continuity core. The visible
 // silhouette comes from the accumulated metaball field below.
 const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
@@ -78,7 +79,9 @@ const state = {
   dripLifetime: qaNumber('qaDripLifetime', 4.0),
   dripAttack: qaNumber('qaDripAttack', 0.18),
   dripFollowEase: qaNumber('qaDripFollowEase', 13.0),
-  dripMoveClear: qaNumber('qaDripMoveClear', 0.012),
+  dripEmissionInterval: qaNumber('qaDripEmissionInterval', 0.13),
+  textPushDistance: qaNumber('qaTextPushDistance', 9.0),
+  textPushReach: qaNumber('qaTextPushReach', 18.0),
 };
 const qaDripAge = qaNumber('qaDripAge', 1.45);
 const qaDripReleaseAge = qaNumber('qaDripReleaseAge', 0);
@@ -106,10 +109,16 @@ const initialPointer = {
   y: QA_POINTER_LOCKED ? THREE.MathUtils.clamp(qaPointerY, 0, 1) : 0.52,
 };
 const pointerTarget: Pointer = { ...initialPointer };
-const dripAnchor: Pointer = { ...initialPointer };
-let dripEnergy = 0;
-let dripEmissionDuration = 0;
-let dripReleaseAge = Number.POSITIVE_INFINITY;
+const dripEmitter: Pointer = { ...initialPointer };
+type DripParcel = { x: number; y: number; age: number };
+const dripParcels: DripParcel[] = [];
+const dripUniformOrigins = Array.from(
+  { length: DRIP_PARCEL_COUNT },
+  () => new THREE.Vector2(-2, -2),
+);
+const dripUniformAges = new Float32Array(DRIP_PARCEL_COUNT);
+const dripUniformWeights = new Float32Array(DRIP_PARCEL_COUNT);
+let dripEmissionElapsed = 0;
 let dripHeld = false;
 let activeDripPointerId: number | null = null;
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
@@ -368,10 +377,9 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform sampler2D uText;
     uniform sampler2D uColorCenters;
     uniform vec2 uArtSize;
-    uniform vec2 uDripAnchor;
-    uniform float uDripYoungestAge;
-    uniform float uDripOldestAge;
-    uniform float uDripEnergy;
+    uniform vec2 uDripOrigins[${DRIP_PARCEL_COUNT}];
+    uniform float uDripAges[${DRIP_PARCEL_COUNT}];
+    uniform float uDripWeights[${DRIP_PARCEL_COUNT}];
     uniform float uDripGravity;
     uniform float uDripStretch;
     uniform float uDripTurbulence;
@@ -379,6 +387,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uDripPinchTime;
     uniform float uDripStreamWidth;
     uniform float uDripLifetime;
+    uniform float uDripAttack;
     uniform vec2 uLightRadius;
     uniform float uLightRadiusYBelow;
     uniform float uLightFalloff;
@@ -388,17 +397,22 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uLightTaperEnd;
     uniform float uTime;
 
-    float flowedFalloffAtAge(vec2 outputUv, float parcelAge, float streamPosition) {
+    float flowedFalloffAtAge(
+      vec2 outputUv,
+      float parcelAge,
+      vec2 parcelOrigin,
+      float parcelWeight
+    ) {
       float fallDistance = min(
         18.0 * parcelAge + 0.5 * uDripGravity * parcelAge * parcelAge,
         uArtSize.y * 0.82
       );
-      float localX = (outputUv.x - uDripAnchor.x) * uArtSize.x;
+      float localX = (outputUv.x - parcelOrigin.x) * uArtSize.x;
       float broadLane = 0.5 + 0.5 * sin(
-        localX * 0.052 + uDripAnchor.x * 19.7
+        localX * 0.052 + parcelOrigin.x * 19.7
       );
       float fineLane = 0.5 + 0.5 * sin(
-        localX * 0.137 - uDripAnchor.y * 23.1
+        localX * 0.137 - parcelOrigin.y * 23.1
       );
       float laneNoise = mix(broadLane, fineLane, 0.34);
       float formation = smoothstep(
@@ -414,7 +428,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
       laneSpeed += sin(localX * 0.11 + parcelAge * 0.58)
         * 0.08 * uDripTurbulence * formation;
 
-      float outputDown = (uDripAnchor.y - outputUv.y) * uArtSize.y;
+      float outputDown = (parcelOrigin.y - outputUv.y) * uArtSize.y;
       float verticalStretch = 1.0 + parcelAge * uDripStretch
         * mix(0.78, 1.16, broadLane);
       float sourceDown = (
@@ -430,15 +444,15 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         - sin(localX * 0.018 + parcelAge * 1.08 + uTime * 0.22)
       ) * 4.2 * uDripTurbulence * formation;
       float centerMeander = (
-        sin(parcelAge * 1.76 + uDripAnchor.x * 11.3)
+        sin(parcelAge * 1.76 + parcelOrigin.x * 11.3)
         + 0.42 * sin(parcelAge * 4.15 - uTime * 0.55)
       ) * 7.5 * uDripTurbulence * formation;
 
       vec2 sourceUv = vec2(
         outputUv.x - (lateralWarp + centerMeander) / uArtSize.x,
-        uDripAnchor.y - sourceDown / uArtSize.y
+        parcelOrigin.y - sourceDown / uArtSize.y
       );
-      vec2 falloffDelta = (sourceUv - uDripAnchor) * uArtSize;
+      vec2 falloffDelta = (sourceUv - parcelOrigin) * uArtSize;
       float verticalRadius = falloffDelta.y < 0.0
         ? uLightRadiusYBelow
         : uLightRadius.y;
@@ -455,7 +469,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
       float travelingNeck = 0.78 + 0.22 * (
         0.5 + 0.5 * sin(parcelAge * 7.1 - uTime * 3.4 + localX * 0.015)
       );
-      float headBulge = 1.0 + 0.48 * smoothstep(0.76, 1.0, streamPosition);
+      float normalizedAge = parcelAge / max(uDripLifetime, 0.001);
+      float headBulge = 1.0 + 0.38 * smoothstep(0.68, 0.96, normalizedAge);
       float streamWidth = mix(
         1.0,
         uDripStreamWidth * travelingNeck * headBulge,
@@ -479,47 +494,50 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         uDripLifetime,
         parcelAge
       );
-      return flowedLight * lifeFade * step(parcelAge, uDripLifetime);
-    }
-
-    void main() {
-      float youngestAge = max(uDripYoungestAge, 0.0);
-      float oldestAge = max(uDripOldestAge, youngestAge);
-      float localX = (vUv.x - uDripAnchor.x) * uArtSize.x;
-      float outputDown = (uDripAnchor.y - vUv.y) * uArtSize.y;
-      float streamLight = 0.0;
-      for (int sampleIndex = 0; sampleIndex < 18; sampleIndex += 1) {
-        float streamPosition = float(sampleIndex) / 17.0;
-        float parcelAge = mix(youngestAge, oldestAge, streamPosition);
-        streamLight = max(
-          streamLight,
-          flowedFalloffAtAge(vUv, parcelAge, streamPosition)
-        );
-      }
-
+      float birthEnergy = 1.0 - exp(
+        -parcelAge / max(uDripAttack, 0.001)
+      );
+      float birthFade = birthEnergy * birthEnergy;
       float flowMaturity = smoothstep(
         uDripPinchTime - 0.16,
         uDripPinchTime + 0.72,
-        oldestAge
+        parcelAge
       );
-      float textMask = texture2D(uText, vUv).a;
-      float colorCenterMask = texture2D(uColorCenters, vUv).a;
-
       float densityPulse = 1.0 - flowMaturity * uDripTurbulence * 0.16
         * (
           0.5
           + 0.5 * sin(outputDown * 0.071 + localX * 0.043 - uTime * 2.6)
         );
-      float dripMix = pow(clamp(uDripEnergy, 0.0, 1.0), 2.0);
+      return flowedLight
+        * lifeFade
+        * birthFade
+        * densityPulse
+        * clamp(parcelWeight, 0.0, 1.0)
+        * step(parcelAge, uDripLifetime);
+    }
+
+    void main() {
+      float streamLight = 0.0;
+      for (int sampleIndex = 0; sampleIndex < ${DRIP_PARCEL_COUNT}; sampleIndex += 1) {
+        streamLight = max(
+          streamLight,
+          flowedFalloffAtAge(
+            vUv,
+            uDripAges[sampleIndex],
+            uDripOrigins[sampleIndex],
+            uDripWeights[sampleIndex]
+          )
+        );
+      }
+
+      float textMask = texture2D(uText, vUv).a;
+      float colorCenterMask = texture2D(uColorCenters, vUv).a;
+
       float surfaceActivation = textMask
         * pow(max(streamLight, 0.0), 1.22)
-        * uDripStrength
-        * densityPulse
-        * dripMix;
+        * uDripStrength;
       float colorActivation = colorCenterMask
-        * pow(max(streamLight, 0.0), 1.12)
-        * densityPulse
-        * dripMix;
+        * pow(max(streamLight, 0.0), 1.12);
 
       gl_FragColor = vec4(
         surfaceActivation,
@@ -533,10 +551,9 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uText: { value: textTexture },
     uColorCenters: { value: colorCenterTexture },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
-    uDripAnchor: { value: new THREE.Vector2(dripAnchor.x, dripAnchor.y) },
-    uDripYoungestAge: { value: 0 },
-    uDripOldestAge: { value: 0 },
-    uDripEnergy: { value: 0 },
+    uDripOrigins: { value: dripUniformOrigins },
+    uDripAges: { value: dripUniformAges },
+    uDripWeights: { value: dripUniformWeights },
     uDripGravity: { value: state.dripGravity },
     uDripStretch: { value: state.dripStretch },
     uDripTurbulence: { value: state.dripTurbulence },
@@ -544,6 +561,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uDripPinchTime: { value: state.dripPinchTime },
     uDripStreamWidth: { value: state.dripStreamWidth },
     uDripLifetime: { value: state.dripLifetime },
+    uDripAttack: { value: state.dripAttack },
     uLightRadius: { value: new THREE.Vector2(state.radiusX, state.radiusY) },
     uLightRadiusYBelow: { value: state.radiusYBelow },
     uLightFalloff: { value: state.lightFalloff },
@@ -848,6 +866,8 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform vec2 uArtSize;
     uniform float uSurfaceThreshold;
     uniform float uSurfaceSoftness;
+    uniform float uTextPushDistance;
+    uniform float uTextPushReach;
     uniform float uSeedThreshold;
     uniform float uCoreRadius;
     uniform float uCoreRadiusMin;
@@ -880,7 +900,6 @@ const finalMaterial = new THREE.ShaderMaterial({
         return;
       }
 
-      float textMask = texture2D(uText, artUv).a;
       vec4 nearest = texture2D(uNearest, artUv);
       float surfaceField = texture2D(uSurfaceField, artUv).r;
       float surfaceEdge = max(uSurfaceSoftness, fwidth(surfaceField) * 1.2);
@@ -913,6 +932,25 @@ const finalMaterial = new THREE.ShaderMaterial({
         strokeCore *= coreGate;
         coverage = max(coverage, strokeCore * uCoreMix);
       }
+
+      float reachUv = uTextPushReach / max(uArtSize.y, 1.0);
+      float pushField = max(
+        texture2D(uSurfaceField, artUv + vec2(0.0, reachUv * 0.35)).r,
+        max(
+          texture2D(uSurfaceField, artUv + vec2(0.0, reachUv * 0.68)).r,
+          texture2D(uSurfaceField, artUv + vec2(0.0, reachUv)).r
+        )
+      );
+      float pushInfluence = smoothstep(
+        uSurfaceThreshold * 0.45,
+        uSurfaceThreshold * 1.25,
+        pushField
+      );
+      vec2 textUv = artUv + vec2(
+        0.0,
+        uTextPushDistance * pushInfluence / max(uArtSize.y, 1.0)
+      );
+      float textMask = texture2D(uText, clamp(textUv, vec2(0.0), vec2(1.0))).a;
 
       if (uLabelMode > 0.5) {
         // Match the first visibly chromatic pixel, not only the 50% alpha core.
@@ -965,6 +1003,8 @@ const finalMaterial = new THREE.ShaderMaterial({
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uSurfaceThreshold: { value: state.surfaceThreshold },
     uSurfaceSoftness: { value: state.surfaceSoftness },
+    uTextPushDistance: { value: state.textPushDistance },
+    uTextPushReach: { value: state.textPushReach },
     uSeedThreshold: { value: state.seedThreshold },
     uCoreRadius: { value: state.coreRadius },
     uCoreRadiusMin: { value: state.coreRadiusMin },
@@ -1046,20 +1086,32 @@ function setPointerFromClient(clientX: number, clientY: number): void {
   pointerTarget.y = 1 - yFromTop;
 }
 
+function emitDripParcel(x: number, y: number, age = 0): void {
+  if (dripParcels.length >= DRIP_PARCEL_COUNT) dripParcels.shift();
+  dripParcels.push({ x, y, age });
+}
+
 function startDrip(pointerId: number): void {
-  dripAnchor.x = pointerTarget.x;
-  dripAnchor.y = pointerTarget.y;
-  dripEnergy = 0;
-  dripEmissionDuration = 0;
-  dripReleaseAge = 0;
+  dripEmitter.x = pointerTarget.x;
+  dripEmitter.y = pointerTarget.y;
+  dripEmissionElapsed = 0;
   dripHeld = true;
   activeDripPointerId = pointerId;
+  emitDripParcel(dripEmitter.x, dripEmitter.y);
 }
 
 function stopDrip(pointerId: number): void {
   if (pointerId !== activeDripPointerId) return;
+  const latestParcel = dripParcels[dripParcels.length - 1];
+  const finalTravel = latestParcel
+    ? Math.hypot(
+      (pointerTarget.x - latestParcel.x) * ART_WIDTH,
+      (pointerTarget.y - latestParcel.y) * ART_HEIGHT,
+    )
+    : Number.POSITIVE_INFINITY;
+  if (finalTravel > 6) emitDripParcel(pointerTarget.x, pointerTarget.y);
   dripHeld = false;
-  dripReleaseAge = 0;
+  dripEmissionElapsed = 0;
   activeDripPointerId = null;
 }
 
@@ -1117,7 +1169,19 @@ function bindGui(): void {
   interactionFolder.add(state, 'dripLifetime', 1.5, 7, 0.1).name('방출 조각 수명');
   interactionFolder.add(state, 'dripAttack', 0.05, 0.6, 0.01).name('터치 시작 시간');
   interactionFolder.add(state, 'dripFollowEase', 3, 30, 0.5).name('드래그 따라가기');
-  interactionFolder.add(state, 'dripMoveClear', 0, 0.03, 0.001).name('이전 흐름 지우기');
+  interactionFolder.add(state, 'dripEmissionInterval', 0.04, 0.35, 0.01).name('방출 간격');
+
+  const textMotionFolder = gui.addFolder('텍스트 밀림');
+  textMotionFolder.add(state, 'textPushDistance', 0, 24, 0.5)
+    .name('아래 밀림 거리')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uTextPushDistance.value = value;
+    });
+  textMotionFolder.add(state, 'textPushReach', 0, 48, 1)
+    .name('액체 아래 영향 범위')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uTextPushReach.value = value;
+    });
 
   const lightFolder = gui.addFolder('광원 / Falloff');
   lightFolder.add(state, 'radiusX', 40, 260, 1).name('가로 반경');
@@ -1227,6 +1291,7 @@ function bindGui(): void {
   });
 
   lightFolder.close();
+  textMotionFolder.close();
   surfaceFolder.close();
   colorFolder.close();
   advancedFolder.close();
@@ -1247,49 +1312,53 @@ function animate(now: number): void {
   const elapsed = reduceMotion || QA_MODE ? 0 : (now - startTime) / 1000;
   previousTime = now;
 
-  if (!QA_MODE && dripHeld) {
-    const anchorDeltaX = pointerTarget.x - dripAnchor.x;
-    const anchorDeltaY = pointerTarget.y - dripAnchor.y;
-    const anchorDistance = Math.hypot(
-      anchorDeltaX * ART_WIDTH,
-      anchorDeltaY * ART_HEIGHT,
-    );
-    if (anchorDistance > 0.001) {
-      const anchorBlend = 1 - Math.exp(-state.dripFollowEase * delta);
-      dripAnchor.x += anchorDeltaX * anchorBlend;
-      dripAnchor.y += anchorDeltaY * anchorBlend;
-      const movedDistance = anchorDistance * anchorBlend;
-      dripEmissionDuration = Math.max(
-        0,
-        dripEmissionDuration - movedDistance * state.dripMoveClear,
-      );
-    }
+  if (!QA_MODE) {
+    for (const parcel of dripParcels) parcel.age += delta;
+    while (dripParcels[0]?.age > state.dripLifetime) dripParcels.shift();
 
-    const dripAttackBlend = 1 - Math.exp(-delta / Math.max(state.dripAttack, 0.001));
-    dripEnergy = THREE.MathUtils.lerp(dripEnergy, 1, dripAttackBlend);
-    dripEmissionDuration = Math.min(dripEmissionDuration + delta, state.dripLifetime);
-    dripReleaseAge = 0;
-  } else if (!QA_MODE && dripEnergy > 0) {
-    dripReleaseAge += delta;
-    if (dripReleaseAge >= state.dripLifetime) dripEnergy = 0;
+    if (dripHeld) {
+      const emitterBlend = 1 - Math.exp(-state.dripFollowEase * delta);
+      dripEmitter.x += (pointerTarget.x - dripEmitter.x) * emitterBlend;
+      dripEmitter.y += (pointerTarget.y - dripEmitter.y) * emitterBlend;
+      dripEmissionElapsed += delta;
+
+      const emissionInterval = Math.max(state.dripEmissionInterval, 0.01);
+      while (dripEmissionElapsed >= emissionInterval) {
+        dripEmissionElapsed -= emissionInterval;
+        emitDripParcel(dripEmitter.x, dripEmitter.y);
+      }
+    }
   }
 
-  const renderedDripYoungestAge = QA_MODE
-    ? Math.max(qaDripReleaseAge, 0)
-    : dripEnergy > 0 ? dripReleaseAge : 0;
-  const renderedDripOldestAge = QA_MODE
-    ? Math.min(renderedDripYoungestAge + qaDripAge, state.dripLifetime)
-    : dripEnergy > 0
-      ? Math.min(dripReleaseAge + dripEmissionDuration, state.dripLifetime)
-      : 0;
-  const renderedDripEnergy = QA_MODE
-    ? THREE.MathUtils.clamp(qaDripEnergy, 0, 1)
-    : dripEnergy;
+  for (let index = 0; index < DRIP_PARCEL_COUNT; index += 1) {
+    dripUniformOrigins[index].set(-2, -2);
+    dripUniformAges[index] = state.dripLifetime + 1;
+    dripUniformWeights[index] = 0;
+  }
 
-  interactionFieldMaterial.uniforms.uDripAnchor.value.set(dripAnchor.x, dripAnchor.y);
-  interactionFieldMaterial.uniforms.uDripYoungestAge.value = renderedDripYoungestAge;
-  interactionFieldMaterial.uniforms.uDripOldestAge.value = renderedDripOldestAge;
-  interactionFieldMaterial.uniforms.uDripEnergy.value = renderedDripEnergy;
+  if (QA_MODE) {
+    const youngestAge = Math.max(qaDripReleaseAge, 0);
+    const oldestAge = Math.min(youngestAge + qaDripAge, state.dripLifetime);
+    const qaWeight = THREE.MathUtils.clamp(qaDripEnergy, 0, 1);
+    for (let index = 0; index < DRIP_PARCEL_COUNT; index += 1) {
+      const streamPosition = index / (DRIP_PARCEL_COUNT - 1);
+      dripUniformOrigins[index].set(initialPointer.x, initialPointer.y);
+      dripUniformAges[index] = THREE.MathUtils.lerp(
+        youngestAge,
+        oldestAge,
+        streamPosition,
+      );
+      dripUniformWeights[index] = qaWeight;
+    }
+  } else {
+    for (let index = 0; index < dripParcels.length; index += 1) {
+      const parcel = dripParcels[index];
+      dripUniformOrigins[index].set(parcel.x, parcel.y);
+      dripUniformAges[index] = parcel.age;
+      dripUniformWeights[index] = 1;
+    }
+  }
+
   interactionFieldMaterial.uniforms.uDripGravity.value = state.dripGravity;
   interactionFieldMaterial.uniforms.uDripStretch.value = state.dripStretch;
   interactionFieldMaterial.uniforms.uDripTurbulence.value = state.dripTurbulence;
@@ -1297,6 +1366,7 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uDripPinchTime.value = state.dripPinchTime;
   interactionFieldMaterial.uniforms.uDripStreamWidth.value = state.dripStreamWidth;
   interactionFieldMaterial.uniforms.uDripLifetime.value = state.dripLifetime;
+  interactionFieldMaterial.uniforms.uDripAttack.value = state.dripAttack;
   interactionFieldMaterial.uniforms.uLightRadius.value.set(state.radiusX, state.radiusY);
   interactionFieldMaterial.uniforms.uLightRadiusYBelow.value = state.radiusYBelow;
   interactionFieldMaterial.uniforms.uLightFalloff.value = state.lightFalloff;
@@ -1363,6 +1433,8 @@ function animate(now: number): void {
   finalMaterial.uniforms.uNearest.value = nearestRead.texture;
   finalMaterial.uniforms.uColorField.value = colorFieldTarget.texture;
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
+  finalMaterial.uniforms.uTextPushDistance.value = state.textPushDistance;
+  finalMaterial.uniforms.uTextPushReach.value = state.textPushReach;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);

@@ -10,15 +10,15 @@
 
 1. Bake the nine text lines into a static 1440 × 1800 alpha texture, preserving
    the 480 × 600 artwork coordinate system at 3× sampling density.
-2. Treat touch drip as the only interaction. While pressed, maintain a continuous
-   age window of asymmetric elliptical falloffs. Evaluate 18 representative ages,
-   advect them downward with gravity, narrow older parcels into traveling necks,
-   and join them with a maximum field. Touch energy attacks from zero over 180 ms
-   and is squared before entering the field so the earliest frames stay restrained.
+2. Treat touch drip as the only interaction. Emit one independently anchored
+   asymmetric falloff parcel every 130 ms while pressed, up to 32 live parcels.
+   Advect every parcel downward from its own creation position with gravity,
+   narrow older parcels into traveling necks, and join them with a maximum field.
+   Each parcel attacks from zero over 180 ms so the earliest frames stay restrained.
 3. Multiply the joined flowing falloff by the glyph alpha and character-center
    mask at each current output position. No glyph snapshot or temporal activation
-   texture is retained. Releasing closes the age window while its existing ages
-   continue downward.
+   texture is retained. Releasing stops new parcels while existing parcels continue
+   downward from their frozen origins.
 4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
    Detection happens before the liquid field is built, matching the Metaball
    plugin's alpha/luminance input-detection stage instead of first turning every
@@ -50,11 +50,17 @@
    Gaussian filter (horizontal sigma 2.5, vertical ratio 1.1). Read this field
    everywhere inside the metaball coverage—there is no nearest-seed validity
    gate—then map it through overlapping rose, pale-pink, and hot-color blends.
-10. During a held drag, follow the pointer with time-based easing and shorten the
-    old age window in proportion to travel distance, so the previous long stream
-    clears while a new one grows at the new position. Capture the active pointer
-    and suppress browser selection/callout behavior for uninterrupted movement.
-11. Fully occlude the charcoal underprint inside the colored coverage, add only
+10. During a held drag, follow the pointer with time-based easing and stamp each
+    new parcel at the emitter's current position. Previously emitted parcels keep
+    their original positions and ages, so old streams keep falling while new streams
+    start along the drag path. If the final pointer position is over 6 px from the
+    latest parcel, emit one final parcel there. Capture the active pointer and
+    suppress browser selection/callout behavior for uninterrupted movement.
+11. Sample the liquid field slightly above each background-text output pixel and
+    use that value to offset the text lookup downward by up to 9 px. The deformation
+    follows the passing field and returns to zero after it has moved away; the text
+    mask used to generate liquid remains static.
+12. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
 
@@ -108,11 +114,14 @@ The reproducible measurements and label-map generator are stored in
   releasing stops emission while the existing stream continues downward. Every
   frame, the joined moving falloff is multiplied by the glyph mask at its current
   position, and those newly activated pixels enter the existing metaball passes.
-- The emitter follows a held drag with exponential easing. Travel distance removes
-  the oldest part of the emission window, preventing the lowered stream from moving
-  sideways as one rigid shape.
-- Touch strength attacks over 180 ms instead of appearing at full strength on the
+- The emitter follows a held drag with exponential easing. Each 130 ms emission
+  freezes the emitter position at that instant, so already-falling streams do not
+  move sideways when the pointer moves.
+- Every parcel attacks over 180 ms instead of appearing at full strength on its
   first frame.
+- The visible background text is pushed down by up to 9 px in an 18 px band below
+  the current liquid field. This is a final text-sampling deformation, not a change
+  to the static text mask that feeds the metaball pipeline.
 - Pointer capture keeps drag updates continuous outside the initial touch point.
   Native selection, callouts, dragging, and the context menu are suppressed on the
   artwork canvas.
@@ -146,7 +155,10 @@ The reproducible measurements and label-map generator are stored in
 - Glyph-pixel deformation mixed into color peaks: 20%
 - Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
 - Color field floor / range: 0.015 / 0.48
-- Touch drip: 18 emission-age samples, 78 px/s² gravity, 0.34 vertical stretch,
+- Touch drip: up to 32 independently anchored parcels emitted every 130 ms,
+  78 px/s² gravity, 0.34 vertical stretch,
   0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,
   1.45 s stream formation, 4 s per-emission lifetime, 180 ms touch attack,
-  13 s⁻¹ drag follow rate, and 0.012 s of old emission cleared per pixel traveled
+  and 13 s⁻¹ drag follow rate
+- Background-text displacement: up to 9 px downward, driven by liquid found in
+  an 18 px band above the text output pixel
