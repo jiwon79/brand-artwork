@@ -14,7 +14,7 @@
    asymmetric falloff parcel every 130 ms while pressed, up to 32 live parcels.
    Advect every parcel downward from its own creation position with gravity,
    narrow older parcels into traveling necks, and join them with a maximum field.
-   Parcels emitted at the untouched-down origin attack from zero over 180 ms so
+   Parcels emitted at the untouched-down origin attack from zero over 360 ms so
    the initial silhouette stays restrained. Once dragging begins, later parcels
    start at full birth energy.
 3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
@@ -148,7 +148,7 @@ The reproducible measurements and label-map generator are stored in
   move sideways when the pointer moves. Crossing each 8 px drag interval emits at
   the pointer immediately, removing timer latency at a new location.
 - Before the first drag movement, parcels at the initial touch origin attack over
-  180 ms. Once the pointer has moved 8 px, newly created parcels skip the birth
+  360 ms. Once the pointer has moved 8 px, newly created parcels skip the birth
   delay.
 - On release, physical flow age remains real-time while lifetime age advances at
   2×. The stream keeps its falling speed but uses its remaining lifetime twice as
@@ -208,7 +208,7 @@ The reproducible measurements and label-map generator are stored in
 - Touch drip: up to 32 independently anchored parcels emitted every 130 ms,
   78 px/s² gravity, 0.34 vertical stretch,
   0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,
-  1.45 s stream formation, 4 s per-emission lifetime, 180 ms initial-origin attack,
+  1.45 s stream formation, 4 s per-emission lifetime, 360 ms initial-origin attack,
   8 px immediate drag emission distance, 2× post-release lifetime rate, and
   13 s⁻¹ drag follow rate
 - Background-text spring: 55 character slots, 81 ink-and-surface overlap samples

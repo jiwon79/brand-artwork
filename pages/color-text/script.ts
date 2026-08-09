@@ -85,7 +85,7 @@ const state = {
   dripPinchTime: qaNumber('qaDripPinchTime', 1.45),
   dripStreamWidth: qaNumber('qaDripStreamWidth', 0.44),
   dripLifetime: qaNumber('qaDripLifetime', 4.0),
-  dripAttack: qaNumber('qaDripAttack', 0.18),
+  dripAttack: qaNumber('qaDripAttack', 0.36),
   dripReleaseSpeed: qaNumber('qaDripReleaseSpeed', 2.0),
   dripFollowEase: qaNumber('qaDripFollowEase', 13.0),
   dripEmissionInterval: qaNumber('qaDripEmissionInterval', 0.13),
