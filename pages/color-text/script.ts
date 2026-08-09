@@ -80,8 +80,10 @@ const state = {
   dripAttack: qaNumber('qaDripAttack', 0.18),
   dripFollowEase: qaNumber('qaDripFollowEase', 13.0),
   dripEmissionInterval: qaNumber('qaDripEmissionInterval', 0.13),
-  textPushDistance: qaNumber('qaTextPushDistance', 9.0),
-  textPushReach: qaNumber('qaTextPushReach', 18.0),
+  textPushDistance: qaNumber('qaTextPushDistance', 10.0),
+  textSpringStiffness: qaNumber('qaTextSpringStiffness', 58.0),
+  textSpringDamping: qaNumber('qaTextSpringDamping', 12.0),
+  textContactPadding: qaNumber('qaTextContactPadding', 4.0),
 };
 const qaDripAge = qaNumber('qaDripAge', 1.45);
 const qaDripReleaseAge = qaNumber('qaDripReleaseAge', 0);
@@ -98,6 +100,8 @@ const lines = [
   'TOUCHES',
   'IT',
 ];
+const LINE_COUNT = lines.length;
+const GLYPH_SLOT_COUNT = lines.reduce((total, line) => total + line.length, 0);
 const FIRST_LINE_Y = 132;
 const LINE_HEIGHT = 42.2;
 const CHARACTER_ADVANCE = 31.8;
@@ -301,6 +305,46 @@ bakeTextMask();
 glyphCenterStats = measureGlyphCenters();
 bakeColorCenterMask();
 
+const glyphSpringCells: THREE.Vector4[] = [];
+const lineLayouts: THREE.Vector4[] = [];
+let measuredGlyphIndex = 0;
+let glyphSlotOffset = 0;
+
+lines.forEach((line, lineIndex) => {
+  const startX = ART_WIDTH / 2 - ((line.length - 1) * CHARACTER_ADVANCE) / 2;
+  const centerY = FIRST_LINE_Y + lineIndex * LINE_HEIGHT;
+  lineLayouts.push(new THREE.Vector4(
+    startX,
+    1 - centerY / ART_HEIGHT,
+    line.length,
+    glyphSlotOffset,
+  ));
+
+  for (let characterIndex = 0; characterIndex < line.length; characterIndex += 1) {
+    const centerX = startX + characterIndex * CHARACTER_ADVANCE;
+    if (line[characterIndex] === ' ') {
+      glyphSpringCells.push(new THREE.Vector4(
+        centerX / ART_WIDTH,
+        1 - centerY / ART_HEIGHT,
+        0,
+        0,
+      ));
+      continue;
+    }
+
+    const stats = glyphCenterStats[measuredGlyphIndex];
+    measuredGlyphIndex += 1;
+    glyphSpringCells.push(new THREE.Vector4(
+      stats.centroidX / ART_WIDTH,
+      1 - stats.centroidY / ART_HEIGHT,
+      stats.width * 0.5 / ART_WIDTH,
+      stats.height * 0.5 / ART_HEIGHT,
+    ));
+  }
+
+  glyphSlotOffset += line.length;
+});
+
 let renderer: THREE.WebGLRenderer;
 try {
   renderer = new THREE.WebGLRenderer({
@@ -367,6 +411,16 @@ const surfaceSourceTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGH
 const metaballRawTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const surfaceHorizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const surfaceFieldTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
+const glyphSpringTargetA = new THREE.WebGLRenderTarget(
+  GLYPH_SLOT_COUNT,
+  1,
+  nearestTargetOptions,
+);
+const glyphSpringTargetB = new THREE.WebGLRenderTarget(
+  GLYPH_SLOT_COUNT,
+  1,
+  nearestTargetOptions,
+);
 
 const interactionFieldMaterial = new THREE.ShaderMaterial({
   vertexShader,
@@ -850,6 +904,116 @@ const surfaceSmoothMaterial = new THREE.ShaderMaterial({
   depthWrite: false,
 });
 
+const glyphSpringMaterial = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader: `
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uPrevious;
+    uniform sampler2D uSurfaceField;
+    uniform vec4 uGlyphCells[${GLYPH_SLOT_COUNT}];
+    uniform vec2 uArtSize;
+    uniform float uDelta;
+    uniform float uSurfaceThreshold;
+    uniform float uMaxDistance;
+    uniform float uStiffness;
+    uniform float uDamping;
+    uniform float uContactPadding;
+    uniform float uQaMode;
+
+    float fieldAt(vec2 uv) {
+      return texture2D(
+        uSurfaceField,
+        clamp(uv, vec2(0.0), vec2(1.0))
+      ).r;
+    }
+
+    void main() {
+      float slotIndex = floor(vUv.x * ${GLYPH_SLOT_COUNT}.0);
+      vec4 cell = vec4(0.0);
+      for (int index = 0; index < ${GLYPH_SLOT_COUNT}; index += 1) {
+        float selected = 1.0 - step(
+          0.5,
+          abs(slotIndex - float(index))
+        );
+        cell += uGlyphCells[index] * selected;
+      }
+
+      vec4 previous = texture2D(uPrevious, vUv);
+      float offset = previous.r;
+      float velocity = previous.g;
+      float glyphPresent = step(0.00001, cell.z);
+      vec2 padding = vec2(uContactPadding) / uArtSize;
+      vec2 halfSize = cell.zw + padding;
+      vec2 center = cell.xy - vec2(0.0, offset / uArtSize.y);
+      vec2 sampleRadius = halfSize * 0.82;
+
+      float contactField = fieldAt(center);
+      contactField = max(contactField, fieldAt(center + vec2(sampleRadius.x, 0.0)));
+      contactField = max(contactField, fieldAt(center - vec2(sampleRadius.x, 0.0)));
+      contactField = max(contactField, fieldAt(center + vec2(0.0, sampleRadius.y)));
+      contactField = max(contactField, fieldAt(center - vec2(0.0, sampleRadius.y)));
+      contactField = max(contactField, fieldAt(center + sampleRadius));
+      contactField = max(contactField, fieldAt(center - sampleRadius));
+      contactField = max(
+        contactField,
+        fieldAt(center + vec2(sampleRadius.x, -sampleRadius.y))
+      );
+      contactField = max(
+        contactField,
+        fieldAt(center + vec2(-sampleRadius.x, sampleRadius.y))
+      );
+
+      float contact = smoothstep(
+        uSurfaceThreshold * 0.55,
+        uSurfaceThreshold * 1.18,
+        contactField
+      ) * glyphPresent;
+
+      if (uQaMode > 0.5) {
+        offset = contact * uMaxDistance;
+        velocity = 0.0;
+      } else {
+        float timeStep = min(max(uDelta, 0.0), 1.0 / 30.0);
+        float targetOffset = contact * uMaxDistance;
+        float acceleration = (targetOffset - offset) * uStiffness
+          - velocity * uDamping;
+        velocity += acceleration * timeStep;
+        offset += velocity * timeStep;
+
+        float minimumOffset = -uMaxDistance * 0.14;
+        float maximumOffset = uMaxDistance * 1.16;
+        if (offset < minimumOffset) {
+          offset = minimumOffset;
+          velocity = max(velocity, 0.0);
+        }
+        if (offset > maximumOffset) {
+          offset = maximumOffset;
+          velocity = min(velocity, 0.0);
+        }
+      }
+
+      gl_FragColor = vec4(offset, velocity, contact, 1.0);
+    }
+  `,
+  uniforms: {
+    uPrevious: { value: glyphSpringTargetA.texture },
+    uSurfaceField: { value: surfaceFieldTarget.texture },
+    uGlyphCells: { value: glyphSpringCells },
+    uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
+    uDelta: { value: 0 },
+    uSurfaceThreshold: { value: state.surfaceThreshold },
+    uMaxDistance: { value: state.textPushDistance },
+    uStiffness: { value: state.textSpringStiffness },
+    uDamping: { value: state.textSpringDamping },
+    uContactPadding: { value: state.textContactPadding },
+    uQaMode: { value: QA_MODE ? 1 : 0 },
+  },
+  depthTest: false,
+  depthWrite: false,
+});
+
 const finalMaterial = new THREE.ShaderMaterial({
   vertexShader,
   fragmentShader: `
@@ -857,6 +1021,7 @@ const finalMaterial = new THREE.ShaderMaterial({
 
     varying vec2 vUv;
     uniform sampler2D uText;
+    uniform sampler2D uGlyphSprings;
     uniform sampler2D uNearest;
     uniform sampler2D uColorField;
     uniform sampler2D uSurfaceField;
@@ -866,8 +1031,9 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform vec2 uArtSize;
     uniform float uSurfaceThreshold;
     uniform float uSurfaceSoftness;
-    uniform float uTextPushDistance;
-    uniform float uTextPushReach;
+    uniform vec4 uLineLayouts[${LINE_COUNT}];
+    uniform float uCharacterAdvance;
+    uniform float uLineHalfHeight;
     uniform float uSeedThreshold;
     uniform float uCoreRadius;
     uniform float uCoreRadiusMin;
@@ -888,6 +1054,57 @@ const finalMaterial = new THREE.ShaderMaterial({
 
     float interleavedGradientNoise(vec2 pixel) {
       return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+    }
+
+    float displacedTextMask(vec2 artUv) {
+      float textMask = 0.0;
+      float outputX = artUv.x * uArtSize.x;
+
+      for (int lineIndex = 0; lineIndex < ${LINE_COUNT}; lineIndex += 1) {
+        vec4 lineLayout = uLineLayouts[lineIndex];
+        float characterPosition = floor(
+          (outputX - lineLayout.x) / uCharacterAdvance + 0.5
+        );
+        float validCharacter = step(0.0, characterPosition)
+          * step(characterPosition, lineLayout.z - 1.0);
+        float safeCharacter = clamp(
+          characterPosition,
+          0.0,
+          lineLayout.z - 1.0
+        );
+        float glyphSlot = lineLayout.w + safeCharacter;
+        float springUv = (glyphSlot + 0.5) / ${GLYPH_SLOT_COUNT}.0;
+        float offset = texture2D(
+          uGlyphSprings,
+          vec2(springUv, 0.5)
+        ).r;
+        vec2 sourceUv = artUv + vec2(0.0, offset / uArtSize.y);
+        float cellCenterX = lineLayout.x + safeCharacter * uCharacterAdvance;
+        float horizontalDistance = abs(outputX - cellCenterX);
+        float horizontalGate = 1.0 - smoothstep(
+          uCharacterAdvance * 0.5 - 0.75,
+          uCharacterAdvance * 0.5 + 0.75,
+          horizontalDistance
+        );
+        float verticalDistance = abs(
+          (sourceUv.y - lineLayout.y) * uArtSize.y
+        );
+        float verticalGate = 1.0 - smoothstep(
+          uLineHalfHeight - 0.75,
+          uLineHalfHeight + 0.75,
+          verticalDistance
+        );
+        float glyphMask = texture2D(
+          uText,
+          clamp(sourceUv, vec2(0.0), vec2(1.0))
+        ).a;
+        textMask = max(
+          textMask,
+          glyphMask * validCharacter * horizontalGate * verticalGate
+        );
+      }
+
+      return textMask;
     }
 
     void main() {
@@ -933,24 +1150,7 @@ const finalMaterial = new THREE.ShaderMaterial({
         coverage = max(coverage, strokeCore * uCoreMix);
       }
 
-      float reachUv = uTextPushReach / max(uArtSize.y, 1.0);
-      float pushField = max(
-        texture2D(uSurfaceField, artUv + vec2(0.0, reachUv * 0.35)).r,
-        max(
-          texture2D(uSurfaceField, artUv + vec2(0.0, reachUv * 0.68)).r,
-          texture2D(uSurfaceField, artUv + vec2(0.0, reachUv)).r
-        )
-      );
-      float pushInfluence = smoothstep(
-        uSurfaceThreshold * 0.45,
-        uSurfaceThreshold * 1.25,
-        pushField
-      );
-      vec2 textUv = artUv + vec2(
-        0.0,
-        uTextPushDistance * pushInfluence / max(uArtSize.y, 1.0)
-      );
-      float textMask = texture2D(uText, clamp(textUv, vec2(0.0), vec2(1.0))).a;
+      float textMask = displacedTextMask(artUv);
 
       if (uLabelMode > 0.5) {
         // Match the first visibly chromatic pixel, not only the 50% alpha core.
@@ -994,6 +1194,7 @@ const finalMaterial = new THREE.ShaderMaterial({
   `,
   uniforms: {
     uText: { value: textTexture },
+    uGlyphSprings: { value: glyphSpringTargetA.texture },
     uNearest: { value: nearestTargetA.texture },
     uColorField: { value: colorFieldTarget.texture },
     uSurfaceField: { value: surfaceFieldTarget.texture },
@@ -1003,8 +1204,9 @@ const finalMaterial = new THREE.ShaderMaterial({
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uSurfaceThreshold: { value: state.surfaceThreshold },
     uSurfaceSoftness: { value: state.surfaceSoftness },
-    uTextPushDistance: { value: state.textPushDistance },
-    uTextPushReach: { value: state.textPushReach },
+    uLineLayouts: { value: lineLayouts },
+    uCharacterAdvance: { value: CHARACTER_ADVANCE },
+    uLineHalfHeight: { value: LINE_HEIGHT * 0.5 },
     uSeedThreshold: { value: state.seedThreshold },
     uCoreRadius: { value: state.coreRadius },
     uCoreRadiusMin: { value: state.coreRadiusMin },
@@ -1028,6 +1230,8 @@ let strokeSpreadRead = strokeSpreadTargetA;
 let strokeSpreadWrite = strokeSpreadTargetB;
 let nearestRead = nearestTargetA;
 let nearestWrite = nearestTargetB;
+let glyphSpringRead = glyphSpringTargetA;
+let glyphSpringWrite = glyphSpringTargetB;
 
 function renderPass(material: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null): void {
   passQuad.material = material;
@@ -1046,6 +1250,8 @@ clearTarget(strokeSpreadTargetA);
 clearTarget(strokeSpreadTargetB);
 clearTarget(nearestTargetA);
 clearTarget(nearestTargetB);
+clearTarget(glyphSpringTargetA);
+clearTarget(glyphSpringTargetB);
 renderer.setClearColor(0xfbfbfa, 1);
 renderer.setRenderTarget(null);
 
@@ -1173,15 +1379,13 @@ function bindGui(): void {
 
   const textMotionFolder = gui.addFolder('텍스트 밀림');
   textMotionFolder.add(state, 'textPushDistance', 0, 24, 0.5)
-    .name('아래 밀림 거리')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uTextPushDistance.value = value;
-    });
-  textMotionFolder.add(state, 'textPushReach', 0, 48, 1)
-    .name('액체 아래 영향 범위')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uTextPushReach.value = value;
-    });
+    .name('최대 하강 거리');
+  textMotionFolder.add(state, 'textSpringStiffness', 10, 120, 1)
+    .name('스프링 강성');
+  textMotionFolder.add(state, 'textSpringDamping', 2, 30, 0.5)
+    .name('스프링 감쇠');
+  textMotionFolder.add(state, 'textContactPadding', 0, 12, 0.5)
+    .name('접촉 감지 여유');
 
   const lightFolder = gui.addFolder('광원 / Falloff');
   lightFolder.add(state, 'radiusX', 40, 260, 1).name('가로 반경');
@@ -1409,6 +1613,17 @@ function animate(now: number): void {
   surfaceSmoothMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
   renderPass(surfaceSmoothMaterial, surfaceFieldTarget);
 
+  glyphSpringMaterial.uniforms.uPrevious.value = glyphSpringRead.texture;
+  glyphSpringMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
+  glyphSpringMaterial.uniforms.uDelta.value = delta;
+  glyphSpringMaterial.uniforms.uSurfaceThreshold.value = state.surfaceThreshold;
+  glyphSpringMaterial.uniforms.uMaxDistance.value = state.textPushDistance;
+  glyphSpringMaterial.uniforms.uStiffness.value = state.textSpringStiffness;
+  glyphSpringMaterial.uniforms.uDamping.value = state.textSpringDamping;
+  glyphSpringMaterial.uniforms.uContactPadding.value = state.textContactPadding;
+  renderPass(glyphSpringMaterial, glyphSpringWrite);
+  [glyphSpringRead, glyphSpringWrite] = [glyphSpringWrite, glyphSpringRead];
+
   const colorUsesSurfaceField = state.colorSourceMode === 2;
   colorBlurMaterial.uniforms.uInput.value = colorUsesSurfaceField
     ? surfaceFieldTarget.texture
@@ -1433,8 +1648,7 @@ function animate(now: number): void {
   finalMaterial.uniforms.uNearest.value = nearestRead.texture;
   finalMaterial.uniforms.uColorField.value = colorFieldTarget.texture;
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
-  finalMaterial.uniforms.uTextPushDistance.value = state.textPushDistance;
-  finalMaterial.uniforms.uTextPushReach.value = state.textPushReach;
+  finalMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);

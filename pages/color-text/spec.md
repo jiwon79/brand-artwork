@@ -56,10 +56,12 @@
     start along the drag path. If the final pointer position is over 6 px from the
     latest parcel, emit one final parcel there. Capture the active pointer and
     suppress browser selection/callout behavior for uninterrupted movement.
-11. Sample the liquid field slightly above each background-text output pixel and
-    use that value to offset the text lookup downward by up to 9 px. The deformation
-    follows the passing field and returns to zero after it has moved away; the text
-    mask used to generate liquid remains static.
+11. Give all 55 character slots an independent two-value spring state: vertical
+    offset and velocity. Probe the actual liquid field at the ink center, edges,
+    and corners of every non-space glyph. Contact pulls that entire glyph toward
+    a 10 px downward offset; stiffness and damping return it to its original position
+    with restrained inertia when contact ends. The text mask used to generate liquid
+    remains static.
 12. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
@@ -119,9 +121,11 @@ The reproducible measurements and label-map generator are stored in
   move sideways when the pointer moves.
 - Every parcel attacks over 180 ms instead of appearing at full strength on its
   first frame.
-- The visible background text is pushed down by up to 9 px in an 18 px band below
-  the current liquid field. This is a final text-sampling deformation, not a change
-  to the static text mask that feeds the metaball pipeline.
+- The visible background text moves as rigid glyphs rather than independently
+  displaced pixels. Every glyph stores offset and velocity in a 55 × 1 ping-pong
+  spring target, while nine surface-field probes determine contact.
+- Contact pulls a glyph down by up to 10 px with stiffness 58 and damping 12;
+  releasing it lets the original-position spring settle naturally.
 - Pointer capture keeps drag updates continuous outside the initial touch point.
   Native selection, callouts, dragging, and the context menu are suppressed on the
   artwork canvas.
@@ -160,5 +164,5 @@ The reproducible measurements and label-map generator are stored in
   0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,
   1.45 s stream formation, 4 s per-emission lifetime, 180 ms touch attack,
   and 13 s⁻¹ drag follow rate
-- Background-text displacement: up to 9 px downward, driven by liquid found in
-  an 18 px band above the text output pixel
+- Background-text spring: 55 character slots, nine contact probes per visible
+  glyph, 10 px target offset, stiffness 58, damping 12, and 4 px contact padding

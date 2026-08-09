@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
   <title id="title">액체 실루엣이 만들어지는 여섯 단계</title>
-  <desc id="desc">글자 마스크 픽셀, 독립된 터치 Falloff 조각 방출, 활성 픽셀, 주변 표본 field, 매끄럽게 만들기, 경계와 배경 글자 변형의 순서도</desc>
+  <desc id="desc">글자 마스크 픽셀, 독립된 터치 Falloff 조각 방출, 활성 픽셀, 주변 표본 field, 매끄럽게 만들기, 경계와 글자 스프링 합성의 순서도</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b6675"/>
@@ -69,7 +69,7 @@
   <g transform="translate(1027 105)">
     <rect class="accent" width="155" height="174"/>
     <path d="M27 77 C30 35 58 30 80 44 C104 30 129 44 130 77 C130 101 105 108 79 102 C53 111 25 101 27 77Z" fill="#172033"/>
-    <text class="label" x="77.5" y="132">경계 + 글자</text>
-    <text class="small" x="77.5" y="158">경계 추출 · 아래 밀기</text>
+    <text class="label" x="77.5" y="132">경계 + 스프링</text>
+    <text class="small" x="77.5" y="158">글자 단위 하강</text>
   </g>
 </svg>
