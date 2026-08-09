@@ -132,6 +132,9 @@ const LINE_HEIGHT = 42.2;
 const CHARACTER_ADVANCE = 31.8;
 const TEXT_FONT = '300 43px "Helvetica Neue", "Arial", sans-serif';
 const MAX_GLYPH_HALF_WIDTH = 32;
+const GLYPH_ATLAS_COLUMNS = 8;
+const GLYPH_ATLAS_ROWS = Math.ceil(GLYPH_SLOT_COUNT / GLYPH_ATLAS_COLUMNS);
+const GLYPH_ATLAS_CELL_SIZE = 64;
 
 type Pointer = { x: number; y: number };
 
@@ -177,11 +180,16 @@ textCanvas.width = ART_WIDTH * TEXTURE_SCALE;
 textCanvas.height = ART_HEIGHT * TEXTURE_SCALE;
 const textContext = textCanvas.getContext('2d', { alpha: true });
 if (!textContext) throw new Error('Unable to create the text mask.');
-const colorCenterCanvas = document.createElement('canvas');
-colorCenterCanvas.width = ART_WIDTH * TEXTURE_SCALE;
-colorCenterCanvas.height = ART_HEIGHT * TEXTURE_SCALE;
-const colorCenterContext = colorCenterCanvas.getContext('2d', { alpha: true });
-if (!colorCenterContext) throw new Error('Unable to create the color-center mask.');
+const glyphTextAtlasCanvas = document.createElement('canvas');
+glyphTextAtlasCanvas.width = GLYPH_ATLAS_COLUMNS * GLYPH_ATLAS_CELL_SIZE * TEXTURE_SCALE;
+glyphTextAtlasCanvas.height = GLYPH_ATLAS_ROWS * GLYPH_ATLAS_CELL_SIZE * TEXTURE_SCALE;
+const glyphTextAtlasContext = glyphTextAtlasCanvas.getContext('2d', { alpha: true });
+if (!glyphTextAtlasContext) throw new Error('Unable to create the glyph atlas.');
+const glyphColorAtlasCanvas = document.createElement('canvas');
+glyphColorAtlasCanvas.width = glyphTextAtlasCanvas.width;
+glyphColorAtlasCanvas.height = glyphTextAtlasCanvas.height;
+const glyphColorAtlasContext = glyphColorAtlasCanvas.getContext('2d', { alpha: true });
+if (!glyphColorAtlasContext) throw new Error('Unable to create the glyph color atlas.');
 
 function drawTrackedLine(
   context: CanvasRenderingContext2D,
@@ -312,40 +320,106 @@ function measureGlyphCenters(): GlyphCenterStats[] {
 
 let glyphCenterStats: GlyphCenterStats[] = [];
 
-function bakeColorCenterMask(): void {
-  colorCenterContext.setTransform(TEXTURE_SCALE, 0, 0, TEXTURE_SCALE, 0, 0);
-  colorCenterContext.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
-  const masses = glyphCenterStats.map((stats) => stats.inkMass);
-  const minMass = Math.min(...masses);
-  const maxMass = Math.max(...masses);
-  glyphCenterStats.forEach((stats) => {
-    const massRatio = (stats.inkMass - minMass) / Math.max(maxMass - minMass, 0.001);
-    const widthRatio = THREE.MathUtils.clamp((stats.width - 4) / 27, 0, 1);
-    const heightRatio = THREE.MathUtils.clamp((stats.height - 18) / 20, 0, 1);
-    const widthSignal = massRatio * 0.35 + widthRatio * 0.65;
-    const heightSignal = massRatio * 0.5 + heightRatio * 0.5;
-    const variation = state.colorCenterVariation;
-    const radiusX = state.colorCenterRadiusX * THREE.MathUtils.lerp(
+type ColorCenterShape = {
+  offsetX: number;
+  offsetY: number;
+  radiusX: number;
+  radiusY: number;
+  opacity: number;
+};
+
+function getColorCenterShape(
+  stats: GlyphCenterStats,
+  minMass: number,
+  maxMass: number,
+): ColorCenterShape {
+  const massRatio = (stats.inkMass - minMass) / Math.max(maxMass - minMass, 0.001);
+  const widthRatio = THREE.MathUtils.clamp((stats.width - 4) / 27, 0, 1);
+  const heightRatio = THREE.MathUtils.clamp((stats.height - 18) / 20, 0, 1);
+  const widthSignal = massRatio * 0.35 + widthRatio * 0.65;
+  const heightSignal = massRatio * 0.5 + heightRatio * 0.5;
+  const variation = state.colorCenterVariation;
+  const centroidMix = variation * 0.35;
+  return {
+    offsetX: (stats.centroidX - stats.centerX) * centroidMix,
+    offsetY: (stats.centroidY - stats.centerY) * centroidMix,
+    radiusX: state.colorCenterRadiusX * THREE.MathUtils.lerp(
       1,
       0.32 + widthSignal * 1.35,
       variation,
-    );
-    const radiusY = state.colorCenterRadiusY * THREE.MathUtils.lerp(
+    ),
+    radiusY: state.colorCenterRadiusY * THREE.MathUtils.lerp(
       1,
       0.42 + heightSignal * 1.3,
       variation,
-    );
-    const centroidMix = variation * 0.35;
-    const centerX = THREE.MathUtils.lerp(stats.centerX, stats.centroidX, centroidMix);
-    const centerY = THREE.MathUtils.lerp(stats.centerY, stats.centroidY, centroidMix);
-    const opacity = THREE.MathUtils.lerp(1, 0.45 + massRatio * 0.55, variation);
-    drawColorCenter(colorCenterContext, centerX, centerY, radiusX, radiusY, opacity);
-  });
+    ),
+    opacity: THREE.MathUtils.lerp(1, 0.45 + massRatio * 0.55, variation),
+  };
+}
+
+function bakeGlyphAtlases(): void {
+  glyphTextAtlasContext.setTransform(1, 0, 0, 1, 0, 0);
+  glyphTextAtlasContext.clearRect(
+    0,
+    0,
+    glyphTextAtlasCanvas.width,
+    glyphTextAtlasCanvas.height,
+  );
+  glyphColorAtlasContext.setTransform(1, 0, 0, 1, 0, 0);
+  glyphColorAtlasContext.clearRect(
+    0,
+    0,
+    glyphColorAtlasCanvas.width,
+    glyphColorAtlasCanvas.height,
+  );
+  glyphTextAtlasContext.setTransform(TEXTURE_SCALE, 0, 0, TEXTURE_SCALE, 0, 0);
+  glyphColorAtlasContext.setTransform(TEXTURE_SCALE, 0, 0, TEXTURE_SCALE, 0, 0);
+
+  const masses = glyphCenterStats.map((stats) => stats.inkMass);
+  const minMass = Math.min(...masses);
+  const maxMass = Math.max(...masses);
+
+  glyphTextAtlasContext.save();
+  glyphTextAtlasContext.fillStyle = '#ffffff';
+  glyphTextAtlasContext.font = TEXT_FONT;
+  glyphTextAtlasContext.textAlign = 'center';
+  glyphTextAtlasContext.textBaseline = 'middle';
+
+  let glyphSlot = 0;
+  let statsIndex = 0;
+  for (const line of lines) {
+    for (const character of line) {
+      if (character !== ' ') {
+        const column = glyphSlot % GLYPH_ATLAS_COLUMNS;
+        const row = Math.floor(glyphSlot / GLYPH_ATLAS_COLUMNS);
+        const cellCenterX = (column + 0.5) * GLYPH_ATLAS_CELL_SIZE;
+        const cellCenterY = (row + 0.5) * GLYPH_ATLAS_CELL_SIZE;
+        glyphTextAtlasContext.fillText(character, cellCenterX, cellCenterY);
+
+        const shape = getColorCenterShape(
+          glyphCenterStats[statsIndex],
+          minMass,
+          maxMass,
+        );
+        drawColorCenter(
+          glyphColorAtlasContext,
+          cellCenterX + shape.offsetX,
+          cellCenterY + shape.offsetY,
+          shape.radiusX,
+          shape.radiusY,
+          shape.opacity,
+        );
+        statsIndex += 1;
+      }
+      glyphSlot += 1;
+    }
+  }
+  glyphTextAtlasContext.restore();
 }
 
 bakeTextMask();
 glyphCenterStats = measureGlyphCenters();
-bakeColorCenterMask();
+bakeGlyphAtlases();
 
 const glyphSpringCells: THREE.Vector4[] = [];
 const lineLayouts: THREE.Vector4[] = [];
@@ -454,16 +528,16 @@ const vertexShader = `
   }
 `;
 
-const textTexture = new THREE.CanvasTexture(textCanvas);
-textTexture.colorSpace = THREE.NoColorSpace;
-textTexture.minFilter = THREE.LinearFilter;
-textTexture.magFilter = THREE.LinearFilter;
-textTexture.generateMipmaps = false;
-const colorCenterTexture = new THREE.CanvasTexture(colorCenterCanvas);
-colorCenterTexture.colorSpace = THREE.NoColorSpace;
-colorCenterTexture.minFilter = THREE.LinearFilter;
-colorCenterTexture.magFilter = THREE.LinearFilter;
-colorCenterTexture.generateMipmaps = false;
+const glyphTextAtlasTexture = new THREE.CanvasTexture(glyphTextAtlasCanvas);
+glyphTextAtlasTexture.colorSpace = THREE.NoColorSpace;
+glyphTextAtlasTexture.minFilter = THREE.LinearFilter;
+glyphTextAtlasTexture.magFilter = THREE.LinearFilter;
+glyphTextAtlasTexture.generateMipmaps = false;
+const glyphColorAtlasTexture = new THREE.CanvasTexture(glyphColorAtlasCanvas);
+glyphColorAtlasTexture.colorSpace = THREE.NoColorSpace;
+glyphColorAtlasTexture.minFilter = THREE.LinearFilter;
+glyphColorAtlasTexture.magFilter = THREE.LinearFilter;
+glyphColorAtlasTexture.generateMipmaps = false;
 
 const linearTargetOptions: THREE.RenderTargetOptions = {
   depthBuffer: false,
@@ -579,7 +653,16 @@ const deformedGlyphMaterial = new THREE.ShaderMaterial({
             - vec2(0.0, springState.r / uArtSize.y);
           vec2 outputDelta = (vUv - movedCenter) * uArtSize;
           vec2 sourceDelta = rotateVector(outputDelta, -springState.b);
-          vec2 sourceUv = originalCenter + sourceDelta / uArtSize;
+          float atlasColumn = mod(glyphSlot, ${GLYPH_ATLAS_COLUMNS}.0);
+          float atlasRow = floor(glyphSlot / ${GLYPH_ATLAS_COLUMNS}.0);
+          vec2 atlasCenterUv = vec2(
+            (atlasColumn + 0.5) / ${GLYPH_ATLAS_COLUMNS}.0,
+            1.0 - (atlasRow + 0.5) / ${GLYPH_ATLAS_ROWS}.0
+          );
+          vec2 sourceUv = atlasCenterUv + sourceDelta / vec2(
+            ${(GLYPH_ATLAS_COLUMNS * GLYPH_ATLAS_CELL_SIZE).toFixed(1)},
+            ${(GLYPH_ATLAS_ROWS * GLYPH_ATLAS_CELL_SIZE).toFixed(1)}
+          );
           float glyphHalfWidth = max(
             glyphMetadata.r * uMaxGlyphHalfWidth,
             uCharacterAdvance * 0.5
@@ -610,7 +693,7 @@ const deformedGlyphMaterial = new THREE.ShaderMaterial({
     }
   `,
   uniforms: {
-    uSource: { value: textTexture },
+    uSource: { value: glyphTextAtlasTexture },
     uGlyphSprings: { value: glyphSpringTargetA.texture },
     uGlyphMetadata: { value: glyphMetadataTexture },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
@@ -2021,16 +2104,16 @@ function bindGui(): void {
 
   const colorFolder = gui.addFolder('색상');
   colorFolder.add(state, 'colorCenterRadiusX', 3, 20, 0.5).name('기준 타원 가로 반경').onChange(() => {
-    bakeColorCenterMask();
-    colorCenterTexture.needsUpdate = true;
+    bakeGlyphAtlases();
+    glyphColorAtlasTexture.needsUpdate = true;
   });
   colorFolder.add(state, 'colorCenterRadiusY', 6, 28, 0.5).name('기준 타원 세로 반경').onChange(() => {
-    bakeColorCenterMask();
-    colorCenterTexture.needsUpdate = true;
+    bakeGlyphAtlases();
+    glyphColorAtlasTexture.needsUpdate = true;
   });
   colorFolder.add(state, 'colorCenterVariation', 0, 1, 0.01).name('글자별 크기 차이').onChange(() => {
-    bakeColorCenterMask();
-    colorCenterTexture.needsUpdate = true;
+    bakeGlyphAtlases();
+    glyphColorAtlasTexture.needsUpdate = true;
   });
   colorFolder.add(state, 'colorGlyphInfluence', 0, 0.6, 0.01).name('글자 픽셀 변형');
   colorFolder.add(state, 'colorEllipseInfluence', 0, 1, 0.01)
@@ -2218,9 +2301,9 @@ function animate(now: number): void {
   }
 
   deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
-  deformedGlyphMaterial.uniforms.uSource.value = textTexture;
+  deformedGlyphMaterial.uniforms.uSource.value = glyphTextAtlasTexture;
   renderPass(deformedGlyphMaterial, deformedTextTarget);
-  deformedGlyphMaterial.uniforms.uSource.value = colorCenterTexture;
+  deformedGlyphMaterial.uniforms.uSource.value = glyphColorAtlasTexture;
   renderPass(deformedGlyphMaterial, deformedColorCenterTarget);
 
   interactionFieldMaterial.uniforms.uDripGravity.value = state.dripGravity;

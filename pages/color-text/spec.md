@@ -28,7 +28,10 @@
    rasterized through the 480 × 600 geometry field. Measure each glyph's true
    half-width and inspect the nearest output cell plus both neighbours during
    inverse deformation, so wide glyphs such as W cannot be cropped at the fixed
-   tracking-cell boundary. Multiply the joined flowing
+   tracking-cell boundary. Source every candidate from its own 64 × 64 cell in a
+   3×-resolution 8 × 8 glyph atlas instead of the combined text mask. Neighbouring
+   glyph pixels therefore cannot be copied into the moving candidate or overlap
+   the existing letter. Multiply the joined flowing
    falloff by that transformed glyph alpha and character-center mask at each current
    output position. At each pixel, track the strongest and second-strongest values
    across the stable head and flowing parcels. Join near-tied winners with a
