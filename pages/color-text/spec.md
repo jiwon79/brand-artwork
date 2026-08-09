@@ -51,8 +51,10 @@
 9. Mix 20% of the current drip-activated glyph pixels back into the statistical
    ellipse field, then smooth it with a separable Gaussian filter (horizontal
    sigma 2.5, vertical ratio 1.1). In the final pass, also measure distance to the
-   nearest active glyph pixel. Convert that distance into a 3.6 px soft glyph-shaped
-   core with strength 0.68, while attenuating the old ellipse energy. The hottest
+   nearest active glyph pixel. Keep a glyph-shaped core out to 3.2 px with strength
+   0.68, then transition to zero over a bounded 1 px edge. Unlike the previous
+   Gaussian tail, no residual halo remains farther away. Attenuate the old ellipse
+   energy at the same time. The hottest
    area therefore follows letter branches and counters instead of remaining a row
    of identical vertical ovals. Read the combined field everywhere inside the
    metaball coverage, then map it through overlapping rose, pale-pink, and hot-color
@@ -180,7 +182,7 @@ The reproducible measurements and label-map generator are stored in
 - Character-center color ellipse baseline: 9 × 16 px radius; actual dimensions
   vary by glyph ink mass, bounds, and centroid
 - Glyph-pixel deformation mixed into color peaks: 20%
-- Glyph-shaped hot core: strength 0.68 over a 3.6 px nearest-stroke radius
+- Glyph-shaped hot core: strength 0.68, 3.2 px radius, and 1 px bounded edge
 - Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
 - Color field floor / range: 0.015 / 0.48
 - Palette saturation / brightness / warm pastel mix: 0.72 / 0.96 / 0.12

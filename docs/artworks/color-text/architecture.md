@@ -516,7 +516,8 @@ function animate(now) {
 | `colorCenterVariation` | `1` | 잉크 양·폭·높이에 따른 글자별 크기 차이 |
 | `colorGlyphInfluence` | `0.2` | 실제 글자 픽셀이 타원 가장자리를 변형하는 비율 |
 | `colorGlyphShapeStrength` | `0.68` | 내부의 밝은 중심이 타원보다 실제 글자 모양을 따르는 정도 |
-| `colorGlyphShapeRadius` | `3.6 px` | 글자 픽셀 주변에 만들어지는 밝은 글자형 중심의 두께 |
+| `colorGlyphShapeRadius` | `3.2 px` | 글자 픽셀 주변에 만들어지는 밝은 글자형 중심의 두께 |
+| `colorGlyphShapeEdge` | `1 px` | 털 같은 긴 후광 없이 글자형 중심이 0으로 전환되는 짧은 경계 폭 |
 | `colorBlurSigma` | `2.5` | 타원과 주변 중간색을 연결하는 부드러움 |
 | `colorBlurAspect` | `1.1` | 세로 방향 색 blur의 가로 대비 비율 |
 | `colorSaturation` | `0.72` | 원래 팔레트 채도를 전체적으로 낮춰 네온 느낌을 줄이는 비율 |

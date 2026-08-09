@@ -64,7 +64,8 @@ const state = {
   colorCenterVariation: qaNumber('qaColorCenterVariation', 1.0),
   colorGlyphInfluence: qaNumber('qaColorGlyphInfluence', 0.2),
   colorGlyphShapeStrength: qaNumber('qaColorGlyphShapeStrength', 0.68),
-  colorGlyphShapeRadius: qaNumber('qaColorGlyphShapeRadius', 3.6),
+  colorGlyphShapeRadius: qaNumber('qaColorGlyphShapeRadius', 3.2),
+  colorGlyphShapeEdge: qaNumber('qaColorGlyphShapeEdge', 1.0),
   colorBlurSigma: qaNumber('qaColorBlurSigma', 2.5),
   colorBlurAspect: qaNumber('qaColorBlurAspect', 1.1),
   colorBlurStep: qaNumber('qaColorBlurStep', 1.0),
@@ -1224,6 +1225,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform float uColorPastelMix;
     uniform float uColorGlyphShapeStrength;
     uniform float uColorGlyphShapeRadius;
+    uniform float uColorGlyphShapeEdge;
     uniform float uTime;
     uniform float uColorCycle;
     uniform float uLabelMode;
@@ -1262,7 +1264,11 @@ const finalMaterial = new THREE.ShaderMaterial({
       if (nearest.a > 0.5) {
         distanceToStroke = length((artUv - nearest.xy) * uArtSize);
         float coreStrength = smoothstep(uSeedThreshold, 0.56, nearest.z);
-        activeStrokeStrength = coreStrength;
+        activeStrokeStrength = smoothstep(
+          uSeedThreshold,
+          uSeedThreshold + 0.10,
+          nearest.z
+        );
         float coreRadius = mix(
           uCoreRadiusMin,
           uCoreRadius,
@@ -1307,9 +1313,16 @@ const finalMaterial = new THREE.ShaderMaterial({
         1.0
       );
       float glyphRadius = max(uColorGlyphShapeRadius, 0.1);
-      float glyphShapeEnergy = exp(
-        -0.5 * distanceToStroke * distanceToStroke
-        / (glyphRadius * glyphRadius)
+      float glyphEdge = min(
+        max(uColorGlyphShapeEdge, 0.05),
+        glyphRadius * 0.9
+      );
+      float glyphShapeEnergy = (
+        1.0 - smoothstep(
+          glyphRadius - glyphEdge,
+          glyphRadius + glyphEdge,
+          distanceToStroke
+        )
       ) * activeStrokeStrength;
       float shapedEllipseEnergy = normalizedEnergy * mix(
         1.0,
@@ -1384,6 +1397,7 @@ const finalMaterial = new THREE.ShaderMaterial({
     uColorPastelMix: { value: state.colorPastelMix },
     uColorGlyphShapeStrength: { value: state.colorGlyphShapeStrength },
     uColorGlyphShapeRadius: { value: state.colorGlyphShapeRadius },
+    uColorGlyphShapeEdge: { value: state.colorGlyphShapeEdge },
     uTime: { value: 0 },
     uColorCycle: { value: state.colorCycle },
     uLabelMode: { value: QA_LABEL_MODE ? 1 : 0 },
@@ -1651,6 +1665,11 @@ function bindGui(): void {
     .onChange((value: number) => {
       finalMaterial.uniforms.uColorGlyphShapeRadius.value = value;
     });
+  colorFolder.add(state, 'colorGlyphShapeEdge', 0.1, 3, 0.05)
+    .name('글자형 경계 부드러움')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uColorGlyphShapeEdge.value = value;
+    });
   colorFolder.add(state, 'colorBlurSigma', 0.5, 16, 0.1).name('중심 타원 가로 blur');
   colorFolder.add(state, 'colorBlurAspect', 0.2, 3, 0.01).name('중심 타원 세로 비율');
   colorFolder.add(state, 'colorBlurStep', 0.5, 2, 0.05).name('색 blur 간격').onChange((value: number) => {
@@ -1872,6 +1891,7 @@ function animate(now: number): void {
   finalMaterial.uniforms.uColorPastelMix.value = state.colorPastelMix;
   finalMaterial.uniforms.uColorGlyphShapeStrength.value = state.colorGlyphShapeStrength;
   finalMaterial.uniforms.uColorGlyphShapeRadius.value = state.colorGlyphShapeRadius;
+  finalMaterial.uniforms.uColorGlyphShapeEdge.value = state.colorGlyphShapeEdge;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);
