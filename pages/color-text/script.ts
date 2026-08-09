@@ -13,6 +13,8 @@ const STROKE_SPREAD_PASSES = 8;
 const LIQUID_PARTICLE_COUNT = 32;
 const DRAG_EMISSION_DISTANCE = 8;
 const LIQUID_SOURCE_PACKET_MASS = 1;
+const LIQUID_MIN_DRAG_TRAIL_MASS = 0.04;
+const LIQUID_MAX_DRAG_TRAIL_MASS = 0.10;
 const LIQUID_SOURCE_VELOCITY_TRANSFER = 0.04;
 const LIQUID_OFFSCREEN_MARGIN = 260;
 const LIQUID_MAX_STEP = 1 / 60;
@@ -1780,11 +1782,13 @@ function getParticleBirthEnergy(age: number): number {
 function compactClosestLiquidParticles(): void {
   if (liquidParticles.length < 2) return;
 
-  let firstIndex = 0;
-  let secondIndex = 1;
+  let firstIndex = -1;
+  let secondIndex = -1;
   let closestDistanceSquared = Number.POSITIVE_INFINITY;
   for (let first = 0; first < liquidParticles.length - 1; first += 1) {
+    if (liquidParticles[first] === liquidSourceParticle) continue;
     for (let second = first + 1; second < liquidParticles.length; second += 1) {
+      if (liquidParticles[second] === liquidSourceParticle) continue;
       const deltaX = (liquidParticles[first].x - liquidParticles[second].x) * ART_WIDTH;
       const deltaY = (liquidParticles[first].y - liquidParticles[second].y) * ART_HEIGHT;
       const distanceSquared = deltaX * deltaX + deltaY * deltaY;
@@ -1795,6 +1799,7 @@ function compactClosestLiquidParticles(): void {
       }
     }
   }
+  if (firstIndex < 0 || secondIndex < 0) return;
 
   const first = liquidParticles[firstIndex];
   const second = liquidParticles[secondIndex];
@@ -1880,19 +1885,71 @@ function placeLiquidSourceSample(x: number, y: number, energy: number): void {
   particle.energy = energy;
 }
 
+function shedLiquidDragTrail(from: Pointer, to: Pointer, energy: number): void {
+  if (!liquidSourceParticle || liquidSourceParticle.mass < LIQUID_SOURCE_PACKET_MASS) return;
+  const distance = Math.hypot(
+    (to.x - from.x) * ART_WIDTH,
+    (to.y - from.y) * ART_HEIGHT,
+  );
+  const desiredSampleCount = Math.max(1, Math.ceil(distance / DRAG_EMISSION_DISTANCE));
+  const affordableSampleCount = Math.floor(
+    Math.max(dripMassBudget, 0) / LIQUID_MIN_DRAG_TRAIL_MASS,
+  );
+  const sampleCount = Math.min(desiredSampleCount, affordableSampleCount);
+  if (sampleCount <= 0) return;
+
+  const trailMass = Math.min(
+    dripMassBudget / sampleCount,
+    LIQUID_MAX_DRAG_TRAIL_MASS,
+  );
+  for (let sampleIndex = 1; sampleIndex <= sampleCount; sampleIndex += 1) {
+    const progress = sampleIndex / (sampleCount + 1);
+    emitLiquidParticle(
+      THREE.MathUtils.lerp(from.x, to.x, progress),
+      THREE.MathUtils.lerp(from.y, to.y, progress),
+      false,
+      energy,
+      trailMass,
+    );
+  }
+
+  dripMassBudget -= trailMass * sampleCount;
+}
+
 function supplyLiquidMass(suppliedMass: number, energy: number): void {
   dripMassBudget += Math.max(suppliedMass, 0);
-  while (dripMassBudget > 0.000001) {
-    const particle = ensureLiquidSourceParticle(energy);
-    placeLiquidSourceSample(pointerTarget.x, pointerTarget.y, energy);
+  let particle = ensureLiquidSourceParticle(energy);
+  placeLiquidSourceSample(pointerTarget.x, pointerTarget.y, energy);
+
+  if (particle.mass < LIQUID_SOURCE_PACKET_MASS) {
     const capacity = Math.max(LIQUID_SOURCE_PACKET_MASS - particle.mass, 0);
     const transferredMass = Math.min(dripMassBudget, capacity);
     particle.mass += transferredMass;
     dripMassBudget -= transferredMass;
+    if (particle.mass >= LIQUID_SOURCE_PACKET_MASS - 0.000001) {
+      particle.mass = LIQUID_SOURCE_PACKET_MASS;
+    }
+  }
 
-    if (particle.mass < LIQUID_SOURCE_PACKET_MASS - 0.000001) break;
-    particle.mass = LIQUID_SOURCE_PACKET_MASS;
+  // Once the first source packet is full, keep that full-size surface pinned
+  // to the pointer. A replacement is prepared by elapsed supply time and only
+  // swaps in when it is also complete. The outgoing full packet then falls,
+  // so the upper Falloff never collapses to a new zero-mass packet.
+  while (
+    particle.mass >= LIQUID_SOURCE_PACKET_MASS - 0.000001
+    && dripMassBudget >= LIQUID_SOURCE_PACKET_MASS
+  ) {
+    dripMassBudget -= LIQUID_SOURCE_PACKET_MASS;
     liquidSourceParticle = null;
+    particle = emitLiquidParticle(
+      pointerTarget.x,
+      pointerTarget.y,
+      false,
+      energy,
+      LIQUID_SOURCE_PACKET_MASS,
+    );
+    liquidSourceParticle = particle;
+    placeLiquidSourceSample(pointerTarget.x, pointerTarget.y, energy);
   }
 }
 
@@ -1946,7 +2003,9 @@ function simulateLiquidParticles(delta: number): void {
     for (let index = 0; index < liquidParticles.length; index += 1) {
       const particle = liquidParticles[index];
       if (dripHeld && particle === liquidSourceParticle) {
-        particle.age += step;
+        // The source surface must not pinch or stretch while it is attached.
+        // Its flow age begins only after the packet leaves the pointer.
+        particle.age = 0;
         continue;
       }
       const turbulence = Math.sin(
@@ -2027,6 +2086,7 @@ if (!QA_POINTER_LOCKED) {
       );
       if (dragTravel >= DRAG_EMISSION_DISTANCE) {
         dripHasDragged = true;
+        shedLiquidDragTrail(dripDragEmission, pointerTarget, 1);
         placeLiquidSourceSample(pointerTarget.x, pointerTarget.y, 1);
         dripDragEmission.x = pointerTarget.x;
         dripDragEmission.y = pointerTarget.y;
@@ -2130,7 +2190,7 @@ function bindGui(): void {
   interactionFolder.add(state, 'dripParticleBlend', 0.005, 0.25, 0.005)
     .name('입자 표면 결합');
   interactionFolder.add(state, 'dripFollowEase', 3, 30, 0.5).name('드래그 속도 추정');
-  interactionFolder.add(state, 'dripEmissionInterval', 0.04, 0.35, 0.01).name('입자 채움 시간');
+  interactionFolder.add(state, 'dripEmissionInterval', 0.04, 0.35, 0.01).name('source 교대 시간');
 
   const textMotionFolder = gui.addFolder('텍스트 밀림');
   textMotionFolder.add(state, 'textPushDistance', 0, 24, 0.5)
