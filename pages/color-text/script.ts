@@ -22,7 +22,7 @@ const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
 const searchParams = new URLSearchParams(window.location.search);
 const QA_MODE = searchParams.has('qa');
 const QA_LABEL_MODE = searchParams.has('qaLabels');
-const DEBUG_STAGE_COUNT = 5;
+const DEBUG_STAGE_COUNT = 4;
 const requestedDebugStageParam = searchParams.get('stage');
 const requestedDebugStage = requestedDebugStageParam === null
   ? Number.NaN
@@ -1686,13 +1686,20 @@ const debugMaterial = new THREE.ShaderMaterial({
         float detectedWidth = max(fwidth(detectedPixels) * 1.3, 0.0035);
         float detectedEdge = isoLine(detectedPixels, 0.045, detectedWidth);
         result = mix(result, vec3(0.05, 0.18, 0.48), detectedEdge * 0.78);
-        float outerContourWidth = max(fwidth(rawFalloff) * 4.0, 0.012);
-        float outerContour = 1.0 - smoothstep(
-          outerContourWidth,
-          outerContourWidth * 2.2,
-          abs(rawFalloff - 0.125)
+
+        float falloffInfluence = smoothstep(0.002, 0.12, rawFalloff);
+        float falloffContourDistance = abs(fract(rawFalloff * 4.0) - 0.5);
+        float falloffContourWidth = max(fwidth(rawFalloff) * 5.0, 0.012);
+        float falloffContour = 1.0 - smoothstep(
+          falloffContourWidth,
+          falloffContourWidth * 2.2,
+          falloffContourDistance
         );
-        result = mix(result, vec3(0.08, 0.18, 0.45), outerContour * 0.66);
+        result = mix(
+          result,
+          vec3(0.24, 0.43, 0.68),
+          falloffContour * falloffInfluence * 0.28
+        );
       } else if (uMode < 2.5) {
         // SOLVER: source, packet envelopes, cohesion graph, and velocities.
         vec2 artPixel = artUv * uArtSize;
@@ -1789,48 +1796,20 @@ const debugMaterial = new THREE.ShaderMaterial({
           clamp(sourceRing + sourceCross, 0.0, 1.0) * uSourceActive
         );
       } else {
-        // CONTOUR: the smoothed scalar field and the final threshold crossing.
+        // CONTOUR: final geometry without color, one step before FINAL.
         float fieldWidth = max(fwidth(surfaceField) * 1.4, uSurfaceSoftness * 0.24);
-        float surfaceEdge = max(uSurfaceSoftness, fwidth(surfaceField) * 1.2);
-        float coverage = smoothstep(
-          uSurfaceThreshold - surfaceEdge,
-          uSurfaceThreshold + surfaceEdge,
-          surfaceField
-        );
-        float fieldVisible = smoothstep(0.004, uSurfaceThreshold * 1.5, surfaceField);
-        result = mix(result, charcoal, textMask * 0.09 * (1.0 - coverage));
-        result = mix(result, vec3(0.80, 0.91, 0.97), fieldVisible * 0.30);
-        result = mix(result, vec3(0.66, 0.84, 0.94), coverage * 0.34);
-
-        float contourLow = isoLine(
-          surfaceField,
-          uSurfaceThreshold * 0.34,
-          fieldWidth
-        );
-        float contourMidLow = isoLine(
-          surfaceField,
-          uSurfaceThreshold * 0.58,
-          fieldWidth
-        );
-        float contourMid = isoLine(
-          surfaceField,
-          uSurfaceThreshold * 0.80,
-          fieldWidth
-        );
-        float contourHigh = isoLine(
-          surfaceField,
-          uSurfaceThreshold * 1.30,
-          fieldWidth
-        );
         float thresholdContour = isoLine(
           surfaceField,
           uSurfaceThreshold,
           max(fieldWidth, uSurfaceSoftness * 0.55)
         );
-        result = mix(result, vec3(0.46, 0.69, 0.84), contourLow * 0.54);
-        result = mix(result, vec3(0.31, 0.57, 0.78), contourMidLow * 0.66);
-        result = mix(result, vec3(0.18, 0.40, 0.70), contourMid * 0.78);
-        result = mix(result, vec3(0.12, 0.29, 0.59), contourHigh * 0.72);
+        float contourHalo = isoLine(
+          surfaceField,
+          uSurfaceThreshold,
+          max(fieldWidth * 2.8, uSurfaceSoftness * 1.15)
+        );
+        result = mix(result, charcoal, textMask * 0.88);
+        result = mix(result, vec3(0.56, 0.72, 0.86), contourHalo * 0.24);
         result = mix(result, vec3(0.04, 0.10, 0.27), thresholdContour * 0.96);
       }
 
@@ -2272,7 +2251,11 @@ function setDebugStage(nextStage: number): void {
     0,
     DEBUG_STAGE_COUNT - 1,
   );
-  debugMaterial.uniforms.uMode.value = debugStage;
+  debugMaterial.uniforms.uMode.value = debugStage === 0
+    ? 2
+    : debugStage === 1
+      ? 1
+      : 3;
 
   document.querySelectorAll<HTMLButtonElement>('[data-debug-stage]').forEach((button) => {
     const selected = Number(button.dataset.debugStage) === debugStage;
@@ -2290,7 +2273,7 @@ function bindDebugControls(): void {
   });
   window.addEventListener('keydown', (event) => {
     if (event.target instanceof HTMLInputElement) return;
-    if (/^[1-5]$/.test(event.key)) setDebugStage(Number(event.key) - 1);
+    if (/^[1-4]$/.test(event.key)) setDebugStage(Number(event.key) - 1);
     if (event.key === 'ArrowLeft') setDebugStage(debugStage - 1);
     if (event.key === 'ArrowRight') setDebugStage(debugStage + 1);
   });
@@ -2647,7 +2630,7 @@ function animate(now: number): void {
       dripUniformSeeds[index] = particle.seed;
     }
   }
-  if (debugStage === 2) updateSolverDebugData();
+  if (debugStage === 0) updateSolverDebugData();
   else debugMaterial.uniforms.uSourceActive.value = 0;
 
   deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;

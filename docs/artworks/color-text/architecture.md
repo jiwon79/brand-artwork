@@ -526,17 +526,16 @@ function animate(now) {
 
 Process View는 별도 HTML 페이지를 만들지 않고 `pages/color-text/index.html`의 하단 단어 버튼으로 제공한다. 버튼을 누르면 같은 `script.ts`, 같은 포인터 상태, 같은 렌더 타깃을 유지한 채 마지막 화면 출력 재질만 바뀐다. 따라서 단계를 이동해도 흐르던 조각과 글자 스프링 상태가 초기화되지 않는다. 별도 페이지를 추가하지 않는 이 구조를 이 프로젝트의 기본 규칙으로 삼는다.
 
-화면 아래 버튼은 다음 다섯 단계를 선택한다.
+화면 아래 버튼은 다음 네 단계를 선택한다.
 
 | 버튼 | 실제로 읽는 값 | 화면에서 보이는 의미 |
 | --- | --- | --- |
-| `FALLOFF` | `interactionTarget.a` | 글자와 만나기 전 터치 영향 범위와 등고선 |
-| `CONTACT` | `interactionTarget.r`, `surfaceSourceTarget.r`, `interactionTarget.a` | Falloff와 만난 글자 픽셀, 감지 임계선, Falloff 최외곽선을 cobalt/cyan 표본 지도로 표시 |
 | `SOLVER` | `liquidParticles`, source 상태, 응집 거리 | 축소한 물리 패킷 반경, 중심점, 속도 벡터, 강한 이웃 연결 16개와 원본 Falloff의 옅은 흔적 |
-| `CONTOUR` | `surfaceFieldTarget.r` | 매끄러워진 숫자 지도의 네 단계 등고선과 최종 `surfaceThreshold` 경계 |
+| `CONTACT` | `interactionTarget.r`, `surfaceSourceTarget.r`, `interactionTarget.a` | Falloff와 만난 글자 픽셀과 감지 임계선을 cobalt/cyan으로 표시하고, 원본 Falloff의 네 등고선을 뒤에 옅게 표시 |
+| `CONTOUR` | `deformedTextTarget`, `surfaceFieldTarget.r` | 현재 글자를 선명하게 표시하고 최종 `surfaceThreshold` 외곽선 하나만 겹쳐 표시 |
 | `FINAL` | `finalMaterial` | 색상·실루엣·글자 스프링을 모두 합친 작품 |
 
-기본 선택은 `FINAL`이다. 숫자키 `1~5` 또는 좌우 방향키로도 단계를 이동할 수 있고, `?stage=0`부터 `?stage=4`까지 URL로 첫 단계를 고정할 수도 있다.
+기본 선택은 `FINAL`이다. 숫자키 `1~4` 또는 좌우 방향키로도 단계를 이동할 수 있고, `?stage=0`부터 `?stage=3`까지 URL로 첫 단계를 고정할 수도 있다.
 
 ## 11. QA 모드와 검증 순서
 
