@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
   <title id="title">액체 실루엣이 만들어지는 여섯 단계</title>
-  <desc id="desc">이동하고 회전한 글자 마스크, 독립된 터치 Falloff 조각 방출, 활성 픽셀, 주변 표본 field, 매끄럽게 만들기, 접촉 스프링 계산과 다음 프레임 피드백의 순서도</desc>
+  <desc id="desc">이동하고 회전한 글자 마스크, 완화된 큰 터치 source와 낙하 입자, 활성 픽셀, 주변 표본 field, 매끄럽게 만들기, 접촉 스프링 계산과 다음 프레임 피드백의 순서도</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b6675"/>
@@ -31,8 +31,8 @@
     <ellipse cx="77.5" cy="66" rx="32" ry="21" fill="#b9cae4" fill-opacity=".8"/>
     <ellipse cx="77.5" cy="94" rx="22" ry="17" fill="#4c78c2" fill-opacity=".55"/>
     <circle cx="77.5" cy="24" r="7" fill="#4c78c2"/>
-    <text class="label" x="77.5" y="132">터치 방출</text>
-    <text class="small" x="77.5" y="158">고정 위치 + 나이</text>
+    <text class="label" x="77.5" y="132">큰 source 이동</text>
+    <text class="small" x="77.5" y="158">완화 추종 + 낙하</text>
   </g>
   <path d="M402 176 H419 V168 L432 180 L419 192 V184 H402Z" fill="#5b6675"/>
 

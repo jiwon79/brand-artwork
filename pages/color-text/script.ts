@@ -11,11 +11,8 @@ const METABALL_SAMPLES = 192;
 const METABALL_SMOOTH_TAPS = 5;
 const STROKE_SPREAD_PASSES = 8;
 const LIQUID_PARTICLE_COUNT = 32;
-const DRAG_EMISSION_DISTANCE = 8;
+const DRAG_ACTIVATION_DISTANCE = 8;
 const LIQUID_SOURCE_PACKET_MASS = 1;
-const LIQUID_MIN_DRAG_TRAIL_MASS = 0.04;
-const LIQUID_MAX_DRAG_TRAIL_MASS = 0.10;
-const LIQUID_SOURCE_VELOCITY_TRANSFER = 0.04;
 const LIQUID_OFFSCREEN_MARGIN = 260;
 const LIQUID_MAX_STEP = 1 / 60;
 // Jump flooding is retained only for the optional continuity core. The visible
@@ -105,7 +102,7 @@ const state = {
   dripCohesion: qaNumber('qaDripCohesion', 0.9),
   dripCohesionRange: qaNumber('qaDripCohesionRange', 92.0),
   dripParticleBlend: qaNumber('qaDripParticleBlend', 0.08),
-  dripFollowEase: qaNumber('qaDripFollowEase', 13.0),
+  dripFollowEase: qaNumber('qaDripFollowEase', 7.5),
   dripEmissionInterval: qaNumber('qaDripEmissionInterval', 0.13),
   textPushDistance: qaNumber('qaTextPushDistance', 10.0),
   textSpringStiffness: qaNumber('qaTextSpringStiffness', 58.0),
@@ -150,9 +147,7 @@ const initialPointer = {
 };
 const pointerTarget: Pointer = { ...initialPointer };
 const dripEmitter: Pointer = { ...initialPointer };
-const dripDragEmission: Pointer = { ...initialPointer };
-const dripStart: Pointer = { ...initialPointer };
-const dripEmitterVelocity: Pointer = { x: 0, y: 0 };
+const dripLastPointer: Pointer = { ...initialPointer };
 type LiquidParticle = {
   x: number;
   y: number;
@@ -180,6 +175,7 @@ let dripMassBudget = 0;
 let dripHeld = false;
 let dripHasDragged = false;
 let dripSourceAge = 0;
+let dripPointerTravel = 0;
 let liquidParticleSequence = 0;
 let liquidSourceParticle: LiquidParticle | null = null;
 let activeDripPointerId: number | null = null;
@@ -1844,12 +1840,11 @@ function emitLiquidParticle(
   const particle: LiquidParticle = {
     x,
     y,
-    velocityX: dripEmitterVelocity.x * LIQUID_SOURCE_VELOCITY_TRANSFER
-      + Math.sin(seed * Math.PI * 2) * 1.5,
-    velocityDown: Math.max(
-      state.dripInitialSpeed + dripEmitterVelocity.y * 0.08,
-      state.dripInitialSpeed * 0.35,
-    ),
+    // Pointer motion positions the source but is not physical momentum. Once a
+    // packet leaves the source, it begins with a stable downward flow so a
+    // circular gesture cannot keep rotating the detached liquid.
+    velocityX: 0,
+    velocityDown: state.dripInitialSpeed,
     age: 0,
     mass,
     energy,
@@ -1877,49 +1872,15 @@ function placeLiquidSourceSample(x: number, y: number, energy: number): void {
   const particle = ensureLiquidSourceParticle(energy);
   particle.x = x;
   particle.y = y;
-  particle.velocityX = dripEmitterVelocity.x * LIQUID_SOURCE_VELOCITY_TRANSFER;
-  particle.velocityDown = Math.max(
-    state.dripInitialSpeed + dripEmitterVelocity.y * 0.08,
-    state.dripInitialSpeed * 0.35,
-  );
+  particle.velocityX = 0;
+  particle.velocityDown = state.dripInitialSpeed;
   particle.energy = energy;
-}
-
-function shedLiquidDragTrail(from: Pointer, to: Pointer, energy: number): void {
-  if (!liquidSourceParticle || liquidSourceParticle.mass < LIQUID_SOURCE_PACKET_MASS) return;
-  const distance = Math.hypot(
-    (to.x - from.x) * ART_WIDTH,
-    (to.y - from.y) * ART_HEIGHT,
-  );
-  const desiredSampleCount = Math.max(1, Math.ceil(distance / DRAG_EMISSION_DISTANCE));
-  const affordableSampleCount = Math.floor(
-    Math.max(dripMassBudget, 0) / LIQUID_MIN_DRAG_TRAIL_MASS,
-  );
-  const sampleCount = Math.min(desiredSampleCount, affordableSampleCount);
-  if (sampleCount <= 0) return;
-
-  const trailMass = Math.min(
-    dripMassBudget / sampleCount,
-    LIQUID_MAX_DRAG_TRAIL_MASS,
-  );
-  for (let sampleIndex = 1; sampleIndex <= sampleCount; sampleIndex += 1) {
-    const progress = sampleIndex / (sampleCount + 1);
-    emitLiquidParticle(
-      THREE.MathUtils.lerp(from.x, to.x, progress),
-      THREE.MathUtils.lerp(from.y, to.y, progress),
-      false,
-      energy,
-      trailMass,
-    );
-  }
-
-  dripMassBudget -= trailMass * sampleCount;
 }
 
 function supplyLiquidMass(suppliedMass: number, energy: number): void {
   dripMassBudget += Math.max(suppliedMass, 0);
   let particle = ensureLiquidSourceParticle(energy);
-  placeLiquidSourceSample(pointerTarget.x, pointerTarget.y, energy);
+  placeLiquidSourceSample(dripEmitter.x, dripEmitter.y, energy);
 
   if (particle.mass < LIQUID_SOURCE_PACKET_MASS) {
     const capacity = Math.max(LIQUID_SOURCE_PACKET_MASS - particle.mass, 0);
@@ -1931,10 +1892,10 @@ function supplyLiquidMass(suppliedMass: number, energy: number): void {
     }
   }
 
-  // Once the first source packet is full, keep that full-size surface pinned
-  // to the pointer. A replacement is prepared by elapsed supply time and only
+  // Once the first source packet is full, move that full-size surface with the
+  // eased emitter. A replacement is prepared by elapsed supply time and only
   // swaps in when it is also complete. The outgoing full packet then falls,
-  // so the upper Falloff never collapses to a new zero-mass packet.
+  // so drag motion never needs a chain of tiny path samples.
   while (
     particle.mass >= LIQUID_SOURCE_PACKET_MASS - 0.000001
     && dripMassBudget >= LIQUID_SOURCE_PACKET_MASS
@@ -1942,14 +1903,14 @@ function supplyLiquidMass(suppliedMass: number, energy: number): void {
     dripMassBudget -= LIQUID_SOURCE_PACKET_MASS;
     liquidSourceParticle = null;
     particle = emitLiquidParticle(
-      pointerTarget.x,
-      pointerTarget.y,
+      dripEmitter.x,
+      dripEmitter.y,
       false,
       energy,
       LIQUID_SOURCE_PACKET_MASS,
     );
     liquidSourceParticle = particle;
-    placeLiquidSourceSample(pointerTarget.x, pointerTarget.y, energy);
+    placeLiquidSourceSample(dripEmitter.x, dripEmitter.y, energy);
   }
 }
 
@@ -1959,8 +1920,8 @@ function simulateLiquidParticles(delta: number): void {
 
   for (let substep = 0; substep < stepCount; substep += 1) {
     if (dripHeld && liquidSourceParticle) {
-      liquidSourceParticle.x = pointerTarget.x;
-      liquidSourceParticle.y = pointerTarget.y;
+      liquidSourceParticle.x = dripEmitter.x;
+      liquidSourceParticle.y = dripEmitter.y;
     }
     liquidAccelerationX.fill(0, 0, liquidParticles.length);
     liquidAccelerationDown.fill(0, 0, liquidParticles.length);
@@ -2031,16 +1992,13 @@ function simulateLiquidParticles(delta: number): void {
 function startDrip(pointerId: number): void {
   dripEmitter.x = pointerTarget.x;
   dripEmitter.y = pointerTarget.y;
-  dripDragEmission.x = pointerTarget.x;
-  dripDragEmission.y = pointerTarget.y;
-  dripStart.x = pointerTarget.x;
-  dripStart.y = pointerTarget.y;
-  dripEmitterVelocity.x = 0;
-  dripEmitterVelocity.y = 0;
+  dripLastPointer.x = pointerTarget.x;
+  dripLastPointer.y = pointerTarget.y;
   dripMassBudget = 0;
   dripHeld = true;
   dripHasDragged = false;
   dripSourceAge = 0;
+  dripPointerTravel = 0;
   activeDripPointerId = pointerId;
   liquidSourceParticle = emitLiquidParticle(
     dripEmitter.x,
@@ -2053,18 +2011,15 @@ function startDrip(pointerId: number): void {
 
 function stopDrip(pointerId: number): void {
   if (pointerId !== activeDripPointerId) return;
-  const totalPointerTravel = Math.hypot(
-    (pointerTarget.x - dripStart.x) * ART_WIDTH,
-    (pointerTarget.y - dripStart.y) * ART_HEIGHT,
-  );
-  const sourceWasDragged = dripHasDragged || totalPointerTravel >= DRAG_EMISSION_DISTANCE;
+  const sourceWasDragged = dripHasDragged
+    || dripPointerTravel >= DRAG_ACTIVATION_DISTANCE;
   const sourceEnergy = sourceWasDragged ? 1 : getParticleBirthEnergy(dripSourceAge);
   if (liquidSourceParticle) {
     if (liquidSourceParticle.mass <= 0.000001) {
       const emptySourceIndex = liquidParticles.indexOf(liquidSourceParticle);
       if (emptySourceIndex >= 0) liquidParticles.splice(emptySourceIndex, 1);
     } else {
-      placeLiquidSourceSample(pointerTarget.x, pointerTarget.y, sourceEnergy);
+      placeLiquidSourceSample(dripEmitter.x, dripEmitter.y, sourceEnergy);
     }
   }
   liquidSourceParticle = null;
@@ -2080,17 +2035,13 @@ if (!QA_POINTER_LOCKED) {
     if (activeDripPointerId !== null) event.preventDefault();
     setPointerFromClient(event.clientX, event.clientY);
     if (activeDripPointerId !== null) {
-      const dragTravel = Math.hypot(
-        (pointerTarget.x - dripDragEmission.x) * ART_WIDTH,
-        (pointerTarget.y - dripDragEmission.y) * ART_HEIGHT,
+      dripPointerTravel += Math.hypot(
+        (pointerTarget.x - dripLastPointer.x) * ART_WIDTH,
+        (pointerTarget.y - dripLastPointer.y) * ART_HEIGHT,
       );
-      if (dragTravel >= DRAG_EMISSION_DISTANCE) {
-        dripHasDragged = true;
-        shedLiquidDragTrail(dripDragEmission, pointerTarget, 1);
-        placeLiquidSourceSample(pointerTarget.x, pointerTarget.y, 1);
-        dripDragEmission.x = pointerTarget.x;
-        dripDragEmission.y = pointerTarget.y;
-      }
+      dripLastPointer.x = pointerTarget.x;
+      dripLastPointer.y = pointerTarget.y;
+      if (dripPointerTravel >= DRAG_ACTIVATION_DISTANCE) dripHasDragged = true;
     }
   }, { passive: false });
 
@@ -2377,29 +2328,9 @@ function animate(now: number): void {
     simulateLiquidParticles(delta);
     if (dripHeld) {
       dripSourceAge += delta;
-      const previousEmitterX = dripEmitter.x;
-      const previousEmitterY = dripEmitter.y;
       const emitterBlend = 1 - Math.exp(-state.dripFollowEase * delta);
       dripEmitter.x += (pointerTarget.x - dripEmitter.x) * emitterBlend;
       dripEmitter.y += (pointerTarget.y - dripEmitter.y) * emitterBlend;
-      if (delta > 0.0001) {
-        const measuredVelocityX = (
-          (dripEmitter.x - previousEmitterX) * ART_WIDTH / delta
-        );
-        const measuredVelocityDown = (
-          (previousEmitterY - dripEmitter.y) * ART_HEIGHT / delta
-        );
-        dripEmitterVelocity.x = THREE.MathUtils.lerp(
-          dripEmitterVelocity.x,
-          measuredVelocityX,
-          0.35,
-        );
-        dripEmitterVelocity.y = THREE.MathUtils.lerp(
-          dripEmitterVelocity.y,
-          measuredVelocityDown,
-          0.35,
-        );
-      }
       const emissionInterval = Math.max(state.dripEmissionInterval, 0.01);
       const sourceEnergy = dripHasDragged ? 1 : getParticleBirthEnergy(dripSourceAge);
       supplyLiquidMass(delta / emissionInterval, sourceEnergy);
