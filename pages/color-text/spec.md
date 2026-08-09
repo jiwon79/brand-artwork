@@ -19,6 +19,9 @@
    untouched-down parcels attack from zero over 360 ms so the initial silhouette
    stays restrained. Once dragging begins, the existing head follows immediately
    without restarting its attack and later parcels start at full birth energy.
+   Scale only the fast lane-speed, neck-width, center-meander, and density
+   oscillations by a separate 0.3 flutter control. Gravity, mean neck width, mean
+   density, and spatial lane-speed variation remain unchanged.
 3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
    offset and angle into a 1440 × 1800 unsigned-byte target. Keeping this target at
    the original 3× bake resolution prevents the visible underprint from being
@@ -162,6 +165,9 @@ The reproducible measurements and label-map generator are stored in
   boundary is therefore controlled by the stable head, while parcel age, gravity,
   and turbulence only shape the stream below it. Near-equal first and second field
   values crossfade over 0.08 instead of switching through a hard `max()`.
+- Lower-stream temporal flutter defaults to 0.3. It reduces the amplitude of fast
+  lane-speed, neck-width, meander, and density changes while retaining downward
+  advection and the full spatial lane-speed differences.
 - On release, physical flow age remains real-time while lifetime age advances at
   2×. The stream keeps its falling speed but uses its remaining lifetime twice as
   fast; the stable head fades independently over 350 ms.
@@ -219,7 +225,8 @@ The reproducible measurements and label-map generator are stored in
 - Palette saturation / brightness / warm pastel mix: 0.72 / 0.96 / 0.12
 - Touch drip: up to 32 independently anchored parcels emitted every 130 ms,
   78 px/s² gravity, 0.34 vertical stretch,
-  0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,
+  0.72 column-flow variation, 0.3 lower-stream temporal flutter,
+  0.44 mature width, 0.92 metaball input strength,
   1.45 s stream formation, 4 s per-emission lifetime, 360 ms initial-origin attack,
   one stable held head, 34 px head-protection distance, 0.08 parcel winner blend,
   350 ms head release, 8 px immediate drag emission distance, 2× post-release

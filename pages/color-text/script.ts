@@ -81,6 +81,7 @@ const state = {
   dripGravity: qaNumber('qaDripGravity', 78),
   dripStretch: qaNumber('qaDripStretch', 0.34),
   dripTurbulence: qaNumber('qaDripTurbulence', 0.72),
+  dripFlutter: qaNumber('qaDripFlutter', 0.3),
   dripStrength: qaNumber('qaDripStrength', 0.92),
   dripPinchTime: qaNumber('qaDripPinchTime', 1.45),
   dripStreamWidth: qaNumber('qaDripStreamWidth', 0.44),
@@ -575,6 +576,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uDripGravity;
     uniform float uDripStretch;
     uniform float uDripTurbulence;
+    uniform float uDripFlutter;
     uniform float uDripStrength;
     uniform float uDripPinchTime;
     uniform float uDripStreamWidth;
@@ -614,13 +616,14 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         max(uDripPinchTime, 0.16),
         parcelAge
       );
+      float flutter = clamp(uDripFlutter, 0.0, 1.5);
       float laneSpeed = mix(
         1.0,
         mix(0.78, 1.16, laneNoise),
         uDripTurbulence * formation
       );
       laneSpeed += sin(localX * 0.11 + parcelAge * 0.58)
-        * 0.08 * uDripTurbulence * formation;
+        * 0.08 * uDripTurbulence * formation * flutter;
 
       float outputDown = (parcelOrigin.y - outputUv.y) * uArtSize.y;
       float verticalStretch = 1.0 + parcelAge * uDripStretch
@@ -636,10 +639,11 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
           + uTime * 0.22
         )
         - sin(localX * 0.018 + parcelAge * 1.08 + uTime * 0.22)
-      ) * 4.2 * uDripTurbulence * formation;
+      ) * 4.2 * uDripTurbulence * formation
+        * mix(0.6, 1.0, min(flutter, 1.0));
       float centerMeander = (
         sin(parcelAge * 1.76 + parcelOrigin.x * 11.3)
-        + 0.42 * sin(parcelAge * 4.15 - uTime * 0.55)
+        + 0.42 * flutter * sin(parcelAge * 4.15 - uTime * 0.55)
       ) * 7.5 * uDripTurbulence * formation;
 
       vec2 sourceUv = vec2(
@@ -660,9 +664,8 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         smoothstep(uLightTaperStart, uLightTaperEnd, verticalRatio)
       );
 
-      float travelingNeck = 0.78 + 0.22 * (
-        0.5 + 0.5 * sin(parcelAge * 7.1 - uTime * 3.4 + localX * 0.015)
-      );
+      float travelingNeck = 0.89 + 0.11 * flutter
+        * sin(parcelAge * 7.1 - uTime * 3.4 + localX * 0.015);
       float normalizedAge = parcelAge / max(uDripLifetime, 0.001);
       float headBulge = 1.0 + 0.38 * smoothstep(0.68, 0.96, normalizedAge);
       float streamWidth = mix(
@@ -706,11 +709,14 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         uDripPinchTime + 0.72,
         parcelAge
       );
-      float densityPulse = 1.0 - flowMaturity * uDripTurbulence * 0.16
-        * (
-          0.5
-          + 0.5 * sin(outputDown * 0.071 + localX * 0.043 - uTime * 2.6)
-        );
+      float densityOscillation = max(
+        1.0
+          + flutter
+          * sin(outputDown * 0.071 + localX * 0.043 - uTime * 2.6),
+        0.0
+      );
+      float densityPulse = 1.0 - flowMaturity * uDripTurbulence * 0.08
+        * densityOscillation;
       return flowedLight
         * flowGate
         * lifeFade
@@ -817,6 +823,7 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uDripGravity: { value: state.dripGravity },
     uDripStretch: { value: state.dripStretch },
     uDripTurbulence: { value: state.dripTurbulence },
+    uDripFlutter: { value: state.dripFlutter },
     uDripStrength: { value: state.dripStrength },
     uDripPinchTime: { value: state.dripPinchTime },
     uDripStreamWidth: { value: state.dripStreamWidth },
@@ -1691,6 +1698,7 @@ function bindGui(): void {
   interactionFolder.add(state, 'dripGravity', 20, 150, 1).name('드립 중력');
   interactionFolder.add(state, 'dripStretch', 0, 1.2, 0.01).name('영역 세로 신장');
   interactionFolder.add(state, 'dripTurbulence', 0, 1.5, 0.01).name('흐름 속도 차이');
+  interactionFolder.add(state, 'dripFlutter', 0, 1.5, 0.01).name('하단 잔물결 양');
   interactionFolder.add(state, 'dripStrength', 0, 1.4, 0.01).name('Metaball 입력량');
   interactionFolder.add(state, 'dripPinchTime', 0.4, 3, 0.05).name('흐름 형성 시간');
   interactionFolder.add(state, 'dripStreamWidth', 0.18, 1, 0.01).name('흐르는 영역 폭');
@@ -1985,6 +1993,7 @@ function animate(now: number): void {
   interactionFieldMaterial.uniforms.uDripGravity.value = state.dripGravity;
   interactionFieldMaterial.uniforms.uDripStretch.value = state.dripStretch;
   interactionFieldMaterial.uniforms.uDripTurbulence.value = state.dripTurbulence;
+  interactionFieldMaterial.uniforms.uDripFlutter.value = state.dripFlutter;
   interactionFieldMaterial.uniforms.uDripStrength.value = state.dripStrength;
   interactionFieldMaterial.uniforms.uDripPinchTime.value = state.dripPinchTime;
   interactionFieldMaterial.uniforms.uDripStreamWidth.value = state.dripStreamWidth;
