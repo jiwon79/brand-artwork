@@ -10,18 +10,17 @@
 
 1. Bake the nine text lines into a static 1440 × 1800 alpha texture, preserving
    the 480 × 600 artwork coordinate system at 3× sampling density.
-2. Treat touch drip as the only interaction. Keep one time-invariant falloff head
-   at the current held pointer, then emit one independently anchored flowing
-   parcel every 130 ms, up to 32 live parcels. Advect every parcel downward from
-   its own creation position with gravity and narrow older parcels into traveling
-   necks. Fade each flowing parcel in as the entire parcel travels through its
-   first 34 px; never crop it along an output-space Y line. The head and
-   untouched-down parcels attack from zero over 360 ms so the initial silhouette
-   stays restrained. Once dragging begins, the existing head follows immediately
-   without restarting its attack and later parcels start at full birth energy.
-   Scale only the fast lane-speed, neck-width, center-meander, and density
-   oscillations by a separate 0.3 flutter control. Gravity, mean neck width, mean
-   density, and spatial lane-speed variation remain unchanged.
+2. Treat touch as a liquid source rather than a rendered head. Emit one physical
+   particle every 130 ms, up to 32 particles. Each particle stores current position,
+   horizontal and downward velocity, mass, energy, age, and a variation seed. Update
+   position on the CPU with 78 px/s² gravity, viscous damping, and pairwise cohesion.
+   Cohesion only attracts separating neighbours; compressed particles are not repelled
+   because the Metaball surface already resolves their overlap. Age narrows and
+   vertically stretches a particle's Falloff but never fades it out. Remove a particle
+   only after it has moved fully below the artwork. If the 32-particle capacity is
+   reached, merge the closest pair while conserving mass and momentum. Initial-source
+   particles attack from zero over 360 ms; particles emitted after an 8 px drag start
+   at full energy.
 3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
    offset and angle into a 1440 × 1800 unsigned-byte target. Keeping this target at
    the original 3× bake resolution prevents the visible underprint from being
@@ -34,17 +33,16 @@
    the existing letter. Multiply the joined flowing
    falloff by that transformed glyph alpha and character-center mask at each current
    output position. At each pixel, track the strongest and second-strongest values
-   across the stable head and flowing parcels. Join near-tied winners with a
+   across the flowing particles. Join near-tied winners with a
    monotonic smooth union over a 0.08 gap, then use the strongest value outside
    that gap. Because the union never falls below either input, it removes both
    dark overlap seams and hard maximum
    switching without the excessive broadening of an additive union. No glyph
    snapshot or temporal activation texture is retained.
-   Releasing stops new parcels while existing parcels continue downward from their
-   frozen origins. The held head is treated as a source: on release its supply
-   stops, its final volume falls under gravity, and a falling rear-edge gate clears
-   only the region that can no longer receive new water. No in-place wipe or head
-   opacity fade is used.
+   Releasing stops particle emission only. Existing particles keep their current
+   position, velocity, and mass and continue through the same simulation until they
+   leave the bottom of the artwork. No lifetime fade, in-place wipe, special released
+   head, or rear-edge gate is used.
 4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
    Detection happens before the liquid field is built, matching the Metaball
    plugin's alpha/luminance input-detection stage instead of first turning every
@@ -84,16 +82,15 @@
    blends. Scale all HSV saturation by 0.72 and brightness by 0.96, then mix 12%
    warm cream into the result—slightly more at the hottest core—to prevent green,
    yellow, and magenta phases from becoming neon.
-10. During a held drag, follow the pointer with time-based easing and stamp each
-    new parcel at the emitter's current position. Previously emitted parcels keep
-    their original positions and ages, so old streams keep falling while new streams
-    start along the drag path. Every 8 px of pointer travel also stamps an immediate
-    full-birth parcel without waiting for the 130 ms timer. If the final pointer
-    position is over 6 px from the latest parcel, emit one final parcel there.
+10. During a held drag, follow the pointer with time-based easing and emit each
+    new particle at the source's current position. Previously emitted particles keep
+    their physical state, so old streams keep falling while new streams start along
+    the drag path. Every 8 px of pointer travel also emits an immediate full-energy
+    particle without waiting for the 130 ms timer. If the final pointer position is
+    over 6 px from the latest particle, emit one final particle there.
     Capture the active pointer and suppress browser selection/callout behavior for
-    uninterrupted movement. After release, keep physical age advancing normally
-    but advance lifetime age at 2×, halving disappearance latency without making
-    the visible stream fall faster.
+    uninterrupted movement. After release, stop supply and let every existing
+    particle leave through the lower off-screen sink.
 11. Give all 64 character slots an independent four-value spring state: vertical
     offset, vertical velocity, angle, and angular velocity. Test a 9 × 9 grid over
     every transformed non-space glyph and only count samples where current glyph
@@ -162,30 +159,27 @@ The reproducible measurements and label-map generator are stored in
   0.025 transition. The 0.05 cutoff applies only to the optional nearest-stroke
   continuity core.
 - The palette completes a smooth cycle every eight seconds.
-- Touch drip is the only interaction. It advects and vertically stretches the
-  emitted cursor falloffs while a time-invariant head remains at the held pointer.
-  Holding continuously emits new falloff ages;
-  releasing stops emission while the existing stream continues downward. Every
+- Touch drip is the only interaction. The held pointer is a source and is not
+  rendered as a separate head. Holding continuously emits physical liquid particles;
+  releasing stops emission while every existing particle continues downward. Every
   frame, the joined moving falloff is multiplied by the glyph mask at its current
   position, and those newly activated pixels enter the existing metaball passes.
 - The emitter follows a held drag with exponential easing. Each 130 ms emission
   freezes the emitter position at that instant, so already-falling streams do not
   move sideways when the pointer moves. Crossing each 8 px drag interval emits at
   the pointer immediately, removing timer latency at a new location.
-- Before the first drag movement, parcels at the initial touch origin attack over
-  360 ms together with the stable head. The head attack begins only once per touch;
-  dragging moves it immediately instead of restarting the delay. Once the pointer
-  has moved 8 px, newly created parcels skip the birth delay.
-- Flowing parcels are gated out over the first 34 px below each origin. The held
-  boundary is therefore controlled by the stable head, while parcel age, gravity,
-  and turbulence only shape the stream below it. Near-equal first and second field
+- Before the first drag movement, particles at the initial touch origin attack over
+  360 ms. Releasing freezes growing particles at their current energy so supply
+  cannot increase after the finger lifts. Once the pointer has moved 8 px, newly
+  created particles skip the birth delay.
+- Gravity, viscous damping, and non-repulsive neighbour cohesion update all particle
+  positions with simulation steps no larger than 1/60 s. Near-equal first and second field
   values crossfade over 0.08 instead of switching through a hard `max()`.
 - Lower-stream temporal flutter defaults to 0.3. It reduces the amplitude of fast
   lane-speed, neck-width, meander, and density changes while retaining downward
   advection and the full spatial lane-speed differences.
-- On release, physical flow age remains real-time while lifetime age advances at
-  2×. The stream keeps its falling speed, the held source becomes the final falling
-  volume, and a gravity-driven rear edge follows it downward until the stream exits.
+- On release, the source only stops emitting. There is no lifetime or release fade;
+  particles are removed only after their full Falloff is below the artwork.
 - The visible background text moves as rigid glyphs rather than independently
   displaced pixels. Every glyph stores offset, velocity, angle, and angular
   velocity in a 64 × 1 ping-pong spring target. A 9 × 9 grid tests the product
@@ -210,13 +204,13 @@ The reproducible measurements and label-map generator are stored in
 - Add `&qaDripAge=1.6&qaDrip=1` to freeze a 1.6-second held stream. Add
   `&qaDripReleaseAge=0.9` to inspect that stream 0.9 seconds
   after emission stopped.
-- Add `&qaHasDragged=1` to make post-drag parcels skip the initial birth delay.
+- Add `&qaHasDragged=1` to make post-drag particles skip the initial birth delay.
 - Press `g` to hide or reveal the tuning panel.
 
 ## Process View
 
 - The five text buttons live in `index.html`; there is no separate process page.
-  Switching views preserves the same pointer, parcel, and glyph-spring state.
+  Switching views preserves the same pointer, particle, and glyph-spring state.
 - The fixed bottom control moves through Falloff, active pixels, Metaball field,
   thresholded silhouette, and the final composite. Final is the default view.
 - The interaction target alpha channel stores raw `streamLight` before it is
@@ -254,14 +248,15 @@ The reproducible measurements and label-map generator are stored in
 - Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
 - Color field floor / range: 0.015 / 0.48
 - Palette saturation / brightness / warm pastel mix: 0.72 / 0.96 / 0.12
-- Touch drip: up to 32 independently anchored parcels emitted every 130 ms,
-  78 px/s² gravity, 0.34 vertical stretch,
-  0.72 column-flow variation, 0.3 lower-stream temporal flutter,
+- Touch drip: up to 32 mass-carrying particles emitted every 130 ms,
+  78 px/s² gravity, 18 px/s initial downward speed, 0.65 viscous damping,
+  0.9 cohesion over 92 px, 0.34 vertical stretch,
+  0.72 shape variation, 0.3 lower-stream temporal flutter,
   0.44 mature width, 0.92 metaball input strength,
-  1.45 s stream formation, 4 s per-emission lifetime, 360 ms initial-origin attack,
-  one stable held head, 34 px head-protection distance, 0.08 parcel winner blend,
-  one gravity-driven released-source tail, 8 px immediate drag emission distance, 2× post-release
-  lifetime rate, and 13 s⁻¹ drag follow rate
+  1.45 s stream formation, 360 ms initial-source attack,
+  0.08 particle winner blend, 8 px immediate drag emission distance,
+  off-screen-only removal, closest-pair mass/momentum-preserving merge, and
+  13 s⁻¹ source follow rate
 - Background-text spring: 64 character slots, 81 ink-and-surface overlap samples
   per visible glyph, 10 px target offset, translation stiffness 58, translation
   damping 12, 0 px contact padding, 9 degree target rotation, rotation stiffness

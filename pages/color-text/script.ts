@@ -10,8 +10,10 @@ const COLOR_BLUR_TAPS = 20;
 const METABALL_SAMPLES = 192;
 const METABALL_SMOOTH_TAPS = 5;
 const STROKE_SPREAD_PASSES = 8;
-const DRIP_PARCEL_COUNT = 32;
+const LIQUID_PARTICLE_COUNT = 32;
 const DRAG_EMISSION_DISTANCE = 8;
+const LIQUID_OFFSCREEN_MARGIN = 260;
+const LIQUID_MAX_STEP = 1 / 60;
 // Jump flooding is retained only for the optional continuity core. The visible
 // silhouette comes from the accumulated metaball field below.
 const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
@@ -93,11 +95,12 @@ const state = {
   dripStrength: qaNumber('qaDripStrength', 0.92),
   dripPinchTime: qaNumber('qaDripPinchTime', 1.45),
   dripStreamWidth: qaNumber('qaDripStreamWidth', 0.44),
-  dripLifetime: qaNumber('qaDripLifetime', 4.0),
   dripAttack: qaNumber('qaDripAttack', 0.36),
-  dripReleaseSpeed: qaNumber('qaDripReleaseSpeed', 2.0),
-  dripHeadStabilityDistance: qaNumber('qaDripHeadStabilityDistance', 34.0),
-  dripParcelBlend: qaNumber('qaDripParcelBlend', 0.08),
+  dripInitialSpeed: qaNumber('qaDripInitialSpeed', 18.0),
+  dripViscosity: qaNumber('qaDripViscosity', 0.65),
+  dripCohesion: qaNumber('qaDripCohesion', 0.9),
+  dripCohesionRange: qaNumber('qaDripCohesionRange', 92.0),
+  dripParticleBlend: qaNumber('qaDripParticleBlend', 0.08),
   dripFollowEase: qaNumber('qaDripFollowEase', 13.0),
   dripEmissionInterval: qaNumber('qaDripEmissionInterval', 0.13),
   textPushDistance: qaNumber('qaTextPushDistance', 10.0),
@@ -144,30 +147,36 @@ const initialPointer = {
 const pointerTarget: Pointer = { ...initialPointer };
 const dripEmitter: Pointer = { ...initialPointer };
 const dripDragEmission: Pointer = { ...initialPointer };
-const dripHeadOrigin: Pointer = { ...initialPointer };
-type DripParcel = {
+const dripStart: Pointer = { ...initialPointer };
+const dripEmitterVelocity: Pointer = { x: 0, y: 0 };
+type LiquidParticle = {
   x: number;
   y: number;
+  velocityX: number;
+  velocityDown: number;
   age: number;
-  lifeAge: number;
-  delayedBirth: boolean;
-  released: boolean;
+  mass: number;
+  energy: number;
+  growing: boolean;
+  seed: number;
 };
-const dripParcels: DripParcel[] = [];
+const liquidParticles: LiquidParticle[] = [];
 const dripUniformOrigins = Array.from(
-  { length: DRIP_PARCEL_COUNT },
+  { length: LIQUID_PARTICLE_COUNT },
   () => new THREE.Vector2(-2, -2),
 );
-const dripUniformAges = new Float32Array(DRIP_PARCEL_COUNT);
-const dripUniformLifeAges = new Float32Array(DRIP_PARCEL_COUNT);
-const dripUniformInstantBirths = new Float32Array(DRIP_PARCEL_COUNT);
-const dripUniformWeights = new Float32Array(DRIP_PARCEL_COUNT);
+const dripUniformAges = new Float32Array(LIQUID_PARTICLE_COUNT);
+const dripUniformMasses = new Float32Array(LIQUID_PARTICLE_COUNT);
+const dripUniformEnergies = new Float32Array(LIQUID_PARTICLE_COUNT);
+const dripUniformGrowth = new Float32Array(LIQUID_PARTICLE_COUNT);
+const dripUniformSeeds = new Float32Array(LIQUID_PARTICLE_COUNT);
+const liquidAccelerationX = new Float32Array(LIQUID_PARTICLE_COUNT);
+const liquidAccelerationDown = new Float32Array(LIQUID_PARTICLE_COUNT);
 let dripEmissionElapsed = 0;
 let dripHeld = false;
 let dripHasDragged = false;
-let dripHeadAge = 0;
-let dripHeadReleaseAge = Number.POSITIVE_INFINITY;
-let dripHeadReleaseStrength = 0;
+let dripSourceAge = 0;
+let liquidParticleSequence = 0;
 let activeDripPointerId: number | null = null;
 let artworkRect = { left: 0, top: 0, width: ART_WIDTH, height: ART_HEIGHT };
 let startTime = performance.now();
@@ -714,25 +723,19 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform sampler2D uText;
     uniform sampler2D uColorCenters;
     uniform vec2 uArtSize;
-    uniform vec2 uDripOrigins[${DRIP_PARCEL_COUNT}];
-    uniform float uDripAges[${DRIP_PARCEL_COUNT}];
-    uniform float uDripLifeAges[${DRIP_PARCEL_COUNT}];
-    uniform float uDripInstantBirths[${DRIP_PARCEL_COUNT}];
-    uniform float uDripWeights[${DRIP_PARCEL_COUNT}];
-    uniform vec2 uDripHeadOrigin;
-    uniform float uDripHeadWeight;
-    uniform float uDripHeadFlowAge;
-    uniform float uDripReleaseActive;
-    uniform float uDripHeadStabilityDistance;
-    uniform float uDripParcelBlend;
-    uniform float uDripGravity;
+    uniform vec2 uDripOrigins[${LIQUID_PARTICLE_COUNT}];
+    uniform float uDripAges[${LIQUID_PARTICLE_COUNT}];
+    uniform float uDripMasses[${LIQUID_PARTICLE_COUNT}];
+    uniform float uDripEnergies[${LIQUID_PARTICLE_COUNT}];
+    uniform float uDripGrowth[${LIQUID_PARTICLE_COUNT}];
+    uniform float uDripSeeds[${LIQUID_PARTICLE_COUNT}];
+    uniform float uDripParticleBlend;
     uniform float uDripStretch;
     uniform float uDripTurbulence;
     uniform float uDripFlutter;
     uniform float uDripStrength;
     uniform float uDripPinchTime;
     uniform float uDripStreamWidth;
-    uniform float uDripLifetime;
     uniform float uDripAttack;
     uniform vec2 uLightRadius;
     uniform float uLightRadiusYBelow;
@@ -743,69 +746,41 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uniform float uLightTaperEnd;
     uniform float uTime;
 
-    float flowedFalloffAtAge(
+    float liquidParticleFalloff(
       vec2 outputUv,
-      float parcelAge,
-      float parcelLifeAge,
-      vec2 parcelOrigin,
-      float parcelWeight,
-      float parcelInstantBirth
+      float particleAge,
+      vec2 particleOrigin,
+      float particleMass,
+      float particleEnergy,
+      float particleGrowth,
+      float particleSeed
     ) {
-      float fallDistance = min(
-        18.0 * parcelAge + 0.5 * uDripGravity * parcelAge * parcelAge,
-        uArtSize.y * 1.5
-      );
-      float localX = (outputUv.x - parcelOrigin.x) * uArtSize.x;
-      float broadLane = 0.5 + 0.5 * sin(
-        localX * 0.052 + parcelOrigin.x * 19.7
-      );
-      float fineLane = 0.5 + 0.5 * sin(
-        localX * 0.137 - parcelOrigin.y * 23.1
-      );
-      float laneNoise = mix(broadLane, fineLane, 0.34);
+      if (particleMass <= 0.0 || particleEnergy <= 0.0) return 0.0;
+
+      vec2 falloffDelta = (outputUv - particleOrigin) * uArtSize;
+      float localX = falloffDelta.x;
       float formation = smoothstep(
         uDripPinchTime * 0.12,
         max(uDripPinchTime, 0.16),
-        parcelAge
+        particleAge
       );
       float flutter = clamp(uDripFlutter, 0.0, 1.5);
-      float laneSpeed = mix(
-        1.0,
-        mix(0.78, 1.16, laneNoise),
-        uDripTurbulence * formation
-      );
-      laneSpeed += sin(localX * 0.11 + parcelAge * 0.58)
-        * 0.08 * uDripTurbulence * formation * flutter;
-
-      float outputDown = (parcelOrigin.y - outputUv.y) * uArtSize.y;
-      float verticalStretch = 1.0 + parcelAge * uDripStretch
-        * mix(0.78, 1.16, broadLane);
-      float sourceDown = (
-        outputDown - fallDistance * laneSpeed
-      ) / max(verticalStretch, 1.0);
+      float seedPhase = particleSeed * 6.28318530718;
       float lateralWarp = (
-        sin(
-          sourceDown * 0.035
-          + localX * 0.018
-          + parcelAge * 1.08
-          + uTime * 0.22
-        )
-        - sin(localX * 0.018 + parcelAge * 1.08 + uTime * 0.22)
-      ) * 4.2 * uDripTurbulence * formation
-        * mix(0.6, 1.0, min(flutter, 1.0));
-      float centerMeander = (
-        sin(parcelAge * 1.76 + parcelOrigin.x * 11.3)
-        + 0.42 * flutter * sin(parcelAge * 4.15 - uTime * 0.55)
-      ) * 7.5 * uDripTurbulence * formation;
+        sin(falloffDelta.y * 0.028 + seedPhase + uTime * 0.18)
+        - sin(seedPhase + uTime * 0.18)
+      ) * 3.2 * uDripTurbulence * formation;
+      falloffDelta.x -= lateralWarp;
 
-      vec2 sourceUv = vec2(
-        outputUv.x - (lateralWarp + centerMeander) / uArtSize.x,
-        parcelOrigin.y - sourceDown / uArtSize.y
+      float massScale = pow(max(particleMass, 0.02), 0.5);
+      float verticalStretch = 1.0 + min(
+        particleAge * uDripStretch * 0.38,
+        0.78
       );
-      vec2 falloffDelta = (sourceUv - parcelOrigin) * uArtSize;
       float verticalRadius = falloffDelta.y < 0.0
         ? uLightRadiusYBelow
         : uLightRadius.y;
+      verticalRadius *= verticalStretch * massScale;
       float verticalRatio = abs(falloffDelta.y) / max(verticalRadius, 0.001);
       float taperFloor = falloffDelta.y < 0.0
         ? uLightTaperBelow
@@ -817,16 +792,14 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
       );
 
       float travelingNeck = 0.89 + 0.11 * flutter
-        * sin(parcelAge * 7.1 - uTime * 3.4 + localX * 0.015);
-      float normalizedAge = parcelAge / max(uDripLifetime, 0.001);
-      float headBulge = 1.0 + 0.38 * smoothstep(0.68, 0.96, normalizedAge);
+        * sin(particleAge * 2.1 - uTime * 0.7 + seedPhase + localX * 0.015);
       float streamWidth = mix(
         1.0,
-        uDripStreamWidth * travelingNeck * headBulge,
+        uDripStreamWidth * travelingNeck,
         formation
       );
       vec2 effectiveRadius = vec2(
-        uLightRadius.x * horizontalTaper * streamWidth,
+        uLightRadius.x * horizontalTaper * streamWidth * massScale,
         verticalRadius
       );
       float normalizedDistance = length(
@@ -838,137 +811,62 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
         normalizedDistance
       );
       flowedLight *= smoothstep(1.04, 0.84, normalizedDistance);
-      // Reveal the whole parcel after it has travelled away from the stable
-      // head. A gate based on outputDown cuts every parcel along a horizontal
-      // line and exposes repeated seams in the Falloff view.
-      float flowGate = smoothstep(
-        max(uDripHeadStabilityDistance * 0.25, 1.0),
-        max(uDripHeadStabilityDistance * 1.15, 2.0),
-        fallDistance
-      );
-      float lifeFade = 1.0 - smoothstep(
-        max(uDripLifetime - 0.9, 0.0),
-        uDripLifetime,
-        parcelLifeAge
-      );
       float birthEnergy = 1.0 - exp(
-        -parcelAge / max(uDripAttack, 0.001)
+        -particleAge / max(uDripAttack, 0.001)
       );
       float birthFade = mix(
-        birthEnergy * birthEnergy,
         1.0,
-        step(0.5, parcelInstantBirth)
+        birthEnergy * birthEnergy,
+        clamp(particleGrowth, 0.0, 1.0)
       );
       float flowMaturity = smoothstep(
         uDripPinchTime - 0.16,
         uDripPinchTime + 0.72,
-        parcelAge
+        particleAge
       );
       float densityOscillation = max(
         1.0
           + flutter
-          * sin(outputDown * 0.071 + localX * 0.043 - uTime * 2.6),
+          * sin(falloffDelta.y * 0.071 + localX * 0.043 + seedPhase - uTime * 0.7),
         0.0
       );
       float densityPulse = 1.0 - flowMaturity * uDripTurbulence * 0.08
         * densityOscillation;
       return flowedLight
-        * flowGate
-        * lifeFade
         * birthFade
         * densityPulse
-        * clamp(parcelWeight, 0.0, 1.0)
-        * step(parcelLifeAge, uDripLifetime);
-    }
-
-    float stationaryHeadFalloff(vec2 outputUv) {
-      float headFallDistance = min(
-        72.0 * uDripHeadFlowAge
-          + 0.5 * uDripGravity * uDripHeadFlowAge * uDripHeadFlowAge,
-        uArtSize.y * 1.5
-      );
-      vec2 flowingHeadOrigin = uDripHeadOrigin
-        - vec2(0.0, headFallDistance / uArtSize.y);
-      vec2 falloffDelta = (outputUv - flowingHeadOrigin) * uArtSize;
-      float verticalRadius = falloffDelta.y < 0.0
-        ? uLightRadiusYBelow
-        : uLightRadius.y;
-      float verticalRatio = abs(falloffDelta.y) / max(verticalRadius, 0.001);
-      float taperFloor = falloffDelta.y < 0.0
-        ? uLightTaperBelow
-        : uLightTaperAbove;
-      float horizontalTaper = mix(
-        1.0,
-        taperFloor,
-        smoothstep(uLightTaperStart, uLightTaperEnd, verticalRatio)
-      );
-      vec2 effectiveRadius = vec2(
-        uLightRadius.x * horizontalTaper,
-        verticalRadius
-      );
-      float normalizedDistance = length(
-        falloffDelta / max(effectiveRadius, vec2(0.001))
-      );
-      float headLight = 1.0 - smoothstep(
-        uLightFalloff,
-        1.0,
-        normalizedDistance
-      );
-      headLight *= smoothstep(1.04, 0.84, normalizedDistance);
-      return headLight * clamp(uDripHeadWeight, 0.0, 1.0);
+        * max(particleEnergy, 0.0);
     }
 
     void main() {
-      float strongestLight = stationaryHeadFalloff(vUv);
+      float strongestLight = 0.0;
       float secondLight = 0.0;
-      for (int sampleIndex = 0; sampleIndex < ${DRIP_PARCEL_COUNT}; sampleIndex += 1) {
-        float parcelLight = flowedFalloffAtAge(
+      for (int sampleIndex = 0; sampleIndex < ${LIQUID_PARTICLE_COUNT}; sampleIndex += 1) {
+        float particleLight = liquidParticleFalloff(
           vUv,
           uDripAges[sampleIndex],
-          uDripLifeAges[sampleIndex],
           uDripOrigins[sampleIndex],
-          uDripWeights[sampleIndex],
-          uDripInstantBirths[sampleIndex]
+          uDripMasses[sampleIndex],
+          uDripEnergies[sampleIndex],
+          uDripGrowth[sampleIndex],
+          uDripSeeds[sampleIndex]
         );
-        if (parcelLight > strongestLight) {
+        if (particleLight > strongestLight) {
           secondLight = strongestLight;
-          strongestLight = parcelLight;
+          strongestLight = particleLight;
         } else {
-          secondLight = max(secondLight, parcelLight);
+          secondLight = max(secondLight, particleLight);
         }
       }
-      // Averages make the field darker precisely where the head and a parcel
-      // meet, which draws a horizontal notch. This smooth union is monotonic:
+      // This smooth union is monotonic across neighboring liquid particles:
       // overlap can gently add volume, but can never lower either contributor.
-      float unionWidth = max(uDripParcelBlend, 0.001);
+      float unionWidth = max(uDripParticleBlend, 0.001);
       float unionAmount = max(
         unionWidth - abs(strongestLight - secondLight),
         0.0
       ) / unionWidth;
       float streamLight = strongestLight
         + unionAmount * unionAmount * unionWidth * 0.25;
-
-      // The held head is a source. Releasing stops new supply and lets the
-      // source's final volume fall with gravity. This rear edge follows that
-      // volume down, clearing the accumulated stream behind it instead of
-      // fading or wiping the field in place.
-      float releaseFallDistance = min(
-        72.0 * uDripHeadFlowAge
-          + 0.5 * uDripGravity * uDripHeadFlowAge * uDripHeadFlowAge,
-        uArtSize.y * 1.5
-      );
-      float releaseRearDistance = releaseFallDistance - uLightRadius.y;
-      float outputDownFromSource = (uDripHeadOrigin.y - vUv.y) * uArtSize.y;
-      float releaseRearGate = smoothstep(
-        releaseRearDistance - 10.0,
-        releaseRearDistance + 10.0,
-        outputDownFromSource
-      );
-      streamLight *= mix(
-        1.0,
-        releaseRearGate,
-        clamp(uDripReleaseActive, 0.0, 1.0)
-      );
 
       float textMask = texture2D(uText, vUv).a;
       float colorCenterMask = texture2D(uColorCenters, vUv).a;
@@ -993,23 +891,17 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uDripOrigins: { value: dripUniformOrigins },
     uDripAges: { value: dripUniformAges },
-    uDripLifeAges: { value: dripUniformLifeAges },
-    uDripInstantBirths: { value: dripUniformInstantBirths },
-    uDripWeights: { value: dripUniformWeights },
-    uDripHeadOrigin: { value: new THREE.Vector2(initialPointer.x, initialPointer.y) },
-    uDripHeadWeight: { value: 0 },
-    uDripHeadFlowAge: { value: 0 },
-    uDripReleaseActive: { value: 0 },
-    uDripHeadStabilityDistance: { value: state.dripHeadStabilityDistance },
-    uDripParcelBlend: { value: state.dripParcelBlend },
-    uDripGravity: { value: state.dripGravity },
+    uDripMasses: { value: dripUniformMasses },
+    uDripEnergies: { value: dripUniformEnergies },
+    uDripGrowth: { value: dripUniformGrowth },
+    uDripSeeds: { value: dripUniformSeeds },
+    uDripParticleBlend: { value: state.dripParticleBlend },
     uDripStretch: { value: state.dripStretch },
     uDripTurbulence: { value: state.dripTurbulence },
     uDripFlutter: { value: state.dripFlutter },
     uDripStrength: { value: state.dripStrength },
     uDripPinchTime: { value: state.dripPinchTime },
     uDripStreamWidth: { value: state.dripStreamWidth },
-    uDripLifetime: { value: state.dripLifetime },
     uDripAttack: { value: state.dripAttack },
     uLightRadius: { value: new THREE.Vector2(state.radiusX, state.radiusY) },
     uLightRadiusYBelow: { value: state.radiusYBelow },
@@ -1875,27 +1767,146 @@ function setPointerFromClient(clientX: number, clientY: number): void {
   pointerTarget.y = 1 - yFromTop;
 }
 
-function emitDripParcel(
+function getParticleBirthEnergy(age: number): number {
+  const energy = 1 - Math.exp(-age / Math.max(state.dripAttack, 0.001));
+  return energy * energy;
+}
+
+function mergeClosestLiquidParticles(): void {
+  if (liquidParticles.length < 2) return;
+
+  let firstIndex = 0;
+  let secondIndex = 1;
+  let closestDistanceSquared = Number.POSITIVE_INFINITY;
+  for (let first = 0; first < liquidParticles.length - 1; first += 1) {
+    for (let second = first + 1; second < liquidParticles.length; second += 1) {
+      const deltaX = (liquidParticles[first].x - liquidParticles[second].x) * ART_WIDTH;
+      const deltaY = (liquidParticles[first].y - liquidParticles[second].y) * ART_HEIGHT;
+      const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+      if (distanceSquared < closestDistanceSquared) {
+        closestDistanceSquared = distanceSquared;
+        firstIndex = first;
+        secondIndex = second;
+      }
+    }
+  }
+
+  const first = liquidParticles[firstIndex];
+  const second = liquidParticles[secondIndex];
+  const totalMass = first.mass + second.mass;
+  const firstShare = first.mass / totalMass;
+  const secondShare = second.mass / totalMass;
+  const firstVisibleEnergy = first.energy * (
+    first.growing ? getParticleBirthEnergy(first.age) : 1
+  );
+  const secondVisibleEnergy = second.energy * (
+    second.growing ? getParticleBirthEnergy(second.age) : 1
+  );
+  liquidParticles[firstIndex] = {
+    x: first.x * firstShare + second.x * secondShare,
+    y: first.y * firstShare + second.y * secondShare,
+    velocityX: first.velocityX * firstShare + second.velocityX * secondShare,
+    velocityDown: first.velocityDown * firstShare + second.velocityDown * secondShare,
+    age: first.age * firstShare + second.age * secondShare,
+    mass: totalMass,
+    energy: (
+      firstVisibleEnergy * first.mass + secondVisibleEnergy * second.mass
+    ) / totalMass,
+    growing: false,
+    seed: first.seed * firstShare + second.seed * secondShare,
+  };
+  liquidParticles.splice(secondIndex, 1);
+}
+
+function emitLiquidParticle(
   x: number,
   y: number,
-  age = 0,
-  delayedBirth = false,
+  growing = false,
+  energy = 1,
 ): void {
-  if (dripParcels.length >= DRIP_PARCEL_COUNT) dripParcels.shift();
-  dripParcels.push({
+  if (liquidParticles.length >= LIQUID_PARTICLE_COUNT) mergeClosestLiquidParticles();
+  const seed = (liquidParticleSequence * 0.61803398875) % 1;
+  liquidParticleSequence += 1;
+  liquidParticles.push({
     x,
     y,
-    age,
-    lifeAge: age,
-    delayedBirth,
-    released: false,
+    velocityX: dripEmitterVelocity.x * 0.16 + Math.sin(seed * Math.PI * 2) * 1.5,
+    velocityDown: Math.max(
+      state.dripInitialSpeed + dripEmitterVelocity.y * 0.08,
+      state.dripInitialSpeed * 0.35,
+    ),
+    age: 0,
+    mass: 1,
+    energy,
+    growing,
+    seed,
   });
 }
 
-function getDripHeadAttackStrength(age: number, instant: boolean): number {
-  if (instant) return 1;
-  const energy = 1 - Math.exp(-age / Math.max(state.dripAttack, 0.001));
-  return energy * energy;
+function freezeGrowingParticles(): void {
+  for (const particle of liquidParticles) {
+    if (!particle.growing) continue;
+    particle.energy *= getParticleBirthEnergy(particle.age);
+    particle.growing = false;
+  }
+}
+
+function simulateLiquidParticles(delta: number): void {
+  const stepCount = Math.max(1, Math.ceil(delta / LIQUID_MAX_STEP));
+  const step = delta / stepCount;
+
+  for (let substep = 0; substep < stepCount; substep += 1) {
+    liquidAccelerationX.fill(0, 0, liquidParticles.length);
+    liquidAccelerationDown.fill(0, 0, liquidParticles.length);
+    const cohesionRange = Math.max(state.dripCohesionRange, 1);
+
+    for (let firstIndex = 0; firstIndex < liquidParticles.length - 1; firstIndex += 1) {
+      const first = liquidParticles[firstIndex];
+      for (let secondIndex = firstIndex + 1; secondIndex < liquidParticles.length; secondIndex += 1) {
+        const second = liquidParticles[secondIndex];
+        const deltaX = (second.x - first.x) * ART_WIDTH;
+        const deltaDown = (first.y - second.y) * ART_HEIGHT;
+        const distance = Math.hypot(deltaX, deltaDown);
+        if (distance <= 0.001 || distance >= cohesionRange) continue;
+
+        const influence = 1 - distance / cohesionRange;
+        const restDistance = 18 * Math.sqrt((first.mass + second.mass) * 0.5);
+        // The metaball surface already resolves overlap. Cohesion only pulls
+        // separating particles back together; turning compression into a
+        // repulsive spring launches a freshly emitted cluster off-screen.
+        const stretch = Math.max(distance - restDistance, 0);
+        const force = state.dripCohesion * stretch * influence * influence;
+        const directionX = deltaX / distance;
+        const directionDown = deltaDown / distance;
+        liquidAccelerationX[firstIndex] += force * directionX / Math.max(first.mass, 0.05);
+        liquidAccelerationDown[firstIndex] += force * directionDown / Math.max(first.mass, 0.05);
+        liquidAccelerationX[secondIndex] -= force * directionX / Math.max(second.mass, 0.05);
+        liquidAccelerationDown[secondIndex] -= force * directionDown / Math.max(second.mass, 0.05);
+      }
+    }
+
+    const horizontalDamping = Math.exp(-state.dripViscosity * 1.35 * step);
+    const verticalDamping = Math.exp(-state.dripViscosity * 0.22 * step);
+    for (let index = 0; index < liquidParticles.length; index += 1) {
+      const particle = liquidParticles[index];
+      const turbulence = Math.sin(
+        particle.seed * Math.PI * 2 + particle.age * 1.1,
+      ) * state.dripTurbulence * 2.2;
+      particle.velocityX += (liquidAccelerationX[index] + turbulence) * step;
+      particle.velocityDown += (state.dripGravity + liquidAccelerationDown[index]) * step;
+      particle.velocityX *= horizontalDamping;
+      particle.velocityDown *= verticalDamping;
+      particle.x += particle.velocityX * step / ART_WIDTH;
+      particle.y -= particle.velocityDown * step / ART_HEIGHT;
+      particle.age += step;
+    }
+  }
+
+  for (let index = liquidParticles.length - 1; index >= 0; index -= 1) {
+    const particle = liquidParticles[index];
+    const removalMargin = LIQUID_OFFSCREEN_MARGIN * Math.sqrt(particle.mass);
+    if (particle.y * ART_HEIGHT < -removalMargin) liquidParticles.splice(index, 1);
+  }
 }
 
 function startDrip(pointerId: number): void {
@@ -1903,36 +1914,41 @@ function startDrip(pointerId: number): void {
   dripEmitter.y = pointerTarget.y;
   dripDragEmission.x = pointerTarget.x;
   dripDragEmission.y = pointerTarget.y;
-  dripHeadOrigin.x = pointerTarget.x;
-  dripHeadOrigin.y = pointerTarget.y;
+  dripStart.x = pointerTarget.x;
+  dripStart.y = pointerTarget.y;
+  dripEmitterVelocity.x = 0;
+  dripEmitterVelocity.y = 0;
   dripEmissionElapsed = 0;
   dripHeld = true;
   dripHasDragged = false;
-  dripHeadAge = 0;
-  dripHeadReleaseAge = 0;
-  dripHeadReleaseStrength = 0;
+  dripSourceAge = 0;
   activeDripPointerId = pointerId;
-  emitDripParcel(dripEmitter.x, dripEmitter.y, 0, true);
+  emitLiquidParticle(dripEmitter.x, dripEmitter.y, true);
 }
 
 function stopDrip(pointerId: number): void {
   if (pointerId !== activeDripPointerId) return;
-  const latestParcel = dripParcels[dripParcels.length - 1];
-  const finalTravel = latestParcel
+  const latestParticle = liquidParticles[liquidParticles.length - 1];
+  const finalTravel = latestParticle
     ? Math.hypot(
-      (pointerTarget.x - latestParcel.x) * ART_WIDTH,
-      (pointerTarget.y - latestParcel.y) * ART_HEIGHT,
+      (pointerTarget.x - latestParticle.x) * ART_WIDTH,
+      (pointerTarget.y - latestParticle.y) * ART_HEIGHT,
     )
     : Number.POSITIVE_INFINITY;
-  if (finalTravel > 6) {
-    emitDripParcel(pointerTarget.x, pointerTarget.y, 0, !dripHasDragged);
-  }
-  dripHeadReleaseStrength = getDripHeadAttackStrength(
-    dripHeadAge,
-    dripHasDragged,
+  const totalPointerTravel = Math.hypot(
+    (pointerTarget.x - dripStart.x) * ART_WIDTH,
+    (pointerTarget.y - dripStart.y) * ART_HEIGHT,
   );
-  dripHeadReleaseAge = 0;
-  for (const parcel of dripParcels) parcel.released = true;
+  const sourceWasDragged = dripHasDragged || totalPointerTravel >= DRAG_EMISSION_DISTANCE;
+  const sourceEnergy = sourceWasDragged ? 1 : getParticleBirthEnergy(dripSourceAge);
+  freezeGrowingParticles();
+  if (
+    finalTravel > 6
+    || !latestParticle
+    || latestParticle.age > Math.max(state.dripEmissionInterval * 0.55, 0.025)
+  ) {
+    emitLiquidParticle(pointerTarget.x, pointerTarget.y, false, sourceEnergy);
+  }
   dripHeld = false;
   dripEmissionElapsed = 0;
   activeDripPointerId = null;
@@ -1945,15 +1961,13 @@ if (!QA_POINTER_LOCKED) {
     if (activeDripPointerId !== null) event.preventDefault();
     setPointerFromClient(event.clientX, event.clientY);
     if (activeDripPointerId !== null) {
-      dripHeadOrigin.x = pointerTarget.x;
-      dripHeadOrigin.y = pointerTarget.y;
       const dragTravel = Math.hypot(
         (pointerTarget.x - dripDragEmission.x) * ART_WIDTH,
         (pointerTarget.y - dripDragEmission.y) * ART_HEIGHT,
       );
       if (dragTravel >= DRAG_EMISSION_DISTANCE) {
         dripHasDragged = true;
-        emitDripParcel(pointerTarget.x, pointerTarget.y);
+        emitLiquidParticle(pointerTarget.x, pointerTarget.y);
         dripDragEmission.x = pointerTarget.x;
         dripDragEmission.y = pointerTarget.y;
       }
@@ -2048,13 +2062,13 @@ function bindGui(): void {
   interactionFolder.add(state, 'dripStrength', 0, 1.4, 0.01).name('Metaball 입력량');
   interactionFolder.add(state, 'dripPinchTime', 0.4, 3, 0.05).name('흐름 형성 시간');
   interactionFolder.add(state, 'dripStreamWidth', 0.18, 1, 0.01).name('흐르는 영역 폭');
-  interactionFolder.add(state, 'dripLifetime', 1.5, 7, 0.1).name('방출 조각 수명');
   interactionFolder.add(state, 'dripAttack', 0.05, 0.6, 0.01).name('터치 시작 시간');
-  interactionFolder.add(state, 'dripReleaseSpeed', 1, 4, 0.1).name('릴리즈 소멸 배속');
-  interactionFolder.add(state, 'dripHeadStabilityDistance', 8, 80, 1)
-    .name('고정 머리 보호 거리');
-  interactionFolder.add(state, 'dripParcelBlend', 0.005, 0.25, 0.005)
-    .name('조각 전환 부드러움');
+  interactionFolder.add(state, 'dripInitialSpeed', 0, 80, 1).name('초기 낙하 속도');
+  interactionFolder.add(state, 'dripViscosity', 0, 2.5, 0.05).name('점성 감쇠');
+  interactionFolder.add(state, 'dripCohesion', 0, 3, 0.05).name('입자 응집력');
+  interactionFolder.add(state, 'dripCohesionRange', 24, 180, 1).name('응집 거리');
+  interactionFolder.add(state, 'dripParticleBlend', 0.005, 0.25, 0.005)
+    .name('입자 표면 결합');
   interactionFolder.add(state, 'dripFollowEase', 3, 30, 0.5).name('드래그 따라가기');
   interactionFolder.add(state, 'dripEmissionInterval', 0.04, 0.35, 0.01).name('방출 간격');
 
@@ -2240,83 +2254,84 @@ function animate(now: number): void {
   previousTime = now;
 
   if (!QA_MODE) {
+    simulateLiquidParticles(delta);
     if (dripHeld) {
-      dripHeadAge += delta;
-      dripHeadOrigin.x = pointerTarget.x;
-      dripHeadOrigin.y = pointerTarget.y;
-    } else if (Number.isFinite(dripHeadReleaseAge)) {
-      dripHeadReleaseAge += delta;
-    }
-
-    for (const parcel of dripParcels) {
-      parcel.age += delta;
-      parcel.lifeAge += delta * (parcel.released ? state.dripReleaseSpeed : 1);
-    }
-    while (dripParcels[0]?.lifeAge > state.dripLifetime) dripParcels.shift();
-
-    if (dripHeld) {
+      dripSourceAge += delta;
+      const previousEmitterX = dripEmitter.x;
+      const previousEmitterY = dripEmitter.y;
       const emitterBlend = 1 - Math.exp(-state.dripFollowEase * delta);
       dripEmitter.x += (pointerTarget.x - dripEmitter.x) * emitterBlend;
       dripEmitter.y += (pointerTarget.y - dripEmitter.y) * emitterBlend;
+      if (delta > 0.0001) {
+        const measuredVelocityX = (
+          (dripEmitter.x - previousEmitterX) * ART_WIDTH / delta
+        );
+        const measuredVelocityDown = (
+          (previousEmitterY - dripEmitter.y) * ART_HEIGHT / delta
+        );
+        dripEmitterVelocity.x = THREE.MathUtils.lerp(
+          dripEmitterVelocity.x,
+          measuredVelocityX,
+          0.35,
+        );
+        dripEmitterVelocity.y = THREE.MathUtils.lerp(
+          dripEmitterVelocity.y,
+          measuredVelocityDown,
+          0.35,
+        );
+      }
       dripEmissionElapsed += delta;
 
       const emissionInterval = Math.max(state.dripEmissionInterval, 0.01);
       while (dripEmissionElapsed >= emissionInterval) {
         dripEmissionElapsed -= emissionInterval;
-        emitDripParcel(dripEmitter.x, dripEmitter.y, 0, !dripHasDragged);
+        emitLiquidParticle(dripEmitter.x, dripEmitter.y, !dripHasDragged);
       }
     }
   }
 
-  for (let index = 0; index < DRIP_PARCEL_COUNT; index += 1) {
+  for (let index = 0; index < LIQUID_PARTICLE_COUNT; index += 1) {
     dripUniformOrigins[index].set(-2, -2);
-    dripUniformAges[index] = state.dripLifetime + 1;
-    dripUniformLifeAges[index] = state.dripLifetime + 1;
-    dripUniformInstantBirths[index] = 1;
-    dripUniformWeights[index] = 0;
+    dripUniformAges[index] = 0;
+    dripUniformMasses[index] = 0;
+    dripUniformEnergies[index] = 0;
+    dripUniformGrowth[index] = 0;
+    dripUniformSeeds[index] = 0;
   }
 
   if (QA_MODE) {
-    const youngestAge = Math.max(qaDripReleaseAge, 0);
-    const oldestAge = Math.min(youngestAge + qaDripAge, state.dripLifetime);
     const qaWeight = THREE.MathUtils.clamp(qaDripEnergy, 0, 1);
-    for (let index = 0; index < DRIP_PARCEL_COUNT; index += 1) {
-      const streamPosition = index / (DRIP_PARCEL_COUNT - 1);
-      dripUniformOrigins[index].set(initialPointer.x, initialPointer.y);
-      const flowAge = THREE.MathUtils.lerp(
-        youngestAge,
-        oldestAge,
-        streamPosition,
+    const qaReleaseTime = Math.max(qaDripReleaseAge, 0);
+    const qaParticleCount = Math.min(
+      LIQUID_PARTICLE_COUNT,
+      Math.max(1, Math.floor(qaDripAge / Math.max(state.dripEmissionInterval, 0.01)) + 1),
+    );
+    for (let index = 0; index < qaParticleCount; index += 1) {
+      const streamPosition = qaParticleCount <= 1 ? 0 : index / (qaParticleCount - 1);
+      const flowAge = qaReleaseTime + qaDripAge * streamPosition;
+      const fallDistance = state.dripInitialSpeed * flowAge
+        + 0.5 * state.dripGravity * flowAge * flowAge;
+      const lateralOffset = Math.sin(index * 2.3999632297) * state.dripTurbulence * 2.5;
+      dripUniformOrigins[index].set(
+        initialPointer.x + lateralOffset / ART_WIDTH,
+        initialPointer.y - fallDistance / ART_HEIGHT,
       );
       dripUniformAges[index] = flowAge;
-      dripUniformLifeAges[index] = flowAge
-        + qaDripReleaseAge * (state.dripReleaseSpeed - 1);
-      dripUniformInstantBirths[index] = qaHasDragged
-        && index !== DRIP_PARCEL_COUNT - 1
-        ? 1
-        : 0;
-      dripUniformWeights[index] = qaWeight;
+      dripUniformMasses[index] = 1;
+      dripUniformEnergies[index] = qaWeight;
+      dripUniformGrowth[index] = qaHasDragged || qaReleaseTime > 0 ? 0 : 1;
+      dripUniformSeeds[index] = (index * 0.61803398875) % 1;
     }
   } else {
-    for (let index = 0; index < dripParcels.length; index += 1) {
-      const parcel = dripParcels[index];
-      dripUniformOrigins[index].set(parcel.x, parcel.y);
-      dripUniformAges[index] = parcel.age;
-      dripUniformLifeAges[index] = parcel.lifeAge;
-      dripUniformInstantBirths[index] = parcel.delayedBirth ? 0 : 1;
-      dripUniformWeights[index] = 1;
+    for (let index = 0; index < liquidParticles.length; index += 1) {
+      const particle = liquidParticles[index];
+      dripUniformOrigins[index].set(particle.x, particle.y);
+      dripUniformAges[index] = particle.age;
+      dripUniformMasses[index] = particle.mass;
+      dripUniformEnergies[index] = particle.energy;
+      dripUniformGrowth[index] = particle.growing ? 1 : 0;
+      dripUniformSeeds[index] = particle.seed;
     }
-  }
-
-  let dripHeadWeight = 0;
-  if (QA_MODE) {
-    const qaHeadAttack = getDripHeadAttackStrength(qaDripAge, qaHasDragged);
-    dripHeadWeight = qaHeadAttack
-      * THREE.MathUtils.clamp(qaDripEnergy, 0, 1);
-  } else if (dripHeld) {
-    dripHeadWeight = getDripHeadAttackStrength(dripHeadAge, dripHasDragged);
-  } else if (Number.isFinite(dripHeadReleaseAge)) {
-    dripHeadWeight = dripHeadReleaseStrength;
   }
 
   deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
@@ -2325,30 +2340,14 @@ function animate(now: number): void {
   deformedGlyphMaterial.uniforms.uSource.value = glyphColorAtlasTexture;
   renderPass(deformedGlyphMaterial, deformedColorCenterTarget);
 
-  interactionFieldMaterial.uniforms.uDripGravity.value = state.dripGravity;
   interactionFieldMaterial.uniforms.uDripStretch.value = state.dripStretch;
   interactionFieldMaterial.uniforms.uDripTurbulence.value = state.dripTurbulence;
   interactionFieldMaterial.uniforms.uDripFlutter.value = state.dripFlutter;
   interactionFieldMaterial.uniforms.uDripStrength.value = state.dripStrength;
   interactionFieldMaterial.uniforms.uDripPinchTime.value = state.dripPinchTime;
   interactionFieldMaterial.uniforms.uDripStreamWidth.value = state.dripStreamWidth;
-  interactionFieldMaterial.uniforms.uDripLifetime.value = state.dripLifetime;
   interactionFieldMaterial.uniforms.uDripAttack.value = state.dripAttack;
-  interactionFieldMaterial.uniforms.uDripHeadOrigin.value.set(
-    QA_MODE ? initialPointer.x : dripHeadOrigin.x,
-    QA_MODE ? initialPointer.y : dripHeadOrigin.y,
-  );
-  interactionFieldMaterial.uniforms.uDripHeadWeight.value = dripHeadWeight;
-  interactionFieldMaterial.uniforms.uDripHeadFlowAge.value = QA_MODE
-    ? qaDripReleaseAge
-    : (!dripHeld && Number.isFinite(dripHeadReleaseAge) ? dripHeadReleaseAge : 0);
-  interactionFieldMaterial.uniforms.uDripReleaseActive.value = QA_MODE
-    ? Number(qaDripReleaseAge > 0)
-    : Number(!dripHeld && Number.isFinite(dripHeadReleaseAge));
-  interactionFieldMaterial.uniforms.uDripHeadStabilityDistance.value = (
-    state.dripHeadStabilityDistance
-  );
-  interactionFieldMaterial.uniforms.uDripParcelBlend.value = state.dripParcelBlend;
+  interactionFieldMaterial.uniforms.uDripParticleBlend.value = state.dripParticleBlend;
   interactionFieldMaterial.uniforms.uLightRadius.value.set(state.radiusX, state.radiusY);
   interactionFieldMaterial.uniforms.uLightRadiusYBelow.value = state.radiusYBelow;
   interactionFieldMaterial.uniforms.uLightFalloff.value = state.lightFalloff;
