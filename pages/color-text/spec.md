@@ -10,17 +10,20 @@
 
 1. Bake the nine text lines into a static 1440 × 1800 alpha texture, preserving
    the 480 × 600 artwork coordinate system at 3× sampling density.
-2. Treat touch as a liquid source rather than a rendered head. Emit one physical
-   particle every 130 ms, up to 32 particles. Each particle stores current position,
+2. Treat touch as a liquid source rather than a rendered head. Supply one unit of
+   mass every 130 ms, up to 32 particles. Fill the attached source particle
+   continuously from zero to one mass, then detach it and immediately start filling
+   the next packet. Each particle stores current position,
    horizontal and downward velocity, mass, energy, age, and a variation seed. Update
    position on the CPU with 78 px/s² gravity, viscous damping, and pairwise cohesion.
    Cohesion only attracts separating neighbours; compressed particles are not repelled
    because the Metaball surface already resolves their overlap. Age narrows and
    vertically stretches a particle's Falloff but never fades it out. Remove a particle
    only after it has moved fully below the artwork. If the 32-particle capacity is
-   reached, merge the closest pair while conserving mass and momentum. Initial-source
-   particles attack from zero over 360 ms; particles emitted after an 8 px drag start
-   at full energy.
+   reached, compact the closest pair at their mass-weighted position and velocity,
+   but retain the larger existing display mass instead of summing both radii.
+   Initial-source energy attacks from zero over 360 ms; the active source skips this
+   delay after an 8 px drag.
 3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
    offset and angle into a 1440 × 1800 unsigned-byte target. Keeping this target at
    the original 3× bake resolution prevents the visible underprint from being
@@ -82,14 +85,13 @@
    blends. Scale all HSV saturation by 0.72 and brightness by 0.96, then mix 12%
    warm cream into the result—slightly more at the hottest core—to prevent green,
    yellow, and magenta phases from becoming neon.
-10. During a held drag, follow the pointer with time-based easing and emit each
-    new particle at the source's current position. Previously emitted particles keep
-    their physical state, so old streams keep falling while new streams start along
-    the drag path. Accumulate one unit of source mass per 130 ms. Every 8 px of
-    pointer travel may spend only the mass accumulated so far, clamped to 0.08–0.35
-    per path particle. If less than 0.08 is available, move only the newest still-young
-    source packet to the pointer instead of adding mass. Apply the same budget rule
-    to the final pointer position.
+10. During a held drag, move only the currently filling source particle directly
+    with the pointer. Previously detached particles keep their physical state, so old
+    streams keep falling while new packets start at the current pointer. Supply mass
+    continuously at one unit per 130 ms regardless of pointer distance. Crossing an
+    8 px drag distance removes the initial source-energy delay but does not create
+    extra mass. On release, detach the current packet at its partial mass rather than
+    injecting a full endpoint particle.
     Capture the active pointer and suppress browser selection/callout behavior for
     uninterrupted movement. After release, stop supply and let every existing
     particle leave through the lower off-screen sink.
@@ -166,16 +168,16 @@ The reproducible measurements and label-map generator are stored in
   releasing stops emission while every existing particle continues downward. Every
   frame, the joined moving falloff is multiplied by the glyph mask at its current
   position, and those newly activated pixels enter the existing metaball passes.
-- The emitter follows a held drag with exponential easing. Each 130 ms of held time
-  supplies one unit of mass, so total liquid depends on elapsed time rather than
-  pointer distance. Crossing each 8 px drag interval resamples the path immediately,
-  but spends at most 0.35 of the accumulated mass. If there is not yet 0.08 available,
-  only the newest source packet moves to the pointer. Already-falling streams remain
-  at their physical positions.
-- Before the first drag movement, particles at the initial touch origin attack over
-  360 ms. Releasing freezes growing particles at their current energy so supply
-  cannot increase after the finger lifts. Once the pointer has moved 8 px, newly
-  created particles skip the birth delay.
+- The currently filling source packet follows the held pointer directly. Each 130 ms
+  of held time supplies one unit of mass, so total liquid depends on elapsed time
+  rather than pointer distance. The packet radius grows continuously from zero with
+  the square root of its current mass. A full packet detaches and keeps falling while
+  a new zero-mass packet starts immediately at the pointer. Exclude the attached
+  source packet from cohesion so dragging cannot pull detached packets sideways.
+- Before the first drag movement, source energy attacks over 360 ms. Detached packets
+  keep the energy present when they left the source, so energy cannot increase after
+  the finger lifts. Once the pointer has moved 8 px, the active source skips the
+  birth delay.
 - Gravity, viscous damping, and non-repulsive neighbour cohesion update all particle
   positions with simulation steps no larger than 1/60 s. Near-equal first and second field
   values crossfade over 0.08 instead of switching through a hard `max()`.
@@ -252,15 +254,15 @@ The reproducible measurements and label-map generator are stored in
 - Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
 - Color field floor / range: 0.015 / 0.48
 - Palette saturation / brightness / warm pastel mix: 0.72 / 0.96 / 0.12
-- Touch drip: up to 32 mass-carrying particles emitted every 130 ms,
+- Touch drip: up to 32 mass-carrying particles, with one mass unit supplied every 130 ms,
   78 px/s² gravity, 18 px/s initial downward speed, 0.65 viscous damping,
   0.9 cohesion over 92 px, 0.34 vertical stretch,
   0.72 shape variation, 0.3 lower-stream temporal flutter,
   0.44 mature width, 0.92 metaball input strength,
   1.45 s stream formation, 360 ms initial-source attack,
-  0.08 particle winner blend, 8 px drag path resampling distance,
-  0.08–0.35 path-particle mass, 4% horizontal source-velocity transfer,
-  off-screen-only removal, closest-pair mass/momentum-preserving merge, and
+  0.08 particle winner blend, 8 px drag activation distance,
+  zero-to-one continuous source-packet mass, 4% horizontal source-velocity transfer,
+  off-screen-only removal, closest-pair envelope-preserving compaction, and
   13 s⁻¹ source follow rate
 - Background-text spring: 64 character slots, 81 ink-and-surface overlap samples
   per visible glyph, 10 px target offset, translation stiffness 58, translation
