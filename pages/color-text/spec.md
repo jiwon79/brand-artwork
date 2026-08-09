@@ -56,7 +56,9 @@
    area therefore follows letter branches and counters instead of remaining a row
    of identical vertical ovals. Read the combined field everywhere inside the
    metaball coverage, then map it through overlapping rose, pale-pink, and hot-color
-   blends.
+   blends. Scale all HSV saturation by 0.72 and brightness by 0.96, then mix 12%
+   warm cream into the result—slightly more at the hottest core—to prevent green,
+   yellow, and magenta phases from becoming neon.
 10. During a held drag, follow the pointer with time-based easing and stamp each
     new parcel at the emitter's current position. Previously emitted parcels keep
     their original positions and ages, so old streams keep falling while new streams
@@ -181,6 +183,7 @@ The reproducible measurements and label-map generator are stored in
 - Glyph-shaped hot core: strength 0.68 over a 3.6 px nearest-stroke radius
 - Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
 - Color field floor / range: 0.015 / 0.48
+- Palette saturation / brightness / warm pastel mix: 0.72 / 0.96 / 0.12
 - Touch drip: up to 32 independently anchored parcels emitted every 130 ms,
   78 px/s² gravity, 0.34 vertical stretch,
   0.72 column-flow variation, 0.44 mature width, 0.92 metaball input strength,

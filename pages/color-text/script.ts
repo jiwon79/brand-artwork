@@ -71,6 +71,9 @@ const state = {
   colorFloor: qaNumber('qaColorFloor', 0.015),
   colorRange: qaNumber('qaColorRange', 0.48),
   hueBands: qaNumber('qaHueBands', 0.31),
+  colorSaturation: qaNumber('qaColorSaturation', 0.72),
+  colorBrightness: qaNumber('qaColorBrightness', 0.96),
+  colorPastelMix: qaNumber('qaColorPastelMix', 0.12),
   colorCycle: qaNumber('qaColorCycle', 8.0),
   dripGravity: qaNumber('qaDripGravity', 78),
   dripStretch: qaNumber('qaDripStretch', 0.34),
@@ -1216,6 +1219,9 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform float uColorFloor;
     uniform float uColorRange;
     uniform float uHueBands;
+    uniform float uColorSaturation;
+    uniform float uColorBrightness;
+    uniform float uColorPastelMix;
     uniform float uColorGlyphShapeStrength;
     uniform float uColorGlyphShapeRadius;
     uniform float uTime;
@@ -1315,16 +1321,37 @@ const finalMaterial = new THREE.ShaderMaterial({
         glyphShapeEnergy * uColorGlyphShapeStrength
       );
       float contourEnergy = normalizedEnergy;
-      vec3 edgeRose = hsvToRgb(vec3(fract(palettePhase + 0.095), 0.80, 0.76));
-      vec3 bodyRose = hsvToRgb(vec3(fract(palettePhase + 0.105), 0.62, 0.96));
-      vec3 pinkMist = hsvToRgb(vec3(fract(palettePhase + 0.115), 0.22, 1.0));
-      vec3 hotColor = hsvToRgb(vec3(fract(palettePhase + uHueBands), 0.86, 1.0));
+      float saturation = clamp(uColorSaturation, 0.0, 1.4);
+      float brightness = clamp(uColorBrightness, 0.5, 1.1);
+      vec3 edgeRose = hsvToRgb(vec3(
+        fract(palettePhase + 0.095),
+        0.80 * saturation,
+        0.76 * brightness
+      ));
+      vec3 bodyRose = hsvToRgb(vec3(
+        fract(palettePhase + 0.105),
+        0.62 * saturation,
+        0.96 * brightness
+      ));
+      vec3 pinkMist = hsvToRgb(vec3(
+        fract(palettePhase + 0.115),
+        0.22 * saturation,
+        min(1.0, brightness)
+      ));
+      vec3 hotColor = hsvToRgb(vec3(
+        fract(palettePhase + uHueBands),
+        0.86 * saturation,
+        min(1.0, brightness)
+      ));
       float bodyBlend = smoothstep(0.0, 0.48, contourEnergy);
       float mistBlend = smoothstep(0.16, 0.78, contourEnergy);
       float hotBlend = smoothstep(0.48, 0.98, contourEnergy);
       vec3 goo = mix(edgeRose, bodyRose, bodyBlend);
       goo = mix(goo, pinkMist, mistBlend);
       goo = mix(goo, hotColor, hotBlend);
+      float pastelAmount = clamp(uColorPastelMix, 0.0, 0.5)
+        * mix(0.65, 1.0, hotBlend);
+      goo = mix(goo, vec3(1.0, 0.955, 0.935), pastelAmount);
 
       vec3 result = mix(base, goo, coverage);
       float dither = (interleavedGradientNoise(fragment) - 0.5) / 255.0;
@@ -1352,6 +1379,9 @@ const finalMaterial = new THREE.ShaderMaterial({
     uColorFloor: { value: state.colorFloor },
     uColorRange: { value: state.colorRange },
     uHueBands: { value: state.hueBands },
+    uColorSaturation: { value: state.colorSaturation },
+    uColorBrightness: { value: state.colorBrightness },
+    uColorPastelMix: { value: state.colorPastelMix },
     uColorGlyphShapeStrength: { value: state.colorGlyphShapeStrength },
     uColorGlyphShapeRadius: { value: state.colorGlyphShapeRadius },
     uTime: { value: 0 },
@@ -1635,6 +1665,21 @@ function bindGui(): void {
   colorFolder.add(state, 'hueBands', 0.1, 0.8, 0.01).name('고온 색상 간격').onChange((value: number) => {
     finalMaterial.uniforms.uHueBands.value = value;
   });
+  colorFolder.add(state, 'colorSaturation', 0, 1.2, 0.01)
+    .name('전체 채도')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uColorSaturation.value = value;
+    });
+  colorFolder.add(state, 'colorBrightness', 0.7, 1.05, 0.01)
+    .name('전체 밝기')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uColorBrightness.value = value;
+    });
+  colorFolder.add(state, 'colorPastelMix', 0, 0.35, 0.01)
+    .name('파스텔 혼합')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uColorPastelMix.value = value;
+    });
   colorFolder.add(state, 'colorCycle', 2, 20, 0.1).name('색 순환 시간').onChange((value: number) => {
     finalMaterial.uniforms.uColorCycle.value = value;
   });
@@ -1822,6 +1867,9 @@ function animate(now: number): void {
   finalMaterial.uniforms.uNearest.value = nearestRead.texture;
   finalMaterial.uniforms.uColorField.value = colorFieldTarget.texture;
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
+  finalMaterial.uniforms.uColorSaturation.value = state.colorSaturation;
+  finalMaterial.uniforms.uColorBrightness.value = state.colorBrightness;
+  finalMaterial.uniforms.uColorPastelMix.value = state.colorPastelMix;
   finalMaterial.uniforms.uColorGlyphShapeStrength.value = state.colorGlyphShapeStrength;
   finalMaterial.uniforms.uColorGlyphShapeRadius.value = state.colorGlyphShapeRadius;
   renderPass(finalMaterial, null);
