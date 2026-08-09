@@ -332,6 +332,8 @@ angularVelocity = 그 글자가 현재 회전하는 속도
 
 `deformedGlyphMaterial`은 한 글자의 모든 픽셀에 같은 `offset`과 `angle`을 적용한다. 픽셀마다 따로 내리는 것이 아니라 글자 칸의 중심을 축으로 글자 전체를 이동하고 회전하므로, 글자 모양 자체는 늘어나거나 찢어지지 않는다.
 
+이때 변형된 글자 마스크는 실루엣 계산용 `480 × 600` 해상도로 낮추지 않고 원본 글자 마스크와 같은 `1440 × 1800` 해상도로 유지한다. 실루엣 field는 성능을 위해 계속 `480 × 600`에서 계산하지만, 화면에 보이는 가는 글자선은 3배 해상도 마스크에서 직접 읽으므로 이동과 회전 뒤에도 계단과 뭉개짐이 줄어든다.
+
 재생성한 현재 글자 마스크는 두 곳에 함께 사용한다.
 
 1. `interactionFieldMaterial`이 흐르는 Falloff와 곱해 새 활성 픽셀을 만들 때 사용한다.
@@ -369,7 +371,7 @@ WebGL의 렌더 타깃은 GPU 안에서 다음 계산으로 넘겨줄 중간 이
 
 | 렌더 타깃 | 저장하는 값 | 다음 사용처 |
 | --- | --- | --- |
-| `deformedTextTarget` | 글자별 하강·회전을 적용한 현재 글자 마스크 | 활성 픽셀 계산과 최종 배경 글자 합성 |
+| `deformedTextTarget` | `1440 × 1800`에서 글자별 하강·회전을 적용한 현재 글자 마스크 | 활성 픽셀 계산과 고해상도 최종 배경 글자 합성 |
 | `interactionTarget` | 터치 드립으로 활성화된 글자 픽셀값 | Metaball 입력 |
 | `surfaceSourceTarget` | 임계값을 통과한 활성 픽셀 | 황금각 주변 표본 |
 | `metaballRawTarget` | 출력 픽셀마다 192개 주변 표본을 합친 원래 field | 가로 smoothing |
@@ -513,6 +515,8 @@ function animate(now) {
 | `colorCenterRadiusY` | `16` | 글자 통계로 변형하기 전 색 타원의 기준 세로 반경 |
 | `colorCenterVariation` | `1` | 잉크 양·폭·높이에 따른 글자별 크기 차이 |
 | `colorGlyphInfluence` | `0.2` | 실제 글자 픽셀이 타원 가장자리를 변형하는 비율 |
+| `colorGlyphShapeStrength` | `0.68` | 내부의 밝은 중심이 타원보다 실제 글자 모양을 따르는 정도 |
+| `colorGlyphShapeRadius` | `3.6 px` | 글자 픽셀 주변에 만들어지는 밝은 글자형 중심의 두께 |
 | `colorBlurSigma` | `2.5` | 타원과 주변 중간색을 연결하는 부드러움 |
 | `colorBlurAspect` | `1.1` | 세로 방향 색 blur의 가로 대비 비율 |
 

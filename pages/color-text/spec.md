@@ -16,10 +16,13 @@
    narrow older parcels into traveling necks, and join them with a maximum field.
    Each parcel attacks from zero over 180 ms so the earliest frames stay restrained.
 3. Rebuild the text mask each frame from the previous frame's per-glyph vertical
-   offset and angle, then multiply the joined flowing falloff by that transformed
-   glyph alpha and character-center mask at each current output position. No glyph
-   snapshot or temporal activation texture is retained. Releasing stops new parcels
-   while existing parcels continue downward from their frozen origins.
+   offset and angle into a 1440 × 1800 unsigned-byte target. Keeping this target at
+   the original 3× bake resolution prevents the visible underprint from being
+   rasterized through the 480 × 600 geometry field. Multiply the joined flowing
+   falloff by that transformed glyph alpha and character-center mask at each current
+   output position. No glyph snapshot or temporal activation texture is retained.
+   Releasing stops new parcels while existing parcels continue downward from their
+   frozen origins.
 4. Detect the resulting glyph-pixel activation with a low 0.02 threshold and 0.025 transition.
    Detection happens before the liquid field is built, matching the Metaball
    plugin's alpha/luminance input-detection stage instead of first turning every
@@ -46,11 +49,14 @@
    toward its glyph centroid. Multiply this field by the same flowing falloff and
    store it in the touch-drip target's blue channel.
 9. Mix 20% of the current drip-activated glyph pixels back into the statistical
-   ellipse field so the peaks inherit subtle character-dependent deformation
-   without becoming readable letters. Smooth the result with a separable
-   Gaussian filter (horizontal sigma 2.5, vertical ratio 1.1). Read this field
-   everywhere inside the metaball coverage—there is no nearest-seed validity
-   gate—then map it through overlapping rose, pale-pink, and hot-color blends.
+   ellipse field, then smooth it with a separable Gaussian filter (horizontal
+   sigma 2.5, vertical ratio 1.1). In the final pass, also measure distance to the
+   nearest active glyph pixel. Convert that distance into a 3.6 px soft glyph-shaped
+   core with strength 0.68, while attenuating the old ellipse energy. The hottest
+   area therefore follows letter branches and counters instead of remaining a row
+   of identical vertical ovals. Read the combined field everywhere inside the
+   metaball coverage, then map it through overlapping rose, pale-pink, and hot-color
+   blends.
 10. During a held drag, follow the pointer with time-based easing and stamp each
     new parcel at the emitter's current position. Previously emitted parcels keep
     their original positions and ages, so old streams keep falling while new streams
@@ -74,9 +80,10 @@
    over time.
 
 Geometry and color are deliberately independent. Geometry is flowing-falloff-masked
-stroke alpha → sampled metaball influence → smoothing → isocontour. Color is a
-field of glyph-statistics-driven vertical peaks masked by the same flowing falloff
-and clipped by that coverage. The old nearest-stroke distance construction could only ask which
+stroke alpha → sampled metaball influence → smoothing → isocontour. Color combines
+glyph-statistics-driven vertical peaks with a nearest-active-glyph distance core,
+then clips that energy by the geometry coverage. The old nearest-stroke distance
+construction could only ask which
 source pixel was closest, so the `Y` junction became a convex cap. The
 accumulated geometry field preserves the influence of both arms at once; their
 competing gradients create the concave saddle visible in the reference.
@@ -159,6 +166,8 @@ The reproducible measurements and label-map generator are stored in
 - Light radius: 107 × 80 px above and 107 × 160 px below, with 0.55 horizontal
   taper toward the vertical edges
 - Geometry/color field resolution: 480 × 600, half-float RGBA render targets
+- Transformed visible-text mask: 1440 × 1800 unsigned-byte RGBA target, sampled
+  directly by the final underprint pass
 - Metaball input threshold / softness: 0.02 / 0.025
 - Metaball sampling: 192 Fibonacci-spiral samples over 30 px
 - Metaball falloff power / source gain / field gain: 3.2 / 0.55 / 2.2
@@ -169,6 +178,7 @@ The reproducible measurements and label-map generator are stored in
 - Character-center color ellipse baseline: 9 × 16 px radius; actual dimensions
   vary by glyph ink mass, bounds, and centroid
 - Glyph-pixel deformation mixed into color peaks: 20%
+- Glyph-shaped hot core: strength 0.68 over a 3.6 px nearest-stroke radius
 - Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
 - Color field floor / range: 0.015 / 0.48
 - Touch drip: up to 32 independently anchored parcels emitted every 130 ms,

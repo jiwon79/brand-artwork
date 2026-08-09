@@ -63,6 +63,8 @@ const state = {
   colorCenterRadiusY: qaNumber('qaColorCenterRadiusY', 16.0),
   colorCenterVariation: qaNumber('qaColorCenterVariation', 1.0),
   colorGlyphInfluence: qaNumber('qaColorGlyphInfluence', 0.2),
+  colorGlyphShapeStrength: qaNumber('qaColorGlyphShapeStrength', 0.68),
+  colorGlyphShapeRadius: qaNumber('qaColorGlyphShapeRadius', 3.6),
   colorBlurSigma: qaNumber('qaColorBlurSigma', 2.5),
   colorBlurAspect: qaNumber('qaColorBlurAspect', 1.1),
   colorBlurStep: qaNumber('qaColorBlurStep', 1.0),
@@ -425,9 +427,12 @@ const glyphSpringTargetB = new THREE.WebGLRenderTarget(
   nearestTargetOptions,
 );
 const deformedTextTarget = new THREE.WebGLRenderTarget(
-  FIELD_WIDTH,
-  FIELD_HEIGHT,
-  linearTargetOptions,
+  ART_WIDTH * TEXTURE_SCALE,
+  ART_HEIGHT * TEXTURE_SCALE,
+  {
+    ...linearTargetOptions,
+    type: THREE.UnsignedByteType,
+  },
 );
 const deformedColorCenterTarget = new THREE.WebGLRenderTarget(
   FIELD_WIDTH,
@@ -1211,6 +1216,8 @@ const finalMaterial = new THREE.ShaderMaterial({
     uniform float uColorFloor;
     uniform float uColorRange;
     uniform float uHueBands;
+    uniform float uColorGlyphShapeStrength;
+    uniform float uColorGlyphShapeRadius;
     uniform float uTime;
     uniform float uColorCycle;
     uniform float uLabelMode;
@@ -1244,10 +1251,12 @@ const finalMaterial = new THREE.ShaderMaterial({
         surfaceField
       );
       float distanceToStroke = 16.0;
+      float activeStrokeStrength = 0.0;
 
       if (nearest.a > 0.5) {
         distanceToStroke = length((artUv - nearest.xy) * uArtSize);
         float coreStrength = smoothstep(uSeedThreshold, 0.56, nearest.z);
+        activeStrokeStrength = coreStrength;
         float coreRadius = mix(
           uCoreRadiusMin,
           uCoreRadius,
@@ -1291,6 +1300,20 @@ const finalMaterial = new THREE.ShaderMaterial({
         0.0,
         1.0
       );
+      float glyphRadius = max(uColorGlyphShapeRadius, 0.1);
+      float glyphShapeEnergy = exp(
+        -0.5 * distanceToStroke * distanceToStroke
+        / (glyphRadius * glyphRadius)
+      ) * activeStrokeStrength;
+      float shapedEllipseEnergy = normalizedEnergy * mix(
+        1.0,
+        0.55,
+        uColorGlyphShapeStrength
+      );
+      normalizedEnergy = max(
+        shapedEllipseEnergy,
+        glyphShapeEnergy * uColorGlyphShapeStrength
+      );
       float contourEnergy = normalizedEnergy;
       vec3 edgeRose = hsvToRgb(vec3(fract(palettePhase + 0.095), 0.80, 0.76));
       vec3 bodyRose = hsvToRgb(vec3(fract(palettePhase + 0.105), 0.62, 0.96));
@@ -1329,6 +1352,8 @@ const finalMaterial = new THREE.ShaderMaterial({
     uColorFloor: { value: state.colorFloor },
     uColorRange: { value: state.colorRange },
     uHueBands: { value: state.hueBands },
+    uColorGlyphShapeStrength: { value: state.colorGlyphShapeStrength },
+    uColorGlyphShapeRadius: { value: state.colorGlyphShapeRadius },
     uTime: { value: 0 },
     uColorCycle: { value: state.colorCycle },
     uLabelMode: { value: QA_LABEL_MODE ? 1 : 0 },
@@ -1586,6 +1611,16 @@ function bindGui(): void {
     colorCenterTexture.needsUpdate = true;
   });
   colorFolder.add(state, 'colorGlyphInfluence', 0, 0.6, 0.01).name('글자 픽셀 변형');
+  colorFolder.add(state, 'colorGlyphShapeStrength', 0, 1, 0.01)
+    .name('글자형 중심 강도')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uColorGlyphShapeStrength.value = value;
+    });
+  colorFolder.add(state, 'colorGlyphShapeRadius', 1, 10, 0.1)
+    .name('글자형 중심 두께')
+    .onChange((value: number) => {
+      finalMaterial.uniforms.uColorGlyphShapeRadius.value = value;
+    });
   colorFolder.add(state, 'colorBlurSigma', 0.5, 16, 0.1).name('중심 타원 가로 blur');
   colorFolder.add(state, 'colorBlurAspect', 0.2, 3, 0.01).name('중심 타원 세로 비율');
   colorFolder.add(state, 'colorBlurStep', 0.5, 2, 0.05).name('색 blur 간격').onChange((value: number) => {
@@ -1787,6 +1822,8 @@ function animate(now: number): void {
   finalMaterial.uniforms.uNearest.value = nearestRead.texture;
   finalMaterial.uniforms.uColorField.value = colorFieldTarget.texture;
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
+  finalMaterial.uniforms.uColorGlyphShapeStrength.value = state.colorGlyphShapeStrength;
+  finalMaterial.uniforms.uColorGlyphShapeRadius.value = state.colorGlyphShapeRadius;
   renderPass(finalMaterial, null);
 
   requestAnimationFrame(animate);
