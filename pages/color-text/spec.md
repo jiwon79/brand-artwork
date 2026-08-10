@@ -210,6 +210,10 @@ The reproducible measurements and label-map generator are stored in
 - Pointer capture keeps drag updates continuous outside the initial touch point.
   Native selection, callouts, dragging, and the context menu are suppressed on the
   artwork canvas.
+- `/common/touch-cursor.ts` renders a 54 px translucent contact-area ring, center
+  dot, and short start/end ripple for every touch. It is a DOM-only recording aid:
+  `pointer-events: none` keeps it out of pointer capture, liquid simulation, and
+  Process View button input.
 - `?qa` freezes the palette at the reference's pink/yellow phase.
 - `?qa&qaX=0.37&qaY=0.52` also locks the pointer in normalized artwork space
   for deterministic reference comparisons.

@@ -15,6 +15,8 @@
 
 ```text
 brand-artwork/
+├── common/
+│   └── touch-cursor.ts             # 터치 면적·중심점·파동 인디케이터
 ├── docs/artworks/color-text/
 │   ├── architecture.md            # 지금 읽고 있는 문서
 │   └── figures/                    # 문서용 SVG 도해
@@ -521,6 +523,8 @@ function animate(now) {
 그래서 데스크톱과 모바일에서 같은 글자 위치를 가리킬 수 있다. 캔버스가 `pointerdown`에서 해당 포인터를 capture하기 때문에 누른 채 시작 위치 밖으로 움직여도 같은 포인터의 `pointermove`를 계속 받는다. `pointerup`, `pointercancel`, capture 손실에서 방출을 끝낸다.
 
 모바일의 길게 누르기 선택 UI가 작품보다 먼저 입력을 가져가지 않도록 캔버스에는 `touch-action: none`, `user-select: none`, `-webkit-touch-callout: none`, `-webkit-user-drag: none`을 적용한다. 코드에서도 `pointerdown`, `contextmenu`, `selectstart`, `dragstart`, `dblclick`의 브라우저 기본 동작을 막는다. iOS의 길게 누르기 확대경은 Pointer Event 차단만으로 남을 수 있으므로 캔버스의 `touchstart`, `touchmove`, `touchend`, `touchcancel`도 `{ passive: false }`로 등록하고 `preventDefault()`한다. GUI는 캔버스 밖의 별도 DOM이므로 계속 조작할 수 있다.
+
+화면 녹화에서 손가락 위치를 알 수 있도록 `index.html`이 공용 `touch-cursor.ts` 모듈을 함께 불러온다. 모듈은 터치마다 약 `54 px`의 반투명 원, 중심점, 시작·종료 파동을 DOM 오버레이로 그린다. 이 요소들은 모두 `pointer-events: none`이므로 캔버스 입력, 포인터 capture, 액체 source 좌표, 하단 Process View 버튼에 영향을 주지 않는다. 즉, 인디케이터는 실제 터치 이벤트를 **보여주기만** 하고 시뮬레이션 데이터에는 참여하지 않는다.
 
 ## 10. 한 페이지 안의 Process View
 
