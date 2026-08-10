@@ -20,6 +20,8 @@ const LIQUID_MAX_STEP = 1 / 60;
 // silhouette comes from the accumulated metaball field below.
 const JFA_JUMPS = [16, 8, 4, 2, 1, 1];
 const searchParams = new URLSearchParams(window.location.search);
+const OG_PREVIEW_MODE = searchParams.has('og');
+document.body.classList.toggle('og-preview', OG_PREVIEW_MODE);
 const QA_MODE = searchParams.has('qa');
 const QA_LABEL_MODE = searchParams.has('qaLabels');
 const DEBUG_STAGE_COUNT = 4;
@@ -1421,7 +1423,10 @@ const finalMaterial = new THREE.ShaderMaterial({
       vec2 artUv = (fragment - uPosterOffset) / uPosterSize;
       vec3 background = vec3(0.9843, 0.9843, 0.9804);
 
-      if (artUv.x < 0.0 || artUv.x > 1.0 || artUv.y < 0.0 || artUv.y > 1.0) {
+      if (
+        artUv.x <= 0.001 || artUv.x >= 0.999
+        || artUv.y <= 0.001 || artUv.y >= 0.999
+      ) {
         gl_FragColor = vec4(background, 1.0);
         return;
       }
@@ -1662,7 +1667,10 @@ const debugMaterial = new THREE.ShaderMaterial({
       vec2 artUv = (fragment - uPosterOffset) / uPosterSize;
       vec3 background = vec3(0.9843, 0.9843, 0.9804);
 
-      if (artUv.x < 0.0 || artUv.x > 1.0 || artUv.y < 0.0 || artUv.y > 1.0) {
+      if (
+        artUv.x <= 0.001 || artUv.x >= 0.999
+        || artUv.y <= 0.001 || artUv.y >= 0.999
+      ) {
         gl_FragColor = vec4(background, 1.0);
         return;
       }
@@ -1944,7 +1952,10 @@ function updateLayout(): void {
 
   const drawingSize = new THREE.Vector2();
   renderer.getDrawingBufferSize(drawingSize);
-  const drawingScale = Math.min(drawingSize.x / ART_WIDTH, drawingSize.y / ART_HEIGHT);
+  const drawingScale = Math.min(
+    drawingSize.x / ART_WIDTH,
+    drawingSize.y / ART_HEIGHT,
+  ) * (OG_PREVIEW_MODE ? 1.28 : 1);
   const posterWidth = ART_WIDTH * drawingScale;
   const posterHeight = ART_HEIGHT * drawingScale;
   finalMaterial.uniforms.uResolution.value.set(drawingSize.x, drawingSize.y);

@@ -223,6 +223,8 @@ The reproducible measurements and label-map generator are stored in
   `&qaDripReleaseAge=0.9` to inspect that stream 0.9 seconds
   after emission stopped.
 - Add `&qaHasDragged=1` to make post-drag particles skip the initial birth delay.
+- `?og&qa...` hides Process View, adds the social-card title treatment, and enlarges
+  the poster by 1.28× for deterministic 1200 × 630 Open Graph image capture.
 - Press `g` to hide or reveal the tuning panel.
 
 ## Process View

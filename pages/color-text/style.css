@@ -128,6 +128,34 @@ body {
   outline-offset: 2px;
 }
 
+body.og-preview::before,
+body.og-preview::after {
+  position: fixed;
+  z-index: 20;
+  left: 50px;
+  pointer-events: none;
+}
+
+body.og-preview::before {
+  top: 42px;
+  color: #252422;
+  content: 'Color Text';
+  font: 700 44px/1 "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.045em;
+}
+
+body.og-preview::after {
+  top: 100px;
+  color: rgba(37, 36, 34, 0.48);
+  content: 'TOUCH-DRIVEN LIQUID TYPOGRAPHY';
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.11em;
+}
+
+body.og-preview #debug-controls {
+  display: none;
+}
+
 /* Screen-recording touch indicator. The shared module owns its lifecycle;
    Color Text only supplies a visible treatment for its light, colorful field. */
 .tc-dot {
