@@ -12,6 +12,7 @@
   "include": [
     "vite.config.ts",
     "common/touch-cursor.ts",
+    "pages/color-text/**/*.ts",
     "pages/guseul/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]

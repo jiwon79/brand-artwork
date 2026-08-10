@@ -22,11 +22,11 @@
 
 | 상태 | 저장 위치 | 의미 |
 | --- | --- | --- |
-| `pointerTarget`, `dripEmitter` | CPU 객체 | 최신 손가락 위치와 완화된 source 위치 |
-| `liquidParticles` | CPU 배열, 최대 32개 | 이미 만들어진 물 packet의 위치·속도·모양 상태 |
+| `pointerTarget`, `liquid.emitter` | CPU 객체 | 최신 손가락 위치와 완화된 source 위치 |
+| `liquid.particles` | CPU 배열, 최대 32개 | 이미 만들어진 물 packet의 위치·속도·모양 상태 |
 | `glyphSpringTargetA/B` | GPU `64 × 1` texture | 글자별 하강·회전과 각각의 속도 |
 
-과거 활성 픽셀 이미지를 누적하는 `temporalMaterial`은 없다. 시간 기억은 `liquidParticles`와 글자 spring texture에 들어 있다.
+과거 활성 픽셀 이미지를 누적하는 `temporalMaterial`은 없다. 시간 기억은 `liquid.particles`와 글자 spring texture에 들어 있다.
 
 ## 2. 파일별 역할
 
@@ -40,8 +40,18 @@ pages/color-text/
     canvas, Process View 버튼, SNS meta
   style.css
     전체 화면 배치, 모바일 기본 제스처 차단
+  config.ts
+    작품 크기, 문장, 기본 파라미터와 QA override
   script.ts
-    입력, particle solver, WebGL pass, spring, debug
+    WebGL 자원 생성과 한 frame의 pass 실행 순서
+  liquid/solver.ts
+    source 공급, packet 중력·점성·응집력과 화면 밖 제거
+  text/atlas.ts
+    문장 mask, 독립 글자 atlas, 글자별 측정값 생성
+  rendering/shaders.ts
+    각 GPU pass가 픽셀 하나를 계산하는 GLSL
+  debug/parameter-gui.ts
+    lil-gui 조절 항목과 texture uniform 갱신
   spec.md
     파라미터와 레퍼런스 비교 기록
   assets/
@@ -50,7 +60,7 @@ pages/color-text/
     고정 입력 비교 이미지와 분석 스크립트
 ```
 
-작품 계산은 대부분 `script.ts`에 있다. 한 장의 full-screen quad를 서로 다른 `ShaderMaterial`로 반복 렌더링하고, 각 결과를 render target texture에 저장해 다음 pass가 읽는다.
+처음 코드를 읽을 때는 `config.ts`에서 고정값을 확인하고, `liquid/solver.ts`와 `text/atlas.ts`에서 CPU 입력을 살펴본 뒤, `script.ts`의 `renderFrame()`을 읽는 순서가 가장 자연스럽다. `renderFrame()`은 한 장의 full-screen quad를 서로 다른 `ShaderMaterial`로 반복 렌더링하고, 각 결과를 render target texture에 저장해 다음 pass로 넘긴다. 픽셀별 수식이 필요할 때만 `rendering/shaders.ts`에서 같은 이름의 pass를 찾아간다.
 
 ## 3. 좌표 공간과 계산 시점
 
@@ -140,9 +150,9 @@ atlasUv      = atlasCellCenter + Q / atlasSize
 
 ![Hold, Drag, Release에서 source와 분리된 packet의 움직임](./figures/06-particle-lifecycle.svg)
 
-### 5.2 `pointerTarget`과 `dripEmitter`
+### 5.2 `pointerTarget`과 `liquid.emitter`
 
-`pointerTarget`은 이벤트에서 받은 최신 artwork UV다. `dripEmitter`는 frame time `dt`와 추종 비율 `k_f`를 사용해 그 위치를 지수 완화로 따라간다.
+`pointerTarget`은 이벤트에서 받은 최신 artwork UV다. `liquid.emitter`는 frame time `dt`와 추종 비율 `k_f`를 사용해 그 위치를 지수 완화로 따라간다.
 
 ```text
 b       = 1 - exp(-k_f * dt)
@@ -416,20 +426,20 @@ Spring state는 `64 × 1` half-float target 두 개에 저장한다.
 
 ## 10. 실제 한 프레임 순서
 
-`requestAnimationFrame()`의 `animate(now)`는 다음 순서를 지킨다.
+`requestAnimationFrame()`의 `renderFrame(now)`는 다음 순서를 지킨다. 함수 이름도 이 표의 단계와 같아서 코드를 위에서 아래로 따라갈 수 있다.
 
 | 순서 | 실행 | 출력 또는 상태 |
 | ---: | --- | --- |
-| 1 | `simulateLiquidParticles(delta)` | 분리된 packet 위치·속도·age 갱신 |
-| 2 | emitter 추종과 `supplyLiquidMass()` | 붙어 있는 source 위치·mass·energy 갱신 |
-| 3 | particle uniform 업로드 | 최대 32개 packet의 GPU 입력 |
-| 4 | `deformedGlyphMaterial` 두 번 | 현재 글자와 color-center target |
-| 5 | `interactionFieldMaterial` | 활성 글자·text·color·Falloff RGBA |
-| 6 | stroke spread와 JFA | 가까운 활성 글자 seed 좌표 |
-| 7 | source detection, 192 probes, Gaussian H/V | `surfaceFieldTarget` |
-| 8 | `glyphSpringMaterial`과 ping-pong swap | 다음 frame의 글자 state |
-| 9 | optional color Gaussian H/V | `colorFieldTarget` |
-| 10 | `debugMaterial` 또는 `finalMaterial` | 화면 |
+| 1 | `liquid.update(delta, pointerTarget)` | 분리된 packet 갱신과 source 질량 공급 |
+| 2 | `uploadLiquidState()` | 최대 32개 packet의 GPU uniform |
+| 3 | `renderDeformedGlyphPasses()` | 현재 글자와 color-center target |
+| 4 | `renderInteractionPass()` | 활성 글자·text·color·Falloff RGBA |
+| 5 | `renderStrokeSpreadPasses()` | 글자 내부에서 이어진 seed 입력 |
+| 6 | `renderNearestSeedPasses()` | 가까운 활성 글자 seed 좌표 |
+| 7 | `renderMetaballSurfacePasses()` | `surfaceFieldTarget` |
+| 8 | `renderGlyphSpringPass()` | 다음 frame의 글자 state |
+| 9 | `renderColorPasses()` | `colorFieldTarget` |
+| 10 | `renderOutputPass()` | Process View 또는 최종 화면 |
 
 Geometry를 만든 뒤 spring을 계산하므로 contact는 현재 화면에 실제로 나타날 surface를 사용한다. Spring swap 뒤에도 현재 frame의 최종 합성은 이미 만든 `deformedTextTarget`을 사용하고, 새 state는 다음 frame에 반영된다.
 
@@ -551,7 +561,7 @@ lil-gui는 현재 값을 여섯 폴더로 나눈다.
 
 ```text
 pointer event
-  -> pointerTarget -> dripEmitter -> liquidParticles
+  -> pointerTarget -> liquid.emitter -> liquid.particles
   -> deformed glyph mask × packet Falloff
   -> interactionTarget RGBA
   -> geometry field + nearest glyph color field
