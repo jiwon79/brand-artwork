@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">활성 픽셀 이미지에서 Metaball과 비슷한 연속 field를 만드는 과정</title>
+  <desc id="desc">왼쪽은 활성 픽셀 S, 가운데는 출력 픽셀 p가 반경 R 안의 황금각 표본 q_i를 읽는 과정, 오른쪽은 누적 field F에서 threshold tau의 외곽선을 추출한 결과다.</desc>
+  <defs>
+    <style>
+      .title { font: 700 27px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; }
+      .head { font: 700 18px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; text-anchor: middle; }
+      .body { font: 400 14px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #5f6f84; text-anchor: middle; }
+      .mono { font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #315f9f; text-anchor: middle; }
+      .panel { fill: #fff; stroke: #d6deea; stroke-width: 1.7; }
+      .grid { stroke: #dce3ec; stroke-width: 1; }
+    </style>
+    <radialGradient id="field" cx="50%" cy="48%" r="58%">
+      <stop offset="0" stop-color="#456fb4" stop-opacity=".8"/>
+      <stop offset=".52" stop-color="#8eb2e4" stop-opacity=".52"/>
+      <stop offset="1" stop-color="#dbe9fa" stop-opacity=".08"/>
+    </radialGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#66758a"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="620" fill="#fbfbfa"/>
+  <text class="title" x="44" y="50">각 출력 픽셀이 주변 활성값을 모으면 하나의 연속적인 높이 지도가 된다</text>
+
+  <g transform="translate(38 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">1. 입력 이미지 S(q)</text>
+    <text class="body" x="174" y="62">각 칸은 0~1의 활성값을 저장한다</text>
+    <g transform="translate(64 100)">
+      <rect width="220" height="270" fill="#f7f9fc" stroke="#c8d2df"/>
+      <g class="grid">
+        <path d="M22 0V270M44 0V270M66 0V270M88 0V270M110 0V270M132 0V270M154 0V270M176 0V270M198 0V270"/>
+        <path d="M0 27H220M0 54H220M0 81H220M0 108H220M0 135H220M0 162H220M0 189H220M0 216H220M0 243H220"/>
+      </g>
+      <g fill="#4c78c2">
+        <rect x="44" y="54" width="22" height="27" opacity=".65"/>
+        <rect x="66" y="81" width="22" height="27" opacity=".88"/>
+        <rect x="88" y="108" width="22" height="27"/>
+        <rect x="110" y="81" width="22" height="27" opacity=".88"/>
+        <rect x="132" y="54" width="22" height="27" opacity=".65"/>
+        <rect x="88" y="135" width="22" height="27"/>
+        <rect x="88" y="162" width="22" height="27" opacity=".92"/>
+        <rect x="88" y="189" width="22" height="27" opacity=".76"/>
+      </g>
+    </g>
+    <text class="mono" x="174" y="409">S(q) = textMask × falloff</text>
+    <text class="body" x="174" y="438">고정된 구슬 목록이 아니라 픽셀 이미지다</text>
+  </g>
+
+  <path d="M398 323H425" stroke="#66758a" stroke-width="2.3" marker-end="url(#arrow)"/>
+
+  <g transform="translate(426 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">2. 출력 픽셀 p의 주변 조사</text>
+    <text class="body" x="174" y="62">반경 R 안의 표본 qᵢ에서 S를 읽는다</text>
+    <g transform="translate(54 95)">
+      <circle cx="120" cy="135" r="112" fill="#edf4fd" stroke="#7698c8" stroke-width="1.6" stroke-dasharray="6 5"/>
+      <line x1="120" y1="135" x2="221" y2="135" stroke="#7698c8" stroke-width="1.5"/>
+      <text class="mono" x="174" y="127">R</text>
+      <g fill="#4c78c2" opacity=".78">
+        <circle cx="128" cy="115" r="4"/><circle cx="101" cy="122" r="4"/><circle cx="137" cy="145" r="4"/>
+        <circle cx="111" cy="158" r="4"/><circle cx="155" cy="105" r="4"/><circle cx="80" cy="145" r="4"/>
+        <circle cx="145" cy="175" r="4"/><circle cx="91" cy="91" r="4"/><circle cx="176" cy="142" r="4"/>
+        <circle cx="117" cy="78" r="4"/><circle cx="65" cy="119" r="4"/><circle cx="184" cy="99" r="4"/>
+        <circle cx="83" cy="181" r="4"/><circle cx="164" cy="201" r="4"/><circle cx="49" cy="167" r="4"/>
+        <circle cx="207" cy="177" r="4"/><circle cx="62" cy="75" r="4"/><circle cx="171" cy="55" r="4"/>
+      </g>
+      <circle cx="120" cy="135" r="8" fill="#172033"/>
+      <text class="mono" x="120" y="157" fill="#172033">p</text>
+      <text class="mono" x="156" y="95">qᵢ</text>
+    </g>
+    <text class="mono" x="174" y="409">F(p) = direct + Σ S(qᵢ)wᵢ</text>
+    <text class="body" x="174" y="438">가까운 표본일수록 wᵢ가 크다</text>
+  </g>
+
+  <path d="M786 323H813" stroke="#66758a" stroke-width="2.3" marker-end="url(#arrow)"/>
+
+  <g transform="translate(814 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">3. field와 threshold τ</text>
+    <text class="body" x="174" y="62">같은 높이 F(p)=τ를 외곽선으로 쓴다</text>
+    <g transform="translate(54 98)">
+      <rect width="240" height="266" rx="14" fill="#f7f9fc"/>
+      <path d="M40 101C43 42 88 29 121 58C157 28 204 51 204 103C204 138 169 151 137 145C157 187 146 228 119 235C92 224 84 184 102 144C69 153 37 138 40 101Z" fill="url(#field)"/>
+      <path d="M58 103C61 60 92 51 121 76C149 52 186 68 186 105C186 132 157 138 129 130C145 169 137 205 119 214C100 202 95 166 112 129C84 139 56 127 58 103Z" fill="none" stroke="#173b78" stroke-width="3"/>
+      <text class="mono" x="188" y="197">F(p)=τ</text>
+      <line x1="177" y1="190" x2="145" y2="176" stroke="#315f9f" stroke-width="1.6" marker-end="url(#arrow)"/>
+    </g>
+    <text class="mono" x="174" y="409">coverage = smoothstep(τ±edge, F)</text>
+    <text class="body" x="174" y="438">field 내부 색과 외곽선은 별도 단계다</text>
+  </g>
+</svg>

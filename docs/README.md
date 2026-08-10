@@ -21,7 +21,7 @@ docs/
 
 ### Color Text
 
-- [`architecture.md`](./artworks/color-text/architecture.md) - Color Text의 Falloff, 시간 기억, Metaball field, 실루엣 추출 구조
+- [`architecture.md`](./artworks/color-text/architecture.md) - Color Text의 물 packet, 글자 atlas, geometry·color field, spring feedback 전체 구조
 
 ### Guseul
 
@@ -32,7 +32,9 @@ docs/
 
 - [`fragment-shader-execution.md`](./concepts/fragment-shader-execution.md) - 2x2 quad, warp/wave, helper invocation과 mipmap 선택 과정
 - [`golden-angle-sphere-distribution.md`](./concepts/golden-angle-sphere-distribution.md) - 사진 원을 구 전체에 분산하는 Fibonacci sphere 원리
+- [`jump-flood-nearest-seed.md`](./concepts/jump-flood-nearest-seed.md) - GPU pass가 큰 jump부터 가까운 seed 좌표를 전달하는 JFA 원리와 bounded 근사
 - [`mean-value-coordinates.md`](./concepts/mean-value-coordinates.md) - cage의 거리와 이웃 각도로 내부 좌표 weights를 만들고 다른 cage에 옮기는 원리
+- [`pixel-metaball-field.md`](./concepts/pixel-metaball-field.md) - 활성 픽셀의 황금각 주변 표본을 누적해 threshold 실루엣을 만드는 원리
 - [`sdf-glass-rendering.md`](./concepts/sdf-glass-rendering.md) - SDF에서 normal, 가상 유리 단면, 굴절 offset을 만드는 공통 원리
 - [`smooth-union.md`](./concepts/smooth-union.md) - signed-distance field의 union과 부드러운 접합 원리
 

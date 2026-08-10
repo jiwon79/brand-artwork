@@ -1,68 +1,157 @@
-# Color Text 아키텍처
+# Color Text Architecture
 
-이 문서는 `pages/color-text/`의 **현재 코드**를 기준으로 작품 전체 구조를 설명한다. 입력이 들어온 뒤 CPU가 무엇을 기억하고, GPU의 여러 이미지 지도가 어떤 순서로 만들어지며, 그 결과가 글자 움직임과 최종 색으로 어떻게 이어지는지를 다룬다.
+이 문서는 `pages/color-text/`의 **현재 구현**을 설명한다. 포인터 입력이 물 packet 상태로 바뀌고, 그 상태가 글자 픽셀 기반 실루엣·내부 색·글자 스프링으로 이어지는 실제 실행 순서를 다룬다.
 
-- 기준 구현: `pages/color-text/script.ts`
-- 작품 좌표: `480 × 600`
+- 기준 구현: [`pages/color-text/script.ts`](../../../pages/color-text/script.ts)
+- 작품 좌표: `480 × 600 artwork pixel`
 - 문서 갱신 기준: `2026-08-10`
-- 대상 독자: WebGL을 처음 접하는 고등학생도 전체 흐름을 따라갈 수 있는 수준
+- 상세 실험값과 과거 비교: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)
 
-세부 실험값과 과거 비교 결과는 [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)에 두고, 이 문서는 **현재 입력 → 상태 → 렌더 패스 → 출력 → 검증 구조**를 설명하는 데 집중한다.
+재사용 가능한 수학 원리는 별도 concept 문서로 분리했다.
 
-## 1. 한 문장으로 이해하기
+- [Pixel-sampled Metaball Field](../../concepts/pixel-metaball-field.md)
+- [Jump Flood Nearest-seed Search](../../concepts/jump-flood-nearest-seed.md)
 
-손가락은 물이 나오는 위치를 정하고, CPU는 그곳에서 떨어져 나온 물 덩어리들의 위치와 속도를 기억하며, GPU는 그 영향이 닿은 **현재 글자 픽셀**을 하나의 Metaball 실루엣으로 연결한다. 실루엣에 실제로 닿은 글자는 스프링처럼 내려가고 기울며, 바뀐 글자 위치는 다음 프레임의 실루엣 계산에도 다시 들어간다.
+## 1. 가장 먼저 이해할 구조
 
-![Color Text의 현재 프레임 전체 아키텍처](./figures/04-current-frame-graph.svg)
+손가락은 물을 직접 그리지 않는다. 손가락은 물이 공급되는 source 위치만 정하고, CPU가 최대 32개의 큰 물 packet을 움직인다. GPU는 packet의 Falloff와 **현재 위치의 글자 픽셀**을 곱한 뒤, 그 픽셀들을 연속적인 field로 연결한다.
 
-핵심은 세 종류의 상태를 구분하는 것이다.
+![CPU 물 상태에서 GPU field와 다음 프레임 글자 피드백까지](./figures/04-current-frame-graph.svg)
 
-1. `pointerTarget`: 가장 최근의 손가락 위치
-2. `liquidParticles`: 이미 방출된 물 덩어리들의 물리 상태
-3. `glyphSpringTarget`: 각 글자의 이동·회전 상태
+한 프레임에는 세 종류의 상태가 연결된다.
 
-과거 활성 이미지를 그대로 쌓아 두는 `temporalMaterial`은 없다. 시간 기억은 **물 덩어리의 위치·속도·나이**와 **글자의 스프링 상태**에 들어 있다.
+| 상태 | 저장 위치 | 의미 |
+| --- | --- | --- |
+| `pointerTarget`, `dripEmitter` | CPU 객체 | 최신 손가락 위치와 완화된 source 위치 |
+| `liquidParticles` | CPU 배열, 최대 32개 | 이미 만들어진 물 packet의 위치·속도·모양 상태 |
+| `glyphSpringTargetA/B` | GPU `64 × 1` texture | 글자별 하강·회전과 각각의 속도 |
 
-## 2. 프로젝트 구조
+과거 활성 픽셀 이미지를 누적하는 `temporalMaterial`은 없다. 시간 기억은 `liquidParticles`와 글자 spring texture에 들어 있다.
+
+## 2. 파일별 역할
 
 ```text
-brand-artwork/
-├── common/
-│   └── touch-cursor.ts
-│       └── 화면 녹화용 터치 위치 인디케이터
-├── docs/artworks/color-text/
-│   ├── architecture.md
-│   └── figures/
-│       ├── 01-pipeline.svg
-│       ├── 02-pixels-and-field.svg
-│       ├── 03-y-junction.svg
-│       └── 04-current-frame-graph.svg
-└── pages/color-text/
-    ├── index.html
-    │   └── canvas, Process View 버튼, SNS 메타 태그
-    ├── style.css
-    │   └── 전체 화면 배치, 모바일 입력 차단, 인디케이터 스타일
-    ├── script.ts
-    │   └── 입력, Solver, WebGL 패스, 스프링, 디버그 화면
-    ├── spec.md
-    │   └── 상세 수치와 과거 비교 기록
-    ├── assets/
-    │   ├── reference.mp4
-    │   ├── reference-frame.png
-    │   └── og-image.jpg
-    └── qa/
-        └── 실루엣 비교 이미지, 측정값, 분석 스크립트
+common/
+  touch-cursor.ts
+    화면 녹화용 터치 ring과 ripple
+
+pages/color-text/
+  index.html
+    canvas, Process View 버튼, SNS meta
+  style.css
+    전체 화면 배치, 모바일 기본 제스처 차단
+  script.ts
+    입력, particle solver, WebGL pass, spring, debug
+  spec.md
+    파라미터와 레퍼런스 비교 기록
+  assets/
+    reference와 OG image
+  qa/
+    고정 입력 비교 이미지와 분석 스크립트
 ```
 
-`index.html`과 `style.css`는 화면과 입력 환경을 만든다. 작품의 계산은 대부분 `script.ts`에 있고, 한 장의 full-screen quad를 여러 ShaderMaterial로 반복 렌더링해 중간 결과를 다음 단계로 넘긴다.
+작품 계산은 대부분 `script.ts`에 있다. 한 장의 full-screen quad를 서로 다른 `ShaderMaterial`로 반복 렌더링하고, 각 결과를 render target texture에 저장해 다음 pass가 읽는다.
 
-## 3. 전체 구조: CPU 상태와 GPU 이미지 지도
+## 3. 좌표 공간과 계산 시점
 
-이 작품은 실제 역할이 다른 두 계산 영역을 함께 사용한다.
+같은 `x`, `y`라도 입력과 shader에서 의미가 다르다.
 
-### 3.1 CPU: 적은 수의 물 덩어리를 움직인다
+| 공간 | 범위와 원점 | 사용하는 곳 |
+| --- | --- | --- |
+| CSS client coordinate | pixel, 화면 왼쪽 위가 원점 | `pointer` event의 `clientX`, `clientY` |
+| artwork pixel | `480 × 600`, 문서에서는 길이 단위 | 반경, 속도, 글자 배치, sample 거리 |
+| artwork UV | `[0,1] × [0,1]`, 왼쪽 아래가 원점 | `pointerTarget`, particle 위치, field texture |
+| text bake coordinate | `1440 × 1800`, 왼쪽 위가 원점 | Canvas2D 글자 마스크와 glyph atlas |
+| device pixel | 실제 drawing buffer pixel | 최종 화면의 `fwidth()` 안티앨리어싱 |
 
-JavaScript의 `liquidParticles` 배열에는 최대 32개의 물 덩어리가 있다. 각 원소는 이미지가 아니라 다음 숫자만 저장한다.
+`setPointerFromClient()`는 화면 안에서 작품이 차지하는 사각형을 먼저 구한다. CSS 좌표에서 여백을 빼고 0~1로 나눈 뒤 Y를 뒤집어 artwork UV를 만든다.
+
+계산 시점도 역할에 따라 다르다.
+
+| 계산 | 위치 | 빈도 |
+| --- | --- | --- |
+| 문장과 glyph atlas 굽기 | CPU Canvas2D | 초기화할 때 한 번, 색 atlas 설정 변경 시 갱신 |
+| pointer와 particle 물리 | CPU TypeScript | 매 frame, 필요하면 `1/60s` 이하 substep |
+| 글자 변형과 field | GPU fragment shader | 매 frame, 각 target pixel |
+| 최종 합성 | GPU fragment shader | 매 frame, 각 device fragment |
+| 터치 인디케이터와 버튼 | DOM | pointer event와 stage 변경 시 |
+
+## 4. 글자를 독립 아틀라스에 저장하는 이유
+
+### 4.1 해결하려는 문제
+
+문장 전체를 한 장의 이미지로 저장한 뒤 글자 하나만 움직이려고 하면 두 문제가 생긴다.
+
+1. `W`처럼 실제 폭이 tracking 간격 31.8px보다 넓은 글자는 회전할 때 자기 칸 밖이 잘릴 수 있다.
+2. 잘림을 막으려고 원본 문장을 넓게 읽으면 옆의 `A`나 `Y` 픽셀까지 함께 복사될 수 있다.
+
+![합쳐진 문장 이미지의 문제와 독립 글자 아틀라스의 역변형](./figures/05-glyph-atlas.svg)
+
+### 4.2 실제 저장 구조
+
+공백을 포함한 문장 자리 수는 64개다. 각 자리에 `64 × 64 artwork px` 칸을 주고, `8 × 8` grid의 한 texture로 묶는다. 실제 Canvas2D atlas는 경계 품질을 위해 각 축을 3배로 만들어 `1536 × 1536` pixel이다.
+
+이것을 “독립 글자 아틀라스”라고 부른다.
+
+- **아틀라스:** 여러 작은 이미지를 한 texture에 모은 것
+- **독립:** `W` 후보를 계산할 때 반드시 `W` 칸만 읽는다는 뜻
+- 개별 texture 64장을 만드는 것이 아니라 한 texture 안에서 UV 구간만 분리한다
+
+`glyphMetadataTexture`는 각 slot에 다음 값을 저장한다.
+
+| 채널 | 의미 |
+| --- | --- |
+| R | 실제 glyph 반쪽 폭을 `MAX_GLYPH_HALF_WIDTH`로 정규화한 값 |
+| G | 글자가 있으면 1, 공백이면 0 |
+
+### 4.3 출력 픽셀에서 원본 칸을 역으로 찾는다
+
+현재 화면의 artwork UV를 `P`, 글자의 이동 후 중심을 `C_m`, 회전 각도를 radian 단위 `a`라고 하자. Shader는 움직인 글자를 앞으로 그리는 대신 현재 출력 픽셀을 반대로 되돌린다.
+
+```text
+deltaArtwork = (P - C_m) * artSize
+Q            = rotate(deltaArtwork, -a)
+atlasUv      = atlasCellCenter + Q / atlasSize
+```
+
+| 변수 | 공간 | 의미 |
+| --- | --- | --- |
+| `P` | artwork UV | 지금 칠할 출력 픽셀 |
+| `C_m` | artwork UV | spring 하강을 적용한 현재 글자 중심 |
+| `Q` | artwork pixel | 이동과 회전 전 글자 칸에서의 위치 |
+| `atlasUv` | atlas texture UV | 실제 glyph alpha를 읽을 위치 |
+
+`-a`를 쓰는 이유는 현재 화면에 `+a`만큼 회전해 보이는 글자를 원래 방향으로 되돌려야 하기 때문이다. 이것은 texture mapping에서 흔히 사용하는 inverse transform이다.
+
+현재 출력 X에서 가장 가까운 글자 자리와 양옆 자리까지 후보로 확인한다. 그래서 회전한 `W`가 nominal slot을 벗어나도 발견할 수 있다. 하지만 각 후보는 자기 atlas 칸만 읽으므로 이웃 글자 픽셀은 섞이지 않는다.
+
+이 계산은 매 frame `deformedGlyphMaterial`에서 실행되어 다음 두 target을 만든다.
+
+- `deformedTextTarget`: 현재 글자 alpha, `1440 × 1800`
+- `deformedColorCenterTarget`: 선택형 색 중심, `480 × 600`
+
+## 5. 터치 source와 particle 생명주기
+
+### 5.1 해결하려는 문제
+
+포인터 위치에 완성된 큰 타원을 바로 붙이면 첫 터치가 튀고, 드래그 경로에 작은 점을 계속 찍으면 조각 사슬이 생긴다. 손을 뗄 때 중심에서 alpha만 줄이면 물이 흐르지 않고 제자리에서 지워지는 것처럼 보인다.
+
+현재 구조는 손가락을 **질량을 공급하는 source**로 보고, 완성된 큰 packet이 일정 시간마다 분리되어 떨어지게 한다.
+
+![Hold, Drag, Release에서 source와 분리된 packet의 움직임](./figures/06-particle-lifecycle.svg)
+
+### 5.2 `pointerTarget`과 `dripEmitter`
+
+`pointerTarget`은 이벤트에서 받은 최신 artwork UV다. `dripEmitter`는 frame time `dt`와 추종 비율 `k_f`를 사용해 그 위치를 지수 완화로 따라간다.
+
+```text
+b       = 1 - exp(-k_f * dt)
+emitter = emitter + (pointerTarget - emitter) * b
+```
+
+기본 `k_f = 7.5 s⁻¹`이다. 이 식은 frame마다 고정 비율을 쓰는 것과 달리 frame rate가 달라져도 비슷한 시간 반응을 유지한다.
+
+### 5.3 하나의 `LiquidParticle`이 기억하는 값
 
 ```ts
 type LiquidParticle = {
@@ -78,707 +167,402 @@ type LiquidParticle = {
 };
 ```
 
-#### `age`, `mass`, `energy`, `growing`, `seed`의 의미
-
-이 다섯 값은 모두 물 덩어리 하나의 모양과 세기를 정하지만 역할은 서로 다르다.
-
-| 값 | 쉬운 뜻 | 실제 계산에 미치는 영향 |
+| 값 | 단위·범위 | 역할 |
 | --- | --- | --- |
-| `age` | source에서 분리된 뒤 얼마나 오래 흘렀는가 | 세로 신장, 가로 폭 축소, 좌우 굴곡과 밀도 변화의 진행 정도 |
-| `mass` | 물 덩어리가 현재 얼마나 크게 채워졌는가 | Falloff의 가로·세로 반경에 `√mass`를 곱함 |
-| `energy` | 이 물 덩어리가 글자 픽셀을 얼마나 강하게 활성화하는가 | 계산된 Falloff 전체에 곱하는 표시 강도 |
-| `growing` | `age` 기반의 추가 등장 애니메이션을 적용할 것인가 | `true`일 때 shader 안에서 별도의 birth fade를 적용 |
-| `seed` | 물 덩어리마다 한 번 정해지는 고유한 모양 번호 | 좌우 굴곡, 난류, 밀도 파동의 시작 위상을 다르게 함 |
+| `x`, `y` | artwork UV | packet 중심의 현재 위치 |
+| `velocityX` | artwork px/s | 가로 속도 |
+| `velocityDown` | artwork px/s | 아래 방향 속도. 위치 Y를 감소시킨다 |
+| `age` | second | source에서 분리된 뒤 흐른 시간 |
+| `mass` | 기본 packet 질량 1 기준 | Falloff 반경에 `sqrt(mass)`로 적용 |
+| `energy` | 보통 `0~1` | Falloff 전체에 곱하는 활성 강도 |
+| `growing` | boolean | `age` 기반 추가 birth fade 사용 여부 |
+| `seed` | `[0,1)` | packet별 굴곡과 난류 위상 |
 
-##### `age`: 흐른 시간
+#### `age`: 흐른 시간
 
-손가락에 붙어 있는 source packet은 `age = 0`으로 유지한다. source에서 분리되어 아래로 떨어지기 시작한 뒤에만 매 프레임 `Δt`만큼 증가한다.
+source에 붙어 있는 packet은 `age = 0`이다. 분리된 뒤에만 증가하며 세로 신장, 가로 폭 축소, 좌우 굴곡의 진행 정도를 정한다. 수명이나 fade 시간이 아니므로 age가 크다는 이유로 지우지 않는다.
 
-`age`가 커지면 packet은 세로로 조금 더 길어지고, `dripPinchTime`을 지나면서 가로 폭이 `dripStreamWidth` 쪽으로 좁아진다. 좌우 굴곡과 밀도 변화도 `age`를 입력으로 사용한다.
+#### `mass`: 공간적인 크기
 
-중요한 점은 `age`가 수명이나 투명도 감소 시간이 아니라는 것이다. 오래되었다는 이유만으로 packet을 지우지 않으며, 화면 아래로 완전히 빠져나갔을 때만 제거한다.
-
-##### `mass`: 크기
-
-첫 터치의 source packet은 `mass = 0`에서 시작해 약 0.13초 동안 `1`까지 채워진다. Falloff 반경에는 `mass`를 그대로 쓰지 않고 제곱근을 사용한다.
-
-```text
-Falloff 반경 배율 = √mass
-
-mass = 0    → 반경 0%
-mass = 0.25 → 반경 50%
-mass = 1    → 반경 100%
-```
-
-따라서 `mass`는 물 덩어리의 **공간적인 크기**를 담당한다. 32개 제한으로 가까운 두 packet을 압축할 때도 두 질량을 더하지 않고 더 큰 기존 질량을 유지해 반경이 갑자기 커지는 것을 막는다.
-
-##### `energy`: 활성화 강도
-
-`energy`는 만들어진 Falloff 전체에 곱해지는 강도다.
+첫 source는 `mass = 0`에서 시작해 0.13초 동안 1까지 채워진다.
 
 ```text
-보이는 packet Falloff = 모양과 거리로 계산한 Falloff × energy
+radiusScale = sqrt(mass)
 ```
 
-첫 터치에서는 별도의 `dripSourceAge`를 사용해 `energy`를 0에서 1에 점점 가깝게 올린다. 여기서 0.36초는 완료 시간이 아니라 지수 곡선의 time constant다. 실제로 0.36초에는 약 0.40, 0.72초에는 약 0.75, 1.08초에는 약 0.90이 된다. 누적 드래그 거리가 8px을 넘으면 현재 source의 energy는 즉시 1이 되어 새 위치마다 시작 지연을 반복하지 않는다. 손을 뗀 packet은 그 순간의 energy를 유지한 채 계속 떨어진다.
+`mass = 0.25`이면 반경은 기본의 50%다. 면적이 반경 제곱에 비례하므로 질량과 반경을 같은 비율로 쓰지 않는다.
 
-`mass`와 `energy`의 차이는 다음과 같다.
+#### `energy`: 활성화 강도
 
-- `mass`를 줄이면 물 덩어리의 **반경 자체가 작아진다.**
-- `energy`를 줄이면 같은 모양의 물 덩어리가 글자 픽셀을 **더 약하게 활성화한다.**
-
-##### `growing`: 추가 birth fade 스위치
-
-GPU shader는 `growing = true`인 packet에만 `age`를 이용한 추가 birth fade를 적용할 수 있다.
+첫 터치 energy는 별도 source 시간 `t_s`로 계산한다.
 
 ```text
-birth = (1 - exp(-age / dripAttack))²
-growing = false → birth fade를 적용하지 않음
-growing = true  → Falloff에 birth를 추가로 곱함
+energy(t_s) = (1 - exp(-t_s / 0.36s))²
 ```
 
-현재 일반 터치에서는 첫 source의 점진적 등장을 이미 `mass`와 `energy`가 담당하므로 `growing`은 대부분 `false`다. 이 값은 deterministic QA 입력도 일반 packet과 같은 GPU uniform 구조로 표현하기 위해 남아 있다.
+0.36초는 완료 시간이 아니라 time constant다. energy는 0.36초에 약 0.40, 0.72초에 약 0.75, 1.08초에 약 0.90이다.
 
-##### `seed`: 고정된 모양 차이
+- `mass` 감소: Falloff 반경 자체가 작아짐
+- `energy` 감소: 같은 모양이 글자 픽셀을 더 약하게 활성화함
 
-`seed`는 packet을 만들 때 순서에 따라 한 번 정해지고, 떨어지는 동안에는 바뀌지 않는다. 현재 구현은 황금비 소수부를 이용해 `0~1` 사이의 값이 반복적으로 겹치지 않게 배치한다.
+누적 드래그 거리가 8 artwork px을 넘으면 현재 source energy를 1로 바꿔 새 위치마다 시작 지연이 반복되지 않게 한다. 손을 떼면 그 순간의 energy를 유지한다.
+
+#### `growing`: QA와 공유하는 추가 fade 스위치
+
+`growing = true`이면 shader에서 `age` 기반 birth fade를 한 번 더 곱한다. 일반 입력에서는 mass와 energy가 첫 등장을 담당하므로 대부분 false다. 고정 QA particle도 같은 uniform 구조로 표현하기 위해 남아 있다.
+
+#### `seed`: 깜빡이지 않는 모양 차이
 
 ```text
-seed = (생성 순서 × 0.61803398875) mod 1
+seed = fract(sequence * 0.61803398875)
 ```
 
-shader는 이 값을 사인파의 시작 위상으로 사용한다. 그래서 모든 packet이 같은 순간에 같은 방향으로 굽거나 같은 밀도 무늬를 만들지 않는다. 매 프레임 무작위 값을 새로 뽑는 방식이 아니므로 모양이 노이즈처럼 깜빡이지 않고, 각 packet이 자기 특성을 유지하며 흐른다.
+packet을 만들 때 한 번 정하고 이후에는 바꾸지 않는다. Shader의 사인파 시작 위상으로 사용하므로 packet마다 굴곡은 다르지만 매 frame 난수를 다시 뽑을 때처럼 깜빡이지 않는다.
 
-CPU는 중력, 점성 감쇠, 가까운 덩어리 사이의 응집력을 계산해 이 숫자들을 갱신한다. 글자 픽셀 수십만 개를 CPU에서 움직이지 않기 때문에 모바일에서도 구조를 단순하게 유지할 수 있다.
+### 5.4 Hold, Drag, Release
 
-### 3.2 GPU: 화면의 모든 픽셀에 숫자 지도를 만든다
+첫 packet의 mass가 1이 된 뒤에는 완성된 packet을 emitter에 붙여 둔다. 다음 질량 1이 0.13초 동안 준비되면 같은 위치에서 완성 packet끼리 교대하고, 이전 packet만 낙하한다.
 
-GPU는 물 덩어리의 현재 위치를 받아 다음과 같은 이미지 지도를 차례로 만든다.
+드래그 중에는 붙어 있는 source만 emitter를 따라간다. 분리된 packet은 포인터의 가로 운동량을 받지 않고 `velocityX = 0`, `velocityDown = 18px/s`로 시작한다. 그래서 원형으로 드래그해도 떨어진 물이 원 궤도를 계속 돌지 않는다.
+
+Release는 새 질량 공급만 멈춘다. 모든 packet은 같은 물리 규칙으로 아래로 이동하고, Falloff 전체가 화면 아래 margin을 벗어났을 때 배열에서 제거된다.
+
+### 5.5 Particle solver는 물리 근사다
+
+한 animation frame을 최대 `1/60s` 크기의 substep으로 나눈다. 각 substep에서 다음 순서로 갱신한다.
 
 ```text
-변형된 글자 마스크
-        ×
-물 덩어리 Falloff
-        ↓
-활성 글자 픽셀
-        ↓
-Metaball 높이 지도
-        ↓
-최종 실루엣
+velocity += (gravity + cohesion + turbulence) * dt
+velocity *= exponentialDamping(dt)
+position += velocity * dt
+age      += dt
 ```
 
-동시에 활성 글자 픽셀까지의 거리와 색 에너지 지도도 만든다. 마지막 shader가 변형된 배경 글자, 실루엣, 색을 한 화면으로 합친다.
+세로와 가로 damping은 다르다. 가로는 `exp(-viscosity * 1.35 * dt)`, 세로는 `exp(-viscosity * 0.22 * dt)`를 사용해 아래 흐름은 유지하면서 좌우 흔들림을 더 빨리 줄인다.
 
-### 3.3 DOM: 작품 계산 밖의 인터페이스
+응집력은 두 packet이 rest distance보다 멀어질 때만 서로 당긴다. 이미 겹친 packet을 밀어내지 않는 이유는 뒤의 Metaball field가 겹침을 하나의 표면으로 처리하기 때문이다. 붙어 있는 source도 응집력과 32개 압축 대상에서 제외해 드래그가 떨어진 물을 끌고 가지 않게 한다.
 
-하단 `Solver · Contact · Contour · Final` 버튼과 터치 인디케이터는 DOM 요소다. 이들은 작품의 내부 값을 보여주거나 단계를 바꾸지만 물리 계산이나 Metaball field에 입력으로 들어가지는 않는다.
+32개가 가득 차면 source가 아닌 가장 가까운 두 packet의 위치와 속도를 질량 가중 평균으로 합친다. 표시 mass는 더하지 않고 큰 기존 값을 유지한다. 이것은 질량 보존보다 병합 순간 반경이 `sqrt(2)`배 커지는 시각적 불연속 방지를 우선한 작품 전용 heuristic이다.
 
-## 4. 시작할 때 한 번 만드는 글자 데이터
+## 6. Packet Falloff와 활성 글자 픽셀
 
-### 4.1 원본 글자 배치
+### 6.1 해결하려는 문제
 
-작품 문장은 다음 아홉 줄이다.
+CPU packet은 중심점과 몇 개의 숫자만 가진다. 화면의 각 픽셀에서 이 packet이 미치는 영향과 글자와의 접촉을 계산해야 실제 실루엣 입력을 만들 수 있다.
+
+`interactionFieldMaterial`은 `480 × 600`의 모든 field pixel에서 최대 32개 packet Falloff를 계산한다.
+
+### 6.2 Packet 하나의 Falloff
+
+현재 출력 위치를 `p`, packet 중심을 `o_j`라고 하자. 둘의 UV 차이에 `artSize`를 곱해 artwork pixel 거리 `d_j`를 만든다.
 
 ```text
-PRESS
-AND HOLD
-THE SURFACE
-UNTIL
-THE WORDS
-BEGIN
-TO GIVE
-WAY
-BENEATH YOU
+d_j = (p - o_j) * artSize
 ```
 
-기본 글꼴은 `Helvetica Neue` 계열의 43px 굵기 300이며, 글자 중심 간격은 31.8px, 줄 간격은 42.2px이다. 공백까지 포함하면 총 64개의 글자 자리가 생긴다.
+기본 가로·세로 반경에는 다음 작품 전용 보정을 적용한다.
 
-### 4.2 3배 해상도 글자 마스크
+- `sqrt(mass)`: packet 전체 크기
+- `age`: 세로 신장과 가로 stream 형성
+- 위 80px, 아래 160px의 비대칭 세로 반경
+- 세로 끝으로 갈수록 가로가 좁아지는 taper
+- `seed`, `age`, time을 이용한 작은 좌우 굴곡과 밀도 변화
 
-브라우저의 2D canvas가 글자를 `1440 × 1800`, 즉 작품 해상도의 3배로 굽는다.
+정규화 거리 `n_j`가 Falloff 시작값 0.12보다 작으면 강하고, 1에 가까워지면 0이 된다. 이것은 실제 압력장이 아니라 시각적인 물줄기 외피를 만드는 경험적 함수다.
 
-- 배경: 알파 0
-- 글자 내부: 알파 1에 가까운 값
-- 글자 경계: 안티앨리어싱으로 0과 1 사이의 값
+### 6.3 Packet 사이를 끊기지 않게 연결한다
 
-이 데이터의 실제 단위는 “글자 획”이라는 추상적인 선이 아니라 **글자 내부와 경계를 이루는 픽셀**이다.
+모든 packet 값을 더하면 겹친 부분이 지나치게 넓어진다. `max()`만 사용하면 가장 강한 packet이 바뀌는 위치에서 기울기가 꺾일 수 있다.
 
-### 4.3 독립 글자 아틀라스
-
-각 글자는 `8 × 8` 아틀라스의 독립된 `64 × 64px` 칸에 저장된다. 아틀라스 자체도 3배 해상도다.
-
-독립 칸을 쓰는 이유는 두 가지다.
-
-1. `W`처럼 넓은 글자가 움직이거나 회전해도 고정 글자 칸에서 잘리지 않게 한다.
-2. 한 글자를 역변형해 읽을 때 옆 글자의 픽셀을 함께 복사해 글자가 겹치는 일을 막는다.
-
-`glyphMetadataTexture`는 글자별 실제 반쪽 폭과 공백 여부를 저장한다. 변형 shader는 출력 위치에서 가장 가까운 글자 자리뿐 아니라 양옆 후보도 보지만, 각 후보의 픽셀은 자기 아틀라스 칸에서만 가져온다.
-
-### 4.4 선택 가능한 색 중심 아틀라스
-
-글자의 잉크 양, 실제 폭·높이, 알파 가중 중심을 측정해 글자마다 다른 세로 타원을 만든 아틀라스도 함께 준비한다. 다만 현재 기본값 `colorEllipseInfluence = 0`에서는 이 타원이 최종 밝은 중심의 모양을 결정하지 않는다. 현재 화면에서 보이는 내부 중심은 뒤에서 설명할 **활성 글자 픽셀까지의 거리**를 따른다.
-
-## 5. 입력과 물 source
-
-### 5.1 `pointerTarget`과 `dripEmitter`는 다르다
-
-`pointerTarget`은 이벤트에서 받은 최신 손가락 위치다. 이 값을 그대로 렌더링하면 손가락의 작은 움직임도 즉시 반영되어 가볍고 떨리는 느낌이 난다.
-
-`dripEmitter`는 다음 지수 완화식으로 `pointerTarget`을 따라간다.
+현재는 가장 강한 값 `a`, 두 번째 값 `b`, 결합 폭 `k = 0.08`만 사용한다.
 
 ```text
-blend = 1 - exp(-followEase × Δt)
-emitter += (pointerTarget - emitter) × blend
+h = max(k - abs(a - b), 0) / k
+L = a + h² * k * 0.25
 ```
 
-기본 `followEase`는 `7.5 s⁻¹`이다. 따라서 source는 손가락보다 약간 늦게 따라오지만 프레임 속도가 달라져도 반응 성격이 크게 변하지 않는다.
+`abs(a-b) >= k`이면 `h=0`이라서 `L=a`다. 두 값이 비슷할 때만 최대 `k/4`만큼 연결 에너지를 더한다. 결과가 `a`보다 작아지지 않으므로 평균 blend의 어두운 홈이 없고, 모든 packet 합산보다 팽창이 제한된다.
 
-### 5.2 처음 누를 때는 질량과 에너지가 함께 증가한다
+### 6.4 글자 픽셀과 곱한 RGBA target
 
-`pointerdown` 순간에는 질량과 에너지가 모두 0인 source packet을 만든다.
+현재 변형된 글자 alpha를 `M(p)`, 결합 Falloff를 `L(p)`, 선택형 색 중심을 `E(p)`라고 한다.
 
 ```text
-공급 질량 = 누른 시간 / 0.13초
-source energy = (1 - exp(-누른 시간 / 0.36초))²
-Falloff 반경 배율 = √질량
+surfaceActivation = M(p) * L(p)^1.22 * 0.92
+colorActivation   = E(p) * L(p)^1.12
 ```
 
-그래서 첫 프레임에 완성된 실루엣이 갑자기 나타나지 않는다. 반경은 질량 0에서 커지고, 밝기는 energy 0에서 서서히 올라간다.
+`interactionTarget`은 한 번의 pass에서 다음 네 값을 저장한다.
 
-터치 뒤 누적 이동이 작품 좌표로 8px을 넘으면 `dripHasDragged`가 켜지고, 이후 source energy는 바로 1을 사용한다. 즉 **첫 터치만 천천히 나타나고, 드래그 중 새 위치에서는 다시 시작 지연을 반복하지 않는다.**
-
-### 5.3 source packet의 교대
-
-첫 packet의 질량이 1이 된 뒤에는 그 완성된 packet을 emitter에 붙인 채 유지한다. 다음 질량 1이 시간 예산에 모두 준비되면 같은 위치에 완성된 새 packet을 만들고, 이전 packet만 아래로 떨어뜨린다.
-
-```text
-첫 packet: 0 → 1로 연속 성장
-다음 질량이 1보다 작음: 기존 완성 packet을 source에 유지
-다음 질량이 1이 됨: 완성 packet끼리 교대
-이전 packet: source에서 분리되어 낙하
-```
-
-작은 점을 드래그 경로마다 찍지 않고 큰 source 자체가 부드럽게 움직인다. 그래서 빠르게 드래그해도 작은 조각의 사슬이 생기지 않는다.
-
-### 5.4 이미 떨어진 물은 새 손가락 위치를 따라가지 않는다
-
-드래그가 옆으로 이동해도 `dripEmitter`와 아직 붙어 있는 source만 이동한다. 분리된 packet은 자신의 위치와 속도로 계속 떨어진다.
-
-```text
-A에서 분리된 packet → A 아래로 낙하
-B에서 분리된 packet → B 아래로 낙하
-C의 현재 source      → C에서 새 물 공급
-```
-
-분리 순간에는 포인터의 접선 속도를 전달하지 않고 `velocityX = 0`, `velocityDown = 18px/s`로 시작한다. 그래서 위에서 원형으로 드래그해도 아래로 떨어진 물이 그 원을 계속 도는 현상을 막는다.
-
-### 5.5 손을 떼면 공급만 멈춘다
-
-`pointerup`은 새 물 공급을 멈추고 현재 source를 일반 packet으로 분리할 뿐이다. 기존 packet을 중앙에서 줄이거나 시간으로 투명하게 만들지 않는다.
-
-모든 packet은 같은 중력과 점성 규칙으로 계속 낙하하고, 자신의 Falloff 전체가 화면 아래로 벗어났을 때만 배열에서 제거된다. 그래서 소멸이 “중앙 방패 모양만 남다가 사라지는 것”이 아니라 물이 아래 출구로 빠져나가는 움직임이 된다.
-
-## 6. CPU Liquid Solver
-
-한 애니메이션 프레임이 길어져도 계산이 갑자기 튀지 않도록 `Δt`를 최대 `1/60초` 크기의 substep으로 나눈다.
-
-각 substep의 개념식은 다음과 같다.
-
-```text
-가로 가속도 = 응집력 + 작은 난류
-아래 가속도 = 중력 + 응집력
-
-속도 += 가속도 × Δt
-속도 *= exp(-점성 × Δt)
-위치 += 속도 × Δt
-나이 += Δt
-```
-
-현재 기본 중력은 `78px/s²`다. 세로 감쇠는 가로 감쇠보다 약하게 적용해 아래 흐름은 유지하고 좌우 흔들림은 더 빨리 안정시킨다.
-
-### 6.1 응집력은 벌어진 packet만 당긴다
-
-두 packet이 기본 거리보다 멀어지고 응집 범위 92px 안에 있을 때만 서로 당긴다. 이미 겹친 packet을 밀어내지는 않는다.
-
-겹침은 뒤의 Metaball 단계가 하나의 표면으로 처리한다. 물리 단계까지 반발력을 주면 새 packet 무리가 갑자기 폭발하듯 퍼질 수 있다.
-
-손가락에 붙어 있는 source는 응집력 계산에서 제외한다. 그렇지 않으면 손가락을 옆으로 움직일 때 source가 이미 떨어진 물까지 끌고 간다.
-
-### 6.2 32개 제한에서 외곽이 갑자기 커지지 않게 한다
-
-새 packet을 추가하려는데 배열이 32개라면, source를 제외하고 가장 가까운 두 packet을 하나로 압축한다.
-
-- 위치와 속도: 질량 가중 평균
-- 화면에 보이는 질량: 두 값을 더하지 않고 더 큰 기존 질량 유지
-- energy와 seed: 가중 평균
-
-질량 1 두 개를 단순 합치면 반경 배율 `√2 ≈ 1.41`이 되어 정지 터치 중 Falloff가 갑자기 커진다. 현재 방식은 정확한 질량 보존보다 화면 외곽의 연속성을 우선한다.
-
-## 7. GPU 한 프레임
-
-### 7.1 현재 위치의 글자 마스크를 다시 만든다
-
-`deformedGlyphMaterial`은 이전 프레임의 글자별 스프링 상태를 읽는다. 각 글자 전체에 같은 세로 이동과 회전을 적용해 두 개의 지도를 만든다.
-
-- `deformedTextTarget`: `1440 × 1800` 고해상도 현재 글자 마스크
-- `deformedColorCenterTarget`: `480 × 600` 현재 색 중심 마스크
-
-글자 모양을 픽셀마다 잡아 늘리는 것이 아니라 글자 하나를 단단한 판처럼 이동·회전한다. 고해상도 글자 마스크를 최종 화면에도 직접 사용하므로 움직인 뒤에도 가는 선이 뭉개지지 않는다.
-
-### 7.2 packet들로 연속 Falloff를 만든다
-
-`interactionFieldMaterial`은 화면의 각 출력 픽셀에서 최대 32개 packet의 Falloff를 계산한다.
-
-packet 하나의 모양에는 다음 값이 반영된다.
-
-- 질량의 제곱근에 따른 전체 반경
-- 나이에 따른 세로 신장
-- 위·아래가 다른 세로 반경
-- 끝으로 갈수록 좁아지는 가로 taper
-- 오래 흐를수록 가늘어지는 stream width
-- seed와 시간에 따른 작은 좌우 굴곡과 밀도 변화
-
-모든 값을 더하면 겹친 곳이 지나치게 넓어진다. 단순 `max()`만 쓰면 가장 강한 packet이 바뀌는 순간 경계가 끊길 수 있다. 현재는 가장 강한 값과 두 번째 값을 찾고, 두 값의 차이가 `0.08` 안일 때만 monotonic smooth union으로 연결한다.
-
-```text
-streamLight(p) = smoothUnion(
-  가장 강한 packet Falloff,
-  두 번째 packet Falloff
-)
-```
-
-이 결합값은 두 입력 중 큰 값보다 작아지지 않는다. 따라서 packet 사이에 어두운 홈을 만들지 않으면서 합산 방식의 과도한 팽창도 피한다.
-
-### 7.3 글자 픽셀과 Falloff를 곱한다
-
-현재 출력 위치 `p`에서 다음 값을 계산한다.
-
-```text
-M(p) = 현재 변형된 글자 마스크
-L(p) = 이어진 물 Falloff
-
-surfaceActivation(p) = M(p) × L(p)^1.22 × 0.92
-colorActivation(p)   = colorCenter(p) × L(p)^1.12
-```
-
-이 결과는 `interactionTarget`의 네 채널에 함께 저장한다.
-
-| 채널 | 값 | 사용처 |
+| 채널 | 값 | 다음 소비자 |
 | --- | --- | --- |
-| R | Falloff와 만난 활성 글자 픽셀 | Metaball, Contact, 색 중심 거리 |
-| G | 현재 글자 마스크 | 디버그, seed의 글자 내부 제한 |
-| B | Falloff와 만난 선택형 타원 색 중심 | 색 field |
-| A | 글자와 곱하기 전 원본 Falloff | Solver·Contact 시각화 |
+| R | 활성 글자 픽셀 `surfaceActivation` | geometry, contact, color seed |
+| G | 현재 글자 alpha `M` | seed의 글자 내부 제한, debug |
+| B | 선택형 타원 중심 `colorActivation` | optional color field |
+| A | 글자와 곱하기 전 `L` | Solver와 Contact 시각화 |
 
-글자 밖에서는 `M=0`이므로 큰 Falloff가 지나가도 geometry의 출발점이 되지 않는다. 반대로 글자 안이라도 물 범위 밖이면 활성값은 0이다.
+글자 밖에서는 `M=0`이므로 Falloff만 지나가서는 geometry가 생기지 않는다. 내려온 물이 아래쪽의 새로운 글자 픽셀과 만나는 순간 그 위치에서 새 활성 픽셀이 만들어진다.
 
-![활성 글자 픽셀에서 field를 만드는 원리](./figures/02-pixels-and-field.svg)
+## 7. Geometry: 활성 픽셀을 액체 실루엣으로 연결
 
-## 8. 실루엣 geometry 파이프라인
+얇은 활성 글자 픽셀을 그대로 그리지 않고, 출력 픽셀마다 주변 활성 분포를 조사해 연속적인 높이 지도를 만든다. 공통 원리와 수식은 [Pixel-sampled Metaball Field](../../concepts/pixel-metaball-field.md)에 분리했다.
 
-색과 외곽선은 독립적으로 계산된다. 최종 실루엣 모양은 다음 경로만으로 결정된다.
+![가장 가까운 픽셀 방식과 주변 누적 field가 Y를 다르게 만드는 이유](./figures/03-y-junction.svg)
 
-```text
-interactionTarget.r
-  → surfaceSourceTarget
-  → metaballRawTarget
-  → surfaceHorizontalTarget
-  → surfaceFieldTarget
-  → threshold contour
-```
+현재 작품의 pass와 기본값은 다음과 같다.
 
-### 8.1 약한 입력을 부드럽게 제외한다
+| pass | 현재 선택 |
+| --- | --- |
+| `surfaceSourceMaterial` | R 활성값 0.02부터 0.025 폭으로 부드럽게 허용 |
+| `surfaceBlurMaterial` | 반경 30px, 황금각 표본 192개, 거리 지수 3.2 |
+| `surfaceSmoothMaterial` | sigma 1.8, 가로 11-tap 후 세로 11-tap |
+| `finalMaterial` | field 높이 0.07에서 coverage 추출 |
 
-`surfaceSourceMaterial`은 활성값 `0.02` 아래를 제거하고, `0.025` 폭으로 전환한다.
+가장 가까운 활성 픽셀 하나만 사용하지 않고 주변 분포를 누적하므로 `Y`의 두 팔 사이에는 상대적으로 낮은 saddle이 남는다. threshold 외곽선은 그 낮은 공간을 따라 줄기 쪽으로 오목하게 들어온다. Y 전용 모양 코드는 없다.
 
-```glsl
-detected = smoothstep(0.02, 0.045, activation);
-source = activation * detected;
-```
+최종 edge 폭은 `max(surfaceSoftness, fwidth(field) * 1.2)`다. `fwidth()`는 현재 device fragment에서 이웃 픽셀 사이 field 변화량을 측정해 확대와 해상도에 맞는 안티앨리어싱 폭을 만든다.
 
-하나의 값에서 딱 잘라 켜고 끄지 않기 때문에 경계 픽셀이 프레임마다 깜빡이는 현상이 줄어든다.
+`coreMix = 0`이므로 geometry에 별도의 고정 반경 글자 몸체를 합치지 않는다. 화면 외곽은 `surfaceFieldTarget`의 등고선 자체다.
 
-### 8.2 각 출력 픽셀이 주변 192곳을 조사한다
+## 8. Color: 타원 대신 활성 글자 모양을 밝게 만들기
 
-`surfaceBlurMaterial`은 모든 출력 픽셀 `p`에서 반경 30px 안의 192곳을 읽는다. 조사 위치는 방향 편향이 적도록 황금각 약 `137.5°`로 돌려 배치한다.
+### 8.1 해결하려는 문제
 
-```text
-angleᵢ  = i × 137.5°
-radiusᵢ = √((i + 0.5) / 192) × 30px
-weightᵢ = (1 - radiusᵢ / 30px)^3.2
-```
+글자마다 세로 타원을 하나씩 놓으면 `O`, `N`, `H` 내부에 같은 크기의 타원이 반복되어 보인다. Gaussian blur만 사용하면 글자 모양 주위에 긴 털 같은 halo도 남는다.
 
-`√`를 쓰는 이유는 원의 바깥쪽 면적이 더 크기 때문이다. 이렇게 해야 조사점이 중심에 몰리지 않고 원 전체에 비교적 균일하게 놓인다.
+현재 기본 색 중심은 각 출력 픽셀에서 **가장 가까운 활성 글자 픽셀까지의 거리**를 사용한다. 원리와 일반적인 JFA 수식은 [Jump Flood Nearest-seed Search](../../concepts/jump-flood-nearest-seed.md)에 분리했다.
 
-```text
-F(p) = 0.55 × S(p)
-     + 2.2 × 주변 활성값의 거리 가중 평균
-```
-
-192개는 글자 위에 배치한 고정 구슬의 수가 아니다. 같은 조사 패턴을 **각 출력 픽셀이 자기 주변에서 반복**한다. GPU에서는 대략 `480 × 600 × 192`, 약 5천5백만 번의 텍스처 확인을 한 프레임에 병렬 처리한다.
-
-### 8.3 가로와 세로로 smoothing한다
-
-황금각 표본의 작은 흔적을 줄이기 위해 sigma 1.8의 Gaussian filter를 가로와 세로로 한 번씩 적용한다. 각 방향은 중심을 포함해 11개 위치, 즉 `-5…+5px`를 읽는다.
-
-2차원 필터를 한 번에 계산하지 않고 가로와 세로로 나누는 것을 separable filter라고 한다. 비슷한 결과를 더 적은 계산으로 얻는다.
-
-### 8.4 높이 0.07에서 외곽선을 꺼낸다
-
-최종 화면은 `surfaceFieldTarget`의 값이 0.07을 넘는지를 기준으로 coverage를 만든다.
-
-```glsl
-edge = max(0.012, fwidth(surfaceField) * 1.2);
-coverage = smoothstep(0.07 - edge, 0.07 + edge, surfaceField);
-```
-
-`fwidth()`는 현재 화면에서 한 픽셀 사이 값 변화량을 측정한다. 해상도와 확대 정도에 맞는 안티앨리어싱 폭을 더해 외곽선의 계단을 줄인다.
-
-`coreMix` 기본값은 0이다. 즉 별도 고정 반경 몸체나 명시적인 글자 외곽선을 geometry에 강제로 합치지 않는다. 화면 외곽은 누적 field의 등고선 자체다.
-
-## 9. Y 중심이 오목해지는 이유
-
-![가장 가까운 픽셀 방식과 주변 누적 field의 Y 비교](./figures/03-y-junction.svg)
-
-이전 방식은 각 출력 픽셀에서 가장 가까운 활성 글자 픽셀 하나만 보았다. 그래서 `Y`의 두 팔과 아래 줄기가 만나는 곳을 큰 원 하나처럼 처리해 중심이 볼록해지기 쉬웠다.
-
-현재 방식은 주변 192개의 활성 픽셀 분포를 함께 읽는다.
-
-1. 왼쪽 팔, 오른쪽 팔, 아래 줄기의 영향이 같은 field에 들어온다.
-2. 두 팔 사이의 흰 공간은 주변 활성 픽셀 비율이 더 낮다.
-3. 그 낮은 값이 줄기 쪽으로 이어져 안장 모양의 골짜기를 만든다.
-4. 0.07 등고선을 꺼내면 흰 공간이 Y 중심을 따라 오목하게 내려온다.
-
-Y 전용 예외 모양은 없다. 같은 픽셀 조사 규칙이 글자 픽셀 배치에 반응한 결과다.
-
-## 10. 내부 색 파이프라인
-
-실루엣 geometry가 “어디까지 액체인가”를 정한다면, 색 파이프라인은 그 안에서 “어디가 밝고 어떤 색인가”를 정한다. 색 계산은 geometry coverage 밖으로 나갈 수 없다.
-
-### 10.1 활성 글자 픽셀까지의 최근접 거리
-
-현재 기본 내부 중심은 타원보다 글자 모양을 따른다. 이를 위해 다음 단계를 실행한다.
+### 8.2 현재 pass
 
 ```text
 interactionTarget의 활성 글자 픽셀
-  → 글자 내부에서 8회 확산
-  → seed 픽셀 생성
-  → Jump Flood: 16, 8, 4, 2, 1, 1
-  → 각 출력 픽셀에서 가장 가까운 활성 글자 픽셀 좌표
+  -> 글자 내부 stroke spread 8회
+  -> seed: activation >= 0.05, text alpha >= 0.18
+  -> bounded JFA: 16, 8, 4, 2, 1, 1
+  -> nearest active glyph coordinate
+  -> 3.2px radius, 1px edge의 glyph-shaped energy
 ```
 
-확산 단계는 활성값을 글자 내부에서만 넓힌다. `nearestSeedMaterial`은 활성값 0.05 이상이면서 글자 마스크 0.18 이상인 위치만 seed로 인정한다. Jump Flood는 여러 거리의 이웃 seed를 비교해 가장 가까운 활성 글자 픽셀 좌표를 `nearestRead`에 남긴다.
+`nearestTargetA/B`는 seed 좌표가 pixel 사이에서 섞이지 않게 `NearestFilter`를 사용한다. 현재 jump 일정은 전체 480×600 field의 정확한 전역 최근접점을 보장하는 full JFA가 아니다. 최종 색이 3.2px 근처만 사용한다는 조건에 맞춘 bounded heuristic이다.
 
-최종 shader는 이 좌표까지의 거리를 재서 기본 반경 3.2px 안에 글자 모양의 밝은 중심을 만들고, 1px의 짧은 경계로 0까지 줄인다. 멀리 남는 Gaussian 꼬리가 없어서 글자 안에 털 같은 후광이나 동일한 큰 타원이 보이지 않는다.
+### 8.3 선택형 통계 타원
 
-### 10.2 선택형 통계 타원 field
+초기화할 때 글자별 잉크 양, 실제 폭·높이, alpha 가중 중심을 측정해 서로 다른 세로 타원을 color atlas에 굽는다. 이 field는 활성 글자 픽셀과 기본 `80:20`으로 섞은 뒤 Gaussian blur를 통과한다.
 
-별도 경로에서는 글자별 통계 타원과 실제 활성 글자 픽셀을 기본 `80:20`으로 섞은 뒤, 41-tap Gaussian filter를 가로와 세로로 적용한다.
+하지만 현재 `colorEllipseInfluence = 0`이므로 최종 밝은 중심에는 타원이 들어가지 않는다. 실험용 GUI 값을 올렸을 때만 나타난다.
 
-이 `colorFieldTarget`은 실험을 위해 남겨 둔 선택형 에너지다. 현재 기본값은 `colorEllipseInfluence = 0`이므로 최종 밝은 중심에는 섞이지 않는다. 값을 올리면 글자마다 크기가 다른 세로 타원 중심이 다시 나타난다.
+### 8.4 Palette와 clipping
 
-### 10.3 팔레트 합성
+글자형 에너지는 `edge rose → body rose → pale pink → hot color` 네 anchor를 연속적으로 섞는 입력이 된다. 기본 채도 0.72, 밝기 0.96, warm cream 혼합 0.12이며 palette phase는 8초마다 한 바퀴 돈다.
 
-최종 shader는 글자형 중심 에너지를 이용해 네 색 구간을 연속적으로 섞는다.
+색은 항상 geometry coverage 안에서만 합성된다. 배경 글자도 coverage 안에서는 완전히 가려진다. 마지막에 coverage 내부에만 1/255보다 작은 dithering을 더해 완만한 색 banding을 줄인다.
+
+## 9. 글자 Contact와 Spring feedback
+
+### 9.1 해결하려는 문제
+
+실루엣이 닿은 화면 픽셀을 각각 아래로 옮기면 같은 글자 안에서도 이동량이 달라져 글자가 늘어나거나 찢어진다. 반대로 글자 bounding box만 검사하면 액체가 실제 글자에 닿지 않아도 글자가 움직일 수 있다.
+
+현재는 글자 하나를 rigid한 판처럼 보고 이동과 회전 상태를 글자별로 저장한다.
+
+### 9.2 Contact 측정
+
+64개 slot 각각에 실제 잉크의 alpha 가중 중심과 반쪽 폭·높이를 저장한다. 현재 이동·회전한 glyph 영역에 `9 × 9` 표본을 놓고 다음 값을 계산한다.
 
 ```text
-edge rose → body rose → pale pink → hot color
+sampleContact = visibleSurface(sampleUv) * visibleTextPixel(sampleUv)
 ```
 
-- 팔레트 순환: 8초
-- 전체 채도: 0.72
-- 밝기: 0.96
-- 따뜻한 크림 혼합: 0.12
+| 값 | 의미 |
+| --- | --- |
+| `visibleSurface` | `surfaceField`가 현재 threshold를 넘은 정도 |
+| `visibleTextPixel` | 고해상도 변형 글자 alpha가 실제 잉크인 정도 |
+| `contact` | 81개 중 가장 강한 접촉값 |
+| `leftContact`, `rightContact` | 왼쪽·오른쪽 네 열 각각의 최대 접촉값 |
 
-마지막에는 coverage 안쪽에만 1/255보다 작은 dithering을 더해 완만한 색 구간의 banding을 줄인다. 배경 글자는 coverage 안에서 완전히 가려지므로 액체 아래 검은 글자가 비치지 않는다.
+가운데 한 열은 하강에는 참여하지만 좌우 torque에는 참여하지 않는다.
 
-## 11. 글자 Contact와 스프링 피드백
+### 9.3 목표값과 damped spring
 
-### 11.1 글자별 네 상태
+```text
+targetOffset = contact * 10px
 
-64개의 글자 자리는 `64 × 1` ping-pong render target에 다음 네 값을 저장한다.
+side             = max(leftContact, rightContact)
+pressureDiff     = (leftContact - rightContact) / max(side, epsilon)
+targetAngle      = pressureDiff * side * 9°
+
+acceleration     = (targetOffset - offset) * 58 - velocity * 12
+angularAccel     = (targetAngle - angle) * 46 - angularVelocity * 10
+```
+
+접촉이 중앙에 가까우면 좌우 차이가 작아 회전도 작다. 한쪽만 강하게 닿으면 `pressureDiff`의 부호에 따라 기울어진다. 9°는 radian으로 바꿔 shader에 전달한다.
+
+각 frame은 속도를 먼저 갱신하고 그 속도로 위치·각도를 갱신한다. spring 계산의 `dt`는 최대 `1/30s`로 제한한다. 위치는 기본 최대 하강의 `-14%…116%`, 회전은 목표 최대의 `±118%` 안으로 제한해 긴 frame이나 강한 feedback에서 폭주하지 않게 한다.
+
+### 9.4 한 프레임 feedback
+
+Spring state는 `64 × 1` half-float target 두 개에 저장한다.
 
 | 채널 | 상태 |
 | --- | --- |
-| R | 원래 위치에서 내려간 거리 `offset` |
-| G | 세로 속도 `velocity` |
-| B | 회전 각도 `angle` |
-| A | 회전 속도 `angularVelocity` |
+| R | `offset`, artwork px |
+| G | `velocity`, artwork px/s |
+| B | `angle`, radian |
+| A | `angularVelocity`, radian/s |
 
-두 target이 읽기와 쓰기 역할을 프레임마다 교대한다. 한 texture를 읽는 동시에 같은 texture에 쓰지 않기 위한 구조다.
+현재 frame의 surface와 글자로 새 state를 쓴 뒤 read/write target을 교대한다. 이 state는 다음 frame의 `deformedTextTarget`과 `deformedColorCenterTarget`에 사용된다.
 
-### 11.2 실제 글자 픽셀과 보이는 실루엣이 겹쳐야 Contact다
+보이는 글자와 Metaball 입력이 같은 변형 마스크를 읽으므로 글자는 내려갔는데 실루엣만 원래 자리에 남는 불일치가 없다. 한 frame 지연은 pass가 자기 output을 동시에 다시 읽는 순환도 피한다.
 
-각 글자의 실제 잉크 중심과 폭·높이 안에 `9 × 9` 검사점을 둔다. 각 점에서 다음 값을 곱한다.
+## 10. 실제 한 프레임 순서
 
-```text
-contact sample = 현재 글자 픽셀 × 최종 threshold를 넘은 실루엣
-```
+`requestAnimationFrame()`의 `animate(now)`는 다음 순서를 지킨다.
 
-액체 field가 글자 가까이에만 있거나 글자의 빈 사각형 영역을 지나가는 것은 접촉이 아니다. 실제 글자 픽셀과 화면에 보이는 실루엣이 겹쳐야 글자가 움직인다.
+| 순서 | 실행 | 출력 또는 상태 |
+| ---: | --- | --- |
+| 1 | `simulateLiquidParticles(delta)` | 분리된 packet 위치·속도·age 갱신 |
+| 2 | emitter 추종과 `supplyLiquidMass()` | 붙어 있는 source 위치·mass·energy 갱신 |
+| 3 | particle uniform 업로드 | 최대 32개 packet의 GPU 입력 |
+| 4 | `deformedGlyphMaterial` 두 번 | 현재 글자와 color-center target |
+| 5 | `interactionFieldMaterial` | 활성 글자·text·color·Falloff RGBA |
+| 6 | stroke spread와 JFA | 가까운 활성 글자 seed 좌표 |
+| 7 | source detection, 192 probes, Gaussian H/V | `surfaceFieldTarget` |
+| 8 | `glyphSpringMaterial`과 ping-pong swap | 다음 frame의 글자 state |
+| 9 | optional color Gaussian H/V | `colorFieldTarget` |
+| 10 | `debugMaterial` 또는 `finalMaterial` | 화면 |
 
-전체 81개 중 가장 강한 접촉값이 하강 목표를 만든다. 왼쪽 네 열과 오른쪽 네 열의 접촉 차이는 회전 목표를 만든다. 가운데 열은 하강에는 참여하지만 회전에는 참여하지 않는다.
+Geometry를 만든 뒤 spring을 계산하므로 contact는 현재 화면에 실제로 나타날 surface를 사용한다. Spring swap 뒤에도 현재 frame의 최종 합성은 이미 만든 `deformedTextTarget`을 사용하고, 새 state는 다음 frame에 반영된다.
 
-### 11.3 스프링 계산
+## 11. Render target 지도
 
-```text
-목표 하강 = contact × 10px
-가속도 = (목표 하강 - 현재 하강) × 58 - 현재 속도 × 12
-
-목표 각도 = 좌우 접촉 차이 × 최대 9°
-각가속도 = (목표 각도 - 현재 각도) × 46 - 회전 속도 × 10
-```
-
-semi-implicit Euler 방식으로 속도를 먼저 바꾸고 위치·각도를 갱신한다. 계산 시간은 최대 `1/30초`로 제한하고, 이동과 회전에도 안전 범위를 둔다.
-
-실루엣이 사라지면 목표가 0으로 돌아가 원래 위치의 스프링이 글자를 복원한다. 속도를 기억하므로 즉시 제자리로 순간이동하지 않고 짧은 관성을 보인다.
-
-### 11.4 한 프레임 늦은 피드백
-
-현재 프레임의 실루엣으로 새 스프링 상태를 계산하고, 그 결과는 다음 프레임의 `deformedTextTarget`을 만든다.
-
-```text
-현재 surface field
-  → 현재 contact
-  → 새 spring state
-  → 다음 프레임의 글자 위치
-  → 다음 프레임의 활성 글자 픽셀과 surface field
-```
-
-보이는 배경 글자와 실루엣 입력이 같은 변형 마스크를 사용하므로 글자는 내려갔는데 액체만 원래 자리에 남는 불일치가 없다. 한 프레임 지연은 한 pass가 자기 출력물을 같은 순간 다시 읽는 순환도 피한다.
-
-## 12. 실제 한 프레임의 실행 순서
-
-아래는 `animate(now)`에서 실행되는 현재 순서를 줄인 의사 코드다.
-
-```ts
-function animate(now) {
-  // CPU
-  simulateLiquidParticles(delta);
-  followPointerWithEmitter(delta);
-  supplyLiquidMass(delta);
-  uploadParticleUniforms();
-
-  // 현재 글자
-  render(deformedGlyphMaterial, deformedTextTarget);
-  render(deformedGlyphMaterial, deformedColorCenterTarget);
-
-  // 글자 픽셀 × 물 Falloff
-  render(interactionFieldMaterial, interactionTarget);
-
-  // 최근접 활성 글자 픽셀
-  renderStrokeSpread(8);
-  render(nearestSeedMaterial, nearestTargetA);
-  renderJumpFlood([16, 8, 4, 2, 1, 1]);
-
-  // geometry
-  render(surfaceSourceMaterial, surfaceSourceTarget);
-  render(surfaceBlurMaterial, metaballRawTarget);
-  renderGaussianX(surfaceHorizontalTarget);
-  renderGaussianY(surfaceFieldTarget);
-
-  // 다음 프레임용 글자 스프링
-  render(glyphSpringMaterial, glyphSpringWrite);
-  swap(glyphSpringRead, glyphSpringWrite);
-
-  // 선택형 색 field
-  renderColorGaussianX(colorHorizontalTarget);
-  renderColorGaussianY(colorFieldTarget);
-
-  // 화면
-  render(debugStage < Final ? debugMaterial : finalMaterial, screen);
-  requestAnimationFrame(animate);
-}
-```
-
-## 13. 렌더 타깃 지도
-
-| 렌더 타깃 | 크기·형식 | 저장 값 | 주요 소비자 |
+| target | 크기·filter | 저장 값 | 다음 소비자 |
 | --- | --- | --- | --- |
-| `deformedTextTarget` | `1440×1800`, unsigned byte | 현재 이동·회전한 글자 알파 | Interaction, Contact, Final |
-| `deformedColorCenterTarget` | `480×600`, half float | 현재 글자별 선택형 색 중심 | Interaction |
-| `interactionTarget` | `480×600`, half float RGBA | 활성 픽셀, 글자, 색 중심, 원본 Falloff | geometry, color, debug |
-| `strokeSpreadTargetA/B` | `480×600`, half float | 글자 내부로 확산한 활성값 | nearest seed |
-| `nearestTargetA/B` | `480×600`, half float, nearest filter | 가장 가까운 활성 픽셀 좌표·강도 | Final 글자형 색 중심 |
-| `surfaceSourceTarget` | `480×600`, half float | 임계값을 통과한 활성 글자 픽셀 | 192 표본 Metaball |
-| `metaballRawTarget` | `480×600`, half float | 누적한 원래 높이 field | 가로 smoothing |
-| `surfaceHorizontalTarget` | `480×600`, half float | 가로로 매끄러운 field | 세로 smoothing |
-| `surfaceFieldTarget` | `480×600`, half float | 최종 geometry 높이 지도 | Contact, Contour, Final |
-| `glyphSpringTargetA/B` | `64×1`, half float | 글자별 이동·회전 상태 | 다음 프레임 변형 |
-| `colorHorizontalTarget` | `480×600`, half float | 가로로 흐린 색 에너지 | 세로 color blur |
-| `colorFieldTarget` | `480×600`, half float | 선택형 최종 색 에너지 | Final |
+| `deformedTextTarget` | `1440×1800`, linear | 현재 글자 alpha | interaction, contact, final |
+| `deformedColorCenterTarget` | `480×600`, linear | 현재 선택형 색 중심 | interaction |
+| `interactionTarget` | `480×600`, half-float linear | active, text, color, Falloff | geometry, color, debug |
+| `strokeSpreadTargetA/B` | `480×600`, half-float linear | 글자 내부 확산 활성값 | seed |
+| `nearestTargetA/B` | `480×600`, half-float nearest | 가까운 seed UV와 strength | glyph-shaped color |
+| `surfaceSourceTarget` | `480×600`, half-float linear | threshold를 통과한 active pixel | 192-probe field |
+| `metaballRawTarget` | `480×600`, half-float linear | smoothing 전 geometry field | horizontal smoothing |
+| `surfaceHorizontalTarget` | `480×600`, half-float linear | 가로 smoothing field | vertical smoothing |
+| `surfaceFieldTarget` | `480×600`, half-float linear | 최종 geometry field | contact, contour, final |
+| `glyphSpringTargetA/B` | `64×1`, half-float nearest | 글자별 offset·속도·회전 | 다음 frame glyph 변형 |
+| `colorHorizontalTarget` | `480×600`, half-float linear | 가로 color blur | vertical color blur |
+| `colorFieldTarget` | `480×600`, half-float linear | optional color energy | final |
 
-대부분의 중간 field가 `HalfFloatType`인 이유는 0~1 바깥의 연속적인 계산값과 작은 차이를 8비트보다 안정적으로 보존하기 위해서다. 글자 마스크는 원본 안티앨리어싱을 유지하면서 메모리를 줄일 수 있어 unsigned byte를 사용한다.
+Field target이 half float인 이유는 여러 gain을 합친 1보다 큰 값과 작은 연속 차이를 8-bit보다 안정적으로 보존하기 위해서다. 고해상도 글자 mask는 alpha 안티앨리어싱을 유지하면서 메모리를 줄이기 위해 unsigned byte를 사용한다.
 
-## 14. Process View
+## 12. Process View와 DOM UI
 
-별도 페이지를 만들지 않고 같은 canvas와 같은 내부 상태에서 마지막 출력 material만 바꾼다. 단계를 이동해도 물과 글자 스프링은 계속 계산된다.
+별도 debug 페이지는 없다. 하단 버튼은 같은 simulation과 render target을 유지한 채 마지막 출력 material만 바꾼다.
 
-| 단계 | 보여주는 값 | 읽는 방법 |
-| --- | --- | --- |
-| `Solver` | source, packet 외피, 중심, 속도 벡터, 강한 응집 연결, 옅은 원본 Falloff | CPU 상태를 uniform으로 변환 |
-| `Contact` | Falloff가 실제로 만난 글자 픽셀과 옅은 Falloff 등고선 | `interactionTarget`, `surfaceSourceTarget` |
-| `Contour` | 고해상도 현재 글자와 최종 threshold 외곽선 하나 | `deformedTextTarget`, `surfaceFieldTarget` |
-| `Final` | 실루엣, 내부 색, 배경 글자, dithering | `finalMaterial` |
+| 단계 | 보여주는 값 |
+| --- | --- |
+| `Solver` | packet 외피, 중심, 속도, 강한 응집 link, raw Falloff |
+| `Contact` | Falloff가 만난 실제 글자 픽셀과 옅은 Falloff 등고선 |
+| `Contour` | 현재 고해상도 글자와 최종 threshold 외곽선 하나 |
+| `Final` | geometry, palette, 배경 글자를 합친 작품 |
 
-기본은 `Final`이다. 숫자키 `1~4`, 좌우 방향키, `?stage=0…3`으로 바꿀 수 있다. 캔버스가 첫 손가락을 capture한 상태에서도 두 번째 손가락의 `pointerdown`으로 하단 버튼을 즉시 바꿀 수 있다.
+숫자키 `1…4`, 좌우 방향키, `?stage=0…3`으로 바꿀 수 있다. 첫 손가락이 canvas에 capture된 중에도 두 번째 손가락의 `pointerdown`으로 버튼을 즉시 바꿀 수 있다.
 
-## 15. 입력, 화면 배치, 모바일 처리
+`common/touch-cursor.ts`의 54px ring과 ripple은 `pointer-events: none`인 DOM overlay다. 화면 녹화에서 터치 위치만 보여주며 simulation 좌표에는 참여하지 않는다.
 
-### 15.1 좌표 변환
+## 13. 입력과 화면 품질
 
-작품은 항상 `480:600` 비율을 유지하면서 화면 안에 최대한 크게 배치된다. 브라우저 좌표에서 작품 여백을 빼고 0~1로 정규화하며, WebGL 방향에 맞게 Y축을 뒤집는다.
+- Canvas는 `480:600` 비율을 유지해 화면 안에 최대 크기로 배치한다.
+- WebGL drawing buffer의 device pixel ratio는 최대 2로 제한한다.
+- `pointerdown`에서 active pointer를 capture해 손가락이 시작 위치를 벗어나도 drag를 유지한다.
+- `touch-action`, selection, callout, context menu와 non-passive touch 기본 동작을 차단해 iOS 확대경과 Copy UI가 입력을 가져가지 않게 한다.
+- 얇은 글자는 3배 `deformedTextTarget`에서 직접 읽고, geometry field만 성능을 위해 480×600에서 계산한다.
+- 최종 실루엣과 Process 선은 shader derivative 기반 antialiasing을 사용한다.
 
-렌더러의 device pixel ratio는 최대 2로 제한한다. 고밀도 화면의 선명도는 확보하면서 지나친 fragment 계산 증가를 막는다.
+`prefers-reduced-motion`에서는 palette 시간과 shader의 빠른 시간 흔들림을 정지하지만 터치 물리는 유지한다.
 
-### 15.2 끊기지 않는 드래그
+## 14. 실행 모드와 조절값
 
-`pointerdown`에서 canvas가 포인터를 capture한다. 손가락이 처음 누른 지점이나 canvas 표시 영역 밖으로 이동해도 같은 포인터의 move/up 이벤트를 계속 받는다.
-
-### 15.3 iOS 기본 제스처 차단
-
-canvas와 전체 화면에는 다음을 적용한다.
-
-- `touch-action: none`
-- `user-select: none`
-- `-webkit-touch-callout: none`
-- `-webkit-user-drag: none`
-- `contextmenu`, `selectstart`, `dragstart`, `dblclick` 기본 동작 차단
-- non-passive `touchstart/move/end/cancel`에서 `preventDefault()`
-
-이렇게 해야 길게 눌렀을 때 Copy 메뉴나 확대경이 작품 입력을 가로채지 않는다.
-
-### 15.4 터치 인디케이터
-
-`common/touch-cursor.ts`는 약 54px의 반투명 ring, 중심점, 시작·종료 ripple을 DOM 오버레이로 표시한다. `pointer-events: none`이므로 포인터 capture, 물 source, Process View 버튼에 영향을 주지 않는다.
-
-## 16. 실행 모드
-
-| 모드 | 주소·조작 | 목적 |
+| 모드 | 사용법 | 목적 |
 | --- | --- | --- |
 | 일반 | `/pages/color-text/` | 실제 터치 작품 |
-| Process | `?stage=0…3` | 중간 단계로 시작 |
-| QA | `?qa=1&qaX=0.37&qaY=0.52` | 고정된 synthetic packet으로 재현 가능한 비교 |
-| Semantic QA | 위 주소에 `&qaLabels=1` | 배경·글자·효과의 3분류 실루엣 출력 |
-| OG preview | `?og` | SNS 썸네일용 1.28배 포스터와 제목, 버튼 숨김 |
+| Process | `?stage=0…3` | 특정 중간 단계에서 시작 |
+| QA | `?qa=1&qaX=0.37&qaY=0.52` | 고정 synthetic packet으로 재현 가능한 비교 |
+| Semantic QA | QA 주소에 `&qaLabels=1` | 배경·글자·효과 3분류 출력 |
+| OG | `?og` | 1200×630 SNS 이미지용 확대·제목, 버튼 숨김 |
 | GUI | 키보드 `g` | lil-gui 열기·닫기 |
 
-`prefers-reduced-motion`에서는 시간 기반 팔레트와 shader의 시간 흔들림을 정지한다. 물리적 터치 반응 자체는 유지한다.
+lil-gui는 현재 값을 여섯 폴더로 나눈다.
 
-## 17. 불연속과 화질을 막는 구조적 선택
-
-현재 구조에서 중요한 안정화 지점은 다음과 같다.
-
-1. **과거 픽셀 이미지를 누적하지 않는다.** 물의 기억은 packet 상태에 있으므로 중앙에 이전 Falloff가 잔상처럼 남지 않는다.
-2. **드래그 경로를 작은 점으로 재표본하지 않는다.** 큰 source가 연속적으로 이동해 조각 사슬을 줄인다.
-3. **source를 응집과 압축에서 제외한다.** 드래그가 떨어진 물을 끌고 가거나 위쪽 Falloff가 깜빡이는 일을 막는다.
-4. **packet 결합은 monotonic smooth union이다.** `max()`의 승자 교체 경계와 평균의 어두운 홈을 피한다.
-5. **압축할 때 표시 질량을 더하지 않는다.** 32개 도달 순간의 반경 급팽창을 막는다.
-6. **글자는 독립 아틀라스에서 3배 해상도로 변형한다.** 넓은 글자 잘림, 이웃 글자 복사, 회전 후 계단을 줄인다.
-7. **Contact는 보이는 surface × 실제 글자 픽셀이다.** 실루엣이 닿지 않은 글자가 움직이는 일을 막는다.
-8. **geometry와 색을 분리한다.** 색 조절이 외곽선을 넓히거나 Y의 오목한 모양을 바꾸지 않는다.
-9. **외곽선은 `fwidth()`로 안티앨리어싱한다.** 화면 해상도에 맞는 연속적인 경계를 만든다.
-
-## 18. 주요 기본값
-
-### 물 source와 Solver
-
-| 값 | 기본값 | 역할 |
-| --- | ---: | --- |
-| packet 최대 수 | 32 | CPU/GPU가 다루는 물 덩어리 상한 |
-| `dripEmissionInterval` | 0.13s | 질량 1 공급 및 완성 source 교대 시간 |
-| `dripAttack` | 0.36s | 첫 터치 energy의 점진적 등장 |
-| drag 활성 거리 | 8px | 이후 새 위치의 시작 지연 제거 |
-| `dripFollowEase` | 7.5s⁻¹ | source의 포인터 추종 속도 |
-| `dripGravity` | 78px/s² | 아래 방향 가속도 |
-| `dripInitialSpeed` | 18px/s | 분리 순간 하강 속도 |
-| `dripViscosity` | 0.65 | 속도 감쇠 |
-| `dripCohesion` | 0.9 | 벌어진 packet을 당기는 힘 |
-| `dripCohesionRange` | 92px | 응집력 범위 |
-
-### Falloff와 geometry
-
-| 값 | 기본값 | 역할 |
-| --- | ---: | --- |
-| `radiusX` | 107px | source의 기본 가로 반경 |
-| `radiusY` | 80px | 위쪽 세로 반경 |
-| `radiusYBelow` | 160px | 아래쪽 세로 반경 |
-| `dripStreamWidth` | 0.44 | 오래 흐른 packet의 가로 폭 비율 |
-| `metaballInputThreshold` | 0.02 | field 입력 최소 활성값 |
-| `metaballBlurRadius` | 30px | 192개 주변 조사 반경 |
-| `metaballFalloffPower` | 3.2 | 주변 거리 가중치 지수 |
-| `metaballSmoothing` | 1.8 | 가로·세로 Gaussian sigma |
-| `surfaceThreshold` | 0.07 | 최종 실루엣 등고선 높이 |
-| `surfaceSoftness` | 0.012 | 경계의 최소 부드러움 |
-
-### 글자와 색
-
-| 값 | 기본값 | 역할 |
-| --- | ---: | --- |
-| `textPushDistance` | 10px | 접촉 중 최대 하강 목표 |
-| `textMaxRotation` | 9° | 비대칭 접촉의 최대 회전 목표 |
-| `textSpringStiffness / Damping` | 58 / 12 | 세로 스프링 |
-| `textRotationStiffness / Damping` | 46 / 10 | 회전 스프링 |
-| `colorGlyphShapeRadius` | 3.2px | 글자형 밝은 중심 두께 |
-| `colorGlyphShapeEdge` | 1px | 글자형 중심의 짧은 경계 |
-| `colorEllipseInfluence` | 0 | 선택형 타원 field 혼합량 |
-| `colorSaturation` | 0.72 | 전체 채도 |
-| `colorPastelMix` | 0.12 | 따뜻한 크림 혼합량 |
-| `colorCycle` | 8s | 팔레트 한 주기 |
-
-모든 주요 값은 `lil-gui`의 `터치 드립`, `텍스트 밀림`, `광원 / Falloff`, `액체 실루엣`, `색상`, `고급 설정` 폴더에서 실시간으로 조절할 수 있다.
-
-## 19. 검증 순서
-
-구조를 바꿀 때는 다음 순서로 확인한다.
-
-1. **Y 교차부:** 중심이 볼록한 원이 아니라 두 팔 사이 흰 공간이 오목하게 내려오는지 본다.
-2. **전체 실루엣:** 배경 0, 글자 1, 효과 2의 3분류 이미지로 면적·폭·연속성을 비교한다.
-3. **첫 터치:** 질량과 energy가 0에서 시작해 점진적으로 나타나는지 본다.
-4. **드래그:** 현재 source만 이동하고 이미 분리된 packet은 원래 위치에서 계속 낙하하는지 본다.
-5. **릴리즈:** 중앙에서 닦여 없어지지 않고 모든 packet이 아래로 빠져나가는지 본다.
-6. **글자 Contact:** 실루엣이 실제 글자 픽셀에 닿은 경우에만 이동·회전하는지 본다.
-7. **고정 글자 실험:** 스프링 이동을 0으로 만들어 남는 떨림이 Solver/field 쪽인지 분리한다.
-8. **화질:** 넓은 `W`, 회전한 글자, Contact 경계, Contour 선을 모바일 DPR에서 본다.
-9. **브라우저:** iOS 길게 누르기 UI, 포인터 capture, 두 번째 손가락 단계 전환을 확인한다.
-10. **코드:** `pnpm typecheck`와 `pnpm build`를 통과한다.
-
-기존 레퍼런스 문구에 대해 기록한 실루엣 수치와 분석 파일은 `pages/color-text/qa/`에 남아 있다. 현재 문장과 글자 배치가 달라졌으므로 그 수치는 **Metaball 방법의 기준선**으로 사용하며 현재 문장의 픽셀 수 주장으로 사용하지 않는다.
-
-## 20. 이 구현이 아닌 것
-
-이 작품은 Navier–Stokes 방정식이나 SPH를 이용한 완전한 유체 시뮬레이션이 아니다.
-
-계산하지 않는 것:
-
-- 정확한 압력과 부피 보존
-- 실제 물의 충돌과 튐
-- 점성에 따른 표면 내부 속도장
-- 수천 개 유체 입자의 밀도 해석
-
-대신 소수의 packet으로 **흐르는 영향 범위**를 계산하고, 실제 화면 외곽은 글자 픽셀 기반 Metaball field가 만든다. 따라서 정확한 표현은 “완전한 유체”보다 **particle-driven Falloff + pixel-field Metaball typography**다.
-
-## 21. 용어 정리
-
-| 용어 | 이 프로젝트에서의 뜻 |
+| 폴더 | 주요 조절 |
 | --- | --- |
-| Pixel | 이미지의 한 격자 칸이자 글자·field 계산의 실제 단위 |
-| Text mask | 각 픽셀이 글자인 정도를 0~1로 저장한 지도 |
-| Active pixel | 현재 글자 픽셀과 물 Falloff가 겹쳐 0보다 큰 값을 가진 픽셀 |
-| Output pixel | 자기 위치의 field와 최종 색을 계산하는 화면 픽셀 |
-| Falloff | 중심에서 멀어질수록 값이 약해지는 영향 함수 |
-| Source | 손가락 위치를 완화해 따라가며 물 질량을 공급하는 현재 packet |
-| Packet | 위치·속도·질량·나이로 표현한 하나의 큰 물 덩어리 |
-| Field | 화면 모든 위치에 숫자 하나씩 저장한 이미지 지도 |
-| Metaball field | 주변 활성 픽셀의 영향이 누적되어 연결되는 높이 지도 |
-| Threshold | 높이 지도에서 실루엣을 꺼내는 기준값 |
-| Isocontour | 같은 field 높이를 이은 외곽선 |
-| Render target | GPU 중간 계산 결과를 저장하는 texture |
-| Ping-pong | 두 target이 이전 상태 읽기와 새 상태 쓰기를 교대하는 구조 |
-| Jump Flood | 여러 거리의 이웃을 비교해 가까운 seed 좌표를 퍼뜨리는 알고리즘 |
-| Spring state | 글자 하나의 이동·속도·회전·회전 속도 네 값 |
+| 터치 드립 | gravity, stretch, turbulence, cohesion, source 교대 |
+| 텍스트 밀림 | 하강·회전 거리, stiffness, damping, contact padding |
+| 광원 / Falloff | 위·아래 반경, 가로 taper, edge 시작 |
+| 액체 실루엣 | 입력 threshold, probe 반경·gain, smoothing, contour 높이 |
+| 색상 | glyph-shaped 중심, optional ellipse, blur, palette |
+| 고급 설정 | seed threshold와 비활성 geometry core 실험값 |
 
-## 22. 참고 자료
+## 15. 현재 구현의 성격과 한계
+
+### 공통 그래픽스 기법
+
+- texture atlas와 inverse texture lookup
+- multi-pass render target pipeline
+- radial image-space field와 threshold contour
+- Jump Flood 기반 nearest-seed 근사
+- damped spring state의 ping-pong feedback
+
+### Color Text가 선택한 방법
+
+- 최대 32개의 큰 CPU packet으로 흐름 위치 계산
+- 활성 글자 픽셀을 192개 황금각 표본으로 누적
+- geometry와 color field를 독립적으로 계산
+- 현재 글자 위치를 geometry 입력과 배경 출력에 함께 사용
+
+### 미감을 위한 heuristic
+
+- 위 80px, 아래 160px의 비대칭 Falloff
+- age에 따른 stream width와 작은 굴곡
+- 가장 강한 두 packet만 결합하는 monotonic blend
+- capacity 압축에서 mass를 더하지 않음
+- 16부터 시작하는 bounded JFA
+- contact 최대값과 좌우 최대값으로 목표 회전 계산
+
+이 작품은 Navier–Stokes, SPH 또는 정확한 부피 보존을 계산하지 않는다. Particle은 유체 입자라기보다 움직이는 Falloff packet이고, 화면의 액체 외곽은 픽셀 field가 만든다. 따라서 정확한 표현은 **particle-driven Falloff + pixel-field liquid typography**다.
+
+비용이 가장 큰 부분은 `480 × 600 × 192`의 geometry 표본으로, 한 frame에 약 5천5백만 번의 주변 texture 확인이 필요하다. JFA와 Gaussian pass도 field pixel 수에 비례한다.
+
+## 16. 검증 순서
+
+구조나 파라미터를 바꿀 때는 다음 순서로 확인한다.
+
+1. `Y` 교차부에서 흰 공간이 줄기를 따라 오목하게 내려오는지 본다.
+2. Semantic QA에서 배경 0, 글자 1, 효과 2의 실루엣 면적과 폭을 비교한다.
+3. 첫 Hold에서 mass와 energy가 0부터 시작하는지 본다.
+4. Drag에서 source만 이동하고 분리된 packet은 원래 위치 아래로 흐르는지 본다.
+5. Release에서 중앙 fade 없이 모든 packet이 아래로 빠지는지 본다.
+6. 실제 visible surface와 글자 pixel이 겹친 glyph만 이동·회전하는지 본다.
+7. `textPushDistance = 0`, `textMaxRotation = 0`으로 고정해 남는 떨림이 spring 이전 field인지 분리한다.
+8. `W` 잘림, 이웃 glyph 중복, 회전 후 글자 안티앨리어싱을 확인한다.
+9. iOS 길게 누르기 UI, pointer capture, 두 손가락 Process 변경을 확인한다.
+10. `pnpm typecheck`와 `pnpm build`를 통과한다.
+
+기존 문구로 측정한 수치는 `pages/color-text/qa/`에 남아 있다. 현재 문장은 다르므로 그 수치를 현재 화면의 pixel 수 주장으로 사용하지 않고 Metaball 방법의 regression 기준으로만 사용한다.
+
+## 17. 핵심 데이터 흐름
+
+```text
+pointer event
+  -> pointerTarget -> dripEmitter -> liquidParticles
+  -> deformed glyph mask × packet Falloff
+  -> interactionTarget RGBA
+  -> geometry field + nearest glyph color field
+  -> visible surface contact -> glyph spring state
+  -> 다음 frame의 deformed glyph mask
+  -> Final 또는 Process View
+```
+
+핵심은 물 packet, 글자 pixel, 최종 surface를 같은 것으로 취급하지 않는 것이다. Packet은 **움직임을 기억**하고, 글자 pixel은 **Metaball 입력 위치를 제한**하며, surface field는 **화면 외곽과 contact를 결정**한다.
+
+## 18. 참고 자료
 
 - 작가의 Instagram 설명: Shody’s Metaball과 Falloff로 typography stroke를 드러낸다는 설명
 - [Scenery — Metaball overview](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ)

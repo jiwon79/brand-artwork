@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">합쳐진 문장 이미지 대신 독립 글자 아틀라스에서 역변형해 읽는 이유</title>
+  <desc id="desc">왼쪽은 합쳐진 WAY 이미지에서 W의 넓은 범위를 읽을 때 A까지 섞이는 문제, 가운데는 W A Y를 서로 다른 아틀라스 칸에 저장한 구조, 오른쪽은 회전하고 내려간 출력 픽셀 P를 역변형해 W 칸의 원래 위치 Q만 읽는 과정을 보여준다.</desc>
+  <defs>
+    <style>
+      .title { font: 700 27px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; }
+      .head { font: 700 18px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; text-anchor: middle; }
+      .body { font: 400 14px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #5f6f84; text-anchor: middle; }
+      .mono { font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #315f9f; text-anchor: middle; }
+      .panel { fill: #fff; stroke: #d6deea; stroke-width: 1.7; }
+      .cell { fill: #f7f9fc; stroke: #b8c5d5; stroke-width: 1.5; }
+      .glyph { font: 300 82px 'Helvetica Neue', Arial, sans-serif; fill: #172033; text-anchor: middle; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#66758a"/>
+    </marker>
+    <marker id="blueArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#4c78c2"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="620" fill="#fbfbfa"/>
+  <text class="title" x="44" y="50">글자를 따로 보관하면 넓은 W는 살리고 옆의 A는 섞지 않을 수 있다</text>
+
+  <g transform="translate(38 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">1. 합쳐진 문장을 넓게 읽는 문제</text>
+    <text class="body" x="174" y="62">W의 회전 범위를 넓히면 A 픽셀도 들어온다</text>
+    <g transform="translate(44 116)">
+      <rect class="cell" width="260" height="154" rx="12"/>
+      <text class="glyph" x="70" y="108">W</text>
+      <text class="glyph" x="137" y="108">A</text>
+      <text class="glyph" x="204" y="108">Y</text>
+      <rect x="18" y="33" width="128" height="93" rx="8" fill="#dce9fb" fill-opacity=".35" stroke="#4c78c2" stroke-width="2.2" stroke-dasharray="6 5"/>
+      <text class="mono" x="80" y="148">W를 읽는 범위</text>
+      <path d="M141 48L159 31" stroke="#d45992" stroke-width="2.5"/>
+      <text class="mono" x="202" y="25" fill="#d45992">A 일부가 포함됨</text>
+    </g>
+    <text class="body" x="174" y="335">범위를 좁히면 W가 잘리고,</text>
+    <text class="body" x="174" y="359">넓히면 이웃 글자가 복사된다</text>
+    <text class="mono" x="174" y="414">combined text texture</text>
+  </g>
+
+  <path d="M398 323H425" stroke="#66758a" stroke-width="2.3" marker-end="url(#arrow)"/>
+
+  <g transform="translate(426 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">2. 독립 글자 아틀라스</text>
+    <text class="body" x="174" y="62">한 texture 안에서 글자마다 자기 칸만 가진다</text>
+    <g transform="translate(42 104)">
+      <g>
+        <rect class="cell" width="88" height="88"/><rect class="cell" x="88" width="88" height="88"/><rect class="cell" x="176" width="88" height="88"/>
+        <rect class="cell" y="88" width="88" height="88"/><rect class="cell" x="88" y="88" width="88" height="88"/><rect class="cell" x="176" y="88" width="88" height="88"/>
+        <rect class="cell" y="176" width="88" height="88"/><rect class="cell" x="88" y="176" width="88" height="88"/><rect class="cell" x="176" y="176" width="88" height="88"/>
+      </g>
+      <text class="glyph" x="44" y="158">W</text>
+      <text class="glyph" x="132" y="158">A</text>
+      <text class="glyph" x="220" y="158">Y</text>
+      <text class="mono" x="44" y="250">slot i</text>
+      <text class="mono" x="132" y="250">slot i+1</text>
+      <text class="mono" x="220" y="250">slot i+2</text>
+    </g>
+    <text class="body" x="174" y="393">실제 구현: 8×8칸 · 각 칸 64×64px</text>
+    <text class="body" x="174" y="417">각 칸의 원본은 3배 해상도로 저장</text>
+  </g>
+
+  <path d="M786 323H813" stroke="#66758a" stroke-width="2.3" marker-end="url(#arrow)"/>
+
+  <g transform="translate(814 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">3. 출력 위치에서 역으로 읽기</text>
+    <text class="body" x="174" y="62">현재 픽셀 P를 원래 W 칸의 Q로 되돌린다</text>
+    <g transform="translate(38 98)">
+      <rect x="14" y="18" width="122" height="142" rx="12" fill="#edf4ff" stroke="#6e95ca" stroke-width="1.7"/>
+      <g transform="translate(76 90) rotate(10)">
+        <text class="glyph" x="0" y="27">W</text>
+        <circle cx="25" cy="-20" r="6" fill="#d45992"/>
+      </g>
+      <text class="mono" x="75" y="182">현재 화면 P</text>
+      <path d="M145 90H190" stroke="#4c78c2" stroke-width="2.2" marker-end="url(#blueArrow)"/>
+      <text class="body" x="168" y="72">이동·회전을</text>
+      <text class="body" x="168" y="88">반대로 적용</text>
+      <rect class="cell" x="198" y="18" width="112" height="142" rx="12"/>
+      <text class="glyph" x="254" y="111">W</text>
+      <circle cx="275" cy="70" r="6" fill="#d45992"/>
+      <text class="mono" x="254" y="182">W 칸의 Q</text>
+    </g>
+    <text class="mono" x="174" y="340">Q = rotate(P - movedCenter, -angle)</text>
+    <text class="body" x="174" y="381">후보는 가까운 자리와 양옆까지 확인하지만</text>
+    <text class="body" x="174" y="405">픽셀은 후보 자신의 아틀라스 칸에서만 읽는다</text>
+  </g>
+</svg>

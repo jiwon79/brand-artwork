@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Jump Flood로 각 픽셀에 가까운 seed 좌표를 전달하는 과정</title>
+  <desc id="desc">왼쪽은 seed 좌표 C_i를 저장한 입력, 가운데는 출력 픽셀 p가 jump J만큼 떨어진 3x3 이웃 후보를 비교하는 한 pass, 오른쪽은 jump를 줄인 뒤 가장 가까운 seed C(p)와 거리 d를 얻는 결과다.</desc>
+  <defs>
+    <style>
+      .title { font: 700 27px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; }
+      .head { font: 700 18px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; text-anchor: middle; }
+      .body { font: 400 14px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #5f6f84; text-anchor: middle; }
+      .mono { font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #315f9f; text-anchor: middle; }
+      .panel { fill: #fff; stroke: #d6deea; stroke-width: 1.7; }
+      .grid { stroke: #dce3ec; stroke-width: 1; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#66758a"/>
+    </marker>
+    <marker id="blueArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#4c78c2"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="620" fill="#fbfbfa"/>
+  <text class="title" x="44" y="50">seed 좌표를 큰 간격에서 작은 간격으로 전달해 가까운 점을 찾는다</text>
+
+  <g transform="translate(38 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">1. seed 좌표 저장</text>
+    <text class="body" x="174" y="62">유효 픽셀만 자기 좌표 Cᵢ를 가진다</text>
+    <g transform="translate(62 103)">
+      <rect width="224" height="252" fill="#f7f9fc" stroke="#c8d2df"/>
+      <g class="grid">
+        <path d="M28 0V252M56 0V252M84 0V252M112 0V252M140 0V252M168 0V252M196 0V252"/>
+        <path d="M0 28H224M0 56H224M0 84H224M0 112H224M0 140H224M0 168H224M0 196H224M0 224H224"/>
+      </g>
+      <circle cx="42" cy="42" r="9" fill="#d45992"/><text class="mono" x="42" y="68">C₀</text>
+      <circle cx="182" cy="70" r="9" fill="#4c78c2"/><text class="mono" x="182" y="96">C₁</text>
+      <circle cx="98" cy="210" r="9" fill="#3d9a80"/><text class="mono" x="98" y="236">C₂</text>
+    </g>
+    <text class="mono" x="174" y="407">seed = (uv.x, uv.y, strength, 1)</text>
+    <text class="body" x="174" y="436">나머지 픽셀은 아직 유효 좌표가 없다</text>
+  </g>
+
+  <path d="M398 323H425" stroke="#66758a" stroke-width="2.3" marker-end="url(#arrow)"/>
+
+  <g transform="translate(426 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">2. jump J의 후보 비교</text>
+    <text class="body" x="174" y="62">p 주변 3×3 위치를 J 간격으로 읽는다</text>
+    <g transform="translate(58 97)">
+      <rect width="232" height="266" fill="#f7f9fc" stroke="#c8d2df"/>
+      <g fill="#dce8f8" stroke="#7b9bc8" stroke-width="1.2">
+        <circle cx="36" cy="40" r="8"/><circle cx="116" cy="40" r="8"/><circle cx="196" cy="40" r="8"/>
+        <circle cx="36" cy="132" r="8"/><circle cx="116" cy="132" r="8"/><circle cx="196" cy="132" r="8"/>
+        <circle cx="36" cy="224" r="8"/><circle cx="116" cy="224" r="8"/><circle cx="196" cy="224" r="8"/>
+      </g>
+      <circle cx="116" cy="132" r="9" fill="#172033"/>
+      <text class="mono" x="116" y="157" fill="#172033">p</text>
+      <line x1="116" y1="132" x2="188" y2="50" stroke="#4c78c2" stroke-width="1.6" marker-end="url(#blueArrow)"/>
+      <line x1="116" y1="132" x2="45" y2="50" stroke="#9aa7b8" stroke-width="1.2"/>
+      <line x1="116" y1="132" x2="188" y2="216" stroke="#9aa7b8" stroke-width="1.2"/>
+      <text class="mono" x="164" y="82">J</text>
+      <circle cx="196" cy="40" r="5" fill="#4c78c2"/>
+    </g>
+    <text class="mono" x="174" y="407">best = argmin |p - candidate.xy|²</text>
+    <text class="body" x="174" y="436">현재 후보보다 가까운 seed 좌표를 복사한다</text>
+  </g>
+
+  <path d="M786 323H813" stroke="#66758a" stroke-width="2.3" marker-end="url(#arrow)"/>
+
+  <g transform="translate(814 86)">
+    <rect class="panel" width="348" height="474" rx="20"/>
+    <text class="head" x="174" y="38">3. 작은 jump까지 반복</text>
+    <text class="body" x="174" y="62">마지막에는 p가 가장 가까운 C(p)를 가진다</text>
+    <g transform="translate(54 98)">
+      <rect width="240" height="264" rx="14" fill="#f7f9fc"/>
+      <circle cx="54" cy="61" r="11" fill="#d45992"/>
+      <circle cx="192" cy="68" r="11" fill="#4c78c2"/>
+      <circle cx="91" cy="215" r="11" fill="#3d9a80"/>
+      <circle cx="139" cy="145" r="9" fill="#172033"/>
+      <line x1="139" y1="145" x2="186" y2="76" stroke="#4c78c2" stroke-width="2" marker-end="url(#blueArrow)"/>
+      <line x1="139" y1="145" x2="61" y2="67" stroke="#9aa7b8" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <line x1="139" y1="145" x2="97" y2="207" stroke="#9aa7b8" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <text class="mono" x="139" y="169" fill="#172033">p</text>
+      <text class="mono" x="180" y="124">d</text>
+      <text class="mono" x="193" y="48">C(p)</text>
+      <text class="body" x="120" y="250">J: 큰 값 → … → 2 → 1</text>
+    </g>
+    <text class="mono" x="174" y="407">d(p) = |p - C(p)|</text>
+    <text class="body" x="174" y="436">좌표를 전달한 뒤 실제 거리는 마지막에 계산한다</text>
+  </g>
+</svg>
