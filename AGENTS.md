@@ -22,6 +22,9 @@ Interactive web implementations of brand artworks.
 - 작품 아키텍처 문서는 `architecture.md`로 만들고, 현재 코드의 입력 → 중간 상태 → 렌더 패스 → 출력 → 검증 순서를 설명한다.
 - 해당 문서에서만 사용하는 SVG는 문서 옆 `figures/`에 둘 수 있다. 여러 문서에서 재사용하는 도식은 `docs/assets/`에 둔다.
 - 문서의 범위가 지정되면 범위 밖의 파이프라인은 설명하지 않는다. 예를 들어 “색상 제외” 요청에서는 색상 계산을 문서 본문에서 제외한다.
+- 그래픽스·수학·렌더링 문서를 작성하거나 수정할 때는 `docs/explanation-guide.md`를 따른다.
+- 핵심 공간 관계를 ASCII 그림에 의존하지 말고 `docs/assets/`의 검증된 SVG로 설명한다.
+- 작품의 현재 구현 흐름은 `docs/artworks/<name>/`, 재사용 가능한 수학 원리는 `docs/concepts/`에 분리한다.
 
 ## Workflow
 

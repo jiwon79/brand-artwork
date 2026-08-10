@@ -9,8 +9,13 @@ docs/
 ├── artworks/   실제 작품의 현재 구조와 구현 이력
 ├── concepts/   여러 작품에 재사용할 수 있는 그래픽 원리
 ├── research/   외부 구현과 레퍼런스 조사
-└── assets/     문서에서 사용하는 이미지와 도식
+├── assets/     문서에서 사용하는 이미지와 도식
+└── explanation-guide.md  그래픽스 설명과 SVG 작성 기준
 ```
+
+## Writing Guide
+
+- [`explanation-guide.md`](./explanation-guide.md) - 직관, SVG, 수식, 코드가 끊기지 않도록 그래픽스 개념을 설명하는 공통 작성 기준
 
 ## Artworks
 
@@ -44,3 +49,4 @@ docs/
 - 외부 프로젝트, 논문, 시각 레퍼런스를 조사한 기록은 `research/`에 둔다.
 - 한 문서에만 쓰이는 SVG와 이미지는 문서 옆 `figures/`에 둘 수 있다. 여러 문서에서 재사용하는 도식은 `assets/`에 둔다.
 - 더 이상 현재 구조를 설명하지 않는 실험 기록과 개인 메모는 유지하지 않는다.
+- 새 artwork 및 concept 설명은 [`explanation-guide.md`](./explanation-guide.md)의 순서와 검증 기준을 따른다.
