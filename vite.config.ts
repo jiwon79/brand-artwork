@@ -32,6 +32,20 @@ const staticCopyTargets = pageEntries
 
 export default defineConfig({
   plugins: [
+    {
+      name: 'inject-site-favicon',
+      transformIndexHtml() {
+        return [{
+          tag: 'link',
+          attrs: {
+            rel: 'icon',
+            type: 'image/svg+xml',
+            href: '/favicon.svg',
+          },
+          injectTo: 'head',
+        }];
+      },
+    },
     viteStaticCopy({ targets: staticCopyTargets }),
   ],
   build: {
