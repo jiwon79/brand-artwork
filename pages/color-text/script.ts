@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import {
   ART_HEIGHT,
   ART_WIDTH,
-  CHARACTER_ADVANCE,
   createColorTextParameters,
   FIELD_HEIGHT,
   FIELD_WIDTH,
@@ -109,8 +108,22 @@ const {
   glyphTextAtlasCanvas,
   glyphSpringCells,
   lineLayouts,
+  glyphHomeData,
   glyphMetadataData,
 } = textAtlas;
+
+const glyphHomeTexture = new THREE.DataTexture(
+  glyphHomeData,
+  GLYPH_SLOT_COUNT,
+  1,
+  THREE.RGBAFormat,
+  THREE.FloatType,
+);
+glyphHomeTexture.colorSpace = THREE.NoColorSpace;
+glyphHomeTexture.minFilter = THREE.NearestFilter;
+glyphHomeTexture.magFilter = THREE.NearestFilter;
+glyphHomeTexture.generateMipmaps = false;
+glyphHomeTexture.needsUpdate = true;
 
 const glyphMetadataTexture = new THREE.DataTexture(
   glyphMetadataData,
@@ -200,10 +213,10 @@ const deformedGlyphMaterial = new THREE.ShaderMaterial({
   uniforms: {
     uSource: { value: glyphTextAtlasTexture },
     uGlyphSprings: { value: glyphSpringTargetA.texture },
+    uGlyphHomes: { value: glyphHomeTexture },
     uGlyphMetadata: { value: glyphMetadataTexture },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uLineLayouts: { value: lineLayouts },
-    uCharacterAdvance: { value: CHARACTER_ADVANCE },
     uLineHalfHeight: { value: LINE_HEIGHT * 0.5 },
     uMaxGlyphHalfWidth: { value: MAX_GLYPH_HALF_WIDTH },
   },

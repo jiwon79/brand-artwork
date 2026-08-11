@@ -30,9 +30,10 @@
    offset and angle into a 1440 × 1800 unsigned-byte target. Keeping this target at
    the original 3× bake resolution prevents the visible underprint from being
    rasterized through the 480 × 600 geometry field. Measure each glyph's true
-   half-width and inspect the nearest output cell plus both neighbours during
-   inverse deformation, so wide glyphs such as W cannot be cropped at the fixed
-   tracking-cell boundary. Source every candidate from its own 64 × 64 cell in a
+   half-width, calculate each home position from Canvas font advances and pair
+   kerning, and inspect the estimated output slot plus two neighbours on each side
+   during inverse deformation. Wide glyphs such as W therefore cannot be cropped
+   by the lookup estimate. Source every candidate from its own 64 × 64 cell in a
    3×-resolution 8 × 8 glyph atlas instead of the combined text mask. Neighbouring
    glyph pixels therefore cannot be copied into the moving candidate or overlap
    the existing letter. Multiply the joined flowing
@@ -244,7 +245,7 @@ The reproducible measurements and label-map generator are stored in
 ## Reference-space defaults
 
 - Font: Helvetica Neue Light fallback stack, 43 px
-- Character advance: 31.8 px
+- Horizontal layout: Canvas natural advances and pair kerning, plus 4 px letter spacing
 - Line height: 42.2 px
 - Light radius: 107 × 80 px above and 107 × 160 px below, with 0.55 horizontal
   taper toward the vertical edges

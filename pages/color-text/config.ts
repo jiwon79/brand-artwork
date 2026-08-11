@@ -46,7 +46,7 @@ export const GLYPH_SLOT_COUNT = TEXT_LINES.reduce(
 );
 export const FIRST_LINE_Y = 132;
 export const LINE_HEIGHT = 42.2;
-export const CHARACTER_ADVANCE = 31.8;
+export const TEXT_LETTER_SPACING = 4;
 export const TEXT_FONT = '300 43px "Helvetica Neue", "Arial", sans-serif';
 export const MAX_GLYPH_HALF_WIDTH = 32;
 export const GLYPH_ATLAS_COLUMNS = 8;

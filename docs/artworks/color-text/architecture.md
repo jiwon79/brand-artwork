@@ -4,7 +4,7 @@
 
 - 기준 구현: [`pages/color-text/script.ts`](../../../pages/color-text/script.ts)
 - 작품 좌표: `480 × 600 artwork pixel`
-- 문서 갱신 기준: `2026-08-10`
+- 문서 갱신 기준: `2026-08-11`
 - 상세 실험값과 과거 비교: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)
 
 재사용 가능한 수학 원리는 별도 concept 문서로 분리했다.
@@ -47,7 +47,7 @@ pages/color-text/
   liquid-solver.ts
     source 공급, packet 중력·점성·응집력과 화면 밖 제거
   text-atlas.ts
-    문장 mask, 독립 글자 atlas, 글자별 측정값 생성
+    Canvas 자간 배치, 독립 글자 atlas, 글자별 픽셀 측정값 생성
   shaders.ts
     각 GPU pass가 픽셀 하나를 계산하는 GLSL
   parameter-gui.ts
@@ -71,7 +71,8 @@ pages/color-text/
 | CSS client coordinate | pixel, 화면 왼쪽 위가 원점 | `pointer` event의 `clientX`, `clientY` |
 | artwork pixel | `480 × 600`, 문서에서는 길이 단위 | 반경, 속도, 글자 배치, sample 거리 |
 | artwork UV | `[0,1] × [0,1]`, 왼쪽 아래가 원점 | `pointerTarget`, particle 위치, field texture |
-| text bake coordinate | `1440 × 1800`, 왼쪽 위가 원점 | Canvas2D 글자 마스크와 glyph atlas |
+| glyph atlas bake coordinate | `1536 × 1536`, 왼쪽 위가 원점 | Canvas2D 독립 글자 atlas |
+| deformed text coordinate | `1440 × 1800`, 왼쪽 아래가 UV 원점 | GPU가 재구성한 현재 글자 mask |
 | device pixel | 실제 drawing buffer pixel | 최종 화면의 `fwidth()` 안티앨리어싱 |
 
 `setPointerFromClient()`는 화면 안에서 작품이 차지하는 사각형을 먼저 구한다. CSS 좌표에서 여백을 빼고 0~1로 나눈 뒤 Y를 뒤집어 artwork UV를 만든다.
@@ -80,7 +81,7 @@ pages/color-text/
 
 | 계산 | 위치 | 빈도 |
 | --- | --- | --- |
-| 문장과 glyph atlas 굽기 | CPU Canvas2D | 초기화할 때 한 번 |
+| 자연 자간과 glyph atlas 굽기 | CPU Canvas2D | 초기화할 때 한 번 |
 | pointer와 particle 물리 | CPU TypeScript | 매 frame, 필요하면 `1/60s` 이하 substep |
 | 글자 변형과 field | GPU fragment shader | 매 frame, 각 target pixel |
 | 최종 합성 | GPU fragment shader | 매 frame, 각 device fragment |
@@ -92,7 +93,7 @@ pages/color-text/
 
 문장 전체를 한 장의 이미지로 저장한 뒤 글자 하나만 움직이려고 하면 두 문제가 생긴다.
 
-1. `W`처럼 실제 폭이 tracking 간격 31.8px보다 넓은 글자는 회전할 때 자기 칸 밖이 잘릴 수 있다.
+1. `W`처럼 실제 폭이 넓은 글자는 회전할 때 자기가 처음 있던 배치 범위 밖이 잘릴 수 있다.
 2. 잘림을 막으려고 원본 문장을 넓게 읽으면 옆의 `A`나 `Y` 픽셀까지 함께 복사될 수 있다.
 
 ![합쳐진 문장 이미지의 문제와 독립 글자 아틀라스의 역변형](./figures/05-glyph-atlas.svg)
@@ -114,7 +115,30 @@ pages/color-text/
 | R | 실제 glyph 반쪽 폭을 `MAX_GLYPH_HALF_WIDTH`로 정규화한 값 |
 | G | 글자가 있으면 1, 공백이면 0 |
 
-### 4.3 출력 픽셀에서 원본 칸을 역으로 찾는다
+### 4.3 일반 텍스트처럼 자간을 계산한다
+
+Helvetica Neue는 `I`가 좁고 `W`가 넓은 비례폭 글꼴이다. 모든 글자의 중심을 같은 거리로 놓으면 중심 좌표는 규칙적이지만, 실제로 칠해진 글자 픽셀 사이의 빈 공간은 불규칙해진다. 공백도 글자 한 칸 전체를 차지해 일반 텍스트보다 크게 벌어진다.
+
+초기화할 때 `measureLineLayout()`은 Canvas2D `measureText()`로 글자마다 다음 값을 계산한다.
+
+| 기호 | 단위 | 의미 |
+| --- | --- | --- |
+| `w_i` | artwork pixel | `i`번 글자의 폰트 advance 폭. 공백도 실제 space 폭을 가진다 |
+| `k_i` | artwork pixel | 이전 글자와 `i`번 글자 사이의 폰트 kerning 보정 |
+| `s` | artwork pixel | 작품이 추가하는 일정한 자간, 현재 `TEXT_LETTER_SPACING = 4` |
+| `x_i` | artwork pixel | `i`번 글자의 최종 중심 X |
+
+두 글자를 붙여 측정한 폭과 따로 측정한 폭의 차이가 kerning이다.
+
+```text
+k_i = measureText(previous + current) - w_(i-1) - w_i
+```
+
+`AV`처럼 폰트가 두 글자를 서로 당기도록 설계했다면 `k_i`가 음수가 되어 간격이 줄어든다. 그다음 이전 글자의 실제 폭 `w_(i-1)`, kerning `k_i`, 작품 자간 `s`를 차례로 더해 현재 글자의 시작 위치를 구한다. 모든 글자를 놓아 얻은 실제 한 줄 너비를 기준으로 줄 전체를 가운데 정렬한다.
+
+계산한 중심은 `glyphHomeTexture`의 R·G 채널에 artwork UV로 저장한다. 이 값은 글자가 움직이기 전의 기준 위치다. `lineLayouts`에는 각 줄의 첫 중심 X, 평균 중심 간격, 글자 수, 첫 slot 번호를 저장한다. 평균 중심 간격은 shader에서 가까운 후보를 빨리 찾는 용도일 뿐이며, 글자를 그릴 때는 항상 `glyphHomeTexture`의 실제 중심을 사용한다.
+
+### 4.4 출력 픽셀에서 원본 칸을 역으로 찾는다
 
 현재 화면의 artwork UV를 `P`, 글자의 이동 후 중심을 `C_m`, 회전 각도를 radian 단위 `a`라고 하자. Shader는 움직인 글자를 앞으로 그리는 대신 현재 출력 픽셀을 반대로 되돌린다.
 
@@ -133,7 +157,7 @@ atlasUv      = atlasCellCenter + Q / atlasSize
 
 `-a`를 쓰는 이유는 현재 화면에 `+a`만큼 회전해 보이는 글자를 원래 방향으로 되돌려야 하기 때문이다. 이것은 texture mapping에서 흔히 사용하는 inverse transform이다.
 
-현재 출력 X에서 가장 가까운 글자 자리와 양옆 자리까지 후보로 확인한다. 그래서 회전한 `W`가 nominal slot을 벗어나도 발견할 수 있다. 하지만 각 후보는 자기 atlas 칸만 읽으므로 이웃 글자 픽셀은 섞이지 않는다.
+현재 출력 X와 줄의 평균 중심 간격으로 가까운 slot을 추정한 뒤, 폭 차이를 고려해 그 양쪽 두 slot까지 후보로 확인한다. 각 후보의 정확한 원래 중심은 `glyphHomeTexture`에서 다시 읽는다. 그래서 `I`와 `W`의 폭이 달라도 자연 자간을 유지하면서 회전한 글자를 발견할 수 있다. 각 후보는 자기 atlas 칸만 읽으므로 이웃 글자 픽셀은 섞이지 않는다.
 
 이 계산은 매 frame `deformedGlyphMaterial`에서 실행되어 현재 글자 alpha를 담은 `1440 × 1800`의 `deformedTextTarget`을 만든다.
 
@@ -475,7 +499,7 @@ Spring은 글자 픽셀을 각각 움직이지 않고 한 글자에 같은 `offs
 C_m = C_0 - (0, o / H)
 ```
 
-Artwork UV는 위쪽이 양의 Y이므로 Y에서 양의 `o/H`를 빼면 화면에서는 아래로 내려간다. 현재 출력 픽셀 `P`가 이 글자에서 가져와야 할 원본 위치는 4.3절의 inverse transform과 같이 구한다.
+Artwork UV는 위쪽이 양의 Y이므로 Y에서 양의 `o/H`를 빼면 화면에서는 아래로 내려간다. 현재 출력 픽셀 `P`가 이 글자에서 가져와야 할 원본 위치는 4.4절의 inverse transform과 같이 구한다.
 
 ```text
 outputDelta = (P - C_m) * artSize

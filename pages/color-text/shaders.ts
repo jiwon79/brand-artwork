@@ -32,10 +32,10 @@ export const deformedGlyphFragmentShader = `
     varying vec2 vUv;
     uniform sampler2D uSource;
     uniform sampler2D uGlyphSprings;
+    uniform sampler2D uGlyphHomes;
     uniform sampler2D uGlyphMetadata;
     uniform vec2 uArtSize;
     uniform vec4 uLineLayouts[${LINE_COUNT}];
-    uniform float uCharacterAdvance;
     uniform float uLineHalfHeight;
     uniform float uMaxGlyphHalfWidth;
 
@@ -55,13 +55,12 @@ export const deformedGlyphFragmentShader = `
       for (int lineIndex = 0; lineIndex < ${LINE_COUNT}; lineIndex += 1) {
         vec4 lineLayout = uLineLayouts[lineIndex];
         float nearestCharacter = floor(
-          (outputX - lineLayout.x) / uCharacterAdvance + 0.5
+          (outputX - lineLayout.x) / lineLayout.y + 0.5
         );
 
-        // A moving or rotating W can extend well beyond its nominal tracking
-        // cell. Inspect the nearest cell and both neighbours, then crop each
-        // candidate by its measured glyph width instead of a universal width.
-        for (int neighbourOffset = -1; neighbourOffset <= 1; neighbourOffset += 1) {
+        // 평균 advance는 후보를 빠르게 찾는 용도일 뿐이다. 실제 중심은
+        // Canvas가 측정한 uGlyphHomes에서 읽고, 폭 차이를 위해 양옆 두 칸을 본다.
+        for (int neighbourOffset = -2; neighbourOffset <= 2; neighbourOffset += 1) {
           float characterPosition = nearestCharacter + float(neighbourOffset);
           float validCharacter = step(0.0, characterPosition)
             * step(characterPosition, lineLayout.z - 1.0);
@@ -79,10 +78,7 @@ export const deformedGlyphFragmentShader = `
           validCharacter *= step(0.5, glyphMetadata.g);
 
           vec4 springState = texture2D(uGlyphSprings, glyphLookup);
-          vec2 originalCenter = vec2(
-            (lineLayout.x + safeCharacter * uCharacterAdvance) / uArtSize.x,
-            lineLayout.y
-          );
+          vec2 originalCenter = texture2D(uGlyphHomes, glyphLookup).xy;
           vec2 movedCenter = originalCenter
             - vec2(0.0, springState.r / uArtSize.y);
           vec2 outputDelta = (vUv - movedCenter) * uArtSize;
@@ -99,7 +95,7 @@ export const deformedGlyphFragmentShader = `
           );
           float glyphHalfWidth = max(
             glyphMetadata.r * uMaxGlyphHalfWidth,
-            uCharacterAdvance * 0.5
+            1.0
           );
 
           float horizontalGate = 1.0 - smoothstep(
