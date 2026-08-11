@@ -7,7 +7,7 @@ import {
   LIQUID_PARTICLE_COUNT,
   LIQUID_SOURCE_PACKET_MASS,
   type ColorTextParameters,
-} from '../config';
+} from './config';
 
 export type Point = { x: number; y: number };
 

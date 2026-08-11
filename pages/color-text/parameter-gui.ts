@@ -1,6 +1,6 @@
 import GUI from 'lil-gui';
 import type { ShaderMaterial } from 'three';
-import type { ColorTextParameters } from '../config';
+import type { ColorTextParameters } from './config';
 
 type ParameterGuiOptions = {
   state: ColorTextParameters;

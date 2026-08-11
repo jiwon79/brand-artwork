@@ -14,7 +14,7 @@ import {
   TEXT_LINES,
   TEXTURE_SCALE,
   type ColorTextParameters,
-} from '../config';
+} from './config';
 
 type GlyphCenterStats = {
   centerX: number;

@@ -9,7 +9,7 @@ import {
   METABALL_SAMPLES,
   METABALL_SMOOTH_TAPS,
   SOLVER_LINK_COUNT,
-} from '../config';
+} from './config';
 
 /** Fullscreen quad와 각 GPU pass가 사용하는 GLSL 모음.
  *
@@ -1107,4 +1107,3 @@ export const debugFragmentShader = `
       gl_FragColor = vec4(result, 1.0);
     }
   `;
-

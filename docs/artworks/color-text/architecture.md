@@ -44,13 +44,13 @@ pages/color-text/
     작품 크기, 문장, 기본 파라미터와 QA override
   script.ts
     WebGL 자원 생성과 한 frame의 pass 실행 순서
-  liquid/solver.ts
+  liquid-solver.ts
     source 공급, packet 중력·점성·응집력과 화면 밖 제거
-  text/atlas.ts
+  text-atlas.ts
     문장 mask, 독립 글자 atlas, 글자별 측정값 생성
-  rendering/shaders.ts
+  shaders.ts
     각 GPU pass가 픽셀 하나를 계산하는 GLSL
-  debug/parameter-gui.ts
+  parameter-gui.ts
     lil-gui 조절 항목과 texture uniform 갱신
   spec.md
     파라미터와 레퍼런스 비교 기록
@@ -60,7 +60,7 @@ pages/color-text/
     고정 입력 비교 이미지와 분석 스크립트
 ```
 
-처음 코드를 읽을 때는 `config.ts`에서 고정값을 확인하고, `liquid/solver.ts`와 `text/atlas.ts`에서 CPU 입력을 살펴본 뒤, `script.ts`의 `renderFrame()`을 읽는 순서가 가장 자연스럽다. `renderFrame()`은 한 장의 full-screen quad를 서로 다른 `ShaderMaterial`로 반복 렌더링하고, 각 결과를 render target texture에 저장해 다음 pass로 넘긴다. 픽셀별 수식이 필요할 때만 `rendering/shaders.ts`에서 같은 이름의 pass를 찾아간다.
+처음 코드를 읽을 때는 `config.ts`에서 고정값을 확인하고, `liquid-solver.ts`와 `text-atlas.ts`에서 CPU 입력을 살펴본 뒤, `script.ts`의 `renderFrame()`을 읽는 순서가 가장 자연스럽다. `renderFrame()`은 한 장의 full-screen quad를 서로 다른 `ShaderMaterial`로 반복 렌더링하고, 각 결과를 render target texture에 저장해 다음 pass로 넘긴다. 픽셀별 수식이 필요할 때만 `shaders.ts`에서 같은 이름의 pass를 찾아간다.
 
 ## 3. 좌표 공간과 계산 시점
 

@@ -3,7 +3,7 @@
  *
  * 이 파일에는 시간에 따라 변하는 값이 없다. 작품을 공부할 때는 먼저
  * 여기에서 "어떤 숫자를 바꿀 수 있는가"를 확인하고, 실제 상태 변화는
- * liquid/solver.ts와 script.ts의 renderFrame()에서 따라가면 된다.
+ * liquid-solver.ts와 script.ts의 renderFrame()에서 따라가면 된다.
  */
 
 export const ART_WIDTH = 480;

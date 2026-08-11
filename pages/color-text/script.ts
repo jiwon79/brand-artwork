@@ -16,8 +16,8 @@ import {
   STROKE_SPREAD_PASSES,
   TEXTURE_SCALE,
 } from './config';
-import { bindParameterGui } from './debug/parameter-gui';
-import { LiquidSolver, type Point } from './liquid/solver';
+import { LiquidSolver, type Point } from './liquid-solver';
+import { bindParameterGui } from './parameter-gui';
 import {
   deformedGlyphFragmentShader,
   fullScreenVertexShader,
@@ -32,8 +32,8 @@ import {
   colorBlurFragmentShader,
   finalFragmentShader,
   debugFragmentShader,
-} from './rendering/shaders';
-import { createTextAtlas } from './text/atlas';
+} from './shaders';
+import { createTextAtlas } from './text-atlas';
 
 // 1. URL mode와 작품 파라미터 -------------------------------------------------
 const searchParams = new URLSearchParams(window.location.search);
