@@ -609,7 +609,7 @@ export const glyphSpringFragmentShader = `
     }
 `;
 
-// 9. surface, nearest seed, color field를 합쳐 최종 작품 색을 만든다.
+// 9. surface, nearest seed, palette를 합쳐 최종 작품 색을 만든다.
 export const finalFragmentShader = `
     precision highp float;
 

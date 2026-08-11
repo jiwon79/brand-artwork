@@ -414,7 +414,7 @@ interactionTarget의 활성 글자 픽셀
 
 ### 9.2 Contact 측정
 
-64개 slot 각각에 실제 잉크의 alpha 가중 중심과 반쪽 폭·높이를 저장한다. 현재 이동·회전한 glyph 영역에 `9 × 9` 표본을 놓고 다음 값을 계산한다.
+64개 slot 각각에 실제 잉크의 alpha 가중 중심과 반쪽 폭·높이를 저장한다. 현재 `offset`과 `angle`을 적용한 contact용 bounding grid의 안쪽 92%에 `9 × 9` 표본을 놓고 다음 값을 계산한다.
 
 ```text
 sampleContact = visibleSurface(sampleUv) * visibleTextPixel(sampleUv)
@@ -426,6 +426,8 @@ sampleContact = visibleSurface(sampleUv) * visibleTextPixel(sampleUv)
 | `visibleTextPixel` | 고해상도 변형 글자 alpha가 실제 잉크인 정도 |
 | `contact` | 81개 중 가장 강한 접촉값 |
 | `leftContact`, `rightContact` | 왼쪽·오른쪽 네 열 각각의 최대 접촉값 |
+
+`visibleSurface`는 field가 현재 실루엣 threshold를 넘을 때 0에서 1로 증가하고, `visibleTextPixel`은 글자 alpha 0.08부터 0.32 사이에서 0에서 1로 증가한다. 둘 중 하나라도 0이면 접촉도 0이다. 평균이 아니라 최대값을 쓰므로 액체가 글자의 작은 한 부분에 닿아도 글자 전체가 하나의 rigid한 판처럼 반응한다.
 
 가운데 한 열은 하강에는 참여하지만 좌우 torque에는 참여하지 않는다.
 
@@ -442,11 +444,50 @@ acceleration     = (targetOffset - offset) * 58 - velocity * 12
 angularAccel     = (targetAngle - angle) * 46 - angularVelocity * 10
 ```
 
-접촉이 중앙에 가까우면 좌우 차이가 작아 회전도 작다. 한쪽만 강하게 닿으면 `pressureDiff`의 부호에 따라 기울어진다. 9°는 radian으로 바꿔 shader에 전달한다.
+각 값의 의미는 다음과 같다.
+
+| 값 | 단위와 방향 | 의미 |
+| --- | --- | --- |
+| `contact` | `0~1` | 현재 글자의 가장 강한 액체 접촉 |
+| `offset` | artwork px, 양수는 아래 | 현재 원래 위치에서 내려간 거리 |
+| `velocity` | artwork px/s | 하강·복귀 속도 |
+| `angle` | radian, 양수는 반시계 | 현재 회전 각도 |
+| `angularVelocity` | radian/s | 회전·복귀 속도 |
+
+`contact = 1`이면 목표 하강은 10px이고, `contact = 0.4`이면 4px이다. 접촉이 사라져 `contact = 0`이 되면 목표 하강도 0px로 돌아가므로 같은 스프링이 글자를 원래 위치로 복귀시킨다.
+
+접촉이 중앙에 가까우면 좌우 차이가 작아 회전도 작다. 왼쪽 접촉이 더 강하면 `leftContact - rightContact`가 양수가 되어 글자가 반시계 방향으로 회전하고 왼쪽이 내려간다. 오른쪽이 더 강하면 음수가 되어 시계 방향으로 회전하고 오른쪽이 내려간다. 최대 목표 각도 9°는 CPU에서 radian으로 바꿔 shader에 전달한다.
 
 각 frame은 속도를 먼저 갱신하고 그 속도로 위치·각도를 갱신한다. spring 계산의 `dt`는 최대 `1/30s`로 제한한다. 위치는 기본 최대 하강의 `-14%…116%`, 회전은 목표 최대의 `±118%` 안으로 제한해 긴 frame이나 강한 feedback에서 폭주하지 않게 한다.
 
-### 9.4 한 프레임 feedback
+기본값을 실제 범위로 바꾸면 다음과 같다.
+
+| 항목 | 목표값 | overshoot 제한 |
+| --- | ---: | ---: |
+| 하강 | 접촉에 따라 `0…10px` | `-1.4…11.6px` |
+| 회전 | 좌우 접촉에 따라 `-9…9°` | `-10.62…10.62°` |
+
+### 9.4 Spring 상태를 실제 글자에 적용한다
+
+Spring은 글자 픽셀을 각각 움직이지 않고 한 글자에 같은 `offset`과 `angle`을 적용한다. 원래 글자 slot 중심을 `C_0`, 현재 하강 거리를 `o`, artwork 높이를 `H=600`이라고 하면 이동한 중심은 다음과 같다.
+
+```text
+C_m = C_0 - (0, o / H)
+```
+
+Artwork UV는 위쪽이 양의 Y이므로 Y에서 양의 `o/H`를 빼면 화면에서는 아래로 내려간다. 현재 출력 픽셀 `P`가 이 글자에서 가져와야 할 원본 위치는 4.3절의 inverse transform과 같이 구한다.
+
+```text
+outputDelta = (P - C_m) * artSize
+sourceDelta = rotate(outputDelta, -angle)
+atlasUv     = atlasCellCenter + sourceDelta / atlasSize
+```
+
+이동한 중심을 빼고 회전을 반대로 되돌린 뒤 같은 atlas 칸을 읽으므로 글자 두께나 모양은 늘어나지 않는다. 하강과 회전은 글자 전체에 적용되는 rigid transform이다.
+
+Contact 표본 grid는 alpha 가중 중심을 기준으로 회전하지만 실제 픽셀 변형의 회전축은 문장의 nominal slot 중심 `C_0`다. 두 중심이 다른 글자에서는 contact grid가 실제 회전 bounding box의 근사다. 다만 각 표본에서 실제 `deformedTextTarget` alpha를 다시 곱하므로 빈 bounding box가 접촉으로 잘못 계산되지는 않으며, 현재 최대 목표 회전이 9°라 두 중심 차이의 영향도 제한된다.
+
+### 9.5 한 프레임 feedback
 
 Spring state는 `64 × 1` half-float target 두 개에 저장한다.
 
@@ -460,6 +501,8 @@ Spring state는 `64 × 1` half-float target 두 개에 저장한다.
 현재 frame의 surface와 글자로 새 state를 쓴 뒤 read/write target을 교대한다. 이 state는 다음 frame의 `deformedTextTarget`에 사용된다.
 
 보이는 글자와 Metaball 입력이 같은 변형 마스크를 읽으므로 글자는 내려갔는데 실루엣만 원래 자리에 남는 불일치가 없다. 한 frame 지연은 pass가 자기 output을 동시에 다시 읽는 순환도 피한다.
+
+일반 실행에서는 위 spring 적분을 사용한다. 고정 스크린샷을 비교하는 QA mode에서는 시간에 따른 중간 상태가 매번 달라지지 않도록 `offset = targetOffset`, `angle = targetAngle`로 즉시 맞추고 두 속도를 0으로 둔다.
 
 ## 10. 실제 한 프레임 순서
 
