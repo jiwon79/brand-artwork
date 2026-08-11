@@ -279,7 +279,33 @@ CPU packet은 중심점과 몇 개의 숫자만 가진다. 화면의 각 픽셀�
 
 `interactionFieldMaterial`은 `480 × 600`의 모든 field pixel에서 최대 32개 packet Falloff를 계산한다.
 
-### 6.2 Packet 하나의 Falloff
+### 6.2 Falloff는 영향이 줄어드는 규칙이다
+
+Falloff는 별도의 물체나 외곽선이 아니다. **한 packet이 현재 픽셀에 얼마나 강하게 영향을 주는지**를 `0~1` 숫자로 돌려주는 거리 기반 함수다. packet 중심 근처에서는 1에 가깝고, 영향권 끝으로 갈수록 연속적으로 작아지며, 바깥에서는 0이 된다. 화면 전체 픽셀에서 이 값을 계산하면 밝은 중심에서 어두운 바깥으로 이어지는 하나의 영향 지도 `F_j(p)`가 된다.
+
+여기서 `j`는 packet 번호이고 `p`는 값을 계산 중인 field pixel이다. Color Text의 Falloff는 단순한 원형 blur가 아니다. 아래로 길고 끝으로 갈수록 좁아지며, packet의 시간 상태에 따라 굽는 물줄기 모양이다. 따라서 Falloff는 **물이 현재 어느 범위의 글자와 접촉할 수 있는지**를 정한다.
+
+Falloff와 7번의 Pixel Metaball은 연결되어 있지만 같은 계산은 아니다.
+
+| 구분 | Packet Falloff | Pixel Metaball field |
+| --- | --- | --- |
+| 입력 | 최대 32개 packet의 위치와 상태 | Falloff와 만난 활성 글자 픽셀 |
+| 질문 | 이 packet이 현재 픽셀에 얼마나 영향을 주는가? | 현재 위치 주변에 활성 픽셀이 얼마나 많이, 가까이 있는가? |
+| 출력 | 글자와 곱하기 전 영향 지도 `L(p)` | threshold 전 연속적인 표면 높이 지도 |
+| 역할 | 물이 닿을 수 있는 범위 결정 | 닿은 글자 픽셀을 하나의 액체 실루엣으로 연결 |
+
+고전적인 Metaball도 각 중심에서 거리 Falloff를 만들고 합친다는 점에서는 둘이 관련되어 있다. 하지만 현재 구현은 packet Falloff에서 바로 최종 외곽선을 만들지 않는다. 먼저 글자 마스크와 곱해 활성 픽셀을 만들고, 그 결과를 다음 단계의 pixel-sampled Metaball 입력으로 사용한다.
+
+```text
+packet 위치와 상태
+  -> packet별 Falloff F_j(p)
+  -> packet 결합 Falloff L(p)
+  -> 글자 마스크 M(p)와 곱한 활성 픽셀
+  -> 7번 Pixel Metaball field
+  -> threshold 외곽선
+```
+
+### 6.3 Packet 하나의 Falloff 계산
 
 현재 출력 위치를 `p`, packet 중심을 `o_j`라고 하자. 둘의 UV 차이에 `artSize`를 곱해 artwork pixel 거리 `d_j`를 만든다.
 
@@ -295,9 +321,15 @@ d_j = (p - o_j) * artSize
 - 세로 끝으로 갈수록 가로가 좁아지는 taper
 - `seed`, `age`, time을 이용한 작은 좌우 굴곡과 밀도 변화
 
-정규화 거리 `n_j`가 Falloff 시작값 0.12보다 작으면 강하고, 1에 가까워지면 0이 된다. 이것은 실제 압력장이 아니라 시각적인 물줄기 외피를 만드는 경험적 함수다.
+정규화 거리 `n_j`가 Falloff 시작값 0.12보다 작으면 강하고, 1에 가까워지면 0이 된다. 핵심 감소항만 단순화하면 다음과 같다.
 
-### 6.3 Packet 사이를 끊기지 않게 연결한다
+```text
+F_j(p) = 1 - smoothstep(0.12, 1, n_j)
+```
+
+실제 shader는 여기에 birth energy와 density 변화도 곱한다. 이 값은 실제 압력장이 아니라 시각적인 물줄기 영향 범위를 만드는 경험적 함수다.
+
+### 6.4 Packet 사이를 끊기지 않게 연결한다
 
 모든 packet 값을 더하면 겹친 부분이 지나치게 넓어진다. `max()`만 사용하면 가장 강한 packet이 바뀌는 위치에서 기울기가 꺾일 수 있다.
 
@@ -310,7 +342,7 @@ L = a + h² * k * 0.25
 
 `abs(a-b) >= k`이면 `h=0`이라서 `L=a`다. 두 값이 비슷할 때만 최대 `k/4`만큼 연결 에너지를 더한다. 결과가 `a`보다 작아지지 않으므로 평균 blend의 어두운 홈이 없고, 모든 packet 합산보다 팽창이 제한된다.
 
-### 6.4 글자 픽셀과 곱한 RGBA target
+### 6.5 글자 픽셀과 곱한 RGBA target
 
 현재 변형된 글자 alpha를 `M(p)`, 결합 Falloff를 `L(p)`, 선택형 색 중심을 `E(p)`라고 한다.
 
