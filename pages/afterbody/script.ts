@@ -10,6 +10,20 @@ type FigurePoint = {
   seed2: number;
 };
 
+type ScanPath = {
+  points: FigurePoint[];
+};
+
+type SourcePoint = {
+  x: number;
+  y: number;
+};
+
+type EchoLineGeometry = {
+  paths: ScanPath[];
+  samples: FigurePoint[];
+};
+
 type View = {
   width: number;
   height: number;
@@ -27,7 +41,7 @@ type DebugApi = {
 
 const DESIGN_WIDTH = 480;
 const DESIGN_HEIGHT = 270;
-const SOURCE_X_LIMIT = 66;
+const SOURCE_X_LIMIT = 61;
 
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const hint = document.getElementById('hint') as HTMLParagraphElement;
@@ -49,8 +63,8 @@ const settings = {
   figure: 'Lines' as FigureMode,
   echoes: 6,
   rgbOffset: 3.2,
-  lineThickness: 0.88,
-  idleMotion: 1,
+  lineThickness: 1.72,
+  idleMotion: 0.34,
   hold: 0.72,
   sweepDuration: 3.25,
   sweepJitter: 0.34,
@@ -66,8 +80,19 @@ const settings = {
 const channelColors = ['#ff2924', '#59ff50', '#2795ff'] as const;
 const channelX = [-1, 0, 1] as const;
 const channelY = [0.55, 0, -0.55] as const;
-const echoCenters = [94, 171, 240, 301, 356, 405];
-const echoScales = [1.94, 1.78, 1.64, 1.51, 1.39, 1.28];
+const echoCenters = [99, 187, 255, 312, 362, 408];
+const echoYCenters = [142, 146, 149, 152, 155, 156];
+const echoYScales = [1.79, 1.52, 1.32, 1.16, 1.03, 0.93];
+const echoXScales = echoYScales.map((scale) => scale * 1.28);
+const echoLineWeights = [1.04, 1.02, 1, 0.98, 0.96, 0.94];
+const echoDensityOffsets = [
+  [0],
+  [-0.8, 0.8],
+  [-1.3, 0, 1.3],
+  [-2, -0.7, 0.7, 2],
+  [-2.7, -1.35, 0, 1.35, 2.7],
+  [-3.4, -2, -0.7, 0.7, 2, 3.4],
+];
 
 let view: View = {
   width: DESIGN_WIDTH,
@@ -76,13 +101,12 @@ let view: View = {
   offsetX: 0,
   offsetY: 0,
 };
-let linePoints: FigurePoint[] = [];
+let echoLineGeometry: EchoLineGeometry[] = [];
 let solidPoints: FigurePoint[] = [];
 let phase: Phase = 'idle';
 let triggeredAt = 0;
 let animationFrame = 0;
 let sourceMask: Uint8Array | null = null;
-let sourceLineMask: Uint8Array | null = null;
 let sourceWidth = 0;
 let sourceHeight = 0;
 let sourceCenterX = 0;
@@ -99,13 +123,9 @@ function hash(a: number, b: number, c = 0): number {
 }
 
 function resize(): void {
-  const aspect = Math.max(0.35, window.innerWidth / Math.max(1, window.innerHeight));
-  const internalWidth = aspect >= 1
-    ? Math.round(DESIGN_HEIGHT * aspect)
-    : DESIGN_HEIGHT;
-  const internalHeight = aspect >= 1
-    ? DESIGN_HEIGHT
-    : Math.round(DESIGN_HEIGHT / aspect);
+  const pixelRatio = clamp(window.devicePixelRatio || 1, 1, 2);
+  const internalWidth = Math.max(1, Math.round(window.innerWidth * pixelRatio));
+  const internalHeight = Math.max(1, Math.round(window.innerHeight * pixelRatio));
 
   canvas.width = internalWidth;
   canvas.height = internalHeight;
@@ -121,8 +141,8 @@ function resize(): void {
     offsetY: (internalHeight - DESIGN_HEIGHT * fit) * 0.5,
   };
 
-  ctx.imageSmoothingEnabled = false;
-  artworkCtx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = true;
+  artworkCtx.imageSmoothingEnabled = true;
 }
 
 function dilate(input: Uint8Array, width: number, height: number, radius: number): Uint8Array {
@@ -205,16 +225,20 @@ function buildMask(image: HTMLImageElement): void {
       const coloredStroke = brightest > 72 && brightest - darkest > 24;
       const whiteStroke = r + g + b > 350 && brightest > 128;
       raw[y * sourceCanvas.width + x] = coloredStroke || whiteStroke ? 1 : 0;
-      // Use the green pass as the neutral centerline. Sampling the union of
-      // the filmed RGB passes and splitting it again would create nine
-      // overlapping strokes and wash the figure out to grey.
       const greenCenterline = g > 72 && g + 14 >= r && g >= b * 0.68;
       rawLine[y * sourceCanvas.width + x] = greenCenterline ? 1 : 0;
     }
   }
 
-  sourceLineMask = rawLine;
-  const closed = erode(dilate(raw, sourceCanvas.width, sourceCanvas.height, 2), sourceCanvas.width, sourceCanvas.height, 1);
+  // The filmed source contains scan bands, not a clean body mask. Closing
+  // their small vertical gaps gives us a continuous silhouette from which we
+  // can generate fresh, smooth lines at a different density for every echo.
+  const closed = erode(
+    dilate(raw, sourceCanvas.width, sourceCanvas.height, 3),
+    sourceCanvas.width,
+    sourceCanvas.height,
+    2,
+  );
   sourceMask = dilate(closed, sourceCanvas.width, sourceCanvas.height, 1);
   sourceWidth = sourceCanvas.width;
   sourceHeight = sourceCanvas.height;
@@ -236,13 +260,277 @@ function buildMask(image: HTMLImageElement): void {
 
   sourceCenterX = (minX + maxX) * 0.5;
   sourceCenterY = (minY + maxY) * 0.5;
-  rebuildPoints();
+  rebuildGeometry(rawLine);
 }
 
-function rebuildPoints(): void {
-  if (!sourceMask || !sourceLineMask) return;
+function makeFigurePoint(x: number, y: number): FigurePoint {
+  return {
+    x: x - sourceCenterX,
+    y: y - sourceCenterY,
+    seed: hash(x, y),
+    seed2: hash(y, x, 3),
+  };
+}
 
-  linePoints = [];
+function neighborIndices(index: number, mask: Uint8Array): number[] {
+  const x = index % sourceWidth;
+  const y = Math.floor(index / sourceWidth);
+  const neighbors: number[] = [];
+
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue;
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (nextX < 0 || nextX >= sourceWidth || nextY < 0 || nextY >= sourceHeight) continue;
+      const nextIndex = nextY * sourceWidth + nextX;
+      if (mask[nextIndex] !== 0) neighbors.push(nextIndex);
+    }
+  }
+
+  return neighbors;
+}
+
+function thinLineMask(input: Uint8Array): Uint8Array {
+  const output = input.slice();
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      const remove: number[] = [];
+
+      for (let y = 1; y < sourceHeight - 1; y += 1) {
+        for (let x = 1; x < sourceWidth - 1; x += 1) {
+          const index = y * sourceWidth + x;
+          if (output[index] === 0) continue;
+
+          const p2 = output[(y - 1) * sourceWidth + x];
+          const p3 = output[(y - 1) * sourceWidth + x + 1];
+          const p4 = output[y * sourceWidth + x + 1];
+          const p5 = output[(y + 1) * sourceWidth + x + 1];
+          const p6 = output[(y + 1) * sourceWidth + x];
+          const p7 = output[(y + 1) * sourceWidth + x - 1];
+          const p8 = output[y * sourceWidth + x - 1];
+          const p9 = output[(y - 1) * sourceWidth + x - 1];
+          const neighbors = [p2, p3, p4, p5, p6, p7, p8, p9];
+          const count = neighbors.reduce((sum, value) => sum + value, 0);
+          if (count < 2 || count > 6) continue;
+
+          let transitions = 0;
+          for (let neighbor = 0; neighbor < neighbors.length; neighbor += 1) {
+            if (neighbors[neighbor] === 0 && neighbors[(neighbor + 1) % neighbors.length] !== 0) transitions += 1;
+          }
+          if (transitions !== 1) continue;
+
+          const firstCondition = pass === 0 ? p2 * p4 * p6 === 0 : p2 * p4 * p8 === 0;
+          const secondCondition = pass === 0 ? p4 * p6 * p8 === 0 : p2 * p6 * p8 === 0;
+          if (firstCondition && secondCondition) remove.push(index);
+        }
+      }
+
+      if (remove.length > 0) {
+        changed = true;
+        for (const index of remove) output[index] = 0;
+      }
+    }
+  }
+
+  return output;
+}
+
+function smoothSourcePath(points: SourcePoint[]): SourcePoint[] {
+  let smoothed = points;
+
+  for (let iteration = 0; iteration < 2; iteration += 1) {
+    if (smoothed.length < 3) break;
+    const next: SourcePoint[] = [smoothed[0]];
+    for (let index = 0; index < smoothed.length - 1; index += 1) {
+      const first = smoothed[index];
+      const second = smoothed[index + 1];
+      next.push(
+        { x: first.x * 0.75 + second.x * 0.25, y: first.y * 0.75 + second.y * 0.25 },
+        { x: first.x * 0.25 + second.x * 0.75, y: first.y * 0.25 + second.y * 0.75 },
+      );
+    }
+    next.push(smoothed[smoothed.length - 1]);
+    smoothed = next;
+  }
+
+  return smoothed;
+}
+
+function traceLinePaths(mask: Uint8Array): SourcePoint[][] {
+  const pixelCount = sourceWidth * sourceHeight;
+  const edgeKey = (first: number, second: number): number => (
+    Math.min(first, second) * pixelCount + Math.max(first, second)
+  );
+  const visitedEdges = new Set<number>();
+  const paths: SourcePoint[][] = [];
+
+  const walk = (start: number, next: number): SourcePoint[] => {
+    const indices = [start];
+    let previous = start;
+    let current = next;
+    visitedEdges.add(edgeKey(previous, current));
+
+    while (true) {
+      indices.push(current);
+      const neighbors = neighborIndices(current, mask);
+      if (neighbors.length !== 2 && current !== start) break;
+      const candidates = neighbors.filter((candidate) => !visitedEdges.has(edgeKey(current, candidate)));
+      if (candidates.length === 0) break;
+
+      const previousX = previous % sourceWidth;
+      const previousY = Math.floor(previous / sourceWidth);
+      const currentX = current % sourceWidth;
+      const currentY = Math.floor(current / sourceWidth);
+      const incomingX = currentX - previousX;
+      const incomingY = currentY - previousY;
+      let best = candidates[0];
+      let bestDot = Number.NEGATIVE_INFINITY;
+
+      for (const candidate of candidates) {
+        const candidateX = candidate % sourceWidth;
+        const candidateY = Math.floor(candidate / sourceWidth);
+        const dot = incomingX * (candidateX - currentX) + incomingY * (candidateY - currentY);
+        if (dot > bestDot) {
+          best = candidate;
+          bestDot = dot;
+        }
+      }
+
+      previous = current;
+      current = best;
+      visitedEdges.add(edgeKey(previous, current));
+      if (current === start) break;
+    }
+
+    return indices.map((index) => ({
+      x: index % sourceWidth,
+      y: Math.floor(index / sourceWidth),
+    }));
+  };
+
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index] === 0) continue;
+    const neighbors = neighborIndices(index, mask);
+    if (neighbors.length === 2) continue;
+    for (const next of neighbors) {
+      if (visitedEdges.has(edgeKey(index, next))) continue;
+      const path = walk(index, next);
+      if (path.length >= 3) paths.push(path);
+    }
+  }
+
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index] === 0) continue;
+    const next = neighborIndices(index, mask).find((candidate) => !visitedEdges.has(edgeKey(index, candidate)));
+    if (next === undefined) continue;
+    const path = walk(index, next);
+    if (path.length >= 3) paths.push(path);
+  }
+
+  return paths;
+}
+
+function mergeSourcePaths(input: SourcePoint[][]): SourcePoint[][] {
+  const paths = input.map((path) => [...path]);
+
+  while (true) {
+    let best: { first: number; second: number; reverseFirst: boolean; reverseSecond: boolean; score: number } | null = null;
+
+    for (let firstIndex = 0; firstIndex < paths.length; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < paths.length; secondIndex += 1) {
+        for (const reverseFirst of [false, true]) {
+          for (const reverseSecond of [false, true]) {
+            const first = reverseFirst ? [...paths[firstIndex]].reverse() : paths[firstIndex];
+            const second = reverseSecond ? [...paths[secondIndex]].reverse() : paths[secondIndex];
+            const firstEnd = first[first.length - 1];
+            const firstBefore = first[Math.max(0, first.length - 3)];
+            const secondStart = second[0];
+            const secondAfter = second[Math.min(second.length - 1, 2)];
+            const distance = Math.hypot(secondStart.x - firstEnd.x, secondStart.y - firstEnd.y);
+            if (distance > 3.8) continue;
+
+            const incomingX = firstEnd.x - firstBefore.x;
+            const incomingY = firstEnd.y - firstBefore.y;
+            const outgoingX = secondAfter.x - secondStart.x;
+            const outgoingY = secondAfter.y - secondStart.y;
+            const lengths = Math.hypot(incomingX, incomingY) * Math.hypot(outgoingX, outgoingY);
+            const alignment = lengths > 0
+              ? (incomingX * outgoingX + incomingY * outgoingY) / lengths
+              : 1;
+            if (alignment < -0.1) continue;
+
+            const score = distance + (1 - alignment) * 1.8;
+            if (!best || score < best.score) {
+              best = {
+                first: firstIndex,
+                second: secondIndex,
+                reverseFirst,
+                reverseSecond,
+                score,
+              };
+            }
+          }
+        }
+      }
+    }
+
+    if (!best) break;
+    const first = best.reverseFirst ? [...paths[best.first]].reverse() : paths[best.first];
+    const second = best.reverseSecond ? [...paths[best.second]].reverse() : paths[best.second];
+    const joined = [...first, ...second];
+    paths.splice(best.second, 1);
+    paths.splice(best.first, 1, joined);
+  }
+
+  return paths;
+}
+
+function simplifySourcePath(path: SourcePoint[]): SourcePoint[] {
+  if (path.length <= 4) return path;
+  const simplified = path.filter((_, index) => index % 2 === 0);
+  const last = path[path.length - 1];
+  if (simplified[simplified.length - 1] !== last) simplified.push(last);
+  return simplified;
+}
+
+function offsetSourcePath(path: SourcePoint[], distance: number): SourcePoint[] {
+  if (distance === 0) return path;
+
+  return path.map((point, index) => {
+    const previous = path[Math.max(0, index - 2)];
+    const next = path[Math.min(path.length - 1, index + 2)];
+    const tangentX = next.x - previous.x;
+    const tangentY = next.y - previous.y;
+    const length = Math.hypot(tangentX, tangentY) || 1;
+    const lowerBody = clamp((point.y - sourceCenterY - 4) / 38, 0, 1);
+    const localDistance = distance * (1 + lowerBody * 0.68);
+    return {
+      x: point.x - (tangentY / length) * localDistance,
+      y: point.y + (tangentX / length) * localDistance,
+    };
+  });
+}
+
+function rebuildGeometry(rawLine: Uint8Array): void {
+  if (!sourceMask) return;
+
+  const skeleton = thinLineMask(rawLine);
+  const sourcePaths = mergeSourcePaths(traceLinePaths(skeleton))
+    .map((path) => simplifySourcePath(smoothSourcePath(path)));
+  echoLineGeometry = echoDensityOffsets.map((offsets) => {
+    const paths = sourcePaths.flatMap((sourcePath) => offsets.map((offset) => ({
+      points: offsetSourcePath(sourcePath, offset).map((point) => makeFigurePoint(point.x, point.y)),
+    })));
+    return {
+      paths,
+      samples: paths.flatMap((path) => path.points.filter((_, index) => index % 3 === 0)),
+    };
+  });
   solidPoints = [];
 
   for (let y = 0; y < sourceHeight; y += 1) {
@@ -251,10 +539,6 @@ function rebuildPoints(): void {
       const centeredY = y - sourceCenterY;
       const seed = hash(x, y);
       const seed2 = hash(y, x, 3);
-
-      if (sourceLineMask[y * sourceWidth + x] !== 0) {
-        linePoints.push({ x: centeredX, y: centeredY, seed, seed2 });
-      }
 
       if (sourceMask[y * sourceWidth + x] !== 0 && x % 2 === 0 && y % 2 === 0) {
         solidPoints.push({ x: centeredX, y: centeredY, seed, seed2 });
@@ -266,15 +550,20 @@ function rebuildPoints(): void {
 function pointPosition(point: FigurePoint, echoIndex: number, time: number): { x: number; y: number; designX: number } {
   const echoPhase = time * 1.45 - echoIndex * 0.19;
   const motion = settings.idleMotion;
-  const scale = echoScales[echoIndex];
+  const scaleX = echoXScales[echoIndex];
+  const scaleY = echoYScales[echoIndex];
   const wave = (
     Math.sin(point.y * 0.205 + echoPhase) * 0.72
     + Math.sin(point.y * 0.067 - echoPhase * 0.73) * 0.48
   ) * motion;
   const sway = Math.sin(echoPhase * 0.44) * (1.1 - echoIndex * 0.09) * motion;
   const verticalJitter = Math.sin(point.x * 0.13 + echoPhase * 1.31) * 0.16 * motion;
-  const designX = echoCenters[echoIndex] + (point.x + wave) * scale + sway;
-  const designY = 142 + point.y * scale + verticalJitter;
+  const rasterWave = (
+    Math.sin(point.x * 0.115 + point.y * 0.052 + echoPhase * 0.18) * 0.5
+    + Math.sin(point.x * 0.041 - point.y * 0.103) * 0.24
+  );
+  const designX = echoCenters[echoIndex] + (point.x + wave) * scaleX + sway;
+  const designY = echoYCenters[echoIndex] + (point.y + rasterWave) * scaleY + verticalJitter;
 
   return {
     x: view.offsetX + designX * view.fit,
@@ -291,8 +580,7 @@ function drawStablePoint(
   size: number,
 ): void {
   const position = pointPosition(point, echoIndex, now);
-  const echoSeparation = 1.34 - echoIndex * 0.13;
-  const offset = settings.rgbOffset * echoSeparation * view.fit;
+  const offset = settings.rgbOffset * view.fit;
   const x = position.x + channelX[channelIndex] * offset;
   const y = position.y + channelY[channelIndex] * offset;
   artworkCtx.fillRect(x, y, size, size);
@@ -318,8 +606,7 @@ function drawParticle(
   const speed = settings.drift * (0.58 + channelSeed * 0.82) * view.fit;
   const verticalSpeed = (point.seed2 - 0.5) * settings.spread * view.fit;
   const noise = Math.sin(age * (3.2 + point.seed * 4.8) + point.seed2 * 18) * settings.turbulence * age * view.fit;
-  const echoSeparation = 1.34 - echoIndex * 0.13;
-  const channelOffset = settings.rgbOffset * echoSeparation * view.fit;
+  const channelOffset = settings.rgbOffset * view.fit;
   const x = origin.x
     + channelX[channelIndex] * channelOffset
     + speed * age
@@ -338,20 +625,85 @@ function drawParticle(
   artworkCtx.fillRect(x, y, Math.max(0.65, size), Math.max(0.65, size * (0.72 + point.seed2 * 0.55)));
 }
 
-function renderFigures(now: number): void {
-  const points = settings.figure === 'Lines' ? linePoints : solidPoints;
-  const baseSize = (settings.figure === 'Lines' ? settings.lineThickness : 2.25) * view.fit;
-  const elapsed = phase === 'dissolving' ? now - triggeredAt : 0;
+function channelPosition(
+  point: FigurePoint,
+  echoIndex: number,
+  channelIndex: number,
+  now: number,
+): { x: number; y: number; designX: number } {
+  const position = pointPosition(point, echoIndex, now);
+  const offset = settings.rgbOffset * view.fit;
+  return {
+    x: position.x + channelX[channelIndex] * offset,
+    y: position.y + channelY[channelIndex] * offset,
+    designX: position.designX,
+  };
+}
+
+function drawStableLinePaths(echoIndex: number, channelIndex: number, now: number, elapsed: number | null): void {
+  const geometry = echoLineGeometry[echoIndex];
+  if (!geometry) return;
+
+  artworkCtx.beginPath();
+
+  for (const path of geometry.paths) {
+    let drawing = false;
+    for (const point of path.points) {
+      const position = channelPosition(point, echoIndex, channelIndex, now);
+      const remains = elapsed === null || elapsed < spawnTimeFor(position.designX, point, echoIndex);
+
+      if (!remains) {
+        drawing = false;
+        continue;
+      }
+
+      if (drawing) artworkCtx.lineTo(position.x, position.y);
+      else artworkCtx.moveTo(position.x, position.y);
+      drawing = true;
+    }
+  }
+
+  artworkCtx.lineCap = 'round';
+  artworkCtx.lineJoin = 'round';
+  artworkCtx.lineWidth = settings.lineThickness * echoLineWeights[echoIndex] * view.fit;
+  artworkCtx.stroke();
+}
+
+function renderLineFigures(now: number, elapsed: number): void {
   const echoCount = clamp(Math.round(settings.echoes), 1, echoCenters.length);
 
-  artworkCtx.globalCompositeOperation = 'lighter';
+  for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
+    artworkCtx.strokeStyle = channelColors[channelIndex];
+    artworkCtx.fillStyle = channelColors[channelIndex];
+    artworkCtx.globalAlpha = 0.84;
+
+    for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
+      drawStableLinePaths(echoIndex, channelIndex, now, phase === 'dissolving' ? elapsed : null);
+      if (phase !== 'dissolving') continue;
+
+      const geometry = echoLineGeometry[echoIndex];
+      const baseSize = settings.lineThickness * 0.82 * view.fit;
+      for (const point of geometry.samples) {
+        const currentPosition = pointPosition(point, echoIndex, now);
+        const spawnTime = spawnTimeFor(currentPosition.designX, point, echoIndex);
+        if (elapsed >= spawnTime) {
+          drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize);
+        }
+      }
+    }
+  }
+}
+
+function renderSolidFigures(now: number, elapsed: number): void {
+  const baseSize = 2.25 * view.fit;
+  const echoCount = clamp(Math.round(settings.echoes), 1, echoCenters.length);
 
   for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
     artworkCtx.fillStyle = channelColors[channelIndex];
     artworkCtx.globalAlpha = 0.84;
 
     for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
-      for (const point of points) {
+      for (const point of solidPoints) {
         if (phase !== 'dissolving') {
           drawStablePoint(point, echoIndex, channelIndex, now, baseSize);
           continue;
@@ -359,15 +711,19 @@ function renderFigures(now: number): void {
 
         const currentPosition = pointPosition(point, echoIndex, now);
         const spawnTime = spawnTimeFor(currentPosition.designX, point, echoIndex);
-
-        if (elapsed < spawnTime) {
-          drawStablePoint(point, echoIndex, channelIndex, now, baseSize);
-        } else {
-          drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize);
-        }
+        if (elapsed < spawnTime) drawStablePoint(point, echoIndex, channelIndex, now, baseSize);
+        else drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize);
       }
     }
   }
+}
+
+function renderFigures(now: number): void {
+  const elapsed = phase === 'dissolving' ? now - triggeredAt : 0;
+  artworkCtx.globalCompositeOperation = 'lighter';
+
+  if (settings.figure === 'Lines') renderLineFigures(now, elapsed);
+  else renderSolidFigures(now, elapsed);
 
   artworkCtx.globalAlpha = 1;
   artworkCtx.globalCompositeOperation = 'source-over';
@@ -459,7 +815,7 @@ gui.add(settings, 'rgbOffset', 0, 6, 0.05).name('RGB offset');
 gui.add(settings, 'idleMotion', 0, 2.5, 0.05).name('Idle motion');
 
 const shapeFolder = gui.addFolder('Shape');
-shapeFolder.add(settings, 'lineThickness', 0.6, 2.4, 0.02).name('Line width');
+shapeFolder.add(settings, 'lineThickness', 0.8, 3.2, 0.02).name('Line width');
 
 const dissolveFolder = gui.addFolder('Dissolve');
 dissolveFolder.add(settings, 'hold', 0, 2, 0.01).name('Hold');
@@ -519,7 +875,7 @@ async function start(): Promise<void> {
   resize();
   const image = new Image();
   image.decoding = 'async';
-  image.src = new URL('./assets/figure-source.png', import.meta.url).href;
+  image.src = new URL('./assets/figure-source-start.png', import.meta.url).href;
   await image.decode();
   buildMask(image);
 

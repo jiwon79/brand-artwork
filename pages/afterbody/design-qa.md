@@ -2,70 +2,75 @@
 
 ## Evidence
 
-- Source visual truth: `pages/afterbody/assets/reference-display.png`
+- Source visual truth: `pages/afterbody/qa/reference-start-photo.jpg`
 - Source video: `pages/afterbody/assets/reference.mp4`
-- Browser-rendered implementation: `pages/afterbody/qa/implementation-stable.jpg`
-- Full-view comparison: `pages/afterbody/qa/comparison-full.png`
-- Focused figure comparison: `pages/afterbody/qa/comparison-figure.png`
+- Browser-rendered implementation: `pages/afterbody/qa/implementation-continuous-final.png`
+- Full-view comparison: `pages/afterbody/qa/comparison-continuous-final.png`
+- Focused line-density comparison: `pages/afterbody/qa/comparison-continuous-focused.png`
 - Interaction captures:
-  - `pages/afterbody/qa/implementation-dissolve-mid.jpg`
-  - `pages/afterbody/qa/implementation-cloud.jpg`
-  - `pages/afterbody/qa/implementation-solid.jpg`
-  - `pages/afterbody/qa/implementation-mobile.jpg`
-- Source pixels: `960 × 430`
-- Implementation pixels: `1265 × 860`
-- Browser CSS viewport: `1265 × 860`, device pixel ratio `1`
+  - `pages/afterbody/qa/implementation-continuous-dissolve.png`
+  - `pages/afterbody/qa/implementation-continuous-solid.png`
+  - `pages/afterbody/qa/implementation-continuous-mobile.png`
+- Source pixels: `576 × 318`
+- Implementation pixels: `1152 × 636`
+- Browser CSS viewport: `1152 × 636`, device pixel ratio `1`
 - Mobile CSS viewport: `390 × 844`, device pixel ratio `1`
-- Density normalization: the full comparison fits each source into a `640 × 450` black frame; the focused comparison normalizes both figure regions to `720 × 340`.
-- Compared state: line figure, six echoes, idle state, black background.
+- Density normalization: the source is enlarged exactly `2×` to `1152 × 636`; the implementation is captured at that same size. The focused comparison crops both normalized views to `980 × 570` before stacking them.
+- Compared state: continuous-line figure, six echoes, idle state, black background.
 
 ## Findings
 
-No actionable P0, P1, or P2 differences remain.
+No actionable P0, P1, or P2 differences remain for the requested starting-state correction.
 
-- Fonts and typography: the source artwork has no text. The implementation adds only a low-contrast, monospaced interaction hint outside the figure composition; it does not collide with or alter the artwork.
-- Spacing and layout rhythm: six figures preserve the source's left-to-right reduction and overlap. The composition remains centered and intact at desktop and `390 × 844` mobile sizes.
-- Colors and visual tokens: the source's red, green, and blue channel ordering, colored left edge, cyan right edge, additive white overlap, black background, and right-to-left dissolve direction are present.
-- Image quality and asset fidelity: the human pose comes from `figure-source.png`, extracted from the provided video rather than replaced with an unrelated illustration. The line and solid modes share the same recovered mask. The deliberate low internal resolution, square particles, small glow, and scanlines preserve the TFT character without reproducing camera compression artifacts.
-- Copy and content: `TAP TO DISSOLVE` changes to `TAP TO REPLAY` after the sequence. There is no additional app copy in the default view.
+- Fonts and typography: the source contains no artwork typography. The low-contrast `TAP TO DISSOLVE` hint stays outside the figure and does not affect the source composition.
+- Spacing and layout rhythm: six figures now use independent horizontal centers, vertical centers, width scales, and height scales. The left figure is the largest; the right figures become progressively smaller, closer, and denser. The landscape composition remains centered without overflow at `390 × 844` mobile.
+- Colors and visual tokens: red, green, and blue are three copies of the same path with positional offset only. Additive overlap produces yellow, cyan, and white regions on pure black.
+- Image quality and asset fidelity: `figure-source-start.png` is cropped from the user-selected start photo. The idle figure is rendered as rounded Canvas strokes at device resolution, not as square points. Echo density is added with path-normal parallel lines; the rightmost upper body reads as a surface while its lower body retains visible dense strands. Square pixels appear only after the dissolve front reaches a path segment.
+- Copy and content: `TAP TO DISSOLVE` changes to `TAP TO REPLAY` after the sequence. No additional visible copy is introduced.
 - Icons: none are required by the source or implementation.
-- Interaction and accessibility: pointer/touch starts the sequence; `Space` and `Enter` also start it; `M` switches line/solid figures; `R` resets; the canvas has a focus indicator, semantic label, and reduced-motion adjustments.
-- Browser verification: pointer dissolve, mid-sweep state, residual cloud, replay state, both figure modes, keyboard trigger/reset, desktop responsiveness, and mobile responsiveness were tested. The Chrome console reported no errors or warnings.
+- Interaction and accessibility: pointer activation completed the right-to-left dissolve and reached `TAP TO REPLAY`. `M` switched to the solid human mode and back. Keyboard activation/reset behavior and reduced-motion handling remain in the implementation.
+- Browser verification: the starting state, mid-dissolve state, replay state, line/solid mode switch, desktop view, and `390 × 844` mobile view were tested in the existing Chrome window. Chrome reported no warnings or errors.
 
 ## Comparison History
 
 ### Pass 1
 
-- [P1] The first implementation sampled the already RGB-separated source as a single mask and split it again, creating washed-out grey, overly dense stripes.
-- Fix: isolated the green source pass as a neutral centerline, then generated red, green, and blue passes once with echo-dependent separation.
-- Post-fix evidence: `pages/afterbody/qa/comparison-figure.png` shows distinct RGB bands and bright overlap matching the reference hierarchy.
+- [P1] The idle figure was reconstructed from photographed pixels and drawn with `fillRect`, so it was pixelated before dissolution.
+- Fix: replaced the idle point cloud with thinned, directionally merged, once-smoothed vector paths and moved the canvas to device-resolution rendering.
+- Post-fix evidence: `implementation-continuous-final.png` shows uninterrupted rounded RGB strokes on the leftmost figure.
 
 ### Pass 2
 
-- [P2] The collapsed lil-gui header remained visible in the default artwork even though it was absent from the source.
-- Fix: hid debug controls by default and retained access through `G` or `?debug=1`.
-- Post-fix evidence: `pages/afterbody/qa/implementation-stable.jpg` contains only the artwork and the small interaction hint.
+- [P1] The first source crop came from a different pose in the video, producing the crouched silhouette shown in the user's second photo.
+- Fix: extracted `figure-source-start.png` from the exact user-selected starting photo and recalibrated all six centers and non-uniform scales.
+- Post-fix evidence: `comparison-continuous-final.png` shows the standing/bent-leg pose and matching left-to-right size progression.
 
 ### Pass 3
 
-- No P0, P1, or P2 findings. Type checking, production build, browser interaction tests, mobile layout, and console checks passed.
+- [P1] Density copies initially moved only vertically, so the upper body thickened but near-vertical legs did not gain parallel strands.
+- Fix: offset every density copy along the local path normal, then increased lower-body spacing so the last torso merges visually while the legs remain readable as dense lines.
+- Post-fix evidence: `comparison-continuous-focused.png` shows progressive density across both upper and lower body regions.
+
+### Pass 4
+
+- No P0, P1, or P2 findings. Type checking, production build, pointer dissolve, replay completion, solid-mode toggle, mobile layout, and console checks passed.
 
 ## Open Questions
 
-- The video does not expose a clean master silhouette, so minor line gaps and compression-derived edge changes are expected. They do not change the pose, echo order, RGB behavior, or dissolve sequence.
+- The reference is a photographed TFT, so its optical bloom and camera softness merge some neighboring lines more than a browser canvas. The implementation keeps the underlying strands explicit and uses a small glow rather than reproducing compression blur.
 
 ## Implementation Checklist
 
-- [x] Match the source pose and six-echo composition.
-- [x] Provide line and solid versions from one mask.
-- [x] Implement RGB separation and additive overlap.
-- [x] Implement the right-to-left dissolve and rightward particle drift.
-- [x] Support pointer, touch, keyboard, replay, and reduced motion.
-- [x] Verify desktop and mobile rendering in Chrome.
-- [x] Pass type checking and production build.
+- [x] Replace idle pixels with continuous rounded paths.
+- [x] Use the exact selected starting pose.
+- [x] Increase size reduction and overlap toward the right.
+- [x] Increase strand density independently for every echo.
+- [x] Preserve a surface-like upper body and line-readable lower body on the final echo.
+- [x] Preserve RGB offset, right-to-left dissolve, particle drift, replay, and both figure modes.
+- [x] Verify desktop/mobile rendering, interactions, build, and console output.
 
 ## Follow-up Polish
 
-- [P3] The hint is intentionally retained for discoverability; it can be removed for a completely installation-like presentation.
+- [P3] The web rendering is intentionally cleaner than the photographed display; a stronger optical bloom can be added if exact camera softness becomes the next target.
 
 final result: passed
