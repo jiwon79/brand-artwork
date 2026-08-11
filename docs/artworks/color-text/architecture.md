@@ -80,7 +80,7 @@ pages/color-text/
 
 | 계산 | 위치 | 빈도 |
 | --- | --- | --- |
-| 문장과 glyph atlas 굽기 | CPU Canvas2D | 초기화할 때 한 번, 색 atlas 설정 변경 시 갱신 |
+| 문장과 glyph atlas 굽기 | CPU Canvas2D | 초기화할 때 한 번 |
 | pointer와 particle 물리 | CPU TypeScript | 매 frame, 필요하면 `1/60s` 이하 substep |
 | 글자 변형과 field | GPU fragment shader | 매 frame, 각 target pixel |
 | 최종 합성 | GPU fragment shader | 매 frame, 각 device fragment |
@@ -135,10 +135,7 @@ atlasUv      = atlasCellCenter + Q / atlasSize
 
 현재 출력 X에서 가장 가까운 글자 자리와 양옆 자리까지 후보로 확인한다. 그래서 회전한 `W`가 nominal slot을 벗어나도 발견할 수 있다. 하지만 각 후보는 자기 atlas 칸만 읽으므로 이웃 글자 픽셀은 섞이지 않는다.
 
-이 계산은 매 frame `deformedGlyphMaterial`에서 실행되어 다음 두 target을 만든다.
-
-- `deformedTextTarget`: 현재 글자 alpha, `1440 × 1800`
-- `deformedColorCenterTarget`: 선택형 색 중심, `480 × 600`
+이 계산은 매 frame `deformedGlyphMaterial`에서 실행되어 현재 글자 alpha를 담은 `1440 × 1800`의 `deformedTextTarget`을 만든다.
 
 ## 5. 터치 source와 particle 생명주기
 
@@ -344,20 +341,19 @@ L = a + h² * k * 0.25
 
 ### 6.5 글자 픽셀과 곱한 RGBA target
 
-현재 변형된 글자 alpha를 `M(p)`, 결합 Falloff를 `L(p)`, 선택형 색 중심을 `E(p)`라고 한다.
+현재 변형된 글자 alpha를 `M(p)`, 결합 Falloff를 `L(p)`라고 한다.
 
 ```text
 surfaceActivation = M(p) * L(p)^1.22 * 0.92
-colorActivation   = E(p) * L(p)^1.12
 ```
 
-`interactionTarget`은 한 번의 pass에서 다음 네 값을 저장한다.
+`interactionTarget`은 한 번의 pass에서 다음 값을 저장한다. RGBA texture 형식을 공유하므로 사용하지 않는 B에는 0을 쓴다.
 
 | 채널 | 값 | 다음 소비자 |
 | --- | --- | --- |
 | R | 활성 글자 픽셀 `surfaceActivation` | geometry, contact, color seed |
 | G | 현재 글자 alpha `M` | seed의 글자 내부 제한, debug |
-| B | 선택형 타원 중심 `colorActivation` | optional color field |
+| B | 0 | 사용하지 않음 |
 | A | 글자와 곱하기 전 `L` | Solver와 Contact 시각화 |
 
 글자 밖에서는 `M=0`이므로 Falloff만 지나가서는 geometry가 생기지 않는다. 내려온 물이 아래쪽의 새로운 글자 픽셀과 만나는 순간 그 위치에서 새 활성 픽셀이 만들어진다.
@@ -381,15 +377,13 @@ colorActivation   = E(p) * L(p)^1.12
 
 최종 edge 폭은 `max(surfaceSoftness, fwidth(field) * 1.2)`다. `fwidth()`는 현재 device fragment에서 이웃 픽셀 사이 field 변화량을 측정해 확대와 해상도에 맞는 안티앨리어싱 폭을 만든다.
 
-`coreMix = 0`이므로 geometry에 별도의 고정 반경 글자 몸체를 합치지 않는다. 화면 외곽은 `surfaceFieldTarget`의 등고선 자체다.
+Geometry에는 별도의 고정 반경 글자 몸체를 합치지 않는다. 화면 외곽은 `surfaceFieldTarget`의 등고선 자체다. 가장 가까운 활성 글자 픽셀은 색 에너지를 계산할 때만 사용한다.
 
-## 8. Color: 타원 대신 활성 글자 모양을 밝게 만들기
+## 8. Color: 활성 글자 모양을 밝게 만들기
 
 ### 8.1 해결하려는 문제
 
-글자마다 세로 타원을 하나씩 놓으면 `O`, `N`, `H` 내부에 같은 크기의 타원이 반복되어 보인다. Gaussian blur만 사용하면 글자 모양 주위에 긴 털 같은 halo도 남는다.
-
-현재 기본 색 중심은 각 출력 픽셀에서 **가장 가까운 활성 글자 픽셀까지의 거리**를 사용한다. 원리와 일반적인 JFA 수식은 [Jump Flood Nearest-seed Search](../../concepts/jump-flood-nearest-seed.md)에 분리했다.
+색의 밝은 중심이 단순 blur처럼 퍼지면 글자 주위에 긴 halo가 남고 내부 색이 글자 구조와 무관하게 보인다. 현재 색 중심은 각 출력 픽셀에서 **가장 가까운 활성 글자 픽셀까지의 거리**를 사용한다. 원리와 일반적인 JFA 수식은 [Jump Flood Nearest-seed Search](../../concepts/jump-flood-nearest-seed.md)에 분리했다.
 
 ### 8.2 현재 pass
 
@@ -404,13 +398,7 @@ interactionTarget의 활성 글자 픽셀
 
 `nearestTargetA/B`는 seed 좌표가 pixel 사이에서 섞이지 않게 `NearestFilter`를 사용한다. 현재 jump 일정은 전체 480×600 field의 정확한 전역 최근접점을 보장하는 full JFA가 아니다. 최종 색이 3.2px 근처만 사용한다는 조건에 맞춘 bounded heuristic이다.
 
-### 8.3 선택형 통계 타원
-
-초기화할 때 글자별 잉크 양, 실제 폭·높이, alpha 가중 중심을 측정해 서로 다른 세로 타원을 color atlas에 굽는다. 이 field는 활성 글자 픽셀과 기본 `80:20`으로 섞은 뒤 Gaussian blur를 통과한다.
-
-하지만 현재 `colorEllipseInfluence = 0`이므로 최종 밝은 중심에는 타원이 들어가지 않는다. 실험용 GUI 값을 올렸을 때만 나타난다.
-
-### 8.4 Palette와 clipping
+### 8.3 Palette와 clipping
 
 글자형 에너지는 `edge rose → body rose → pale pink → hot color` 네 anchor를 연속적으로 섞는 입력이 된다. 기본 채도 0.72, 밝기 0.96, warm cream 혼합 0.12이며 palette phase는 8초마다 한 바퀴 돈다.
 
@@ -469,7 +457,7 @@ Spring state는 `64 × 1` half-float target 두 개에 저장한다.
 | B | `angle`, radian |
 | A | `angularVelocity`, radian/s |
 
-현재 frame의 surface와 글자로 새 state를 쓴 뒤 read/write target을 교대한다. 이 state는 다음 frame의 `deformedTextTarget`과 `deformedColorCenterTarget`에 사용된다.
+현재 frame의 surface와 글자로 새 state를 쓴 뒤 read/write target을 교대한다. 이 state는 다음 frame의 `deformedTextTarget`에 사용된다.
 
 보이는 글자와 Metaball 입력이 같은 변형 마스크를 읽으므로 글자는 내려갔는데 실루엣만 원래 자리에 남는 불일치가 없다. 한 frame 지연은 pass가 자기 output을 동시에 다시 읽는 순환도 피한다.
 
@@ -481,14 +469,13 @@ Spring state는 `64 × 1` half-float target 두 개에 저장한다.
 | ---: | --- | --- |
 | 1 | `liquid.update(delta, pointerTarget)` | 분리된 packet 갱신과 source 질량 공급 |
 | 2 | `uploadLiquidState()` | 최대 32개 packet의 GPU uniform |
-| 3 | `renderDeformedGlyphPasses()` | 현재 글자와 color-center target |
-| 4 | `renderInteractionPass()` | 활성 글자·text·color·Falloff RGBA |
+| 3 | `renderDeformedGlyphPass()` | 현재 글자 target |
+| 4 | `renderInteractionPass()` | 활성 글자·text·Falloff RGBA |
 | 5 | `renderStrokeSpreadPasses()` | 글자 내부에서 이어진 seed 입력 |
 | 6 | `renderNearestSeedPasses()` | 가까운 활성 글자 seed 좌표 |
 | 7 | `renderMetaballSurfacePasses()` | `surfaceFieldTarget` |
 | 8 | `renderGlyphSpringPass()` | 다음 frame의 글자 state |
-| 9 | `renderColorPasses()` | `colorFieldTarget` |
-| 10 | `renderOutputPass()` | Process View 또는 최종 화면 |
+| 9 | `renderOutputPass()` | nearest glyph 색 에너지와 palette를 합성한 Process View 또는 최종 화면 |
 
 Geometry를 만든 뒤 spring을 계산하므로 contact는 현재 화면에 실제로 나타날 surface를 사용한다. Spring swap 뒤에도 현재 frame의 최종 합성은 이미 만든 `deformedTextTarget`을 사용하고, 새 state는 다음 frame에 반영된다.
 
@@ -497,8 +484,7 @@ Geometry를 만든 뒤 spring을 계산하므로 contact는 현재 화면에 실
 | target | 크기·filter | 저장 값 | 다음 소비자 |
 | --- | --- | --- | --- |
 | `deformedTextTarget` | `1440×1800`, linear | 현재 글자 alpha | interaction, contact, final |
-| `deformedColorCenterTarget` | `480×600`, linear | 현재 선택형 색 중심 | interaction |
-| `interactionTarget` | `480×600`, half-float linear | active, text, color, Falloff | geometry, color, debug |
+| `interactionTarget` | `480×600`, half-float linear | active, text, Falloff | geometry, color seed, debug |
 | `strokeSpreadTargetA/B` | `480×600`, half-float linear | 글자 내부 확산 활성값 | seed |
 | `nearestTargetA/B` | `480×600`, half-float nearest | 가까운 seed UV와 strength | glyph-shaped color |
 | `surfaceSourceTarget` | `480×600`, half-float linear | threshold를 통과한 active pixel | 192-probe field |
@@ -506,8 +492,6 @@ Geometry를 만든 뒤 spring을 계산하므로 contact는 현재 화면에 실
 | `surfaceHorizontalTarget` | `480×600`, half-float linear | 가로 smoothing field | vertical smoothing |
 | `surfaceFieldTarget` | `480×600`, half-float linear | 최종 geometry field | contact, contour, final |
 | `glyphSpringTargetA/B` | `64×1`, half-float nearest | 글자별 offset·속도·회전 | 다음 frame glyph 변형 |
-| `colorHorizontalTarget` | `480×600`, half-float linear | 가로 color blur | vertical color blur |
-| `colorFieldTarget` | `480×600`, half-float linear | optional color energy | final |
 
 Field target이 half float인 이유는 여러 gain을 합친 1보다 큰 값과 작은 연속 차이를 8-bit보다 안정적으로 보존하기 위해서다. 고해상도 글자 mask는 alpha 안티앨리어싱을 유지하면서 메모리를 줄이기 위해 unsigned byte를 사용한다.
 
@@ -553,11 +537,11 @@ lil-gui는 현재 값을 여섯 폴더로 나눈다.
 | 폴더 | 주요 조절 |
 | --- | --- |
 | 터치 드립 | gravity, stretch, turbulence, cohesion, source 교대 |
-| 텍스트 밀림 | 하강·회전 거리, stiffness, damping, contact padding |
+| 텍스트 밀림 | 하강·회전 거리, stiffness, damping |
 | 광원 / Falloff | 위·아래 반경, 가로 taper, edge 시작 |
 | 액체 실루엣 | 입력 threshold, probe 반경·gain, smoothing, contour 높이 |
-| 색상 | glyph-shaped 중심, optional ellipse, blur, palette |
-| 고급 설정 | seed threshold와 비활성 geometry core 실험값 |
+| 색상 | glyph-shaped 중심과 palette |
+| 고급 설정 | seed threshold |
 
 ## 15. 현재 구현의 성격과 한계
 
@@ -573,7 +557,7 @@ lil-gui는 현재 값을 여섯 폴더로 나눈다.
 
 - 최대 32개의 큰 CPU packet으로 흐름 위치 계산
 - 활성 글자 픽셀을 192개 황금각 표본으로 누적
-- geometry와 color field를 독립적으로 계산
+- geometry field와 nearest glyph 색 에너지를 독립적으로 계산
 - 현재 글자 위치를 geometry 입력과 배경 출력에 함께 사용
 
 ### 미감을 위한 heuristic
@@ -613,7 +597,7 @@ pointer event
   -> pointerTarget -> liquid.emitter -> liquid.particles
   -> deformed glyph mask × packet Falloff
   -> interactionTarget RGBA
-  -> geometry field + nearest glyph color field
+  -> geometry field + nearest glyph distance color energy
   -> visible surface contact -> glyph spring state
   -> 다음 frame의 deformed glyph mask
   -> Final 또는 Process View

@@ -29,7 +29,6 @@ import {
   surfaceBlurFragmentShader,
   surfaceSmoothFragmentShader,
   glyphSpringFragmentShader,
-  colorBlurFragmentShader,
   finalFragmentShader,
   debugFragmentShader,
 } from './shaders';
@@ -105,10 +104,9 @@ let previousTime = startTime;
 let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // 3. 글자 atlas와 WebGL 기본 자원 ---------------------------------------------
-const textAtlas = createTextAtlas(state);
+const textAtlas = createTextAtlas();
 const {
   glyphTextAtlasCanvas,
-  glyphColorAtlasCanvas,
   glyphSpringCells,
   lineLayouts,
   glyphMetadataData,
@@ -151,12 +149,6 @@ glyphTextAtlasTexture.colorSpace = THREE.NoColorSpace;
 glyphTextAtlasTexture.minFilter = THREE.LinearFilter;
 glyphTextAtlasTexture.magFilter = THREE.LinearFilter;
 glyphTextAtlasTexture.generateMipmaps = false;
-const glyphColorAtlasTexture = new THREE.CanvasTexture(glyphColorAtlasCanvas);
-glyphColorAtlasTexture.colorSpace = THREE.NoColorSpace;
-glyphColorAtlasTexture.minFilter = THREE.LinearFilter;
-glyphColorAtlasTexture.magFilter = THREE.LinearFilter;
-glyphColorAtlasTexture.generateMipmaps = false;
-
 const linearTargetOptions: THREE.RenderTargetOptions = {
   depthBuffer: false,
   stencilBuffer: false,
@@ -177,8 +169,6 @@ const nearestTargetOptions: THREE.RenderTargetOptions = {
 const interactionTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const strokeSpreadTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const strokeSpreadTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
-const colorHorizontalTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
-const colorFieldTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
 const nearestTargetA = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, nearestTargetOptions);
 const nearestTargetB = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, nearestTargetOptions);
 const surfaceSourceTarget = new THREE.WebGLRenderTarget(FIELD_WIDTH, FIELD_HEIGHT, linearTargetOptions);
@@ -203,12 +193,6 @@ const deformedTextTarget = new THREE.WebGLRenderTarget(
     type: THREE.UnsignedByteType,
   },
 );
-const deformedColorCenterTarget = new THREE.WebGLRenderTarget(
-  FIELD_WIDTH,
-  FIELD_HEIGHT,
-  linearTargetOptions,
-);
-
 // 5. shader 코드와 입력 uniform의 연결 ----------------------------------------
 const deformedGlyphMaterial = new THREE.ShaderMaterial({
   vertexShader: fullScreenVertexShader,
@@ -232,7 +216,6 @@ const interactionFieldMaterial = new THREE.ShaderMaterial({
   fragmentShader: interactionFieldFragmentShader,
   uniforms: {
     uText: { value: deformedTextTarget.texture },
-    uColorCenters: { value: deformedColorCenterTarget.texture },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uDripOrigins: { value: dripUniformOrigins },
     uDripAges: { value: dripUniformAges },
@@ -267,20 +250,6 @@ const strokeSpreadMaterial = new THREE.ShaderMaterial({
   uniforms: {
     uInput: { value: interactionTarget.texture },
     uTexel: { value: new THREE.Vector2(1 / FIELD_WIDTH, 1 / FIELD_HEIGHT) },
-  },
-  depthTest: false,
-  depthWrite: false,
-});
-
-const colorBlurMaterial = new THREE.ShaderMaterial({
-  vertexShader: fullScreenVertexShader,
-  fragmentShader: colorBlurFragmentShader,
-  uniforms: {
-    uInput: { value: interactionTarget.texture },
-    uDirection: { value: new THREE.Vector2(1 / ART_WIDTH, 0) },
-    uSigma: { value: state.colorBlurSigma },
-    uStep: { value: state.colorBlurStep },
-    uChannel: { value: new THREE.Vector4(0, 0, 1, 0) },
   },
   depthTest: false,
   depthWrite: false,
@@ -363,7 +332,6 @@ const glyphSpringMaterial = new THREE.ShaderMaterial({
     uMaxDistance: { value: state.textPushDistance },
     uStiffness: { value: state.textSpringStiffness },
     uDamping: { value: state.textSpringDamping },
-    uContactPadding: { value: state.textContactPadding },
     uMaxRotation: { value: THREE.MathUtils.degToRad(state.textMaxRotation) },
     uRotationStiffness: { value: state.textRotationStiffness },
     uRotationDamping: { value: state.textRotationDamping },
@@ -379,7 +347,6 @@ const finalMaterial = new THREE.ShaderMaterial({
   uniforms: {
     uText: { value: deformedTextTarget.texture },
     uNearest: { value: nearestTargetA.texture },
-    uColorField: { value: colorFieldTarget.texture },
     uSurfaceField: { value: surfaceFieldTarget.texture },
     uResolution: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uPosterOffset: { value: new THREE.Vector2(0, 0) },
@@ -388,17 +355,10 @@ const finalMaterial = new THREE.ShaderMaterial({
     uSurfaceThreshold: { value: state.surfaceThreshold },
     uSurfaceSoftness: { value: state.surfaceSoftness },
     uSeedThreshold: { value: state.seedThreshold },
-    uCoreRadius: { value: state.coreRadius },
-    uCoreRadiusMin: { value: state.coreRadiusMin },
-    uCoreRadiusExponent: { value: state.coreRadiusExponent },
-    uCoreMix: { value: state.coreMix },
-    uColorFloor: { value: state.colorFloor },
-    uColorRange: { value: state.colorRange },
     uHueBands: { value: state.hueBands },
     uColorSaturation: { value: state.colorSaturation },
     uColorBrightness: { value: state.colorBrightness },
     uColorPastelMix: { value: state.colorPastelMix },
-    uColorEllipseInfluence: { value: state.colorEllipseInfluence },
     uColorGlyphShapeStrength: { value: state.colorGlyphShapeStrength },
     uColorGlyphShapeRadius: { value: state.colorGlyphShapeRadius },
     uColorGlyphShapeEdge: { value: state.colorGlyphShapeEdge },
@@ -478,7 +438,6 @@ clearTarget(nearestTargetB);
 clearSpringTarget(glyphSpringTargetA);
 clearSpringTarget(glyphSpringTargetB);
 clearTarget(deformedTextTarget);
-clearTarget(deformedColorCenterTarget);
 renderer.setClearColor(0xfbfbfa, 1);
 renderer.setRenderTarget(null);
 
@@ -635,13 +594,8 @@ bindParameterGui({
   surfaceSourceMaterial,
   surfaceBlurMaterial,
   surfaceSmoothMaterial,
-  colorBlurMaterial,
   nearestSeedMaterial,
   finalMaterial,
-  rebakeColorAtlas: () => {
-    textAtlas.rebakeColorAtlas();
-    glyphColorAtlasTexture.needsUpdate = true;
-  },
 });
 updateLayout();
 
@@ -789,13 +743,11 @@ function uploadLiquidState(): void {
   else debugMaterial.uniforms.uSourceActive.value = 0;
 }
 
-/** 이전 spring 상태로 글자 mask와 글자형 색 중심을 다시 그린다. */
-function renderDeformedGlyphPasses(): void {
+/** 이전 spring 상태로 현재 글자 mask를 다시 그린다. */
+function renderDeformedGlyphPass(): void {
   deformedGlyphMaterial.uniforms.uGlyphSprings.value = glyphSpringRead.texture;
   deformedGlyphMaterial.uniforms.uSource.value = glyphTextAtlasTexture;
   renderPass(deformedGlyphMaterial, deformedTextTarget);
-  deformedGlyphMaterial.uniforms.uSource.value = glyphColorAtlasTexture;
-  renderPass(deformedGlyphMaterial, deformedColorCenterTarget);
 }
 
 /** 현재 글자 픽셀과 물 packet을 RGBA interaction field 하나로 합친다. */
@@ -871,7 +823,6 @@ function renderGlyphSpringPass(delta: number): void {
   glyphSpringMaterial.uniforms.uMaxDistance.value = state.textPushDistance;
   glyphSpringMaterial.uniforms.uStiffness.value = state.textSpringStiffness;
   glyphSpringMaterial.uniforms.uDamping.value = state.textSpringDamping;
-  glyphSpringMaterial.uniforms.uContactPadding.value = state.textContactPadding;
   glyphSpringMaterial.uniforms.uMaxRotation.value = THREE.MathUtils.degToRad(
     state.textMaxRotation,
   );
@@ -881,39 +832,14 @@ function renderGlyphSpringPass(delta: number): void {
   [glyphSpringRead, glyphSpringWrite] = [glyphSpringWrite, glyphSpringRead];
 }
 
-/** interaction 또는 surface를 두 방향으로 blur해 내부 색 분포를 만든다. */
-function renderColorPasses(): void {
-  const colorUsesSurfaceField = state.colorSourceMode === 2;
-  colorBlurMaterial.uniforms.uInput.value = colorUsesSurfaceField
-    ? surfaceFieldTarget.texture
-    : interactionTarget.texture;
-  colorBlurMaterial.uniforms.uSigma.value = state.colorBlurSigma;
-  const glyphInfluence = state.colorSourceMode === 0 ? state.colorGlyphInfluence : 0;
-  colorBlurMaterial.uniforms.uChannel.value.set(
-    state.colorSourceMode === 0 ? glyphInfluence : 1,
-    0,
-    state.colorSourceMode === 0 ? 1 - glyphInfluence : 0,
-    0,
-  );
-  colorBlurMaterial.uniforms.uDirection.value.set(1 / FIELD_WIDTH, 0);
-  renderPass(colorBlurMaterial, colorHorizontalTarget);
-  colorBlurMaterial.uniforms.uInput.value = colorHorizontalTarget.texture;
-  colorBlurMaterial.uniforms.uSigma.value = state.colorBlurSigma * state.colorBlurAspect;
-  colorBlurMaterial.uniforms.uChannel.value.set(1, 0, 0, 0);
-  colorBlurMaterial.uniforms.uDirection.value.set(0, 1 / FIELD_HEIGHT);
-  renderPass(colorBlurMaterial, colorFieldTarget);
-}
-
 /** 같은 중간 texture를 Process View 또는 최종 색상으로 화면에 출력한다. */
 function renderOutputPass(elapsed: number): void {
   finalMaterial.uniforms.uTime.value = elapsed;
   finalMaterial.uniforms.uNearest.value = nearestRead.texture;
-  finalMaterial.uniforms.uColorField.value = colorFieldTarget.texture;
   finalMaterial.uniforms.uSurfaceField.value = surfaceFieldTarget.texture;
   finalMaterial.uniforms.uColorSaturation.value = state.colorSaturation;
   finalMaterial.uniforms.uColorBrightness.value = state.colorBrightness;
   finalMaterial.uniforms.uColorPastelMix.value = state.colorPastelMix;
-  finalMaterial.uniforms.uColorEllipseInfluence.value = state.colorEllipseInfluence;
   finalMaterial.uniforms.uColorGlyphShapeStrength.value = state.colorGlyphShapeStrength;
   finalMaterial.uniforms.uColorGlyphShapeRadius.value = state.colorGlyphShapeRadius;
   finalMaterial.uniforms.uColorGlyphShapeEdge.value = state.colorGlyphShapeEdge;
@@ -939,7 +865,7 @@ function renderOutputPass(elapsed: number): void {
 /**
  * 한 프레임의 전체 순서.
  *
- * CPU 물 상태 → 글자 변형 → interaction → seed → metaball → spring → color → 출력
+ * CPU 물 상태 → 글자 변형 → interaction → seed → metaball → spring → 출력
  */
 function renderFrame(now: number): void {
   const delta = Math.min((now - previousTime) / 1000, 0.1);
@@ -948,13 +874,12 @@ function renderFrame(now: number): void {
 
   if (!QA_MODE) liquid.update(delta, pointerTarget);
   uploadLiquidState();
-  renderDeformedGlyphPasses();
+  renderDeformedGlyphPass();
   renderInteractionPass(elapsed);
   renderStrokeSpreadPasses();
   renderNearestSeedPasses();
   renderMetaballSurfacePasses();
   renderGlyphSpringPass(delta);
-  renderColorPasses();
   renderOutputPass(elapsed);
 
   requestAnimationFrame(renderFrame);

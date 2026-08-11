@@ -1,5 +1,4 @@
 import {
-  COLOR_BLUR_TAPS,
   GLYPH_ATLAS_CELL_SIZE,
   GLYPH_ATLAS_COLUMNS,
   GLYPH_ATLAS_ROWS,
@@ -134,7 +133,6 @@ export const interactionFieldFragmentShader = `
 
     varying vec2 vUv;
     uniform sampler2D uText;
-    uniform sampler2D uColorCenters;
     uniform vec2 uArtSize;
     uniform vec2 uDripOrigins[${LIQUID_PARTICLE_COUNT}];
     uniform float uDripAges[${LIQUID_PARTICLE_COUNT}];
@@ -284,18 +282,14 @@ export const interactionFieldFragmentShader = `
         + unionAmount * unionAmount * unionWidth * 0.25;
 
       float textMask = texture2D(uText, vUv).a;
-      float colorCenterMask = texture2D(uColorCenters, vUv).a;
-
       float surfaceActivation = textMask
         * pow(max(streamLight, 0.0), 1.22)
         * uDripStrength;
-      float colorActivation = colorCenterMask
-        * pow(max(streamLight, 0.0), 1.12);
 
       gl_FragColor = vec4(
         surfaceActivation,
         textMask,
-        colorActivation,
+        0.0,
         streamLight
       );
     }
@@ -337,39 +331,6 @@ export const strokeSpreadFragmentShader = `
       spread = max(spread, texture2D(uInput, vUv + uTexel * vec2(-1.0, -2.0)).r * 0.955);
 
       gl_FragColor = vec4(spread, textMask, 0.0, 1.0);
-    }
-`;
-
-// 8. 글자형 색 에너지를 가로·세로 두 번 blur할 때 공통으로 사용한다.
-export const colorBlurFragmentShader = `
-    precision highp float;
-
-    varying vec2 vUv;
-    uniform sampler2D uInput;
-    uniform vec2 uDirection;
-    uniform float uSigma;
-    uniform float uStep;
-    uniform vec4 uChannel;
-
-    void main() {
-      float sigmaSquared = max(uSigma * uSigma, 0.001);
-      float totalWeight = 0.0;
-      float colorField = 0.0;
-
-      for (int index = -${COLOR_BLUR_TAPS}; index <= ${COLOR_BLUR_TAPS}; index++) {
-        float offsetIndex = float(index);
-        float sampleDistance = offsetIndex * uStep;
-        float weight = exp(-0.5 * sampleDistance * sampleDistance / sigmaSquared);
-        float sampleValue = dot(
-          texture2D(uInput, vUv + uDirection * sampleDistance),
-          uChannel
-        );
-        colorField += sampleValue * weight;
-        totalWeight += weight;
-      }
-
-      colorField /= max(totalWeight, 0.001);
-      gl_FragColor = vec4(colorField, 0.0, 0.0, 1.0);
     }
 `;
 
@@ -526,7 +487,6 @@ export const glyphSpringFragmentShader = `
     uniform float uMaxDistance;
     uniform float uStiffness;
     uniform float uDamping;
-    uniform float uContactPadding;
     uniform float uMaxRotation;
     uniform float uRotationStiffness;
     uniform float uRotationDamping;
@@ -574,8 +534,7 @@ export const glyphSpringFragmentShader = `
       float angle = previous.b;
       float angularVelocity = previous.a;
       float glyphPresent = step(0.00001, cell.z);
-      vec2 padding = vec2(uContactPadding) / uArtSize;
-      vec2 halfSize = cell.zw + padding;
+      vec2 halfSize = cell.zw;
       vec2 center = cell.xy - vec2(0.0, offset / uArtSize.y);
       float contact = 0.0;
       float leftContact = 0.0;
@@ -657,7 +616,6 @@ export const finalFragmentShader = `
     varying vec2 vUv;
     uniform sampler2D uText;
     uniform sampler2D uNearest;
-    uniform sampler2D uColorField;
     uniform sampler2D uSurfaceField;
     uniform vec2 uResolution;
     uniform vec2 uPosterOffset;
@@ -666,17 +624,10 @@ export const finalFragmentShader = `
     uniform float uSurfaceThreshold;
     uniform float uSurfaceSoftness;
     uniform float uSeedThreshold;
-    uniform float uCoreRadius;
-    uniform float uCoreRadiusMin;
-    uniform float uCoreRadiusExponent;
-    uniform float uCoreMix;
-    uniform float uColorFloor;
-    uniform float uColorRange;
     uniform float uHueBands;
     uniform float uColorSaturation;
     uniform float uColorBrightness;
     uniform float uColorPastelMix;
-    uniform float uColorEllipseInfluence;
     uniform float uColorGlyphShapeStrength;
     uniform float uColorGlyphShapeRadius;
     uniform float uColorGlyphShapeEdge;
@@ -720,30 +671,11 @@ export const finalFragmentShader = `
 
       if (nearest.a > 0.5) {
         distanceToStroke = length((artUv - nearest.xy) * uArtSize);
-        float coreStrength = smoothstep(uSeedThreshold, 0.56, nearest.z);
         activeStrokeStrength = smoothstep(
           uSeedThreshold,
           uSeedThreshold + 0.10,
           nearest.z
         );
-        float coreRadius = mix(
-          uCoreRadiusMin,
-          uCoreRadius,
-          pow(coreStrength, uCoreRadiusExponent)
-        );
-        float coreEdge = max(0.55, fwidth(distanceToStroke) * 0.85);
-        float strokeCore = 1.0 - smoothstep(
-          coreRadius - coreEdge,
-          coreRadius + coreEdge,
-          distanceToStroke
-        );
-        float coreGate = smoothstep(
-          uSeedThreshold,
-          uSeedThreshold + 0.015,
-          nearest.z
-        );
-        strokeCore *= coreGate;
-        coverage = max(coverage, strokeCore * uCoreMix);
       }
 
       float textMask = texture2D(uText, artUv).a;
@@ -763,12 +695,6 @@ export const finalFragmentShader = `
 
       float cycle = max(uColorCycle, 0.1);
       float palettePhase = fract(0.84 + uTime / cycle);
-      float colorField = texture2D(uColorField, artUv).r;
-      float normalizedEnergy = clamp(
-        (colorField - uColorFloor) / max(uColorRange, 0.001),
-        0.0,
-        1.0
-      );
       float glyphRadius = max(uColorGlyphShapeRadius, 0.1);
       float glyphEdge = min(
         max(uColorGlyphShapeEdge, 0.05),
@@ -781,16 +707,7 @@ export const finalFragmentShader = `
           distanceToStroke
         )
       ) * activeStrokeStrength;
-      float shapedEllipseEnergy = normalizedEnergy * clamp(
-        uColorEllipseInfluence,
-        0.0,
-        1.0
-      );
-      normalizedEnergy = max(
-        shapedEllipseEnergy,
-        glyphShapeEnergy * uColorGlyphShapeStrength
-      );
-      float contourEnergy = normalizedEnergy;
+      float contourEnergy = glyphShapeEnergy * uColorGlyphShapeStrength;
       float saturation = clamp(uColorSaturation, 0.0, 1.4);
       float brightness = clamp(uColorBrightness, 0.5, 1.1);
       vec3 edgeRose = hsvToRgb(vec3(

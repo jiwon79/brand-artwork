@@ -36,7 +36,7 @@
    3×-resolution 8 × 8 glyph atlas instead of the combined text mask. Neighbouring
    glyph pixels therefore cannot be copied into the moving candidate or overlap
    the existing letter. Multiply the joined flowing
-   falloff by that transformed glyph alpha and character-center mask at each current
+   falloff by that transformed glyph alpha at each current
    output position. At each pixel, track the strongest and second-strongest values
    across the flowing particles. Join near-tied winners with a
    monotonic smooth union over a 0.08 gap, then use the strongest value outside
@@ -62,32 +62,20 @@
    Sampling and smoothing are independent controls, as in the referenced plugin,
    and the second pass removes the stepped/square boundary without broadening the
    source stroke into an indiscriminate blur.
-7. Extract the 0.07 isosurface with 0.012 softness. The nearest-stroke continuity
-   core is disabled (`coreMix = 0`), so there is no explicit outline, fixed-radius
-   body, or glyph-shaped union hidden underneath the metaball silhouette.
-8. Build color in a field independent from silhouette geometry. Measure the
-   actual alpha pixels inside every non-space character cell: ink mass, visible
-   width and height, and alpha-weighted centroid. Use those measurements to bake
-   a different soft vertical ellipse for each character. The 9 × 16 px default
-   radii are only a baseline; sparse/narrow characters produce smaller peaks,
-   dense/wide characters produce larger peaks, and each peak shifts slightly
-   toward its glyph centroid. Multiply this field by the same flowing falloff and
-   store it in the touch-drip target's blue channel. This legacy ellipse field is
-   retained for comparison but its final contribution defaults to zero.
-9. Mix 20% of the current drip-activated glyph pixels back into the statistical
-   ellipse field, then smooth it with a separable Gaussian filter (horizontal
-   sigma 2.5, vertical ratio 1.1). In the final pass, also measure distance to the
-   nearest active glyph pixel. Keep a glyph-shaped core out to 3.2 px with strength
-   0.68, then transition to zero over a bounded 1 px edge. Unlike the previous
-   Gaussian tail, no residual halo remains farther away. Attenuate the old ellipse
-   energy at the same time. With the default ellipse influence of 0, the hottest
-   area therefore follows letter branches and counters instead of remaining a row
-   of identical vertical ovals. Read the combined field everywhere inside the
-   metaball coverage, then map it through overlapping rose, pale-pink, and hot-color
+7. Extract the 0.07 isosurface with 0.012 softness. This field is the complete
+   geometry: there is no explicit outline, fixed-radius body, or glyph-shaped
+   union hidden underneath the metaball silhouette.
+8. Build color independently from silhouette geometry. Spread active glyph pixels
+   within the text mask, use bounded jump flooding to retain the nearest active
+   glyph coordinate, and measure the distance to it in the final pass. Keep the
+   glyph-shaped color energy out to 3.2 px with strength 0.68, then transition to
+   zero over a bounded 1 px edge. Because the energy has a finite distance bound,
+   no Gaussian tail remains around the letters. Read this energy everywhere inside
+   the metaball coverage, then map it through overlapping rose, pale-pink, and hot-color
    blends. Scale all HSV saturation by 0.72 and brightness by 0.96, then mix 12%
    warm cream into the result—slightly more at the hottest core—to prevent green,
    yellow, and magenta phases from becoming neon.
-10. During a held drag, move only the full attached source particle with an eased
+9. During a held drag, move only the full attached source particle with an eased
     emitter. Previously detached particles keep their physical state, so old streams
     keep falling while new packets start at the emitter. Supply mass
     continuously at one unit per 130 ms regardless of pointer distance. Crossing an
@@ -98,7 +86,7 @@
     Capture the active pointer and suppress browser selection/callout behavior for
     uninterrupted movement. After release, stop supply and let every existing
     particle leave through the lower off-screen sink.
-11. Give all 64 character slots an independent four-value spring state: vertical
+10. Give all 64 character slots an independent four-value spring state: vertical
     offset, vertical velocity, angle, and angular velocity. Test a 9 × 9 grid over
     every transformed non-space glyph and only count samples where current glyph
     alpha overlaps the visible liquid surface.
@@ -106,20 +94,18 @@
     left-versus-right contact difference produces torque toward an angle of up to
     9 degrees. Separate translation and rotation springs return the glyph to its
     original pose with restrained inertia when contact ends.
-12. Render the transformed glyph mask into its own target before building the
+11. Render the transformed glyph mask into its own target before building the
     next liquid field. Use that same target for final underprint compositing, so
     both the visible text and the Metaball source follow the current glyph pose.
     The feedback is delayed by one animation frame to avoid a pass reading its own
     in-progress output.
-13. Fully occlude the charcoal underprint inside the colored coverage, add only
+12. Fully occlude the charcoal underprint inside the colored coverage, add only
    sub-pixel dithering inside that coverage, and animate all three palette anchors
    over time.
 
 Geometry and color are deliberately independent. Geometry is flowing-falloff-masked
 stroke alpha → sampled metaball influence → smoothing → isocontour. Color uses a
-nearest-active-glyph distance core by default, with the old glyph-statistics-driven
-vertical peaks available only as an optional mix, then clips that energy by the
-geometry coverage. The old nearest-stroke distance
+nearest-active-glyph distance energy and clips it by the geometry coverage. The old nearest-stroke distance
 construction could only ask which
 source pixel was closest, so the `Y` junction became a convex cap. The
 accumulated geometry field preserves the influence of both arms at once; their
@@ -163,8 +149,8 @@ The reproducible measurements and label-map generator are stored in
 
 - Pointer and touch position control the emitter while the primary pointer is held.
 - Metaball source alpha is suppressed below the 0.02 detection threshold with a
-  0.025 transition. The 0.05 cutoff applies only to the optional nearest-stroke
-  continuity core.
+  0.025 transition. The 0.05 cutoff selects active glyph seeds for the color distance
+  search and does not add geometry.
 - The palette completes a smooth cycle every eight seconds.
 - Touch drip is the only interaction. The held pointer is a source and is not
   rendered as a separate head. Holding continuously emits physical liquid particles;
@@ -262,7 +248,7 @@ The reproducible measurements and label-map generator are stored in
 - Line height: 42.2 px
 - Light radius: 107 × 80 px above and 107 × 160 px below, with 0.55 horizontal
   taper toward the vertical edges
-- Geometry/color field resolution: 480 × 600, half-float RGBA render targets
+- Interaction and geometry field resolution: 480 × 600, half-float RGBA render targets
 - Transformed visible-text mask: 1440 × 1800 unsigned-byte RGBA target, sampled
   directly by the final underprint pass
 - Metaball input threshold / softness: 0.02 / 0.025
@@ -270,15 +256,7 @@ The reproducible measurements and label-map generator are stored in
 - Metaball falloff power / source gain / field gain: 3.2 / 0.55 / 2.2
 - Metaball smoothing: sigma 1.8, five taps per axis
 - Surface isovalue / edge softness: 0.07 / 0.012
-- Nearest-stroke geometry core: disabled; jump flooding is retained only for
-  that optional core
-- Character-center color ellipse baseline: 9 × 16 px radius; actual dimensions
-  vary by glyph ink mass, bounds, and centroid
-- Character-center ellipse contribution: 0 by default
-- Glyph-pixel deformation mixed into color peaks: 20%
-- Glyph-shaped hot core: strength 0.68, 3.2 px radius, and 1 px bounded edge
-- Color ellipse blur: sigma 2.5 horizontally, 2.75 vertically, 20 taps per side
-- Color field floor / range: 0.015 / 0.48
+- Glyph-shaped color energy: strength 0.68, 3.2 px radius, and 1 px bounded edge
 - Palette saturation / brightness / warm pastel mix: 0.72 / 0.96 / 0.12
 - Touch drip: up to 32 mass-carrying particles, with one mass unit supplied every 130 ms,
   78 px/s² gravity, 18 px/s initial downward speed, 0.65 viscous damping,
@@ -293,5 +271,5 @@ The reproducible measurements and label-map generator are stored in
   7.5 s⁻¹ source follow rate
 - Background-text spring: 64 character slots, 81 ink-and-surface overlap samples
   per visible glyph, 10 px target offset, translation stiffness 58, translation
-  damping 12, 0 px contact padding, 9 degree target rotation, rotation stiffness
+  damping 12, 9 degree target rotation, rotation stiffness
   46, and rotation damping 10

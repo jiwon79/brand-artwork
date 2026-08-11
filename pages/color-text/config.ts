@@ -12,7 +12,6 @@ export const TEXTURE_SCALE = 3;
 export const FIELD_WIDTH = ART_WIDTH;
 export const FIELD_HEIGHT = ART_HEIGHT;
 
-export const COLOR_BLUR_TAPS = 20;
 export const METABALL_SAMPLES = 192;
 export const METABALL_SMOOTH_TAPS = 5;
 export const STROKE_SPREAD_PASSES = 8;
@@ -24,8 +23,8 @@ export const LIQUID_SOURCE_PACKET_MASS = 1;
 export const LIQUID_OFFSCREEN_MARGIN = 260;
 export const LIQUID_MAX_STEP = 1 / 60;
 
-// Jump flooding은 선택적인 색 연속성 core에만 사용한다. 보이는 액체
-// 외곽선은 pixel metaball field가 만든다.
+// Jump flooding은 글자형 색 에너지에만 사용한다. 보이는 액체 외곽선은
+// pixel metaball field가 만든다.
 export const JFA_JUMPS = [16, 8, 4, 2, 1, 1] as const;
 
 export const TEXT_LINES = [
@@ -71,26 +70,11 @@ export type ColorTextParameters = {
   metaballSourceGain: number;
   metaballFieldGain: number;
   metaballSmoothing: number;
-  coreRadius: number;
-  coreRadiusMin: number;
-  coreRadiusExponent: number;
-  coreMix: number;
   surfaceThreshold: number;
   surfaceSoftness: number;
-  colorSourceMode: number;
-  colorCenterRadiusX: number;
-  colorCenterRadiusY: number;
-  colorCenterVariation: number;
-  colorGlyphInfluence: number;
-  colorEllipseInfluence: number;
   colorGlyphShapeStrength: number;
   colorGlyphShapeRadius: number;
   colorGlyphShapeEdge: number;
-  colorBlurSigma: number;
-  colorBlurAspect: number;
-  colorBlurStep: number;
-  colorFloor: number;
-  colorRange: number;
   hueBands: number;
   colorSaturation: number;
   colorBrightness: number;
@@ -114,7 +98,6 @@ export type ColorTextParameters = {
   textPushDistance: number;
   textSpringStiffness: number;
   textSpringDamping: number;
-  textContactPadding: number;
   textMaxRotation: number;
   textRotationStiffness: number;
   textRotationDamping: number;
@@ -160,26 +143,11 @@ export function createColorTextParameters(
     metaballSourceGain: number('qaMetaballSourceGain', 0.55),
     metaballFieldGain: number('qaMetaballFieldGain', 2.2),
     metaballSmoothing: number('qaMetaballSmoothing', 1.8),
-    coreRadius: number('qaCore', 1.2),
-    coreRadiusMin: number('qaCoreMin', 0.4),
-    coreRadiusExponent: number('qaCoreExponent', 0.25),
-    coreMix: number('qaCoreMix', 0.0),
     surfaceThreshold: number('qaSurfaceThreshold', 0.07),
     surfaceSoftness: number('qaSurfaceSoftness', 0.012),
-    colorSourceMode: number('qaColorSourceMode', 0),
-    colorCenterRadiusX: number('qaColorCenterRadiusX', 9.0),
-    colorCenterRadiusY: number('qaColorCenterRadiusY', 16.0),
-    colorCenterVariation: number('qaColorCenterVariation', 1.0),
-    colorGlyphInfluence: number('qaColorGlyphInfluence', 0.2),
-    colorEllipseInfluence: number('qaColorEllipseInfluence', 0.0),
     colorGlyphShapeStrength: number('qaColorGlyphShapeStrength', 0.68),
     colorGlyphShapeRadius: number('qaColorGlyphShapeRadius', 3.2),
     colorGlyphShapeEdge: number('qaColorGlyphShapeEdge', 1.0),
-    colorBlurSigma: number('qaColorBlurSigma', 2.5),
-    colorBlurAspect: number('qaColorBlurAspect', 1.1),
-    colorBlurStep: number('qaColorBlurStep', 1.0),
-    colorFloor: number('qaColorFloor', 0.015),
-    colorRange: number('qaColorRange', 0.48),
     hueBands: number('qaHueBands', 0.31),
     colorSaturation: number('qaColorSaturation', 0.72),
     colorBrightness: number('qaColorBrightness', 0.96),
@@ -203,7 +171,6 @@ export function createColorTextParameters(
     textPushDistance: number('qaTextPushDistance', 10.0),
     textSpringStiffness: number('qaTextSpringStiffness', 58.0),
     textSpringDamping: number('qaTextSpringDamping', 12.0),
-    textContactPadding: number('qaTextContactPadding', 0.0),
     textMaxRotation: number('qaTextMaxRotation', 9.0),
     textRotationStiffness: number('qaTextRotationStiffness', 46.0),
     textRotationDamping: number('qaTextRotationDamping', 10.0),

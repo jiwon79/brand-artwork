@@ -140,7 +140,7 @@ Color Text 전용 선택:
 - seed는 활성 글자 픽셀로 제한
 - 전역 일정 대신 `16…1`의 bounded schedule 사용
 - 가장 가까운 seed의 strength도 함께 전달
-- geometry가 아니라 실루엣 내부의 색 중심에만 사용
+- geometry가 아니라 실루엣 내부의 글자형 색 에너지에만 사용
 
 ## 11. 정확도와 대안
 

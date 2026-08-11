@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" viewBox="0 0 1200 590" role="img" aria-labelledby="title desc">
   <title id="title">Color Text 한 프레임의 CPU 상태, GPU field, 출력과 피드백</title>
-  <desc id="desc">왼쪽 패널은 포인터와 물 packet을 갱신하는 CPU, 가운데 패널은 변형 글자에서 interaction, geometry와 color field를 만드는 GPU, 오른쪽 패널은 최종 출력과 다음 프레임 글자 spring 피드백을 보여준다.</desc>
+  <desc id="desc">왼쪽 패널은 포인터와 물 packet을 갱신하는 CPU, 가운데 패널은 변형 글자에서 interaction, geometry field와 가까운 글자 seed를 만드는 GPU, 오른쪽 패널은 최종 출력과 다음 프레임 글자 spring 피드백을 보여준다.</desc>
   <defs>
     <style>
       .title { font: 700 27px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; }
@@ -27,7 +27,7 @@
   <text class="title" x="42" y="48">한 프레임은 물의 상태, 픽셀 field, 글자 피드백을 순서대로 연결한다</text>
 
   <g transform="translate(34 82)">
-    <rect class="panel" width="344" height="456" rx="20"/>
+    <rect class="panel" width="344" height="480" rx="20"/>
     <text class="head" x="172" y="38">1. CPU · 물의 상태</text>
     <g transform="translate(52 76)">
       <rect class="box" width="240" height="62" rx="13"/>
@@ -52,7 +52,7 @@
   <path class="arrow" d="M390 310H414" marker-end="url(#arrow)"/>
 
   <g transform="translate(416 82)">
-    <rect class="panel" width="368" height="456" rx="20"/>
+    <rect class="panel" width="368" height="480" rx="20"/>
     <text class="head" x="184" y="38">2. GPU · 픽셀 지도</text>
     <g transform="translate(54 76)">
       <rect class="box" width="260" height="62" rx="13"/>
@@ -61,7 +61,7 @@
       <path class="arrow" d="M130 64V91" marker-end="url(#arrow)"/>
       <rect class="box blue" y="100" width="260" height="74" rx="13"/>
       <text class="label" x="130" y="126">interactionTarget RGBA</text>
-      <text class="mono" x="130" y="147">active · text · color · falloff</text>
+      <text class="mono" x="130" y="147">active · text · falloff</text>
       <path class="arrow" d="M82 176V207" marker-end="url(#arrow)"/>
       <path class="arrow" d="M178 176V207" marker-end="url(#arrow)"/>
       <rect class="box blue" y="216" width="124" height="86" rx="13"/>
@@ -71,19 +71,19 @@
       <rect class="box pink" x="136" y="216" width="124" height="86" rx="13"/>
       <text class="label" x="198" y="243">color</text>
       <text class="small" x="198" y="264">nearest seed</text>
-      <text class="small" x="198" y="283">color field</text>
-      <path class="arrow" d="M62 304V335" marker-end="url(#arrow)"/>
-      <path class="arrow" d="M198 304V335" marker-end="url(#arrow)"/>
-      <rect class="box purple" y="344" width="260" height="56" rx="13"/>
-      <text class="label" x="130" y="369">surfaceField + colorField</text>
-      <text class="small" x="130" y="389">최종 합성과 contact의 공통 입력</text>
+      <text class="small" x="198" y="283">glyph distance</text>
+      <path class="arrow" d="M62 304V313" marker-end="url(#arrow)"/>
+      <path class="arrow" d="M198 304V313" marker-end="url(#arrow)"/>
+      <rect class="box purple" y="322" width="260" height="56" rx="13"/>
+      <text class="label" x="130" y="347">surfaceField + nearest seed</text>
+      <text class="small" x="130" y="367">최종 합성 · surface는 contact에도 사용</text>
     </g>
   </g>
 
   <path class="arrow" d="M796 310H820" marker-end="url(#arrow)"/>
 
   <g transform="translate(822 82)">
-    <rect class="panel" width="344" height="456" rx="20"/>
+    <rect class="panel" width="344" height="480" rx="20"/>
     <text class="head" x="172" y="38">3. 출력 · 다음 프레임</text>
     <g transform="translate(52 92)">
       <rect class="box blue" width="240" height="74" rx="13"/>
@@ -98,7 +98,7 @@
       <rect class="box purple" y="254" width="240" height="74" rx="13"/>
       <text class="label" x="120" y="283">64×1 spring state</text>
       <text class="small" x="120" y="305">offset · velocity · angle · ω</text>
-      <path d="M50 330V358H-418V44H-366" fill="none" stroke="#8c79bd" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#purpleArrow)"/>
+      <path d="M50 330V374H-418V44H-366" fill="none" stroke="#8c79bd" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#purpleArrow)"/>
       <text class="small" x="120" y="346">한 프레임 뒤 deformed glyphs로 되먹임</text>
     </g>
   </g>

@@ -7,10 +7,8 @@ type ParameterGuiOptions = {
   surfaceSourceMaterial: ShaderMaterial;
   surfaceBlurMaterial: ShaderMaterial;
   surfaceSmoothMaterial: ShaderMaterial;
-  colorBlurMaterial: ShaderMaterial;
   nearestSeedMaterial: ShaderMaterial;
   finalMaterial: ShaderMaterial;
-  rebakeColorAtlas: () => void;
 };
 
 /**
@@ -23,10 +21,8 @@ export function bindParameterGui(options: ParameterGuiOptions): void {
     surfaceSourceMaterial,
     surfaceBlurMaterial,
     surfaceSmoothMaterial,
-    colorBlurMaterial,
     nearestSeedMaterial,
     finalMaterial,
-    rebakeColorAtlas,
   } = options;
   const gui = new GUI({ title: 'Color Text controls', width: 320 });
 
@@ -53,7 +49,6 @@ export function bindParameterGui(options: ParameterGuiOptions): void {
   textMotionFolder.add(state, 'textPushDistance', 0, 24, 0.5).name('최대 하강 거리');
   textMotionFolder.add(state, 'textSpringStiffness', 10, 120, 1).name('스프링 강성');
   textMotionFolder.add(state, 'textSpringDamping', 2, 30, 0.5).name('스프링 감쇠');
-  textMotionFolder.add(state, 'textContactPadding', 0, 12, 0.5).name('접촉 감지 여유');
   textMotionFolder.add(state, 'textMaxRotation', 0, 20, 0.5).name('최대 회전 각도');
   textMotionFolder.add(state, 'textRotationStiffness', 10, 120, 1)
     .name('회전 스프링 강성');
@@ -118,22 +113,6 @@ export function bindParameterGui(options: ParameterGuiOptions): void {
     });
 
   const colorFolder = gui.addFolder('색상');
-  const rebake = (): void => rebakeColorAtlas();
-  colorFolder.add(state, 'colorCenterRadiusX', 3, 20, 0.5)
-    .name('기준 타원 가로 반경')
-    .onChange(rebake);
-  colorFolder.add(state, 'colorCenterRadiusY', 6, 28, 0.5)
-    .name('기준 타원 세로 반경')
-    .onChange(rebake);
-  colorFolder.add(state, 'colorCenterVariation', 0, 1, 0.01)
-    .name('글자별 크기 차이')
-    .onChange(rebake);
-  colorFolder.add(state, 'colorGlyphInfluence', 0, 0.6, 0.01).name('글자 픽셀 변형');
-  colorFolder.add(state, 'colorEllipseInfluence', 0, 1, 0.01)
-    .name('타원 중심 혼합')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uColorEllipseInfluence.value = value;
-    });
   colorFolder.add(state, 'colorGlyphShapeStrength', 0, 1, 0.01)
     .name('글자형 중심 강도')
     .onChange((value: number) => {
@@ -148,23 +127,6 @@ export function bindParameterGui(options: ParameterGuiOptions): void {
     .name('글자형 경계 부드러움')
     .onChange((value: number) => {
       finalMaterial.uniforms.uColorGlyphShapeEdge.value = value;
-    });
-  colorFolder.add(state, 'colorBlurSigma', 0.5, 16, 0.1).name('중심 타원 가로 blur');
-  colorFolder.add(state, 'colorBlurAspect', 0.2, 3, 0.01).name('중심 타원 세로 비율');
-  colorFolder.add(state, 'colorBlurStep', 0.5, 2, 0.05)
-    .name('색 blur 간격')
-    .onChange((value: number) => {
-      colorBlurMaterial.uniforms.uStep.value = value;
-    });
-  colorFolder.add(state, 'colorFloor', 0, 0.3, 0.005)
-    .name('색 에너지 시작')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uColorFloor.value = value;
-    });
-  colorFolder.add(state, 'colorRange', 0.1, 1, 0.01)
-    .name('색 에너지 범위')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uColorRange.value = value;
     });
   colorFolder.add(state, 'hueBands', 0.1, 0.8, 0.01)
     .name('고온 색상 간격')
@@ -198,26 +160,6 @@ export function bindParameterGui(options: ParameterGuiOptions): void {
     .onChange((value: number) => {
       nearestSeedMaterial.uniforms.uSeedThreshold.value = value;
       finalMaterial.uniforms.uSeedThreshold.value = value;
-    });
-  advancedFolder.add(state, 'coreRadius', 0.1, 8, 0.1)
-    .name('Core 반경')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uCoreRadius.value = value;
-    });
-  advancedFolder.add(state, 'coreRadiusMin', 0.1, 5, 0.1)
-    .name('Core 최소 반경')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uCoreRadiusMin.value = value;
-    });
-  advancedFolder.add(state, 'coreRadiusExponent', 0.1, 1.5, 0.05)
-    .name('Core 강도 지수')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uCoreRadiusExponent.value = value;
-    });
-  advancedFolder.add(state, 'coreMix', 0, 1, 0.01)
-    .name('Core 혼합')
-    .onChange((value: number) => {
-      finalMaterial.uniforms.uCoreMix.value = value;
     });
 
   lightFolder.close();
