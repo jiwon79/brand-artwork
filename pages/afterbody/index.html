@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Afterbody</title>
+  <meta name="theme-color" content="#000000">
+  <link rel="canonical" href="https://brand-artwork.vercel.app/pages/afterbody/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://brand-artwork.vercel.app/pages/afterbody/">
+  <meta property="og:title" content="Afterbody">
+  <meta property="og:image" content="https://brand-artwork.vercel.app/pages/afterbody/assets/reference-frame.png">
+  <meta property="og:image:alt" content="RGB human afterimages dissolving into particles">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Afterbody">
+  <meta name="twitter:image" content="https://brand-artwork.vercel.app/pages/afterbody/assets/reference-frame.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="stage" aria-label="Afterbody interactive artwork">
+    <canvas
+      id="artwork"
+      tabindex="0"
+      role="img"
+      aria-label="겹쳐진 인체 잔상이 오른쪽부터 RGB 입자로 흩어지는 인터랙티브 작품"
+    ></canvas>
+    <p id="hint" aria-live="polite">TAP TO DISSOLVE</p>
+  </main>
+  <div id="error" role="alert"></div>
+
+  <script type="module" src="/common/touch-cursor.ts"></script>
+  <script type="module" src="script.ts"></script>
+</body>
+</html>
