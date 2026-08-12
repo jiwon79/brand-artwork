@@ -32,6 +32,8 @@ Frame_N = composite(M_N, C_N, K_N)
 
 ![CPU 물 상태에서 GPU field와 다음 프레임 글자 피드백까지](../../assets/color-text-frame-graph.svg)
 
+편집 가능한 원본은 [color-text-frame-graph.drawio](../../assets/color-text-frame-graph.drawio)다. SVG와 PNG는 이 원본을 draw.io에서 export한 결과다.
+
 ### 1.1 의존관계를 질문으로 나누기
 
 | 먼저 답할 질문 | 입력 | 계산 결과 |
