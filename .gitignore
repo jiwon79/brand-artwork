@@ -15,3 +15,10 @@ pages/gentle-monster/scripts/verify_*.png
 # Playwright MCP / 임시 스크린샷
 .playwright-mcp/
 /*.png
+
+# 임시 QA 산출물과 비교 자료
+**/qa/
+**/.qa/
+**/*-qa.*
+**/qa-*.*
+**/*.qa.*

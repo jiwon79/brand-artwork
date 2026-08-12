@@ -5,7 +5,7 @@
 - 기준 구현: [`pages/color-text/script.ts`](../../../pages/color-text/script.ts)
 - 작품 좌표: `480 × 600 artwork pixel`
 - 문서 갱신 기준: `2026-08-11`
-- 상세 실험값과 과거 비교: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)
+- 세부 파라미터와 구현 기록: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)
 
 재사용 가능한 수학 원리는 별도 concept 문서로 분리했다.
 
@@ -16,7 +16,7 @@
 
 손가락은 물을 직접 그리지 않는다. 손가락은 물이 공급되는 source 위치만 정하고, CPU가 최대 32개의 큰 물 packet을 움직인다. GPU는 packet의 Falloff와 **현재 위치의 글자 픽셀**을 곱한 뒤, 그 픽셀들을 연속적인 field로 연결한다.
 
-![CPU 물 상태에서 GPU field와 다음 프레임 글자 피드백까지](./figures/04-current-frame-graph.svg)
+![CPU 물 상태에서 GPU field와 다음 프레임 글자 피드백까지](../../assets/color-text-frame-graph.svg)
 
 한 프레임에는 세 종류의 상태가 연결된다.
 
@@ -41,7 +41,7 @@ pages/color-text/
   style.css
     전체 화면 배치, 모바일 기본 제스처 차단
   config.ts
-    작품 크기, 문장, 기본 파라미터와 QA override
+    작품 크기, 문장, 기본 파라미터와 URL 검증 override
   script.ts
     WebGL 자원 생성과 한 frame의 pass 실행 순서
   liquid-solver.ts
@@ -53,11 +53,9 @@ pages/color-text/
   parameter-gui.ts
     lil-gui 조절 항목과 texture uniform 갱신
   spec.md
-    파라미터와 레퍼런스 비교 기록
+    파라미터와 세부 구현 기록
   assets/
     reference와 OG image
-  qa/
-    고정 입력 비교 이미지와 분석 스크립트
 ```
 
 처음 코드를 읽을 때는 `config.ts`에서 고정값을 확인하고, `liquid-solver.ts`와 `text-atlas.ts`에서 CPU 입력을 살펴본 뒤, `script.ts`의 `renderFrame()`을 읽는 순서가 가장 자연스럽다. `renderFrame()`은 한 장의 full-screen quad를 서로 다른 `ShaderMaterial`로 반복 렌더링하고, 각 결과를 render target texture에 저장해 다음 pass로 넘긴다. 픽셀별 수식이 필요할 때만 `shaders.ts`에서 같은 이름의 pass를 찾아간다.
@@ -96,7 +94,7 @@ pages/color-text/
 1. `W`처럼 실제 폭이 넓은 글자는 회전할 때 자기가 처음 있던 배치 범위 밖이 잘릴 수 있다.
 2. 잘림을 막으려고 원본 문장을 넓게 읽으면 옆의 `A`나 `Y` 픽셀까지 함께 복사될 수 있다.
 
-![합쳐진 문장 이미지의 문제와 독립 글자 아틀라스의 역변형](./figures/05-glyph-atlas.svg)
+![합쳐진 문장 이미지의 문제와 독립 글자 아틀라스의 역변형](../../assets/color-text-glyph-atlas.svg)
 
 ### 4.2 실제 저장 구조
 
@@ -169,7 +167,7 @@ atlasUv      = atlasCellCenter + Q / atlasSize
 
 현재 구조는 손가락을 **질량을 공급하는 source**로 보고, 완성된 큰 packet이 일정 시간마다 분리되어 떨어지게 한다.
 
-![Hold, Drag, Release에서 source와 분리된 packet의 움직임](./figures/06-particle-lifecycle.svg)
+![Hold, Drag, Release에서 source와 분리된 packet의 움직임](../../assets/color-text-packet-lifecycle.svg)
 
 ### 5.2 `pointerTarget`과 `liquid.emitter`
 
@@ -238,9 +236,9 @@ energy(t_s) = (1 - exp(-t_s / 0.36s))²
 
 누적 드래그 거리가 8 artwork px을 넘으면 현재 source energy를 1로 바꿔 새 위치마다 시작 지연이 반복되지 않게 한다. 손을 떼면 그 순간의 energy를 유지한다.
 
-#### `growing`: QA와 공유하는 추가 fade 스위치
+#### `growing`: 검증 상태와 공유하는 추가 fade 스위치
 
-`growing = true`이면 shader에서 `age` 기반 birth fade를 한 번 더 곱한다. 일반 입력에서는 mass와 energy가 첫 등장을 담당하므로 대부분 false다. 고정 QA particle도 같은 uniform 구조로 표현하기 위해 남아 있다.
+`growing = true`이면 shader에서 `age` 기반 birth fade를 한 번 더 곱한다. 일반 입력에서는 mass와 energy가 첫 등장을 담당하므로 대부분 false다. 고정 검증 particle도 같은 uniform 구조로 표현하기 위해 남아 있다.
 
 #### `seed`: 깜빡이지 않는 모양 차이
 
@@ -386,7 +384,7 @@ surfaceActivation = M(p) * L(p)^1.22 * 0.92
 
 얇은 활성 글자 픽셀을 그대로 그리지 않고, 출력 픽셀마다 주변 활성 분포를 조사해 연속적인 높이 지도를 만든다. 공통 원리와 수식은 [Pixel-sampled Metaball Field](../../concepts/pixel-metaball-field.md)에 분리했다.
 
-![가장 가까운 픽셀 방식과 주변 누적 field가 Y를 다르게 만드는 이유](./figures/03-y-junction.svg)
+![가장 가까운 픽셀 방식과 주변 누적 field가 Y를 다르게 만드는 이유](../../assets/color-text-y-junction.svg)
 
 현재 작품의 pass와 기본값은 다음과 같다.
 
@@ -526,7 +524,7 @@ Spring state는 `64 × 1` half-float target 두 개에 저장한다.
 
 보이는 글자와 Metaball 입력이 같은 변형 마스크를 읽으므로 글자는 내려갔는데 실루엣만 원래 자리에 남는 불일치가 없다. 한 frame 지연은 pass가 자기 output을 동시에 다시 읽는 순환도 피한다.
 
-일반 실행에서는 위 spring 적분을 사용한다. 고정 스크린샷을 비교하는 QA mode에서는 시간에 따른 중간 상태가 매번 달라지지 않도록 `offset = targetOffset`, `angle = targetAngle`로 즉시 맞추고 두 속도를 0으로 둔다.
+일반 실행에서는 위 spring 적분을 사용한다. 고정 스크린샷을 비교하는 검증 mode에서는 시간에 따른 중간 상태가 매번 달라지지 않도록 `offset = targetOffset`, `angle = targetAngle`로 즉시 맞추고 두 속도를 0으로 둔다.
 
 ## 10. 실제 한 프레임 순서
 
@@ -594,8 +592,8 @@ Field target이 half float인 이유는 여러 gain을 합친 1보다 큰 값과
 | --- | --- | --- |
 | 일반 | `/pages/color-text/` | 실제 터치 작품 |
 | Process | `?stage=0…3` | 특정 중간 단계에서 시작 |
-| QA | `?qa=1&qaX=0.37&qaY=0.52` | 고정 synthetic packet으로 재현 가능한 비교 |
-| Semantic QA | QA 주소에 `&qaLabels=1` | 배경·글자·효과 3분류 출력 |
+| 검증 | `?qa=1&qaX=0.37&qaY=0.52` | 고정 synthetic packet으로 재현 가능한 비교 |
+| 3분류 검증 | 검증 주소에 `&qaLabels=1` | 배경·글자·효과 3분류 출력 |
 | OG | `?og` | 1200×630 SNS 이미지용 확대·제목, 버튼 숨김 |
 | GUI | 키보드 `g` | lil-gui 열기·닫기 |
 
@@ -645,7 +643,7 @@ lil-gui는 현재 값을 여섯 폴더로 나눈다.
 구조나 파라미터를 바꿀 때는 다음 순서로 확인한다.
 
 1. `Y` 교차부에서 흰 공간이 줄기를 따라 오목하게 내려오는지 본다.
-2. Semantic QA에서 배경 0, 글자 1, 효과 2의 실루엣 면적과 폭을 비교한다.
+2. 3분류 검증 화면에서 배경 0, 글자 1, 효과 2의 실루엣 면적과 폭을 비교한다.
 3. 첫 Hold에서 mass와 energy가 0부터 시작하는지 본다.
 4. Drag에서 source만 이동하고 분리된 packet은 원래 위치 아래로 흐르는지 본다.
 5. Release에서 중앙 fade 없이 모든 packet이 아래로 빠지는지 본다.
@@ -655,7 +653,7 @@ lil-gui는 현재 값을 여섯 폴더로 나눈다.
 9. iOS 길게 누르기 UI, pointer capture, 두 손가락 Process 변경을 확인한다.
 10. `pnpm typecheck`와 `pnpm build`를 통과한다.
 
-기존 문구로 측정한 수치는 `pages/color-text/qa/`에 남아 있다. 현재 문장은 다르므로 그 수치를 현재 화면의 pixel 수 주장으로 사용하지 않고 Metaball 방법의 regression 기준으로만 사용한다.
+비교 이미지와 측정값은 저장소에 보관하지 않는다. 재검증이 필요하면 gitignore된 `qa/` 또는 `.qa/`에서 임시로 생성하고 현재 문장과 viewport를 기준으로 다시 측정한다.
 
 ## 17. 핵심 데이터 흐름
 
@@ -679,4 +677,4 @@ pointer event
 - [Scenery — Metaball manual](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ/manual)
 - [Cavalry — Falloff documentation](https://cavalry.studio/docs/nodes/utilities/falloff/)
 - 현재 구현: [`pages/color-text/script.ts`](../../../pages/color-text/script.ts)
-- 구현 수치와 비교 기록: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)
+- 세부 파라미터와 구현 기록: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)

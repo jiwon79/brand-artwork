@@ -117,35 +117,6 @@ official tools it names: Scenery's [Metaball overview](https://scenery.io/plugin
 its [manual](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ/manual), and Cavalry's
 [Falloff documentation](https://cavalry.studio/docs/nodes/utilities/falloff/).
 
-## Silhouette-only validation — original-copy baseline
-
-The comparison deliberately discards palette details and maps the image to three
-classes: background = 0, unaffected text = 1, effect silhouette = 2.
-
-These measurements were recorded before the copy changed from `COLOR CHANGES ...`
-to `PRESS AND HOLD THE SURFACE ...`. They remain the geometry-acceptance baseline
-for the Metaball method, not a pixel-count claim for the current letter layout.
-
-![Reference and implementation three-class silhouettes](qa/silhouette-semantic-comparison-final.png)
-
-| Measurement | Reference | Previous | Final |
-| --- | ---: | ---: | ---: |
-| Effect pixels | 25,180 | 30,553 | 25,836 |
-| Effect bounding box | 215 × 256 | 222 × 242 | 204 × 248 |
-| Box occupancy | 0.457 | 0.569 | 0.511 |
-| Equivalent strip width | 26.96 px | — | 25.13 px |
-| Skeleton-width median | 32.14 px | — | 31.80 px |
-
-The final visible effect area is 2.61% above the reference, versus 21.34% above
-in the broad baseline. Its extent is 5.12% narrower and 3.13% shorter, while the
-median skeleton width differs by only -1.07%. The focused comparison was the
-first acceptance gate: the `Y` now contains a continuous, downward concavity at
-the arms/stem junction rather than a convex center hotspot. Only after that gate
-passed was the full silhouette measured.
-
-The reproducible measurements and label-map generator are stored in
-`qa/silhouette-metrics-final.json` and `qa/analyze-silhouette.mjs`.
-
 ## Interaction
 
 - Pointer and touch position control the emitter while the primary pointer is held.
@@ -201,17 +172,8 @@ The reproducible measurements and label-map generator are stored in
   dot, and short start/end ripple for every touch. It is a DOM-only recording aid:
   `pointer-events: none` keeps it out of pointer capture, liquid simulation, and
   Process View button input.
-- `?qa` freezes the palette at the reference's pink/yellow phase.
-- `?qa&qaX=0.37&qaY=0.52` also locks the pointer in normalized artwork space
-  for deterministic reference comparisons.
-- Add `&qaLabels=1` to render the exact background/text/effect class map without
-  palette information.
-- Add `&qaDripAge=1.6&qaDrip=1` to freeze a 1.6-second held stream. Add
-  `&qaDripReleaseAge=0.9` to inspect that stream 0.9 seconds
-  after emission stopped.
-- Add `&qaHasDragged=1` to make post-drag particles skip the initial birth delay.
-- `?og&qa...` hides Process View, adds the social-card title treatment, and enlarges
-  the poster by 1.28× for deterministic 1200 × 630 Open Graph image capture.
+- `?og` hides Process View, adds the social-card title treatment, and enlarges
+  the poster by 1.28× for 1200 × 630 Open Graph image capture.
 - Press `g` to hide or reveal the tuning panel.
 
 ## Process View
