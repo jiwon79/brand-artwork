@@ -1,12 +1,10 @@
-# Guseul Smooth Union Guide
+# Smooth Union
 
-이 문서는 Guseul의 탄성 외곽선에서 `smoothMinimum()`이 왜 필요하고, 실제 코드에서 어떻게 사용되는지 설명한다.
-
-구슬 작품에 적용된 전체 렌더링 구조는 [`architecture.md`](../artworks/guseul/architecture.md)를 먼저 참고한다.
+Smooth union은 두 signed-distance field를 합치면서 외곽선과 기울기가 접합부에서 연속적으로 바뀌게 만드는 방법이다.
 
 ## 1. 그림으로 먼저 보기
 
-![일반 min union과 smooth minimum union 비교](../assets/guseul-smooth-union.svg)
+![일반 min union과 smooth minimum union 비교](../assets/smooth-union.svg)
 
 왼쪽은 두 signed-distance field를 `min(a, b)`로 바로 합친 결과다. 외곽선은 연결되지만 원과 bridge 중 어느 쪽의 거리를 선택할지가 바뀌는 위치에서 기울기가 꺾인다.
 
@@ -28,10 +26,10 @@ distance > 0 : 도형 외부
 d_circle(p) = length(p - c) - r
 ```
 
-Guseul의 center-contact bridge는 선분에 반지름을 준 capsule이다.
+두 번째 예시 도형으로 선분에 반지름을 준 capsule을 사용할 수 있다.
 
 ```text
-d_bridge(p) = distanceToSegment(p, center, contact) - bridgeRadius
+d_capsule(p) = distanceToSegment(p, segmentStart, segmentEnd) - radius
 ```
 
 원이나 capsule을 픽셀로 미리 그려두는 것이 아니다. 렌더링하려는 위치 `p`에서 이 식을 실행해 내부인지, 외부인지, 경계에서 얼마나 떨어졌는지 계산한다.
@@ -84,13 +82,13 @@ gradient(a)  -> 선택 전환 -> gradient(b)
 - 원과 bridge 사이에 뾰족한 골이나 crease가 생긴다.
 - normal이 갑자기 바뀐다.
 - normal을 사용하는 spec과 굴절도 접합부에서 꺾인다.
-- contact가 움직일 때 전환 위치가 픽셀 사이를 이동하며 떨릴 수 있다.
+- 도형이 움직일 때 전환 위치가 픽셀 사이를 이동하며 떨릴 수 있다.
 
 즉, 외곽선 위치만의 문제가 아니라 거리장의 **미분값**이 불연속이라는 문제다.
 
-## 5. 현재 `smoothMinimum()` 수식
+## 5. Polynomial smooth minimum 수식
 
-현재 구현은 [`elastic-contact-field.ts`](../../pages/guseul/elastic-contact-field.ts#L117)에 있다.
+Smooth minimum에는 여러 형태가 있다. 여기서는 계산이 단순하고 접합 범위를 직접 조절할 수 있는 polynomial 형태를 사용한다.
 
 ```ts
 function smoothMinimum(first: number, second: number, radius: number): number {
@@ -142,63 +140,35 @@ smoothMin(0, 0, 0.2) = -0.05
 
 `h^2`를 사용하므로 blend 영역의 시작과 끝에서도 보정량이 갑자기 생기지 않는다. 그 결과 거리장의 기울기도 점진적으로 전환된다.
 
-## 8. 현재 코드에서 합쳐지는 순서
+## 8. 여러 도형을 합치는 순서
 
-`rawShapeDistance()`는 작은 도형들을 한 번에 모두 합치지 않는다. 의미 단위별로 순서대로 합친다.
+세 개 이상의 거리장을 합칠 때는 작은 의미 단위부터 묶은 뒤 큰 형태에 합칠 수 있다.
 
-### 8.1 contact 원과 center bridge
+```text
+primitive A + primitive B
+  -> branch distance
 
-```ts
-const branchDistance = smoothMinimum(
-  pointDistance,
-  bridgeDistance,
-  controls.fieldSmoothness * 0.72,
-);
+base distance + branch distance
+  -> combined distance
 ```
 
-contact 원과 중심에서 뻗은 capsule을 먼저 하나의 branch로 만든다. 이 접합부는 전체 union보다 약간 좁은 `0.72 * fieldSmoothness`를 사용한다.
+Smooth minimum은 일반적으로 결합법칙을 엄밀히 만족하지 않으므로 합치는 순서에 따라 접합부가 조금 달라질 수 있다. 같은 `k`를 무조건 반복하기보다 어느 접합부가 더 단단하거나 넓어야 하는지에 따라 단계별 범위를 정한다.
 
-### 8.2 branch와 기존 shape
+## 9. 시간 보간과 smooth union은 다른 역할이다
 
-```ts
-const combinedDistance = smoothMinimum(
-  distanceToShape,
-  branchDistance,
-  controls.fieldSmoothness,
-);
-```
-
-완성된 branch를 center seed와 이전 contact들이 만든 shape에 합친다.
-
-### 8.3 contact membrane
-
-```ts
-const combinedDistance = smoothMinimum(
-  distanceToShape,
-  linkDistance,
-  controls.fieldSmoothness,
-);
-```
-
-contact 사이를 채우는 membrane도 마지막에 같은 방식으로 union한다.
-
-실제 코드는 [`rawShapeDistance()`](../../pages/guseul/elastic-contact-field.ts#L316)에서 확인할 수 있다.
-
-## 9. Contact influence와 smooth union은 다른 역할이다
-
-`smoothMinimum()`은 두 도형의 **공간적인 접합부**를 부드럽게 만든다. contact가 생기거나 사라질 때의 **시간적인 전환**은 influence가 담당한다.
+`smoothMinimum()`은 두 도형의 **공간적인 접합부**를 부드럽게 만든다. 도형이 생기거나 사라질 때의 **시간적인 전환**은 별도의 influence가 담당한다.
 
 ```ts
 distanceToShape += (combinedDistance - distanceToShape)
-  * smoothInfluence(item.influence);
+  * smoothInfluence(influence);
 ```
 
-- `fieldSmoothness`: 원과 bridge가 공간에서 얼마나 둥글게 붙는가
-- `item.influence`: 그 contact가 시간에 따라 얼마나 나타나 있는가
+- `k`: 두 거리장이 공간에서 얼마나 넓게 섞이는가
+- `influence`: 새 도형이 시간에 따라 얼마나 나타나 있는가
 
-둘을 구분해야 release animation을 조절할 때 엉뚱한 값을 바꾸지 않는다.
+둘을 구분해야 animation 속도와 접합부 모양을 독립적으로 조절할 수 있다.
 
-## 10. `fieldSmoothness`를 바꾸면 생기는 일
+## 10. `k`를 바꾸면 생기는 일
 
 | 값 | 접합부 | 장점 | 위험 |
 | --- | --- | --- | --- |
@@ -206,19 +176,11 @@ distanceToShape += (combinedDistance - distanceToShape)
 | 중간 | 자연스럽게 둥금 | 실리콘처럼 연결됨 | 약간의 면적 증가 |
 | 큼 | 넓게 부풀어 합쳐짐 | 매우 말랑한 실루엣 | 목과 빈 공간이 과도하게 채워짐 |
 
-`smoothMinimum()`은 접합부에서 거리를 더 음수로 만들기 때문에 union 면적을 증가시킨다. Guseul은 이후 `solveContourOffset()`으로 전체 면적을 다시 보정한다.
-
-따라서 `fieldSmoothness`만 보고 튜닝하지 말고 다음 값도 함께 확인해야 한다.
-
-- `areaPreservation`
-- `minimumNeckWidth`
-- `bridgeRadiusRatio`
-- `membraneBridgeRadiusRatio`
-- `edgeConcavity`
+`smoothMinimum()`은 접합부에서 거리를 더 음수로 만들기 때문에 union 면적을 증가시킨다. 면적이나 부피를 일정하게 유지해야 한다면 별도의 contour offset, 반경 보정 또는 제약 계산이 필요하다.
 
 ## 11. `smoothMaximum()`은 무엇인가
 
-현재 코드는 smooth minimum을 뒤집어 smooth maximum도 만든다.
+Smooth minimum의 부호를 뒤집으면 smooth maximum을 만들 수 있다.
 
 ```ts
 function smoothMaximum(first: number, second: number, radius: number): number {
@@ -226,13 +188,13 @@ function smoothMaximum(first: number, second: number, radius: number): number {
 }
 ```
 
-SDF에서 `min`이 union이라면 `max`는 intersection이나 clipping에 사용된다. Guseul에서는 membrane triangle과 curved fan edge를 함께 제한할 때 사용한다.
+SDF에서 `min`이 union이라면 `max`는 intersection이나 clipping에 사용된다.
 
 ```ts
-linkDistance = smoothMaximum(
-  roundedTriangleDistance,
-  curvedEdgeDistance,
-  controls.fieldSmoothness * 0.32,
+clippedDistance = smoothMaximum(
+  firstConstraint,
+  secondConstraint,
+  blendRadius,
 );
 ```
 
@@ -258,11 +220,17 @@ linkDistance = smoothMaximum(
 
 ## 13. 디버깅할 때 볼 순서
 
-1. contact field debug에서 외곽선 접합부가 매끄러운지 본다.
+1. distance field debug에서 외곽선 접합부가 매끄러운지 본다.
 2. surface normals debug에서 색 또는 방향이 갑자기 바뀌는 선이 없는지 본다.
-3. spec만 켜서 접합부에 꺾인 하이라이트가 생기는지 본다.
-4. `fieldSmoothness`를 줄이거나 늘려 문제 위치가 접합부와 함께 움직이는지 확인한다.
-5. 모양은 좋지만 면적만 커진다면 smoothness가 아니라 area pressure 값을 조절한다.
+3. 조명이나 굴절만 켜서 접합부에 꺾인 하이라이트가 생기는지 본다.
+4. `k`를 줄이거나 늘려 문제 위치가 접합부와 함께 움직이는지 확인한다.
+5. 모양은 좋지만 면적만 커진다면 smooth union이 아니라 별도의 면적 보정 단계를 조절한다.
+
+## 14. 구현 참고
+
+이 원리를 사용한 구현 사례는 [Guseul Architecture](../artworks/guseul/architecture.md#smooth-union)에서 확인할 수 있다.
+
+## 15. 핵심 요약
 
 핵심은 다음 한 문장이다.
 

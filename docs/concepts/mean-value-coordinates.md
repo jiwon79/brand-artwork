@@ -2,8 +2,6 @@
 
 Mean-value coordinates는 다각형 울타리인 cage 안의 점을 여러 기둥의 가중합으로 표현하는 방법이다. Cage 모양이 달라져도 같은 가중치를 대응하는 다른 cage에 적용할 수 있어 2D/3D 형태 변형과 좌표 복원에 사용한다.
 
-Guseul의 전체 spec 처리 흐름은 [`architecture.md`](../artworks/guseul/architecture.md#16-늘어난-외곽선에서-spec을-유지하는-방법)를 먼저 참고한다.
-
 ## 1. 그림으로 먼저 보기
 
 ![거리와 이웃 각도에서 mean-value weights를 만들고 canonical 원에 적용하는 과정](../assets/mean-value-coordinates.svg)
@@ -12,7 +10,7 @@ Guseul의 전체 spec 처리 흐름은 [`architecture.md`](../artworks/guseul/ar
 
 1. 현재 픽셀 `P`가 각 기둥과 얼마나 가까우며, 기둥 양옆이 얼마나 넓게 보이는가?
 2. 그 영향값을 모두 더해 합이 1인 `w0`, `w1`, ...로 어떻게 바꾸는가?
-3. 같은 weights를 원래 원의 대응 기둥에 적용하면 `specPoint`가 어디에 생기는가?
+3. 같은 weights를 기준 cage의 대응 기둥에 적용하면 `canonicalPoint`가 어디에 생기는가?
 
 ## 2. 왜 경계 기둥의 대응만으로는 부족한가
 
@@ -193,7 +191,7 @@ w_i = q_i / Q
 w0 + w1 + w2 + ... = 1
 ```
 
-Guseul shader는 각 edge `(D_i, D_(i+1))`를 한 번씩 순회한다. Edge에서 구한 `t_i`를 양 끝 기둥에 각각 `t_i / r_i`, `t_i / r_(i+1)`만큼 더한다. 한 바퀴를 마치면 각 기둥에는 자연스럽게 이전 반각과 다음 반각이 모두 누적된다.
+구현할 때는 각 edge `(D_i, D_(i+1))`를 한 번씩 순회할 수 있다. Edge에서 구한 `t_i`를 양 끝 기둥에 각각 `t_i / r_i`, `t_i / r_(i+1)`만큼 더한다. 한 바퀴를 마치면 각 기둥에는 자연스럽게 이전 반각과 다음 반각이 모두 누적된다.
 
 ```text
 edge i가 D_i에 더하는 값       = t_i / r_i
@@ -207,7 +205,7 @@ edge i가 D_(i+1)에 더하는 값   = t_i / r_(i+1)
 Weights는 늘어난 기둥 `D_i`에서 계산했지만, 최종 좌표를 만들 때는 대응하는 원의 기둥 `C_i`를 사용한다.
 
 ```text
-specPoint = C0 * w0 + C1 * w1 + C2 * w2 + ...
+canonicalPoint = C0 * w0 + C1 * w1 + C2 * w2 + ...
 ```
 
 Shader는 정규화를 마지막 나눗셈으로 합쳐 다음과 같은 형태로 계산한다.
@@ -216,7 +214,7 @@ Shader는 정규화를 마지막 나눗셈으로 합쳐 다음과 같은 형태�
 weightedCoordinate = C0 * q0 + C1 * q1 + C2 * q2 + ...
 weightSum = q0 + q1 + q2 + ...
 
-specPoint = weightedCoordinate / weightSum
+canonicalPoint = weightedCoordinate / weightSum
 ```
 
 즉, 다음 두 문장은 동시에 성립한다.
@@ -230,7 +228,7 @@ canonical cage에서 원래 위치  = sum(C_i * w_i)
 
 ## 9. 왜 픽셀이 움직여도 결과가 튀지 않는가
 
-`P`가 조금 움직이면 각 기둥까지의 거리와 각도도 조금씩 변한다. 거리와 내적, 외적, 나눗셈으로 만든 weights도 연속적으로 변하므로 `specPoint`가 기둥 경계에서 갑자기 다른 위치로 점프하지 않는다.
+`P`가 조금 움직이면 각 기둥까지의 거리와 각도도 조금씩 변한다. 거리와 내적, 외적, 나눗셈으로 만든 weights도 연속적으로 변하므로 `canonicalPoint`가 기둥 경계에서 갑자기 다른 위치로 점프하지 않는다.
 
 특별한 위치에서는 다음 성질을 가진다.
 
@@ -263,37 +261,11 @@ Mean-value coordinates는 **generalized barycentric coordinates** 계열의 잘 
 
 다만 모든 그래픽 작업이 이 방법을 쓰는 것은 아니다. 삼각형이면 일반 barycentric coordinates가 더 단순하고, cage가 매우 크면 미리 계산한 weights, bone skinning, harmonic coordinates, Green coordinates 같은 다른 방법이 더 적합할 수 있다.
 
-Guseul에서는 기둥이 16~64개라서 fragment shader가 픽셀마다 모든 cage edge를 순회한다. 비용은 대략 `픽셀 수 * 기둥 수`에 비례한다. Mean-value coordinates 자체는 공통 기법이지만, 이를 spec reflection용 canonical 원 좌표 복원에 사용하는 것은 이 artwork에 맞춘 응용이다.
+비용은 한 점에서 모든 cage edge를 확인하면 대략 `계산할 점 수 × 기둥 수`에 비례한다. Cage가 매우 크거나 고정되어 있다면 weights를 미리 계산해 저장하는 방법을 검토할 수 있다.
 
-## 12. 현재 Guseul 구현과 연결하기
+## 12. 구현 참고
 
-GPU의 실제 구현은 [`inverseBoundarySpecWarp()`](../../pages/guseul/webgl-renderer.ts#L396)에 있다.
-
-```glsl
-vec2 first = firstSample.xy - point;
-vec2 second = secondSample.xy - point;
-float firstDistance = length(first);
-float secondDistance = length(second);
-
-float crossValue = first.x * second.y - first.y * second.x;
-float tangentDenominator = firstDistance * secondDistance + dot(first, second);
-float halfAngleTangent = crossValue / tangentDenominator;
-
-float firstWeight = halfAngleTangent / firstDistance;
-float secondWeight = halfAngleTangent / secondDistance;
-```
-
-한 edge의 반각 기여를 양 끝 기둥에 더한 뒤 canonical 좌표의 가중합을 만든다.
-
-```glsl
-weightedCoordinate += firstCoordinate * firstWeight
-  + secondCoordinate * secondWeight;
-weightSum += firstWeight + secondWeight;
-
-vec2 canonicalPoint = weightedCoordinate / weightSum;
-```
-
-CPU에도 같은 수식의 [`meanValueCoordinate()`](../../pages/guseul/elastic-contact-field.ts#L749)가 있다. CPU 버전은 늘어난 cage의 중심 `(0, 0)`이 canonical circle에서 어디로 옮겨지는지 계산하고, GPU의 `centerBoundaryCoordinate()`가 그 중심을 다시 `(0, 0)`에 맞추는 추가 보정에 사용한다. 이 center 보정은 weights를 구하는 mean-value coordinates 수식과는 별도 단계다.
+이 원리를 사용한 구현 사례는 [Guseul Architecture](../artworks/guseul/architecture.md#16-늘어난-외곽선에서-spec을-유지하는-방법)에서 확인할 수 있다.
 
 ## 13. 핵심 요약
 
@@ -302,7 +274,7 @@ P에서 각 기둥까지 거리 r_i 계산
   -> 이웃 기둥 사이의 tan(alpha_i / 2) 계산
   -> q_i = (t_(i-1) + t_i) / r_i
   -> w_i = q_i / sum(q)
-  -> specPoint = sum(C_i * w_i)
+  -> canonicalPoint = sum(C_i * w_i)
 ```
 
 핵심은 다음 한 문장이다.

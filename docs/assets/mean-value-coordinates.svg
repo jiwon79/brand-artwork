@@ -135,16 +135,16 @@
   <use href="#post" x="1306" y="288"/><text class="post-label" x="1306" y="288">6</text>
   <use href="#activePost" x="1357" y="309"/><text class="active-post-label" x="1357" y="309">7</text>
   <circle cx="1335" cy="354" r="10" fill="#ffd166" stroke="#9a5e00" stroke-width="3"/>
-  <text x="1306" y="466" text-anchor="middle" class="label">canonical posts Cᵢ와 specPoint</text>
+  <text x="1306" y="466" text-anchor="middle" class="label">canonical posts Cᵢ</text>
 
   <rect x="1012" y="512" width="370" height="126" rx="9" fill="#ffffff" stroke="#dce1ec"/>
-  <text x="1197" y="545" text-anchor="middle" class="formula">specPoint = Σ(Cᵢ × wᵢ)</text>
+  <text x="1197" y="545" text-anchor="middle" class="formula">canonicalPoint = Σ(Cᵢ × wᵢ)</text>
   <text x="1197" y="578" text-anchor="middle" class="label">같은 번호의 기둥에 같은 wᵢ 적용</text>
   <text x="1197" y="608" text-anchor="middle" class="small">0번과 7번의 큰 weight가 원의 오른쪽 위 위치를 강하게 당긴다</text>
 
   <line x1="1080" y1="690" x2="1310" y2="690" stroke="#c78900" stroke-width="3" marker-end="url(#goldArrow)"/>
-  <text x="1197" y="676" text-anchor="middle" class="small">Guseul에서 이어지는 계산</text>
-  <text x="1197" y="724" text-anchor="middle" class="label">specPoint → 구의 normal → reflection</text>
+  <text x="1197" y="676" text-anchor="middle" class="small">복원한 좌표를 다음 단계에 전달</text>
+  <text x="1197" y="724" text-anchor="middle" class="label">canonicalPoint → 원본 속성 또는 texture 조회</text>
 
   <rect x="196" y="827" width="1048" height="46" rx="10" fill="#18282b"/>
   <text x="720" y="856" text-anchor="middle" class="formula inverse">거리 + 이웃 각도 → raw q → 합이 1인 w → canonical 좌표 복원</text>

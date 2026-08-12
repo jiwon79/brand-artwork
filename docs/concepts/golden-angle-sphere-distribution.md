@@ -1,8 +1,6 @@
 # Golden-angle Sphere Distribution
 
-Golden-angle 분포는 정해진 개수의 점을 구 표면 전체에 비교적 균일하게 배치하는 방법이다. Guseul은 내부 사진 원의 중심을 만들 때 이 방식을 사용한다.
-
-전체 작품 구조는 [`Guseul Architecture`](../artworks/guseul/architecture.md)를 먼저 참고한다.
+Golden-angle 분포는 정해진 개수의 점을 구 표면 전체에 비교적 균일하게 배치하는 방법이다.
 
 ## 1. 그림으로 먼저 보기
 
@@ -24,7 +22,7 @@ Golden-angle 분포는 정해진 개수의 점을 구 표면 전체에 비교적
   -> 극 근처 밀도가 높아짐
 ```
 
-Guseul은 다음 두 문제를 따로 해결한다.
+이 방법은 다음 두 문제를 따로 해결한다.
 
 1. `y`를 균등하게 나눠 각 점에 비슷한 넓이의 가로 띠를 배정한다.
 2. 각 점의 경도를 golden angle만큼 회전해 같은 세로선에 정렬되지 않게 한다.
@@ -55,7 +53,7 @@ Golden angle만이 가능한 유일한 값은 아니다. 다만 황금비는 작
 
 ## 4. 높이를 같은 간격으로 나누는 이유
 
-단위 구에서 `y`는 `-1`부터 `1`까지다. 점 개수가 `count`일 때 현재 코드는 다음 식으로 각 점의 높이를 정한다.
+단위 구에서 `y`는 `-1`부터 `1`까지다. 점 개수가 `count`일 때 다음 식으로 각 점의 높이를 정한다.
 
 ```text
 y = 1 - 2 * (index + 0.5) / count
@@ -89,41 +87,41 @@ z = sin(theta) * radial
 x*x + y*y + z*z = 1
 ```
 
-## 6. 현재 Guseul 코드
+## 6. 결정적 jitter를 더하는 변형
 
-실제 구현은 [`createMarbleCircles()`](../../pages/guseul/script.ts#L338)에 있다.
+Golden-angle 수식만 사용하면 균일한 대신 나선 구조가 눈에 띌 수 있다. 응용에 따라 index로부터 항상 같은 값을 만드는 작은 결정적 jitter를 경도에 더할 수 있다.
 
 ```ts
 const goldenAngle = Math.PI * (3 - Math.sqrt(5));
 
 const y = 1 - (2 * (index + 0.5)) / count;
 const radial = Math.sqrt(Math.max(1 - y * y, 0));
-const theta = index * goldenAngle + pseudoRandom(index, 1) * 0.42;
+const theta = index * goldenAngle + deterministicJitter(index) * jitterRange;
 
 const x = Math.cos(theta) * radial;
 const z = Math.sin(theta) * radial;
 ```
 
-수식의 마지막 `pseudoRandom(index, 1) * 0.42`는 최대 `0.42 radian`, 약 `24도`의 결정적 jitter를 더한다. 매 실행마다 바뀌는 진짜 난수가 아니라 같은 index에는 항상 같은 값이 나온다.
+`deterministicJitter(index)`는 매 실행마다 바뀌는 진짜 난수가 아니라 같은 index에 항상 같은 값을 반환해야 한다.
 
 이 jitter의 역할은 다음과 같다.
 
 - 수학적으로 너무 규칙적인 나선 무늬를 약하게 흐트러뜨린다.
-- 새로 렌더링할 때 사진 위치가 임의로 흔들리지 않게 한다.
-- golden-angle 뼈대는 유지하면서 작품 배치를 조금 덜 기계적으로 보이게 한다.
+- 새로 렌더링할 때 점 위치가 임의로 흔들리지 않게 한다.
+- golden-angle 뼈대는 유지하면서 분포를 조금 덜 기계적으로 보이게 한다.
 
-값이 너무 커지면 원래의 균일한 분포가 무너질 수 있다. 현재 값은 위치를 완전히 다시 뽑는 대신 경도만 제한적으로 흔든다.
+`jitterRange`가 너무 커지면 원래의 균일한 분포가 무너진다. 따라서 위치를 완전히 다시 뽑는 대신 경도만 제한적으로 흔드는 용도로 사용한다.
 
 ## 7. 개수가 바뀔 때의 동작
 
-`circleCount`가 바뀌면 현재 개수로 전체 분포를 다시 계산한다. 고정된 큰 목록의 앞부분만 잘라 쓰지 않는다.
+점 개수가 바뀌면 현재 개수로 전체 분포를 다시 계산하는 편이 구 전체의 균형을 유지하기 쉽다. 고정된 큰 목록의 앞부분만 잘라 쓰지 않는다.
 
 ```text
 잘못된 방식
   40개용 점을 생성 -> 앞의 6개만 사용
   -> 앞쪽 또는 위쪽에 몰릴 수 있음
 
-현재 방식
+재계산 방식
   count = 6으로 y와 theta를 다시 계산
   -> 6개가 구 전체를 다시 나눠 가짐
 ```
@@ -132,31 +130,35 @@ const z = Math.sin(theta) * radial;
 
 ## 8. 화면에 보이는 위치와는 다르다
 
-Golden-angle 수식은 원의 **기준 3D 위치**만 정한다. 화면에 그리기 전에는 `sphereOrientation` 회전을 적용한다.
+Golden-angle 수식은 점의 **기준 3D 위치**만 정한다. 화면에 그리기 전에는 필요에 따라 구 전체의 orientation과 projection을 적용한다.
 
 ```text
 golden-angle base point
-  -> sphereOrientation으로 회전
+  -> 구 orientation으로 회전
   -> 앞면/뒷면과 화면 위치 계산
-  -> edge 크기, alpha, haze 적용
-  -> 사진 원 렌더링
+  -> 크기, alpha 같은 화면 속성 적용
+  -> 점 또는 인스턴스 렌더링
 ```
 
-따라서 드래그할 때 점들이 golden-angle 경로를 따라 움직이는 것은 아니다. 분포는 구에 고정되어 있고, 구 전체가 회전하면서 화면에서의 위치가 바뀐다.
+구를 회전시키는 응용에서 점들이 golden-angle 경로를 따라 움직이는 것은 아니다. 분포는 구에 고정되어 있고, 구 전체의 orientation이 바뀌면서 화면 위치가 달라진다.
 
 ## 9. 이 분포가 보장하지 않는 것
 
 Golden-angle 분포는 중심점 간격을 비교적 고르게 만들지만 다음 항목까지 해결하지는 않는다.
 
-- 사진 원의 실제 반지름과 겹침
-- 사진마다 다른 크기
+- 화면에 그리는 요소의 실제 반지름과 겹침
+- 요소마다 다른 크기
 - 특정 색상이 서로 붙지 않도록 하는 배치
 - 정확히 동일한 최근접 거리
 - 앞면에서 항상 같은 개수가 보이는 구성
 
 이 항목들이 필요하면 golden-angle 위치를 초기값으로 사용한 뒤 충돌 완화나 색상 배치 최적화를 별도로 적용해야 한다.
 
-## 10. 핵심 요약
+## 10. 구현 참고
+
+이 원리를 사용한 구현 사례는 [Guseul Architecture](../artworks/guseul/architecture.md#9-사진-원을-구-전체에-배치하는-방법)에서 확인할 수 있다.
+
+## 11. 핵심 요약
 
 ```text
 equal y spacing
@@ -169,7 +171,7 @@ deterministic jitter
   -> 규칙적인 나선 느낌을 약하게 완화
 
 sphere rotation
-  -> 분포를 유지한 채 모든 사진 원을 함께 이동
+  -> 분포를 유지한 채 모든 점을 함께 이동
 ```
 
 Golden-angle 분포의 핵심은 단순히 `137.5도`를 사용하는 것이 아니다. **같은 면적의 높이 분할과 반복되지 않는 경도 회전을 결합해 구 전체를 나누는 것**이다.

@@ -44,8 +44,8 @@
         <rect x="88" y="189" width="22" height="27" opacity=".76"/>
       </g>
     </g>
-    <text class="mono" x="174" y="409">S(q) = textMask × falloff</text>
-    <text class="body" x="174" y="438">고정된 구슬 목록이 아니라 픽셀 이미지다</text>
+    <text class="mono" x="174" y="409">S(q) = input activation</text>
+    <text class="body" x="174" y="438">point 목록이 아니라 스칼라 픽셀 이미지다</text>
   </g>
 
   <path d="M398 323H425" stroke="#66758a" stroke-width="2.3" marker-end="url(#arrow)"/>

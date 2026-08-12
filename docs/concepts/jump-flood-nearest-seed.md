@@ -2,8 +2,6 @@
 
 Jump Flood Algorithm, 줄여서 JFA는 이미지의 각 픽셀에 가까운 seed의 좌표를 큰 간격에서 작은 간격으로 빠르게 전달하는 GPU 알고리즘이다.
 
-Color Text에서는 액체 실루엣 안의 밝은 중심이 타원보다 활성 글자 모양을 따르게 할 때 사용한다. 작품 전체 흐름은 [`Color Text 아키텍처`](../artworks/color-text/architecture.md)를 참고한다.
-
 ## 1. 그림으로 먼저 보기
 
 ![Jump Flood의 seed 생성, jump 후보 비교, 최근접 거리 결과](../assets/jump-flood-nearest-seed.svg)
@@ -12,13 +10,13 @@ Color Text에서는 액체 실루엣 안의 밝은 중심이 타원보다 활성
 
 ## 2. 해결하려는 문제
 
-어떤 픽셀 `p`에서 가장 가까운 활성 글자 픽셀까지의 거리를 알고 싶다고 하자. 모든 seed와 거리를 직접 비교하면 다음 비용이 든다.
+어떤 픽셀 `p`에서 가장 가까운 활성 seed 픽셀까지의 거리를 알고 싶다고 하자. 모든 seed와 거리를 직접 비교하면 다음 비용이 든다.
 
 ```text
 출력 픽셀 수 * seed 수
 ```
 
-활성 글자 픽셀이 수천 개라면 매 frame 모든 출력 픽셀에서 이 목록을 순회하기 어렵다.
+seed 픽셀이 수천 개라면 매 frame 모든 출력 픽셀에서 이 목록을 순회하기 어렵다.
 
 JFA는 각 pixel이 seed 목록 전체를 직접 보지 않는다. 대신 가까운 seed를 이미 알고 있는 이웃 pixel에게서 그 **seed 좌표**를 전달받는다. 큰 jump로 멀리 전달한 뒤 작은 jump로 경계를 다듬는다.
 
@@ -84,19 +82,18 @@ C_next(p)   = 가장 작은 D_candidate를 가진 유효한 C_candidate
 
 초반 pass가 전역으로 후보를 빠르게 퍼뜨리고, 후반 pass가 Voronoi 경계 근처의 선택을 좁힌다. 마지막 `J=1`을 한 번 더 실행하는 변형은 남은 한 픽셀 오차를 줄일 때 사용한다.
 
-## 7. Color Text의 제한된 JFA
+## 7. 제한된 local JFA
 
-Color Text는 전역에서 정확한 최근접 seed를 구하려는 것이 아니다. 최종 색의 글자형 중심은 가장 가까운 활성 픽셀에서 약 3.2px 안쪽만 사용하고, 먼 위치에서는 기본 거리 16px로 처리한다.
-
-그래서 현재 jump 목록은 전체 `480×600` field를 덮는 일반 일정이 아니라 다음의 제한된 일정이다.
+항상 texture 전체의 정확한 최근접 seed가 필요한 것은 아니다. 결과가 seed에서 최대 `R_use` pixel 안쪽만 사용된다면, 가장 큰 jump도 그보다 충분히 큰 국소 범위에서 시작할 수 있다.
 
 ```text
-16 -> 8 -> 4 -> 2 -> 1 -> 1
+J_start >= R_use
+J_start -> J_start / 2 -> ... -> 2 -> 1
 ```
 
-이것은 **bounded local JFA heuristic**이다. 전역 최근접점을 항상 보장하지 않지만, 최종적으로 사용하는 짧은 거리 범위에 비해 충분히 넓은 후보를 더 적은 pass로 찾는다.
+이것을 **bounded local JFA heuristic**이라고 볼 수 있다. 전체 texture를 덮는 일정보다 pass 수를 줄일 수 있지만, `J_start`보다 멀리 있는 seed가 실제 최근접점인 위치에서는 정확성을 보장하지 않는다. 따라서 결과를 사용하는 최대 거리와 jump 범위를 함께 정해야 한다.
 
-JFA 전에 `strokeSpreadMaterial`을 8회 실행한다. 활성값을 글자 마스크 안에서만 이웃으로 퍼뜨린 뒤 seed를 만들기 때문에 글자 내부의 작은 빈틈이 seed 단절로 남는 것을 줄인다. 이 확산은 geometry 외곽선을 넓히지 않고 색 중심용 seed에만 사용한다.
+입력 seed가 작은 구멍 때문에 지나치게 끊겨 있다면 JFA 전에 마스크 안에서만 제한적인 확산을 적용할 수도 있다. 이 전처리는 최근접 탐색 자체와 별개의 선택이며, 원래 마스크의 외곽선을 바꾸지 않도록 범위를 제한해야 한다.
 
 ## 8. 최종 거리 사용
 
@@ -106,27 +103,19 @@ JFA가 끝나면 texture에는 `C(p)`와 그 seed의 strength가 있다. 실제 
 d(p) = length((p - C(p)) * fieldSize)
 ```
 
-Color Text는 `d(p)`가 `colorGlyphShapeRadius` 안에 있을 때 밝은 글자형 중심을 만들고, `colorGlyphShapeEdge`의 짧은 구간에서 0으로 전환한다.
+예를 들어 `d(p)`가 반경 `R` 안에 있을 때만 에너지를 만들고, 경계 폭 `E`에서 0으로 전환할 수 있다.
 
 ```text
-glyphEnergy = 1 - smoothstep(radius - edge, radius + edge, d(p))
+energy = 1 - smoothstep(R - E, R + E, d(p))
 ```
 
-`radius`를 키우면 활성 글자 픽셀 주위의 밝은 중심이 두꺼워진다. `edge`를 키우면 중심 경계가 더 흐려진다. 너무 큰 `edge`는 글자 모양 주위에 털 같은 halo를 다시 만들 수 있다.
+`R`을 키우면 seed 주위의 영향 범위가 두꺼워진다. `E`를 키우면 경계가 더 흐려진다. 너무 큰 `E`는 입력 형태 주위에 의도하지 않은 halo를 만들 수 있다.
 
-## 9. 실제 Color Text 코드
+## 9. 구현할 때의 texture 설정
 
-구현은 [`pages/color-text/script.ts`](../../pages/color-text/script.ts)의 세 단계로 나뉜다.
+각 pass는 이전 결과를 읽고 다음 결과를 쓰므로 보통 같은 크기의 texture 두 장을 ping-pong한다. Seed 좌표는 두 pixel 사이에서 선형 보간되면 존재하지 않는 가짜 좌표가 되므로 nearest filtering을 사용한다.
 
-| 코드 | 역할 | 저장 target |
-| --- | --- | --- |
-| `strokeSpreadMaterial` | 글자 내부 활성값 확산 | `strokeSpreadTargetA/B` |
-| `nearestSeedMaterial` | 유효 seed에 자기 UV와 strength 저장 | `nearestTargetA` |
-| `jumpFloodMaterial` | jump 간격의 3×3 후보 비교 | `nearestTargetA/B` ping-pong |
-
-모두 매 frame, `480×600`의 모든 field pixel에서 실행된다. JFA target은 좌표가 중간 pixel 사이에서 보간되지 않도록 `NearestFilter`를 사용한다.
-
-## 10. 일반적인 사용과 작품 전용 선택
+## 10. 일반적인 사용
 
 일반적인 JFA 사용:
 
@@ -134,26 +123,24 @@ glyphEnergy = 1 - smoothstep(radius - edge, radius + edge, d(p))
 - distance field 생성
 - 가까운 feature나 seed 탐색
 - GPU 기반 영역 전파
-
-Color Text 전용 선택:
-
-- seed는 활성 글자 픽셀로 제한
-- 전역 일정 대신 `16…1`의 bounded schedule 사용
-- 가장 가까운 seed의 strength도 함께 전달
-- geometry가 아니라 실루엣 내부의 글자형 색 에너지에만 사용
+- seed의 부가 속성 전달
 
 ## 11. 정확도와 대안
 
-JFA는 빠른 근사 알고리즘이다. 일반적인 전체 jump 일정을 사용해도 Voronoi 경계 일부에서 한두 pixel 오차가 생길 수 있다. Color Text의 제한된 일정은 멀리 떨어진 전역 seed에 대해서는 더 큰 오차가 가능하다.
+JFA는 빠른 근사 알고리즘이다. 일반적인 전체 jump 일정을 사용해도 Voronoi 경계 일부에서 한두 pixel 오차가 생길 수 있다. 제한된 local 일정은 범위 밖의 seed에 대해 더 큰 오차가 가능하다.
 
-현재 용도에서는 반경 3.2px 근처만 사용하므로 이 오차가 geometry 외곽선에 영향을 주지 않는다. 하지만 정확한 전역 Euclidean distance가 필요하다면 다음 방법이 더 적합할 수 있다.
+정확한 전역 Euclidean distance가 필요하다면 다음 방법이 더 적합할 수 있다.
 
 - exact Euclidean distance transform
 - separable distance transform
 - 충분한 전체 jump 일정의 JFA와 보정 pass
 - seed 수가 매우 적을 때 모든 seed 직접 비교
 
-## 12. 핵심 요약
+## 12. 구현 참고
+
+이 원리를 사용한 구현 사례는 [Color Text Architecture](../artworks/color-text/architecture.md#8-color-활성-글자-모양을-밝게-만들기)에서 확인할 수 있다.
+
+## 13. 핵심 요약
 
 ```text
 seed pixel에 자기 좌표 저장

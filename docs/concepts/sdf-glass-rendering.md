@@ -13,8 +13,6 @@
   -> 이동한 위치에서 source texture 읽기
 ```
 
-실제 작품에 적용한 예시는 [`Guseul Surface and Refraction`](../artworks/guseul/surface-refraction.md)을 참고한다.
-
 ## 1. SDF는 외곽선까지의 거리를 돌려준다
 
 SDF는 한 점이 형태의 경계에서 얼마나 떨어져 있는지 반환하는 함수다. Signed라는 말처럼 값에 부호가 있다.
@@ -387,8 +385,6 @@ return eta * incidentDirection
 
 `k < 0`은 굴절 광선이 존재하지 않는 전반사 조건이다. GLSL 내장 `refract()`는 이때 영벡터를 반환한다. 공기에서 유리로 들어가는 일반적인 카메라 광선에서는 보통 발생하지 않고, 유리 안에서 공기로 나올 때 큰 각도로 입사하면 발생할 수 있다.
 
-Guseul은 카메라 광선이 고정된 현재 구조에 맞춰 같은 Snell 법칙을 [`refractCameraRay()`](../artworks/guseul/surface-refraction.md#11-기울기와-높이로-굴절을-계산한다) 안에 직접 풀어 쓴다.
-
 광선이 `height`만큼 진행했을 때 source 평면에서 이동한 x/y 거리를 계산한다.
 
 ```glsl
@@ -457,4 +453,8 @@ blue ray = IOR - dispersion
 - edge width, thickness, IOR, dispersion 값
 - source texture의 좌표계와 외부 샘플 처리
 
-즉, **SDF에서 normal과 가상 높이를 만들고 굴절 offset으로 texture를 다시 읽는 흐름은 공통**이고, 형태를 만드는 거리 함수와 단면 곡선은 각 작품의 디자인에 맞게 바뀐다.
+즉, **SDF에서 normal과 가상 높이를 만들고 굴절 offset으로 texture를 다시 읽는 흐름은 공통**이고, 형태를 만드는 거리 함수와 단면 곡선은 각 응용에 맞게 바뀐다.
+
+## 12. 구현 참고
+
+이 원리를 사용한 구현 사례는 [Guseul Surface and Refraction](../artworks/guseul/surface-refraction.md)에서 확인할 수 있다.

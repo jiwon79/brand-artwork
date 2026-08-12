@@ -293,7 +293,7 @@ release 중에는 저장된 `releaseAngle`을 사용한다. contact가 anchor로
 
 여러 원과 bridge를 `min(a, b)`로 합치면 접합부가 날카롭다. 현재 코드는 `smoothMinimum()`으로 부드럽게 합친다.
 
-![일반 min union과 smooth minimum union 비교](../../assets/guseul-smooth-union.svg)
+![일반 min union과 smooth minimum union 비교](../../assets/smooth-union.svg)
 
 ```text
 d_shape = smoothMin(d_shape, d_branch, fieldSmoothness)

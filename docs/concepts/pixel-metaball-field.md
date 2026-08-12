@@ -2,8 +2,6 @@
 
 활성 픽셀 이미지를 주변에서 여러 번 읽어 연속적인 높이 지도 `F`를 만들고, 그중 한 높이를 외곽선으로 꺼내는 방법이다.
 
-Color Text에서 이 원리를 사용하는 위치는 [`Color Text 아키텍처`](../artworks/color-text/architecture.md)의 geometry 단계를 참고한다.
-
 ## 1. 그림으로 먼저 보기
 
 ![활성 픽셀에서 주변 표본 field와 threshold 외곽선까지](../assets/pixel-metaball-field.svg)
@@ -12,9 +10,9 @@ Color Text에서 이 원리를 사용하는 위치는 [`Color Text 아키텍처`
 
 ## 2. 해결하려는 문제
 
-글자 마스크와 Falloff를 곱하면 액체 효과가 닿은 글자 픽셀만 남는다. 이 이미지를 그대로 화면에 그리면 결과가 글자 굵기만큼 얇고, 가까운 글자 조각 사이도 떨어져 보인다.
+얇거나 끊어진 활성 마스크를 그대로 화면에 그리면 가까운 조각 사이도 분리되어 보인다.
 
-단순히 가장 가까운 활성 픽셀까지의 거리만 사용하면 모든 픽셀 주위에 같은 반경의 원을 붙인 것과 비슷해진다. 계산은 빠르지만 `Y`의 두 팔과 줄기처럼 여러 방향의 픽셀이 만나는 구조를 동시에 측정하지 못해 교차부가 둥근 뚜껑처럼 부풀 수 있다.
+단순히 가장 가까운 활성 픽셀까지의 거리만 사용하면 모든 픽셀 주위에 같은 반경의 원을 붙인 것과 비슷해진다. 계산은 빠르지만 여러 방향의 픽셀이 만나는 구조를 동시에 측정하지 못해 교차부가 불필요하게 부풀 수 있다.
 
 필요한 것은 출력 위치마다 다음 질문에 답하는 값이다.
 
@@ -30,12 +28,12 @@ Color Text에서 이 원리를 사용하는 위치는 [`Color Text 아키텍처`
 | `p` | 출력 texture의 현재 UV | 지금 field 값을 계산하는 출력 픽셀 위치 |
 | `q_i` | `p` 주변의 표본 UV | `i`번째로 `S`를 읽을 위치 |
 | `N` | 고정 정수 | 한 출력 픽셀에서 사용하는 주변 표본 수 |
-| `R` | artwork pixel | 표본을 놓는 최대 조사 반경 |
+| `R` | field pixel | 표본을 놓는 최대 조사 반경 |
 | `w_i` | 무단위 weight | `q_i`가 `p`에 가까운 정도 |
 | `F(p)` | 스칼라 field | `p` 주변 활성 픽셀의 누적 영향 |
 | `τ` | field와 같은 단위 | 최종 외곽선을 꺼내는 높이 |
 
-`p`와 `q_i`는 shader에서 `[0,1]` UV지만, 반경과 거리는 artwork pixel로 정한다. 비율이 다른 화면에서도 원형 조사 범위를 유지하려면 pixel offset을 `artSize`로 나눠 UV offset으로 바꿔야 한다.
+`p`와 `q_i`는 shader에서 `[0,1]` UV지만, 반경과 거리는 field pixel로 정한다. 비율이 다른 texture에서도 원형 조사 범위를 유지하려면 pixel offset을 `fieldSize`로 나눠 UV offset으로 바꿔야 한다.
 
 ## 4. 황금각으로 표본 위치 만들기
 
@@ -54,7 +52,7 @@ phi_g   = PI * (3 - sqrt(5)) ~= 2.39996 rad ~= 137.5°
 
 ```text
 offset_i = R * rho_i * (cos(theta_i), sin(theta_i))
-q_i      = p + offset_i / artSize
+q_i      = p + offset_i / fieldSize
 ```
 
 ### 왜 반경에 `sqrt()`가 필요한가
@@ -88,7 +86,7 @@ w_i = max(1 - rho_i, 0)^beta
 
 ## 6. 주변 활성값을 하나의 field로 합치기
 
-현재 Color Text 코드와 같은 형태로 쓰면 다음과 같다.
+중심값을 직접 보존하면서 주변값을 누적하는 한 가지 형태는 다음과 같다.
 
 ```text
 A(p) = [S(p) + sum(S(q_i) * w_i)] / [1 + sum(w_i)]
@@ -102,11 +100,11 @@ F(p) = sourceGain * S(p) + fieldGain * A(p)
 - `sourceGain`은 현재 픽셀의 원래 활성 모양을 얼마나 직접 보존할지 정한다.
 - `fieldGain`은 주변 분포가 외곽선을 얼마나 넓게 연결할지 정한다.
 
-이 구조에서 `sourceGain`과 `fieldGain`은 정규화된 물리량이 아니라 작품의 실루엣을 조절하는 경험적 gain이다.
+이 구조에서 `sourceGain`과 `fieldGain`은 정규화된 물리량이 아니라 출력 실루엣을 조절하는 경험적 gain이다.
 
 ## 7. Smoothing과 threshold
 
-고정된 개수의 표본만 사용하면 작은 점무늬와 계단이 남을 수 있다. Color Text는 field를 가로와 세로 Gaussian filter로 한 번씩 smoothing한다.
+고정된 개수의 표본만 사용하면 작은 점무늬와 계단이 남을 수 있다. 필요하다면 field를 가로와 세로 Gaussian filter로 한 번씩 smoothing할 수 있다.
 
 ```text
 raw field
@@ -123,36 +121,13 @@ coverage(p) = smoothstep(τ - edge, τ + edge, F_s(p))
 
 `τ`가 커지면 높은 곳만 남아 실루엣이 좁아지고, 작아지면 낮은 주변 영향까지 포함해 넓어진다. `edge`는 모양 크기보다 외곽선의 안티앨리어싱 폭을 담당한다.
 
-## 8. 실제 Color Text 코드
-
-현재 구현은 [`pages/color-text/script.ts`](../../pages/color-text/script.ts)의 다음 material에 나뉘어 있다.
-
-| 코드 | 역할 | 계산 빈도 |
-| --- | --- | --- |
-| `surfaceSourceMaterial` | 약한 활성값을 부드럽게 제외 | 매 frame, 매 field pixel |
-| `surfaceBlurMaterial` | 황금각 표본 192개 누적 | 매 frame, 매 field pixel |
-| `surfaceSmoothMaterial` | Gaussian 가로·세로 pass | 매 frame, 매 field pixel |
-| `finalMaterial` | threshold와 `fwidth()`로 coverage 생성 | 매 frame, 매 출력 fragment |
-
-Color Text의 현재 작품 전용 값은 다음과 같다.
-
-| 값 | 기본값 |
-| --- | ---: |
-| `N` | 192 |
-| `R` | 30 artwork px |
-| `beta` | 3.2 |
-| `sourceGain` | 0.55 |
-| `fieldGain` | 2.2 |
-| Gaussian sigma | 1.8 |
-| `τ` | 0.07 |
-
-## 9. 일반적인 기법과 이 구현의 위치
+## 8. 일반적인 기법과 이 방법의 위치
 
 이 방식은 고전적인 point Metaball 공식을 그대로 계산하지 않는다. 고전적 Metaball은 보통 점이나 구 중심 목록에서 거리 함수를 합산한다.
 
-Color Text는 이미 rasterized된 활성 픽셀 이미지 `S`를 입력으로 받고, 원판 표본으로 주변 값을 모으는 **image-space radial accumulation**을 사용한다. 결과가 가까운 영역을 연결하고 threshold 외곽선을 만든다는 점에서 Metaball과 같은 역할을 하므로 이 프로젝트에서는 pixel-sampled Metaball field라고 부른다.
+여기서 설명하는 방법은 이미 rasterized된 활성 픽셀 이미지 `S`를 입력으로 받고, 원판 표본으로 주변 값을 모으는 **image-space radial accumulation**이다. 결과가 가까운 영역을 연결하고 threshold 외곽선을 만든다는 점에서 Metaball과 같은 역할을 하므로 pixel-sampled Metaball field라고 부른다.
 
-## 10. 비용, 한계, 대안
+## 9. 비용, 한계, 대안
 
 계산량은 대략 다음 값에 비례한다.
 
@@ -160,14 +135,14 @@ Color Text는 이미 rasterized된 활성 픽셀 이미지 `S`를 입력으로 �
 field width * field height * sample count
 ```
 
-Color Text에서는 `480 * 600 * 192`, 약 5천5백만 번의 주변 texture 확인이 한 frame에 필요하다. GPU fragment가 병렬로 처리하지만 모바일 성능에서 가장 비싼 pass 중 하나다.
+예를 들어 field가 `W × H`이고 표본이 `N`개라면 한 frame에 대략 `W × H × N`번 texture를 읽는다. GPU fragment가 병렬로 처리해도 `N`이 크면 비용이 빠르게 증가한다.
 
-현재 방식이 보장하지 않는 것:
+이 방법이 보장하지 않는 것:
 
 - 표본 사이의 모든 픽셀을 읽는 정확한 원형 convolution
 - threshold가 바뀌어도 일정한 실루엣 면적 유지
 - 물리적인 부피나 표면장력
-- 모든 글꼴과 크기에서 동일한 최적값
+- 모든 입력 마스크와 해상도에서 동일한 최적값
 
 대안은 목적에 따라 다르다.
 
@@ -175,6 +150,10 @@ Color Text에서는 `480 * 600 * 192`, 약 5천5백만 번의 주변 texture 확
 - 부드러운 blur만 필요하면 separable Gaussian convolution
 - 점 개수가 적으면 고전적인 point Metaball 합산
 - 정확한 거리와 normal이 필요하면 SDF 또는 exact Euclidean distance transform
+
+## 10. 구현 참고
+
+이 원리를 사용한 구현 사례는 [Color Text Architecture](../artworks/color-text/architecture.md#7-geometry-활성-픽셀을-액체-실루엣으로-연결)에서 확인할 수 있다.
 
 ## 11. 핵심 요약
 
