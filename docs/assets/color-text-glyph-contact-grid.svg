@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">픽셀별 이동 대신 81개 접촉 검사점으로 글자 전체를 움직이는 과정</title>
+  <desc id="desc">왼쪽은 같은 글자의 픽셀을 서로 다른 거리로 옮겨 획 사이가 벌어지는 문제, 가운데는 글자 경계 상자 안쪽에 놓은 9 곱하기 9 접촉 검사점, 오른쪽은 검사 결과로 글자 전체에 하나의 하강 거리와 회전 각도를 적용하는 결과다.</desc>
+  <defs>
+    <style>
+      .title { font: 700 28px ui-sans-serif, system-ui, sans-serif; fill: #172033; }
+      .head { font: 700 19px ui-sans-serif, system-ui, sans-serif; fill: #172033; }
+      .body { font: 500 14px ui-sans-serif, system-ui, sans-serif; fill: #506078; }
+      .small { font: 500 12px ui-sans-serif, system-ui, sans-serif; fill: #657087; }
+      .mono { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #24334d; }
+      .panel { fill: #f8fafc; stroke: #d9e0ea; stroke-width: 2; }
+      .glyph { font: 300 188px "Helvetica Neue", Arial, sans-serif; fill: #30394b; }
+      .point { fill: #4c78c2; stroke: #fff; stroke-width: 1.5; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#536783"/>
+    </marker>
+    <g id="gridRow">
+      <circle class="point" cx="0" cy="0" r="4.4"/>
+      <circle class="point" cx="28.75" cy="0" r="4.4"/>
+      <circle class="point" cx="57.5" cy="0" r="4.4"/>
+      <circle class="point" cx="86.25" cy="0" r="4.4"/>
+      <circle class="point" cx="115" cy="0" r="4.4"/>
+      <circle class="point" cx="143.75" cy="0" r="4.4"/>
+      <circle class="point" cx="172.5" cy="0" r="4.4"/>
+      <circle class="point" cx="201.25" cy="0" r="4.4"/>
+      <circle class="point" cx="230" cy="0" r="4.4"/>
+    </g>
+  </defs>
+
+  <rect width="1200" height="620" fill="#ffffff"/>
+  <text class="title" x="40" y="46">접촉은 81곳에서 검사하고, 움직임은 글자 전체에 한 번만 적용한다</text>
+
+  <g transform="translate(30 78)">
+    <rect class="panel" width="350" height="500" rx="18"/>
+    <text class="head" x="175" y="38" text-anchor="middle">1. 픽셀을 따로 움직이면</text>
+    <text class="body" x="175" y="64" text-anchor="middle">같은 획 안에서도 이동 거리가 달라진다</text>
+
+    <text class="glyph" x="28" y="270">H</text>
+    <text class="small" x="97" y="302" text-anchor="middle">원래 글자</text>
+
+    <g transform="translate(194 118)" fill="none" stroke="#30394b" stroke-width="19" stroke-linecap="round">
+      <path d="M18 0 V64"/>
+      <path d="M18 92 V158"/>
+      <path d="M99 0 V84"/>
+      <path d="M99 100 V178"/>
+      <path d="M18 82 H99"/>
+    </g>
+    <path d="M212 196 H293" stroke="#e05c68" stroke-width="3" stroke-dasharray="7 6"/>
+    <text class="small" x="253" y="326" text-anchor="middle">픽셀마다 0·5·10px 이동</text>
+
+    <rect x="38" y="356" width="274" height="94" rx="12" fill="#fff1f2" stroke="#f1bdc3"/>
+    <text class="body" x="175" y="387" text-anchor="middle">붙어 있던 픽셀 사이가 벌어져</text>
+    <text class="mono" x="175" y="416" text-anchor="middle" fill="#b5364b">획이 늘어나거나 끊겨 보인다</text>
+  </g>
+
+  <g transform="translate(425 78)">
+    <rect class="panel" width="350" height="500" rx="18"/>
+    <text class="head" x="175" y="38" text-anchor="middle">2. 9 × 9 검사점</text>
+    <text class="body" x="175" y="64" text-anchor="middle">가상의 81개 좌표에서 접촉만 확인한다</text>
+
+    <rect x="51" y="94" width="248" height="282" rx="8" fill="#ffffff" stroke="#9aa8bb" stroke-width="2"/>
+    <rect x="61" y="105" width="228" height="260" rx="6" fill="none" stroke="#4c78c2" stroke-width="2" stroke-dasharray="6 5"/>
+    <text class="glyph" x="92" y="312" fill="#30394b" fill-opacity="0.8">O</text>
+    <path d="M45 122 C90 74 193 88 243 141 C269 169 279 214 253 235 C222 260 186 228 157 227 C111 226 92 269 55 239 C28 217 19 162 45 122Z" fill="#70c9d6" fill-opacity="0.38"/>
+
+    <g transform="translate(61 105)">
+      <use href="#gridRow" y="0"/>
+      <use href="#gridRow" y="32.5"/>
+      <use href="#gridRow" y="65"/>
+      <use href="#gridRow" y="97.5"/>
+      <use href="#gridRow" y="130"/>
+      <use href="#gridRow" y="162.5"/>
+      <use href="#gridRow" y="195"/>
+      <use href="#gridRow" y="227.5"/>
+      <use href="#gridRow" y="260"/>
+    </g>
+
+    <text class="small" x="175" y="399" text-anchor="middle">점은 그리지 않는다 · 물 입자도 아니다</text>
+    <rect x="37" y="420" width="276" height="48" rx="10" fill="#eef4ff" stroke="#c7d6ef"/>
+    <text class="mono" x="175" y="450" text-anchor="middle">액체 있음 × 글자 있음 = 접촉</text>
+  </g>
+
+  <g transform="translate(820 78)">
+    <rect class="panel" width="350" height="500" rx="18"/>
+    <text class="head" x="175" y="38" text-anchor="middle">3. 글자 전체에 적용</text>
+    <text class="body" x="175" y="64" text-anchor="middle">81개 결과로 offset 하나와 angle 하나를 만든다</text>
+
+    <text class="glyph" x="86" y="270" fill="#8491a5" fill-opacity="0.25">O</text>
+    <g transform="translate(14 32) rotate(-8 175 215)">
+      <text class="glyph" x="86" y="290" fill="#30394b">O</text>
+    </g>
+    <path d="M175 104 V161" stroke="#536783" stroke-width="3" marker-end="url(#arrow)"/>
+    <text class="mono" x="191" y="135">offset</text>
+    <path d="M260 152 A80 80 0 0 1 280 229" fill="none" stroke="#d45992" stroke-width="3" marker-end="url(#arrow)"/>
+    <text class="mono" x="271" y="140" fill="#a43a70">angle</text>
+
+    <rect x="34" y="352" width="282" height="104" rx="12" fill="#edf8f5" stroke="#bfded5"/>
+    <text class="body" x="175" y="384" text-anchor="middle">모든 글자 픽셀에 같은 이동·회전 적용</text>
+    <text class="mono" x="175" y="414" text-anchor="middle" fill="#24705f">픽셀 간격과 획 두께 유지</text>
+    <text class="small" x="175" y="441" text-anchor="middle">접촉이 사라지면 스프링으로 원래 자리 복귀</text>
+  </g>
+</svg>
