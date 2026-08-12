@@ -4,7 +4,7 @@
 
 - 기준 구현: [`pages/color-text/script.ts`](../../../pages/color-text/script.ts)
 - 작품 좌표: `480 × 600 artwork pixel`
-- 문서 갱신 기준: `2026-08-12`
+- 문서 갱신 기준: `2026-08-13`
 - 세부 파라미터와 구현 기록: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)
 
 재사용 가능한 수학 원리는 별도 concept 문서로 분리했다.
@@ -14,11 +14,61 @@
 
 ## 1. 가장 먼저 이해할 구조
 
-손가락은 물을 직접 그리지 않는다. 손가락은 물이 공급되는 source 위치만 정하고, CPU가 최대 32개의 큰 물 packet을 움직인다. GPU는 packet의 Falloff와 **현재 위치의 글자 픽셀**을 곱한 뒤, 그 픽셀들을 연속적인 field로 연결한다.
+이 작품이 한 frame마다 만들어야 하는 최종 결과는 세 가지다.
+
+| 결과 | 기호 | 뜻 |
+| --- | --- | --- |
+| 현재 글자 | `M_N` | frame `N`에서 이동·회전한 글자의 픽셀 mask |
+| 액체 실루엣 | `C_N` | 액체로 보일 영역을 `0~1`로 나타낸 coverage |
+| 내부 색 | `K_N` | 실루엣 안에서 글자 모양을 따라 달라지는 색 |
+
+최종 화면은 이 셋을 합성한 것이다.
+
+```text
+Frame_N = composite(M_N, C_N, K_N)
+```
+
+하지만 셋은 서로 독립적으로 만들어지지 않는다. **현재 글자가 실루엣의 입력이 되고, 그 실루엣과 현재 글자의 접촉이 다음 frame의 글자 움직임을 만든다.** 같은 frame 안에서 서로를 무한히 다시 계산하지 않도록, 현재 상태 `S_N`으로 frame `N`을 완성한 뒤 새 상태 `S_(N+1)`은 다음 frame에 사용한다.
 
 ![CPU 물 상태에서 GPU field와 다음 프레임 글자 피드백까지](../../assets/color-text-frame-graph.svg)
 
-한 프레임에는 세 종류의 상태가 연결된다.
+### 1.1 의존관계를 질문으로 나누기
+
+| 먼저 답할 질문 | 입력 | 계산 결과 |
+| --- | --- | --- |
+| 이번 frame에서 글자는 어디에 있는가? | 글자 atlas·원래 배치 중심·현재 spring 상태 `S_N` | 현재 글자 mask `M_N` |
+| 물은 화면 어디에 영향을 주는가? | pointer와 최대 32개 물 packet | 결합 Falloff `L_N` |
+| 물이 실제로 어떤 글자 픽셀을 덮는가? | `M_N`, `L_N` | 활성 글자 픽셀 `A_N` |
+| 활성 픽셀이 만드는 액체 외곽은 무엇인가? | `A_N` | 연속 surface field `F_N`, 실루엣 `C_N` |
+| 실루엣 안의 색 중심은 어디인가? | `A_N`, `M_N` | JFA nearest-seed 지도와 내부 색 `K_N` |
+| 글자는 다음 frame에 어떻게 움직일 것인가? | `C_N`, `M_N`, 글자 접촉 범위, 현재 상태 `S_N` | 다음 spring 상태 `S_(N+1)` |
+
+손가락은 물을 직접 그리지 않는다. 손가락은 물이 공급되는 source 위치만 정하고, CPU가 최대 32개의 큰 물 packet을 움직인다. GPU는 packet의 Falloff와 **현재 위치의 글자 픽셀**을 곱해 `A_N`을 만든 뒤, 그 픽셀들을 연속적인 field로 연결한다.
+
+실루엣은 물 packet 위치만으로 결정되지 않는다. 같은 Falloff가 지나가더라도 현재 글자 픽셀이 없는 곳에서는 `A_N=0`이므로 새 실루엣 입력이 생기지 않는다. 반대로 글자가 내려가면 `M_N`도 내려가고, 다음 frame의 활성 픽셀과 실루엣도 그 새 위치를 따라 달라진다.
+
+여기서 “Metaball pixelization”보다는 **활성 글자 픽셀을 입력으로 하는 pixel-sampled Metaball field**가 더 정확한 표현이다. 이미 픽셀인 모양을 거칠게 쪼개는 과정이 아니라, 주변 활성 픽셀의 값을 누적해 픽셀마다 연속적인 세기 `F_N`을 만들고 그 등고선으로 `C_N`을 얻는 과정이기 때문이다.
+
+### 1.2 글자 정보와 물리 계산을 정확히 구분하기
+
+초기화할 때 각 글자에서 두 종류의 중심과 크기 정보를 구한다.
+
+| 정보 | 사용하는 곳 |
+| --- | --- |
+| 문장 배치에서 정한 원래 중심과 실제 glyph 폭 | atlas에서 현재 글자 `M_N`을 다시 그릴 때 |
+| alpha로 측정한 잉크 중심과 잉크 경계 상자 크기 | 글자 위에 `9 × 9` 접촉 검사점을 놓을 때 |
+
+잉크 중심은 글자 픽셀의 alpha를 무게처럼 사용해 평균낸 위치라서 계산 방식은 무게중심과 비슷하다. 그러나 글자마다 실제 물리 질량을 저장하거나 질량에 따라 가속도를 다르게 계산하지는 않는다. 화면에 글자를 그릴 때의 회전 중심도 잉크 중심이 아니라 문장 배치에서 정한 원래 중심이다.
+
+또한 실루엣이 글자에 실제 힘을 직접 가하는 구조는 아니다. `C_N × M_N`으로 접촉을 확인하고, 접촉의 최댓값과 좌우 차이를 **목표 하강 거리와 목표 회전각**으로 바꾼다. 그다음 감쇠 스프링이 현재 상태 `S_N`을 그 목표 쪽으로 움직여 `S_(N+1)`을 만든다. 따라서 물리와 비슷한 부분은 스프링의 가속도·속도 적분이고, 실루엣은 힘 자체라기보다 스프링 목표를 정하는 입력이다.
+
+내부 색에 사용하는 알고리즘 이름은 `JPA`가 아니라 **JFA(Jump Flood Algorithm)**다. JFA 결과만으로 색이 완성되는 것도 아니다. 현재 활성 글자 픽셀에서 가장 가까운 seed 좌표를 JFA로 찾고, 그 거리와 seed 강도로 글자형 색 에너지를 만든 뒤, 시간에 따른 palette를 적용하고 마지막에 `C_N` 안으로 자른 결과가 `K_N`이다.
+
+`C_N`은 의존관계를 설명하기 위한 논리적인 이름이며 별도의 texture로 저장하지 않는다. 실제로 저장하는 것은 threshold 이전의 `F_N`이다. Contact shader와 Final shader가 각각 `F_N`을 threshold 주변에서 부드럽게 바꾸어 접촉용 surface와 화면용 coverage를 그때 계산한다.
+
+### 1.3 frame 사이에 유지되는 상태
+
+한 frame에는 다음 세 종류의 상태가 연결된다.
 
 | 상태 | 저장 위치 | 의미 |
 | --- | --- | --- |
@@ -655,7 +705,25 @@ atlasUv     = atlasCellCenter + sourceDelta / atlasSize
 
 `F_surface(p)`가 작으면 그 위치 주변에 활성 글자 픽셀이 거의 없다는 뜻이고, 클수록 주변 픽셀의 영향이 많이 모였다는 뜻이다. 인접한 픽셀끼리 값이 조금씩 달라지므로 경계도 연속적으로 움직일 수 있다. 이후 `surfaceThreshold`보다 충분히 큰 부분을 액체 안쪽으로 보고, threshold 주변은 `surfaceSoftness`로 서서히 섞어 실제 실루엣을 만든다. `contact`는 이 실루엣과 글자의 겹침을 읽고, `Contour`는 같은 값의 경계선을 보여주며, `Final`은 여기에 색을 입힌다.
 
-### 10.3 실행 순서
+### 10.3 추상화한 계산 순서
+
+함수 이름을 잠시 빼고 보면 한 frame은 다음 의존 순서로 계산된다. 2번의 두 가지 계산과 5번의 두 branch는 서로 직접 의존하지 않으므로 개념적으로는 나란히 진행할 수 있지만, 실제 GPU pass는 표 10.4의 고정 순서로 한 번씩 실행한다.
+
+| 순서 | 계산 | 의존하는 값 | 만드는 값 |
+| ---: | --- | --- | --- |
+| 1 | 물 packet 상태를 갱신하고 현재 spring 상태를 읽는다 | pointer, 이전 물 상태, `S_N` | `P_N`, 현재 `S_N` |
+| 2-A | 현재 글자를 다시 그린다 | 글자 atlas·원래 배치, `S_N` | `M_N` |
+| 2-B | 현재 물의 영향 범위를 계산한다 | `P_N` | `L_N` |
+| 3 | 물과 글자가 겹친 픽셀을 고른다 | `M_N`, `L_N` | `A_N` |
+| 4-A | Geometry: 활성 픽셀을 연속적인 액체 면으로 연결한다 | `A_N` | `F_N`, 논리적인 `C_N` |
+| 4-B | Color center: 가까운 활성 글자 seed를 찾는다 | `A_N`, `M_N` | nearest-seed 지도 `N_N` |
+| 5-A | seed 거리와 palette로 내부 색을 정한다 | `N_N`, palette 시간 | `K_N` |
+| 5-B | 접촉으로 다음 글자 움직임을 계산한다 | `C_N`, `M_N`, 글자 접촉 범위, `S_N` | `S_(N+1)` |
+| 6 | 현재 frame을 합성한다 | `M_N`, `C_N`, `K_N` | `Frame_N` |
+
+의존관계에서 가장 중요한 점은 6단계가 `M_N`을 다시 바꾸지 않는다는 것이다. 같은 frame의 글자와 실루엣은 그대로 두고 `S_(N+1)`만 저장한다. 다음 frame의 1단계가 그 상태를 읽어 `M_(N+1)`을 만들면서 되먹임이 이어진다.
+
+### 10.4 실제 pass 호출 순서
 
 | 순서 | 실행 | 저장되는 결과 | 다음에 읽는 단계 |
 | ---: | --- | --- | --- |
@@ -663,8 +731,8 @@ atlasUv     = atlasCellCenter + sourceDelta / atlasSize
 | 2 | `uploadLiquidState()` | GPU가 읽을 packet uniform | 4 |
 | 3 | `renderDeformedGlyphPass()` | `deformedTextTarget`: 현재 위치의 글자 mask | 4, 8, 9 |
 | 4 | `renderInteractionPass()` | `interactionTarget`: Falloff와 현재 글자 픽셀의 겹침 | 5, 7, 9 |
-| 5 | `renderStrokeSpreadPasses()` | 글자 내부에서 끊어진 활성 영역을 연결한 seed 입력 | 6 |
-| 6 | `renderNearestSeedPasses()` | 각 픽셀에서 가장 가까운 활성 글자 seed 좌표 | 9 |
+| 5 | `renderStrokeSpreadPasses()` | 활성값을 글자 내부 이웃으로 8회 확장한 seed 후보 | 6 |
+| 6 | `renderNearestSeedPasses()` | 후보를 seed로 선택하고 각 픽셀에서 가까운 seed 좌표 탐색 | 9 |
 | 7 | `renderMetaballSurfacePasses()` | `surfaceFieldTarget`: 연속적인 액체 세기 지도 | 8, 9 |
 | 8 | `renderGlyphSpringPass()` | 다음 frame에서 쓸 글자별 하강·회전 상태 | 다음 frame의 3 |
 | 9 | `renderOutputPass()` | Process View 또는 최종 canvas | 화면 |

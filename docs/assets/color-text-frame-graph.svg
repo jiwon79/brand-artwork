@@ -1,105 +1,140 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" viewBox="0 0 1200 590" role="img" aria-labelledby="title desc">
-  <title id="title">Color Text 한 프레임의 CPU 상태, GPU field, 출력과 피드백</title>
-  <desc id="desc">왼쪽 패널은 포인터와 물 packet을 갱신하는 CPU, 가운데 패널은 변형 글자에서 interaction, geometry field와 가까운 글자 seed를 만드는 GPU, 오른쪽 패널은 최종 출력과 다음 프레임 글자 spring 피드백을 보여준다.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="850" viewBox="0 0 1440 850" role="img" aria-labelledby="title desc">
+  <title id="title">Color Text 한 프레임의 입력, 글자, 실루엣, 내부 색과 다음 프레임 피드백</title>
+  <desc id="desc">왼쪽 입력 상태에서 현재 글자와 물 Falloff를 만들고, 가운데에서 활성 글자 픽셀을 실루엣과 내부 색으로 나눈다. 오른쪽에서 현재 프레임을 합성하고 글자 접촉으로 다음 프레임 spring 상태를 계산한다.</desc>
   <defs>
     <style>
-      .title { font: 700 27px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; }
-      .head { font: 700 18px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; text-anchor: middle; }
-      .label { font: 700 15px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; text-anchor: middle; }
-      .small { font: 400 13px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #607086; text-anchor: middle; }
-      .mono { font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #315f9f; text-anchor: middle; }
-      .panel { fill: #fff; stroke: #d6deea; stroke-width: 1.7; }
-      .box { fill: #f7f9fc; stroke: #b8c5d5; stroke-width: 1.5; }
-      .blue { fill: #edf4ff; stroke: #6e95ca; }
-      .pink { fill: #fff1f7; stroke: #c586aa; }
-      .purple { fill: #f4f0ff; stroke: #8c79bd; }
+      .title { font: 700 28px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; }
+      .panel-title { font: 700 19px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; text-anchor: middle; }
+      .node-title { font: 700 16px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #172033; text-anchor: middle; }
+      .body { font: 400 13px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #56677e; text-anchor: middle; }
+      .mono { font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #315f9f; text-anchor: middle; }
+      .note { font: 400 12px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #6c788a; text-anchor: middle; }
+      .panel { fill: #ffffff; stroke: #d6deea; stroke-width: 1.6; }
+      .state { fill: #f7f9fc; stroke: #aebccd; stroke-width: 1.5; }
+      .text-node { fill: #edf4ff; stroke: #6e95ca; stroke-width: 1.6; }
+      .surface-node { fill: #f4f0ff; stroke: #8c79bd; stroke-width: 1.6; }
+      .color-node { fill: #fff1f7; stroke: #c586aa; stroke-width: 1.6; }
+      .output-node { fill: #eef8f4; stroke: #6b9e89; stroke-width: 1.6; }
       .arrow { fill: none; stroke: #66758a; stroke-width: 2; }
+      .feedback { fill: none; stroke: #9b6f4a; stroke-width: 2.2; stroke-dasharray: 8 6; }
+      .feedback-label { font: 700 13px Arial, 'Apple SD Gothic Neo', sans-serif; fill: #805c3e; text-anchor: middle; }
     </style>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0 0L10 5L0 10Z" fill="#66758a"/>
     </marker>
-    <marker id="purpleArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0 0L10 5L0 10Z" fill="#8c79bd"/>
+    <marker id="feedback-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#9b6f4a"/>
     </marker>
   </defs>
 
-  <rect width="1200" height="590" fill="#fbfbfa"/>
-  <text class="title" x="42" y="48">한 프레임은 물의 상태, 픽셀 field, 글자 피드백을 순서대로 연결한다</text>
+  <rect width="1440" height="850" fill="#fbfbfa"/>
+  <text class="title" x="36" y="46">현재 글자가 실루엣을 만들고, 실루엣이 다음 frame의 글자를 움직인다</text>
 
-  <g transform="translate(34 82)">
-    <rect class="panel" width="344" height="480" rx="20"/>
-    <text class="head" x="172" y="38">1. CPU · 물의 상태</text>
-    <g transform="translate(52 76)">
-      <rect class="box" width="240" height="62" rx="13"/>
-      <text class="label" x="120" y="27">pointerTarget</text>
-      <text class="small" x="120" y="47">최신 터치 위치 · UV [0,1]</text>
-      <path class="arrow" d="M120 64V91" marker-end="url(#arrow)"/>
-      <rect class="box" y="100" width="240" height="62" rx="13"/>
-      <text class="label" x="120" y="127">dripEmitter</text>
-      <text class="small" x="120" y="147">지수 완화로 source 추종</text>
-      <path class="arrow" d="M120 164V191" marker-end="url(#arrow)"/>
-      <rect class="box blue" y="200" width="240" height="82" rx="13"/>
-      <text class="label" x="120" y="227">liquidParticles ≤ 32</text>
-      <text class="small" x="120" y="248">위치 · 속도 · age · mass</text>
-      <text class="small" x="120" y="266">gravity · damping · cohesion</text>
-      <path class="arrow" d="M120 284V311" marker-end="url(#arrow)"/>
-      <rect class="box" y="320" width="240" height="62" rx="13"/>
-      <text class="label" x="120" y="347">particle uniforms</text>
-      <text class="small" x="120" y="367">GPU에 현재 packet 상태 전달</text>
-    </g>
-  </g>
+  <rect class="panel" x="28" y="78" width="320" height="720" rx="20"/>
+  <rect class="panel" x="370" y="78" width="676" height="720" rx="20"/>
+  <rect class="panel" x="1068" y="78" width="344" height="720" rx="20"/>
+  <text class="panel-title" x="188" y="112">1. 입력과 현재 상태</text>
+  <text class="panel-title" x="708" y="112">2. frame N의 픽셀 지도</text>
+  <text class="panel-title" x="1240" y="112">3. 출력과 다음 상태</text>
 
-  <path class="arrow" d="M390 310H414" marker-end="url(#arrow)"/>
+  <!-- Dependency arrows are drawn before nodes so labels remain readable. -->
+  <path class="arrow" d="M316 183H398" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M316 342H355V220H398" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M316 506H356V126H865V144" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M532 252V285H624" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M865 252V285H792" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M708 390V418H551V444" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M708 390V418H865V444" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M551 556V612" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M865 556V612" marker-end="url(#arrow)"/>
 
-  <g transform="translate(416 82)">
-    <rect class="panel" width="368" height="480" rx="20"/>
-    <text class="head" x="184" y="38">2. GPU · 픽셀 지도</text>
-    <g transform="translate(54 76)">
-      <rect class="box" width="260" height="62" rx="13"/>
-      <text class="label" x="130" y="27">deformed glyphs</text>
-      <text class="small" x="130" y="47">이전 spring으로 글자 이동·회전</text>
-      <path class="arrow" d="M130 64V91" marker-end="url(#arrow)"/>
-      <rect class="box blue" y="100" width="260" height="74" rx="13"/>
-      <text class="label" x="130" y="126">interactionTarget RGBA</text>
-      <text class="mono" x="130" y="147">active · text · falloff</text>
-      <path class="arrow" d="M82 176V207" marker-end="url(#arrow)"/>
-      <path class="arrow" d="M178 176V207" marker-end="url(#arrow)"/>
-      <rect class="box blue" y="216" width="124" height="86" rx="13"/>
-      <text class="label" x="62" y="243">geometry</text>
-      <text class="small" x="62" y="264">192 probes</text>
-      <text class="small" x="62" y="283">smooth field</text>
-      <rect class="box pink" x="136" y="216" width="124" height="86" rx="13"/>
-      <text class="label" x="198" y="243">color</text>
-      <text class="small" x="198" y="264">nearest seed</text>
-      <text class="small" x="198" y="283">glyph distance</text>
-      <path class="arrow" d="M62 304V313" marker-end="url(#arrow)"/>
-      <path class="arrow" d="M198 304V313" marker-end="url(#arrow)"/>
-      <rect class="box purple" y="322" width="260" height="56" rx="13"/>
-      <text class="label" x="130" y="347">surfaceField + nearest seed</text>
-      <text class="small" x="130" y="367">최종 합성 · surface는 contact에도 사용</text>
-    </g>
-  </g>
+  <path class="arrow" d="M532 144V124H1028V187H1098" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M686 659H1026V225H1098" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M1010 659H1048V263H1098" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M532 144V124H1048V465H1098" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M686 682H1030V505H1098" marker-end="url(#arrow)"/>
+  <path class="arrow" d="M1240 568V638" marker-end="url(#arrow)"/>
 
-  <path class="arrow" d="M796 310H820" marker-end="url(#arrow)"/>
+  <path class="feedback" d="M1240 742V774H188V386" marker-end="url(#feedback-arrow)"/>
+  <text class="feedback-label" x="714" y="791">S_(N+1)은 다음 frame에서 S_N이 된다</text>
 
-  <g transform="translate(822 82)">
-    <rect class="panel" width="344" height="480" rx="20"/>
-    <text class="head" x="172" y="38">3. 출력 · 다음 프레임</text>
-    <g transform="translate(52 92)">
-      <rect class="box blue" width="240" height="74" rx="13"/>
-      <text class="label" x="120" y="29">Final / Process View</text>
-      <text class="small" x="120" y="51">같은 중간 target을 다른 방식으로 표시</text>
-      <path class="arrow" d="M120 76V111" marker-end="url(#arrow)"/>
-      <rect class="box purple" y="120" width="240" height="88" rx="13"/>
-      <text class="label" x="120" y="148">glyph contact</text>
-      <text class="small" x="120" y="169">9×9: visible surface × text pixel</text>
-      <text class="small" x="120" y="188">좌우 차이로 회전 목표 계산</text>
-      <path class="arrow" d="M120 210V245" marker-end="url(#arrow)"/>
-      <rect class="box purple" y="254" width="240" height="74" rx="13"/>
-      <text class="label" x="120" y="283">64×1 spring state</text>
-      <text class="small" x="120" y="305">offset · velocity · angle · ω</text>
-      <path d="M50 330V374H-418V44H-366" fill="none" stroke="#8c79bd" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#purpleArrow)"/>
-      <text class="small" x="120" y="346">한 프레임 뒤 deformed glyphs로 되먹임</text>
-    </g>
-  </g>
+  <!-- Panel 1: persistent and per-frame inputs. -->
+  <rect class="state" x="58" y="136" width="258" height="96" rx="14"/>
+  <text class="node-title" x="187" y="163">초기화한 글자 정보</text>
+  <text class="body" x="187" y="185">atlas · 원래 배치 중심 · 실제 폭</text>
+  <text class="body" x="187" y="206">잉크 중심 · 잉크 경계 상자</text>
+
+  <rect class="state" x="58" y="292" width="258" height="100" rx="14"/>
+  <text class="node-title" x="187" y="319">현재 spring 상태 S_N</text>
+  <text class="body" x="187" y="343">offset · velocity</text>
+  <text class="body" x="187" y="365">angle · angular velocity</text>
+
+  <rect class="state" x="58" y="450" width="258" height="112" rx="14"/>
+  <text class="node-title" x="187" y="478">현재 물 상태 P_N</text>
+  <text class="body" x="187" y="501">pointer → emitter</text>
+  <text class="body" x="187" y="523">packet 위치 · 속도 · age</text>
+  <text class="body" x="187" y="545">mass · energy · seed</text>
+
+  <text class="note" x="188" y="620">과거 픽셀 이미지는 저장하지 않는다.</text>
+  <text class="note" x="188" y="640">시간 기억은 P_N과 S_N에 있다.</text>
+
+  <!-- Panel 2: current-frame textures and the two downstream branches. -->
+  <rect class="text-node" x="398" y="144" width="268" height="108" rx="14"/>
+  <text class="node-title" x="532" y="172">현재 글자 mask M_N</text>
+  <text class="mono" x="532" y="196">deformedTextTarget</text>
+  <text class="body" x="532" y="220">현재 위치·회전의 글자 픽셀</text>
+  <text class="body" x="532" y="239">atlas + 배치 중심 + S_N</text>
+
+  <rect class="text-node" x="735" y="144" width="260" height="108" rx="14"/>
+  <text class="node-title" x="865" y="172">결합 Falloff L_N</text>
+  <text class="body" x="865" y="198">각 packet이 픽셀에 미치는 영향</text>
+  <text class="body" x="865" y="220">강한 두 packet을 연결</text>
+
+  <rect class="text-node" x="568" y="286" width="280" height="104" rx="14"/>
+  <text class="node-title" x="708" y="315">활성 글자 픽셀 A_N</text>
+  <text class="mono" x="708" y="340">A_N = M_N × L_N^1.22 × strength</text>
+  <text class="body" x="708" y="365">물과 현재 글자가 겹친 위치만 남긴다</text>
+
+  <rect class="surface-node" x="416" y="444" width="270" height="112" rx="14"/>
+  <text class="node-title" x="551" y="473">Geometry branch</text>
+  <text class="body" x="551" y="498">threshold → 주변 192표본 누적</text>
+  <text class="body" x="551" y="520">가로·세로 smoothing</text>
+  <text class="mono" x="551" y="541">surface field F_N</text>
+
+  <rect class="color-node" x="730" y="444" width="270" height="112" rx="14"/>
+  <text class="node-title" x="865" y="473">Color-center branch</text>
+  <text class="body" x="865" y="498">stroke spread → seed 선택</text>
+  <text class="body" x="865" y="520">bounded JFA로 가까운 seed 탐색</text>
+  <text class="mono" x="865" y="541">nearest-seed map N_N</text>
+
+  <rect class="surface-node" x="416" y="612" width="270" height="94" rx="14"/>
+  <text class="node-title" x="551" y="640">액체 실루엣 C_N</text>
+  <text class="body" x="551" y="664">F_N을 threshold와 softness로 변환</text>
+  <text class="body" x="551" y="685">최종 액체 coverage 0~1</text>
+
+  <rect class="color-node" x="730" y="612" width="280" height="94" rx="14"/>
+  <text class="node-title" x="870" y="640">내부 색 K_N</text>
+  <text class="body" x="870" y="664">seed 거리·강도 → 글자형 색 에너지</text>
+  <text class="body" x="870" y="685">palette 적용 후 C_N 안으로 제한</text>
+
+  <!-- Panel 3: same-frame output and one-frame-delayed feedback. -->
+  <rect class="output-node" x="1098" y="136" width="284" height="142" rx="14"/>
+  <text class="node-title" x="1240" y="165">최종 화면 Frame_N</text>
+  <text class="mono" x="1240" y="190">composite(M_N, C_N, K_N)</text>
+  <text class="body" x="1240" y="218">실루엣 밖: 현재 글자</text>
+  <text class="body" x="1240" y="240">실루엣 안: 내부 색</text>
+  <text class="body" x="1240" y="261">coverage가 둘의 경계를 결정</text>
+
+  <rect class="surface-node" x="1098" y="414" width="284" height="154" rx="14"/>
+  <text class="node-title" x="1240" y="443">글자 접촉 + 감쇠 스프링</text>
+  <text class="body" x="1240" y="469">C_N × M_N을 9 × 9 위치에서 검사</text>
+  <text class="body" x="1240" y="492">잉크 중심·경계 상자로 검사 범위 결정</text>
+  <text class="body" x="1240" y="515">접촉 최댓값 → 목표 하강 거리</text>
+  <text class="body" x="1240" y="538">좌우 차이 → 목표 회전각</text>
+  <text class="body" x="1240" y="559">현재 S_N을 목표 쪽으로 적분</text>
+
+  <rect class="state" x="1098" y="638" width="284" height="104" rx="14"/>
+  <text class="node-title" x="1240" y="668">다음 spring 상태 S_(N+1)</text>
+  <text class="body" x="1240" y="695">새 offset · velocity</text>
+  <text class="body" x="1240" y="717">새 angle · angular velocity</text>
 </svg>
