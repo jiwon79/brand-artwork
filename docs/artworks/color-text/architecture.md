@@ -4,7 +4,7 @@
 
 - 기준 구현: [`pages/color-text/script.ts`](../../../pages/color-text/script.ts)
 - 작품 좌표: `480 × 600 artwork pixel`
-- 문서 갱신 기준: `2026-08-11`
+- 문서 갱신 기준: `2026-08-12`
 - 세부 파라미터와 구현 기록: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)
 
 재사용 가능한 수학 원리는 별도 concept 문서로 분리했다.
@@ -624,32 +624,67 @@ atlasUv     = atlasCellCenter + sourceDelta / atlasSize
 
 `requestAnimationFrame()`의 `renderFrame(now)`는 다음 순서를 지킨다. 함수 이름도 이 표의 단계와 같아서 코드를 위에서 아래로 따라갈 수 있다.
 
-| 순서 | 실행 | 출력 또는 상태 |
-| ---: | --- | --- |
-| 1 | `liquid.update(delta, pointerTarget)` | 분리된 packet 갱신과 source 질량 공급 |
-| 2 | `uploadLiquidState()` | 최대 32개 packet의 GPU uniform |
-| 3 | `renderDeformedGlyphPass()` | 현재 글자 target |
-| 4 | `renderInteractionPass()` | 활성 글자·text·Falloff RGBA |
-| 5 | `renderStrokeSpreadPasses()` | 글자 내부에서 이어진 seed 입력 |
-| 6 | `renderNearestSeedPasses()` | 가까운 활성 글자 seed 좌표 |
-| 7 | `renderMetaballSurfacePasses()` | `surfaceFieldTarget` |
-| 8 | `renderGlyphSpringPass()` | 다음 frame의 글자 state |
-| 9 | `renderOutputPass()` | nearest glyph 색 에너지와 palette를 합성한 Process View 또는 최종 화면 |
+### 10.1 여기서 `target`은 무엇인가
 
-Geometry를 만든 뒤 spring을 계산하므로 contact는 현재 화면에 실제로 나타날 surface를 사용한다. Spring swap 뒤에도 현재 frame의 최종 합성은 이미 만든 `deformedTextTarget`을 사용하고, 새 state는 다음 frame에 반영된다.
+`deformedTextTarget`과 `surfaceFieldTarget`에서 **render target**은 GPU가 계산 결과를 잠시 그려 두는 화면 밖의 이미지다. 사용자가 보는 canvas에 바로 그리지 않고, 먼저 texture에 픽셀별 숫자를 저장한 뒤 다음 shader가 그 texture를 읽는다.
+
+이때 `target`은 “글자가 이동하려는 목표 위치”라는 뜻이 아니다. 예를 들어 `pointerTarget`의 target은 손가락을 따라갈 **목표 위치**지만, `surfaceFieldTarget`의 target은 surface field를 써 넣을 **저장 목적지**다. 이름은 같아도 역할이 다르다.
+
+### 10.2 두 target에 실제로 저장되는 값
+
+`deformedTextTarget`은 **이번 frame에서 글자들이 실제로 어디에 있는지** 기록한 `1440 × 1800` 흑백 mask다.
+
+1. 독립 글자 atlas에서 각 글자 이미지를 읽는다.
+2. 이전 frame 끝에서 계산해 둔 글자별 하강 거리와 회전각을 적용한다.
+3. 결과를 한 장의 고해상도 이미지로 다시 조립한다.
+
+각 픽셀에는 글자의 불투명도 `M_text(p)`가 들어간다. `p`는 현재 검사 중인 화면 위치다. 값이 `0`이면 그 위치에 글자가 없고, `1`이면 글자 안쪽이며, 가장자리의 `0`과 `1` 사이 값은 계단 모양을 줄이는 안티앨리어싱이다. 따라서 “현재 글자 target”이라는 표현의 정확한 뜻은 **현재 위치와 각도로 변형된 모든 글자의 픽셀 mask를 저장한 render target**이다.
+
+이 mask는 다음 세 곳에서 같은 기준으로 사용된다.
+
+- `interaction`: 물의 Falloff가 현재 글자 픽셀과 실제로 겹치는지 계산한다.
+- `contact`: 액체 실루엣과 현재 글자 픽셀이 함께 있는 위치만 글자 접촉으로 인정한다.
+- `final`: 이동하고 회전한 글자를 최종 화면에 그린다.
+
+`surfaceFieldTarget`은 **액체 실루엣을 만들기 위한 연속적인 세기 지도**를 저장한 `480 × 600` 이미지다. 색이 칠해진 최종 액체 이미지도 아니고, 안과 밖만 `0`과 `1`로 나눈 완성 실루엣도 아니다.
+
+1. `interactionTarget`에서 Falloff와 겹쳐 활성화된 글자 픽셀을 고른다.
+2. 각 출력 픽셀이 주변의 활성 픽셀 192개를 표본으로 읽어 세기를 더한다.
+3. 가로 방향 이웃과 세로 방향 이웃의 값을 각각 한 번씩 가중 평균한다. 가까운 이웃일수록 큰 비중으로 섞어 픽셀 사이의 급격한 차이를 줄인다.
+4. 마지막 연속값 `F_surface(p)`를 `surfaceFieldTarget`의 빨간색 채널에 저장한다.
+
+`F_surface(p)`가 작으면 그 위치 주변에 활성 글자 픽셀이 거의 없다는 뜻이고, 클수록 주변 픽셀의 영향이 많이 모였다는 뜻이다. 인접한 픽셀끼리 값이 조금씩 달라지므로 경계도 연속적으로 움직일 수 있다. 이후 `surfaceThreshold`보다 충분히 큰 부분을 액체 안쪽으로 보고, threshold 주변은 `surfaceSoftness`로 서서히 섞어 실제 실루엣을 만든다. `contact`는 이 실루엣과 글자의 겹침을 읽고, `Contour`는 같은 값의 경계선을 보여주며, `Final`은 여기에 색을 입힌다.
+
+### 10.3 실행 순서
+
+| 순서 | 실행 | 저장되는 결과 | 다음에 읽는 단계 |
+| ---: | --- | --- | --- |
+| 1 | `liquid.update(delta, pointerTarget)` | CPU의 최대 32개 물 packet 위치·속도·세기 | 2 |
+| 2 | `uploadLiquidState()` | GPU가 읽을 packet uniform | 4 |
+| 3 | `renderDeformedGlyphPass()` | `deformedTextTarget`: 현재 위치의 글자 mask | 4, 8, 9 |
+| 4 | `renderInteractionPass()` | `interactionTarget`: Falloff와 현재 글자 픽셀의 겹침 | 5, 7, 9 |
+| 5 | `renderStrokeSpreadPasses()` | 글자 내부에서 끊어진 활성 영역을 연결한 seed 입력 | 6 |
+| 6 | `renderNearestSeedPasses()` | 각 픽셀에서 가장 가까운 활성 글자 seed 좌표 | 9 |
+| 7 | `renderMetaballSurfacePasses()` | `surfaceFieldTarget`: 연속적인 액체 세기 지도 | 8, 9 |
+| 8 | `renderGlyphSpringPass()` | 다음 frame에서 쓸 글자별 하강·회전 상태 | 다음 frame의 3 |
+| 9 | `renderOutputPass()` | Process View 또는 최종 canvas | 화면 |
+
+frame `N`의 3단계는 직전 frame이 계산한 spring 상태로 `deformedTextTarget`을 만든다. 7단계는 그 현재 글자 mask와 물 packet으로 `surfaceFieldTarget`을 만들고, 8단계는 둘의 접촉을 바탕으로 frame `N+1`의 글자 상태를 계산한다. 마지막 9단계는 이미 완성된 frame `N`의 두 target을 화면에 합성한다.
+
+새 spring 상태를 한 frame 뒤에 적용하는 이유는 하나의 pass가 아직 쓰고 있는 값을 동시에 다시 읽는 순환을 피하기 위해서다. 이 순서 덕분에 액체 접촉, 화면에 보이는 글자 위치, 다음 움직임의 기준이 서로 다른 순간의 값으로 섞이지 않는다.
 
 ## 11. Render target 지도
 
 | target | 크기·filter | 저장 값 | 다음 소비자 |
 | --- | --- | --- | --- |
-| `deformedTextTarget` | `1440×1800`, linear | 현재 글자 alpha | interaction, contact, final |
+| `deformedTextTarget` | `1440×1800`, linear | 현재 위치·회전이 적용된 글자 mask `M_text(p)` | interaction, contact, final |
 | `interactionTarget` | `480×600`, half-float linear | active, text, Falloff | geometry, color seed, debug |
 | `strokeSpreadTargetA/B` | `480×600`, half-float linear | 글자 내부 확산 활성값 | seed |
 | `nearestTargetA/B` | `480×600`, half-float nearest | 가까운 seed UV와 strength | glyph-shaped color |
 | `surfaceSourceTarget` | `480×600`, half-float linear | threshold를 통과한 active pixel | 192-probe field |
 | `metaballRawTarget` | `480×600`, half-float linear | smoothing 전 geometry field | horizontal smoothing |
 | `surfaceHorizontalTarget` | `480×600`, half-float linear | 가로 smoothing field | vertical smoothing |
-| `surfaceFieldTarget` | `480×600`, half-float linear | 최종 geometry field | contact, contour, final |
+| `surfaceFieldTarget` | `480×600`, half-float linear | threshold 적용 전의 연속 액체 세기 `F_surface(p)` | contact, contour, final |
 | `glyphSpringTargetA/B` | `64×1`, half-float nearest | 글자별 offset·속도·회전 | 다음 frame glyph 변형 |
 
 Field target이 half float인 이유는 여러 gain을 합친 1보다 큰 값과 작은 연속 차이를 8-bit보다 안정적으로 보존하기 위해서다. 고해상도 글자 mask는 alpha 안티앨리어싱을 유지하면서 메모리를 줄이기 위해 unsigned byte를 사용한다.
