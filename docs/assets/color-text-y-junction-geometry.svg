@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1104" height="270" viewBox="0 0 1104 270" role="img" aria-labelledby="title desc">
+  <title id="title">Y 교차부의 볼록한 경계와 오목한 경계</title>
+  <desc id="desc">왼쪽은 가장 가까운 활성 픽셀 하나를 중심으로 만든 둥글고 볼록한 경계, 오른쪽은 주변 픽셀을 함께 누적해 두 팔 사이의 흰 공간이 줄기를 따라 내려오는 경계를 보여준다.</desc>
+
+  <g transform="translate(31 -56) scale(.74)">
+    <path d="M182 252 308 355 434 252M308 355V468" fill="none" stroke="#9aa4b2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M152 262C168 210 229 202 279 246C295 259 320 259 337 245C387 203 448 212 464 264C477 307 435 340 379 348C340 353 353 405 349 458C346 497 272 497 269 458C265 405 278 354 238 348C182 340 140 306 152 262Z" fill="#cfd6df" fill-opacity=".8" stroke="#7e8997" stroke-width="3"/>
+    <circle cx="308" cy="350" r="74" fill="#7e8997" fill-opacity=".56"/>
+  </g>
+
+  <g transform="translate(184 -56) scale(.74)">
+    <path d="M766 252 892 355 1018 252M892 355V468" fill="none" stroke="#9aa4b2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M736 264C751 212 811 202 858 242C874 255 881 278 892 299C903 278 910 255 926 242C973 202 1033 212 1048 264C1061 309 1023 339 979 348C945 355 942 393 950 448C956 492 920 511 892 480C864 511 828 492 834 448C842 393 839 355 805 348C761 339 723 309 736 264Z" fill="#b9cbed" fill-opacity=".84" stroke="#4c78c2" stroke-width="3"/>
+    <path d="M854 257C867 275 879 306 892 330C905 306 917 275 930 257" fill="none" stroke="#fff" stroke-width="30" stroke-linecap="round"/>
+    <path d="M892 314C873 352 874 397 892 425C910 397 911 352 892 314Z" fill="#fff"/>
+  </g>
+</svg>

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="280" viewBox="0 0 1140 280" role="img" aria-labelledby="title desc">
+  <title id="title">글자 접촉 검사와 글자 단위 변형의 핵심 도형</title>
+  <desc id="desc">왼쪽은 H 픽셀을 따로 이동해 벌어진 상태, 가운데는 O 안쪽에 놓은 9 곱하기 9 접촉 검사점과 액체 영역, 오른쪽은 O 전체에 하나의 이동과 회전을 적용한 상태를 보여준다.</desc>
+  <defs>
+    <g id="glyph-h" fill="none" stroke="#30394b" stroke-width="20" stroke-linecap="round">
+      <path d="M12 8V174M112 8V174M12 91H112"/>
+    </g>
+    <g id="glyph-o" fill="none" stroke="#30394b" stroke-width="20">
+      <ellipse cx="70" cy="92" rx="56" ry="82"/>
+    </g>
+    <g id="grid-row" fill="#4c78c2" stroke="#fff" stroke-width="1.5">
+      <circle cx="0" cy="0" r="4.3"/><circle cx="28.5" cy="0" r="4.3"/><circle cx="57" cy="0" r="4.3"/>
+      <circle cx="85.5" cy="0" r="4.3"/><circle cx="114" cy="0" r="4.3"/><circle cx="142.5" cy="0" r="4.3"/>
+      <circle cx="171" cy="0" r="4.3"/><circle cx="199.5" cy="0" r="4.3"/><circle cx="228" cy="0" r="4.3"/>
+    </g>
+  </defs>
+
+  <g transform="translate(27 40)">
+    <g transform="translate(8 9) scale(.9)" opacity=".26"><use href="#glyph-h"/></g>
+    <g transform="translate(184 0)" fill="none" stroke="#30394b" stroke-width="20" stroke-linecap="round">
+      <path d="M12 8V67M12 102V174M112 8V86M112 108V190M12 91H112"/>
+    </g>
+    <path d="M196 132H296" stroke="#e05c68" stroke-width="4" stroke-dasharray="8 7"/>
+  </g>
+
+  <g transform="translate(455 2)">
+    <rect x="0" y="0" width="250" height="276" rx="10" fill="#fff" stroke="#9aa8bb" stroke-width="2"/>
+    <rect x="11" y="9" width="228" height="258" rx="8" fill="none" stroke="#4c78c2" stroke-width="2.5" stroke-dasharray="7 6"/>
+    <g transform="translate(55 47) scale(1.03)" opacity=".82"><use href="#glyph-o"/></g>
+    <path d="M-5 40C42-8 146 5 198 59C226 88 236 134 209 155C177 181 140 148 110 148C64 147 43 191 5 160C-23 138-32 82-5 40Z" fill="#70c9d6" fill-opacity=".4"/>
+    <g transform="translate(11 9)">
+      <use href="#grid-row" y="0"/><use href="#grid-row" y="32.25"/><use href="#grid-row" y="64.5"/>
+      <use href="#grid-row" y="96.75"/><use href="#grid-row" y="129"/><use href="#grid-row" y="161.25"/>
+      <use href="#grid-row" y="193.5"/><use href="#grid-row" y="225.75"/><use href="#grid-row" y="258"/>
+    </g>
+  </g>
+
+  <g transform="translate(895 43)">
+    <g transform="translate(43 0)" opacity=".2"><use href="#glyph-o"/></g>
+    <g transform="translate(43 28) rotate(-8 70 92)"><use href="#glyph-o"/></g>
+  </g>
+</svg>

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="280" viewBox="0 0 1140 280" role="img" aria-labelledby="title desc">
+  <title id="title">독립 글자 아틀라스의 핵심 도형</title>
+  <desc id="desc">합쳐진 글자에서 이웃 픽셀이 섞이는 범위, 서로 분리된 아틀라스 칸, 변형된 글자 위치를 원래 칸으로 되돌려 읽는 장면을 순서대로 보여준다.</desc>
+  <defs>
+    <g id="glyph-w" fill="none" stroke="#172033" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 8 31 104 57 38 83 104 106 8"/>
+    </g>
+    <g id="glyph-a" fill="none" stroke="#172033" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 104 50 8 92 104M24 69H76"/>
+    </g>
+    <g id="glyph-y" fill="none" stroke="#172033" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 8 50 57 92 8M50 57V104"/>
+    </g>
+  </defs>
+
+  <g transform="translate(25 30)">
+    <rect x="0" y="0" width="300" height="190" rx="16" fill="#f7f9fc" stroke="#b8c5d5" stroke-width="2"/>
+    <g transform="translate(23 35) scale(.88)"><use href="#glyph-w"/></g>
+    <g transform="translate(112 35) scale(.88)"><use href="#glyph-a"/></g>
+    <g transform="translate(203 35) scale(.88)"><use href="#glyph-y"/></g>
+    <rect x="18" y="22" width="154" height="130" rx="12" fill="#dce9fb" fill-opacity=".34" stroke="#4c78c2" stroke-width="3" stroke-dasharray="8 7"/>
+    <path d="M150 27 174 11" fill="none" stroke="#d45992" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="174" cy="11" r="5" fill="#d45992"/>
+  </g>
+
+  <g transform="translate(438 24)">
+    <g fill="#f7f9fc" stroke="#b8c5d5" stroke-width="2">
+      <rect x="0" y="0" width="88" height="72"/><rect x="88" y="0" width="88" height="72"/><rect x="176" y="0" width="88" height="72"/>
+      <rect x="0" y="72" width="88" height="112"/><rect x="88" y="72" width="88" height="112"/><rect x="176" y="72" width="88" height="112"/>
+      <rect x="0" y="184" width="88" height="72"/><rect x="88" y="184" width="88" height="72"/><rect x="176" y="184" width="88" height="72"/>
+    </g>
+    <g transform="translate(5 79) scale(.69)"><use href="#glyph-w"/></g>
+    <g transform="translate(98 79) scale(.69)"><use href="#glyph-a"/></g>
+    <g transform="translate(186 79) scale(.69)"><use href="#glyph-y"/></g>
+  </g>
+
+  <g transform="translate(820 34)">
+    <rect x="0" y="0" width="126" height="190" rx="16" fill="#edf4ff" stroke="#6e95ca" stroke-width="2"/>
+    <g transform="translate(18 43) rotate(10 53 52) scale(.82)"><use href="#glyph-w"/></g>
+    <circle cx="92" cy="72" r="7" fill="#d45992" stroke="#fff" stroke-width="2"/>
+    <rect x="192" y="0" width="126" height="190" rx="16" fill="#f7f9fc" stroke="#b8c5d5" stroke-width="2"/>
+    <g transform="translate(211 43) scale(.82)"><use href="#glyph-w"/></g>
+    <circle cx="284" cy="70" r="7" fill="#d45992" stroke="#fff" stroke-width="2"/>
+  </g>
+</svg>
