@@ -24,6 +24,7 @@ Interactive web implementations of brand artworks.
 - 문서의 범위가 지정되면 범위 밖의 파이프라인은 설명하지 않는다. 예를 들어 “색상 제외” 요청에서는 색상 계산을 문서 본문에서 제외한다.
 - 그래픽스·수학·렌더링 문서를 작성하거나 수정할 때는 `docs/explanation-guide.md`를 따른다.
 - 핵심 공간 관계를 ASCII 그림에 의존하지 말고 `docs/assets/`의 검증된 SVG로 설명한다.
+- 곡선, blur, gradient와 정밀 외곽선은 투명 배경 SVG로 만들고, 텍스트·화살표·패널 배치는 draw.io에서 조립한 뒤 최종 SVG 한 장으로 export한다. 정밀 SVG 원본, `.drawio` 편집 원본과 최종 SVG를 모두 `docs/assets/`에 보관한다.
 - 작품의 현재 구현 흐름은 `docs/artworks/<name>/`, 재사용 가능한 수학 원리는 `docs/concepts/`에 분리한다.
 
 ## Workflow
