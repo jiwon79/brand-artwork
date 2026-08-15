@@ -87,11 +87,11 @@ const settings = {
   turbulence: 2.6,
   particleLife: 3.35,
   particleSize: 1.15,
-  contactWaveSpeed: 176,
-  contactWaveWidth: 18,
-  contactForce: 62,
-  contactSpread: 24,
-  contactJitter: 0.08,
+  contactGatherDuration: 1.05,
+  contactCompression: 0.16,
+  contactForce: 86,
+  contactSpread: 11,
+  contactReleaseSpread: 0.18,
   glow: 0.26,
   scanlines: 0.08,
 };
@@ -135,6 +135,11 @@ function clamp(value: number, min: number, max: number): number {
 function hash(a: number, b: number, c = 0): number {
   const value = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453123;
   return value - Math.floor(value);
+}
+
+function smoothstep(value: number): number {
+  const progress = clamp(value, 0, 1);
+  return progress * progress * (3 - 2 * progress);
 }
 
 function resize(): void {
@@ -419,11 +424,53 @@ function solidPointPosition(point: FigurePoint, echoIndex: number, time: number)
   };
 }
 
+function contactGatherProgress(elapsed: number): number {
+  if (settings.interaction !== 'Contact Burst') return 0;
+  return smoothstep(elapsed / Math.max(0.001, settings.contactGatherDuration));
+}
+
+function contactChannelScale(elapsed: number): number {
+  return 1 - contactGatherProgress(elapsed) * 0.84;
+}
+
+function gatheredPosition(
+  position: PositionedPoint,
+  point: FigurePoint,
+  echoIndex: number,
+  elapsed: number,
+): PositionedPoint {
+  const progress = contactGatherProgress(elapsed);
+  if (progress <= 0) return position;
+
+  const deltaX = contactOrigin.x - position.designX;
+  const deltaY = contactOrigin.y - position.designY;
+  const distance = Math.max(0.001, Math.hypot(deltaX, deltaY));
+  const tangentX = -deltaY / distance;
+  const tangentY = deltaX / distance;
+  const curl = (hash(point.x, point.y, echoIndex + 23) - 0.5)
+    * Math.sin(progress * Math.PI)
+    * 3.2;
+  const designX = position.designX
+    + deltaX * settings.contactCompression * progress
+    + tangentX * curl;
+  const designY = position.designY
+    + deltaY * settings.contactCompression * progress
+    + tangentY * curl;
+
+  return {
+    x: view.offsetX + designX * view.fit,
+    y: view.offsetY + designY * view.fit,
+    designX,
+    designY,
+  };
+}
+
 function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echoIndex: number): number {
   if (settings.interaction === 'Contact Burst') {
     const distance = Math.hypot(designX - contactOrigin.x, designY - contactOrigin.y);
-    const jitter = (hash(point.x, point.y, echoIndex) - 0.5) * settings.contactJitter;
-    return Math.max(0, distance / settings.contactWaveSpeed + jitter);
+    const shuffledRelease = hash(point.x, point.y, echoIndex + 31) * settings.contactReleaseSpread;
+    const distanceVariation = clamp(distance / DESIGN_WIDTH, 0, 1) * settings.contactReleaseSpread * 0.06;
+    return settings.contactGatherDuration + shuffledRelease + distanceVariation;
   }
 
   const xProgress = clamp(designX / DESIGN_WIDTH, 0, 1);
@@ -441,9 +488,12 @@ function drawParticle(
   lineMode: boolean,
 ): void {
   const originTime = triggeredAt + spawnTime;
-  const origin = lineMode
+  const baseOrigin = lineMode
     ? linePointPosition(point, echoIndex, originTime)
     : solidPointPosition(point, echoIndex, originTime);
+  const origin = settings.interaction === 'Contact Burst'
+    ? gatheredPosition(baseOrigin, point, echoIndex, spawnTime)
+    : baseOrigin;
   const channelSeed = hash(point.x, point.y, channelIndex + echoIndex * 3);
   const channelOffset = settings.rgbOffset * view.fit;
   let x: number;
@@ -467,9 +517,11 @@ function drawParticle(
 
     const tangentX = -directionY;
     const tangentY = directionX;
-    const radialSpeed = settings.contactForce * (0.58 + channelSeed * 0.92) * view.fit;
+    const radialSpeed = settings.contactForce * (0.64 + channelSeed * 0.72) * view.fit;
     const tangentSpeed = (point.seed2 - 0.5) * settings.contactSpread * view.fit;
-    const acceleration = age * age * (3.4 + point.seed * 3.2) * view.fit;
+    const initialBloom = (1 - Math.exp(-age * 11)) * radialSpeed * 0.17;
+    const outwardTravel = radialSpeed * age * 0.56;
+    const acceleration = age * age * (2.2 + point.seed * 2.3) * view.fit;
     const turbulence = Math.sin(age * (4.1 + point.seed * 4.6) + point.seed2 * 19)
       * settings.turbulence
       * age
@@ -477,12 +529,12 @@ function drawParticle(
 
     x = origin.x
       + channelX[channelIndex] * channelOffset
-      + directionX * (radialSpeed * age + acceleration)
-      + tangentX * (tangentSpeed * age + turbulence);
+      + directionX * (initialBloom + outwardTravel + acceleration)
+      + tangentX * (tangentSpeed * age + turbulence * 0.18);
     y = origin.y
       + channelY[channelIndex] * channelOffset
-      + directionY * (radialSpeed * age + acceleration)
-      + tangentY * (tangentSpeed * age + turbulence);
+      + directionY * (initialBloom + outwardTravel + acceleration)
+      + tangentY * (tangentSpeed * age + turbulence * 0.18);
   } else {
     const speed = settings.drift * (0.58 + channelSeed * 0.82) * view.fit;
     const verticalSpeed = (point.seed2 - 0.5) * settings.spread * view.fit;
@@ -550,16 +602,23 @@ function drawDissolvingLinePath(
 
   for (const point of geometry.points) {
     if (point.startsPath) drawing = false;
-    const position = linePointPosition(point, echoIndex, now);
-    const remains = elapsed < spawnTimeFor(position.designX, position.designY, point, echoIndex);
+    const basePosition = linePointPosition(point, echoIndex, now);
+    const remains = elapsed < spawnTimeFor(
+      basePosition.designX,
+      basePosition.designY,
+      point,
+      echoIndex,
+    );
 
     if (!remains) {
       drawing = false;
       continue;
     }
 
-    const x = position.x + channelX[channelIndex] * settings.rgbOffset * view.fit;
-    const y = position.y + channelY[channelIndex] * settings.rgbOffset * view.fit;
+    const position = gatheredPosition(basePosition, point, echoIndex, elapsed);
+    const channelOffset = settings.rgbOffset * contactChannelScale(elapsed) * view.fit;
+    const x = position.x + channelX[channelIndex] * channelOffset;
+    const y = position.y + channelY[channelIndex] * channelOffset;
     if (drawing) artworkCtx.lineTo(x, y);
     else artworkCtx.moveTo(x, y);
     drawing = true;
@@ -569,38 +628,6 @@ function drawDissolvingLinePath(
   artworkCtx.lineJoin = 'round';
   artworkCtx.lineWidth = geometry.strokeWidth * SVG_TO_DESIGN * settings.lineThickness * view.fit;
   artworkCtx.stroke();
-
-  if (settings.interaction !== 'Contact Burst') return;
-
-  artworkCtx.beginPath();
-  drawing = false;
-
-  for (const point of geometry.points) {
-    if (point.startsPath) drawing = false;
-    const position = linePointPosition(point, echoIndex, now);
-    const spawnTime = spawnTimeFor(position.designX, position.designY, point, echoIndex);
-    const waveDistance = Math.abs(elapsed - spawnTime) * settings.contactWaveSpeed;
-    const inWave = waveDistance <= settings.contactWaveWidth;
-
-    if (!inWave) {
-      drawing = false;
-      continue;
-    }
-
-    const x = position.x + channelX[channelIndex] * settings.rgbOffset * view.fit;
-    const y = position.y + channelY[channelIndex] * settings.rgbOffset * view.fit;
-    if (drawing) artworkCtx.lineTo(x, y);
-    else artworkCtx.moveTo(x, y);
-    drawing = true;
-  }
-
-  artworkCtx.save();
-  artworkCtx.globalAlpha = 0.96;
-  artworkCtx.lineWidth = geometry.strokeWidth * SVG_TO_DESIGN * settings.lineThickness * view.fit * 1.75;
-  artworkCtx.shadowColor = channelColors[channelIndex];
-  artworkCtx.shadowBlur = 7 * view.fit;
-  artworkCtx.stroke();
-  artworkCtx.restore();
 }
 
 function renderLineFigures(now: number, elapsed: number): void {
@@ -643,9 +670,11 @@ function drawStableSolidPoint(
   channelIndex: number,
   now: number,
   size: number,
+  elapsed: number,
 ): void {
-  const position = solidPointPosition(point, echoIndex, now);
-  const offset = settings.rgbOffset * view.fit;
+  const basePosition = solidPointPosition(point, echoIndex, now);
+  const position = gatheredPosition(basePosition, point, echoIndex, elapsed);
+  const offset = settings.rgbOffset * contactChannelScale(elapsed) * view.fit;
   const x = position.x + channelX[channelIndex] * offset;
   const y = position.y + channelY[channelIndex] * offset;
   artworkCtx.fillRect(x, y, size, size);
@@ -662,7 +691,7 @@ function renderSolidFigures(now: number, elapsed: number): void {
     for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
       for (const point of solidPoints) {
         if (phase !== 'dissolving') {
-          drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize);
+          drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize, 0);
           continue;
         }
 
@@ -673,7 +702,9 @@ function renderSolidFigures(now: number, elapsed: number): void {
           point,
           echoIndex,
         );
-        if (elapsed < spawnTime) drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize);
+        if (elapsed < spawnTime) {
+          drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize, elapsed);
+        }
         else drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize, false);
       }
     }
@@ -691,54 +722,89 @@ function renderFigures(now: number): void {
   artworkCtx.globalCompositeOperation = 'source-over';
 }
 
-function renderContactWave(now: number): void {
+function renderGatherMotes(
+  now: number,
+  elapsed: number,
+  centerX: number,
+  centerY: number,
+): void {
+  const linearProgress = clamp(elapsed / Math.max(0.001, settings.contactGatherDuration), 0, 1);
+  if (linearProgress >= 1) return;
+
+  const echoCount = clamp(Math.round(settings.echoes), 1, echoLineGeometry.length);
+
+  for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
+    const geometry = echoLineGeometry[echoIndex];
+
+    for (let pointIndex = 0; pointIndex < geometry.samples.length; pointIndex += 2) {
+      const point = geometry.samples[pointIndex];
+      const seed = hash(point.x, point.y, echoIndex + 47);
+      const start = seed * 0.42;
+      const localProgress = smoothstep((linearProgress - start) / Math.max(0.001, 1 - start));
+      if (localProgress <= 0 || localProgress >= 1) continue;
+
+      const source = linePointPosition(point, echoIndex, now);
+      const channelIndex = Math.min(2, Math.floor(seed * 3));
+      const angle = seed * Math.PI * 2 + localProgress * (1.4 + point.seed2 * 1.8);
+      const orbit = Math.sin(localProgress * Math.PI)
+        * (3 + point.seed * 8)
+        * view.fit;
+      const easedX = source.x + (centerX - source.x) * localProgress;
+      const easedY = source.y + (centerY - source.y) * localProgress;
+      const x = easedX + Math.cos(angle) * orbit;
+      const y = easedY + Math.sin(angle) * orbit;
+      const alpha = Math.sin(localProgress * Math.PI) * (0.34 + linearProgress * 0.4);
+      const size = (0.62 + point.seed2 * 0.94) * view.fit;
+
+      artworkCtx.fillStyle = channelColors[channelIndex];
+      artworkCtx.globalAlpha = alpha;
+      artworkCtx.fillRect(x, y, Math.max(0.6, size), Math.max(0.6, size));
+    }
+  }
+}
+
+function renderContactEffect(now: number): void {
   if (phase !== 'dissolving' || settings.interaction !== 'Contact Burst') return;
 
   const elapsed = Math.max(0, now - triggeredAt);
   const centerX = view.offsetX + contactOrigin.x * view.fit;
   const centerY = view.offsetY + contactOrigin.y * view.fit;
-  const radius = elapsed * settings.contactWaveSpeed * view.fit;
-  const coreLife = clamp(1 - elapsed / 0.46, 0, 1);
-  const ringLife = clamp(1 - elapsed / 3.2, 0, 1);
+  const gatherProgress = contactGatherProgress(elapsed);
+  const releaseAge = elapsed - settings.contactGatherDuration;
+  const gathering = releaseAge < 0;
+  const releaseLife = clamp(1 - Math.max(0, releaseAge) / 0.34, 0, 1);
+  const radius = gathering
+    ? (5 + gatherProgress * 15) * view.fit
+    : (20 + Math.max(0, releaseAge) * 92) * view.fit;
+  const alpha = gathering ? 0.12 + gatherProgress * 0.45 : releaseLife * 0.62;
 
   artworkCtx.save();
   artworkCtx.globalCompositeOperation = 'lighter';
-  artworkCtx.lineCap = 'round';
+  renderGatherMotes(now, elapsed, centerX, centerY);
 
   for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
-    const offset = settings.rgbOffset * 0.72 * view.fit;
+    const offset = settings.rgbOffset * contactChannelScale(elapsed) * 0.58 * view.fit;
     const channelCenterX = centerX + channelX[channelIndex] * offset;
     const channelCenterY = centerY + channelY[channelIndex] * offset;
-
-    if (coreLife > 0) {
-      artworkCtx.globalAlpha = 0.74 * coreLife;
-      artworkCtx.fillStyle = channelColors[channelIndex];
-      artworkCtx.beginPath();
-      artworkCtx.arc(channelCenterX, channelCenterY, (2.8 + (1 - coreLife) * 8) * view.fit, 0, Math.PI * 2);
-      artworkCtx.fill();
-    }
-
-    artworkCtx.strokeStyle = channelColors[channelIndex];
-    artworkCtx.shadowColor = channelColors[channelIndex];
-    artworkCtx.shadowBlur = 8 * view.fit;
-
-    for (let trail = 0; trail < 3; trail += 1) {
-      const trailRadius = radius - trail * settings.contactWaveWidth * 0.42 * view.fit;
-      if (trailRadius <= 0) continue;
-      artworkCtx.globalAlpha = ringLife * (0.34 - trail * 0.075);
-      artworkCtx.lineWidth = Math.max(0.7, (1.45 - trail * 0.24) * view.fit);
-      artworkCtx.beginPath();
-      artworkCtx.arc(channelCenterX, channelCenterY, trailRadius, 0, Math.PI * 2);
-      artworkCtx.stroke();
-    }
-  }
-
-  if (coreLife > 0) {
-    artworkCtx.globalAlpha = 0.92 * coreLife;
-    artworkCtx.fillStyle = '#fff';
-    artworkCtx.beginPath();
-    artworkCtx.arc(centerX, centerY, (1.8 + (1 - coreLife) * 3.2) * view.fit, 0, Math.PI * 2);
-    artworkCtx.fill();
+    const gradient = artworkCtx.createRadialGradient(
+      channelCenterX,
+      channelCenterY,
+      0,
+      channelCenterX,
+      channelCenterY,
+      Math.max(1, radius),
+    );
+    gradient.addColorStop(0, channelColors[channelIndex]);
+    gradient.addColorStop(0.18, channelColors[channelIndex]);
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    artworkCtx.globalAlpha = alpha;
+    artworkCtx.fillStyle = gradient;
+    artworkCtx.fillRect(
+      channelCenterX - radius,
+      channelCenterY - radius,
+      radius * 2,
+      radius * 2,
+    );
   }
 
   artworkCtx.restore();
@@ -760,7 +826,7 @@ function render(timestamp: number): void {
 
   if (phase !== 'blank') {
     renderFigures(now);
-    renderContactWave(now);
+    renderContactEffect(now);
   }
 
   ctx.globalCompositeOperation = 'source-over';
@@ -784,15 +850,10 @@ function render(timestamp: number): void {
   renderScanlines();
 
   if (phase === 'dissolving') {
-    const cornerDistances = [
-      Math.hypot(contactOrigin.x, contactOrigin.y),
-      Math.hypot(DESIGN_WIDTH - contactOrigin.x, contactOrigin.y),
-      Math.hypot(contactOrigin.x, DESIGN_HEIGHT - contactOrigin.y),
-      Math.hypot(DESIGN_WIDTH - contactOrigin.x, DESIGN_HEIGHT - contactOrigin.y),
-    ];
-    const contactDuration = Math.max(...cornerDistances) / settings.contactWaveSpeed
+    const contactDuration = settings.contactGatherDuration
+      + settings.contactReleaseSpread
       + settings.particleLife
-      + 0.45;
+      + 0.8;
     const originalDuration = settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
     const totalDuration = settings.interaction === 'Contact Burst' ? contactDuration : originalDuration;
     if (now - triggeredAt > totalDuration) {
@@ -876,11 +937,11 @@ dissolveFolder.add(settings, 'particleLife', 1, 6, 0.05).name('Lifetime');
 dissolveFolder.add(settings, 'particleSize', 0.5, 3, 0.05).name('Size');
 
 const contactFolder = gui.addFolder('Contact Burst');
-contactFolder.add(settings, 'contactWaveSpeed', 70, 320, 1).name('Wave speed');
-contactFolder.add(settings, 'contactWaveWidth', 4, 48, 1).name('Wave width');
+contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gather time');
+contactFolder.add(settings, 'contactCompression', 0, 0.4, 0.005).name('Gather pull');
 contactFolder.add(settings, 'contactForce', 10, 140, 1).name('Burst force');
 contactFolder.add(settings, 'contactSpread', 0, 70, 1).name('Tangential spread');
-contactFolder.add(settings, 'contactJitter', 0, 0.3, 0.005).name('Edge noise');
+contactFolder.add(settings, 'contactReleaseSpread', 0, 0.6, 0.005).name('Release spread');
 
 const finishFolder = gui.addFolder('Display');
 finishFolder.add(settings, 'glow', 0, 0.8, 0.01).name('Glow');
