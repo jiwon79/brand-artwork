@@ -3,33 +3,34 @@
 ## Evidence
 
 - Source visual truth: `pages/afterbody/qa/reference-start-photo.jpg`
+- Source line assets: `pages/afterbody/assets/sori/figure-1.svg` through `figure-6.svg`
 - Source video: `pages/afterbody/assets/reference.mp4`
-- Browser-rendered implementation: `pages/afterbody/qa/implementation-continuous-final.png`
-- Full-view comparison: `pages/afterbody/qa/comparison-continuous-final.png`
-- Focused line-density comparison: `pages/afterbody/qa/comparison-continuous-focused.png`
+- Browser-rendered implementation: `pages/afterbody/qa/implementation-sori-svg.png`
+- Full-view comparison: `pages/afterbody/qa/comparison-sori-svg.png`
 - Interaction captures:
-  - `pages/afterbody/qa/implementation-continuous-dissolve.png`
-  - `pages/afterbody/qa/implementation-continuous-solid.png`
-  - `pages/afterbody/qa/implementation-continuous-mobile.png`
+  - `pages/afterbody/qa/implementation-sori-svg-dissolve.png`
+  - `pages/afterbody/qa/implementation-sori-svg-solid.png`
+  - `pages/afterbody/qa/implementation-sori-svg-mobile.png`
 - Source pixels: `576 × 318`
 - Implementation pixels: `1152 × 636`
 - Browser CSS viewport: `1152 × 636`, device pixel ratio `1`
 - Mobile CSS viewport: `390 × 844`, device pixel ratio `1`
-- Density normalization: the source is enlarged exactly `2×` to `1152 × 636`; the implementation is captured at that same size. The focused comparison crops both normalized views to `980 × 570` before stacking them.
-- Compared state: continuous-line figure, six echoes, idle state, black background.
+- Density normalization: the source is enlarged exactly `2×` to `1152 × 636`; the implementation is captured at that same size and vertically stacked in `comparison-sori-svg.png`.
+- Compared state: six user-provided SVG line figures, idle state, black background.
+- Focused comparison: not needed in the final pass because each figure is large enough to inspect in the full-size `1152 × 1272` combined comparison; the dissolve and Solid modes have separate full-size captures.
 
 ## Findings
 
-No actionable P0, P1, or P2 differences remain for the requested starting-state correction.
+No actionable P0, P1, or P2 differences remain for the requested SVG asset replacement.
 
 - Fonts and typography: the source contains no artwork typography. The low-contrast `TAP TO DISSOLVE` hint stays outside the figure and does not affect the source composition.
-- Spacing and layout rhythm: six figures now use independent horizontal centers, vertical centers, width scales, and height scales. The left figure is the largest; the right figures become progressively smaller, closer, and denser. The landscape composition remains centered without overflow at `390 × 844` mobile.
+- Spacing and layout rhythm: the SVGs retain their authored dimensions, which already encode the progressive size reduction. Independent centers place them in the same left-to-right overlap rhythm as the reference. The landscape composition remains centered without overflow at `390 × 844` mobile.
 - Colors and visual tokens: red, green, and blue are three copies of the same path with positional offset only. Additive overlap produces yellow, cyan, and white regions on pure black.
-- Image quality and asset fidelity: `figure-source-start.png` is cropped from the user-selected start photo. The idle figure is rendered as rounded Canvas strokes at device resolution, not as square points. Echo density is added with path-normal parallel lines; the rightmost upper body reads as a surface while its lower body retains visible dense strands. Square pixels appear only after the dissolve front reaches a path segment.
+- Image quality and asset fidelity: `figure-1.svg` through `figure-6.svg` are the unchanged paths supplied in `SORI.zip`. Idle rendering uses their actual Bézier geometry and original progressive stroke widths. The first figure remains a continuous sparse line; the final figure has a surface-like torso and individually readable dense legs. Square particles appear only after the dissolve front reaches a path segment.
 - Copy and content: `TAP TO DISSOLVE` changes to `TAP TO REPLAY` after the sequence. No additional visible copy is introduced.
 - Icons: none are required by the source or implementation.
 - Interaction and accessibility: pointer activation completed the right-to-left dissolve and reached `TAP TO REPLAY`. `M` switched to the solid human mode and back. Keyboard activation/reset behavior and reduced-motion handling remain in the implementation.
-- Browser verification: the starting state, mid-dissolve state, replay state, line/solid mode switch, desktop view, and `390 × 844` mobile view were tested in the existing Chrome window. Chrome reported no warnings or errors.
+- Browser verification: the SVG starting state, mid-dissolve state, replay state, line/solid mode switch, desktop view, and `390 × 844` mobile view were tested in the existing Chrome window. Chrome reported no warnings or errors.
 
 ## Comparison History
 
@@ -55,22 +56,32 @@ No actionable P0, P1, or P2 differences remain for the requested starting-state 
 
 - No P0, P1, or P2 findings. Type checking, production build, pointer dissolve, replay completion, solid-mode toggle, mobile layout, and console checks passed.
 
+### Pass 5
+
+- [P1] The first SVG dissolve implementation sampled a multi-contour `<path>` as one continuous polyline, creating straight bridges between separated arm, torso, and leg contours during the transition.
+- Fix: split every supplied path at each `M` command and sample the resulting subpaths independently.
+- Post-fix evidence: `implementation-sori-svg-dissolve.png` keeps all authored gaps open while the right side converts into particles.
+
+### Pass 6
+
+- No P0, P1, or P2 findings. The normalized source/implementation comparison, SVG idle rendering, corrected dissolve, replay completion, Solid toggle, mobile layout, type checking, production build, and Chrome console checks passed.
+
 ## Open Questions
 
-- The reference is a photographed TFT, so its optical bloom and camera softness merge some neighboring lines more than a browser canvas. The implementation keeps the underlying strands explicit and uses a small glow rather than reproducing compression blur.
+- The reference is a photographed TFT, so its optical bloom and camera softness merge neighboring lines more than the browser canvas. The implementation preserves the supplied SVG paths and uses a small glow rather than changing their geometry to imitate camera compression.
 
 ## Implementation Checklist
 
-- [x] Replace idle pixels with continuous rounded paths.
-- [x] Use the exact selected starting pose.
-- [x] Increase size reduction and overlap toward the right.
-- [x] Increase strand density independently for every echo.
-- [x] Preserve a surface-like upper body and line-readable lower body on the final echo.
+- [x] Add all six supplied SVG files as first-party Afterbody assets.
+- [x] Render the supplied Bézier paths directly in the idle state.
+- [x] Preserve their authored left-to-right size and density progression.
+- [x] Keep a surface-like upper body and line-readable lower body on the final SVG.
+- [x] Keep separate SVG subpaths disconnected during the dissolve.
 - [x] Preserve RGB offset, right-to-left dissolve, particle drift, replay, and both figure modes.
 - [x] Verify desktop/mobile rendering, interactions, build, and console output.
 
 ## Follow-up Polish
 
-- [P3] The web rendering is intentionally cleaner than the photographed display; a stronger optical bloom can be added if exact camera softness becomes the next target.
+- [P3] The web rendering is intentionally cleaner than the photographed display; a stronger optical bloom can be added if exact camera softness becomes the next target without modifying the supplied SVG geometry.
 
 final result: passed

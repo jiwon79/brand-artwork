@@ -8,20 +8,18 @@ type FigurePoint = {
   y: number;
   seed: number;
   seed2: number;
-};
-
-type ScanPath = {
-  points: FigurePoint[];
-};
-
-type SourcePoint = {
-  x: number;
-  y: number;
+  startsPath?: boolean;
 };
 
 type EchoLineGeometry = {
-  paths: ScanPath[];
+  path: Path2D;
+  points: FigurePoint[];
   samples: FigurePoint[];
+  strokeWidth: number;
+  viewBoxX: number;
+  viewBoxY: number;
+  width: number;
+  height: number;
 };
 
 type View = {
@@ -42,28 +40,27 @@ type DebugApi = {
 const DESIGN_WIDTH = 480;
 const DESIGN_HEIGHT = 270;
 const SOURCE_X_LIMIT = 61;
+const SVG_TO_DESIGN = 0.32;
+const SVG_SAMPLE_STEP = 3.2;
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const hint = document.getElementById('hint') as HTMLParagraphElement;
 const error = document.getElementById('error') as HTMLDivElement;
 const ctx = canvas.getContext('2d', { alpha: false });
 
-if (!ctx) {
-  throw new Error('2D canvas is not supported.');
-}
+if (!ctx) throw new Error('2D canvas is not supported.');
 
 const artworkCanvas = document.createElement('canvas');
 const artworkCtx = artworkCanvas.getContext('2d');
 
-if (!artworkCtx) {
-  throw new Error('Offscreen 2D canvas is not supported.');
-}
+if (!artworkCtx) throw new Error('Offscreen 2D canvas is not supported.');
 
 const settings = {
   figure: 'Lines' as FigureMode,
   echoes: 6,
   rgbOffset: 3.2,
-  lineThickness: 1.72,
+  lineThickness: 1,
   idleMotion: 0.34,
   hold: 0.72,
   sweepDuration: 3.25,
@@ -81,17 +78,17 @@ const channelColors = ['#ff2924', '#59ff50', '#2795ff'] as const;
 const channelX = [-1, 0, 1] as const;
 const channelY = [0.55, 0, -0.55] as const;
 const echoCenters = [99, 187, 255, 312, 362, 408];
-const echoYCenters = [142, 146, 149, 152, 155, 156];
-const echoYScales = [1.79, 1.52, 1.32, 1.16, 1.03, 0.93];
-const echoXScales = echoYScales.map((scale) => scale * 1.28);
-const echoLineWeights = [1.04, 1.02, 1, 0.98, 0.96, 0.94];
-const echoDensityOffsets = [
-  [0],
-  [-0.8, 0.8],
-  [-1.3, 0, 1.3],
-  [-2, -0.7, 0.7, 2],
-  [-2.7, -1.35, 0, 1.35, 2.7],
-  [-3.4, -2, -0.7, 0.7, 2, 3.4],
+const lineEchoYCenters = [137, 142, 146, 149, 153, 157];
+const solidEchoYCenters = [142, 146, 149, 152, 155, 156];
+const solidEchoYScales = [1.79, 1.52, 1.32, 1.16, 1.03, 0.93];
+const solidEchoXScales = solidEchoYScales.map((scale) => scale * 1.28);
+const lineAssetUrls = [
+  new URL('./assets/sori/figure-1.svg', import.meta.url).href,
+  new URL('./assets/sori/figure-2.svg', import.meta.url).href,
+  new URL('./assets/sori/figure-3.svg', import.meta.url).href,
+  new URL('./assets/sori/figure-4.svg', import.meta.url).href,
+  new URL('./assets/sori/figure-5.svg', import.meta.url).href,
+  new URL('./assets/sori/figure-6.svg', import.meta.url).href,
 ];
 
 let view: View = {
@@ -106,11 +103,6 @@ let solidPoints: FigurePoint[] = [];
 let phase: Phase = 'idle';
 let triggeredAt = 0;
 let animationFrame = 0;
-let sourceMask: Uint8Array | null = null;
-let sourceWidth = 0;
-let sourceHeight = 0;
-let sourceCenterX = 0;
-let sourceCenterY = 0;
 let lastNow = 0;
 
 function clamp(value: number, min: number, max: number): number {
@@ -151,13 +143,13 @@ function dilate(input: Uint8Array, width: number, height: number, radius: number
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       let active = 0;
-      for (let oy = -radius; oy <= radius && active === 0; oy += 1) {
-        const sy = y + oy;
-        if (sy < 0 || sy >= height) continue;
-        for (let ox = -radius; ox <= radius; ox += 1) {
-          const sx = x + ox;
-          if (sx < 0 || sx >= width) continue;
-          if (input[sy * width + sx] !== 0) {
+      for (let offsetY = -radius; offsetY <= radius && active === 0; offsetY += 1) {
+        const sourceY = y + offsetY;
+        if (sourceY < 0 || sourceY >= height) continue;
+        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+          const sourceX = x + offsetX;
+          if (sourceX < 0 || sourceX >= width) continue;
+          if (input[sourceY * width + sourceX] !== 0) {
             active = 1;
             break;
           }
@@ -176,15 +168,15 @@ function erode(input: Uint8Array, width: number, height: number, radius: number)
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       let active = 1;
-      for (let oy = -radius; oy <= radius && active === 1; oy += 1) {
-        const sy = y + oy;
-        if (sy < 0 || sy >= height) {
+      for (let offsetY = -radius; offsetY <= radius && active === 1; offsetY += 1) {
+        const sourceY = y + offsetY;
+        if (sourceY < 0 || sourceY >= height) {
           active = 0;
           break;
         }
-        for (let ox = -radius; ox <= radius; ox += 1) {
-          const sx = x + ox;
-          if (sx < 0 || sx >= width || input[sy * width + sx] === 0) {
+        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+          const sourceX = x + offsetX;
+          if (sourceX < 0 || sourceX >= width || input[sourceY * width + sourceX] === 0) {
             active = 0;
             break;
           }
@@ -197,60 +189,49 @@ function erode(input: Uint8Array, width: number, height: number, radius: number)
   return output;
 }
 
-function buildMask(image: HTMLImageElement): void {
+function buildSolidPoints(image: HTMLImageElement): void {
   const sourceCanvas = document.createElement('canvas');
   sourceCanvas.width = image.naturalWidth;
   sourceCanvas.height = image.naturalHeight;
   const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
 
-  if (!sourceCtx) throw new Error('Could not prepare the human source image.');
+  if (!sourceCtx) throw new Error('Could not prepare the solid human source image.');
 
   sourceCtx.drawImage(image, 0, 0);
   const pixels = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height).data;
   const raw = new Uint8Array(sourceCanvas.width * sourceCanvas.height);
-  const rawLine = new Uint8Array(sourceCanvas.width * sourceCanvas.height);
 
   for (let y = 0; y < sourceCanvas.height; y += 1) {
     for (let x = 0; x < sourceCanvas.width; x += 1) {
-      // The crop still contains a few pixels from the TFT bezel above the
-      // head and the neighbouring echo on the far right. Keep only the first
-      // figure's visible screen region.
       if (y < 8 || x < 3 || x >= SOURCE_X_LIMIT) continue;
       const index = (y * sourceCanvas.width + x) * 4;
-      const r = pixels[index];
-      const g = pixels[index + 1];
-      const b = pixels[index + 2];
-      const brightest = Math.max(r, g, b);
-      const darkest = Math.min(r, g, b);
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      const brightest = Math.max(red, green, blue);
+      const darkest = Math.min(red, green, blue);
       const coloredStroke = brightest > 72 && brightest - darkest > 24;
-      const whiteStroke = r + g + b > 350 && brightest > 128;
+      const whiteStroke = red + green + blue > 350 && brightest > 128;
       raw[y * sourceCanvas.width + x] = coloredStroke || whiteStroke ? 1 : 0;
-      const greenCenterline = g > 72 && g + 14 >= r && g >= b * 0.68;
-      rawLine[y * sourceCanvas.width + x] = greenCenterline ? 1 : 0;
     }
   }
 
-  // The filmed source contains scan bands, not a clean body mask. Closing
-  // their small vertical gaps gives us a continuous silhouette from which we
-  // can generate fresh, smooth lines at a different density for every echo.
   const closed = erode(
     dilate(raw, sourceCanvas.width, sourceCanvas.height, 3),
     sourceCanvas.width,
     sourceCanvas.height,
     2,
   );
-  sourceMask = dilate(closed, sourceCanvas.width, sourceCanvas.height, 1);
-  sourceWidth = sourceCanvas.width;
-  sourceHeight = sourceCanvas.height;
+  const mask = dilate(closed, sourceCanvas.width, sourceCanvas.height, 1);
 
-  let minX = sourceWidth;
-  let minY = sourceHeight;
+  let minX = sourceCanvas.width;
+  let minY = sourceCanvas.height;
   let maxX = 0;
   let maxY = 0;
 
-  for (let y = 0; y < sourceHeight; y += 1) {
-    for (let x = 0; x < sourceWidth; x += 1) {
-      if (sourceMask[y * sourceWidth + x] === 0) continue;
+  for (let y = 0; y < sourceCanvas.height; y += 1) {
+    for (let x = 0; x < sourceCanvas.width; x += 1) {
+      if (mask[y * sourceCanvas.width + x] === 0) continue;
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x);
@@ -258,300 +239,141 @@ function buildMask(image: HTMLImageElement): void {
     }
   }
 
-  sourceCenterX = (minX + maxX) * 0.5;
-  sourceCenterY = (minY + maxY) * 0.5;
-  rebuildGeometry(rawLine);
-}
-
-function makeFigurePoint(x: number, y: number): FigurePoint {
-  return {
-    x: x - sourceCenterX,
-    y: y - sourceCenterY,
-    seed: hash(x, y),
-    seed2: hash(y, x, 3),
-  };
-}
-
-function neighborIndices(index: number, mask: Uint8Array): number[] {
-  const x = index % sourceWidth;
-  const y = Math.floor(index / sourceWidth);
-  const neighbors: number[] = [];
-
-  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
-    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-      if (offsetX === 0 && offsetY === 0) continue;
-      const nextX = x + offsetX;
-      const nextY = y + offsetY;
-      if (nextX < 0 || nextX >= sourceWidth || nextY < 0 || nextY >= sourceHeight) continue;
-      const nextIndex = nextY * sourceWidth + nextX;
-      if (mask[nextIndex] !== 0) neighbors.push(nextIndex);
-    }
-  }
-
-  return neighbors;
-}
-
-function thinLineMask(input: Uint8Array): Uint8Array {
-  const output = input.slice();
-  let changed = true;
-
-  while (changed) {
-    changed = false;
-
-    for (let pass = 0; pass < 2; pass += 1) {
-      const remove: number[] = [];
-
-      for (let y = 1; y < sourceHeight - 1; y += 1) {
-        for (let x = 1; x < sourceWidth - 1; x += 1) {
-          const index = y * sourceWidth + x;
-          if (output[index] === 0) continue;
-
-          const p2 = output[(y - 1) * sourceWidth + x];
-          const p3 = output[(y - 1) * sourceWidth + x + 1];
-          const p4 = output[y * sourceWidth + x + 1];
-          const p5 = output[(y + 1) * sourceWidth + x + 1];
-          const p6 = output[(y + 1) * sourceWidth + x];
-          const p7 = output[(y + 1) * sourceWidth + x - 1];
-          const p8 = output[y * sourceWidth + x - 1];
-          const p9 = output[(y - 1) * sourceWidth + x - 1];
-          const neighbors = [p2, p3, p4, p5, p6, p7, p8, p9];
-          const count = neighbors.reduce((sum, value) => sum + value, 0);
-          if (count < 2 || count > 6) continue;
-
-          let transitions = 0;
-          for (let neighbor = 0; neighbor < neighbors.length; neighbor += 1) {
-            if (neighbors[neighbor] === 0 && neighbors[(neighbor + 1) % neighbors.length] !== 0) transitions += 1;
-          }
-          if (transitions !== 1) continue;
-
-          const firstCondition = pass === 0 ? p2 * p4 * p6 === 0 : p2 * p4 * p8 === 0;
-          const secondCondition = pass === 0 ? p4 * p6 * p8 === 0 : p2 * p6 * p8 === 0;
-          if (firstCondition && secondCondition) remove.push(index);
-        }
-      }
-
-      if (remove.length > 0) {
-        changed = true;
-        for (const index of remove) output[index] = 0;
-      }
-    }
-  }
-
-  return output;
-}
-
-function smoothSourcePath(points: SourcePoint[]): SourcePoint[] {
-  let smoothed = points;
-
-  for (let iteration = 0; iteration < 2; iteration += 1) {
-    if (smoothed.length < 3) break;
-    const next: SourcePoint[] = [smoothed[0]];
-    for (let index = 0; index < smoothed.length - 1; index += 1) {
-      const first = smoothed[index];
-      const second = smoothed[index + 1];
-      next.push(
-        { x: first.x * 0.75 + second.x * 0.25, y: first.y * 0.75 + second.y * 0.25 },
-        { x: first.x * 0.25 + second.x * 0.75, y: first.y * 0.25 + second.y * 0.75 },
-      );
-    }
-    next.push(smoothed[smoothed.length - 1]);
-    smoothed = next;
-  }
-
-  return smoothed;
-}
-
-function traceLinePaths(mask: Uint8Array): SourcePoint[][] {
-  const pixelCount = sourceWidth * sourceHeight;
-  const edgeKey = (first: number, second: number): number => (
-    Math.min(first, second) * pixelCount + Math.max(first, second)
-  );
-  const visitedEdges = new Set<number>();
-  const paths: SourcePoint[][] = [];
-
-  const walk = (start: number, next: number): SourcePoint[] => {
-    const indices = [start];
-    let previous = start;
-    let current = next;
-    visitedEdges.add(edgeKey(previous, current));
-
-    while (true) {
-      indices.push(current);
-      const neighbors = neighborIndices(current, mask);
-      if (neighbors.length !== 2 && current !== start) break;
-      const candidates = neighbors.filter((candidate) => !visitedEdges.has(edgeKey(current, candidate)));
-      if (candidates.length === 0) break;
-
-      const previousX = previous % sourceWidth;
-      const previousY = Math.floor(previous / sourceWidth);
-      const currentX = current % sourceWidth;
-      const currentY = Math.floor(current / sourceWidth);
-      const incomingX = currentX - previousX;
-      const incomingY = currentY - previousY;
-      let best = candidates[0];
-      let bestDot = Number.NEGATIVE_INFINITY;
-
-      for (const candidate of candidates) {
-        const candidateX = candidate % sourceWidth;
-        const candidateY = Math.floor(candidate / sourceWidth);
-        const dot = incomingX * (candidateX - currentX) + incomingY * (candidateY - currentY);
-        if (dot > bestDot) {
-          best = candidate;
-          bestDot = dot;
-        }
-      }
-
-      previous = current;
-      current = best;
-      visitedEdges.add(edgeKey(previous, current));
-      if (current === start) break;
-    }
-
-    return indices.map((index) => ({
-      x: index % sourceWidth,
-      y: Math.floor(index / sourceWidth),
-    }));
-  };
-
-  for (let index = 0; index < mask.length; index += 1) {
-    if (mask[index] === 0) continue;
-    const neighbors = neighborIndices(index, mask);
-    if (neighbors.length === 2) continue;
-    for (const next of neighbors) {
-      if (visitedEdges.has(edgeKey(index, next))) continue;
-      const path = walk(index, next);
-      if (path.length >= 3) paths.push(path);
-    }
-  }
-
-  for (let index = 0; index < mask.length; index += 1) {
-    if (mask[index] === 0) continue;
-    const next = neighborIndices(index, mask).find((candidate) => !visitedEdges.has(edgeKey(index, candidate)));
-    if (next === undefined) continue;
-    const path = walk(index, next);
-    if (path.length >= 3) paths.push(path);
-  }
-
-  return paths;
-}
-
-function mergeSourcePaths(input: SourcePoint[][]): SourcePoint[][] {
-  const paths = input.map((path) => [...path]);
-
-  while (true) {
-    let best: { first: number; second: number; reverseFirst: boolean; reverseSecond: boolean; score: number } | null = null;
-
-    for (let firstIndex = 0; firstIndex < paths.length; firstIndex += 1) {
-      for (let secondIndex = firstIndex + 1; secondIndex < paths.length; secondIndex += 1) {
-        for (const reverseFirst of [false, true]) {
-          for (const reverseSecond of [false, true]) {
-            const first = reverseFirst ? [...paths[firstIndex]].reverse() : paths[firstIndex];
-            const second = reverseSecond ? [...paths[secondIndex]].reverse() : paths[secondIndex];
-            const firstEnd = first[first.length - 1];
-            const firstBefore = first[Math.max(0, first.length - 3)];
-            const secondStart = second[0];
-            const secondAfter = second[Math.min(second.length - 1, 2)];
-            const distance = Math.hypot(secondStart.x - firstEnd.x, secondStart.y - firstEnd.y);
-            if (distance > 3.8) continue;
-
-            const incomingX = firstEnd.x - firstBefore.x;
-            const incomingY = firstEnd.y - firstBefore.y;
-            const outgoingX = secondAfter.x - secondStart.x;
-            const outgoingY = secondAfter.y - secondStart.y;
-            const lengths = Math.hypot(incomingX, incomingY) * Math.hypot(outgoingX, outgoingY);
-            const alignment = lengths > 0
-              ? (incomingX * outgoingX + incomingY * outgoingY) / lengths
-              : 1;
-            if (alignment < -0.1) continue;
-
-            const score = distance + (1 - alignment) * 1.8;
-            if (!best || score < best.score) {
-              best = {
-                first: firstIndex,
-                second: secondIndex,
-                reverseFirst,
-                reverseSecond,
-                score,
-              };
-            }
-          }
-        }
-      }
-    }
-
-    if (!best) break;
-    const first = best.reverseFirst ? [...paths[best.first]].reverse() : paths[best.first];
-    const second = best.reverseSecond ? [...paths[best.second]].reverse() : paths[best.second];
-    const joined = [...first, ...second];
-    paths.splice(best.second, 1);
-    paths.splice(best.first, 1, joined);
-  }
-
-  return paths;
-}
-
-function simplifySourcePath(path: SourcePoint[]): SourcePoint[] {
-  if (path.length <= 4) return path;
-  const simplified = path.filter((_, index) => index % 2 === 0);
-  const last = path[path.length - 1];
-  if (simplified[simplified.length - 1] !== last) simplified.push(last);
-  return simplified;
-}
-
-function offsetSourcePath(path: SourcePoint[], distance: number): SourcePoint[] {
-  if (distance === 0) return path;
-
-  return path.map((point, index) => {
-    const previous = path[Math.max(0, index - 2)];
-    const next = path[Math.min(path.length - 1, index + 2)];
-    const tangentX = next.x - previous.x;
-    const tangentY = next.y - previous.y;
-    const length = Math.hypot(tangentX, tangentY) || 1;
-    const lowerBody = clamp((point.y - sourceCenterY - 4) / 38, 0, 1);
-    const localDistance = distance * (1 + lowerBody * 0.68);
-    return {
-      x: point.x - (tangentY / length) * localDistance,
-      y: point.y + (tangentX / length) * localDistance,
-    };
-  });
-}
-
-function rebuildGeometry(rawLine: Uint8Array): void {
-  if (!sourceMask) return;
-
-  const skeleton = thinLineMask(rawLine);
-  const sourcePaths = mergeSourcePaths(traceLinePaths(skeleton))
-    .map((path) => simplifySourcePath(smoothSourcePath(path)));
-  echoLineGeometry = echoDensityOffsets.map((offsets) => {
-    const paths = sourcePaths.flatMap((sourcePath) => offsets.map((offset) => ({
-      points: offsetSourcePath(sourcePath, offset).map((point) => makeFigurePoint(point.x, point.y)),
-    })));
-    return {
-      paths,
-      samples: paths.flatMap((path) => path.points.filter((_, index) => index % 3 === 0)),
-    };
-  });
+  const centerX = (minX + maxX) * 0.5;
+  const centerY = (minY + maxY) * 0.5;
   solidPoints = [];
 
-  for (let y = 0; y < sourceHeight; y += 1) {
-    for (let x = 0; x < sourceWidth; x += 1) {
-      const centeredX = x - sourceCenterX;
-      const centeredY = y - sourceCenterY;
-      const seed = hash(x, y);
-      const seed2 = hash(y, x, 3);
-
-      if (sourceMask[y * sourceWidth + x] !== 0 && x % 2 === 0 && y % 2 === 0) {
-        solidPoints.push({ x: centeredX, y: centeredY, seed, seed2 });
-      }
+  for (let y = 0; y < sourceCanvas.height; y += 1) {
+    for (let x = 0; x < sourceCanvas.width; x += 1) {
+      if (mask[y * sourceCanvas.width + x] === 0 || x % 2 !== 0 || y % 2 !== 0) continue;
+      solidPoints.push({
+        x: x - centerX,
+        y: y - centerY,
+        seed: hash(x, y),
+        seed2: hash(y, x, 3),
+      });
     }
   }
 }
 
-function pointPosition(point: FigurePoint, echoIndex: number, time: number): { x: number; y: number; designX: number } {
+function readNumber(value: string | null, fallback: number): number {
+  if (value === null) return fallback;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+async function loadLineAsset(url: string, echoIndex: number): Promise<EchoLineGeometry> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load line figure ${echoIndex + 1}.`);
+
+  const source = await response.text();
+  const documentSvg = new DOMParser().parseFromString(source, 'image/svg+xml');
+  if (documentSvg.querySelector('parsererror')) throw new Error(`Line figure ${echoIndex + 1} is not valid SVG.`);
+
+  const svg = documentSvg.querySelector('svg');
+  const sourcePath = documentSvg.querySelector('path');
+  const pathData = sourcePath?.getAttribute('d');
+  if (!svg || !sourcePath || !pathData) throw new Error(`Line figure ${echoIndex + 1} has no path.`);
+
+  const fallbackWidth = readNumber(svg.getAttribute('width'), 1);
+  const fallbackHeight = readNumber(svg.getAttribute('height'), 1);
+  const viewBox = (svg.getAttribute('viewBox') ?? `0 0 ${fallbackWidth} ${fallbackHeight}`)
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  if (viewBox.length !== 4 || viewBox.some((value) => !Number.isFinite(value))) {
+    throw new Error(`Line figure ${echoIndex + 1} has an invalid viewBox.`);
+  }
+
+  const [viewBoxX, viewBoxY, width, height] = viewBox;
+  const strokeWidth = readNumber(sourcePath.getAttribute('stroke-width'), 1);
+  const measurementSvg = document.createElementNS(SVG_NAMESPACE, 'svg');
+  const measurementPath = document.createElementNS(SVG_NAMESPACE, 'path');
+  measurementSvg.setAttribute('viewBox', viewBox.join(' '));
+  measurementSvg.setAttribute('aria-hidden', 'true');
+  measurementSvg.style.position = 'fixed';
+  measurementSvg.style.left = '-10000px';
+  measurementSvg.style.top = '-10000px';
+  measurementSvg.style.width = '1px';
+  measurementSvg.style.height = '1px';
+  measurementSvg.style.opacity = '0';
+  measurementPath.setAttribute('d', pathData);
+  measurementSvg.append(measurementPath);
+  document.body.append(measurementSvg);
+
+  const points: FigurePoint[] = [];
+  const centerX = viewBoxX + width * 0.5;
+  const centerY = viewBoxY + height * 0.5;
+
+  // A single SVG <path> may contain several M-started contours (torso,
+  // arms, legs). Sample them independently so the dissolve never draws a
+  // straight bridge across those intentional gaps.
+  const subpaths = pathData.match(/[Mm][^Mm]*/g) ?? [pathData];
+  for (const subpathData of subpaths) {
+    measurementPath.setAttribute('d', subpathData);
+    const length = measurementPath.getTotalLength();
+
+    for (let distance = 0; distance < length; distance += SVG_SAMPLE_STEP) {
+      const point = measurementPath.getPointAtLength(distance);
+      points.push({
+        x: point.x - centerX,
+        y: point.y - centerY,
+        seed: hash(point.x, point.y, echoIndex),
+        seed2: hash(point.y, point.x, echoIndex + 7),
+        startsPath: distance === 0,
+      });
+    }
+
+    const finalPoint = measurementPath.getPointAtLength(length);
+    points.push({
+      x: finalPoint.x - centerX,
+      y: finalPoint.y - centerY,
+      seed: hash(finalPoint.x, finalPoint.y, echoIndex),
+      seed2: hash(finalPoint.y, finalPoint.x, echoIndex + 7),
+      startsPath: length === 0,
+    });
+  }
+  measurementSvg.remove();
+
+  return {
+    path: new Path2D(pathData),
+    points,
+    samples: points.filter((_, index) => index % 3 === 0),
+    strokeWidth,
+    viewBoxX,
+    viewBoxY,
+    width,
+    height,
+  };
+}
+
+async function loadLineAssets(): Promise<void> {
+  echoLineGeometry = await Promise.all(
+    lineAssetUrls.map((url, echoIndex) => loadLineAsset(url, echoIndex)),
+  );
+}
+
+function lineSway(echoIndex: number, time: number): number {
+  const echoPhase = time * 1.45 - echoIndex * 0.19;
+  return Math.sin(echoPhase * 0.44) * (1.1 - echoIndex * 0.09) * settings.idleMotion;
+}
+
+function linePointPosition(point: FigurePoint, echoIndex: number, time: number): { x: number; y: number; designX: number } {
+  const designX = echoCenters[echoIndex] + point.x * SVG_TO_DESIGN + lineSway(echoIndex, time);
+  const designY = lineEchoYCenters[echoIndex] + point.y * SVG_TO_DESIGN;
+
+  return {
+    x: view.offsetX + designX * view.fit,
+    y: view.offsetY + designY * view.fit,
+    designX,
+  };
+}
+
+function solidPointPosition(point: FigurePoint, echoIndex: number, time: number): { x: number; y: number; designX: number } {
   const echoPhase = time * 1.45 - echoIndex * 0.19;
   const motion = settings.idleMotion;
-  const scaleX = echoXScales[echoIndex];
-  const scaleY = echoYScales[echoIndex];
+  const scaleX = solidEchoXScales[echoIndex];
+  const scaleY = solidEchoYScales[echoIndex];
   const wave = (
     Math.sin(point.y * 0.205 + echoPhase) * 0.72
     + Math.sin(point.y * 0.067 - echoPhase * 0.73) * 0.48
@@ -563,27 +385,13 @@ function pointPosition(point: FigurePoint, echoIndex: number, time: number): { x
     + Math.sin(point.x * 0.041 - point.y * 0.103) * 0.24
   );
   const designX = echoCenters[echoIndex] + (point.x + wave) * scaleX + sway;
-  const designY = echoYCenters[echoIndex] + (point.y + rasterWave) * scaleY + verticalJitter;
+  const designY = solidEchoYCenters[echoIndex] + (point.y + rasterWave) * scaleY + verticalJitter;
 
   return {
     x: view.offsetX + designX * view.fit,
     y: view.offsetY + designY * view.fit,
     designX,
   };
-}
-
-function drawStablePoint(
-  point: FigurePoint,
-  echoIndex: number,
-  channelIndex: number,
-  now: number,
-  size: number,
-): void {
-  const position = pointPosition(point, echoIndex, now);
-  const offset = settings.rgbOffset * view.fit;
-  const x = position.x + channelX[channelIndex] * offset;
-  const y = position.y + channelY[channelIndex] * offset;
-  artworkCtx.fillRect(x, y, size, size);
 }
 
 function spawnTimeFor(designX: number, point: FigurePoint, echoIndex: number): number {
@@ -599,13 +407,19 @@ function drawParticle(
   spawnTime: number,
   age: number,
   baseSize: number,
+  lineMode: boolean,
 ): void {
   const originTime = triggeredAt + spawnTime;
-  const origin = pointPosition(point, echoIndex, originTime);
+  const origin = lineMode
+    ? linePointPosition(point, echoIndex, originTime)
+    : solidPointPosition(point, echoIndex, originTime);
   const channelSeed = hash(point.x, point.y, channelIndex + echoIndex * 3);
   const speed = settings.drift * (0.58 + channelSeed * 0.82) * view.fit;
   const verticalSpeed = (point.seed2 - 0.5) * settings.spread * view.fit;
-  const noise = Math.sin(age * (3.2 + point.seed * 4.8) + point.seed2 * 18) * settings.turbulence * age * view.fit;
+  const noise = Math.sin(age * (3.2 + point.seed * 4.8) + point.seed2 * 18)
+    * settings.turbulence
+    * age
+    * view.fit;
   const channelOffset = settings.rgbOffset * view.fit;
   const x = origin.x
     + channelX[channelIndex] * channelOffset
@@ -625,52 +439,68 @@ function drawParticle(
   artworkCtx.fillRect(x, y, Math.max(0.65, size), Math.max(0.65, size * (0.72 + point.seed2 * 0.55)));
 }
 
-function channelPosition(
-  point: FigurePoint,
+function drawExactLinePath(echoIndex: number, channelIndex: number, now: number): void {
+  const geometry = echoLineGeometry[echoIndex];
+  if (!geometry) return;
+
+  const designX = echoCenters[echoIndex]
+    + lineSway(echoIndex, now)
+    + channelX[channelIndex] * settings.rgbOffset;
+  const designY = lineEchoYCenters[echoIndex] + channelY[channelIndex] * settings.rgbOffset;
+  artworkCtx.save();
+  artworkCtx.translate(
+    view.offsetX + designX * view.fit,
+    view.offsetY + designY * view.fit,
+  );
+  artworkCtx.scale(SVG_TO_DESIGN * view.fit, SVG_TO_DESIGN * view.fit);
+  artworkCtx.translate(
+    -(geometry.viewBoxX + geometry.width * 0.5),
+    -(geometry.viewBoxY + geometry.height * 0.5),
+  );
+  artworkCtx.lineCap = 'round';
+  artworkCtx.lineJoin = 'round';
+  artworkCtx.lineWidth = geometry.strokeWidth * settings.lineThickness;
+  artworkCtx.stroke(geometry.path);
+  artworkCtx.restore();
+}
+
+function drawDissolvingLinePath(
   echoIndex: number,
   channelIndex: number,
   now: number,
-): { x: number; y: number; designX: number } {
-  const position = pointPosition(point, echoIndex, now);
-  const offset = settings.rgbOffset * view.fit;
-  return {
-    x: position.x + channelX[channelIndex] * offset,
-    y: position.y + channelY[channelIndex] * offset,
-    designX: position.designX,
-  };
-}
-
-function drawStableLinePaths(echoIndex: number, channelIndex: number, now: number, elapsed: number | null): void {
+  elapsed: number,
+): void {
   const geometry = echoLineGeometry[echoIndex];
   if (!geometry) return;
 
   artworkCtx.beginPath();
+  let drawing = false;
 
-  for (const path of geometry.paths) {
-    let drawing = false;
-    for (const point of path.points) {
-      const position = channelPosition(point, echoIndex, channelIndex, now);
-      const remains = elapsed === null || elapsed < spawnTimeFor(position.designX, point, echoIndex);
+  for (const point of geometry.points) {
+    if (point.startsPath) drawing = false;
+    const position = linePointPosition(point, echoIndex, now);
+    const remains = elapsed < spawnTimeFor(position.designX, point, echoIndex);
 
-      if (!remains) {
-        drawing = false;
-        continue;
-      }
-
-      if (drawing) artworkCtx.lineTo(position.x, position.y);
-      else artworkCtx.moveTo(position.x, position.y);
-      drawing = true;
+    if (!remains) {
+      drawing = false;
+      continue;
     }
+
+    const x = position.x + channelX[channelIndex] * settings.rgbOffset * view.fit;
+    const y = position.y + channelY[channelIndex] * settings.rgbOffset * view.fit;
+    if (drawing) artworkCtx.lineTo(x, y);
+    else artworkCtx.moveTo(x, y);
+    drawing = true;
   }
 
   artworkCtx.lineCap = 'round';
   artworkCtx.lineJoin = 'round';
-  artworkCtx.lineWidth = settings.lineThickness * echoLineWeights[echoIndex] * view.fit;
+  artworkCtx.lineWidth = geometry.strokeWidth * SVG_TO_DESIGN * settings.lineThickness * view.fit;
   artworkCtx.stroke();
 }
 
 function renderLineFigures(now: number, elapsed: number): void {
-  const echoCount = clamp(Math.round(settings.echoes), 1, echoCenters.length);
+  const echoCount = clamp(Math.round(settings.echoes), 1, echoLineGeometry.length);
 
   for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
     artworkCtx.strokeStyle = channelColors[channelIndex];
@@ -678,20 +508,38 @@ function renderLineFigures(now: number, elapsed: number): void {
     artworkCtx.globalAlpha = 0.84;
 
     for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
-      drawStableLinePaths(echoIndex, channelIndex, now, phase === 'dissolving' ? elapsed : null);
-      if (phase !== 'dissolving') continue;
+      if (phase !== 'dissolving') {
+        drawExactLinePath(echoIndex, channelIndex, now);
+        continue;
+      }
 
+      drawDissolvingLinePath(echoIndex, channelIndex, now, elapsed);
       const geometry = echoLineGeometry[echoIndex];
-      const baseSize = settings.lineThickness * 0.82 * view.fit;
+      const baseSize = geometry.strokeWidth * SVG_TO_DESIGN * 0.68 * view.fit;
+
       for (const point of geometry.samples) {
-        const currentPosition = pointPosition(point, echoIndex, now);
+        const currentPosition = linePointPosition(point, echoIndex, now);
         const spawnTime = spawnTimeFor(currentPosition.designX, point, echoIndex);
         if (elapsed >= spawnTime) {
-          drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize);
+          drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize, true);
         }
       }
     }
   }
+}
+
+function drawStableSolidPoint(
+  point: FigurePoint,
+  echoIndex: number,
+  channelIndex: number,
+  now: number,
+  size: number,
+): void {
+  const position = solidPointPosition(point, echoIndex, now);
+  const offset = settings.rgbOffset * view.fit;
+  const x = position.x + channelX[channelIndex] * offset;
+  const y = position.y + channelY[channelIndex] * offset;
+  artworkCtx.fillRect(x, y, size, size);
 }
 
 function renderSolidFigures(now: number, elapsed: number): void {
@@ -705,14 +553,14 @@ function renderSolidFigures(now: number, elapsed: number): void {
     for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
       for (const point of solidPoints) {
         if (phase !== 'dissolving') {
-          drawStablePoint(point, echoIndex, channelIndex, now, baseSize);
+          drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize);
           continue;
         }
 
-        const currentPosition = pointPosition(point, echoIndex, now);
+        const currentPosition = solidPointPosition(point, echoIndex, now);
         const spawnTime = spawnTimeFor(currentPosition.designX, point, echoIndex);
-        if (elapsed < spawnTime) drawStablePoint(point, echoIndex, channelIndex, now, baseSize);
-        else drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize);
+        if (elapsed < spawnTime) drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize);
+        else drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize, false);
       }
     }
   }
@@ -732,9 +580,7 @@ function renderFigures(now: number): void {
 function renderScanlines(): void {
   if (settings.scanlines <= 0) return;
   ctx.fillStyle = `rgba(0, 0, 0, ${settings.scanlines})`;
-  for (let y = 1; y < view.height; y += 3) {
-    ctx.fillRect(0, y, view.width, 1);
-  }
+  for (let y = 1; y < view.height; y += 3) ctx.fillRect(0, y, view.width, 1);
 }
 
 function render(timestamp: number): void {
@@ -745,9 +591,7 @@ function render(timestamp: number): void {
   artworkCtx.fillStyle = '#000';
   artworkCtx.fillRect(0, 0, view.width, view.height);
 
-  if (phase !== 'blank') {
-    renderFigures(now);
-  }
+  if (phase !== 'blank') renderFigures(now);
 
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
@@ -815,7 +659,7 @@ gui.add(settings, 'rgbOffset', 0, 6, 0.05).name('RGB offset');
 gui.add(settings, 'idleMotion', 0, 2.5, 0.05).name('Idle motion');
 
 const shapeFolder = gui.addFolder('Shape');
-shapeFolder.add(settings, 'lineThickness', 0.8, 3.2, 0.02).name('Line width');
+shapeFolder.add(settings, 'lineThickness', 0.45, 1.8, 0.01).name('SVG line scale');
 
 const dissolveFolder = gui.addFolder('Dissolve');
 dissolveFolder.add(settings, 'hold', 0, 2, 0.01).name('Hold');
@@ -873,11 +717,14 @@ debugWindow.__afterbody = {
 
 async function start(): Promise<void> {
   resize();
-  const image = new Image();
-  image.decoding = 'async';
-  image.src = new URL('./assets/figure-source-start.png', import.meta.url).href;
-  await image.decode();
-  buildMask(image);
+  const solidImage = new Image();
+  solidImage.decoding = 'async';
+  solidImage.src = new URL('./assets/figure-source-start.png', import.meta.url).href;
+
+  await Promise.all([
+    loadLineAssets(),
+    solidImage.decode().then(() => buildSolidPoints(solidImage)),
+  ]);
 
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     settings.idleMotion = 0.16;

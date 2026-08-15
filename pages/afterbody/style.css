@@ -40,7 +40,7 @@ body {
   height: 100%;
   display: block;
   background: #000;
-  image-rendering: pixelated;
+  image-rendering: auto;
   touch-action: none;
   cursor: pointer;
   outline: none;
