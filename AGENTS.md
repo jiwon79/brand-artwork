@@ -12,7 +12,7 @@ Interactive web implementations of brand artworks.
 
 - `common/` — shared modules (touch cursor, etc.)
 - `pages/<brand>/` — per-brand artwork (`index.html`, `script.ts(js)`, `style.css`, etc.)
-- `docs/` — architecture, concepts, research, and supporting diagrams
+- `docs/` — architecture, concepts, reusable guides, research, and supporting diagrams
 
 ## Documentation
 
@@ -26,6 +26,7 @@ Interactive web implementations of brand artworks.
 - 핵심 공간 관계를 ASCII 그림에 의존하지 말고 `docs/assets/`의 검증된 SVG로 설명한다.
 - 곡선, blur, gradient와 정밀 외곽선은 투명 배경 SVG로 만들고, 텍스트·화살표·패널 배치는 draw.io에서 조립한 뒤 최종 SVG 한 장으로 export한다. 정밀 SVG 원본, `.drawio` 편집 원본과 최종 SVG를 모두 `docs/assets/`에 보관한다.
 - 작품의 현재 구현 흐름은 `docs/artworks/<name>/`, 재사용 가능한 수학 원리는 `docs/concepts/`에 분리한다.
+- 특정 작품의 후보·실패·선택 이력은 `docs/artworks/<name>/`에 두고, 여러 작업에 재사용할 절차·질문·판단 기준은 `docs/guides/`에 둔다. 공통 guide에는 작품 전용 함수명·기본값·커밋 이력을 넣지 않는다.
 
 ## Workflow
 
