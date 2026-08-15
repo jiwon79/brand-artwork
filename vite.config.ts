@@ -31,6 +31,9 @@ const staticCopyTargets = pageEntries
   }));
 
 export default defineConfig({
+  server: {
+    allowedHosts: ['.ngrok-free.app'],
+  },
   plugins: [
     viteStaticCopy({ targets: staticCopyTargets }),
   ],
