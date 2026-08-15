@@ -4,8 +4,9 @@
 
 - 기준 구현: [`pages/color-text/script.ts`](../../../pages/color-text/script.ts)
 - 작품 좌표: `480 × 600 artwork pixel`
-- 문서 갱신 기준: `2026-08-13`
+- 문서 갱신 기준: `2026-08-15`
 - 세부 파라미터와 구현 기록: [`pages/color-text/spec.md`](../../../pages/color-text/spec.md)
+- 레퍼런스 복원 이후 상호작용 선택 과정: [interaction-ideation.md](./interaction-ideation.md)
 
 재사용 가능한 수학 원리는 별도 concept 문서로 분리했다.
 

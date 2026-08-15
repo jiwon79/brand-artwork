@@ -22,6 +22,7 @@ docs/
 ### Color Text
 
 - [`architecture.md`](./artworks/color-text/architecture.md) - Color Text의 물 packet, 글자 atlas, geometry·color field, spring feedback 전체 구조
+- [`interaction-ideation.md`](./artworks/color-text/interaction-ideation.md) - 레퍼런스 복원 뒤 터치 드립과 글자 반응을 제안·비교·선택한 과정과 재사용 가능한 판단 기준
 
 ### Guseul
 
