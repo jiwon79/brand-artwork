@@ -395,7 +395,7 @@ function solidPointPosition(point: FigurePoint, echoIndex: number, time: number)
 }
 
 function spawnTimeFor(designX: number, point: FigurePoint, echoIndex: number): number {
-  const xProgress = 1 - clamp(designX / DESIGN_WIDTH, 0, 1);
+  const xProgress = clamp(designX / DESIGN_WIDTH, 0, 1);
   const jitter = (hash(point.x, point.y, echoIndex) - 0.5) * settings.sweepJitter;
   return settings.hold + xProgress * settings.sweepDuration + jitter;
 }

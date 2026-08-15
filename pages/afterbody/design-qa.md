@@ -21,7 +21,7 @@
 
 ## Findings
 
-No actionable P0, P1, or P2 differences remain for the requested SVG asset replacement.
+No actionable P0, P1, or P2 differences remain for the requested SVG asset replacement and left-to-right dissolve.
 
 - Fonts and typography: the source contains no artwork typography. The low-contrast `TAP TO DISSOLVE` hint stays outside the figure and does not affect the source composition.
 - Spacing and layout rhythm: the SVGs retain their authored dimensions, which already encode the progressive size reduction. Independent centers place them in the same left-to-right overlap rhythm as the reference. The landscape composition remains centered without overflow at `390 × 844` mobile.
@@ -29,7 +29,7 @@ No actionable P0, P1, or P2 differences remain for the requested SVG asset repla
 - Image quality and asset fidelity: `figure-1.svg` through `figure-6.svg` are the unchanged paths supplied in `SORI.zip`. Idle rendering uses their actual Bézier geometry and original progressive stroke widths. The first figure remains a continuous sparse line; the final figure has a surface-like torso and individually readable dense legs. Square particles appear only after the dissolve front reaches a path segment.
 - Copy and content: `TAP TO DISSOLVE` changes to `TAP TO REPLAY` after the sequence. No additional visible copy is introduced.
 - Icons: none are required by the source or implementation.
-- Interaction and accessibility: pointer activation completed the right-to-left dissolve and reached `TAP TO REPLAY`. `M` switched to the solid human mode and back. Keyboard activation/reset behavior and reduced-motion handling remain in the implementation.
+- Interaction and accessibility: pointer activation completed the left-to-right dissolve and reached `TAP TO REPLAY`. The canvas accessibility label describes the same direction. `M` switched to the solid human mode and back. Keyboard activation/reset behavior and reduced-motion handling remain in the implementation.
 - Browser verification: the SVG starting state, mid-dissolve state, replay state, line/solid mode switch, desktop view, and `390 × 844` mobile view were tested in the existing Chrome window. Chrome reported no warnings or errors.
 
 ## Comparison History
@@ -66,6 +66,11 @@ No actionable P0, P1, or P2 differences remain for the requested SVG asset repla
 
 - No P0, P1, or P2 findings. The normalized source/implementation comparison, SVG idle rendering, corrected dissolve, replay completion, Solid toggle, mobile layout, type checking, production build, and Chrome console checks passed.
 
+### Pass 7
+
+- The dissolve direction was intentionally reversed at the user's request. The leftmost sparse figure now enters the particle state first, and the sweep continues toward the rightmost dense figure.
+- Post-change evidence: `implementation-sori-svg-dissolve.png` shows the left side dispersed while the right side remains intact.
+
 ## Open Questions
 
 - The reference is a photographed TFT, so its optical bloom and camera softness merge neighboring lines more than the browser canvas. The implementation preserves the supplied SVG paths and uses a small glow rather than changing their geometry to imitate camera compression.
@@ -77,7 +82,7 @@ No actionable P0, P1, or P2 differences remain for the requested SVG asset repla
 - [x] Preserve their authored left-to-right size and density progression.
 - [x] Keep a surface-like upper body and line-readable lower body on the final SVG.
 - [x] Keep separate SVG subpaths disconnected during the dissolve.
-- [x] Preserve RGB offset, right-to-left dissolve, particle drift, replay, and both figure modes.
+- [x] Preserve RGB offset, left-to-right dissolve, particle drift, replay, and both figure modes.
 - [x] Verify desktop/mobile rendering, interactions, build, and console output.
 
 ## Follow-up Polish
