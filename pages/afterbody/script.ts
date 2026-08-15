@@ -1,6 +1,7 @@
 import GUI from 'lil-gui';
 
 type FigureMode = 'Lines' | 'Solid';
+type InteractionMode = 'Original' | 'Contact Burst';
 type Phase = 'idle' | 'dissolving' | 'blank';
 
 type FigurePoint = {
@@ -30,11 +31,26 @@ type View = {
   offsetY: number;
 };
 
+type DesignPoint = {
+  x: number;
+  y: number;
+};
+
+type PositionedPoint = {
+  x: number;
+  y: number;
+  designX: number;
+  designY: number;
+};
+
 type DebugApi = {
   dissolve: () => void;
+  burst: (clientX?: number, clientY?: number) => void;
   reset: () => void;
   setMode: (mode: FigureMode) => void;
+  setInteraction: (mode: InteractionMode) => void;
   getPhase: () => Phase;
+  getInteraction: () => InteractionMode;
 };
 
 const DESIGN_WIDTH = 480;
@@ -58,6 +74,7 @@ if (!artworkCtx) throw new Error('Offscreen 2D canvas is not supported.');
 
 const settings = {
   figure: 'Lines' as FigureMode,
+  interaction: 'Original' as InteractionMode,
   echoes: 6,
   rgbOffset: 3.2,
   lineThickness: 1,
@@ -70,6 +87,11 @@ const settings = {
   turbulence: 2.6,
   particleLife: 3.35,
   particleSize: 1.15,
+  contactWaveSpeed: 176,
+  contactWaveWidth: 18,
+  contactForce: 62,
+  contactSpread: 24,
+  contactJitter: 0.08,
   glow: 0.26,
   scanlines: 0.08,
 };
@@ -102,6 +124,7 @@ let echoLineGeometry: EchoLineGeometry[] = [];
 let solidPoints: FigurePoint[] = [];
 let phase: Phase = 'idle';
 let triggeredAt = 0;
+let contactOrigin: DesignPoint = { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
 let animationFrame = 0;
 let lastNow = 0;
 
@@ -358,7 +381,7 @@ function lineSway(echoIndex: number, time: number): number {
   return Math.sin(echoPhase * 0.44) * (1.1 - echoIndex * 0.09) * settings.idleMotion;
 }
 
-function linePointPosition(point: FigurePoint, echoIndex: number, time: number): { x: number; y: number; designX: number } {
+function linePointPosition(point: FigurePoint, echoIndex: number, time: number): PositionedPoint {
   const designX = echoCenters[echoIndex] + point.x * SVG_TO_DESIGN + lineSway(echoIndex, time);
   const designY = lineEchoYCenters[echoIndex] + point.y * SVG_TO_DESIGN;
 
@@ -366,10 +389,11 @@ function linePointPosition(point: FigurePoint, echoIndex: number, time: number):
     x: view.offsetX + designX * view.fit,
     y: view.offsetY + designY * view.fit,
     designX,
+    designY,
   };
 }
 
-function solidPointPosition(point: FigurePoint, echoIndex: number, time: number): { x: number; y: number; designX: number } {
+function solidPointPosition(point: FigurePoint, echoIndex: number, time: number): PositionedPoint {
   const echoPhase = time * 1.45 - echoIndex * 0.19;
   const motion = settings.idleMotion;
   const scaleX = solidEchoXScales[echoIndex];
@@ -391,10 +415,17 @@ function solidPointPosition(point: FigurePoint, echoIndex: number, time: number)
     x: view.offsetX + designX * view.fit,
     y: view.offsetY + designY * view.fit,
     designX,
+    designY,
   };
 }
 
-function spawnTimeFor(designX: number, point: FigurePoint, echoIndex: number): number {
+function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echoIndex: number): number {
+  if (settings.interaction === 'Contact Burst') {
+    const distance = Math.hypot(designX - contactOrigin.x, designY - contactOrigin.y);
+    const jitter = (hash(point.x, point.y, echoIndex) - 0.5) * settings.contactJitter;
+    return Math.max(0, distance / settings.contactWaveSpeed + jitter);
+  }
+
   const xProgress = clamp(designX / DESIGN_WIDTH, 0, 1);
   const jitter = (hash(point.x, point.y, echoIndex) - 0.5) * settings.sweepJitter;
   return settings.hold + xProgress * settings.sweepDuration + jitter;
@@ -414,26 +445,67 @@ function drawParticle(
     ? linePointPosition(point, echoIndex, originTime)
     : solidPointPosition(point, echoIndex, originTime);
   const channelSeed = hash(point.x, point.y, channelIndex + echoIndex * 3);
-  const speed = settings.drift * (0.58 + channelSeed * 0.82) * view.fit;
-  const verticalSpeed = (point.seed2 - 0.5) * settings.spread * view.fit;
-  const noise = Math.sin(age * (3.2 + point.seed * 4.8) + point.seed2 * 18)
-    * settings.turbulence
-    * age
-    * view.fit;
   const channelOffset = settings.rgbOffset * view.fit;
-  const x = origin.x
-    + channelX[channelIndex] * channelOffset
-    + speed * age
-    + age * age * 1.65 * view.fit;
-  const y = origin.y
-    + channelY[channelIndex] * channelOffset
-    + verticalSpeed * age
-    + noise;
+  let x: number;
+  let y: number;
+
+  if (settings.interaction === 'Contact Burst') {
+    const contactX = view.offsetX + contactOrigin.x * view.fit;
+    const contactY = view.offsetY + contactOrigin.y * view.fit;
+    let directionX = origin.x - contactX;
+    let directionY = origin.y - contactY;
+    const distance = Math.hypot(directionX, directionY);
+
+    if (distance < 0.001) {
+      const angle = point.seed * Math.PI * 2;
+      directionX = Math.cos(angle);
+      directionY = Math.sin(angle);
+    } else {
+      directionX /= distance;
+      directionY /= distance;
+    }
+
+    const tangentX = -directionY;
+    const tangentY = directionX;
+    const radialSpeed = settings.contactForce * (0.58 + channelSeed * 0.92) * view.fit;
+    const tangentSpeed = (point.seed2 - 0.5) * settings.contactSpread * view.fit;
+    const acceleration = age * age * (3.4 + point.seed * 3.2) * view.fit;
+    const turbulence = Math.sin(age * (4.1 + point.seed * 4.6) + point.seed2 * 19)
+      * settings.turbulence
+      * age
+      * view.fit;
+
+    x = origin.x
+      + channelX[channelIndex] * channelOffset
+      + directionX * (radialSpeed * age + acceleration)
+      + tangentX * (tangentSpeed * age + turbulence);
+    y = origin.y
+      + channelY[channelIndex] * channelOffset
+      + directionY * (radialSpeed * age + acceleration)
+      + tangentY * (tangentSpeed * age + turbulence);
+  } else {
+    const speed = settings.drift * (0.58 + channelSeed * 0.82) * view.fit;
+    const verticalSpeed = (point.seed2 - 0.5) * settings.spread * view.fit;
+    const noise = Math.sin(age * (3.2 + point.seed * 4.8) + point.seed2 * 18)
+      * settings.turbulence
+      * age
+      * view.fit;
+
+    x = origin.x
+      + channelX[channelIndex] * channelOffset
+      + speed * age
+      + age * age * 1.65 * view.fit;
+    y = origin.y
+      + channelY[channelIndex] * channelOffset
+      + verticalSpeed * age
+      + noise;
+  }
+
   const life = settings.particleLife * (0.72 + point.seed * 0.48);
   const alpha = Math.pow(clamp(1 - age / life, 0, 1), 1.3) * (0.48 + point.seed * 0.52);
   const size = baseSize * (0.7 + channelSeed * 0.85) * settings.particleSize;
 
-  if (alpha <= 0.01 || x > view.width + 8 || y < -8 || y > view.height + 8) return;
+  if (alpha <= 0.01 || x < -8 || x > view.width + 8 || y < -8 || y > view.height + 8) return;
 
   artworkCtx.globalAlpha = alpha;
   artworkCtx.fillRect(x, y, Math.max(0.65, size), Math.max(0.65, size * (0.72 + point.seed2 * 0.55)));
@@ -479,7 +551,7 @@ function drawDissolvingLinePath(
   for (const point of geometry.points) {
     if (point.startsPath) drawing = false;
     const position = linePointPosition(point, echoIndex, now);
-    const remains = elapsed < spawnTimeFor(position.designX, point, echoIndex);
+    const remains = elapsed < spawnTimeFor(position.designX, position.designY, point, echoIndex);
 
     if (!remains) {
       drawing = false;
@@ -497,6 +569,38 @@ function drawDissolvingLinePath(
   artworkCtx.lineJoin = 'round';
   artworkCtx.lineWidth = geometry.strokeWidth * SVG_TO_DESIGN * settings.lineThickness * view.fit;
   artworkCtx.stroke();
+
+  if (settings.interaction !== 'Contact Burst') return;
+
+  artworkCtx.beginPath();
+  drawing = false;
+
+  for (const point of geometry.points) {
+    if (point.startsPath) drawing = false;
+    const position = linePointPosition(point, echoIndex, now);
+    const spawnTime = spawnTimeFor(position.designX, position.designY, point, echoIndex);
+    const waveDistance = Math.abs(elapsed - spawnTime) * settings.contactWaveSpeed;
+    const inWave = waveDistance <= settings.contactWaveWidth;
+
+    if (!inWave) {
+      drawing = false;
+      continue;
+    }
+
+    const x = position.x + channelX[channelIndex] * settings.rgbOffset * view.fit;
+    const y = position.y + channelY[channelIndex] * settings.rgbOffset * view.fit;
+    if (drawing) artworkCtx.lineTo(x, y);
+    else artworkCtx.moveTo(x, y);
+    drawing = true;
+  }
+
+  artworkCtx.save();
+  artworkCtx.globalAlpha = 0.96;
+  artworkCtx.lineWidth = geometry.strokeWidth * SVG_TO_DESIGN * settings.lineThickness * view.fit * 1.75;
+  artworkCtx.shadowColor = channelColors[channelIndex];
+  artworkCtx.shadowBlur = 7 * view.fit;
+  artworkCtx.stroke();
+  artworkCtx.restore();
 }
 
 function renderLineFigures(now: number, elapsed: number): void {
@@ -519,7 +623,12 @@ function renderLineFigures(now: number, elapsed: number): void {
 
       for (const point of geometry.samples) {
         const currentPosition = linePointPosition(point, echoIndex, now);
-        const spawnTime = spawnTimeFor(currentPosition.designX, point, echoIndex);
+        const spawnTime = spawnTimeFor(
+          currentPosition.designX,
+          currentPosition.designY,
+          point,
+          echoIndex,
+        );
         if (elapsed >= spawnTime) {
           drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize, true);
         }
@@ -558,7 +667,12 @@ function renderSolidFigures(now: number, elapsed: number): void {
         }
 
         const currentPosition = solidPointPosition(point, echoIndex, now);
-        const spawnTime = spawnTimeFor(currentPosition.designX, point, echoIndex);
+        const spawnTime = spawnTimeFor(
+          currentPosition.designX,
+          currentPosition.designY,
+          point,
+          echoIndex,
+        );
         if (elapsed < spawnTime) drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize);
         else drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize, false);
       }
@@ -577,6 +691,59 @@ function renderFigures(now: number): void {
   artworkCtx.globalCompositeOperation = 'source-over';
 }
 
+function renderContactWave(now: number): void {
+  if (phase !== 'dissolving' || settings.interaction !== 'Contact Burst') return;
+
+  const elapsed = Math.max(0, now - triggeredAt);
+  const centerX = view.offsetX + contactOrigin.x * view.fit;
+  const centerY = view.offsetY + contactOrigin.y * view.fit;
+  const radius = elapsed * settings.contactWaveSpeed * view.fit;
+  const coreLife = clamp(1 - elapsed / 0.46, 0, 1);
+  const ringLife = clamp(1 - elapsed / 3.2, 0, 1);
+
+  artworkCtx.save();
+  artworkCtx.globalCompositeOperation = 'lighter';
+  artworkCtx.lineCap = 'round';
+
+  for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
+    const offset = settings.rgbOffset * 0.72 * view.fit;
+    const channelCenterX = centerX + channelX[channelIndex] * offset;
+    const channelCenterY = centerY + channelY[channelIndex] * offset;
+
+    if (coreLife > 0) {
+      artworkCtx.globalAlpha = 0.74 * coreLife;
+      artworkCtx.fillStyle = channelColors[channelIndex];
+      artworkCtx.beginPath();
+      artworkCtx.arc(channelCenterX, channelCenterY, (2.8 + (1 - coreLife) * 8) * view.fit, 0, Math.PI * 2);
+      artworkCtx.fill();
+    }
+
+    artworkCtx.strokeStyle = channelColors[channelIndex];
+    artworkCtx.shadowColor = channelColors[channelIndex];
+    artworkCtx.shadowBlur = 8 * view.fit;
+
+    for (let trail = 0; trail < 3; trail += 1) {
+      const trailRadius = radius - trail * settings.contactWaveWidth * 0.42 * view.fit;
+      if (trailRadius <= 0) continue;
+      artworkCtx.globalAlpha = ringLife * (0.34 - trail * 0.075);
+      artworkCtx.lineWidth = Math.max(0.7, (1.45 - trail * 0.24) * view.fit);
+      artworkCtx.beginPath();
+      artworkCtx.arc(channelCenterX, channelCenterY, trailRadius, 0, Math.PI * 2);
+      artworkCtx.stroke();
+    }
+  }
+
+  if (coreLife > 0) {
+    artworkCtx.globalAlpha = 0.92 * coreLife;
+    artworkCtx.fillStyle = '#fff';
+    artworkCtx.beginPath();
+    artworkCtx.arc(centerX, centerY, (1.8 + (1 - coreLife) * 3.2) * view.fit, 0, Math.PI * 2);
+    artworkCtx.fill();
+  }
+
+  artworkCtx.restore();
+}
+
 function renderScanlines(): void {
   if (settings.scanlines <= 0) return;
   ctx.fillStyle = `rgba(0, 0, 0, ${settings.scanlines})`;
@@ -591,7 +758,10 @@ function render(timestamp: number): void {
   artworkCtx.fillStyle = '#000';
   artworkCtx.fillRect(0, 0, view.width, view.height);
 
-  if (phase !== 'blank') renderFigures(now);
+  if (phase !== 'blank') {
+    renderFigures(now);
+    renderContactWave(now);
+  }
 
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
@@ -614,7 +784,17 @@ function render(timestamp: number): void {
   renderScanlines();
 
   if (phase === 'dissolving') {
-    const totalDuration = settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
+    const cornerDistances = [
+      Math.hypot(contactOrigin.x, contactOrigin.y),
+      Math.hypot(DESIGN_WIDTH - contactOrigin.x, contactOrigin.y),
+      Math.hypot(contactOrigin.x, DESIGN_HEIGHT - contactOrigin.y),
+      Math.hypot(DESIGN_WIDTH - contactOrigin.x, DESIGN_HEIGHT - contactOrigin.y),
+    ];
+    const contactDuration = Math.max(...cornerDistances) / settings.contactWaveSpeed
+      + settings.particleLife
+      + 0.45;
+    const originalDuration = settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
+    const totalDuration = settings.interaction === 'Contact Burst' ? contactDuration : originalDuration;
     if (now - triggeredAt > totalDuration) {
       phase = 'blank';
       hint.textContent = 'TAP TO REPLAY';
@@ -636,14 +816,28 @@ function dissolve(): void {
 function reset(): void {
   phase = 'idle';
   triggeredAt = 0;
-  hint.textContent = 'TAP TO DISSOLVE';
+  hint.textContent = settings.interaction === 'Contact Burst' ? 'TAP TO BURST' : 'TAP TO DISSOLVE';
   hint.classList.remove('hidden');
 }
 
-function replay(): void {
+function replay(point?: DesignPoint): void {
   if (phase === 'dissolving') return;
   if (phase === 'blank') reset();
+  if (settings.interaction === 'Contact Burst') {
+    contactOrigin = point ?? { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
+  }
   dissolve();
+}
+
+function designPointFromClient(clientX: number, clientY: number): DesignPoint {
+  const rect = canvas.getBoundingClientRect();
+  const internalX = (clientX - rect.left) * (canvas.width / Math.max(1, rect.width));
+  const internalY = (clientY - rect.top) * (canvas.height / Math.max(1, rect.height));
+
+  return {
+    x: clamp((internalX - view.offsetX) / view.fit, 0, DESIGN_WIDTH),
+    y: clamp((internalY - view.offsetY) / view.fit, 0, DESIGN_HEIGHT),
+  };
 }
 
 function setMode(mode: FigureMode): void {
@@ -652,7 +846,17 @@ function setMode(mode: FigureMode): void {
   figureController.updateDisplay();
 }
 
+function setInteraction(mode: InteractionMode): void {
+  settings.interaction = mode;
+  reset();
+  interactionController.updateDisplay();
+}
+
 const gui = new GUI({ title: 'Afterbody' });
+const interactionController = gui
+  .add(settings, 'interaction', ['Original', 'Contact Burst'])
+  .name('Interaction')
+  .onChange(() => reset());
 const figureController = gui.add(settings, 'figure', ['Lines', 'Solid']).name('Figure').onChange(() => reset());
 gui.add(settings, 'echoes', 1, 6, 1).name('Echoes');
 gui.add(settings, 'rgbOffset', 0, 6, 0.05).name('RGB offset');
@@ -671,11 +875,18 @@ dissolveFolder.add(settings, 'turbulence', 0, 8, 0.1).name('Turbulence');
 dissolveFolder.add(settings, 'particleLife', 1, 6, 0.05).name('Lifetime');
 dissolveFolder.add(settings, 'particleSize', 0.5, 3, 0.05).name('Size');
 
+const contactFolder = gui.addFolder('Contact Burst');
+contactFolder.add(settings, 'contactWaveSpeed', 70, 320, 1).name('Wave speed');
+contactFolder.add(settings, 'contactWaveWidth', 4, 48, 1).name('Wave width');
+contactFolder.add(settings, 'contactForce', 10, 140, 1).name('Burst force');
+contactFolder.add(settings, 'contactSpread', 0, 70, 1).name('Tangential spread');
+contactFolder.add(settings, 'contactJitter', 0, 0.3, 0.005).name('Edge noise');
+
 const finishFolder = gui.addFolder('Display');
 finishFolder.add(settings, 'glow', 0, 0.8, 0.01).name('Glow');
 finishFolder.add(settings, 'scanlines', 0, 0.3, 0.01).name('Scanlines');
 
-gui.add({ dissolve: replay }, 'dissolve').name('Dissolve');
+gui.add({ trigger: () => replay() }, 'trigger').name('Trigger');
 gui.add({ reset }, 'reset').name('Reset');
 gui.close();
 let guiVisible = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -683,7 +894,7 @@ if (!guiVisible) gui.hide();
 
 canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
-  replay();
+  replay(designPointFromClient(event.clientX, event.clientY));
 });
 
 window.addEventListener('keydown', (event) => {
@@ -710,9 +921,15 @@ window.addEventListener('error', (event) => {
 const debugWindow = window as Window & { __afterbody?: DebugApi };
 debugWindow.__afterbody = {
   dissolve: replay,
+  burst: (clientX = window.innerWidth * 0.5, clientY = window.innerHeight * 0.5) => {
+    setInteraction('Contact Burst');
+    replay(designPointFromClient(clientX, clientY));
+  },
   reset,
   setMode,
+  setInteraction,
   getPhase: () => phase,
+  getInteraction: () => settings.interaction,
 };
 
 async function start(): Promise<void> {
