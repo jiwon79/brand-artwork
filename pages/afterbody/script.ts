@@ -90,7 +90,9 @@ const settings = {
   contactGatherDuration: 0.92,
   contactDensityDuration: 0.52,
   contactCompression: 0.18,
-  contactWaveDuration: 0.9,
+  contactWaveDuration: 0.62,
+  contactParticleDensity: 3,
+  contactParticleSize: 0.55,
   contactForce: 100,
   contactSpread: 8,
   contactReleaseSpread: 0.08,
@@ -592,12 +594,22 @@ function drawParticle(
   const life = settings.particleLife * (0.72 + point.seed * 0.48);
   const alpha = Math.pow(clamp(1 - particleAge / life, 0, 1), 1.3)
     * (0.48 + point.seed * 0.52);
-  const size = baseSize * (0.7 + channelSeed * 0.85) * settings.particleSize;
+  const interactionSize = isNameDropWave() ? settings.contactParticleSize : 1;
+  const size = baseSize
+    * (0.7 + channelSeed * 0.85)
+    * settings.particleSize
+    * interactionSize;
+  const minimumSize = isNameDropWave() ? 0.3 : 0.65;
 
   if (alpha <= 0.01 || x < -8 || x > view.width + 8 || y < -8 || y > view.height + 8) return;
 
   artworkCtx.globalAlpha = alpha;
-  artworkCtx.fillRect(x, y, Math.max(0.65, size), Math.max(0.65, size * (0.72 + point.seed2 * 0.55)));
+  artworkCtx.fillRect(
+    x,
+    y,
+    Math.max(minimumSize, size),
+    Math.max(minimumSize, size * (0.72 + point.seed2 * 0.55)),
+  );
 }
 
 function drawExactLinePath(echoIndex: number, channelIndex: number, now: number): void {
@@ -684,8 +696,16 @@ function renderLineFigures(now: number, elapsed: number): void {
       drawDissolvingLinePath(echoIndex, channelIndex, now, elapsed);
       const geometry = echoLineGeometry[echoIndex];
       const baseSize = geometry.strokeWidth * SVG_TO_DESIGN * 0.68 * view.fit;
+      const particlePoints = isNameDropWave() ? geometry.points : geometry.samples;
+      const sampleInterval = isNameDropWave()
+        ? 3 / clamp(settings.contactParticleDensity, 0.5, 3)
+        : 1;
+      let nextSampleIndex = 0;
 
-      for (const point of geometry.samples) {
+      for (let pointIndex = 0; pointIndex < particlePoints.length; pointIndex += 1) {
+        if (pointIndex + 0.0001 < nextSampleIndex) continue;
+        nextSampleIndex += sampleInterval;
+        const point = particlePoints[pointIndex];
         const currentPosition = linePointPosition(point, echoIndex, now);
         const spawnTime = spawnTimeFor(
           currentPosition.designX,
@@ -957,7 +977,9 @@ const contactFolder = gui.addFolder('NameDrop Wave');
 contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gather time');
 contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Tension time');
 contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pull');
-contactFolder.add(settings, 'contactWaveDuration', 0.2, 2.4, 0.01).name('Wave travel');
+contactFolder.add(settings, 'contactWaveDuration', 0.2, 2.4, 0.01).name('Wave duration');
+contactFolder.add(settings, 'contactParticleDensity', 0.5, 3, 0.05).name('SVG particle density');
+contactFolder.add(settings, 'contactParticleSize', 0.25, 1.5, 0.05).name('Particle size');
 contactFolder.add(settings, 'contactForce', 10, 160, 1).name('Release force');
 contactFolder.add(settings, 'contactSpread', 0, 50, 1).name('Release curl');
 contactFolder.add(settings, 'contactReleaseSpread', 0, 0.7, 0.005).name('Release noise');
