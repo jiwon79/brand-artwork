@@ -42,8 +42,15 @@ body {
   background: #000;
   image-rendering: auto;
   touch-action: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  user-select: none;
   cursor: pointer;
   outline: none;
+}
+
+::selection {
+  background: transparent;
 }
 
 #artwork:focus-visible {

@@ -2,7 +2,7 @@ import GUI from 'lil-gui';
 
 type FigureMode = 'Lines' | 'Solid';
 type InteractionMode = 'Original' | 'NameDrop Wave';
-type Phase = 'idle' | 'dissolving' | 'blank';
+type Phase = 'idle' | 'gathering' | 'dissolving' | 'blank';
 
 type FigurePoint = {
   x: number;
@@ -126,7 +126,9 @@ let echoLineGeometry: EchoLineGeometry[] = [];
 let solidPoints: FigurePoint[] = [];
 let phase: Phase = 'idle';
 let triggeredAt = 0;
+let releasedAt = 0;
 let contactOrigin: DesignPoint = { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
+let activePointerId: number | null = null;
 let animationFrame = 0;
 let lastNow = 0;
 
@@ -155,6 +157,20 @@ function isNameDropWave(): boolean {
 
 function contactReleaseTime(): number {
   return settings.contactGatherDuration + settings.contactDensityDuration;
+}
+
+function motionElapsed(now: number): number {
+  if (phase === 'gathering') {
+    return Math.min(
+      Math.max(0, now - triggeredAt),
+      Math.max(0, contactReleaseTime() - 0.0001),
+    );
+  }
+  if (phase === 'dissolving' && isNameDropWave()) {
+    return contactReleaseTime() + Math.max(0, now - releasedAt);
+  }
+  if (phase === 'dissolving') return Math.max(0, now - triggeredAt);
+  return 0;
 }
 
 function resize(): void {
@@ -517,7 +533,10 @@ function drawParticle(
   baseSize: number,
   lineMode: boolean,
 ): void {
-  const originTime = triggeredAt + spawnTime;
+  const timelineOrigin = isNameDropWave() && releasedAt > 0
+    ? releasedAt - contactReleaseTime()
+    : triggeredAt;
+  const originTime = timelineOrigin + spawnTime;
   const baseOrigin = lineMode
     ? linePointPosition(point, echoIndex, originTime)
     : solidPointPosition(point, echoIndex, originTime);
@@ -669,7 +688,7 @@ function renderLineFigures(now: number, elapsed: number): void {
     artworkCtx.globalAlpha = 0.84;
 
     for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
-      if (phase !== 'dissolving') {
+      if (phase === 'idle') {
         drawExactLinePath(echoIndex, channelIndex, now);
         continue;
       }
@@ -720,7 +739,7 @@ function renderSolidFigures(now: number, elapsed: number): void {
 
     for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
       for (const point of solidPoints) {
-        if (phase !== 'dissolving') {
+        if (phase === 'idle') {
           drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize, 0);
           continue;
         }
@@ -742,7 +761,7 @@ function renderSolidFigures(now: number, elapsed: number): void {
 }
 
 function renderFigures(now: number): void {
-  const elapsed = phase === 'dissolving' ? now - triggeredAt : 0;
+  const elapsed = motionElapsed(now);
   artworkCtx.globalCompositeOperation = 'lighter';
 
   if (settings.figure === 'Lines') renderLineFigures(now, elapsed);
@@ -892,9 +911,9 @@ function renderCoreReleaseMotes(
 }
 
 function renderContactEffect(now: number): void {
-  if (phase !== 'dissolving' || !isNameDropWave()) return;
+  if ((phase !== 'gathering' && phase !== 'dissolving') || !isNameDropWave()) return;
 
-  const elapsed = Math.max(0, now - triggeredAt);
+  const elapsed = motionElapsed(now);
   const centerX = view.offsetX + contactOrigin.x * view.fit;
   const centerY = view.offsetY + contactOrigin.y * view.fit;
   const gatherProgress = contactGatherProgress(elapsed);
@@ -903,11 +922,15 @@ function renderContactEffect(now: number): void {
   const gathering = releaseAge < 0;
   const releaseProgress = easeOutCubic(releaseAge / 0.52);
   const releaseLife = Math.pow(clamp(1 - Math.max(0, releaseAge) / 0.68, 0, 1), 1.35);
+  const holdAge = phase === 'gathering'
+    ? Math.max(0, now - triggeredAt - contactReleaseTime())
+    : 0;
+  const holdPulse = holdAge > 0 ? Math.sin(holdAge * 4.2) * 0.5 + 0.5 : 0;
   const radius = gathering
-    ? (10 + gatherProgress * 3 - densityProgress * 3) * view.fit
+    ? (10 + gatherProgress * 3 - densityProgress * 3 + holdPulse * 0.75) * view.fit
     : (8.5 + releaseProgress * 78) * view.fit;
   const alpha = gathering
-    ? 0.12 + gatherProgress * 0.25 + densityProgress * 0.55
+    ? 0.12 + gatherProgress * 0.25 + densityProgress * 0.55 + holdPulse * 0.04
     : releaseLife * 0.48;
 
   artworkCtx.save();
@@ -998,16 +1021,16 @@ function render(timestamp: number): void {
   renderScanlines();
 
   if (phase === 'dissolving') {
-    const contactDuration = contactReleaseTime()
-      + settings.contactWaveDuration
+    const contactDuration = settings.contactWaveDuration
       + settings.contactReleaseSpread
       + settings.particleLife
       + 0.8;
     const originalDuration = settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
     const totalDuration = isNameDropWave() ? contactDuration : originalDuration;
-    if (now - triggeredAt > totalDuration) {
+    const phaseStartedAt = isNameDropWave() ? releasedAt : triggeredAt;
+    if (now - phaseStartedAt > totalDuration) {
       phase = 'blank';
-      hint.textContent = 'TAP TO REPLAY';
+      hint.textContent = isNameDropWave() ? 'HOLD TO REPLAY' : 'TAP TO REPLAY';
       hint.classList.remove('hidden');
     }
   }
@@ -1016,25 +1039,49 @@ function render(timestamp: number): void {
 }
 
 function dissolve(): void {
-  if (phase === 'dissolving') return;
+  if (phase === 'gathering' || phase === 'dissolving') return;
+  if (phase === 'blank') reset();
   phase = 'dissolving';
   triggeredAt = lastNow || performance.now() * 0.001;
+  releasedAt = 0;
   hint.classList.add('hidden');
   canvas.focus({ preventScroll: true });
+}
+
+function beginGather(point?: DesignPoint): void {
+  if (phase === 'gathering' || phase === 'dissolving') return;
+  if (phase === 'blank') reset();
+
+  contactOrigin = point ?? { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
+  phase = 'gathering';
+  triggeredAt = lastNow || performance.now() * 0.001;
+  releasedAt = 0;
+  hint.textContent = 'RELEASE TO BURST';
+  hint.classList.remove('hidden');
+  canvas.focus({ preventScroll: true });
+}
+
+function releaseGather(): void {
+  if (phase !== 'gathering') return;
+  phase = 'dissolving';
+  releasedAt = lastNow || performance.now() * 0.001;
+  hint.classList.add('hidden');
 }
 
 function reset(): void {
   phase = 'idle';
   triggeredAt = 0;
-  hint.textContent = isNameDropWave() ? 'TAP TO CONNECT' : 'TAP TO DISSOLVE';
+  releasedAt = 0;
+  activePointerId = null;
+  hint.textContent = isNameDropWave() ? 'HOLD TO CONNECT' : 'TAP TO DISSOLVE';
   hint.classList.remove('hidden');
 }
 
 function replay(point?: DesignPoint): void {
-  if (phase === 'dissolving') return;
-  if (phase === 'blank') reset();
   if (isNameDropWave()) {
-    contactOrigin = point ?? { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
+    beginGather(point);
+    releaseGather();
+    return;
   }
   dissolve();
 }
@@ -1106,13 +1153,45 @@ if (!guiVisible) gui.hide();
 
 canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
-  replay(designPointFromClient(event.clientX, event.clientY));
+  if (isNameDropWave()) {
+    if (activePointerId !== null || phase === 'gathering' || phase === 'dissolving') return;
+    beginGather(designPointFromClient(event.clientX, event.clientY));
+    activePointerId = event.pointerId;
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
+  replay();
 });
+
+function finishPointerInteraction(event: PointerEvent): void {
+  event.preventDefault();
+  if (event.pointerId !== activePointerId) return;
+  activePointerId = null;
+  releaseGather();
+}
+
+window.addEventListener('pointerup', finishPointerInteraction);
+window.addEventListener('pointercancel', finishPointerInteraction);
+canvas.addEventListener('lostpointercapture', (event) => {
+  if (event.pointerId !== activePointerId) return;
+  activePointerId = null;
+  releaseGather();
+});
+
+canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+canvas.addEventListener('dragstart', (event) => event.preventDefault());
+canvas.addEventListener('selectstart', (event) => event.preventDefault());
+
+let keyboardGathering = false;
 
 window.addEventListener('keydown', (event) => {
   if (event.key === ' ' || event.key === 'Enter') {
     event.preventDefault();
-    replay();
+    if (event.repeat) return;
+    if (isNameDropWave()) {
+      keyboardGathering = true;
+      beginGather();
+    } else replay();
   } else if (event.key.toLowerCase() === 'm') {
     setMode(settings.figure === 'Lines' ? 'Solid' : 'Lines');
   } else if (event.key.toLowerCase() === 'r') {
@@ -1122,6 +1201,14 @@ window.addEventListener('keydown', (event) => {
     if (guiVisible) gui.show();
     else gui.hide();
   }
+});
+
+window.addEventListener('keyup', (event) => {
+  if (event.key !== ' ' && event.key !== 'Enter') return;
+  event.preventDefault();
+  if (!keyboardGathering) return;
+  keyboardGathering = false;
+  releaseGather();
 });
 
 window.addEventListener('resize', resize);
