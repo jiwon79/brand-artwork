@@ -94,6 +94,7 @@ const settings = {
   contactForce: 100,
   contactSpread: 8,
   contactReleaseSpread: 0.24,
+  contactReleaseSpeed: 1.5,
   glow: 0.26,
   scanlines: 0.08,
 };
@@ -523,6 +524,7 @@ function drawParticle(
   baseSize: number,
   lineMode: boolean,
 ): void {
+  const particleAge = isNameDropWave() ? age * settings.contactReleaseSpeed : age;
   const timelineOrigin = isNameDropWave() && releasedAt > 0
     ? releasedAt - contactReleaseTime()
     : triggeredAt;
@@ -558,42 +560,43 @@ function drawParticle(
     const tangentY = directionX;
     const radialSpeed = settings.contactForce * (0.64 + channelSeed * 0.72) * view.fit;
     const tangentSpeed = (point.seed2 - 0.5) * settings.contactSpread * view.fit;
-    const initialBloom = (1 - Math.exp(-age * 13)) * radialSpeed * 0.13;
-    const outwardTravel = radialSpeed * age * 0.48;
-    const acceleration = age * age * (3.2 + point.seed * 3.4) * view.fit;
-    const turbulence = Math.sin(age * (4.1 + point.seed * 4.6) + point.seed2 * 19)
+    const initialBloom = (1 - Math.exp(-particleAge * 13)) * radialSpeed * 0.13;
+    const outwardTravel = radialSpeed * particleAge * 0.48;
+    const acceleration = particleAge * particleAge * (3.2 + point.seed * 3.4) * view.fit;
+    const turbulence = Math.sin(particleAge * (4.1 + point.seed * 4.6) + point.seed2 * 19)
       * settings.turbulence
-      * age
+      * particleAge
       * view.fit;
 
     x = origin.x
       + channelX[channelIndex] * channelOffset
       + directionX * (initialBloom + outwardTravel + acceleration)
-      + tangentX * (tangentSpeed * age + turbulence * 0.18);
+      + tangentX * (tangentSpeed * particleAge + turbulence * 0.18);
     y = origin.y
       + channelY[channelIndex] * channelOffset
       + directionY * (initialBloom + outwardTravel + acceleration)
-      + tangentY * (tangentSpeed * age + turbulence * 0.18);
+      + tangentY * (tangentSpeed * particleAge + turbulence * 0.18);
   } else {
     const speed = settings.drift * (0.58 + channelSeed * 0.82) * view.fit;
     const verticalSpeed = (point.seed2 - 0.5) * settings.spread * view.fit;
-    const noise = Math.sin(age * (3.2 + point.seed * 4.8) + point.seed2 * 18)
+    const noise = Math.sin(particleAge * (3.2 + point.seed * 4.8) + point.seed2 * 18)
       * settings.turbulence
-      * age
+      * particleAge
       * view.fit;
 
     x = origin.x
       + channelX[channelIndex] * channelOffset
-      + speed * age
-      + age * age * 1.65 * view.fit;
+      + speed * particleAge
+      + particleAge * particleAge * 1.65 * view.fit;
     y = origin.y
       + channelY[channelIndex] * channelOffset
-      + verticalSpeed * age
+      + verticalSpeed * particleAge
       + noise;
   }
 
   const life = settings.particleLife * (0.72 + point.seed * 0.48);
-  const alpha = Math.pow(clamp(1 - age / life, 0, 1), 1.3) * (0.48 + point.seed * 0.52);
+  const alpha = Math.pow(clamp(1 - particleAge / life, 0, 1), 1.3)
+    * (0.48 + point.seed * 0.52);
   const size = baseSize * (0.7 + channelSeed * 0.85) * settings.particleSize;
 
   if (alpha <= 0.01 || x < -8 || x > view.width + 8 || y < -8 || y > view.height + 8) return;
@@ -766,13 +769,14 @@ function renderCoreReleaseMotes(
   centerX: number,
   centerY: number,
 ): void {
-  if (releaseAge < 0 || releaseAge > 1.35) return;
+  const effectAge = releaseAge * settings.contactReleaseSpeed;
+  if (effectAge < 0 || effectAge > 1.35) return;
 
   for (let index = 0; index < 120; index += 1) {
     const seed = hash(index, 17, 5);
     const seed2 = hash(index, 31, 9);
     const delay = seed * 0.16;
-    const age = releaseAge - delay;
+    const age = effectAge - delay;
     if (age <= 0) continue;
 
     const life = 0.58 + seed2 * 0.64;
@@ -812,8 +816,9 @@ function renderContactEffect(now: number): void {
   const centerX = view.offsetX + contactOrigin.x * view.fit;
   const centerY = view.offsetY + contactOrigin.y * view.fit;
   const releaseAge = elapsed - contactReleaseTime();
-  const releaseProgress = easeOutCubic(releaseAge / 0.52);
-  const releaseLife = Math.pow(clamp(1 - Math.max(0, releaseAge) / 0.68, 0, 1), 1.35);
+  const effectAge = releaseAge * settings.contactReleaseSpeed;
+  const releaseProgress = easeOutCubic(effectAge / 0.52);
+  const releaseLife = Math.pow(clamp(1 - Math.max(0, effectAge) / 0.68, 0, 1), 1.35);
   const radius = (8.5 + releaseProgress * 78) * view.fit;
   const alpha = releaseLife * 0.48;
 
@@ -889,7 +894,7 @@ function render(timestamp: number): void {
   if (phase === 'dissolving') {
     const contactDuration = settings.contactWaveDuration
       + settings.contactReleaseSpread
-      + settings.particleLife
+      + settings.particleLife / settings.contactReleaseSpeed
       + 0.8;
     const originalDuration = settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
     const totalDuration = isNameDropWave() ? contactDuration : originalDuration;
@@ -1009,6 +1014,7 @@ contactFolder.add(settings, 'contactWaveDuration', 0.05, 0.9, 0.01).name('Wave t
 contactFolder.add(settings, 'contactForce', 10, 160, 1).name('Release force');
 contactFolder.add(settings, 'contactSpread', 0, 50, 1).name('Release curl');
 contactFolder.add(settings, 'contactReleaseSpread', 0, 0.7, 0.005).name('Release noise');
+contactFolder.add(settings, 'contactReleaseSpeed', 0.5, 3, 0.05).name('Release speed');
 
 const finishFolder = gui.addFolder('Display');
 finishFolder.add(settings, 'glow', 0, 0.8, 0.01).name('Glow');
@@ -1030,6 +1036,12 @@ canvas.addEventListener('pointerdown', (event) => {
     return;
   }
   replay();
+});
+
+canvas.addEventListener('pointermove', (event) => {
+  if (!isNameDropWave() || phase !== 'gathering' || event.pointerId !== activePointerId) return;
+  event.preventDefault();
+  contactOrigin = designPointFromClient(event.clientX, event.clientY);
 });
 
 function finishPointerInteraction(event: PointerEvent): void {
