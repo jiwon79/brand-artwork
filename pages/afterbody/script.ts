@@ -764,51 +764,6 @@ function renderFigures(now: number): void {
   artworkCtx.globalCompositeOperation = 'source-over';
 }
 
-function renderCoreReleaseMotes(
-  releaseAge: number,
-  centerX: number,
-  centerY: number,
-): void {
-  const effectAge = releaseAge * settings.contactReleaseSpeed;
-  if (effectAge < 0 || effectAge > 1.35) return;
-
-  for (let index = 0; index < 120; index += 1) {
-    const seed = hash(index, 17, 5);
-    const seed2 = hash(index, 31, 9);
-    const delay = seed * 0.16;
-    const age = effectAge - delay;
-    if (age <= 0) continue;
-
-    const life = 0.58 + seed2 * 0.64;
-    const lifeProgress = clamp(age / life, 0, 1);
-    if (lifeProgress >= 1) continue;
-
-    const angle = seed * Math.PI * 2 + (seed2 - 0.5) * age * 1.5;
-    const directionX = Math.cos(angle);
-    const directionY = Math.sin(angle);
-    const tangentX = -directionY;
-    const tangentY = directionX;
-    const speed = (18 + seed2 * 72) * view.fit;
-    const travel = (1 - Math.exp(-age * 13)) * 5 * view.fit
-      + speed * age
-      + age * age * 34 * view.fit;
-    const curl = (seed2 - 0.5) * age * 16 * view.fit;
-    const x = centerX + directionX * travel + tangentX * curl;
-    const y = centerY + directionY * travel + tangentY * curl;
-    const alpha = Math.pow(1 - lifeProgress, 1.6) * (0.34 + seed2 * 0.58);
-    const length = (1.5 + seed * 5.5) * (1 - lifeProgress * 0.7) * view.fit;
-    const channelIndex = Math.min(2, Math.floor(hash(index, 7, 11) * 3));
-
-    artworkCtx.strokeStyle = channelColors[channelIndex];
-    artworkCtx.globalAlpha = alpha;
-    artworkCtx.lineWidth = Math.max(0.55, (0.55 + seed2 * 0.8) * view.fit);
-    artworkCtx.beginPath();
-    artworkCtx.moveTo(x - directionX * length, y - directionY * length);
-    artworkCtx.lineTo(x, y);
-    artworkCtx.stroke();
-  }
-}
-
 function renderContactEffect(now: number): void {
   if (phase !== 'dissolving' || !isNameDropWave()) return;
 
@@ -824,7 +779,6 @@ function renderContactEffect(now: number): void {
 
   artworkCtx.save();
   artworkCtx.globalCompositeOperation = 'lighter';
-  renderCoreReleaseMotes(releaseAge, centerX, centerY);
 
   for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
     const channelCenterX = centerX;
