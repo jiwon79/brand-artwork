@@ -89,7 +89,7 @@ const settings = {
   particleSize: 1.15,
   contactGatherDuration: 0.92,
   contactDensityDuration: 0.52,
-  contactCompression: 0.105,
+  contactCompression: 0.18,
   contactWaveDuration: 0.36,
   contactForce: 100,
   contactSpread: 8,
@@ -468,15 +468,8 @@ function contactDensityProgress(elapsed: number): number {
   );
 }
 
-function contactChannelScale(elapsed: number): number {
-  const gather = contactGatherProgress(elapsed);
-  const density = contactDensityProgress(elapsed);
-  return clamp(1 - gather * 0.38 - density * 0.2, 0.42, 1);
-}
-
 function gatheredPosition(
   position: PositionedPoint,
-  point: FigurePoint,
   echoIndex: number,
   elapsed: number,
 ): PositionedPoint {
@@ -488,20 +481,17 @@ function gatheredPosition(
   const deltaX = contactOrigin.x - position.designX;
   const deltaY = contactOrigin.y - position.designY;
   const distance = Math.max(0.001, Math.hypot(deltaX, deltaY));
-  const tangentX = -deltaY / distance;
-  const tangentY = deltaX / distance;
-  const proximity = 1 - clamp(distance / (DESIGN_WIDTH * 0.58), 0, 1);
-  const pull = settings.contactCompression * progress * (0.52 + proximity * 0.48);
-  const curl = (hash(point.x, point.y, echoIndex + 23) - 0.5)
-    * Math.sin(gather * Math.PI)
-    * (1 - density)
-    * 3.6;
-  const designX = position.designX
-    + deltaX * pull
-    + tangentX * curl;
-  const designY = position.designY
-    + deltaY * pull
-    + tangentY * curl;
+  const proximity = smoothstep(1 - distance / (DESIGN_WIDTH * 0.52));
+  const holdAge = phase === 'gathering'
+    ? Math.max(0, lastNow - triggeredAt - contactReleaseTime())
+    : 0;
+  const tensionPulse = holdAge > 0
+    ? 1 + Math.sin(holdAge * 4.4 + echoIndex * 0.72) * 0.025
+    : 1;
+  const localTension = 0.22 + proximity * proximity * 1.78;
+  const pull = settings.contactCompression * progress * localTension * tensionPulse;
+  const designX = position.designX + deltaX * pull;
+  const designY = position.designY + deltaY * pull;
 
   return {
     x: view.offsetX + designX * view.fit,
@@ -541,7 +531,7 @@ function drawParticle(
     ? linePointPosition(point, echoIndex, originTime)
     : solidPointPosition(point, echoIndex, originTime);
   const origin = isNameDropWave()
-    ? gatheredPosition(baseOrigin, point, echoIndex, spawnTime)
+    ? gatheredPosition(baseOrigin, echoIndex, spawnTime)
     : baseOrigin;
   const channelSeed = hash(point.x, point.y, channelIndex + echoIndex * 3);
   const channelOffset = settings.rgbOffset * view.fit;
@@ -664,8 +654,8 @@ function drawDissolvingLinePath(
       continue;
     }
 
-    const position = gatheredPosition(basePosition, point, echoIndex, elapsed);
-    const channelOffset = settings.rgbOffset * contactChannelScale(elapsed) * view.fit;
+    const position = gatheredPosition(basePosition, echoIndex, elapsed);
+    const channelOffset = settings.rgbOffset * view.fit;
     const x = position.x + channelX[channelIndex] * channelOffset;
     const y = position.y + channelY[channelIndex] * channelOffset;
     if (drawing) artworkCtx.lineTo(x, y);
@@ -722,8 +712,8 @@ function drawStableSolidPoint(
   elapsed: number,
 ): void {
   const basePosition = solidPointPosition(point, echoIndex, now);
-  const position = gatheredPosition(basePosition, point, echoIndex, elapsed);
-  const offset = settings.rgbOffset * contactChannelScale(elapsed) * view.fit;
+  const position = gatheredPosition(basePosition, echoIndex, elapsed);
+  const offset = settings.rgbOffset * view.fit;
   const x = position.x + channelX[channelIndex] * offset;
   const y = position.y + channelY[channelIndex] * offset;
   artworkCtx.fillRect(x, y, size, size);
@@ -771,101 +761,6 @@ function renderFigures(now: number): void {
   artworkCtx.globalCompositeOperation = 'source-over';
 }
 
-function gatherMotePosition(
-  source: PositionedPoint,
-  centerX: number,
-  centerY: number,
-  progress: number,
-  density: number,
-  seed: number,
-  seed2: number,
-  now: number,
-): DesignPoint {
-  const deltaX = centerX - source.x;
-  const deltaY = centerY - source.y;
-  const distance = Math.max(0.001, Math.hypot(deltaX, deltaY));
-  const tangentX = -deltaY / distance;
-  const tangentY = deltaX / distance;
-  const direction = seed2 > 0.5 ? 1 : -1;
-  const targetAngle = seed * Math.PI * 2 + now * (0.32 + seed2 * 0.34) * direction;
-  const targetRadius = (2.1 + seed2 * 6.4) * (1 - density * 0.68) * view.fit;
-  const targetX = centerX + Math.cos(targetAngle) * targetRadius;
-  const targetY = centerY + Math.sin(targetAngle) * targetRadius;
-  const curve = Math.sin(progress * Math.PI)
-    * (5 + seed * 13)
-    * direction
-    * view.fit;
-
-  return {
-    x: source.x + (targetX - source.x) * progress + tangentX * curve,
-    y: source.y + (targetY - source.y) * progress + tangentY * curve,
-  };
-}
-
-function renderGatherMotes(
-  now: number,
-  elapsed: number,
-  centerX: number,
-  centerY: number,
-): void {
-  if (elapsed >= contactReleaseTime()) return;
-
-  const gather = clamp(elapsed / Math.max(0.001, settings.contactGatherDuration), 0, 1);
-  const density = contactDensityProgress(elapsed);
-
-  const echoCount = clamp(Math.round(settings.echoes), 1, echoLineGeometry.length);
-
-  for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
-    const geometry = echoLineGeometry[echoIndex];
-
-    for (let pointIndex = 0; pointIndex < geometry.samples.length; pointIndex += 4) {
-      const point = geometry.samples[pointIndex];
-      const seed = hash(point.x, point.y, echoIndex + 47);
-      const start = seed * 0.34;
-      const localProgress = smoothstep((gather - start) / Math.max(0.001, 1 - start));
-      if (localProgress <= 0) continue;
-
-      const source = linePointPosition(point, echoIndex, now);
-      const channelIndex = Math.min(2, Math.floor(seed * 3));
-      const current = gatherMotePosition(
-        source,
-        centerX,
-        centerY,
-        localProgress,
-        density,
-        seed,
-        point.seed2,
-        now,
-      );
-      const trailProgress = Math.max(0, localProgress - 0.055 - seed * 0.04);
-      const trail = gatherMotePosition(
-        source,
-        centerX,
-        centerY,
-        trailProgress,
-        density,
-        seed,
-        point.seed2,
-        now,
-      );
-      const alpha = Math.min(1, localProgress * 3.6)
-        * (0.14 + gather * 0.22 + density * 0.28);
-      const size = (0.48 + point.seed2 * 0.72 + density * 0.2) * view.fit;
-
-      artworkCtx.strokeStyle = channelColors[channelIndex];
-      artworkCtx.globalAlpha = alpha * 0.18;
-      artworkCtx.lineWidth = Math.max(0.4, size * 0.38);
-      artworkCtx.beginPath();
-      artworkCtx.moveTo(trail.x, trail.y);
-      artworkCtx.lineTo(current.x, current.y);
-      artworkCtx.stroke();
-      artworkCtx.fillStyle = channelColors[channelIndex];
-      artworkCtx.globalAlpha = alpha;
-      artworkCtx.fillRect(current.x, current.y, Math.max(0.6, size), Math.max(0.6, size));
-    }
-  }
-}
-
 function renderCoreReleaseMotes(
   releaseAge: number,
   centerX: number,
@@ -911,53 +806,24 @@ function renderCoreReleaseMotes(
 }
 
 function renderContactEffect(now: number): void {
-  if ((phase !== 'gathering' && phase !== 'dissolving') || !isNameDropWave()) return;
+  if (phase !== 'dissolving' || !isNameDropWave()) return;
 
   const elapsed = motionElapsed(now);
   const centerX = view.offsetX + contactOrigin.x * view.fit;
   const centerY = view.offsetY + contactOrigin.y * view.fit;
-  const gatherProgress = contactGatherProgress(elapsed);
-  const densityProgress = contactDensityProgress(elapsed);
   const releaseAge = elapsed - contactReleaseTime();
-  const gathering = releaseAge < 0;
   const releaseProgress = easeOutCubic(releaseAge / 0.52);
   const releaseLife = Math.pow(clamp(1 - Math.max(0, releaseAge) / 0.68, 0, 1), 1.35);
-  const holdAge = phase === 'gathering'
-    ? Math.max(0, now - triggeredAt - contactReleaseTime())
-    : 0;
-  const holdPulse = holdAge > 0 ? Math.sin(holdAge * 4.2) * 0.5 + 0.5 : 0;
-  const radius = gathering
-    ? (10 + gatherProgress * 3 - densityProgress * 3 + holdPulse * 0.75) * view.fit
-    : (8.5 + releaseProgress * 78) * view.fit;
-  const alpha = gathering
-    ? 0.12 + gatherProgress * 0.25 + densityProgress * 0.55 + holdPulse * 0.04
-    : releaseLife * 0.48;
+  const radius = (8.5 + releaseProgress * 78) * view.fit;
+  const alpha = releaseLife * 0.48;
 
   artworkCtx.save();
   artworkCtx.globalCompositeOperation = 'lighter';
-  renderGatherMotes(now, elapsed, centerX, centerY);
   renderCoreReleaseMotes(releaseAge, centerX, centerY);
 
   for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
-    const offset = gathering
-      ? settings.rgbOffset
-        * contactChannelScale(elapsed)
-        * (1 - densityProgress)
-        * 0.58
-        * view.fit
-      : 0;
-    const orbitAngle = channelIndex * Math.PI * 2 / 3 + now * 1.65;
-    const orbit = gathering
-      ? (1 - densityProgress)
-        * (2.5 + gatherProgress * 5 + channelIndex * 0.65)
-        * view.fit
-      : 0;
-    const channelCenterX = centerX
-      + channelX[channelIndex] * offset
-      + Math.cos(orbitAngle) * orbit;
-    const channelCenterY = centerY
-      + channelY[channelIndex] * offset
-      + Math.sin(orbitAngle) * orbit;
+    const channelCenterX = centerX;
+    const channelCenterY = centerY;
     const gradient = artworkCtx.createRadialGradient(
       channelCenterX,
       channelCenterY,
@@ -1029,9 +895,12 @@ function render(timestamp: number): void {
     const totalDuration = isNameDropWave() ? contactDuration : originalDuration;
     const phaseStartedAt = isNameDropWave() ? releasedAt : triggeredAt;
     if (now - phaseStartedAt > totalDuration) {
-      phase = 'blank';
-      hint.textContent = isNameDropWave() ? 'HOLD TO REPLAY' : 'TAP TO REPLAY';
-      hint.classList.remove('hidden');
+      if (isNameDropWave()) reset();
+      else {
+        phase = 'blank';
+        hint.textContent = 'TAP TO REPLAY';
+        hint.classList.remove('hidden');
+      }
     }
   }
 
@@ -1134,7 +1003,7 @@ dissolveFolder.add(settings, 'particleSize', 0.5, 3, 0.05).name('Size');
 
 const contactFolder = gui.addFolder('NameDrop Wave');
 contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gather time');
-contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Density time');
+contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Tension time');
 contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pull');
 contactFolder.add(settings, 'contactWaveDuration', 0.05, 0.9, 0.01).name('Wave travel');
 contactFolder.add(settings, 'contactForce', 10, 160, 1).name('Release force');
