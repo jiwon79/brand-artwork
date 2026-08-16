@@ -1,8 +1,8 @@
 import GUI from 'lil-gui';
 
 type FigureMode = 'Lines' | 'Solid';
-type InteractionMode = 'Original' | 'NameDrop Wave';
-type Phase = 'idle' | 'gathering' | 'dissolving' | 'blank';
+type InteractionMode = 'Original' | 'NameDrop Wave' | 'Drag Dissolve';
+type Phase = 'idle' | 'gathering' | 'dragging' | 'dissolving' | 'blank';
 
 type FigurePoint = {
   x: number;
@@ -41,6 +41,14 @@ type PositionedPoint = {
   y: number;
   designX: number;
   designY: number;
+};
+
+type DragParticleState = {
+  spawnedAt: number;
+  originX: number;
+  originY: number;
+  velocityX: number;
+  velocityY: number;
 };
 
 type DebugApi = {
@@ -97,6 +105,12 @@ const settings = {
   contactSpread: 8,
   contactReleaseSpread: 0.08,
   contactReleaseSpeed: 1.5,
+  dragRadius: 18,
+  dragParticleSize: 0.55,
+  dragForce: 48,
+  dragSpread: 18,
+  dragParticleLife: 1.35,
+  dragRestoreDelay: 0.8,
   glow: 0.26,
   scanlines: 0.08,
 };
@@ -131,6 +145,10 @@ let phase: Phase = 'idle';
 let triggeredAt = 0;
 let releasedAt = 0;
 let contactOrigin: DesignPoint = { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
+let dragPointStates: Array<Array<DragParticleState | null>> = [];
+let dragHitCounts: number[] = [];
+let dragPreviousPoint: DesignPoint | null = null;
+let dragEndedAt = 0;
 let activePointerId: number | null = null;
 let animationFrame = 0;
 let lastNow = 0;
@@ -151,6 +169,10 @@ function smoothstep(value: number): number {
 
 function isNameDropWave(): boolean {
   return settings.interaction === 'NameDrop Wave';
+}
+
+function isDragDissolve(): boolean {
+  return settings.interaction === 'Drag Dissolve';
 }
 
 function contactReleaseTime(): number {
@@ -427,6 +449,88 @@ function linePointPosition(point: FigurePoint, echoIndex: number, time: number):
   };
 }
 
+function clearDragState(): void {
+  dragPointStates = echoLineGeometry.map((geometry) => (
+    Array.from<DragParticleState | null>({ length: geometry.points.length }).fill(null)
+  ));
+  dragHitCounts = echoLineGeometry.map(() => 0);
+  dragPreviousPoint = null;
+  dragEndedAt = 0;
+}
+
+function ensureDragState(): void {
+  const stateMatchesGeometry = dragPointStates.length === echoLineGeometry.length
+    && dragPointStates.every((states, echoIndex) => (
+      states.length === echoLineGeometry[echoIndex].points.length
+    ));
+  if (!stateMatchesGeometry) clearDragState();
+}
+
+function distanceSquaredToSegment(
+  pointX: number,
+  pointY: number,
+  start: DesignPoint,
+  end: DesignPoint,
+): number {
+  const segmentX = end.x - start.x;
+  const segmentY = end.y - start.y;
+  const lengthSquared = segmentX * segmentX + segmentY * segmentY;
+  if (lengthSquared <= 0.0001) {
+    const deltaX = pointX - start.x;
+    const deltaY = pointY - start.y;
+    return deltaX * deltaX + deltaY * deltaY;
+  }
+
+  const projection = clamp(
+    ((pointX - start.x) * segmentX + (pointY - start.y) * segmentY) / lengthSquared,
+    0,
+    1,
+  );
+  const nearestX = start.x + segmentX * projection;
+  const nearestY = start.y + segmentY * projection;
+  const deltaX = pointX - nearestX;
+  const deltaY = pointY - nearestY;
+  return deltaX * deltaX + deltaY * deltaY;
+}
+
+function applyDragStroke(start: DesignPoint, end: DesignPoint, now: number): void {
+  ensureDragState();
+  const segmentX = end.x - start.x;
+  const segmentY = end.y - start.y;
+  const segmentLength = Math.hypot(segmentX, segmentY);
+  const directionX = segmentLength > 0.001 ? segmentX / segmentLength : 1;
+  const directionY = segmentLength > 0.001 ? segmentY / segmentLength : 0;
+  const normalX = -directionY;
+  const normalY = directionX;
+  const radiusSquared = settings.dragRadius * settings.dragRadius;
+  const echoCount = clamp(Math.round(settings.echoes), 1, echoLineGeometry.length);
+
+  for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
+    const geometry = echoLineGeometry[echoIndex];
+    const states = dragPointStates[echoIndex];
+
+    for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
+      if (states[pointIndex]) continue;
+      const point = geometry.points[pointIndex];
+      const position = linePointPosition(point, echoIndex, now);
+      if (distanceSquaredToSegment(position.designX, position.designY, start, end) > radiusSquared) {
+        continue;
+      }
+
+      const forwardSpeed = settings.dragForce * (0.62 + point.seed * 0.76);
+      const sideSpeed = (point.seed2 - 0.5) * settings.dragSpread;
+      states[pointIndex] = {
+        spawnedAt: now,
+        originX: position.designX,
+        originY: position.designY,
+        velocityX: directionX * forwardSpeed + normalX * sideSpeed,
+        velocityY: directionY * forwardSpeed + normalY * sideSpeed,
+      };
+      dragHitCounts[echoIndex] += 1;
+    }
+  }
+}
+
 function solidPointPosition(point: FigurePoint, echoIndex: number, time: number): PositionedPoint {
   const echoPhase = time * 1.45 - echoIndex * 0.19;
   const motion = settings.idleMotion;
@@ -612,6 +716,79 @@ function drawParticle(
   );
 }
 
+function drawDragParticle(
+  point: FigurePoint,
+  state: DragParticleState,
+  channelIndex: number,
+  now: number,
+  baseSize: number,
+): void {
+  const age = Math.max(0, now - state.spawnedAt);
+  const life = settings.dragParticleLife * (0.72 + point.seed * 0.48);
+  const alpha = Math.pow(clamp(1 - age / life, 0, 1), 1.45)
+    * (0.5 + point.seed * 0.5);
+  if (alpha <= 0.01) return;
+
+  const channelSeed = hash(point.x, point.y, channelIndex + 19);
+  const offset = settings.rgbOffset * view.fit;
+  const curl = Math.sin(age * (5.2 + point.seed * 4.4) + point.seed2 * 17)
+    * settings.turbulence
+    * age;
+  const velocityLength = Math.max(0.001, Math.hypot(state.velocityX, state.velocityY));
+  const normalX = -state.velocityY / velocityLength;
+  const normalY = state.velocityX / velocityLength;
+  const travelX = state.originX + state.velocityX * age + normalX * curl;
+  const travelY = state.originY + state.velocityY * age + normalY * curl;
+  const x = view.offsetX + travelX * view.fit + channelX[channelIndex] * offset;
+  const y = view.offsetY + travelY * view.fit + channelY[channelIndex] * offset;
+  const size = baseSize
+    * (0.68 + channelSeed * 0.72)
+    * settings.particleSize
+    * settings.dragParticleSize;
+
+  if (x < -8 || x > view.width + 8 || y < -8 || y > view.height + 8) return;
+
+  artworkCtx.globalAlpha = alpha;
+  artworkCtx.fillRect(
+    x,
+    y,
+    Math.max(0.3, size),
+    Math.max(0.3, size * (0.75 + point.seed2 * 0.45)),
+  );
+}
+
+function drawDragDissolvingLinePath(
+  echoIndex: number,
+  channelIndex: number,
+  now: number,
+): void {
+  const geometry = echoLineGeometry[echoIndex];
+  const states = dragPointStates[echoIndex];
+  if (!geometry || !states) return;
+
+  artworkCtx.beginPath();
+  let drawing = false;
+
+  for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
+    const point = geometry.points[pointIndex];
+    if (point.startsPath || states[pointIndex]) drawing = false;
+    if (states[pointIndex]) continue;
+
+    const position = linePointPosition(point, echoIndex, now);
+    const offset = settings.rgbOffset * view.fit;
+    const x = position.x + channelX[channelIndex] * offset;
+    const y = position.y + channelY[channelIndex] * offset;
+    if (drawing) artworkCtx.lineTo(x, y);
+    else artworkCtx.moveTo(x, y);
+    drawing = true;
+  }
+
+  artworkCtx.lineCap = 'round';
+  artworkCtx.lineJoin = 'round';
+  artworkCtx.lineWidth = geometry.strokeWidth * SVG_TO_DESIGN * settings.lineThickness * view.fit;
+  artworkCtx.stroke();
+}
+
 function drawExactLinePath(echoIndex: number, channelIndex: number, now: number): void {
   const geometry = echoLineGeometry[echoIndex];
   if (!geometry) return;
@@ -688,6 +865,26 @@ function renderLineFigures(now: number, elapsed: number): void {
     artworkCtx.globalAlpha = 0.84;
 
     for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
+      artworkCtx.globalAlpha = 0.84;
+      if (isDragDissolve() && phase === 'dragging') {
+        ensureDragState();
+        if (dragHitCounts[echoIndex] > 0) {
+          drawDragDissolvingLinePath(echoIndex, channelIndex, now);
+        } else {
+          drawExactLinePath(echoIndex, channelIndex, now);
+        }
+
+        const geometry = echoLineGeometry[echoIndex];
+        const states = dragPointStates[echoIndex];
+        const baseSize = geometry.strokeWidth * SVG_TO_DESIGN * 0.68 * view.fit;
+        for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
+          const state = states[pointIndex];
+          if (!state) continue;
+          drawDragParticle(geometry.points[pointIndex], state, channelIndex, now, baseSize);
+        }
+        continue;
+      }
+
       if (phase === 'idle') {
         drawExactLinePath(echoIndex, channelIndex, now);
         continue;
@@ -772,7 +969,7 @@ function renderFigures(now: number): void {
   const elapsed = motionElapsed(now);
   artworkCtx.globalCompositeOperation = 'lighter';
 
-  if (settings.figure === 'Lines') renderLineFigures(now, elapsed);
+  if (settings.figure === 'Lines' || isDragDissolve()) renderLineFigures(now, elapsed);
   else renderSolidFigures(now, elapsed);
 
   artworkCtx.globalAlpha = 1;
@@ -858,6 +1055,16 @@ function render(timestamp: number): void {
   ctx.globalCompositeOperation = 'source-over';
   renderScanlines();
 
+  if (
+    phase === 'dragging'
+    && isDragDissolve()
+    && activePointerId === null
+    && dragEndedAt > 0
+    && now - dragEndedAt > settings.dragRestoreDelay + settings.dragParticleLife * 1.2
+  ) {
+    reset();
+  }
+
   if (phase === 'dissolving') {
     const contactDuration = settings.contactWaveDuration
       + settings.contactReleaseSpread
@@ -909,12 +1116,49 @@ function releaseGather(): void {
   hint.classList.add('hidden');
 }
 
+function beginDragDissolve(point: DesignPoint): boolean {
+  if (phase === 'gathering' || phase === 'dissolving') return false;
+  if (phase === 'blank') reset();
+  if (phase !== 'dragging') {
+    clearDragState();
+    phase = 'dragging';
+  }
+
+  const now = lastNow || performance.now() * 0.001;
+  dragEndedAt = 0;
+  dragPreviousPoint = point;
+  applyDragStroke(point, point, now);
+  hint.classList.add('hidden');
+  canvas.focus({ preventScroll: true });
+  return true;
+}
+
+function moveDragDissolve(point: DesignPoint): void {
+  if (phase !== 'dragging') return;
+  const now = lastNow || performance.now() * 0.001;
+  const previousPoint = dragPreviousPoint ?? point;
+  applyDragStroke(previousPoint, point, now);
+  dragPreviousPoint = point;
+}
+
+function endDragDissolve(point?: DesignPoint): void {
+  if (phase !== 'dragging') return;
+  if (point) moveDragDissolve(point);
+  dragPreviousPoint = null;
+  dragEndedAt = lastNow || performance.now() * 0.001;
+}
+
 function reset(): void {
   phase = 'idle';
   triggeredAt = 0;
   releasedAt = 0;
   activePointerId = null;
-  hint.textContent = isNameDropWave() ? 'HOLD TO CONNECT' : 'TAP TO DISSOLVE';
+  clearDragState();
+  hint.textContent = isNameDropWave()
+    ? 'HOLD TO CONNECT'
+    : isDragDissolve()
+      ? 'DRAG TO DISSOLVE'
+      : 'TAP TO DISSOLVE';
   hint.classList.remove('hidden');
 }
 
@@ -922,6 +1166,10 @@ function replay(point?: DesignPoint): void {
   if (isNameDropWave()) {
     beginGather(point);
     releaseGather();
+    return;
+  }
+  if (isDragDissolve()) {
+    reset();
     return;
   }
   dissolve();
@@ -939,23 +1187,28 @@ function designPointFromClient(clientX: number, clientY: number): DesignPoint {
 }
 
 function setMode(mode: FigureMode): void {
-  settings.figure = mode;
+  settings.figure = isDragDissolve() ? 'Lines' : mode;
   reset();
   figureController.updateDisplay();
 }
 
 function setInteraction(mode: InteractionMode): void {
   settings.interaction = mode;
+  if (isDragDissolve()) settings.figure = 'Lines';
   reset();
   interactionController.updateDisplay();
+  figureController.updateDisplay();
 }
 
 const gui = new GUI({ title: 'Afterbody' });
 const interactionController = gui
-  .add(settings, 'interaction', ['Original', 'NameDrop Wave'])
+  .add(settings, 'interaction', ['Original', 'NameDrop Wave', 'Drag Dissolve'])
   .name('Interaction')
-  .onChange(() => reset());
-const figureController = gui.add(settings, 'figure', ['Lines', 'Solid']).name('Figure').onChange(() => reset());
+  .onChange((mode: InteractionMode) => setInteraction(mode));
+const figureController = gui
+  .add(settings, 'figure', ['Lines', 'Solid'])
+  .name('Figure')
+  .onChange((mode: FigureMode) => setMode(mode));
 gui.add(settings, 'echoes', 1, 6, 1).name('Echoes');
 gui.add(settings, 'rgbOffset', 0, 6, 0.05).name('RGB offset');
 gui.add(settings, 'idleMotion', 0, 2.5, 0.05).name('Idle motion');
@@ -985,6 +1238,14 @@ contactFolder.add(settings, 'contactSpread', 0, 50, 1).name('Release curl');
 contactFolder.add(settings, 'contactReleaseSpread', 0, 0.7, 0.005).name('Release noise');
 contactFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Release speed');
 
+const dragFolder = gui.addFolder('Drag Dissolve');
+dragFolder.add(settings, 'dragRadius', 4, 60, 1).name('Brush radius');
+dragFolder.add(settings, 'dragParticleSize', 0.2, 1.5, 0.05).name('Particle size');
+dragFolder.add(settings, 'dragForce', 5, 120, 1).name('Drag force');
+dragFolder.add(settings, 'dragSpread', 0, 60, 1).name('Particle spread');
+dragFolder.add(settings, 'dragParticleLife', 0.2, 4, 0.05).name('Particle lifetime');
+dragFolder.add(settings, 'dragRestoreDelay', 0, 4, 0.05).name('Restore delay');
+
 const finishFolder = gui.addFolder('Display');
 finishFolder.add(settings, 'glow', 0, 0.8, 0.01).name('Glow');
 finishFolder.add(settings, 'scanlines', 0, 0.3, 0.01).name('Scanlines');
@@ -997,6 +1258,14 @@ if (!guiVisible) gui.hide();
 
 canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
+  if (isDragDissolve()) {
+    if (activePointerId !== null) return;
+    const point = designPointFromClient(event.clientX, event.clientY);
+    if (!beginDragDissolve(point)) return;
+    activePointerId = event.pointerId;
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
   if (isNameDropWave()) {
     if (activePointerId !== null || phase === 'gathering' || phase === 'dissolving') return;
     beginGather(designPointFromClient(event.clientX, event.clientY));
@@ -1008,6 +1277,11 @@ canvas.addEventListener('pointerdown', (event) => {
 });
 
 canvas.addEventListener('pointermove', (event) => {
+  if (isDragDissolve() && phase === 'dragging' && event.pointerId === activePointerId) {
+    event.preventDefault();
+    moveDragDissolve(designPointFromClient(event.clientX, event.clientY));
+    return;
+  }
   if (!isNameDropWave() || phase !== 'gathering' || event.pointerId !== activePointerId) return;
   event.preventDefault();
   contactOrigin = designPointFromClient(event.clientX, event.clientY);
@@ -1017,6 +1291,13 @@ function finishPointerInteraction(event: PointerEvent): void {
   event.preventDefault();
   if (event.pointerId !== activePointerId) return;
   activePointerId = null;
+  if (isDragDissolve()) {
+    const finalPoint = event.type === 'pointerup'
+      ? designPointFromClient(event.clientX, event.clientY)
+      : undefined;
+    endDragDissolve(finalPoint);
+    return;
+  }
   releaseGather();
 }
 
@@ -1025,6 +1306,10 @@ window.addEventListener('pointercancel', finishPointerInteraction);
 canvas.addEventListener('lostpointercapture', (event) => {
   if (event.pointerId !== activePointerId) return;
   activePointerId = null;
+  if (isDragDissolve()) {
+    endDragDissolve();
+    return;
+  }
   releaseGather();
 });
 
@@ -1041,7 +1326,7 @@ window.addEventListener('keydown', (event) => {
     if (isNameDropWave()) {
       keyboardGathering = true;
       beginGather();
-    } else replay();
+    } else if (!isDragDissolve()) replay();
   } else if (event.key.toLowerCase() === 'm') {
     setMode(settings.figure === 'Lines' ? 'Solid' : 'Lines');
   } else if (event.key.toLowerCase() === 'r') {
