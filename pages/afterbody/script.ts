@@ -90,10 +90,10 @@ const settings = {
   contactGatherDuration: 0.92,
   contactDensityDuration: 0.52,
   contactCompression: 0.18,
-  contactWaveDuration: 0.36,
+  contactWaveDuration: 0.9,
   contactForce: 100,
   contactSpread: 8,
-  contactReleaseSpread: 0.24,
+  contactReleaseSpread: 0.08,
   contactReleaseSpeed: 1.5,
   glow: 0.26,
   scanlines: 0.08,
@@ -145,11 +145,6 @@ function hash(a: number, b: number, c = 0): number {
 function smoothstep(value: number): number {
   const progress = clamp(value, 0, 1);
   return progress * progress * (3 - 2 * progress);
-}
-
-function easeOutCubic(value: number): number {
-  const progress = clamp(value, 0, 1);
-  return 1 - (1 - progress) ** 3;
 }
 
 function isNameDropWave(): boolean {
@@ -771,37 +766,35 @@ function renderContactEffect(now: number): void {
   const centerX = view.offsetX + contactOrigin.x * view.fit;
   const centerY = view.offsetY + contactOrigin.y * view.fit;
   const releaseAge = elapsed - contactReleaseTime();
-  const effectAge = releaseAge * settings.contactReleaseSpeed;
-  const releaseProgress = easeOutCubic(effectAge / 0.52);
-  const releaseLife = Math.pow(clamp(1 - Math.max(0, effectAge) / 0.68, 0, 1), 1.35);
-  const radius = (8.5 + releaseProgress * 78) * view.fit;
-  const alpha = releaseLife * 0.48;
+  const waveDuration = Math.max(0.001, settings.contactWaveDuration);
+  const waveProgress = clamp(releaseAge / waveDuration, 0, 1);
+  const fadeProgress = smoothstep(
+    (releaseAge - waveDuration * 0.82) / (waveDuration * 0.32),
+  );
+  const waveRadius = Math.max(1, waveProgress * DESIGN_WIDTH * 0.72 * view.fit);
+  const alpha = smoothstep(releaseAge / 0.1) * (1 - fadeProgress) * 0.12;
 
   artworkCtx.save();
   artworkCtx.globalCompositeOperation = 'lighter';
-
-  for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
-    const channelCenterX = centerX;
-    const channelCenterY = centerY;
-    const gradient = artworkCtx.createRadialGradient(
-      channelCenterX,
-      channelCenterY,
-      0,
-      channelCenterX,
-      channelCenterY,
-      Math.max(1, radius),
-    );
-    gradient.addColorStop(0, channelColors[channelIndex]);
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    artworkCtx.globalAlpha = alpha;
-    artworkCtx.fillStyle = gradient;
-    artworkCtx.fillRect(
-      channelCenterX - radius,
-      channelCenterY - radius,
-      radius * 2,
-      radius * 2,
-    );
-  }
+  const gradient = artworkCtx.createRadialGradient(
+    centerX,
+    centerY,
+    0,
+    centerX,
+    centerY,
+    waveRadius,
+  );
+  gradient.addColorStop(0, '#d9ffe1');
+  gradient.addColorStop(0.68, '#d9ffe1');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  artworkCtx.globalAlpha = alpha;
+  artworkCtx.fillStyle = gradient;
+  artworkCtx.fillRect(
+    centerX - waveRadius,
+    centerY - waveRadius,
+    waveRadius * 2,
+    waveRadius * 2,
+  );
 
   artworkCtx.restore();
 }
@@ -964,7 +957,7 @@ const contactFolder = gui.addFolder('NameDrop Wave');
 contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gather time');
 contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Tension time');
 contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pull');
-contactFolder.add(settings, 'contactWaveDuration', 0.05, 0.9, 0.01).name('Wave travel');
+contactFolder.add(settings, 'contactWaveDuration', 0.2, 2.4, 0.01).name('Wave travel');
 contactFolder.add(settings, 'contactForce', 10, 160, 1).name('Release force');
 contactFolder.add(settings, 'contactSpread', 0, 50, 1).name('Release curl');
 contactFolder.add(settings, 'contactReleaseSpread', 0, 0.7, 0.005).name('Release noise');
