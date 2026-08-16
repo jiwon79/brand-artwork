@@ -983,7 +983,7 @@ contactFolder.add(settings, 'contactParticleSize', 0.25, 1.5, 0.05).name('Partic
 contactFolder.add(settings, 'contactForce', 10, 160, 1).name('Release force');
 contactFolder.add(settings, 'contactSpread', 0, 50, 1).name('Release curl');
 contactFolder.add(settings, 'contactReleaseSpread', 0, 0.7, 0.005).name('Release noise');
-contactFolder.add(settings, 'contactReleaseSpeed', 0.5, 3, 0.05).name('Release speed');
+contactFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Release speed');
 
 const finishFolder = gui.addFolder('Display');
 finishFolder.add(settings, 'glow', 0, 0.8, 0.01).name('Glow');
