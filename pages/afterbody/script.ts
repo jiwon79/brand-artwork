@@ -98,14 +98,17 @@ const settings = {
   contactGatherDuration: 0.92,
   contactDensityDuration: 0.52,
   contactCompression: 0.18,
+  contactBloomDuration: 0.22,
   contactWaveDuration: 1.24,
-  contactWaveBandWidth: 22,
+  contactWaveBandWidth: 52,
+  contactLineFadeDuration: 0.3,
+  contactDiffusionDuration: 1.65,
   contactParticleDensity: 3,
   contactParticleSize: 0.55,
-  contactForce: 100,
-  contactSpread: 8,
-  contactReleaseSpread: 0.08,
-  contactReleaseSpeed: 1.5,
+  contactForce: 24,
+  contactSpread: 6,
+  contactReleaseSpread: 0.14,
+  contactReleaseSpeed: 1,
   dragRadius: 18,
   dragConnectorRadius: 4,
   dragConnectorWidth: 0.8,
@@ -148,6 +151,7 @@ let phase: Phase = 'idle';
 let triggeredAt = 0;
 let releasedAt = 0;
 let contactOrigin: DesignPoint = { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
+let contactExtentCache = { x: Number.NaN, y: Number.NaN, value: 1 };
 let dragPointStates: Array<Array<DragParticleState | null>> = [];
 let dragHitCounts: number[] = [];
 const dragPointers = new Map<number, DesignPoint>();
@@ -180,6 +184,28 @@ function isDragDissolve(): boolean {
 
 function contactReleaseTime(): number {
   return settings.contactGatherDuration + settings.contactDensityDuration;
+}
+
+function contactWaveExtent(): number {
+  if (contactExtentCache.x === contactOrigin.x && contactExtentCache.y === contactOrigin.y) {
+    return contactExtentCache.value;
+  }
+  const value = Math.max(
+    Math.hypot(contactOrigin.x, contactOrigin.y),
+    Math.hypot(DESIGN_WIDTH - contactOrigin.x, contactOrigin.y),
+    Math.hypot(contactOrigin.x, DESIGN_HEIGHT - contactOrigin.y),
+    Math.hypot(DESIGN_WIDTH - contactOrigin.x, DESIGN_HEIGHT - contactOrigin.y),
+  );
+  contactExtentCache = { x: contactOrigin.x, y: contactOrigin.y, value };
+  return value;
+}
+
+function contactWaveEase(progress: number): number {
+  return 1 - Math.pow(1 - clamp(progress, 0, 1), 1.25);
+}
+
+function contactWaveEaseInverse(progress: number): number {
+  return 1 - Math.pow(1 - clamp(progress, 0, 1), 1 / 1.25);
 }
 
 function motionElapsed(now: number): number {
@@ -615,8 +641,9 @@ function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echo
   if (isNameDropWave()) {
     const distance = Math.hypot(designX - contactOrigin.x, designY - contactOrigin.y);
     const shuffledRelease = hash(point.x, point.y, echoIndex + 31) * settings.contactReleaseSpread;
-    const waveDelay = clamp(distance / (DESIGN_WIDTH * 0.72), 0, 1) * settings.contactWaveDuration;
-    return contactReleaseTime() + waveDelay + shuffledRelease;
+    const distanceProgress = clamp(distance / Math.max(1, contactWaveExtent()), 0, 1);
+    const waveDelay = contactWaveEaseInverse(distanceProgress) * settings.contactWaveDuration;
+    return contactReleaseTime() + settings.contactBloomDuration + waveDelay + shuffledRelease;
   }
 
   const xProgress = clamp(designX / DESIGN_WIDTH, 0, 1);
@@ -667,24 +694,32 @@ function drawParticle(
 
     const tangentX = -directionY;
     const tangentY = directionX;
-    const radialSpeed = settings.contactForce * (0.64 + channelSeed * 0.72) * view.fit;
-    const tangentSpeed = (point.seed2 - 0.5) * settings.contactSpread * view.fit;
-    const initialBloom = (1 - Math.exp(-particleAge * 13)) * radialSpeed * 0.13;
-    const outwardTravel = radialSpeed * particleAge * 0.48;
-    const acceleration = particleAge * particleAge * (3.2 + point.seed * 3.4) * view.fit;
-    const turbulence = Math.sin(particleAge * (4.1 + point.seed * 4.6) + point.seed2 * 19)
-      * settings.turbulence
-      * particleAge
+    const diffusionLife = Math.max(0.05, settings.contactDiffusionDuration);
+    const diffusion = smoothstep(particleAge / diffusionLife);
+    const release = smoothstep((particleAge - 0.08) / (diffusionLife * 0.82));
+    const compressionPulse = Math.sin(
+      Math.PI * clamp(particleAge / Math.max(0.08, settings.contactBloomDuration), 0, 1),
+    );
+    const maximumTravel = settings.contactForce * (0.68 + channelSeed * 0.46) * view.fit;
+    const sidewaysTravel = (point.seed2 - 0.5)
+      * settings.contactSpread
+      * Math.sin(diffusion * Math.PI)
       * view.fit;
+    const turbulence = Math.sin(diffusion * (5.2 + point.seed * 2.8) + point.seed2 * 19)
+      * settings.turbulence
+      * Math.sin(diffusion * Math.PI)
+      * view.fit;
+    const inwardTravel = compressionPulse * Math.min(4.5, settings.contactForce * 0.18) * view.fit;
+    const outwardTravel = maximumTravel * release;
 
     x = origin.x
       + channelX[channelIndex] * channelOffset
-      + directionX * (initialBloom + outwardTravel + acceleration)
-      + tangentX * (tangentSpeed * particleAge + turbulence * 0.18);
+      + directionX * (outwardTravel - inwardTravel)
+      + tangentX * (sidewaysTravel + turbulence * 0.22);
     y = origin.y
       + channelY[channelIndex] * channelOffset
-      + directionY * (initialBloom + outwardTravel + acceleration)
-      + tangentY * (tangentSpeed * particleAge + turbulence * 0.18);
+      + directionY * (outwardTravel - inwardTravel)
+      + tangentY * (sidewaysTravel + turbulence * 0.22);
   } else {
     const speed = settings.drift * (0.58 + channelSeed * 0.82) * view.fit;
     const verticalSpeed = (point.seed2 - 0.5) * settings.spread * view.fit;
@@ -703,9 +738,13 @@ function drawParticle(
       + noise;
   }
 
-  const life = settings.particleLife * (0.72 + point.seed * 0.48);
-  const alpha = Math.pow(clamp(1 - particleAge / life, 0, 1), 1.3)
-    * (0.48 + point.seed * 0.52);
+  const life = isNameDropWave()
+    ? settings.contactDiffusionDuration * (0.82 + point.seed * 0.32)
+    : settings.particleLife * (0.72 + point.seed * 0.48);
+  const fadeIn = isNameDropWave() ? smoothstep(particleAge / 0.12) : 1;
+  const alpha = Math.pow(clamp(1 - particleAge / life, 0, 1), isNameDropWave() ? 1.8 : 1.3)
+    * (isNameDropWave() ? 0.34 + point.seed * 0.38 : 0.48 + point.seed * 0.52)
+    * fadeIn;
   const interactionSize = isNameDropWave() ? settings.contactParticleSize : 1;
   const size = baseSize
     * (0.7 + channelSeed * 0.85)
@@ -716,12 +755,19 @@ function drawParticle(
   if (alpha <= 0.01 || x < -8 || x > view.width + 8 || y < -8 || y > view.height + 8) return;
 
   artworkCtx.globalAlpha = alpha;
-  artworkCtx.fillRect(
-    x,
-    y,
-    Math.max(minimumSize, size),
-    Math.max(minimumSize, size * (0.72 + point.seed2 * 0.55)),
-  );
+  if (isNameDropWave()) {
+    const radius = Math.max(minimumSize, size) * 0.58;
+    artworkCtx.beginPath();
+    artworkCtx.arc(x, y, radius, 0, Math.PI * 2);
+    artworkCtx.fill();
+  } else {
+    artworkCtx.fillRect(
+      x,
+      y,
+      Math.max(minimumSize, size),
+      Math.max(minimumSize, size * (0.72 + point.seed2 * 0.55)),
+    );
+  }
 }
 
 function drawDragParticle(
@@ -869,6 +915,61 @@ function drawDissolvingLinePath(
 ): void {
   const geometry = echoLineGeometry[echoIndex];
   if (!geometry) return;
+
+  if (isNameDropWave()) {
+    const bucketCount = 6;
+    const opacityBuckets = Array.from({ length: bucketCount }, () => new Path2D());
+    const fadeDuration = Math.max(0.01, settings.contactLineFadeDuration);
+    const channelOffset = settings.rgbOffset * view.fit;
+    let previousPosition: PositionedPoint | null = null;
+    let previousOpacity = 0;
+
+    for (const point of geometry.points) {
+      if (point.startsPath) previousPosition = null;
+      const basePosition = linePointPosition(point, echoIndex, now);
+      const spawnTime = spawnTimeFor(
+        basePosition.designX,
+        basePosition.designY,
+        point,
+        echoIndex,
+      );
+      const fadeStart = spawnTime - fadeDuration * 0.22;
+      const opacity = 1 - smoothstep((elapsed - fadeStart) / fadeDuration);
+      const position = gatheredPosition(basePosition, echoIndex, elapsed);
+      const channelPosition = {
+        ...position,
+        x: position.x + channelX[channelIndex] * channelOffset,
+        y: position.y + channelY[channelIndex] * channelOffset,
+      };
+
+      if (previousPosition) {
+        const segmentOpacity = (previousOpacity + opacity) * 0.5;
+        if (segmentOpacity > 0.01) {
+          const bucketIndex = Math.min(
+            bucketCount - 1,
+            Math.floor(segmentOpacity * bucketCount),
+          );
+          const bucket = opacityBuckets[bucketIndex];
+          bucket.moveTo(previousPosition.x, previousPosition.y);
+          bucket.lineTo(channelPosition.x, channelPosition.y);
+        }
+      }
+
+      previousPosition = channelPosition;
+      previousOpacity = opacity;
+    }
+
+    artworkCtx.save();
+    artworkCtx.lineCap = 'round';
+    artworkCtx.lineJoin = 'round';
+    artworkCtx.lineWidth = geometry.strokeWidth * SVG_TO_DESIGN * settings.lineThickness * view.fit;
+    for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex += 1) {
+      artworkCtx.globalAlpha = 0.84 * ((bucketIndex + 1) / bucketCount);
+      artworkCtx.stroke(opacityBuckets[bucketIndex]);
+    }
+    artworkCtx.restore();
+    return;
+  }
 
   artworkCtx.beginPath();
   let drawing = false;
@@ -1030,22 +1131,60 @@ function renderContactEffect(now: number): void {
   const centerX = view.offsetX + contactOrigin.x * view.fit;
   const centerY = view.offsetY + contactOrigin.y * view.fit;
   const releaseAge = elapsed - contactReleaseTime();
+  const waveAge = releaseAge - settings.contactBloomDuration;
   const waveDuration = Math.max(0.001, settings.contactWaveDuration);
-  const waveProgress = clamp(releaseAge / waveDuration, 0, 1);
+  const waveProgress = clamp(waveAge / waveDuration, 0, 1);
   const fadeProgress = smoothstep(
-    (releaseAge - waveDuration * 0.82) / (waveDuration * 0.32),
+    (waveAge - waveDuration * 0.78) / (waveDuration * 0.38),
   );
-  const waveRadius = Math.max(1, waveProgress * DESIGN_WIDTH * 0.72 * view.fit);
-  const bandWidth = Math.max(1, settings.contactWaveBandWidth * view.fit);
-  const alpha = smoothstep(releaseAge / 0.1) * (1 - fadeProgress) * 0.24;
+  const waveRadius = Math.max(
+    1,
+    contactWaveEase(waveProgress) * contactWaveExtent() * view.fit,
+  );
+  const bandWidth = Math.max(
+    1,
+    settings.contactWaveBandWidth * (0.82 + waveProgress * 0.36) * view.fit,
+  );
+  const alpha = smoothstep(waveAge / 0.14) * (1 - fadeProgress);
+  const bloomProgress = smoothstep(
+    releaseAge / Math.max(0.01, settings.contactBloomDuration),
+  );
+  const bloomFade = 1 - smoothstep(
+    (releaseAge - settings.contactBloomDuration * 0.55)
+    / Math.max(0.01, settings.contactBloomDuration * 1.8),
+  );
 
   artworkCtx.save();
-  artworkCtx.globalCompositeOperation = 'lighter';
+  artworkCtx.globalCompositeOperation = 'screen';
+  artworkCtx.filter = `blur(${Math.max(1.2, 2.6 * view.fit)}px)`;
+
+  if (releaseAge >= 0 && bloomFade > 0) {
+    const bloomRadius = (12 + bloomProgress * 32) * view.fit;
+    const bloom = artworkCtx.createRadialGradient(
+      centerX,
+      centerY,
+      0,
+      centerX,
+      centerY,
+      bloomRadius,
+    );
+    bloom.addColorStop(0, 'rgba(132, 202, 226, 0.14)');
+    bloom.addColorStop(0.42, 'rgba(76, 142, 176, 0.08)');
+    bloom.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    artworkCtx.globalAlpha = bloomFade * 0.72;
+    artworkCtx.fillStyle = bloom;
+    artworkCtx.fillRect(
+      centerX - bloomRadius,
+      centerY - bloomRadius,
+      bloomRadius * 2,
+      bloomRadius * 2,
+    );
+  }
 
   const drawWaveBand = (radius: number, width: number, opacity: number): void => {
     if (radius <= 0 || opacity <= 0) return;
-    const innerRadius = Math.max(0, radius - width);
-    const outerRadius = radius + width * 0.42;
+    const innerRadius = Math.max(0, radius - width * 1.45);
+    const outerRadius = radius + width * 0.92;
     const gradient = artworkCtx.createRadialGradient(
       centerX,
       centerY,
@@ -1055,8 +1194,9 @@ function renderContactEffect(now: number): void {
       outerRadius,
     );
     gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(0.32, 'rgba(98, 171, 216, 0.18)');
-    gradient.addColorStop(0.68, 'rgba(194, 231, 246, 0.52)');
+    gradient.addColorStop(0.24, 'rgba(43, 91, 119, 0.035)');
+    gradient.addColorStop(0.5, 'rgba(82, 147, 178, 0.105)');
+    gradient.addColorStop(0.72, 'rgba(112, 172, 198, 0.065)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     artworkCtx.globalAlpha = opacity;
     artworkCtx.fillStyle = gradient;
@@ -1068,8 +1208,8 @@ function renderContactEffect(now: number): void {
     );
   };
 
-  drawWaveBand(waveRadius - bandWidth * 1.15, bandWidth * 0.72, alpha * 0.34);
-  drawWaveBand(waveRadius, bandWidth, alpha);
+  drawWaveBand(waveRadius - bandWidth * 0.68, bandWidth * 1.28, alpha * 0.38);
+  drawWaveBand(waveRadius, bandWidth, alpha * 0.74);
 
   artworkCtx.restore();
 }
@@ -1089,9 +1229,9 @@ function render(timestamp: number): void {
   artworkCtx.fillRect(0, 0, view.width, view.height);
 
   if (phase !== 'blank') {
+    renderContactEffect(now);
     renderFigures(now);
     renderDragConnector();
-    renderContactEffect(now);
   }
 
   ctx.globalCompositeOperation = 'source-over';
@@ -1125,10 +1265,11 @@ function render(timestamp: number): void {
   }
 
   if (phase === 'dissolving') {
-    const contactDuration = settings.contactWaveDuration
+    const contactDuration = settings.contactBloomDuration
+      + settings.contactWaveDuration
       + settings.contactReleaseSpread
-      + settings.particleLife / settings.contactReleaseSpeed
-      + 0.8;
+      + settings.contactDiffusionDuration / settings.contactReleaseSpeed
+      + 0.65;
     const originalDuration = settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
     const totalDuration = isNameDropWave() ? contactDuration : originalDuration;
     const phaseStartedAt = isNameDropWave() ? releasedAt : triggeredAt;
@@ -1334,12 +1475,15 @@ const contactFolder = gui.addFolder('NameDrop Wave');
 contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gather time');
 contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Tension time');
 contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pull');
+contactFolder.add(settings, 'contactBloomDuration', 0.05, 0.6, 0.01).name('Density peak');
 contactFolder.add(settings, 'contactWaveDuration', 0.2, 2.4, 0.01).name('Wave duration');
-contactFolder.add(settings, 'contactWaveBandWidth', 6, 60, 1).name('Wave band width');
+contactFolder.add(settings, 'contactWaveBandWidth', 12, 100, 1).name('Density front width');
+contactFolder.add(settings, 'contactLineFadeDuration', 0.08, 0.7, 0.01).name('Line crossfade');
+contactFolder.add(settings, 'contactDiffusionDuration', 0.4, 3, 0.05).name('Diffusion life');
 contactFolder.add(settings, 'contactParticleDensity', 0.5, 3, 0.05).name('SVG particle density');
 contactFolder.add(settings, 'contactParticleSize', 0.25, 1.5, 0.05).name('Particle size');
-contactFolder.add(settings, 'contactForce', 10, 160, 1).name('Release force');
-contactFolder.add(settings, 'contactSpread', 0, 50, 1).name('Release curl');
+contactFolder.add(settings, 'contactForce', 4, 80, 1).name('Diffusion distance');
+contactFolder.add(settings, 'contactSpread', 0, 30, 1).name('Diffusion curl');
 contactFolder.add(settings, 'contactReleaseSpread', 0, 0.7, 0.005).name('Release noise');
 contactFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Release speed');
 
