@@ -106,6 +106,8 @@ const settings = {
   contactReleaseSpread: 0.08,
   contactReleaseSpeed: 1.5,
   dragRadius: 18,
+  dragConnectorRadius: 4,
+  dragConnectorWidth: 0.8,
   dragParticleSize: 0.55,
   dragForce: 48,
   dragSpread: 18,
@@ -147,7 +149,7 @@ let releasedAt = 0;
 let contactOrigin: DesignPoint = { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
 let dragPointStates: Array<Array<DragParticleState | null>> = [];
 let dragHitCounts: number[] = [];
-let dragPreviousPoint: DesignPoint | null = null;
+const dragPointers = new Map<number, DesignPoint>();
 let dragEndedAt = 0;
 let activePointerId: number | null = null;
 let animationFrame = 0;
@@ -454,7 +456,7 @@ function clearDragState(): void {
     Array.from<DragParticleState | null>({ length: geometry.points.length }).fill(null)
   ));
   dragHitCounts = echoLineGeometry.map(() => 0);
-  dragPreviousPoint = null;
+  dragPointers.clear();
   dragEndedAt = 0;
 }
 
@@ -493,7 +495,12 @@ function distanceSquaredToSegment(
   return deltaX * deltaX + deltaY * deltaY;
 }
 
-function applyDragStroke(start: DesignPoint, end: DesignPoint, now: number): void {
+function applyDragStroke(
+  start: DesignPoint,
+  end: DesignPoint,
+  now: number,
+  radius = settings.dragRadius,
+): void {
   ensureDragState();
   const segmentX = end.x - start.x;
   const segmentY = end.y - start.y;
@@ -502,7 +509,7 @@ function applyDragStroke(start: DesignPoint, end: DesignPoint, now: number): voi
   const directionY = segmentLength > 0.001 ? segmentY / segmentLength : 0;
   const normalX = -directionY;
   const normalY = directionX;
-  const radiusSquared = settings.dragRadius * settings.dragRadius;
+  const radiusSquared = radius * radius;
   const echoCount = clamp(Math.round(settings.echoes), 1, echoLineGeometry.length);
 
   for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
@@ -789,6 +796,45 @@ function drawDragDissolvingLinePath(
   artworkCtx.stroke();
 }
 
+function dragConnectorPoints(): [DesignPoint, DesignPoint] | null {
+  if (dragPointers.size < 2) return null;
+  const iterator = dragPointers.values();
+  const first = iterator.next().value as DesignPoint | undefined;
+  const second = iterator.next().value as DesignPoint | undefined;
+  return first && second ? [first, second] : null;
+}
+
+function renderDragConnector(): void {
+  if (phase !== 'dragging' || !isDragDissolve()) return;
+  const connector = dragConnectorPoints();
+  if (!connector) return;
+  const [start, end] = connector;
+
+  artworkCtx.save();
+  artworkCtx.globalCompositeOperation = 'lighter';
+  artworkCtx.lineCap = 'round';
+  artworkCtx.lineWidth = Math.max(0.35, settings.dragConnectorWidth * view.fit);
+  artworkCtx.globalAlpha = 0.68;
+
+  for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
+    const offsetX = channelX[channelIndex] * settings.rgbOffset * view.fit;
+    const offsetY = channelY[channelIndex] * settings.rgbOffset * view.fit;
+    artworkCtx.beginPath();
+    artworkCtx.moveTo(
+      view.offsetX + start.x * view.fit + offsetX,
+      view.offsetY + start.y * view.fit + offsetY,
+    );
+    artworkCtx.lineTo(
+      view.offsetX + end.x * view.fit + offsetX,
+      view.offsetY + end.y * view.fit + offsetY,
+    );
+    artworkCtx.strokeStyle = channelColors[channelIndex];
+    artworkCtx.stroke();
+  }
+
+  artworkCtx.restore();
+}
+
 function drawExactLinePath(echoIndex: number, channelIndex: number, now: number): void {
   const geometry = echoLineGeometry[echoIndex];
   if (!geometry) return;
@@ -1032,6 +1078,7 @@ function render(timestamp: number): void {
 
   if (phase !== 'blank') {
     renderFigures(now);
+    renderDragConnector();
     renderContactEffect(now);
   }
 
@@ -1058,7 +1105,7 @@ function render(timestamp: number): void {
   if (
     phase === 'dragging'
     && isDragDissolve()
-    && activePointerId === null
+    && dragPointers.size === 0
     && dragEndedAt > 0
     && now - dragEndedAt > settings.dragRestoreDelay + settings.dragParticleLife * 1.2
   ) {
@@ -1116,8 +1163,9 @@ function releaseGather(): void {
   hint.classList.add('hidden');
 }
 
-function beginDragDissolve(point: DesignPoint): boolean {
+function beginDragDissolve(pointerId: number, point: DesignPoint): boolean {
   if (phase === 'gathering' || phase === 'dissolving') return false;
+  if (dragPointers.size >= 2) return false;
   if (phase === 'blank') reset();
   if (phase !== 'dragging') {
     clearDragState();
@@ -1126,26 +1174,62 @@ function beginDragDissolve(point: DesignPoint): boolean {
 
   const now = lastNow || performance.now() * 0.001;
   dragEndedAt = 0;
-  dragPreviousPoint = point;
-  applyDragStroke(point, point, now);
+  const joiningConnector = dragPointers.size === 1;
+  dragPointers.set(pointerId, point);
+  if (!joiningConnector) applyDragStroke(point, point, now);
+  const connector = dragConnectorPoints();
+  if (connector) {
+    applyDragStroke(connector[0], connector[1], now, settings.dragConnectorRadius);
+  }
   hint.classList.add('hidden');
   canvas.focus({ preventScroll: true });
   return true;
 }
 
-function moveDragDissolve(point: DesignPoint): void {
+function moveDragDissolve(pointerId: number, point: DesignPoint): void {
   if (phase !== 'dragging') return;
+  const previousPoint = dragPointers.get(pointerId);
+  if (!previousPoint) return;
   const now = lastNow || performance.now() * 0.001;
-  const previousPoint = dragPreviousPoint ?? point;
-  applyDragStroke(previousPoint, point, now);
-  dragPreviousPoint = point;
+
+  const entries = [...dragPointers.entries()];
+  const movedIndex = entries.findIndex(([id]) => id === pointerId);
+  const otherIndex = movedIndex === 0 ? 1 : 0;
+  const otherPoint = entries[otherIndex]?.[1];
+  if (otherPoint) {
+    const travel = Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y);
+    const interpolationStep = Math.max(1.5, settings.dragConnectorRadius * 0.5);
+    const steps = Math.max(1, Math.ceil(travel / interpolationStep));
+    for (let step = 1; step <= steps; step += 1) {
+      const progress = step / steps;
+      const interpolated = {
+        x: previousPoint.x + (point.x - previousPoint.x) * progress,
+        y: previousPoint.y + (point.y - previousPoint.y) * progress,
+      };
+      const connectorStart = movedIndex === 0 ? interpolated : otherPoint;
+      const connectorEnd = movedIndex === 0 ? otherPoint : interpolated;
+      applyDragStroke(
+        connectorStart,
+        connectorEnd,
+        now,
+        settings.dragConnectorRadius,
+      );
+    }
+  } else {
+    applyDragStroke(previousPoint, point, now);
+  }
+
+  dragPointers.set(pointerId, point);
 }
 
-function endDragDissolve(point?: DesignPoint): void {
+function endDragDissolve(pointerId: number, point?: DesignPoint): void {
   if (phase !== 'dragging') return;
-  if (point) moveDragDissolve(point);
-  dragPreviousPoint = null;
-  dragEndedAt = lastNow || performance.now() * 0.001;
+  if (!dragPointers.has(pointerId)) return;
+  if (point) moveDragDissolve(pointerId, point);
+  dragPointers.delete(pointerId);
+  if (dragPointers.size === 0) {
+    dragEndedAt = lastNow || performance.now() * 0.001;
+  }
 }
 
 function reset(): void {
@@ -1157,7 +1241,7 @@ function reset(): void {
   hint.textContent = isNameDropWave()
     ? 'HOLD TO CONNECT'
     : isDragDissolve()
-      ? 'DRAG TO DISSOLVE'
+      ? 'DRAG · TWO-FINGER LINK'
       : 'TAP TO DISSOLVE';
   hint.classList.remove('hidden');
 }
@@ -1240,6 +1324,8 @@ contactFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Release 
 
 const dragFolder = gui.addFolder('Drag Dissolve');
 dragFolder.add(settings, 'dragRadius', 4, 60, 1).name('Brush radius');
+dragFolder.add(settings, 'dragConnectorRadius', 1, 18, 0.5).name('Connector radius');
+dragFolder.add(settings, 'dragConnectorWidth', 0.2, 3, 0.05).name('Connector width');
 dragFolder.add(settings, 'dragParticleSize', 0.2, 1.5, 0.05).name('Particle size');
 dragFolder.add(settings, 'dragForce', 5, 120, 1).name('Drag force');
 dragFolder.add(settings, 'dragSpread', 0, 60, 1).name('Particle spread');
@@ -1259,10 +1345,8 @@ if (!guiVisible) gui.hide();
 canvas.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   if (isDragDissolve()) {
-    if (activePointerId !== null) return;
     const point = designPointFromClient(event.clientX, event.clientY);
-    if (!beginDragDissolve(point)) return;
-    activePointerId = event.pointerId;
+    if (!beginDragDissolve(event.pointerId, point)) return;
     canvas.setPointerCapture(event.pointerId);
     return;
   }
@@ -1277,9 +1361,12 @@ canvas.addEventListener('pointerdown', (event) => {
 });
 
 canvas.addEventListener('pointermove', (event) => {
-  if (isDragDissolve() && phase === 'dragging' && event.pointerId === activePointerId) {
+  if (isDragDissolve() && phase === 'dragging' && dragPointers.has(event.pointerId)) {
     event.preventDefault();
-    moveDragDissolve(designPointFromClient(event.clientX, event.clientY));
+    moveDragDissolve(
+      event.pointerId,
+      designPointFromClient(event.clientX, event.clientY),
+    );
     return;
   }
   if (!isNameDropWave() || phase !== 'gathering' || event.pointerId !== activePointerId) return;
@@ -1289,27 +1376,29 @@ canvas.addEventListener('pointermove', (event) => {
 
 function finishPointerInteraction(event: PointerEvent): void {
   event.preventDefault();
-  if (event.pointerId !== activePointerId) return;
-  activePointerId = null;
   if (isDragDissolve()) {
+    if (!dragPointers.has(event.pointerId)) return;
     const finalPoint = event.type === 'pointerup'
       ? designPointFromClient(event.clientX, event.clientY)
       : undefined;
-    endDragDissolve(finalPoint);
+    endDragDissolve(event.pointerId, finalPoint);
     return;
   }
+  if (event.pointerId !== activePointerId) return;
+  activePointerId = null;
   releaseGather();
 }
 
 window.addEventListener('pointerup', finishPointerInteraction);
 window.addEventListener('pointercancel', finishPointerInteraction);
 canvas.addEventListener('lostpointercapture', (event) => {
-  if (event.pointerId !== activePointerId) return;
-  activePointerId = null;
   if (isDragDissolve()) {
-    endDragDissolve();
+    if (!dragPointers.has(event.pointerId)) return;
+    endDragDissolve(event.pointerId);
     return;
   }
+  if (event.pointerId !== activePointerId) return;
+  activePointerId = null;
   releaseGather();
 });
 
