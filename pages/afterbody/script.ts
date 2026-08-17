@@ -98,7 +98,8 @@ const settings = {
   contactGatherDuration: 0.92,
   contactDensityDuration: 0.52,
   contactCompression: 0.18,
-  contactWaveDuration: 0.62,
+  contactWaveDuration: 1.24,
+  contactWaveBandWidth: 22,
   contactParticleDensity: 3,
   contactParticleSize: 0.55,
   contactForce: 100,
@@ -1035,29 +1036,40 @@ function renderContactEffect(now: number): void {
     (releaseAge - waveDuration * 0.82) / (waveDuration * 0.32),
   );
   const waveRadius = Math.max(1, waveProgress * DESIGN_WIDTH * 0.72 * view.fit);
-  const alpha = smoothstep(releaseAge / 0.1) * (1 - fadeProgress) * 0.12;
+  const bandWidth = Math.max(1, settings.contactWaveBandWidth * view.fit);
+  const alpha = smoothstep(releaseAge / 0.1) * (1 - fadeProgress) * 0.24;
 
   artworkCtx.save();
   artworkCtx.globalCompositeOperation = 'lighter';
-  const gradient = artworkCtx.createRadialGradient(
-    centerX,
-    centerY,
-    0,
-    centerX,
-    centerY,
-    waveRadius,
-  );
-  gradient.addColorStop(0, '#d9ffe1');
-  gradient.addColorStop(0.68, '#d9ffe1');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  artworkCtx.globalAlpha = alpha;
-  artworkCtx.fillStyle = gradient;
-  artworkCtx.fillRect(
-    centerX - waveRadius,
-    centerY - waveRadius,
-    waveRadius * 2,
-    waveRadius * 2,
-  );
+
+  const drawWaveBand = (radius: number, width: number, opacity: number): void => {
+    if (radius <= 0 || opacity <= 0) return;
+    const innerRadius = Math.max(0, radius - width);
+    const outerRadius = radius + width * 0.42;
+    const gradient = artworkCtx.createRadialGradient(
+      centerX,
+      centerY,
+      innerRadius,
+      centerX,
+      centerY,
+      outerRadius,
+    );
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(0.32, 'rgba(98, 171, 216, 0.18)');
+    gradient.addColorStop(0.68, 'rgba(194, 231, 246, 0.52)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    artworkCtx.globalAlpha = opacity;
+    artworkCtx.fillStyle = gradient;
+    artworkCtx.fillRect(
+      centerX - outerRadius,
+      centerY - outerRadius,
+      outerRadius * 2,
+      outerRadius * 2,
+    );
+  };
+
+  drawWaveBand(waveRadius - bandWidth * 1.15, bandWidth * 0.72, alpha * 0.34);
+  drawWaveBand(waveRadius, bandWidth, alpha);
 
   artworkCtx.restore();
 }
@@ -1259,14 +1271,22 @@ function replay(point?: DesignPoint): void {
   dissolve();
 }
 
-function designPointFromClient(clientX: number, clientY: number): DesignPoint {
+function designPointFromClient(
+  clientX: number,
+  clientY: number,
+  constrainToArtwork = true,
+): DesignPoint {
   const rect = canvas.getBoundingClientRect();
   const internalX = (clientX - rect.left) * (canvas.width / Math.max(1, rect.width));
   const internalY = (clientY - rect.top) * (canvas.height / Math.max(1, rect.height));
 
+  const designX = (internalX - view.offsetX) / view.fit;
+  const designY = (internalY - view.offsetY) / view.fit;
+  if (!constrainToArtwork) return { x: designX, y: designY };
+
   return {
-    x: clamp((internalX - view.offsetX) / view.fit, 0, DESIGN_WIDTH),
-    y: clamp((internalY - view.offsetY) / view.fit, 0, DESIGN_HEIGHT),
+    x: clamp(designX, 0, DESIGN_WIDTH),
+    y: clamp(designY, 0, DESIGN_HEIGHT),
   };
 }
 
@@ -1315,6 +1335,7 @@ contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gath
 contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Tension time');
 contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pull');
 contactFolder.add(settings, 'contactWaveDuration', 0.2, 2.4, 0.01).name('Wave duration');
+contactFolder.add(settings, 'contactWaveBandWidth', 6, 60, 1).name('Wave band width');
 contactFolder.add(settings, 'contactParticleDensity', 0.5, 3, 0.05).name('SVG particle density');
 contactFolder.add(settings, 'contactParticleSize', 0.25, 1.5, 0.05).name('Particle size');
 contactFolder.add(settings, 'contactForce', 10, 160, 1).name('Release force');
@@ -1352,7 +1373,7 @@ canvas.addEventListener('pointerdown', (event) => {
   }
   if (isNameDropWave()) {
     if (activePointerId !== null || phase === 'gathering' || phase === 'dissolving') return;
-    beginGather(designPointFromClient(event.clientX, event.clientY));
+    beginGather(designPointFromClient(event.clientX, event.clientY, false));
     activePointerId = event.pointerId;
     canvas.setPointerCapture(event.pointerId);
     return;
@@ -1371,7 +1392,7 @@ canvas.addEventListener('pointermove', (event) => {
   }
   if (!isNameDropWave() || phase !== 'gathering' || event.pointerId !== activePointerId) return;
   event.preventDefault();
-  contactOrigin = designPointFromClient(event.clientX, event.clientY);
+  contactOrigin = designPointFromClient(event.clientX, event.clientY, false);
 });
 
 function finishPointerInteraction(event: PointerEvent): void {
@@ -1385,6 +1406,9 @@ function finishPointerInteraction(event: PointerEvent): void {
     return;
   }
   if (event.pointerId !== activePointerId) return;
+  if (isNameDropWave() && event.type === 'pointerup') {
+    contactOrigin = designPointFromClient(event.clientX, event.clientY, false);
+  }
   activePointerId = null;
   releaseGather();
 }
@@ -1446,7 +1470,7 @@ debugWindow.__afterbody = {
   dissolve: replay,
   burst: (clientX = window.innerWidth * 0.5, clientY = window.innerHeight * 0.5) => {
     setInteraction('NameDrop Wave');
-    replay(designPointFromClient(clientX, clientY));
+    replay(designPointFromClient(clientX, clientY, false));
   },
   reset,
   setMode,
