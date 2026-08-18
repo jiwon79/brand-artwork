@@ -101,7 +101,7 @@ const settings = {
   contactCompression: 0.18,
   contactReleaseStyle: 'Current · Density' as ContactReleaseStyle,
   contactBloomDuration: 0.22,
-  contactWaveDuration: 1.24,
+  contactWaveDuration: 2.48,
   contactWaveBandWidth: 52,
   contactWaveBrightness: 0.58,
   contactLineFadeDuration: 0.3,
@@ -141,7 +141,7 @@ const contactReleasePresets: Record<ContactReleaseStyle, Partial<typeof settings
   },
   'Current · Density': {
     contactBloomDuration: 0.22,
-    contactWaveDuration: 1.24,
+    contactWaveDuration: 2.48,
     contactWaveBandWidth: 52,
     contactWaveBrightness: 0.58,
     contactLineFadeDuration: 0.3,
@@ -1647,7 +1647,7 @@ contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gath
 contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Tension time');
 contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pull');
 contactFolder.add(settings, 'contactBloomDuration', 0, 0.6, 0.01).name('Density peak');
-contactFolder.add(settings, 'contactWaveDuration', 0.2, 2.4, 0.01).name('Wave duration');
+contactFolder.add(settings, 'contactWaveDuration', 0.2, 4.8, 0.01).name('Wave duration');
 contactFolder.add(settings, 'contactWaveBandWidth', 6, 100, 1).name('Wave width');
 contactFolder.add(settings, 'contactWaveBrightness', 0, 1.5, 0.01).name('Wave brightness');
 contactFolder.add(settings, 'contactLineFadeDuration', 0.08, 0.7, 0.01).name('Line crossfade');
