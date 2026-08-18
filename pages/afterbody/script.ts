@@ -103,6 +103,7 @@ const settings = {
   contactBloomDuration: 0.22,
   contactWaveDuration: 1.24,
   contactWaveBandWidth: 52,
+  contactWaveBrightness: 0.82,
   contactLineFadeDuration: 0.3,
   contactDiffusionDuration: 1.65,
   contactParticleDensity: 3,
@@ -128,6 +129,7 @@ const contactReleasePresets: Record<ContactReleaseStyle, Partial<typeof settings
     contactBloomDuration: 0,
     contactWaveDuration: 1.24,
     contactWaveBandWidth: 22,
+    contactWaveBrightness: 1,
     contactLineFadeDuration: 0.3,
     contactDiffusionDuration: 1.65,
     contactParticleDensity: 3,
@@ -141,6 +143,7 @@ const contactReleasePresets: Record<ContactReleaseStyle, Partial<typeof settings
     contactBloomDuration: 0.22,
     contactWaveDuration: 1.24,
     contactWaveBandWidth: 52,
+    contactWaveBrightness: 0.82,
     contactLineFadeDuration: 0.3,
     contactDiffusionDuration: 1.65,
     contactParticleDensity: 3,
@@ -1255,7 +1258,9 @@ function renderContactEffect(now: number): void {
     1,
     settings.contactWaveBandWidth * (0.82 + waveProgress * 0.36) * view.fit,
   );
-  const alpha = smoothstep(waveAge / 0.14) * (1 - fadeProgress);
+  const alpha = smoothstep(waveAge / 0.14)
+    * (1 - fadeProgress)
+    * settings.contactWaveBrightness;
   const bloomProgress = smoothstep(
     releaseAge / Math.max(0.01, settings.contactBloomDuration),
   );
@@ -1304,9 +1309,9 @@ function renderContactEffect(now: number): void {
       outerRadius,
     );
     gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(0.24, 'rgba(43, 91, 119, 0.035)');
-    gradient.addColorStop(0.5, 'rgba(82, 147, 178, 0.105)');
-    gradient.addColorStop(0.72, 'rgba(112, 172, 198, 0.065)');
+    gradient.addColorStop(0.22, 'rgba(85, 126, 148, 0.055)');
+    gradient.addColorStop(0.5, 'rgba(158, 193, 208, 0.18)');
+    gradient.addColorStop(0.74, 'rgba(119, 165, 187, 0.1)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     artworkCtx.globalAlpha = opacity;
     artworkCtx.fillStyle = gradient;
@@ -1318,8 +1323,38 @@ function renderContactEffect(now: number): void {
     );
   };
 
-  drawWaveBand(waveRadius - bandWidth * 0.68, bandWidth * 1.28, alpha * 0.38);
-  drawWaveBand(waveRadius, bandWidth, alpha * 0.74);
+  const drawWaveCrest = (radius: number, width: number, opacity: number): void => {
+    if (radius <= 0 || opacity <= 0) return;
+    const innerRadius = Math.max(0, radius - width * 0.86);
+    const outerRadius = radius + width * 0.46;
+    const gradient = artworkCtx.createRadialGradient(
+      centerX,
+      centerY,
+      innerRadius,
+      centerX,
+      centerY,
+      outerRadius,
+    );
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(0.16, 'rgba(178, 211, 224, 0.11)');
+    gradient.addColorStop(0.36, 'rgba(240, 248, 251, 0.32)');
+    gradient.addColorStop(0.68, 'rgba(229, 242, 247, 0.28)');
+    gradient.addColorStop(0.86, 'rgba(173, 207, 221, 0.11)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    artworkCtx.globalAlpha = opacity;
+    artworkCtx.fillStyle = gradient;
+    artworkCtx.fillRect(
+      centerX - outerRadius,
+      centerY - outerRadius,
+      outerRadius * 2,
+      outerRadius * 2,
+    );
+  };
+
+  drawWaveBand(waveRadius - bandWidth * 0.7, bandWidth * 1.34, alpha * 0.36);
+  drawWaveBand(waveRadius, bandWidth, alpha * 0.62);
+  artworkCtx.filter = `blur(${Math.max(1, 1.55 * view.fit)}px)`;
+  drawWaveCrest(waveRadius, bandWidth, alpha * 0.86);
 
   artworkCtx.restore();
 }
@@ -1602,6 +1637,7 @@ contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pul
 contactFolder.add(settings, 'contactBloomDuration', 0, 0.6, 0.01).name('Density peak');
 contactFolder.add(settings, 'contactWaveDuration', 0.2, 2.4, 0.01).name('Wave duration');
 contactFolder.add(settings, 'contactWaveBandWidth', 6, 100, 1).name('Wave width');
+contactFolder.add(settings, 'contactWaveBrightness', 0, 1.5, 0.01).name('Wave brightness');
 contactFolder.add(settings, 'contactLineFadeDuration', 0.08, 0.7, 0.01).name('Line crossfade');
 contactFolder.add(settings, 'contactDiffusionDuration', 0.4, 3, 0.05).name('Diffusion life');
 contactFolder.add(settings, 'contactParticleDensity', 0.5, 3, 0.05).name('SVG particle density');
