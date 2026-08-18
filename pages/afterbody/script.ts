@@ -103,14 +103,14 @@ const settings = {
   contactBloomDuration: 0.22,
   contactWaveDuration: 1.24,
   contactWaveBandWidth: 52,
-  contactWaveBrightness: 0.82,
+  contactWaveBrightness: 0.58,
   contactLineFadeDuration: 0.3,
   contactDiffusionDuration: 1.65,
   contactParticleDensity: 3,
   contactParticleSize: 0.55,
   contactForce: 24,
   contactSpread: 6,
-  contactReleaseSpread: 0.14,
+  contactReleaseSpread: 0.025,
   contactReleaseSpeed: 1,
   dragRadius: 18,
   dragConnectorRadius: 4,
@@ -143,14 +143,14 @@ const contactReleasePresets: Record<ContactReleaseStyle, Partial<typeof settings
     contactBloomDuration: 0.22,
     contactWaveDuration: 1.24,
     contactWaveBandWidth: 52,
-    contactWaveBrightness: 0.82,
+    contactWaveBrightness: 0.58,
     contactLineFadeDuration: 0.3,
     contactDiffusionDuration: 1.65,
     contactParticleDensity: 3,
     contactParticleSize: 0.55,
     contactForce: 24,
     contactSpread: 6,
-    contactReleaseSpread: 0.14,
+    contactReleaseSpread: 0.025,
     contactReleaseSpeed: 1,
   },
 };
@@ -675,6 +675,14 @@ function gatheredPosition(
   };
 }
 
+function spawnReferencePosition(
+  position: PositionedPoint,
+  echoIndex: number,
+): PositionedPoint {
+  if (!isNameDropWave() || isPreviousContactRelease()) return position;
+  return gatheredPosition(position, echoIndex, contactReleaseTime());
+}
+
 function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echoIndex: number): number {
   if (isNameDropWave()) {
     const distance = Math.hypot(designX - contactOrigin.x, designY - contactOrigin.y);
@@ -994,9 +1002,10 @@ function drawDissolvingLinePath(
     for (const point of geometry.points) {
       if (point.startsPath) previousPosition = null;
       const basePosition = linePointPosition(point, echoIndex, now);
+      const spawnPosition = spawnReferencePosition(basePosition, echoIndex);
       const spawnTime = spawnTimeFor(
-        basePosition.designX,
-        basePosition.designY,
+        spawnPosition.designX,
+        spawnPosition.designY,
         point,
         echoIndex,
       );
@@ -1044,9 +1053,10 @@ function drawDissolvingLinePath(
   for (const point of geometry.points) {
     if (point.startsPath) drawing = false;
     const basePosition = linePointPosition(point, echoIndex, now);
+    const spawnPosition = spawnReferencePosition(basePosition, echoIndex);
     const remains = elapsed < spawnTimeFor(
-      basePosition.designX,
-      basePosition.designY,
+      spawnPosition.designX,
+      spawnPosition.designY,
       point,
       echoIndex,
     );
@@ -1119,9 +1129,10 @@ function renderLineFigures(now: number, elapsed: number): void {
         nextSampleIndex += sampleInterval;
         const point = particlePoints[pointIndex];
         const currentPosition = linePointPosition(point, echoIndex, now);
+        const spawnPosition = spawnReferencePosition(currentPosition, echoIndex);
         const spawnTime = spawnTimeFor(
-          currentPosition.designX,
-          currentPosition.designY,
+          spawnPosition.designX,
+          spawnPosition.designY,
           point,
           echoIndex,
         );
@@ -1165,9 +1176,10 @@ function renderSolidFigures(now: number, elapsed: number): void {
         }
 
         const currentPosition = solidPointPosition(point, echoIndex, now);
+        const spawnPosition = spawnReferencePosition(currentPosition, echoIndex);
         const spawnTime = spawnTimeFor(
-          currentPosition.designX,
-          currentPosition.designY,
+          spawnPosition.designX,
+          spawnPosition.designY,
           point,
           echoIndex,
         );
@@ -1336,10 +1348,10 @@ function renderContactEffect(now: number): void {
       outerRadius,
     );
     gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(0.16, 'rgba(178, 211, 224, 0.11)');
-    gradient.addColorStop(0.36, 'rgba(240, 248, 251, 0.32)');
-    gradient.addColorStop(0.68, 'rgba(229, 242, 247, 0.28)');
-    gradient.addColorStop(0.86, 'rgba(173, 207, 221, 0.11)');
+    gradient.addColorStop(0.28, 'rgba(178, 211, 224, 0.09)');
+    gradient.addColorStop(0.52, 'rgba(229, 242, 247, 0.24)');
+    gradient.addColorStop(0.65, 'rgba(240, 248, 251, 0.32)');
+    gradient.addColorStop(0.8, 'rgba(204, 227, 236, 0.2)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     artworkCtx.globalAlpha = opacity;
     artworkCtx.fillStyle = gradient;
