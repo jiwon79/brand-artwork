@@ -816,10 +816,8 @@ function drawParticle(
   const life = useDensityParticle
     ? settings.contactDiffusionDuration * (0.82 + point.seed * 0.32)
     : settings.particleLife * (0.72 + point.seed * 0.48);
-  const fadeIn = useDensityParticle ? smoothstep(particleAge / 0.12) : 1;
-  const alpha = Math.pow(clamp(1 - particleAge / life, 0, 1), useDensityParticle ? 1.8 : 1.3)
-    * (useDensityParticle ? 0.34 + point.seed * 0.38 : 0.48 + point.seed * 0.52)
-    * fadeIn;
+  const alpha = Math.pow(clamp(1 - particleAge / life, 0, 1), useDensityParticle ? 1.65 : 1.3)
+    * (useDensityParticle ? 0.44 + point.seed * 0.46 : 0.48 + point.seed * 0.52);
   const interactionSize = isNameDropWave() ? settings.contactParticleSize : 1;
   const size = baseSize
     * (0.7 + channelSeed * 0.85)
@@ -831,10 +829,13 @@ function drawParticle(
 
   artworkCtx.globalAlpha = alpha;
   if (useDensityParticle) {
-    const radius = Math.max(minimumSize, size) * 0.58;
-    artworkCtx.beginPath();
-    artworkCtx.arc(x, y, radius, 0, Math.PI * 2);
-    artworkCtx.fill();
+    const pixelSize = Math.max(minimumSize, size * 1.05);
+    artworkCtx.fillRect(
+      x - pixelSize * 0.5,
+      y - pixelSize * 0.5,
+      pixelSize,
+      pixelSize,
+    );
   } else {
     artworkCtx.fillRect(
       x,
@@ -1311,7 +1312,7 @@ function renderContactEffect(now: number): void {
   const drawWaveBand = (radius: number, width: number, opacity: number): void => {
     if (radius <= 0 || opacity <= 0) return;
     const innerRadius = Math.max(0, radius - width * 1.45);
-    const outerRadius = radius + width * 0.92;
+    const outerRadius = radius + width * 0.38;
     const gradient = artworkCtx.createRadialGradient(
       centerX,
       centerY,
@@ -1338,7 +1339,7 @@ function renderContactEffect(now: number): void {
   const drawWaveCrest = (radius: number, width: number, opacity: number): void => {
     if (radius <= 0 || opacity <= 0) return;
     const innerRadius = Math.max(0, radius - width * 0.86);
-    const outerRadius = radius + width * 0.46;
+    const outerRadius = radius + width * 0.22;
     const gradient = artworkCtx.createRadialGradient(
       centerX,
       centerY,
@@ -1348,10 +1349,10 @@ function renderContactEffect(now: number): void {
       outerRadius,
     );
     gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(0.28, 'rgba(178, 211, 224, 0.09)');
-    gradient.addColorStop(0.52, 'rgba(229, 242, 247, 0.24)');
-    gradient.addColorStop(0.65, 'rgba(240, 248, 251, 0.32)');
-    gradient.addColorStop(0.8, 'rgba(204, 227, 236, 0.2)');
+    gradient.addColorStop(0.42, 'rgba(178, 211, 224, 0.09)');
+    gradient.addColorStop(0.67, 'rgba(229, 242, 247, 0.24)');
+    gradient.addColorStop(0.8, 'rgba(240, 248, 251, 0.32)');
+    gradient.addColorStop(0.9, 'rgba(204, 227, 236, 0.15)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     artworkCtx.globalAlpha = opacity;
     artworkCtx.fillStyle = gradient;
