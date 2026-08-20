@@ -18,17 +18,21 @@ type FigurePoint = {
   tangentY?: number;
 };
 
-type RopeAnchor = {
-  pathDistance: number;
-  designX: number;
-  designY: number;
-  distanceToContact: number;
+type LineGraphEdge = {
+  pointIndex: number;
+  distance: number;
+};
+
+type RopeField = {
+  anchorPointIndex: number;
+  graphDistances: number[];
 };
 
 type EchoLineGeometry = {
   path: Path2D;
   points: FigurePoint[];
   samples: FigurePoint[];
+  graph: LineGraphEdge[][];
   strokeWidth: number;
   viewBoxX: number;
   viewBoxY: number;
@@ -204,11 +208,10 @@ let releasedGatherElapsed = 0;
 let releasedHoldAge = 0;
 let contactOrigin: DesignPoint = { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
 let contactExtentCache = { x: Number.NaN, y: Number.NaN, value: 1 };
-let ropeAnchorCache = {
-  time: Number.NaN,
+let ropeFieldCache = {
   originX: Number.NaN,
   originY: Number.NaN,
-  anchors: [] as Array<Map<number, RopeAnchor>>,
+  fields: [] as Array<RopeField | undefined>,
 };
 let dragPointStates: Array<Array<DragParticleState | null>> = [];
 let dragHitCounts: number[] = [];
@@ -449,6 +452,83 @@ function readNumber(value: string | null, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function buildLineGraph(points: FigurePoint[]): LineGraphEdge[][] {
+  const graph = points.map(() => [] as LineGraphEdge[]);
+  const pathGroups = new Map<number, number[]>();
+
+  for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
+    const point = points[pointIndex];
+    const pathIndex = point.pathIndex ?? 0;
+    const group = pathGroups.get(pathIndex) ?? [];
+    group.push(pointIndex);
+    pathGroups.set(pathIndex, group);
+
+    if (pointIndex === 0 || points[pointIndex - 1].pathIndex !== pathIndex) continue;
+    const previousPoint = points[pointIndex - 1];
+    const distance = Math.max(
+      0.001,
+      Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y) * SVG_TO_DESIGN,
+    );
+    graph[pointIndex - 1].push({ pointIndex, distance });
+    graph[pointIndex].push({ pointIndex: pointIndex - 1, distance });
+  }
+
+  const groups = [...pathGroups.entries()];
+  if (groups.length <= 1) return graph;
+
+  const mainPath = groups.reduce((longest, candidate) => (
+    candidate[1].length > longest[1].length ? candidate : longest
+  ));
+  const connectedPaths = new Set([mainPath[0]]);
+
+  // The SVG deliberately leaves arms and legs as separate contours. Connect
+  // their nearest endpoint to the already connected body only for tension
+  // propagation; these virtual joints are never rendered as visible strokes.
+  while (connectedPaths.size < groups.length) {
+    let closest: {
+      pathIndex: number;
+      endpointIndex: number;
+      targetIndex: number;
+      distance: number;
+    } | null = null;
+
+    for (const [pathIndex, pointIndices] of groups) {
+      if (connectedPaths.has(pathIndex) || pointIndices.length === 0) continue;
+      const endpoints = pointIndices.length === 1
+        ? pointIndices
+        : [pointIndices[0], pointIndices[pointIndices.length - 1]];
+
+      for (const endpointIndex of endpoints) {
+        const endpoint = points[endpointIndex];
+        for (const [connectedPathIndex, connectedPointIndices] of groups) {
+          if (!connectedPaths.has(connectedPathIndex)) continue;
+          for (const targetIndex of connectedPointIndices) {
+            const target = points[targetIndex];
+            const distance = Math.hypot(endpoint.x - target.x, endpoint.y - target.y);
+            if (!closest || distance < closest.distance) {
+              closest = { pathIndex, endpointIndex, targetIndex, distance };
+            }
+          }
+        }
+      }
+    }
+
+    if (!closest) break;
+    const jointDistance = Math.max(1.5, closest.distance * SVG_TO_DESIGN * 0.72);
+    graph[closest.endpointIndex].push({
+      pointIndex: closest.targetIndex,
+      distance: jointDistance,
+    });
+    graph[closest.targetIndex].push({
+      pointIndex: closest.endpointIndex,
+      distance: jointDistance,
+    });
+    connectedPaths.add(closest.pathIndex);
+  }
+
+  return graph;
+}
+
 async function loadLineAsset(url: string, echoIndex: number): Promise<EchoLineGeometry> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Could not load line figure ${echoIndex + 1}.`);
@@ -546,6 +626,7 @@ async function loadLineAsset(url: string, echoIndex: number): Promise<EchoLineGe
     path: new Path2D(pathData),
     points,
     samples: points.filter((_, index) => index % 3 === 0),
+    graph: buildLineGraph(points),
     strokeWidth,
     viewBoxX,
     viewBoxY,
@@ -718,46 +799,56 @@ function contactTensionPulse(echoIndex: number): number {
     + Math.sin(holdAge * 4.4 + echoIndex * 0.72) * 0.025 * releaseDecay;
 }
 
-function ropeAnchorsFor(echoIndex: number): Map<number, RopeAnchor> {
-  const cacheExpired = ropeAnchorCache.time !== lastNow
-    || ropeAnchorCache.originX !== contactOrigin.x
-    || ropeAnchorCache.originY !== contactOrigin.y;
+function ropeFieldFor(echoIndex: number): RopeField | null {
+  const cacheExpired = ropeFieldCache.originX !== contactOrigin.x
+    || ropeFieldCache.originY !== contactOrigin.y;
   if (cacheExpired) {
-    ropeAnchorCache = {
-      time: lastNow,
+    ropeFieldCache = {
       originX: contactOrigin.x,
       originY: contactOrigin.y,
-      anchors: [],
+      fields: [],
     };
   }
 
-  const cached = ropeAnchorCache.anchors[echoIndex];
+  const cached = ropeFieldCache.fields[echoIndex];
   if (cached) return cached;
 
-  const anchors = new Map<number, RopeAnchor>();
   const geometry = echoLineGeometry[echoIndex];
-  if (!geometry) return anchors;
+  if (!geometry || geometry.points.length === 0) return null;
 
-  for (const point of geometry.points) {
-    const pathIndex = point.pathIndex ?? 0;
+  let anchorPointIndex = 0;
+  let distanceToContact = Number.POSITIVE_INFINITY;
+  for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
+    const point = geometry.points[pointIndex];
     const position = linePointPosition(point, echoIndex, lastNow);
-    const distanceToContact = Math.hypot(
+    const distance = Math.hypot(
       contactOrigin.x - position.designX,
       contactOrigin.y - position.designY,
     );
-    const current = anchors.get(pathIndex);
-    if (!current || distanceToContact < current.distanceToContact) {
-      anchors.set(pathIndex, {
-        pathDistance: point.pathDistance ?? 0,
-        designX: position.designX,
-        designY: position.designY,
-        distanceToContact,
-      });
+    if (distance >= distanceToContact) continue;
+    anchorPointIndex = pointIndex;
+    distanceToContact = distance;
+  }
+
+  const graphDistances = Array.from<number>({ length: geometry.points.length }).fill(
+    Number.POSITIVE_INFINITY,
+  );
+  graphDistances[anchorPointIndex] = 0;
+  const stack = [anchorPointIndex];
+  while (stack.length > 0) {
+    const pointIndex = stack.pop();
+    if (pointIndex === undefined) break;
+    for (const edge of geometry.graph[pointIndex]) {
+      const distance = graphDistances[pointIndex] + edge.distance;
+      if (distance >= graphDistances[edge.pointIndex]) continue;
+      graphDistances[edge.pointIndex] = distance;
+      stack.push(edge.pointIndex);
     }
   }
 
-  ropeAnchorCache.anchors[echoIndex] = anchors;
-  return anchors;
+  const field = { anchorPointIndex, graphDistances };
+  ropeFieldCache.fields[echoIndex] = field;
+  return field;
 }
 
 function gatheredPosition(
@@ -792,6 +883,7 @@ function gatheredPosition(
 
 function gatheredLinePosition(
   point: FigurePoint,
+  pointIndex: number,
   echoIndex: number,
   time: number,
   elapsed: number,
@@ -803,22 +895,24 @@ function gatheredLinePosition(
   const density = contactDensityProgress(elapsed);
   if (gather <= 0 && density <= 0) return basePosition;
 
-  const anchor = ropeAnchorsFor(echoIndex).get(point.pathIndex ?? 0);
-  if (!anchor) return basePosition;
+  const geometry = echoLineGeometry[echoIndex];
+  const field = ropeFieldFor(echoIndex);
+  if (!geometry || !field) return basePosition;
 
   const ropeReach = Math.max(1, settings.contactRopeReach);
-  const arcDistance = Math.abs((point.pathDistance ?? 0) - anchor.pathDistance)
-    * SVG_TO_DESIGN;
+  const graphDistance = field.graphDistances[pointIndex] ?? Number.POSITIVE_INFINITY;
   const frontDistance = 8 + gather * ropeReach * 1.72 + density * ropeReach * 0.48;
   const propagation = smoothstep(
-    (frontDistance - arcDistance + ropeReach * 0.16) / (ropeReach * 0.32),
+    (frontDistance - graphDistance + ropeReach * 0.16) / (ropeReach * 0.32),
   );
-  const falloff = Math.exp(-arcDistance / ropeReach);
+  const falloff = Math.exp(-graphDistance / ropeReach);
   const influence = propagation * falloff;
   if (influence <= 0.0001) return basePosition;
 
-  const deltaX = contactOrigin.x - anchor.designX;
-  const deltaY = contactOrigin.y - anchor.designY;
+  const anchorPoint = geometry.points[field.anchorPointIndex];
+  const anchorPosition = linePointPosition(anchorPoint, echoIndex, time);
+  const deltaX = contactOrigin.x - anchorPosition.designX;
+  const deltaY = contactOrigin.y - anchorPosition.designY;
   const anchorDistance = Math.max(0.001, Math.hypot(deltaX, deltaY));
   const directionX = deltaX / anchorDistance;
   const directionY = deltaY / anchorDistance;
@@ -840,7 +934,7 @@ function gatheredLinePosition(
     : releasedHoldAge;
   const ropePhase = elapsed * 7.5 + holdAge * 2.4;
   const slack = Math.sin(
-    (point.pathDistance ?? 0) * 0.052 - ropePhase + point.seed * 2.2,
+    graphDistance * 0.11 - ropePhase + point.seed * 2.2,
   )
     * settings.contactRopeSlack
     * gather
@@ -868,6 +962,7 @@ function spawnReferencePosition(
 
 function lineSpawnReferencePosition(
   point: FigurePoint,
+  pointIndex: number,
   echoIndex: number,
   time: number,
   position = linePointPosition(point, echoIndex, time),
@@ -875,6 +970,7 @@ function lineSpawnReferencePosition(
   if (!isNameDropWave() || isPreviousContactRelease()) return position;
   return gatheredLinePosition(
     point,
+    pointIndex,
     echoIndex,
     time,
     contactReleaseTime(),
@@ -903,6 +999,7 @@ function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echo
 
 function drawParticle(
   point: FigurePoint,
+  pointIndex: number,
   echoIndex: number,
   channelIndex: number,
   spawnTime: number,
@@ -922,6 +1019,7 @@ function drawParticle(
     ? lineMode
       ? gatheredLinePosition(
         point,
+        pointIndex,
         echoIndex,
         originTime,
         contactReleaseTime(),
@@ -1208,10 +1306,17 @@ function drawDissolvingLinePath(
     let previousPosition: PositionedPoint | null = null;
     let previousOpacity = 0;
 
-    for (const point of geometry.points) {
+    for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
+      const point = geometry.points[pointIndex];
       if (point.startsPath) previousPosition = null;
       const basePosition = linePointPosition(point, echoIndex, now);
-      const spawnPosition = lineSpawnReferencePosition(point, echoIndex, now, basePosition);
+      const spawnPosition = lineSpawnReferencePosition(
+        point,
+        pointIndex,
+        echoIndex,
+        now,
+        basePosition,
+      );
       const spawnTime = spawnTimeFor(
         spawnPosition.designX,
         spawnPosition.designY,
@@ -1222,6 +1327,7 @@ function drawDissolvingLinePath(
       const opacity = 1 - smoothstep((elapsed - fadeStart) / fadeDuration);
       const position = gatheredLinePosition(
         point,
+        pointIndex,
         echoIndex,
         now,
         gatherElapsed,
@@ -1265,10 +1371,17 @@ function drawDissolvingLinePath(
   artworkCtx.beginPath();
   let drawing = false;
 
-  for (const point of geometry.points) {
+  for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
+    const point = geometry.points[pointIndex];
     if (point.startsPath) drawing = false;
     const basePosition = linePointPosition(point, echoIndex, now);
-    const spawnPosition = lineSpawnReferencePosition(point, echoIndex, now, basePosition);
+    const spawnPosition = lineSpawnReferencePosition(
+      point,
+      pointIndex,
+      echoIndex,
+      now,
+      basePosition,
+    );
     const remains = elapsed < spawnTimeFor(
       spawnPosition.designX,
       spawnPosition.designY,
@@ -1283,6 +1396,7 @@ function drawDissolvingLinePath(
 
     const position = gatheredLinePosition(
       point,
+      pointIndex,
       echoIndex,
       now,
       gatherElapsed,
@@ -1352,6 +1466,7 @@ function renderLineFigures(now: number, elapsed: number): void {
         const currentPosition = linePointPosition(point, echoIndex, now);
         const spawnPosition = lineSpawnReferencePosition(
           point,
+          pointIndex,
           echoIndex,
           now,
           currentPosition,
@@ -1363,7 +1478,16 @@ function renderLineFigures(now: number, elapsed: number): void {
           echoIndex,
         );
         if (elapsed >= spawnTime) {
-          drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize, true);
+          drawParticle(
+            point,
+            pointIndex,
+            echoIndex,
+            channelIndex,
+            spawnTime,
+            elapsed - spawnTime,
+            baseSize,
+            true,
+          );
         }
       }
     }
@@ -1413,7 +1537,18 @@ function renderSolidFigures(now: number, elapsed: number): void {
         if (elapsed < spawnTime) {
           drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize, gatherElapsed);
         }
-        else drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize, false);
+        else {
+          drawParticle(
+            point,
+            -1,
+            echoIndex,
+            channelIndex,
+            spawnTime,
+            elapsed - spawnTime,
+            baseSize,
+            false,
+          );
+        }
       }
     }
   }
@@ -1691,6 +1826,7 @@ function beginGather(point?: DesignPoint): void {
   if (phase === 'blank') reset();
 
   contactOrigin = point ?? { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
+  ropeFieldCache.originX = Number.NaN;
   phase = 'gathering';
   triggeredAt = lastNow || performance.now() * 0.001;
   releasedAt = 0;
