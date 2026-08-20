@@ -90,8 +90,8 @@ const ACTIVE_INTERACTION: InteractionMode = 'NameDrop Wave';
 const ACTIVE_GATHER_STYLE: ContactGatherStyle = 'Rope Pull';
 const ACTIVE_RELEASE_STYLE: ContactReleaseStyle = 'Current · Density';
 
+// Stage 1. Rendering surfaces and tunable artwork parameters.
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
-const hint = document.getElementById('hint') as HTMLParagraphElement;
 const error = document.getElementById('error') as HTMLDivElement;
 const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -168,6 +168,7 @@ const lineAssetUrls = [
   new URL('./assets/sori/figure-6.svg', import.meta.url).href,
 ];
 
+// Stage 2. Mutable interaction state shared by input, simulation, and rendering.
 let view: View = {
   width: DESIGN_WIDTH,
   height: DESIGN_HEIGHT,
@@ -193,6 +194,7 @@ let activePointerId: number | null = null;
 let animationFrame = 0;
 let lastNow = 0;
 
+// Stage 3. Shared math, timing, and coordinate conversion.
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -299,6 +301,7 @@ function resize(): void {
   artworkCtx.imageSmoothingEnabled = true;
 }
 
+// Stage 4. Load SVG/raster sources and convert them into sampled geometry.
 function dilate(input: Uint8Array, width: number, height: number, radius: number): Uint8Array {
   const output = new Uint8Array(input.length);
 
@@ -630,6 +633,7 @@ function linePointPosition(point: FigurePoint, echoIndex: number, time: number):
   };
 }
 
+// Stage 5. Drag-dissolve hit testing and particle state.
 function clearDragState(): void {
   dragPointStates = echoLineGeometry.map((geometry) => (
     Array.from<DragParticleState | null>({ length: geometry.points.length }).fill(null)
@@ -743,6 +747,7 @@ function solidPointPosition(point: FigurePoint, echoIndex: number, time: number)
   };
 }
 
+// Stage 6. Hold deformation: density pull or graph-propagated rope tension.
 function contactGatherProgress(elapsed: number): number {
   if (!isNameDropWave()) return 0;
   return smoothstep(elapsed / Math.max(0.001, settings.contactGatherDuration));
@@ -959,6 +964,7 @@ function lineSpawnReferencePosition(
   );
 }
 
+// Stage 7. Release scheduling and particle motion.
 function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echoIndex: number): number {
   if (isNameDropWave()) {
     const distance = Math.hypot(designX - contactOrigin.x, designY - contactOrigin.y);
@@ -1542,6 +1548,7 @@ function renderFigures(now: number): void {
   artworkCtx.globalCompositeOperation = 'source-over';
 }
 
+// Stage 8. Wave pass and final canvas composition.
 function renderContactEffect(now: number): void {
   if (phase !== 'dissolving' || !isNameDropWave()) return;
 
@@ -1688,21 +1695,23 @@ function renderScanlines(): void {
   for (let y = 1; y < view.height; y += 3) ctx.fillRect(0, y, view.width, 1);
 }
 
-function render(timestamp: number): void {
-  const now = timestamp * 0.001;
-  lastNow = now;
+function clearArtworkLayer(): void {
   artworkCtx.globalCompositeOperation = 'source-over';
   artworkCtx.globalAlpha = 1;
   artworkCtx.fillStyle = '#000';
   artworkCtx.fillRect(0, 0, view.width, view.height);
+}
 
+function renderArtworkLayer(now: number): void {
   if (phase !== 'blank') {
     if (!isPreviousContactRelease()) renderContactEffect(now);
     renderFigures(now);
     renderDragConnector();
     if (isPreviousContactRelease()) renderContactEffect(now);
   }
+}
 
+function compositeArtworkToScreen(): void {
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
   ctx.filter = 'none';
@@ -1722,7 +1731,28 @@ function render(timestamp: number): void {
   ctx.drawImage(artworkCanvas, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
   renderScanlines();
+}
 
+function releaseAnimationDuration(): number {
+  if (!isNameDropWave()) {
+    return settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
+  }
+  if (isPreviousContactRelease()) {
+    return settings.contactWaveDuration
+      + settings.contactReleaseSpread
+      + settings.particleLife / settings.contactReleaseSpeed
+      + 0.8;
+  }
+  return settings.contactWaveDuration
+    + settings.contactReleaseSpread
+    + Math.max(
+      settings.contactDiffusionDuration / settings.contactReleaseSpeed,
+      settings.contactParticleFadeDuration,
+    )
+    + 0.65;
+}
+
+function updateInteractionLifecycle(now: number): void {
   if (
     phase === 'dragging'
     && isDragDissolve()
@@ -1733,42 +1763,31 @@ function render(timestamp: number): void {
     reset();
   }
 
-  if (phase === 'dissolving') {
-    const contactDuration = isPreviousContactRelease()
-      ? settings.contactWaveDuration
-        + settings.contactReleaseSpread
-        + settings.particleLife / settings.contactReleaseSpeed
-        + 0.8
-      : settings.contactWaveDuration
-        + settings.contactReleaseSpread
-        + Math.max(
-          settings.contactDiffusionDuration / settings.contactReleaseSpeed,
-          settings.contactParticleFadeDuration,
-        )
-        + 0.65;
-    const originalDuration = settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
-    const totalDuration = isNameDropWave() ? contactDuration : originalDuration;
-    const phaseStartedAt = isNameDropWave() ? releasedAt : triggeredAt;
-    if (now - phaseStartedAt > totalDuration) {
-      if (isNameDropWave()) reset();
-      else {
-        phase = 'blank';
-        hint.textContent = 'TAP TO REPLAY';
-        hint.classList.remove('hidden');
-      }
-    }
-  }
-
-  animationFrame = requestAnimationFrame(render);
+  if (phase !== 'dissolving') return;
+  const phaseStartedAt = isNameDropWave() ? releasedAt : triggeredAt;
+  if (now - phaseStartedAt <= releaseAnimationDuration()) return;
+  if (isNameDropWave()) reset();
+  else phase = 'blank';
 }
 
+function renderFrame(timestamp: number): void {
+  const now = timestamp * 0.001;
+  lastNow = now;
+  clearArtworkLayer();
+  renderArtworkLayer(now);
+  compositeArtworkToScreen();
+  updateInteractionLifecycle(now);
+
+  animationFrame = requestAnimationFrame(renderFrame);
+}
+
+// Stage 9. Explicit state transitions. Input handlers call only these functions.
 function dissolve(): void {
   if (phase === 'gathering' || phase === 'dissolving') return;
   if (phase === 'blank') reset();
   phase = 'dissolving';
   triggeredAt = lastNow || performance.now() * 0.001;
   releasedAt = 0;
-  hint.classList.add('hidden');
   canvas.focus({ preventScroll: true });
 }
 
@@ -1783,8 +1802,6 @@ function beginGather(point?: DesignPoint): void {
   releasedAt = 0;
   releasedGatherElapsed = 0;
   releasedHoldAge = 0;
-  hint.textContent = 'RELEASE TO BURST';
-  hint.classList.remove('hidden');
   canvas.focus({ preventScroll: true });
 }
 
@@ -1798,7 +1815,6 @@ function releaseGather(): void {
   releasedHoldAge = Math.max(0, now - triggeredAt - contactReleaseTime());
   phase = 'dissolving';
   releasedAt = now;
-  hint.classList.add('hidden');
 }
 
 function beginDragDissolve(pointerId: number, point: DesignPoint): boolean {
@@ -1819,7 +1835,6 @@ function beginDragDissolve(pointerId: number, point: DesignPoint): boolean {
   if (connector) {
     applyDragStroke(connector[0], connector[1], now, settings.dragConnectorRadius);
   }
-  hint.classList.add('hidden');
   canvas.focus({ preventScroll: true });
   return true;
 }
@@ -1878,12 +1893,6 @@ function reset(): void {
   releasedHoldAge = 0;
   activePointerId = null;
   clearDragState();
-  hint.textContent = isNameDropWave()
-    ? 'HOLD TO CONNECT'
-    : isDragDissolve()
-      ? 'DRAG · TWO-FINGER LINK'
-      : 'TAP TO DISSOLVE';
-  hint.classList.remove('hidden');
 }
 
 function replay(point?: DesignPoint): void {
@@ -1918,6 +1927,7 @@ function designPointFromClient(
   };
 }
 
+// Stage 10. Debug-only parameter tuning.
 const gui = new GUI({ title: 'Afterbody' });
 const tuning = {
   pullSpeed: 1,
@@ -1953,7 +1963,8 @@ gui.close();
 let guiVisible = new URLSearchParams(window.location.search).get('debug') === '1';
 if (!guiVisible) gui.hide();
 
-canvas.addEventListener('pointerdown', (event) => {
+// Stage 11. Normalize pointer and keyboard input into the state transitions above.
+function handlePointerDown(event: PointerEvent): void {
   event.preventDefault();
   if (isDragDissolve()) {
     const point = designPointFromClient(event.clientX, event.clientY);
@@ -1969,9 +1980,9 @@ canvas.addEventListener('pointerdown', (event) => {
     return;
   }
   replay();
-});
+}
 
-window.addEventListener('pointermove', (event) => {
+function handlePointerMove(event: PointerEvent): void {
   if (isDragDissolve() && phase === 'dragging' && dragPointers.has(event.pointerId)) {
     event.preventDefault();
     moveDragDissolve(
@@ -1983,7 +1994,7 @@ window.addEventListener('pointermove', (event) => {
   if (!isNameDropWave() || phase !== 'gathering' || event.pointerId !== activePointerId) return;
   event.preventDefault();
   contactOrigin = designPointFromClient(event.clientX, event.clientY, false);
-});
+}
 
 function finishPointerInteraction(event: PointerEvent): void {
   event.preventDefault();
@@ -2003,9 +2014,7 @@ function finishPointerInteraction(event: PointerEvent): void {
   releaseGather();
 }
 
-window.addEventListener('pointerup', finishPointerInteraction);
-window.addEventListener('pointercancel', finishPointerInteraction);
-canvas.addEventListener('lostpointercapture', (event) => {
+function handleLostPointerCapture(event: PointerEvent): void {
   if (isDragDissolve()) {
     if (!dragPointers.has(event.pointerId)) return;
     endDragDissolve(event.pointerId);
@@ -2014,15 +2023,11 @@ canvas.addEventListener('lostpointercapture', (event) => {
   // Safari may drop pointer capture while the touch is still active. The
   // window-level pointerup/pointercancel handlers remain authoritative so a
   // transient capture loss does not cut the held rope interaction short.
-});
-
-canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-canvas.addEventListener('dragstart', (event) => event.preventDefault());
-canvas.addEventListener('selectstart', (event) => event.preventDefault());
+}
 
 let keyboardGathering = false;
 
-window.addEventListener('keydown', (event) => {
+function handleKeyDown(event: KeyboardEvent): void {
   if (event.key === ' ' || event.key === 'Enter') {
     event.preventDefault();
     if (event.repeat) return;
@@ -2037,21 +2042,41 @@ window.addEventListener('keydown', (event) => {
     if (guiVisible) gui.show();
     else gui.hide();
   }
-});
+}
 
-window.addEventListener('keyup', (event) => {
+function handleKeyUp(event: KeyboardEvent): void {
   if (event.key !== ' ' && event.key !== 'Enter') return;
   event.preventDefault();
   if (!keyboardGathering) return;
   keyboardGathering = false;
   releaseGather();
-});
+}
 
-window.addEventListener('resize', resize);
-window.addEventListener('error', (event) => {
-  error.textContent = event.message || 'Afterbody could not start.';
+function showError(message: string): void {
+  error.textContent = message;
   error.classList.add('show');
-});
+}
+
+function preventCanvasGesture(event: Event): void {
+  event.preventDefault();
+}
+
+function bindInteractionEvents(): void {
+  canvas.addEventListener('pointerdown', handlePointerDown);
+  window.addEventListener('pointermove', handlePointerMove);
+  window.addEventListener('pointerup', finishPointerInteraction);
+  window.addEventListener('pointercancel', finishPointerInteraction);
+  canvas.addEventListener('lostpointercapture', handleLostPointerCapture);
+  canvas.addEventListener('contextmenu', preventCanvasGesture);
+  canvas.addEventListener('dragstart', preventCanvasGesture);
+  canvas.addEventListener('selectstart', preventCanvasGesture);
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
+  window.addEventListener('resize', resize);
+  window.addEventListener('error', (event) => {
+    showError(event.message || 'Afterbody could not start.');
+  });
+}
 
 const debugWindow = window as Window & { __afterbody?: DebugApi };
 debugWindow.__afterbody = {
@@ -2063,8 +2088,8 @@ debugWindow.__afterbody = {
   getPhase: () => phase,
 };
 
-async function start(): Promise<void> {
-  resize();
+// Stage 12. Boot: size surfaces, prepare geometry, bind input, then start frames.
+async function loadArtworkAssets(): Promise<void> {
   const solidImage = new Image();
   solidImage.decoding = 'async';
   solidImage.src = new URL('./assets/figure-source-start.png', import.meta.url).href;
@@ -2073,19 +2098,26 @@ async function start(): Promise<void> {
     loadLineAssets(),
     solidImage.decode().then(() => buildSolidPoints(solidImage)),
   ]);
+}
 
+function applyReducedMotionPreference(): void {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     settings.idleMotion = 0.16;
     settings.drift = 15;
     settings.sweepDuration = 4.5;
   }
-
-  cancelAnimationFrame(animationFrame);
-  animationFrame = requestAnimationFrame(render);
 }
 
-start().catch((reason: unknown) => {
+async function initializeAfterbody(): Promise<void> {
+  resize();
+  await loadArtworkAssets();
+  applyReducedMotionPreference();
+  bindInteractionEvents();
+  cancelAnimationFrame(animationFrame);
+  animationFrame = requestAnimationFrame(renderFrame);
+}
+
+initializeAfterbody().catch((reason: unknown) => {
   const message = reason instanceof Error ? reason.message : 'Afterbody could not start.';
-  error.textContent = message;
-  error.classList.add('show');
+  showError(message);
 });

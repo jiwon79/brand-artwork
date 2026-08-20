@@ -19,6 +19,10 @@ docs/
 
 ## Artworks
 
+### Afterbody
+
+- [`architecture.md`](./artworks/afterbody/architecture.md) - SVG rope hold, wave-gated particle dissolve, Canvas 2D 합성 구조
+
 ### Color Text
 
 - [`architecture.md`](./artworks/color-text/architecture.md) - Color Text의 물 packet, 글자 atlas, geometry·color field, spring feedback 전체 구조
