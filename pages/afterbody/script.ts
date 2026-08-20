@@ -25,6 +25,7 @@ type LineGraphEdge = {
 
 type RopeField = {
   anchorPointIndex: number;
+  anchorDistance: number;
   graphDistances: number[];
   maxGraphDistance: number;
 };
@@ -836,7 +837,12 @@ function ropeFieldFor(echoIndex: number): RopeField | null {
   const maxGraphDistance = graphDistances.reduce((maximum, distance) => (
     Number.isFinite(distance) ? Math.max(maximum, distance) : maximum
   ), 0);
-  const field = { anchorPointIndex, graphDistances, maxGraphDistance };
+  const field = {
+    anchorPointIndex,
+    anchorDistance: distanceToContact,
+    graphDistances,
+    maxGraphDistance,
+  };
   ropeFields[echoIndex] = field;
   return field;
 }
@@ -892,15 +898,22 @@ function gatheredLinePosition(
   const ropeReach = Math.max(1, settings.contactRopeReach);
   const graphDistance = field.graphDistances[pointIndex] ?? Number.POSITIVE_INFINITY;
   const graphExtent = Math.max(1, field.maxGraphDistance);
-  const frontDistance = gather * (graphExtent + ropeReach * 0.18)
-    + density * ropeReach * 0.16;
-  const propagation = smoothstep(
-    (frontDistance - graphDistance + ropeReach * 0.12) / (ropeReach * 0.26),
-  );
-  const tailTension = 0.3 + density * 0.24;
-  const falloff = tailTension
-    + (1 - tailTension) * Math.exp(-graphDistance / (ropeReach * 1.65));
-  const influence = propagation * falloff;
+  const normalizedDistance = clamp(graphDistance / graphExtent, 0, 1);
+
+  // Treat the line as a damped rope instead of advancing a hard propagation
+  // front. A front makes whole SVG subpaths switch on together when it crosses
+  // one of the invisible joints between contours. The exponential response
+  // starts every point continuously, while distance keeps most of the pull
+  // around the grabbed strand and only whispers the tension to the far end.
+  const effectiveReach = ropeReach * (0.68 + gather * 0.65 + density * 0.25);
+  const localTension = Math.exp(-graphDistance / Math.max(1, effectiveReach));
+  const transmittedTension = (0.045 + gather * 0.075 + density * 0.045)
+    * (1 - normalizedDistance * 0.35);
+  const distanceTension = localTension
+    + (1 - localTension) * transmittedTension;
+  const responseLag = 0.055 + normalizedDistance * 0.3;
+  const springResponse = 1 - Math.exp(-elapsed / responseLag);
+  const influence = springResponse * distanceTension;
   if (influence <= 0.0001) return basePosition;
 
   const anchorPoint = geometry.points[field.anchorPointIndex];
@@ -910,8 +923,8 @@ function gatheredLinePosition(
   const anchorDistance = Math.max(0.001, Math.hypot(deltaX, deltaY));
   const directionX = deltaX / anchorDistance;
   const directionY = deltaY / anchorDistance;
-  const proximity = 0.3
-    + smoothstep(1 - anchorDistance / (DESIGN_WIDTH * 0.62)) * 0.7;
+  const proximity = 0.12
+    + Math.exp(-field.anchorDistance / (DESIGN_WIDTH * 0.24)) * 0.88;
   const tension = gather * 0.76 + density * 0.24;
   const pullDistance = Math.min(anchorDistance * 0.78, settings.contactRopePull)
     * tension
