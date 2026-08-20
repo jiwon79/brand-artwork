@@ -83,6 +83,8 @@ const SOURCE_X_LIMIT = 61;
 const SVG_TO_DESIGN = 0.32;
 const SVG_SAMPLE_STEP = 3.2;
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const BASE_CONTACT_WAVE_DURATION = 2.48;
+const DEFAULT_WAVE_SPEED = 1.4;
 const ACTIVE_FIGURE: FigureMode = 'Lines';
 const ACTIVE_INTERACTION: InteractionMode = 'NameDrop Wave';
 const ACTIVE_GATHER_STYLE: ContactGatherStyle = 'Rope Pull';
@@ -116,12 +118,12 @@ const settings = {
   contactGatherDuration: 0.92,
   contactDensityDuration: 0.52,
   contactCompression: 0.18,
-  contactRopePull: 52,
-  contactRopeReach: 74,
+  contactRopePull: 90,
+  contactRopeReach: 88,
   contactRopeSlack: 3.2,
   contactBloomEnabled: true,
   contactBloomDuration: 0.22,
-  contactWaveDuration: 2.48,
+  contactWaveDuration: BASE_CONTACT_WAVE_DURATION / DEFAULT_WAVE_SPEED,
   contactWaveBandWidth: 52,
   contactWaveBrightness: 0.58,
   contactLineFadeDuration: 0.3,
@@ -129,10 +131,10 @@ const settings = {
   contactParticleFadeDuration: 1.65,
   contactParticleDensity: 3,
   contactParticleSize: 0.8,
-  contactForce: 24,
+  contactForce: 45,
   contactSpread: 6,
   contactReleaseSpread: 0.025,
-  contactReleaseSpeed: 1,
+  contactReleaseSpeed: 1.35,
   dragRadius: 18,
   dragConnectorRadius: 4,
   dragConnectorWidth: 0.8,
@@ -148,7 +150,7 @@ const settings = {
 const defaultTiming = {
   gatherDuration: settings.contactGatherDuration,
   densityDuration: settings.contactDensityDuration,
-  waveDuration: settings.contactWaveDuration,
+  waveDuration: BASE_CONTACT_WAVE_DURATION,
 };
 
 const channelColors = ['#ff2924', '#59ff50', '#2795ff'] as const;
@@ -1961,7 +1963,7 @@ function designPointFromClient(
 const gui = new GUI({ title: 'Afterbody' });
 const tuning = {
   pullSpeed: 1,
-  waveSpeed: 1,
+  waveSpeed: DEFAULT_WAVE_SPEED,
 };
 
 const pullFolder = gui.addFolder('Pull');
