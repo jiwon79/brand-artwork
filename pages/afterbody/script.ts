@@ -119,12 +119,14 @@ const settings = {
   contactRopePull: 52,
   contactRopeReach: 74,
   contactRopeSlack: 3.2,
+  contactBloomEnabled: true,
   contactBloomDuration: 0.22,
   contactWaveDuration: 2.48,
   contactWaveBandWidth: 52,
   contactWaveBrightness: 0.58,
   contactLineFadeDuration: 0.3,
   contactDiffusionDuration: 1.65,
+  contactParticleFadeDuration: 1.65,
   contactParticleDensity: 3,
   contactParticleSize: 0.8,
   contactForce: 24,
@@ -223,6 +225,10 @@ function isDragDissolve(): boolean {
 
 function contactReleaseTime(): number {
   return settings.contactGatherDuration + settings.contactDensityDuration;
+}
+
+function contactBloomTime(): number {
+  return settings.contactBloomEnabled ? settings.contactBloomDuration : 0;
 }
 
 function contactWaveExtent(): number {
@@ -968,7 +974,7 @@ function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echo
     }
     const distanceProgress = clamp(distance / Math.max(1, contactWaveExtent()), 0, 1);
     const waveDelay = contactWaveEaseInverse(distanceProgress) * settings.contactWaveDuration;
-    return contactReleaseTime() + settings.contactBloomDuration + waveDelay + shuffledRelease;
+    return contactReleaseTime() + contactBloomTime() + waveDelay + shuffledRelease;
   }
 
   const xProgress = clamp(designX / DESIGN_WIDTH, 0, 1);
@@ -1053,7 +1059,7 @@ function drawParticle(
       const diffusion = smoothstep(particleAge / diffusionLife);
       const release = smoothstep((particleAge - 0.08) / (diffusionLife * 0.82));
       const compressionPulse = Math.sin(
-        Math.PI * clamp(particleAge / Math.max(0.08, settings.contactBloomDuration), 0, 1),
+        Math.PI * clamp(particleAge / Math.max(0.08, contactBloomTime()), 0, 1),
       );
       const maximumTravel = settings.contactForce * (0.68 + channelSeed * 0.46) * view.fit;
       const sidewaysTravel = (point.seed2 - 0.5)
@@ -1098,9 +1104,11 @@ function drawParticle(
 
   const useDensityParticle = isNameDropWave() && !isPreviousContactRelease();
   const life = useDensityParticle
-    ? settings.contactDiffusionDuration * (0.82 + point.seed * 0.32)
+    ? settings.contactParticleFadeDuration * (0.82 + point.seed * 0.32)
     : settings.particleLife * (0.72 + point.seed * 0.48);
-  const alpha = Math.pow(clamp(1 - particleAge / life, 0, 1), useDensityParticle ? 1.65 : 1.3)
+  const fadeAge = useDensityParticle ? age : particleAge;
+  const fadeProgress = clamp(1 - fadeAge / life, 0, 1);
+  const alpha = Math.pow(fadeProgress, useDensityParticle ? 1.65 : 1.3)
     * (useDensityParticle ? 0.44 + point.seed * 0.46 : 0.48 + point.seed * 0.52);
   const interactionSize = isNameDropWave() ? settings.contactParticleSize : 1;
   const size = baseSize
@@ -1597,7 +1605,8 @@ function renderContactEffect(now: number): void {
     return;
   }
 
-  const waveAge = releaseAge - settings.contactBloomDuration;
+  const bloomDuration = contactBloomTime();
+  const waveAge = releaseAge - bloomDuration;
   const waveDuration = Math.max(0.001, settings.contactWaveDuration);
   const waveProgress = clamp(waveAge / waveDuration, 0, 1);
   const waveFade = Math.exp(
@@ -1617,19 +1626,16 @@ function renderContactEffect(now: number): void {
   const alpha = smoothstep(waveAge / 0.14)
     * waveFade
     * settings.contactWaveBrightness;
-  const bloomProgress = smoothstep(
-    releaseAge / Math.max(0.01, settings.contactBloomDuration),
-  );
+  const bloomProgress = smoothstep(releaseAge / Math.max(0.01, bloomDuration));
   const bloomFade = 1 - smoothstep(
-    (releaseAge - settings.contactBloomDuration * 0.55)
-    / Math.max(0.01, settings.contactBloomDuration * 1.8),
+    (releaseAge - bloomDuration * 0.55) / Math.max(0.01, bloomDuration * 1.8),
   );
 
   artworkCtx.save();
   artworkCtx.globalCompositeOperation = 'screen';
   artworkCtx.filter = `blur(${Math.max(1.2, 2.6 * view.fit)}px)`;
 
-  if (releaseAge >= 0 && bloomFade > 0) {
+  if (settings.contactBloomEnabled && releaseAge >= 0 && bloomFade > 0) {
     const bloomRadius = (12 + bloomProgress * 32) * view.fit;
     const bloom = artworkCtx.createRadialGradient(
       centerX,
@@ -1772,10 +1778,13 @@ function render(timestamp: number): void {
         + settings.contactReleaseSpread
         + settings.particleLife / settings.contactReleaseSpeed
         + 0.8
-      : settings.contactBloomDuration
+      : contactBloomTime()
         + settings.contactWaveDuration
         + settings.contactReleaseSpread
-        + settings.contactDiffusionDuration / settings.contactReleaseSpeed
+        + Math.max(
+          settings.contactDiffusionDuration / settings.contactReleaseSpeed,
+          settings.contactParticleFadeDuration,
+        )
         + 0.65;
     const originalDuration = settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
     const totalDuration = isNameDropWave() ? contactDuration : originalDuration;
@@ -1967,6 +1976,7 @@ pullFolder
   });
 
 const releaseFolder = gui.addFolder('Release');
+releaseFolder.add(settings, 'contactBloomEnabled').name('Center bloom');
 releaseFolder
   .add(tuning, 'waveSpeed', 0.25, 3, 0.05)
   .name('Wave speed')
@@ -1975,6 +1985,9 @@ releaseFolder
   });
 releaseFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Particle speed');
 releaseFolder.add(settings, 'contactForce', 4, 80, 1).name('Particle spread');
+releaseFolder
+  .add(settings, 'contactParticleFadeDuration', 0.1, 5, 0.05)
+  .name('Particle fade time');
 gui.close();
 let guiVisible = new URLSearchParams(window.location.search).get('debug') === '1';
 if (!guiVisible) gui.hide();
