@@ -74,10 +74,7 @@ type DebugApi = {
   dissolve: () => void;
   burst: (clientX?: number, clientY?: number) => void;
   reset: () => void;
-  setMode: (mode: FigureMode) => void;
-  setInteraction: (mode: InteractionMode) => void;
   getPhase: () => Phase;
-  getInteraction: () => InteractionMode;
 };
 
 const DESIGN_WIDTH = 480;
@@ -86,6 +83,10 @@ const SOURCE_X_LIMIT = 61;
 const SVG_TO_DESIGN = 0.32;
 const SVG_SAMPLE_STEP = 3.2;
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const ACTIVE_FIGURE: FigureMode = 'Lines';
+const ACTIVE_INTERACTION: InteractionMode = 'NameDrop Wave';
+const ACTIVE_GATHER_STYLE: ContactGatherStyle = 'Rope Pull';
+const ACTIVE_RELEASE_STYLE: ContactReleaseStyle = 'Current · Density';
 
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const hint = document.getElementById('hint') as HTMLParagraphElement;
@@ -100,8 +101,6 @@ const artworkCtx = artworkCanvas.getContext('2d');
 if (!artworkCtx) throw new Error('Offscreen 2D canvas is not supported.');
 
 const settings = {
-  figure: 'Lines' as FigureMode,
-  interaction: 'NameDrop Wave' as InteractionMode,
   echoes: 6,
   rgbOffset: 3.2,
   lineThickness: 1,
@@ -117,11 +116,9 @@ const settings = {
   contactGatherDuration: 0.92,
   contactDensityDuration: 0.52,
   contactCompression: 0.18,
-  contactGatherStyle: 'Rope Pull' as ContactGatherStyle,
   contactRopePull: 52,
   contactRopeReach: 74,
   contactRopeSlack: 3.2,
-  contactReleaseStyle: 'Current · Density' as ContactReleaseStyle,
   contactBloomDuration: 0.22,
   contactWaveDuration: 2.48,
   contactWaveBandWidth: 52,
@@ -146,35 +143,10 @@ const settings = {
   scanlines: 0.08,
 };
 
-const contactReleasePresets: Record<ContactReleaseStyle, Partial<typeof settings>> = {
-  'Previous · Shockwave': {
-    contactBloomDuration: 0,
-    contactWaveDuration: 1.24,
-    contactWaveBandWidth: 22,
-    contactWaveBrightness: 1,
-    contactLineFadeDuration: 0.3,
-    contactDiffusionDuration: 1.65,
-    contactParticleDensity: 3,
-    contactParticleSize: 0.55,
-    contactForce: 100,
-    contactSpread: 8,
-    contactReleaseSpread: 0.08,
-    contactReleaseSpeed: 1.5,
-  },
-  'Current · Density': {
-    contactBloomDuration: 0.22,
-    contactWaveDuration: 2.48,
-    contactWaveBandWidth: 52,
-    contactWaveBrightness: 0.58,
-    contactLineFadeDuration: 0.3,
-    contactDiffusionDuration: 1.65,
-    contactParticleDensity: 3,
-    contactParticleSize: 0.8,
-    contactForce: 24,
-    contactSpread: 6,
-    contactReleaseSpread: 0.025,
-    contactReleaseSpeed: 1,
-  },
+const defaultTiming = {
+  gatherDuration: settings.contactGatherDuration,
+  densityDuration: settings.contactDensityDuration,
+  waveDuration: settings.contactWaveDuration,
 };
 
 const channelColors = ['#ff2924', '#59ff50', '#2795ff'] as const;
@@ -234,19 +206,19 @@ function smoothstep(value: number): number {
 }
 
 function isNameDropWave(): boolean {
-  return settings.interaction === 'NameDrop Wave';
+  return ACTIVE_INTERACTION === 'NameDrop Wave';
 }
 
 function isPreviousContactRelease(): boolean {
-  return settings.contactReleaseStyle === 'Previous · Shockwave';
+  return ACTIVE_RELEASE_STYLE === 'Previous · Shockwave';
 }
 
 function isRopePull(): boolean {
-  return settings.contactGatherStyle === 'Rope Pull' && settings.figure === 'Lines';
+  return ACTIVE_GATHER_STYLE === 'Rope Pull' && ACTIVE_FIGURE === 'Lines';
 }
 
 function isDragDissolve(): boolean {
-  return settings.interaction === 'Drag Dissolve';
+  return ACTIVE_INTERACTION === 'Drag Dissolve';
 }
 
 function contactReleaseTime(): number {
@@ -1565,7 +1537,7 @@ function renderFigures(now: number): void {
   const elapsed = motionElapsed(now);
   artworkCtx.globalCompositeOperation = 'lighter';
 
-  if (settings.figure === 'Lines' || isDragDissolve()) renderLineFigures(now, elapsed);
+  if (ACTIVE_FIGURE === 'Lines' || isDragDissolve()) renderLineFigures(now, elapsed);
   else renderSolidFigures(now, elapsed);
 
   artworkCtx.globalAlpha = 1;
@@ -1974,98 +1946,32 @@ function designPointFromClient(
   };
 }
 
-function setMode(mode: FigureMode): void {
-  settings.figure = isDragDissolve() ? 'Lines' : mode;
-  reset();
-  figureController.updateDisplay();
-}
-
-function setInteraction(mode: InteractionMode): void {
-  settings.interaction = mode;
-  if (isDragDissolve()) settings.figure = 'Lines';
-  reset();
-  interactionController.updateDisplay();
-  figureController.updateDisplay();
-}
-
 const gui = new GUI({ title: 'Afterbody' });
-const interactionController = gui
-  .add(settings, 'interaction', ['Original', 'NameDrop Wave', 'Drag Dissolve'])
-  .name('Interaction')
-  .onChange((mode: InteractionMode) => setInteraction(mode));
-const figureController = gui
-  .add(settings, 'figure', ['Lines', 'Solid'])
-  .name('Figure')
-  .onChange((mode: FigureMode) => setMode(mode));
-gui.add(settings, 'echoes', 1, 6, 1).name('Echoes');
-gui.add(settings, 'rgbOffset', 0, 6, 0.05).name('RGB offset');
-gui.add(settings, 'idleMotion', 0, 2.5, 0.05).name('Idle motion');
+const tuning = {
+  pullSpeed: 1,
+  waveSpeed: 1,
+};
 
-const shapeFolder = gui.addFolder('Shape');
-shapeFolder.add(settings, 'lineThickness', 0.45, 1.8, 0.01).name('SVG line scale');
-
-const dissolveFolder = gui.addFolder('Dissolve');
-dissolveFolder.add(settings, 'hold', 0, 2, 0.01).name('Hold');
-dissolveFolder.add(settings, 'sweepDuration', 1, 6, 0.05).name('Sweep');
-dissolveFolder.add(settings, 'sweepJitter', 0, 1, 0.01).name('Edge noise');
-dissolveFolder.add(settings, 'drift', 5, 60, 0.5).name('Drift');
-dissolveFolder.add(settings, 'spread', 0, 24, 0.5).name('Spread');
-dissolveFolder.add(settings, 'turbulence', 0, 8, 0.1).name('Turbulence');
-dissolveFolder.add(settings, 'particleLife', 1, 6, 0.05).name('Lifetime');
-dissolveFolder.add(settings, 'particleSize', 0.5, 3, 0.05).name('Size');
-
-const contactFolder = gui.addFolder('NameDrop Wave');
-contactFolder
-  .add(settings, 'contactGatherStyle', ['Density Pull', 'Rope Pull'])
-  .name('Gather style')
-  .onChange((style: ContactGatherStyle) => {
-    if (style === 'Rope Pull') settings.figure = 'Lines';
-    reset();
-    figureController.updateDisplay();
+const pullFolder = gui.addFolder('Pull');
+pullFolder.add(settings, 'contactRopePull', 8, 100, 1).name('Amount');
+pullFolder.add(settings, 'contactRopeReach', 16, 160, 1).name('Reach');
+pullFolder
+  .add(tuning, 'pullSpeed', 0.4, 2.5, 0.05)
+  .name('Speed')
+  .onChange((speed: number) => {
+    settings.contactGatherDuration = defaultTiming.gatherDuration / speed;
+    settings.contactDensityDuration = defaultTiming.densityDuration / speed;
   });
-contactFolder
-  .add(settings, 'contactReleaseStyle', Object.keys(contactReleasePresets))
-  .name('Release style')
-  .onChange((style: ContactReleaseStyle) => {
-    Object.assign(settings, contactReleasePresets[style]);
-    reset();
-    for (const controller of contactFolder.controllersRecursive()) controller.updateDisplay();
+
+const releaseFolder = gui.addFolder('Release');
+releaseFolder
+  .add(tuning, 'waveSpeed', 0.25, 3, 0.05)
+  .name('Wave speed')
+  .onChange((speed: number) => {
+    settings.contactWaveDuration = defaultTiming.waveDuration / speed;
   });
-contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gather time');
-contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Tension time');
-contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pull');
-contactFolder.add(settings, 'contactRopePull', 8, 100, 1).name('Rope pull');
-contactFolder.add(settings, 'contactRopeReach', 16, 160, 1).name('Rope reach');
-contactFolder.add(settings, 'contactRopeSlack', 0, 10, 0.1).name('Rope slack');
-contactFolder.add(settings, 'contactBloomDuration', 0, 0.6, 0.01).name('Density peak');
-contactFolder.add(settings, 'contactWaveDuration', 0.2, 4.8, 0.01).name('Wave duration');
-contactFolder.add(settings, 'contactWaveBandWidth', 6, 100, 1).name('Wave width');
-contactFolder.add(settings, 'contactWaveBrightness', 0, 1.5, 0.01).name('Wave brightness');
-contactFolder.add(settings, 'contactLineFadeDuration', 0.08, 0.7, 0.01).name('Line crossfade');
-contactFolder.add(settings, 'contactDiffusionDuration', 0.4, 3, 0.05).name('Diffusion life');
-contactFolder.add(settings, 'contactParticleDensity', 0.5, 3, 0.05).name('SVG particle density');
-contactFolder.add(settings, 'contactParticleSize', 0.25, 1.5, 0.05).name('Particle size');
-contactFolder.add(settings, 'contactForce', 4, 160, 1).name('Particle travel');
-contactFolder.add(settings, 'contactSpread', 0, 50, 1).name('Particle curl');
-contactFolder.add(settings, 'contactReleaseSpread', 0, 0.7, 0.005).name('Release noise');
-contactFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Release speed');
-
-const dragFolder = gui.addFolder('Drag Dissolve');
-dragFolder.add(settings, 'dragRadius', 4, 60, 1).name('Brush radius');
-dragFolder.add(settings, 'dragConnectorRadius', 1, 18, 0.5).name('Connector radius');
-dragFolder.add(settings, 'dragConnectorWidth', 0.2, 3, 0.05).name('Connector width');
-dragFolder.add(settings, 'dragParticleSize', 0.2, 1.5, 0.05).name('Particle size');
-dragFolder.add(settings, 'dragForce', 5, 120, 1).name('Drag force');
-dragFolder.add(settings, 'dragSpread', 0, 60, 1).name('Particle spread');
-dragFolder.add(settings, 'dragParticleLife', 0.2, 4, 0.05).name('Particle lifetime');
-dragFolder.add(settings, 'dragRestoreDelay', 0, 4, 0.05).name('Restore delay');
-
-const finishFolder = gui.addFolder('Display');
-finishFolder.add(settings, 'glow', 0, 0.8, 0.01).name('Glow');
-finishFolder.add(settings, 'scanlines', 0, 0.3, 0.01).name('Scanlines');
-
-gui.add({ trigger: () => replay() }, 'trigger').name('Trigger');
-gui.add({ reset }, 'reset').name('Reset');
+releaseFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Particle speed');
+releaseFolder.add(settings, 'contactForce', 4, 80, 1).name('Particle spread');
 gui.close();
 let guiVisible = new URLSearchParams(window.location.search).get('debug') === '1';
 if (!guiVisible) gui.hide();
@@ -2147,8 +2053,6 @@ window.addEventListener('keydown', (event) => {
       keyboardGathering = true;
       beginGather();
     } else if (!isDragDissolve()) replay();
-  } else if (event.key.toLowerCase() === 'm') {
-    setMode(settings.figure === 'Lines' ? 'Solid' : 'Lines');
   } else if (event.key.toLowerCase() === 'r') {
     reset();
   } else if (event.key.toLowerCase() === 'g') {
@@ -2176,14 +2080,10 @@ const debugWindow = window as Window & { __afterbody?: DebugApi };
 debugWindow.__afterbody = {
   dissolve: replay,
   burst: (clientX = window.innerWidth * 0.5, clientY = window.innerHeight * 0.5) => {
-    setInteraction('NameDrop Wave');
     replay(designPointFromClient(clientX, clientY, false));
   },
   reset,
-  setMode,
-  setInteraction,
   getPhase: () => phase,
-  getInteraction: () => settings.interaction,
 };
 
 async function start(): Promise<void> {
