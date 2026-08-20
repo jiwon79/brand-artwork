@@ -26,6 +26,7 @@ type LineGraphEdge = {
 type RopeField = {
   anchorPointIndex: number;
   graphDistances: number[];
+  maxGraphDistance: number;
 };
 
 type EchoLineGeometry = {
@@ -208,11 +209,7 @@ let releasedGatherElapsed = 0;
 let releasedHoldAge = 0;
 let contactOrigin: DesignPoint = { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
 let contactExtentCache = { x: Number.NaN, y: Number.NaN, value: 1 };
-let ropeFieldCache = {
-  originX: Number.NaN,
-  originY: Number.NaN,
-  fields: [] as Array<RopeField | undefined>,
-};
+let ropeFields: Array<RopeField | undefined> = [];
 let dragPointStates: Array<Array<DragParticleState | null>> = [];
 let dragHitCounts: number[] = [];
 const dragPointers = new Map<number, DesignPoint>();
@@ -800,17 +797,7 @@ function contactTensionPulse(echoIndex: number): number {
 }
 
 function ropeFieldFor(echoIndex: number): RopeField | null {
-  const cacheExpired = ropeFieldCache.originX !== contactOrigin.x
-    || ropeFieldCache.originY !== contactOrigin.y;
-  if (cacheExpired) {
-    ropeFieldCache = {
-      originX: contactOrigin.x,
-      originY: contactOrigin.y,
-      fields: [],
-    };
-  }
-
-  const cached = ropeFieldCache.fields[echoIndex];
+  const cached = ropeFields[echoIndex];
   if (cached) return cached;
 
   const geometry = echoLineGeometry[echoIndex];
@@ -846,8 +833,11 @@ function ropeFieldFor(echoIndex: number): RopeField | null {
     }
   }
 
-  const field = { anchorPointIndex, graphDistances };
-  ropeFieldCache.fields[echoIndex] = field;
+  const maxGraphDistance = graphDistances.reduce((maximum, distance) => (
+    Number.isFinite(distance) ? Math.max(maximum, distance) : maximum
+  ), 0);
+  const field = { anchorPointIndex, graphDistances, maxGraphDistance };
+  ropeFields[echoIndex] = field;
   return field;
 }
 
@@ -901,11 +891,15 @@ function gatheredLinePosition(
 
   const ropeReach = Math.max(1, settings.contactRopeReach);
   const graphDistance = field.graphDistances[pointIndex] ?? Number.POSITIVE_INFINITY;
-  const frontDistance = 8 + gather * ropeReach * 1.72 + density * ropeReach * 0.48;
+  const graphExtent = Math.max(1, field.maxGraphDistance);
+  const frontDistance = gather * (graphExtent + ropeReach * 0.18)
+    + density * ropeReach * 0.16;
   const propagation = smoothstep(
-    (frontDistance - graphDistance + ropeReach * 0.16) / (ropeReach * 0.32),
+    (frontDistance - graphDistance + ropeReach * 0.12) / (ropeReach * 0.26),
   );
-  const falloff = Math.exp(-graphDistance / ropeReach);
+  const tailTension = 0.3 + density * 0.24;
+  const falloff = tailTension
+    + (1 - tailTension) * Math.exp(-graphDistance / (ropeReach * 1.65));
   const influence = propagation * falloff;
   if (influence <= 0.0001) return basePosition;
 
@@ -1826,7 +1820,7 @@ function beginGather(point?: DesignPoint): void {
   if (phase === 'blank') reset();
 
   contactOrigin = point ?? { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
-  ropeFieldCache.originX = Number.NaN;
+  ropeFields = [];
   phase = 'gathering';
   triggeredAt = lastNow || performance.now() * 0.001;
   releasedAt = 0;
@@ -2081,7 +2075,7 @@ canvas.addEventListener('pointerdown', (event) => {
   replay();
 });
 
-canvas.addEventListener('pointermove', (event) => {
+window.addEventListener('pointermove', (event) => {
   if (isDragDissolve() && phase === 'dragging' && dragPointers.has(event.pointerId)) {
     event.preventDefault();
     moveDragDissolve(
@@ -2121,9 +2115,9 @@ canvas.addEventListener('lostpointercapture', (event) => {
     endDragDissolve(event.pointerId);
     return;
   }
-  if (event.pointerId !== activePointerId) return;
-  activePointerId = null;
-  releaseGather();
+  // Safari may drop pointer capture while the touch is still active. The
+  // window-level pointerup/pointercancel handlers remain authoritative so a
+  // transient capture loss does not cut the held rope interaction short.
 });
 
 canvas.addEventListener('contextmenu', (event) => event.preventDefault());
