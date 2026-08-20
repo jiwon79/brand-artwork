@@ -2,7 +2,7 @@
 
 Afterbody는 여섯 개의 인체 SVG 잔상을 RGB 채널로 겹쳐 보여 주고, 누르는 동안 선 전체에 장력을 전달한 뒤 손을 놓으면 터치 지점에서 진행하는 파동에 맞춰 선을 사각 파티클로 바꾸는 Canvas 2D 작품이다.
 
-현재 구현은 [`pages/afterbody/script.ts`](../../../pages/afterbody/script.ts)에 있으며, 활성 조합은 `Lines + NameDrop Wave + Rope Pull + Current Density`이다. 파일에 남아 있는 `Solid`, `Original`, `Drag Dissolve`, `Previous Shockwave` 분기는 비교와 실험을 위한 비활성 경로다.
+현재 구현은 [`pages/afterbody/`](../../../pages/afterbody/)의 단계별 TypeScript 모듈에 있으며, 활성 조합은 `Lines + NameDrop Wave + Rope Pull + Current Density`이다. 메인 파일에 남아 있는 `Solid`, `Original`, `Drag Dissolve`, `Previous Shockwave` 분기는 비교와 실험을 위한 비활성 경로다.
 
 ## 1. 해결하려는 문제
 
@@ -17,6 +17,18 @@ Afterbody는 여섯 개의 인체 SVG 잔상을 RGB 채널로 겹쳐 보여 주�
 ![Afterbody 입력부터 출력까지의 파이프라인](./figures/pipeline.svg)
 
 그림은 실제 실행 순서를 왼쪽에서 오른쪽으로 보여 준다. 입력 좌표는 작품 좌표로 변환되고, 미리 만든 SVG graph에서 hold 변형을 계산한다. release 후에는 같은 sample의 중심 거리가 파동 도착 시간이 되며, offscreen canvas와 main canvas의 두 렌더 패스를 거쳐 화면에 출력된다.
+
+### 1.1 파일별 책임
+
+| 모듈 | 책임 | 다음 소비자 |
+| --- | --- | --- |
+| [`types.ts`](../../../pages/afterbody/types.ts) | 좌표, geometry, phase, particle 상태 타입 | 모든 모듈 |
+| [`config.ts`](../../../pages/afterbody/config.ts) | 활성 모드, 기본값, 인체 배치, RGB 채널, asset URL | geometry, GUI, main |
+| [`math.ts`](../../../pages/afterbody/math.ts) | `clamp`, deterministic `hash`, `smoothstep` | geometry, wave, main |
+| [`geometry.ts`](../../../pages/afterbody/geometry.ts) | SVG/raster 로딩, path sample, tangent, graph, virtual joint | main의 변형·렌더 단계 |
+| [`wave-timing.ts`](../../../pages/afterbody/wave-timing.ts) | wave extent, forward radius, inverse arrival delay | main의 spawn과 wave pass |
+| [`gui.ts`](../../../pages/afterbody/gui.ts) | lil-gui 생성과 설정값 연결 | main의 `G` 입력 |
+| [`script.ts`](../../../pages/afterbody/script.ts) | runtime 상태, hold 변형, 파티클, 렌더 패스, 입력, 초기화 | 최종 canvas 출력 |
 
 ## 2. 입력
 
@@ -85,30 +97,13 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 
 초기화 비용은 각 SVG에 대해 한 번만 발생한다. 매 frame에는 준비된 `Path2D`, sample, graph를 재사용한다.
 
+표본화, virtual joint, graph distance의 재사용 가능한 원리는 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에서 설명한다.
+
 ### 3.3 hold: graph를 따라 전달되는 rope tension
 
-터치를 시작하면 `ropeFieldFor()`가 각 인체마다 터치 위치에서 가장 가까운 sample을 `anchorPointIndex`로 선택한다. 그 뒤 graph를 순회해 anchor에서 모든 sample까지의 누적 거리 `graphDistance`를 계산하고 캐시한다. 터치 위치가 이동하면 `ropeFields`를 비워 새 anchor 기준으로 계산한다.
+터치를 시작하면 `ropeFieldFor()`가 각 인체마다 가장 가까운 sample을 anchor로 선택하고, 그 anchor에서 모든 sample까지의 graph distance를 한 번 계산해 캐시한다. 손가락을 움직이는 동안 anchor와 cache는 유지하고 목표점 `contactOrigin`만 갱신한다. 즉 처음 잡은 strand를 놓지 않은 채 끌고 간다.
 
-hold를 시작할 때 선택한 anchor는 손가락을 움직여도 유지되고, 이동 중에는 `contactOrigin`만 갱신된다. 즉 처음 잡은 strand를 놓지 않은 채 목표 위치만 따라가는 구조다. `gatheredLinePosition()`은 sample마다 다음 값을 만든다.
-
-| 값 | 의미 | 커질 때의 결과 |
-| --- | --- | --- |
-| `gather` | 초기 당김 진행도 | anchor가 터치 쪽으로 더 이동 |
-| `density` | hold 후반 밀도 진행도 | 최종 장력에 가까워짐 |
-| `graphDistance` | anchor부터 선을 따라간 거리 | 멀수록 국소 당김이 약해짐 |
-| `localTension` | `exp(-graphDistance / effectiveReach)` | 1에 가까울수록 anchor와 비슷하게 이동 |
-| `transmittedTension` | 먼 구간에 남기는 작은 장력 | 선 전체가 완전히 끊겨 보이는 것을 방지 |
-| `slack` | path tangent의 수직 방향 굴곡 | 직선으로 딱딱하게 수렴하는 것을 방지 |
-
-국소 장력은 다음 지수 감쇠를 사용한다.
-
-```text
-localTension = exp(-graphDistance / effectiveReach)
-```
-
-`graphDistance = 0`인 anchor에서는 값이 1이다. 거리가 `effectiveReach`와 같으면 약 0.37, 두 배면 약 0.14가 된다. 지수 감쇠를 사용한 이유는 특정 거리에서 갑자기 켜지는 propagation front를 피하기 위해서다. hard front는 virtual joint를 통과할 때 분리 contour 전체가 한 번에 움직이는 끊김을 만든다.
-
-최종 `influence`는 가까운 구간의 `localTension`과 먼 구간의 작은 `transmittedTension`, 그리고 거리에 따른 `responseLag`를 합친 경험적 근사다. 실제 줄의 질량·탄성·감쇠를 시간 적분하는 물리 시뮬레이션은 아니다.
+`gatheredLinePosition()`은 graph distance의 지수 감쇠, 먼 구간에 남기는 작은 전달 장력, 거리에 따른 response lag, path normal 방향의 slack을 합쳐 sample 위치를 만든다. 이는 실제 줄의 질량과 충돌을 적분하는 물리 시뮬레이션이 아니라, 연속적인 rope-like 반응을 위한 경험적 근사다. 수식과 값 변화는 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에 분리했다.
 
 ## 4. 렌더 패스
 
@@ -116,23 +111,9 @@ localTension = exp(-graphDistance / effectiveReach)
 
 `releaseGather()`는 손을 놓은 순간의 hold 진행도와 추가 hold 시간을 저장하고 `phase = dissolving`으로 전환한다. 이 값을 보존하기 때문에 누른 시간과 관계없이 release 첫 frame에서 형상이 원본으로 튀지 않는다.
 
-각 SVG sample의 파티클 생성 시각은 `spawnTimeFor()`가 정한다.
+각 SVG sample의 파티클 생성 시각은 `spawnTimeFor()`가 정한다. [`wave-timing.ts`](../../../pages/afterbody/wave-timing.ts)는 화면 ring에는 forward easing을, sample의 거리에는 같은 함수의 inverse easing을 적용한다. 그래서 crest가 sample 위치에 도착하는 시각과 선이 파티클로 바뀌는 기준 시각이 일치한다.
 
-```text
-distanceProgress = distance(sample, contactOrigin) / contactWaveExtent
-waveDelay        = contactWaveEaseInverse(distanceProgress) × waveDuration
-spawnTime        = contactReleaseTime + waveDelay + smallJitter
-```
-
-`contactWaveExtent`는 터치점에서 480 × 270 design frame의 네 모서리까지 거리 중 가장 큰 값이다. 따라서 터치점이 화면 중앙이 아니어도 wave progress가 1이 될 때 가장 먼 모서리까지 도달한다.
-
-wave의 화면 반지름은 반대 방향 계산을 사용한다.
-
-```text
-waveRadius = contactWaveEase(waveProgress) × contactWaveExtent × view.fit
-```
-
-생성 시각에 inverse easing을 쓰고 화면 반지름에 forward easing을 쓰므로, ring이 어떤 sample 위치에 도착한 frame과 그 sample이 파티클로 바뀌는 frame이 맞는다.
+`contactWaveExtent`는 터치점에서 480 × 270 design frame의 네 모서리까지 거리 중 가장 큰 값이다. 따라서 터치점이 화면 중앙이 아니어도 wave progress가 1이 될 때 가장 먼 모서리까지 도달한다. 실제 spawn에는 최대 `0.025 s`의 작은 jitter가 더해져 개별 pixel은 crest보다 아주 조금 늦을 수 있다. forward/inverse 대응의 유도와 적용 범위는 [Wavefront Event Scheduling](../../concepts/wavefront-event-scheduling.md)에서 설명한다.
 
 ### 4.2 선과 파티클
 
@@ -184,7 +165,8 @@ RGB 선과 파티클은 `lighter`, wave는 `screen`, 마지막 glow는 blur가 �
 | --- | --- |
 | 최초 1회 | SVG fetch, path sample, tangent, graph, `Path2D`, raster solid sample |
 | resize 때 | canvas device 크기, `view.fit`, 중앙 offset |
-| hold 시작/위치 이동 때 | 각 인체의 anchor와 graph distance cache |
+| hold 시작 때 | 각 인체의 anchor와 graph distance cache |
+| hold 위치 이동 때 | cache는 유지하고 `contactOrigin`만 갱신 |
 | 매 frame | rope 위치, wave 반지름, 선 opacity, 활성 파티클 위치, 두 canvas 합성 |
 | release 종료 때 | 상태와 drag/rope cache reset |
 

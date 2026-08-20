@@ -1,94 +1,40 @@
-import GUI from 'lil-gui';
-
-type FigureMode = 'Lines' | 'Solid';
-type InteractionMode = 'Original' | 'NameDrop Wave' | 'Drag Dissolve';
-type ContactReleaseStyle = 'Previous · Shockwave' | 'Current · Density';
-type ContactGatherStyle = 'Density Pull' | 'Rope Pull';
-type Phase = 'idle' | 'gathering' | 'dragging' | 'dissolving' | 'blank';
-
-type FigurePoint = {
-  x: number;
-  y: number;
-  seed: number;
-  seed2: number;
-  startsPath?: boolean;
-  pathIndex?: number;
-  pathDistance?: number;
-  tangentX?: number;
-  tangentY?: number;
-};
-
-type LineGraphEdge = {
-  pointIndex: number;
-  distance: number;
-};
-
-type RopeField = {
-  anchorPointIndex: number;
-  anchorDistance: number;
-  graphDistances: number[];
-  maxGraphDistance: number;
-};
-
-type EchoLineGeometry = {
-  path: Path2D;
-  points: FigurePoint[];
-  samples: FigurePoint[];
-  graph: LineGraphEdge[][];
-  strokeWidth: number;
-  viewBoxX: number;
-  viewBoxY: number;
-  width: number;
-  height: number;
-};
-
-type View = {
-  width: number;
-  height: number;
-  fit: number;
-  offsetX: number;
-  offsetY: number;
-};
-
-type DesignPoint = {
-  x: number;
-  y: number;
-};
-
-type PositionedPoint = {
-  x: number;
-  y: number;
-  designX: number;
-  designY: number;
-};
-
-type DragParticleState = {
-  spawnedAt: number;
-  originX: number;
-  originY: number;
-  velocityX: number;
-  velocityY: number;
-};
-
-type DebugApi = {
-  dissolve: () => void;
-  burst: (clientX?: number, clientY?: number) => void;
-  reset: () => void;
-  getPhase: () => Phase;
-};
-
-const DESIGN_WIDTH = 480;
-const DESIGN_HEIGHT = 270;
-const SOURCE_X_LIMIT = 61;
-const SVG_TO_DESIGN = 0.32;
-const SVG_SAMPLE_STEP = 3.2;
-const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
-const BASE_CONTACT_WAVE_DURATION = 2.48;
-const DEFAULT_WAVE_SPEED = 1.35;
-const ACTIVE_FIGURE: FigureMode = 'Lines';
-const ACTIVE_INTERACTION: InteractionMode = 'NameDrop Wave';
-const ACTIVE_GATHER_STYLE: ContactGatherStyle = 'Rope Pull';
-const ACTIVE_RELEASE_STYLE: ContactReleaseStyle = 'Current · Density';
+import {
+  ACTIVE_FIGURE,
+  ACTIVE_GATHER_STYLE,
+  ACTIVE_INTERACTION,
+  ACTIVE_RELEASE_STYLE,
+  DESIGN_HEIGHT,
+  DESIGN_WIDTH,
+  SVG_TO_DESIGN,
+  channelColors,
+  channelX,
+  channelY,
+  echoCenters,
+  lineEchoYCenters,
+  settings,
+  solidEchoXScales,
+  solidEchoYCenters,
+  solidEchoYScales,
+} from './config';
+import { buildSolidPoints, loadLineAssets } from './geometry';
+import { createTuningGui } from './gui';
+import { clamp, hash, smoothstep } from './math';
+import type {
+  DebugApi,
+  DesignPoint,
+  DragParticleState,
+  EchoLineGeometry,
+  FigurePoint,
+  Phase,
+  PositionedPoint,
+  RopeField,
+  View,
+} from './types';
+import {
+  measureWaveExtent,
+  waveDelayForDistance,
+  waveRadiusForProgress,
+} from './wave-timing';
 
 // Stage 1. Rendering surfaces and tunable artwork parameters.
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
@@ -101,72 +47,6 @@ const artworkCanvas = document.createElement('canvas');
 const artworkCtx = artworkCanvas.getContext('2d');
 
 if (!artworkCtx) throw new Error('Offscreen 2D canvas is not supported.');
-
-const settings = {
-  echoes: 6,
-  rgbOffset: 3.4,
-  lineThickness: 1,
-  idleMotion: 0.34,
-  hold: 0.72,
-  sweepDuration: 3.25,
-  sweepJitter: 0.34,
-  drift: 27,
-  spread: 9.5,
-  turbulence: 2.6,
-  particleLife: 3.35,
-  particleSize: 1.15,
-  contactGatherDuration: 0.92,
-  contactDensityDuration: 0.52,
-  contactCompression: 0.18,
-  contactRopePull: 90,
-  contactRopeReach: 88,
-  contactRopeSlack: 3.2,
-  contactWaveDuration: BASE_CONTACT_WAVE_DURATION / DEFAULT_WAVE_SPEED,
-  contactWaveBandWidth: 52,
-  contactWaveBrightness: 0.58,
-  contactLineFadeDuration: 0.3,
-  contactDiffusionDuration: 1.65,
-  contactParticleFadeDuration: 0.9,
-  contactParticleDensity: 3,
-  contactParticleSize: 1.2,
-  contactForce: 45,
-  contactSpread: 6,
-  contactReleaseSpread: 0.025,
-  contactReleaseSpeed: 1.45,
-  dragRadius: 18,
-  dragConnectorRadius: 4,
-  dragConnectorWidth: 0.8,
-  dragParticleSize: 0.55,
-  dragForce: 48,
-  dragSpread: 18,
-  dragParticleLife: 1.35,
-  dragRestoreDelay: 0.8,
-  glow: 0.26,
-  scanlines: 0.08,
-};
-
-const defaultTiming = {
-  gatherDuration: settings.contactGatherDuration,
-  densityDuration: settings.contactDensityDuration,
-  waveDuration: BASE_CONTACT_WAVE_DURATION,
-};
-
-const channelColors = ['#ff2924', '#59ff50', '#2795ff'] as const;
-const channelX = [-1, 0, 1] as const;
-const channelY = [0.55, 0, -0.55] as const;
-const echoCenters = [99, 187, 255, 312, 362, 408];
-const lineEchoYCenters = [137, 142, 146, 149, 153, 157];
-const solidEchoYCenters = [142, 146, 149, 152, 155, 156];
-const solidEchoYScales = [1.79, 1.52, 1.32, 1.16, 1.03, 0.93];
-const solidEchoXScales = solidEchoYScales.map((scale) => scale * 1.28);
-const lineAssetUrls = [
-  new URL('./assets/sori/figure-1.svg', import.meta.url).href,
-  new URL('./assets/sori/figure-2.svg', import.meta.url).href,
-  new URL('./assets/sori/figure-3.svg', import.meta.url).href,
-  new URL('./assets/sori/figure-4.svg', import.meta.url).href,
-  new URL('./assets/sori/figure-5.svg', import.meta.url).href,
-  new URL('./assets/sori/figure-6.svg', import.meta.url).href,
-];
 
 // Stage 2. Mutable interaction state shared by input, simulation, and rendering.
 let view: View = {
@@ -194,21 +74,7 @@ let activePointerId: number | null = null;
 let animationFrame = 0;
 let lastNow = 0;
 
-// Stage 3. Shared math, timing, and coordinate conversion.
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function hash(a: number, b: number, c = 0): number {
-  const value = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453123;
-  return value - Math.floor(value);
-}
-
-function smoothstep(value: number): number {
-  const progress = clamp(value, 0, 1);
-  return progress * progress * (3 - 2 * progress);
-}
-
+// Stage 3. Interaction timing and coordinate conversion.
 function isNameDropWave(): boolean {
   return ACTIVE_INTERACTION === 'NameDrop Wave';
 }
@@ -233,22 +99,9 @@ function contactWaveExtent(): number {
   if (contactExtentCache.x === contactOrigin.x && contactExtentCache.y === contactOrigin.y) {
     return contactExtentCache.value;
   }
-  const value = Math.max(
-    Math.hypot(contactOrigin.x, contactOrigin.y),
-    Math.hypot(DESIGN_WIDTH - contactOrigin.x, contactOrigin.y),
-    Math.hypot(contactOrigin.x, DESIGN_HEIGHT - contactOrigin.y),
-    Math.hypot(DESIGN_WIDTH - contactOrigin.x, DESIGN_HEIGHT - contactOrigin.y),
-  );
+  const value = measureWaveExtent(contactOrigin);
   contactExtentCache = { x: contactOrigin.x, y: contactOrigin.y, value };
   return value;
-}
-
-function contactWaveEase(progress: number): number {
-  return 1 - Math.pow(1 - clamp(progress, 0, 1), 1.25);
-}
-
-function contactWaveEaseInverse(progress: number): number {
-  return 1 - Math.pow(1 - clamp(progress, 0, 1), 1 / 1.25);
 }
 
 function motionElapsed(now: number): number {
@@ -301,321 +154,7 @@ function resize(): void {
   artworkCtx.imageSmoothingEnabled = true;
 }
 
-// Stage 4. Load SVG/raster sources and convert them into sampled geometry.
-function dilate(input: Uint8Array, width: number, height: number, radius: number): Uint8Array {
-  const output = new Uint8Array(input.length);
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      let active = 0;
-      for (let offsetY = -radius; offsetY <= radius && active === 0; offsetY += 1) {
-        const sourceY = y + offsetY;
-        if (sourceY < 0 || sourceY >= height) continue;
-        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
-          const sourceX = x + offsetX;
-          if (sourceX < 0 || sourceX >= width) continue;
-          if (input[sourceY * width + sourceX] !== 0) {
-            active = 1;
-            break;
-          }
-        }
-      }
-      output[y * width + x] = active;
-    }
-  }
-
-  return output;
-}
-
-function erode(input: Uint8Array, width: number, height: number, radius: number): Uint8Array {
-  const output = new Uint8Array(input.length);
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      let active = 1;
-      for (let offsetY = -radius; offsetY <= radius && active === 1; offsetY += 1) {
-        const sourceY = y + offsetY;
-        if (sourceY < 0 || sourceY >= height) {
-          active = 0;
-          break;
-        }
-        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
-          const sourceX = x + offsetX;
-          if (sourceX < 0 || sourceX >= width || input[sourceY * width + sourceX] === 0) {
-            active = 0;
-            break;
-          }
-        }
-      }
-      output[y * width + x] = active;
-    }
-  }
-
-  return output;
-}
-
-function buildSolidPoints(image: HTMLImageElement): void {
-  const sourceCanvas = document.createElement('canvas');
-  sourceCanvas.width = image.naturalWidth;
-  sourceCanvas.height = image.naturalHeight;
-  const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
-
-  if (!sourceCtx) throw new Error('Could not prepare the solid human source image.');
-
-  sourceCtx.drawImage(image, 0, 0);
-  const pixels = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height).data;
-  const raw = new Uint8Array(sourceCanvas.width * sourceCanvas.height);
-
-  for (let y = 0; y < sourceCanvas.height; y += 1) {
-    for (let x = 0; x < sourceCanvas.width; x += 1) {
-      if (y < 8 || x < 3 || x >= SOURCE_X_LIMIT) continue;
-      const index = (y * sourceCanvas.width + x) * 4;
-      const red = pixels[index];
-      const green = pixels[index + 1];
-      const blue = pixels[index + 2];
-      const brightest = Math.max(red, green, blue);
-      const darkest = Math.min(red, green, blue);
-      const coloredStroke = brightest > 72 && brightest - darkest > 24;
-      const whiteStroke = red + green + blue > 350 && brightest > 128;
-      raw[y * sourceCanvas.width + x] = coloredStroke || whiteStroke ? 1 : 0;
-    }
-  }
-
-  const closed = erode(
-    dilate(raw, sourceCanvas.width, sourceCanvas.height, 3),
-    sourceCanvas.width,
-    sourceCanvas.height,
-    2,
-  );
-  const mask = dilate(closed, sourceCanvas.width, sourceCanvas.height, 1);
-
-  let minX = sourceCanvas.width;
-  let minY = sourceCanvas.height;
-  let maxX = 0;
-  let maxY = 0;
-
-  for (let y = 0; y < sourceCanvas.height; y += 1) {
-    for (let x = 0; x < sourceCanvas.width; x += 1) {
-      if (mask[y * sourceCanvas.width + x] === 0) continue;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-  }
-
-  const centerX = (minX + maxX) * 0.5;
-  const centerY = (minY + maxY) * 0.5;
-  solidPoints = [];
-
-  for (let y = 0; y < sourceCanvas.height; y += 1) {
-    for (let x = 0; x < sourceCanvas.width; x += 1) {
-      if (mask[y * sourceCanvas.width + x] === 0 || x % 2 !== 0 || y % 2 !== 0) continue;
-      solidPoints.push({
-        x: x - centerX,
-        y: y - centerY,
-        seed: hash(x, y),
-        seed2: hash(y, x, 3),
-      });
-    }
-  }
-}
-
-function readNumber(value: string | null, fallback: number): number {
-  if (value === null) return fallback;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function buildLineGraph(points: FigurePoint[]): LineGraphEdge[][] {
-  const graph = points.map(() => [] as LineGraphEdge[]);
-  const pathGroups = new Map<number, number[]>();
-
-  for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
-    const point = points[pointIndex];
-    const pathIndex = point.pathIndex ?? 0;
-    const group = pathGroups.get(pathIndex) ?? [];
-    group.push(pointIndex);
-    pathGroups.set(pathIndex, group);
-
-    if (pointIndex === 0 || points[pointIndex - 1].pathIndex !== pathIndex) continue;
-    const previousPoint = points[pointIndex - 1];
-    const distance = Math.max(
-      0.001,
-      Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y) * SVG_TO_DESIGN,
-    );
-    graph[pointIndex - 1].push({ pointIndex, distance });
-    graph[pointIndex].push({ pointIndex: pointIndex - 1, distance });
-  }
-
-  const groups = [...pathGroups.entries()];
-  if (groups.length <= 1) return graph;
-
-  const mainPath = groups.reduce((longest, candidate) => (
-    candidate[1].length > longest[1].length ? candidate : longest
-  ));
-  const connectedPaths = new Set([mainPath[0]]);
-
-  // The SVG deliberately leaves arms and legs as separate contours. Connect
-  // their nearest endpoint to the already connected body only for tension
-  // propagation; these virtual joints are never rendered as visible strokes.
-  while (connectedPaths.size < groups.length) {
-    let closest: {
-      pathIndex: number;
-      endpointIndex: number;
-      targetIndex: number;
-      distance: number;
-    } | null = null;
-
-    for (const [pathIndex, pointIndices] of groups) {
-      if (connectedPaths.has(pathIndex) || pointIndices.length === 0) continue;
-      const endpoints = pointIndices.length === 1
-        ? pointIndices
-        : [pointIndices[0], pointIndices[pointIndices.length - 1]];
-
-      for (const endpointIndex of endpoints) {
-        const endpoint = points[endpointIndex];
-        for (const [connectedPathIndex, connectedPointIndices] of groups) {
-          if (!connectedPaths.has(connectedPathIndex)) continue;
-          for (const targetIndex of connectedPointIndices) {
-            const target = points[targetIndex];
-            const distance = Math.hypot(endpoint.x - target.x, endpoint.y - target.y);
-            if (!closest || distance < closest.distance) {
-              closest = { pathIndex, endpointIndex, targetIndex, distance };
-            }
-          }
-        }
-      }
-    }
-
-    if (!closest) break;
-    const jointDistance = Math.max(1.5, closest.distance * SVG_TO_DESIGN * 0.72);
-    graph[closest.endpointIndex].push({
-      pointIndex: closest.targetIndex,
-      distance: jointDistance,
-    });
-    graph[closest.targetIndex].push({
-      pointIndex: closest.endpointIndex,
-      distance: jointDistance,
-    });
-    connectedPaths.add(closest.pathIndex);
-  }
-
-  return graph;
-}
-
-async function loadLineAsset(url: string, echoIndex: number): Promise<EchoLineGeometry> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Could not load line figure ${echoIndex + 1}.`);
-
-  const source = await response.text();
-  const documentSvg = new DOMParser().parseFromString(source, 'image/svg+xml');
-  if (documentSvg.querySelector('parsererror')) throw new Error(`Line figure ${echoIndex + 1} is not valid SVG.`);
-
-  const svg = documentSvg.querySelector('svg');
-  const sourcePath = documentSvg.querySelector('path');
-  const pathData = sourcePath?.getAttribute('d');
-  if (!svg || !sourcePath || !pathData) throw new Error(`Line figure ${echoIndex + 1} has no path.`);
-
-  const fallbackWidth = readNumber(svg.getAttribute('width'), 1);
-  const fallbackHeight = readNumber(svg.getAttribute('height'), 1);
-  const viewBox = (svg.getAttribute('viewBox') ?? `0 0 ${fallbackWidth} ${fallbackHeight}`)
-    .trim()
-    .split(/[\s,]+/)
-    .map(Number);
-  if (viewBox.length !== 4 || viewBox.some((value) => !Number.isFinite(value))) {
-    throw new Error(`Line figure ${echoIndex + 1} has an invalid viewBox.`);
-  }
-
-  const [viewBoxX, viewBoxY, width, height] = viewBox;
-  const strokeWidth = readNumber(sourcePath.getAttribute('stroke-width'), 1);
-  const measurementSvg = document.createElementNS(SVG_NAMESPACE, 'svg');
-  const measurementPath = document.createElementNS(SVG_NAMESPACE, 'path');
-  measurementSvg.setAttribute('viewBox', viewBox.join(' '));
-  measurementSvg.setAttribute('aria-hidden', 'true');
-  measurementSvg.style.position = 'fixed';
-  measurementSvg.style.left = '-10000px';
-  measurementSvg.style.top = '-10000px';
-  measurementSvg.style.width = '1px';
-  measurementSvg.style.height = '1px';
-  measurementSvg.style.opacity = '0';
-  measurementPath.setAttribute('d', pathData);
-  measurementSvg.append(measurementPath);
-  document.body.append(measurementSvg);
-
-  const points: FigurePoint[] = [];
-  const centerX = viewBoxX + width * 0.5;
-  const centerY = viewBoxY + height * 0.5;
-
-  // A single SVG <path> may contain several M-started contours (torso,
-  // arms, legs). Sample them independently so the dissolve never draws a
-  // straight bridge across those intentional gaps.
-  const subpaths = pathData.match(/[Mm][^Mm]*/g) ?? [pathData];
-  for (let pathIndex = 0; pathIndex < subpaths.length; pathIndex += 1) {
-    const subpathData = subpaths[pathIndex];
-    measurementPath.setAttribute('d', subpathData);
-    const length = measurementPath.getTotalLength();
-
-    for (let distance = 0; distance < length; distance += SVG_SAMPLE_STEP) {
-      const point = measurementPath.getPointAtLength(distance);
-      const tangentStart = measurementPath.getPointAtLength(Math.max(0, distance - SVG_SAMPLE_STEP));
-      const tangentEnd = measurementPath.getPointAtLength(Math.min(length, distance + SVG_SAMPLE_STEP));
-      const tangentLength = Math.max(
-        0.001,
-        Math.hypot(tangentEnd.x - tangentStart.x, tangentEnd.y - tangentStart.y),
-      );
-      points.push({
-        x: point.x - centerX,
-        y: point.y - centerY,
-        seed: hash(point.x, point.y, echoIndex),
-        seed2: hash(point.y, point.x, echoIndex + 7),
-        startsPath: distance === 0,
-        pathIndex,
-        pathDistance: distance,
-        tangentX: (tangentEnd.x - tangentStart.x) / tangentLength,
-        tangentY: (tangentEnd.y - tangentStart.y) / tangentLength,
-      });
-    }
-
-    const finalPoint = measurementPath.getPointAtLength(length);
-    const finalTangentStart = measurementPath.getPointAtLength(Math.max(0, length - SVG_SAMPLE_STEP));
-    const finalTangentLength = Math.max(
-      0.001,
-      Math.hypot(finalPoint.x - finalTangentStart.x, finalPoint.y - finalTangentStart.y),
-    );
-    points.push({
-      x: finalPoint.x - centerX,
-      y: finalPoint.y - centerY,
-      seed: hash(finalPoint.x, finalPoint.y, echoIndex),
-      seed2: hash(finalPoint.y, finalPoint.x, echoIndex + 7),
-      startsPath: length === 0,
-      pathIndex,
-      pathDistance: length,
-      tangentX: (finalPoint.x - finalTangentStart.x) / finalTangentLength,
-      tangentY: (finalPoint.y - finalTangentStart.y) / finalTangentLength,
-    });
-  }
-  measurementSvg.remove();
-
-  return {
-    path: new Path2D(pathData),
-    points,
-    samples: points.filter((_, index) => index % 3 === 0),
-    graph: buildLineGraph(points),
-    strokeWidth,
-    viewBoxX,
-    viewBoxY,
-    width,
-    height,
-  };
-}
-
-async function loadLineAssets(): Promise<void> {
-  echoLineGeometry = await Promise.all(
-    lineAssetUrls.map((url, echoIndex) => loadLineAsset(url, echoIndex)),
-  );
-}
-
+// Stage 4. Map the geometry prepared by geometry.ts into the current view.
 function lineSway(echoIndex: number, time: number): number {
   const echoPhase = time * 1.45 - echoIndex * 0.19;
   return Math.sin(echoPhase * 0.44) * (1.1 - echoIndex * 0.09) * settings.idleMotion;
@@ -974,8 +513,11 @@ function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echo
         * settings.contactWaveDuration;
       return contactReleaseTime() + waveDelay + shuffledRelease;
     }
-    const distanceProgress = clamp(distance / Math.max(1, contactWaveExtent()), 0, 1);
-    const waveDelay = contactWaveEaseInverse(distanceProgress) * settings.contactWaveDuration;
+    const waveDelay = waveDelayForDistance(
+      distance,
+      contactWaveExtent(),
+      settings.contactWaveDuration,
+    );
     return contactReleaseTime() + waveDelay + shuffledRelease;
   }
 
@@ -1613,7 +1155,7 @@ function renderContactEffect(now: number): void {
   );
   const waveRadius = Math.max(
     1,
-    contactWaveEase(waveProgress) * contactWaveExtent() * view.fit,
+    waveRadiusForProgress(waveProgress, contactWaveExtent()) * view.fit,
   );
   const bandWidth = Math.max(
     1,
@@ -1927,41 +1469,8 @@ function designPointFromClient(
   };
 }
 
-// Stage 10. Debug-only parameter tuning.
-const gui = new GUI({ title: 'Afterbody' });
-const tuning = {
-  pullSpeed: 1,
-  waveSpeed: DEFAULT_WAVE_SPEED,
-};
-
-const pullFolder = gui.addFolder('Pull');
-pullFolder.add(settings, 'contactRopePull', 8, 100, 1).name('Amount');
-pullFolder.add(settings, 'contactRopeReach', 16, 160, 1).name('Reach');
-pullFolder
-  .add(tuning, 'pullSpeed', 0.4, 2.5, 0.05)
-  .name('Speed')
-  .onChange((speed: number) => {
-    settings.contactGatherDuration = defaultTiming.gatherDuration / speed;
-    settings.contactDensityDuration = defaultTiming.densityDuration / speed;
-  });
-
-const releaseFolder = gui.addFolder('Release');
-releaseFolder
-  .add(tuning, 'waveSpeed', 0.25, 3, 0.05)
-  .name('Wave speed')
-  .onChange((speed: number) => {
-    settings.contactWaveDuration = defaultTiming.waveDuration / speed;
-  });
-releaseFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Particle speed');
-releaseFolder.add(settings, 'contactForce', 4, 80, 1).name('Particle spread');
-releaseFolder
-  .add(settings, 'contactParticleFadeDuration', 0.1, 5, 0.05)
-  .name('Particle fade time');
-releaseFolder.add(settings, 'contactParticleSize', 0.2, 2.5, 0.05).name('Particle size');
-releaseFolder.add(settings, 'rgbOffset', 0, 10, 0.1).name('Chromatic amount');
-gui.close();
-let guiVisible = new URLSearchParams(window.location.search).get('debug') === '1';
-if (!guiVisible) gui.hide();
+// Stage 10. Debug-only controls are assembled in gui.ts.
+const tuningGui = createTuningGui();
 
 // Stage 11. Normalize pointer and keyboard input into the state transitions above.
 function handlePointerDown(event: PointerEvent): void {
@@ -2038,9 +1547,7 @@ function handleKeyDown(event: KeyboardEvent): void {
   } else if (event.key.toLowerCase() === 'r') {
     reset();
   } else if (event.key.toLowerCase() === 'g') {
-    guiVisible = !guiVisible;
-    if (guiVisible) gui.show();
-    else gui.hide();
+    tuningGui.toggle();
   }
 }
 
@@ -2094,10 +1601,12 @@ async function loadArtworkAssets(): Promise<void> {
   solidImage.decoding = 'async';
   solidImage.src = new URL('./assets/figure-source-start.png', import.meta.url).href;
 
-  await Promise.all([
+  const [loadedLineGeometry, loadedSolidPoints] = await Promise.all([
     loadLineAssets(),
     solidImage.decode().then(() => buildSolidPoints(solidImage)),
   ]);
+  echoLineGeometry = loadedLineGeometry;
+  solidPoints = loadedSolidPoints;
 }
 
 function applyReducedMotionPreference(): void {
