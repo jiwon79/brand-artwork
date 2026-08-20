@@ -84,7 +84,7 @@ const SVG_TO_DESIGN = 0.32;
 const SVG_SAMPLE_STEP = 3.2;
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const BASE_CONTACT_WAVE_DURATION = 2.48;
-const DEFAULT_WAVE_SPEED = 1.4;
+const DEFAULT_WAVE_SPEED = 1.35;
 const ACTIVE_FIGURE: FigureMode = 'Lines';
 const ACTIVE_INTERACTION: InteractionMode = 'NameDrop Wave';
 const ACTIVE_GATHER_STYLE: ContactGatherStyle = 'Rope Pull';
@@ -104,7 +104,7 @@ if (!artworkCtx) throw new Error('Offscreen 2D canvas is not supported.');
 
 const settings = {
   echoes: 6,
-  rgbOffset: 3.2,
+  rgbOffset: 3.4,
   lineThickness: 1,
   idleMotion: 0.34,
   hold: 0.72,
@@ -126,13 +126,13 @@ const settings = {
   contactWaveBrightness: 0.58,
   contactLineFadeDuration: 0.3,
   contactDiffusionDuration: 1.65,
-  contactParticleFadeDuration: 1,
+  contactParticleFadeDuration: 0.9,
   contactParticleDensity: 3,
-  contactParticleSize: 0.8,
+  contactParticleSize: 1.2,
   contactForce: 45,
   contactSpread: 6,
   contactReleaseSpread: 0.025,
-  contactReleaseSpeed: 1.35,
+  contactReleaseSpeed: 1.45,
   dragRadius: 18,
   dragConnectorRadius: 4,
   dragConnectorWidth: 0.8,
