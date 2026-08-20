@@ -937,8 +937,12 @@ function gatheredLinePosition(
   const normalY = tangentX;
   // Keep the rope's small bends attached to the SVG path. Advancing this
   // phase over time makes a stationary hold read as a spring oscillation.
+  // The phase must also be continuous between neighboring samples: a
+  // point-level random seed turns the connected line into a sawtooth.
+  const pathCoordinate = (point.pathDistance ?? 0) * SVG_TO_DESIGN;
+  const pathPhase = (point.pathIndex ?? 0) * 1.37 + echoIndex * 0.53;
   const slack = Math.sin(
-    graphDistance * 0.11 + point.seed * 2.2,
+    pathCoordinate * 0.065 + pathPhase,
   )
     * settings.contactRopeSlack
     * gather
