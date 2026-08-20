@@ -929,23 +929,19 @@ function gatheredLinePosition(
   const pullDistance = Math.min(anchorDistance * 0.78, settings.contactRopePull)
     * tension
     * influence
-    * proximity
-    * contactTensionPulse(echoIndex);
+    * proximity;
 
   const tangentX = point.tangentX ?? 1;
   const tangentY = point.tangentY ?? 0;
   const normalX = -tangentY;
   const normalY = tangentX;
-  const holdAge = phase === 'gathering'
-    ? Math.max(0, lastNow - triggeredAt - contactReleaseTime())
-    : releasedHoldAge;
-  const ropePhase = elapsed * 7.5 + holdAge * 2.4;
+  // Keep the rope's small bends attached to the SVG path. Advancing this
+  // phase over time makes a stationary hold read as a spring oscillation.
   const slack = Math.sin(
-    graphDistance * 0.11 - ropePhase + point.seed * 2.2,
+    graphDistance * 0.11 + point.seed * 2.2,
   )
     * settings.contactRopeSlack
     * gather
-    * (1 - density * 0.78)
     * influence
     * (1 - influence * 0.28);
 
