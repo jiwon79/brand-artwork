@@ -1600,8 +1600,11 @@ function renderContactEffect(now: number): void {
   const waveAge = releaseAge - settings.contactBloomDuration;
   const waveDuration = Math.max(0.001, settings.contactWaveDuration);
   const waveProgress = clamp(waveAge / waveDuration, 0, 1);
-  const fadeProgress = smoothstep(
-    (waveAge - waveDuration * 0.78) / (waveDuration * 0.38),
+  const waveFade = Math.exp(
+    -Math.max(0, waveAge - waveDuration * 0.46) / (waveDuration * 0.5),
+  );
+  const rimFade = Math.exp(
+    -Math.max(0, waveAge - waveDuration * 0.38) / (waveDuration * 0.38),
   );
   const waveRadius = Math.max(
     1,
@@ -1612,7 +1615,7 @@ function renderContactEffect(now: number): void {
     settings.contactWaveBandWidth * (0.82 + waveProgress * 0.36) * view.fit,
   );
   const alpha = smoothstep(waveAge / 0.14)
-    * (1 - fadeProgress)
+    * waveFade
     * settings.contactWaveBrightness;
   const bloomProgress = smoothstep(
     releaseAge / Math.max(0.01, settings.contactBloomDuration),
@@ -1707,7 +1710,7 @@ function renderContactEffect(now: number): void {
   drawWaveBand(waveRadius - bandWidth * 0.7, bandWidth * 1.34, alpha * 0.36);
   drawWaveBand(waveRadius, bandWidth, alpha * 0.62);
   artworkCtx.filter = `blur(${Math.max(1, 1.55 * view.fit)}px)`;
-  drawWaveCrest(waveRadius, bandWidth, alpha * 0.86);
+  drawWaveCrest(waveRadius, bandWidth, alpha * rimFade * 0.86);
 
   artworkCtx.restore();
 }
