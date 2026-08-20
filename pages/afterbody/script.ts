@@ -3,6 +3,7 @@ import GUI from 'lil-gui';
 type FigureMode = 'Lines' | 'Solid';
 type InteractionMode = 'Original' | 'NameDrop Wave' | 'Drag Dissolve';
 type ContactReleaseStyle = 'Previous · Shockwave' | 'Current · Density';
+type ContactGatherStyle = 'Density Pull' | 'Rope Pull';
 type Phase = 'idle' | 'gathering' | 'dragging' | 'dissolving' | 'blank';
 
 type FigurePoint = {
@@ -11,6 +12,17 @@ type FigurePoint = {
   seed: number;
   seed2: number;
   startsPath?: boolean;
+  pathIndex?: number;
+  pathDistance?: number;
+  tangentX?: number;
+  tangentY?: number;
+};
+
+type RopeAnchor = {
+  pathDistance: number;
+  designX: number;
+  designY: number;
+  distanceToContact: number;
 };
 
 type EchoLineGeometry = {
@@ -99,6 +111,10 @@ const settings = {
   contactGatherDuration: 0.92,
   contactDensityDuration: 0.52,
   contactCompression: 0.18,
+  contactGatherStyle: 'Rope Pull' as ContactGatherStyle,
+  contactRopePull: 52,
+  contactRopeReach: 74,
+  contactRopeSlack: 3.2,
   contactReleaseStyle: 'Current · Density' as ContactReleaseStyle,
   contactBloomDuration: 0.22,
   contactWaveDuration: 2.48,
@@ -184,8 +200,16 @@ let solidPoints: FigurePoint[] = [];
 let phase: Phase = 'idle';
 let triggeredAt = 0;
 let releasedAt = 0;
+let releasedGatherElapsed = 0;
+let releasedHoldAge = 0;
 let contactOrigin: DesignPoint = { x: DESIGN_WIDTH * 0.5, y: DESIGN_HEIGHT * 0.5 };
 let contactExtentCache = { x: Number.NaN, y: Number.NaN, value: 1 };
+let ropeAnchorCache = {
+  time: Number.NaN,
+  originX: Number.NaN,
+  originY: Number.NaN,
+  anchors: [] as Array<Map<number, RopeAnchor>>,
+};
 let dragPointStates: Array<Array<DragParticleState | null>> = [];
 let dragHitCounts: number[] = [];
 const dragPointers = new Map<number, DesignPoint>();
@@ -214,6 +238,10 @@ function isNameDropWave(): boolean {
 
 function isPreviousContactRelease(): boolean {
   return settings.contactReleaseStyle === 'Previous · Shockwave';
+}
+
+function isRopePull(): boolean {
+  return settings.contactGatherStyle === 'Rope Pull' && settings.figure === 'Lines';
 }
 
 function isDragDissolve(): boolean {
@@ -258,6 +286,19 @@ function motionElapsed(now: number): number {
   }
   if (phase === 'dissolving') return Math.max(0, now - triggeredAt);
   return 0;
+}
+
+function visualGatherElapsed(now: number): number {
+  const releaseTime = contactReleaseTime();
+  if (phase === 'gathering') {
+    return Math.min(Math.max(0, now - triggeredAt), Math.max(0, releaseTime - 0.0001));
+  }
+  if (phase !== 'dissolving' || !isNameDropWave()) return 0;
+
+  const releaseAge = Math.max(0, now - releasedAt);
+  const settleDuration = clamp(settings.contactBloomDuration * 0.82, 0.1, 0.18);
+  const settle = smoothstep(releaseAge / settleDuration);
+  return releasedGatherElapsed + (releaseTime - releasedGatherElapsed) * settle;
 }
 
 function resize(): void {
@@ -455,28 +496,48 @@ async function loadLineAsset(url: string, echoIndex: number): Promise<EchoLineGe
   // arms, legs). Sample them independently so the dissolve never draws a
   // straight bridge across those intentional gaps.
   const subpaths = pathData.match(/[Mm][^Mm]*/g) ?? [pathData];
-  for (const subpathData of subpaths) {
+  for (let pathIndex = 0; pathIndex < subpaths.length; pathIndex += 1) {
+    const subpathData = subpaths[pathIndex];
     measurementPath.setAttribute('d', subpathData);
     const length = measurementPath.getTotalLength();
 
     for (let distance = 0; distance < length; distance += SVG_SAMPLE_STEP) {
       const point = measurementPath.getPointAtLength(distance);
+      const tangentStart = measurementPath.getPointAtLength(Math.max(0, distance - SVG_SAMPLE_STEP));
+      const tangentEnd = measurementPath.getPointAtLength(Math.min(length, distance + SVG_SAMPLE_STEP));
+      const tangentLength = Math.max(
+        0.001,
+        Math.hypot(tangentEnd.x - tangentStart.x, tangentEnd.y - tangentStart.y),
+      );
       points.push({
         x: point.x - centerX,
         y: point.y - centerY,
         seed: hash(point.x, point.y, echoIndex),
         seed2: hash(point.y, point.x, echoIndex + 7),
         startsPath: distance === 0,
+        pathIndex,
+        pathDistance: distance,
+        tangentX: (tangentEnd.x - tangentStart.x) / tangentLength,
+        tangentY: (tangentEnd.y - tangentStart.y) / tangentLength,
       });
     }
 
     const finalPoint = measurementPath.getPointAtLength(length);
+    const finalTangentStart = measurementPath.getPointAtLength(Math.max(0, length - SVG_SAMPLE_STEP));
+    const finalTangentLength = Math.max(
+      0.001,
+      Math.hypot(finalPoint.x - finalTangentStart.x, finalPoint.y - finalTangentStart.y),
+    );
     points.push({
       x: finalPoint.x - centerX,
       y: finalPoint.y - centerY,
       seed: hash(finalPoint.x, finalPoint.y, echoIndex),
       seed2: hash(finalPoint.y, finalPoint.x, echoIndex + 7),
       startsPath: length === 0,
+      pathIndex,
+      pathDistance: length,
+      tangentX: (finalPoint.x - finalTangentStart.x) / finalTangentLength,
+      tangentY: (finalPoint.y - finalTangentStart.y) / finalTangentLength,
     });
   }
   measurementSvg.remove();
@@ -642,6 +703,63 @@ function contactDensityProgress(elapsed: number): number {
   );
 }
 
+function contactTensionPulse(echoIndex: number): number {
+  const holdAge = phase === 'gathering'
+    ? Math.max(0, lastNow - triggeredAt - contactReleaseTime())
+    : phase === 'dissolving'
+      ? releasedHoldAge
+      : 0;
+  if (holdAge <= 0) return 1;
+
+  const releaseDecay = phase === 'dissolving'
+    ? 1 - smoothstep((lastNow - releasedAt) / 0.16)
+    : 1;
+  return 1
+    + Math.sin(holdAge * 4.4 + echoIndex * 0.72) * 0.025 * releaseDecay;
+}
+
+function ropeAnchorsFor(echoIndex: number): Map<number, RopeAnchor> {
+  const cacheExpired = ropeAnchorCache.time !== lastNow
+    || ropeAnchorCache.originX !== contactOrigin.x
+    || ropeAnchorCache.originY !== contactOrigin.y;
+  if (cacheExpired) {
+    ropeAnchorCache = {
+      time: lastNow,
+      originX: contactOrigin.x,
+      originY: contactOrigin.y,
+      anchors: [],
+    };
+  }
+
+  const cached = ropeAnchorCache.anchors[echoIndex];
+  if (cached) return cached;
+
+  const anchors = new Map<number, RopeAnchor>();
+  const geometry = echoLineGeometry[echoIndex];
+  if (!geometry) return anchors;
+
+  for (const point of geometry.points) {
+    const pathIndex = point.pathIndex ?? 0;
+    const position = linePointPosition(point, echoIndex, lastNow);
+    const distanceToContact = Math.hypot(
+      contactOrigin.x - position.designX,
+      contactOrigin.y - position.designY,
+    );
+    const current = anchors.get(pathIndex);
+    if (!current || distanceToContact < current.distanceToContact) {
+      anchors.set(pathIndex, {
+        pathDistance: point.pathDistance ?? 0,
+        designX: position.designX,
+        designY: position.designY,
+        distanceToContact,
+      });
+    }
+  }
+
+  ropeAnchorCache.anchors[echoIndex] = anchors;
+  return anchors;
+}
+
 function gatheredPosition(
   position: PositionedPoint,
   echoIndex: number,
@@ -656,17 +774,82 @@ function gatheredPosition(
   const deltaY = contactOrigin.y - position.designY;
   const distance = Math.max(0.001, Math.hypot(deltaX, deltaY));
   const proximity = smoothstep(1 - distance / (DESIGN_WIDTH * 0.52));
-  const holdAge = phase === 'gathering'
-    ? Math.max(0, lastNow - triggeredAt - contactReleaseTime())
-    : 0;
-  const tensionPulse = holdAge > 0
-    ? 1 + Math.sin(holdAge * 4.4 + echoIndex * 0.72) * 0.025
-    : 1;
   const localTension = 0.22 + proximity * proximity * 1.78;
-  const pull = settings.contactCompression * progress * localTension * tensionPulse;
+  const pull = settings.contactCompression
+    * progress
+    * localTension
+    * contactTensionPulse(echoIndex);
   const designX = position.designX + deltaX * pull;
   const designY = position.designY + deltaY * pull;
 
+  return {
+    x: view.offsetX + designX * view.fit,
+    y: view.offsetY + designY * view.fit,
+    designX,
+    designY,
+  };
+}
+
+function gatheredLinePosition(
+  point: FigurePoint,
+  echoIndex: number,
+  time: number,
+  elapsed: number,
+  basePosition = linePointPosition(point, echoIndex, time),
+): PositionedPoint {
+  if (!isRopePull()) return gatheredPosition(basePosition, echoIndex, elapsed);
+
+  const gather = contactGatherProgress(elapsed);
+  const density = contactDensityProgress(elapsed);
+  if (gather <= 0 && density <= 0) return basePosition;
+
+  const anchor = ropeAnchorsFor(echoIndex).get(point.pathIndex ?? 0);
+  if (!anchor) return basePosition;
+
+  const ropeReach = Math.max(1, settings.contactRopeReach);
+  const arcDistance = Math.abs((point.pathDistance ?? 0) - anchor.pathDistance)
+    * SVG_TO_DESIGN;
+  const frontDistance = 8 + gather * ropeReach * 1.72 + density * ropeReach * 0.48;
+  const propagation = smoothstep(
+    (frontDistance - arcDistance + ropeReach * 0.16) / (ropeReach * 0.32),
+  );
+  const falloff = Math.exp(-arcDistance / ropeReach);
+  const influence = propagation * falloff;
+  if (influence <= 0.0001) return basePosition;
+
+  const deltaX = contactOrigin.x - anchor.designX;
+  const deltaY = contactOrigin.y - anchor.designY;
+  const anchorDistance = Math.max(0.001, Math.hypot(deltaX, deltaY));
+  const directionX = deltaX / anchorDistance;
+  const directionY = deltaY / anchorDistance;
+  const proximity = 0.3
+    + smoothstep(1 - anchorDistance / (DESIGN_WIDTH * 0.62)) * 0.7;
+  const tension = gather * 0.76 + density * 0.24;
+  const pullDistance = Math.min(anchorDistance * 0.78, settings.contactRopePull)
+    * tension
+    * influence
+    * proximity
+    * contactTensionPulse(echoIndex);
+
+  const tangentX = point.tangentX ?? 1;
+  const tangentY = point.tangentY ?? 0;
+  const normalX = -tangentY;
+  const normalY = tangentX;
+  const holdAge = phase === 'gathering'
+    ? Math.max(0, lastNow - triggeredAt - contactReleaseTime())
+    : releasedHoldAge;
+  const ropePhase = elapsed * 7.5 + holdAge * 2.4;
+  const slack = Math.sin(
+    (point.pathDistance ?? 0) * 0.052 - ropePhase + point.seed * 2.2,
+  )
+    * settings.contactRopeSlack
+    * gather
+    * (1 - density * 0.78)
+    * influence
+    * (1 - influence * 0.28);
+
+  const designX = basePosition.designX + directionX * pullDistance + normalX * slack;
+  const designY = basePosition.designY + directionY * pullDistance + normalY * slack;
   return {
     x: view.offsetX + designX * view.fit,
     y: view.offsetY + designY * view.fit,
@@ -681,6 +864,22 @@ function spawnReferencePosition(
 ): PositionedPoint {
   if (!isNameDropWave() || isPreviousContactRelease()) return position;
   return gatheredPosition(position, echoIndex, contactReleaseTime());
+}
+
+function lineSpawnReferencePosition(
+  point: FigurePoint,
+  echoIndex: number,
+  time: number,
+  position = linePointPosition(point, echoIndex, time),
+): PositionedPoint {
+  if (!isNameDropWave() || isPreviousContactRelease()) return position;
+  return gatheredLinePosition(
+    point,
+    echoIndex,
+    time,
+    contactReleaseTime(),
+    position,
+  );
 }
 
 function spawnTimeFor(designX: number, designY: number, point: FigurePoint, echoIndex: number): number {
@@ -720,7 +919,15 @@ function drawParticle(
     ? linePointPosition(point, echoIndex, originTime)
     : solidPointPosition(point, echoIndex, originTime);
   const origin = isNameDropWave()
-    ? gatheredPosition(baseOrigin, echoIndex, spawnTime)
+    ? lineMode
+      ? gatheredLinePosition(
+        point,
+        echoIndex,
+        originTime,
+        contactReleaseTime(),
+        baseOrigin,
+      )
+      : gatheredPosition(baseOrigin, echoIndex, contactReleaseTime())
     : baseOrigin;
   const channelSeed = hash(point.x, point.y, channelIndex + echoIndex * 3);
   const channelOffset = settings.rgbOffset * view.fit;
@@ -991,6 +1198,7 @@ function drawDissolvingLinePath(
 ): void {
   const geometry = echoLineGeometry[echoIndex];
   if (!geometry) return;
+  const gatherElapsed = isNameDropWave() ? visualGatherElapsed(now) : elapsed;
 
   if (isNameDropWave() && !isPreviousContactRelease()) {
     const bucketCount = 6;
@@ -1003,7 +1211,7 @@ function drawDissolvingLinePath(
     for (const point of geometry.points) {
       if (point.startsPath) previousPosition = null;
       const basePosition = linePointPosition(point, echoIndex, now);
-      const spawnPosition = spawnReferencePosition(basePosition, echoIndex);
+      const spawnPosition = lineSpawnReferencePosition(point, echoIndex, now, basePosition);
       const spawnTime = spawnTimeFor(
         spawnPosition.designX,
         spawnPosition.designY,
@@ -1012,7 +1220,13 @@ function drawDissolvingLinePath(
       );
       const fadeStart = spawnTime - fadeDuration * 0.22;
       const opacity = 1 - smoothstep((elapsed - fadeStart) / fadeDuration);
-      const position = gatheredPosition(basePosition, echoIndex, elapsed);
+      const position = gatheredLinePosition(
+        point,
+        echoIndex,
+        now,
+        gatherElapsed,
+        basePosition,
+      );
       const channelPosition = {
         ...position,
         x: position.x + channelX[channelIndex] * channelOffset,
@@ -1054,7 +1268,7 @@ function drawDissolvingLinePath(
   for (const point of geometry.points) {
     if (point.startsPath) drawing = false;
     const basePosition = linePointPosition(point, echoIndex, now);
-    const spawnPosition = spawnReferencePosition(basePosition, echoIndex);
+    const spawnPosition = lineSpawnReferencePosition(point, echoIndex, now, basePosition);
     const remains = elapsed < spawnTimeFor(
       spawnPosition.designX,
       spawnPosition.designY,
@@ -1067,7 +1281,13 @@ function drawDissolvingLinePath(
       continue;
     }
 
-    const position = gatheredPosition(basePosition, echoIndex, elapsed);
+    const position = gatheredLinePosition(
+      point,
+      echoIndex,
+      now,
+      gatherElapsed,
+      basePosition,
+    );
     const channelOffset = settings.rgbOffset * view.fit;
     const x = position.x + channelX[channelIndex] * channelOffset;
     const y = position.y + channelY[channelIndex] * channelOffset;
@@ -1130,7 +1350,12 @@ function renderLineFigures(now: number, elapsed: number): void {
         nextSampleIndex += sampleInterval;
         const point = particlePoints[pointIndex];
         const currentPosition = linePointPosition(point, echoIndex, now);
-        const spawnPosition = spawnReferencePosition(currentPosition, echoIndex);
+        const spawnPosition = lineSpawnReferencePosition(
+          point,
+          echoIndex,
+          now,
+          currentPosition,
+        );
         const spawnTime = spawnTimeFor(
           spawnPosition.designX,
           spawnPosition.designY,
@@ -1164,6 +1389,7 @@ function drawStableSolidPoint(
 function renderSolidFigures(now: number, elapsed: number): void {
   const baseSize = 2.25 * view.fit;
   const echoCount = clamp(Math.round(settings.echoes), 1, echoCenters.length);
+  const gatherElapsed = isNameDropWave() ? visualGatherElapsed(now) : elapsed;
 
   for (let channelIndex = 0; channelIndex < channelColors.length; channelIndex += 1) {
     artworkCtx.fillStyle = channelColors[channelIndex];
@@ -1185,7 +1411,7 @@ function renderSolidFigures(now: number, elapsed: number): void {
           echoIndex,
         );
         if (elapsed < spawnTime) {
-          drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize, elapsed);
+          drawStableSolidPoint(point, echoIndex, channelIndex, now, baseSize, gatherElapsed);
         }
         else drawParticle(point, echoIndex, channelIndex, spawnTime, elapsed - spawnTime, baseSize, false);
       }
@@ -1468,6 +1694,8 @@ function beginGather(point?: DesignPoint): void {
   phase = 'gathering';
   triggeredAt = lastNow || performance.now() * 0.001;
   releasedAt = 0;
+  releasedGatherElapsed = 0;
+  releasedHoldAge = 0;
   hint.textContent = 'RELEASE TO BURST';
   hint.classList.remove('hidden');
   canvas.focus({ preventScroll: true });
@@ -1475,8 +1703,14 @@ function beginGather(point?: DesignPoint): void {
 
 function releaseGather(): void {
   if (phase !== 'gathering') return;
+  const now = lastNow || performance.now() * 0.001;
+  releasedGatherElapsed = Math.min(
+    Math.max(0, now - triggeredAt),
+    contactReleaseTime(),
+  );
+  releasedHoldAge = Math.max(0, now - triggeredAt - contactReleaseTime());
   phase = 'dissolving';
-  releasedAt = lastNow || performance.now() * 0.001;
+  releasedAt = now;
   hint.classList.add('hidden');
 }
 
@@ -1553,6 +1787,8 @@ function reset(): void {
   phase = 'idle';
   triggeredAt = 0;
   releasedAt = 0;
+  releasedGatherElapsed = 0;
+  releasedHoldAge = 0;
   activePointerId = null;
   clearDragState();
   hint.textContent = isNameDropWave()
@@ -1637,6 +1873,14 @@ dissolveFolder.add(settings, 'particleSize', 0.5, 3, 0.05).name('Size');
 
 const contactFolder = gui.addFolder('NameDrop Wave');
 contactFolder
+  .add(settings, 'contactGatherStyle', ['Density Pull', 'Rope Pull'])
+  .name('Gather style')
+  .onChange((style: ContactGatherStyle) => {
+    if (style === 'Rope Pull') settings.figure = 'Lines';
+    reset();
+    figureController.updateDisplay();
+  });
+contactFolder
   .add(settings, 'contactReleaseStyle', Object.keys(contactReleasePresets))
   .name('Release style')
   .onChange((style: ContactReleaseStyle) => {
@@ -1647,6 +1891,9 @@ contactFolder
 contactFolder.add(settings, 'contactGatherDuration', 0.25, 1.8, 0.01).name('Gather time');
 contactFolder.add(settings, 'contactDensityDuration', 0.15, 1.2, 0.01).name('Tension time');
 contactFolder.add(settings, 'contactCompression', 0, 0.28, 0.005).name('Line pull');
+contactFolder.add(settings, 'contactRopePull', 8, 100, 1).name('Rope pull');
+contactFolder.add(settings, 'contactRopeReach', 16, 160, 1).name('Rope reach');
+contactFolder.add(settings, 'contactRopeSlack', 0, 10, 0.1).name('Rope slack');
 contactFolder.add(settings, 'contactBloomDuration', 0, 0.6, 0.01).name('Density peak');
 contactFolder.add(settings, 'contactWaveDuration', 0.2, 4.8, 0.01).name('Wave duration');
 contactFolder.add(settings, 'contactWaveBandWidth', 6, 100, 1).name('Wave width');
