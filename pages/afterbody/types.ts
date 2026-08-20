@@ -74,3 +74,9 @@ export type DebugApi = {
   reset: () => void;
   getPhase: () => Phase;
 };
+
+export type ContactExtentCache = {
+  x: number;
+  y: number;
+  value: number;
+};

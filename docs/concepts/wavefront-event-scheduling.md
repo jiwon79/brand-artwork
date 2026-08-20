@@ -91,8 +91,8 @@ Afterbody는 기계적으로 완벽한 원보다 유기적인 분해를 위해 e
 | 최대 wave extent | [`wave-timing.ts`의 `measureWaveExtent()`](../../pages/afterbody/wave-timing.ts) |
 | forward easing과 화면 반지름 | [`wave-timing.ts`의 `waveRadiusForProgress()`](../../pages/afterbody/wave-timing.ts) |
 | inverse easing과 점별 delay | [`wave-timing.ts`의 `waveDelayForDistance()`](../../pages/afterbody/wave-timing.ts) |
-| sample spawn time + jitter | [`script.ts`의 `spawnTimeFor()`](../../pages/afterbody/script.ts) |
-| ring 렌더 | [`script.ts`의 `renderContactEffect()`](../../pages/afterbody/script.ts) |
+| sample spawn time + jitter | [`runtime.ts`의 `spawnTimeFor()`](../../pages/afterbody/runtime.ts) |
+| ring 렌더 | [`wave-renderer.ts`의 `render()`](../../pages/afterbody/wave-renderer.ts) |
 
 Afterbody의 `D`는 wave 중심에서 480 × 270 design frame의 네 모서리까지 거리 중 최댓값이다. 터치점이 중앙에서 벗어나도 progress 1에서 전체 frame을 덮기 위한 선택이다.
 

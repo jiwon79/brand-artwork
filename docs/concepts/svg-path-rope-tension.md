@@ -102,8 +102,8 @@ I_i = S_i × D_i
 | --- | --- |
 | SVG contour sample | [`geometry.ts`의 `loadLineAsset()`](../../pages/afterbody/geometry.ts) |
 | contour 내부 edge와 virtual joint | [`geometry.ts`의 `buildLineGraph()`](../../pages/afterbody/geometry.ts) |
-| anchor와 graph distance cache | [`script.ts`의 `ropeFieldFor()`](../../pages/afterbody/script.ts) |
-| 지수 감쇠와 최종 위치 | [`script.ts`의 `gatheredLinePosition()`](../../pages/afterbody/script.ts) |
+| anchor와 graph distance cache | [`runtime.ts`의 `ropeFieldFor()`](../../pages/afterbody/runtime.ts) |
+| 지수 감쇠와 최종 위치 | [`runtime.ts`의 `gatheredLinePosition()`](../../pages/afterbody/runtime.ts) |
 
 Afterbody는 hold를 시작할 때 각 인체의 anchor와 `graphDistances`를 만든다. 손가락을 움직이는 동안 anchor는 유지하고 목표점 `contactOrigin`만 바꾼다. 따라서 처음 잡은 strand를 놓지 않고 끌고 가는 동작이 된다.
 

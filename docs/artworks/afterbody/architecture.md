@@ -2,7 +2,7 @@
 
 Afterbody는 여섯 개의 인체 SVG 잔상을 RGB 채널로 겹쳐 보여 주고, 누르는 동안 선 전체에 장력을 전달한 뒤 손을 놓으면 터치 지점에서 진행하는 파동에 맞춰 선을 사각 파티클로 바꾸는 Canvas 2D 작품이다.
 
-현재 구현은 [`pages/afterbody/`](../../../pages/afterbody/)의 단계별 TypeScript 모듈에 있으며, 활성 조합은 `Lines + NameDrop Wave + Rope Pull + Current Density`이다. 메인 파일에 남아 있는 `Solid`, `Original`, `Drag Dissolve`, `Previous Shockwave` 분기는 비교와 실험을 위한 비활성 경로다.
+현재 구현은 [`pages/afterbody/`](../../../pages/afterbody/)의 역할별 TypeScript 모듈에 있으며, 활성 조합은 `Lines + NameDrop Wave + Rope Pull + Current Density`이다. `Solid`, `Original`, `Drag Dissolve`, `Previous Shockwave` 분기는 비교와 실험을 위한 비활성 경로다. [`script.ts`](../../../pages/afterbody/script.ts)는 계산이나 입력 정책을 갖지 않고 모듈 조립과 프레임 루프만 담당한다.
 
 ## 1. 해결하려는 문제
 
@@ -23,18 +23,25 @@ Afterbody는 여섯 개의 인체 SVG 잔상을 RGB 채널로 겹쳐 보여 주�
 | 모듈 | 책임 | 다음 소비자 |
 | --- | --- | --- |
 | [`types.ts`](../../../pages/afterbody/types.ts) | 좌표, geometry, phase, particle 상태 타입 | 모든 모듈 |
-| [`config.ts`](../../../pages/afterbody/config.ts) | 활성 모드, 기본값, 인체 배치, RGB 채널, asset URL | geometry, GUI, main |
-| [`math.ts`](../../../pages/afterbody/math.ts) | `clamp`, deterministic `hash`, `smoothstep` | geometry, wave, main |
-| [`geometry.ts`](../../../pages/afterbody/geometry.ts) | SVG/raster 로딩, path sample, tangent, graph, virtual joint | main의 변형·렌더 단계 |
-| [`wave-timing.ts`](../../../pages/afterbody/wave-timing.ts) | wave extent, forward radius, inverse arrival delay | main의 spawn과 wave pass |
-| [`gui.ts`](../../../pages/afterbody/gui.ts) | lil-gui 생성과 설정값 연결 | main의 `G` 입력 |
-| [`script.ts`](../../../pages/afterbody/script.ts) | runtime 상태, hold 변형, 파티클, 렌더 패스, 입력, 초기화 | 최종 canvas 출력 |
+| [`config.ts`](../../../pages/afterbody/config.ts) | 활성 모드, 기본값, 인체 배치, RGB 채널, asset URL | geometry, runtime, renderer, GUI |
+| [`math.ts`](../../../pages/afterbody/math.ts) | `clamp`, deterministic `hash`, `smoothstep` | geometry, runtime, renderer |
+| [`geometry.ts`](../../../pages/afterbody/geometry.ts) | SVG/raster 로딩, path sample, tangent, graph, virtual joint | script가 로드해 runtime에 저장 |
+| [`wave-timing.ts`](../../../pages/afterbody/wave-timing.ts) | wave extent, forward radius, inverse arrival delay | runtime, wave renderer |
+| [`runtime.ts`](../../../pages/afterbody/runtime.ts) | phase와 시간, 좌표 변환, rope field, hold 위치, spawn 시각 | input, figure/particle/wave renderer |
+| [`interaction-controller.ts`](../../../pages/afterbody/interaction-controller.ts) | pointer·keyboard 정규화, 명시적 상태 전이, 자동 reset | runtime, drag dissolve |
+| [`drag-dissolve.ts`](../../../pages/afterbody/drag-dissolve.ts) | drag trace, segment hit test, drag 입자와 connector | figure renderer |
+| [`particles.ts`](../../../pages/afterbody/particles.ts) | release sample의 이동·fade·사각형 출력 | figure renderer |
+| [`figure-renderer.ts`](../../../pages/afterbody/figure-renderer.ts) | stable path, 남은 path, release/drag particle 순회 | artwork renderer |
+| [`wave-renderer.ts`](../../../pages/afterbody/wave-renderer.ts) | current/previous release wave pass | artwork renderer |
+| [`artwork-renderer.ts`](../../../pages/afterbody/artwork-renderer.ts) | offscreen pass 순서, glow·scanline 최종 합성 | script frame loop |
+| [`gui.ts`](../../../pages/afterbody/gui.ts) | lil-gui 생성과 설정값 연결 | interaction controller의 `G` 입력 |
+| [`script.ts`](../../../pages/afterbody/script.ts) | surface 생성, module wiring, asset loading, frame loop | 최종 canvas 출력 |
 
 ## 2. 입력
 
 ### 2.1 포인터와 키보드
 
-입력 등록은 `bindInteractionEvents()` 한 곳에서 수행한다.
+입력 등록은 `InteractionController.bind()` 한 곳에서 수행한다.
 
 | 입력 | 핸들러 | 상태 전이 |
 | --- | --- | --- |
@@ -50,7 +57,7 @@ Canvas는 `touch-action: none`, `user-select: none`을 사용하며 `contextmenu
 
 ### 2.2 좌표 공간
 
-`designPointFromClient()`는 브라우저의 CSS pixel 입력을 다음 두 단계를 거쳐 작품 좌표로 바꾼다.
+`InteractionController.designPointFromClient()`는 브라우저의 CSS pixel 입력을 다음 두 단계를 거쳐 작품 좌표로 바꾼다.
 
 | 이름 | 공간과 단위 | 역할 |
 | --- | --- | --- |
@@ -101,9 +108,9 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 
 ### 3.3 hold: graph를 따라 전달되는 rope tension
 
-터치를 시작하면 `ropeFieldFor()`가 각 인체마다 가장 가까운 sample을 anchor로 선택하고, 그 anchor에서 모든 sample까지의 graph distance를 한 번 계산해 캐시한다. 손가락을 움직이는 동안 anchor와 cache는 유지하고 목표점 `contactOrigin`만 갱신한다. 즉 처음 잡은 strand를 놓지 않은 채 끌고 간다.
+터치를 시작하면 `AfterbodyRuntime.ropeFieldFor()`가 각 인체마다 가장 가까운 sample을 anchor로 선택하고, 그 anchor에서 모든 sample까지의 graph distance를 한 번 계산해 캐시한다. 손가락을 움직이는 동안 anchor와 cache는 유지하고 목표점 `contactOrigin`만 갱신한다. 즉 처음 잡은 strand를 놓지 않은 채 끌고 간다.
 
-`gatheredLinePosition()`은 graph distance의 지수 감쇠, 먼 구간에 남기는 작은 전달 장력, 거리에 따른 response lag, path normal 방향의 slack을 합쳐 sample 위치를 만든다. 이는 실제 줄의 질량과 충돌을 적분하는 물리 시뮬레이션이 아니라, 연속적인 rope-like 반응을 위한 경험적 근사다. 수식과 값 변화는 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에 분리했다.
+`AfterbodyRuntime.gatheredLinePosition()`은 graph distance의 지수 감쇠, 먼 구간에 남기는 작은 전달 장력, 거리에 따른 response lag, path normal 방향의 slack을 합쳐 sample 위치를 만든다. 이는 실제 줄의 질량과 충돌을 적분하는 물리 시뮬레이션이 아니라, 연속적인 rope-like 반응을 위한 경험적 근사다. 수식과 값 변화는 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에 분리했다.
 
 ## 4. 렌더 패스
 
@@ -111,21 +118,21 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 
 `releaseGather()`는 손을 놓은 순간의 hold 진행도와 추가 hold 시간을 저장하고 `phase = dissolving`으로 전환한다. 이 값을 보존하기 때문에 누른 시간과 관계없이 release 첫 frame에서 형상이 원본으로 튀지 않는다.
 
-각 SVG sample의 파티클 생성 시각은 `spawnTimeFor()`가 정한다. [`wave-timing.ts`](../../../pages/afterbody/wave-timing.ts)는 화면 ring에는 forward easing을, sample의 거리에는 같은 함수의 inverse easing을 적용한다. 그래서 crest가 sample 위치에 도착하는 시각과 선이 파티클로 바뀌는 기준 시각이 일치한다.
+각 SVG sample의 파티클 생성 시각은 `AfterbodyRuntime.spawnTimeFor()`가 정한다. [`wave-timing.ts`](../../../pages/afterbody/wave-timing.ts)는 화면 ring에는 forward easing을, sample의 거리에는 같은 함수의 inverse easing을 적용한다. 그래서 crest가 sample 위치에 도착하는 시각과 선이 파티클로 바뀌는 기준 시각이 일치한다.
 
 `contactWaveExtent`는 터치점에서 480 × 270 design frame의 네 모서리까지 거리 중 가장 큰 값이다. 따라서 터치점이 화면 중앙이 아니어도 wave progress가 1이 될 때 가장 먼 모서리까지 도달한다. 실제 spawn에는 최대 `0.025 s`의 작은 jitter가 더해져 개별 pixel은 crest보다 아주 조금 늦을 수 있다. forward/inverse 대응의 유도와 적용 범위는 [Wavefront Event Scheduling](../../concepts/wavefront-event-scheduling.md)에서 설명한다.
 
 ### 4.2 선과 파티클
 
-`renderLineFigures()`는 RGB 채널과 여섯 인체를 순회한다.
+`FigureRenderer.renderLines()`는 RGB 채널과 여섯 인체를 순회한다.
 
-- `idle`: `drawExactLinePath()`가 원본 `Path2D`를 stroke한다.
-- `gathering`: `drawDissolvingLinePath()`가 모든 sample을 rope 위치로 옮겨 연결한다.
-- `dissolving`: wave가 아직 닿지 않은 segment는 선으로, 도착 시각을 지난 sample은 `drawParticle()`의 사각형으로 그린다.
+- `idle`: `FigureRenderer.drawExactLinePath()`가 원본 `Path2D`를 stroke한다.
+- `gathering`: `FigureRenderer.drawDissolvingLinePath()`가 모든 sample을 rope 위치로 옮겨 연결한다.
+- `dissolving`: wave가 아직 닿지 않은 segment는 선으로, 도착 시각을 지난 sample은 `ParticleRenderer.draw()`의 사각형으로 그린다.
 
-`drawDissolvingLinePath()`는 선 fade를 여섯 opacity bucket으로 나눈다. Canvas 2D는 하나의 path 안에서 segment마다 alpha를 직접 바꿀 수 없기 때문에, 비슷한 opacity의 segment를 같은 `Path2D`에 모아 여섯 번 stroke하는 절충이다.
+`FigureRenderer.drawDissolvingLinePath()`는 선 fade를 여섯 opacity bucket으로 나눈다. Canvas 2D는 하나의 path 안에서 segment마다 alpha를 직접 바꿀 수 없기 때문에, 비슷한 opacity의 segment를 같은 `Path2D`에 모아 여섯 번 stroke하는 절충이다.
 
-`drawParticle()`은 원래 sample 위치에서 contact 바깥 방향과 그 수직 tangent 방향을 섞어 이동시킨다. RGB 세 채널은 `rgbOffset`만큼 서로 다른 위치에서 시작한다. 현재 lil-gui의 release 기본값은 다음과 같다.
+`ParticleRenderer.draw()`은 원래 sample 위치에서 contact 바깥 방향과 그 수직 tangent 방향을 섞어 이동시킨다. RGB 세 채널은 `rgbOffset`만큼 서로 다른 위치에서 시작한다. 현재 lil-gui의 release 기본값은 다음과 같다.
 
 | GUI | 코드 값 | 기본값 |
 | --- | --- | ---: |
@@ -138,18 +145,18 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 
 ### 4.3 wave pass
 
-`renderContactEffect()`는 중심을 채우는 bloom 없이, 진행 중인 반지름 주변만 두 개의 넓은 band와 한 개의 얇은 crest로 그린다. radial gradient의 안쪽과 바깥쪽을 투명하게 만들기 때문에 원 전체가 밝아지는 것이 아니라 현재 wave front만 보인다.
+`WaveRenderer.render()`는 중심을 채우는 bloom 없이, 진행 중인 반지름 주변만 두 개의 넓은 band와 한 개의 얇은 crest로 그린다. radial gradient의 안쪽과 바깥쪽을 투명하게 만들기 때문에 원 전체가 밝아지는 것이 아니라 현재 wave front만 보인다.
 
 현재 release 스타일에서는 wave를 인체보다 먼저 offscreen canvas에 그린다. 합성 모드는 `screen`이며, 인체는 이어서 `lighter`로 더해진다.
 
 ### 4.4 두 Canvas 합성
 
-한 frame의 `renderFrame()`은 다음 네 단계를 고정된 순서로 호출한다.
+한 frame의 `script.ts` 내 `renderFrame()`은 다음 네 단계를 고정된 순서로 호출한다.
 
-1. `clearArtworkLayer()` — offscreen `artworkCanvas`를 검정으로 초기화
-2. `renderArtworkLayer(now)` — wave, 인체 선, 파티클, drag connector 렌더
-3. `compositeArtworkToScreen()` — main canvas에 glow 사본과 원본, scanline 합성
-4. `updateInteractionLifecycle(now)` — 애니메이션 종료와 자동 reset 판단
+1. `ArtworkRenderer.render()`가 offscreen `artworkCanvas`를 검정으로 초기화
+2. wave, 인체 선, 파티클, drag connector를 순서대로 렌더
+3. glow 사본과 선명한 원본, scanline을 main canvas에 합성
+4. `InteractionController.updateLifecycle()`가 애니메이션 종료와 자동 reset을 판단
 
 offscreen canvas를 둔 이유는 작품 자체를 한 번 완성한 뒤 같은 이미지를 blur한 glow 사본과 선명한 원본으로 재사용하기 위해서다. main canvas는 최종 출력만 담당한다.
 

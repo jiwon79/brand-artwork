@@ -90,7 +90,7 @@
     <text class="body" x="18" y="228">시간으로 바꾼다. crest가 닿은</text>
     <text class="body" x="18" y="248">순서대로 선이 픽셀이 된다.</text>
     <text class="code" x="18" y="286">spawnTimeFor()</text>
-    <text class="code" x="18" y="307">drawParticle()</text>
+    <text class="code" x="18" y="307">ParticleRenderer.draw()</text>
     <text class="code" x="18" y="328">phase = dissolving</text>
   </g>
 
