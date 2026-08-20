@@ -28,6 +28,8 @@ type RopeField = {
   anchorDistance: number;
   graphDistances: number[];
   maxGraphDistance: number;
+  lastUpdatedAt: number;
+  travelCarry: number;
 };
 
 type EchoLineGeometry = {
@@ -86,6 +88,11 @@ const SOURCE_X_LIMIT = 61;
 const SVG_TO_DESIGN = 0.32;
 const SVG_SAMPLE_STEP = 3.2;
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const ROPE_ANCHOR_HYSTERESIS = 7;
+const ROPE_PATH_SWITCH_HYSTERESIS = 18;
+const ROPE_ANCHOR_BASE_SPEED = 150;
+const ROPE_ANCHOR_DISTANCE_SPEED = 1.4;
+const ROPE_ANCHOR_MAX_CARRY = 96;
 
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const hint = document.getElementById('hint') as HTMLParagraphElement;
@@ -797,27 +804,10 @@ function contactTensionPulse(echoIndex: number): number {
     + Math.sin(holdAge * 4.4 + echoIndex * 0.72) * 0.025 * releaseDecay;
 }
 
-function ropeFieldFor(echoIndex: number): RopeField | null {
-  const cached = ropeFields[echoIndex];
-  if (cached) return cached;
-
-  const geometry = echoLineGeometry[echoIndex];
-  if (!geometry || geometry.points.length === 0) return null;
-
-  let anchorPointIndex = 0;
-  let distanceToContact = Number.POSITIVE_INFINITY;
-  for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
-    const point = geometry.points[pointIndex];
-    const position = linePointPosition(point, echoIndex, lastNow);
-    const distance = Math.hypot(
-      contactOrigin.x - position.designX,
-      contactOrigin.y - position.designY,
-    );
-    if (distance >= distanceToContact) continue;
-    anchorPointIndex = pointIndex;
-    distanceToContact = distance;
-  }
-
+function graphDistancesFrom(
+  geometry: EchoLineGeometry,
+  anchorPointIndex: number,
+): number[] {
   const graphDistances = Array.from<number>({ length: geometry.points.length }).fill(
     Number.POSITIVE_INFINITY,
   );
@@ -833,15 +823,139 @@ function ropeFieldFor(echoIndex: number): RopeField | null {
       stack.push(edge.pointIndex);
     }
   }
+  return graphDistances;
+}
 
-  const maxGraphDistance = graphDistances.reduce((maximum, distance) => (
+function maxFiniteGraphDistance(graphDistances: number[]): number {
+  return graphDistances.reduce((maximum, distance) => (
     Number.isFinite(distance) ? Math.max(maximum, distance) : maximum
   ), 0);
+}
+
+function closestLinePoint(
+  geometry: EchoLineGeometry,
+  echoIndex: number,
+  pathIndex?: number,
+): { pointIndex: number; distance: number } {
+  let closestPointIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
+    const point = geometry.points[pointIndex];
+    if (pathIndex !== undefined && point.pathIndex !== pathIndex) continue;
+    const position = linePointPosition(point, echoIndex, lastNow);
+    const distance = Math.hypot(
+      contactOrigin.x - position.designX,
+      contactOrigin.y - position.designY,
+    );
+    if (distance >= closestDistance) continue;
+    closestPointIndex = pointIndex;
+    closestDistance = distance;
+  }
+  return { pointIndex: closestPointIndex, distance: closestDistance };
+}
+
+function updateRopeFieldAnchor(
+  field: RopeField,
+  geometry: EchoLineGeometry,
+  echoIndex: number,
+): void {
+  if (phase !== 'gathering' || field.lastUpdatedAt === lastNow) return;
+
+  const deltaTime = clamp(lastNow - field.lastUpdatedAt, 0, 0.05);
+  field.lastUpdatedAt = lastNow;
+  if (deltaTime <= 0) return;
+
+  const currentPoint = geometry.points[field.anchorPointIndex];
+  const currentPosition = linePointPosition(currentPoint, echoIndex, lastNow);
+  const currentDistance = Math.hypot(
+    contactOrigin.x - currentPosition.designX,
+    contactOrigin.y - currentPosition.designY,
+  );
+  const samePathTarget = closestLinePoint(
+    geometry,
+    echoIndex,
+    currentPoint.pathIndex ?? 0,
+  );
+  const globalTarget = closestLinePoint(geometry, echoIndex);
+  const target = globalTarget.distance + ROPE_PATH_SWITCH_HYSTERESIS < samePathTarget.distance
+    ? globalTarget
+    : samePathTarget;
+
+  const shouldSlide = target.pointIndex !== field.anchorPointIndex
+    && target.distance + ROPE_ANCHOR_HYSTERESIS < currentDistance;
+  if (!shouldSlide) {
+    field.travelCarry = 0;
+    const settle = 1 - Math.exp(-deltaTime * 10);
+    field.anchorDistance += (currentDistance - field.anchorDistance) * settle;
+    return;
+  }
+
+  const targetDistances = graphDistancesFrom(geometry, target.pointIndex);
+  const initialRemainingDistance = targetDistances[field.anchorPointIndex];
+  if (!Number.isFinite(initialRemainingDistance)) return;
+
+  const slideSpeed = ROPE_ANCHOR_BASE_SPEED
+    + Math.min(initialRemainingDistance, 360) * ROPE_ANCHOR_DISTANCE_SPEED;
+  let travelBudget = field.travelCarry + slideSpeed * deltaTime;
+  let anchorPointIndex = field.anchorPointIndex;
+  let moved = false;
+
+  for (let step = 0; step < 32 && anchorPointIndex !== target.pointIndex; step += 1) {
+    const remainingDistance = targetDistances[anchorPointIndex];
+    let nextEdge: LineGraphEdge | null = null;
+    let nextRemainingDistance = Number.POSITIVE_INFINITY;
+    for (const edge of geometry.graph[anchorPointIndex]) {
+      const candidateRemainingDistance = edge.distance + targetDistances[edge.pointIndex];
+      if (candidateRemainingDistance > remainingDistance + 0.0001) continue;
+      if (!nextEdge || candidateRemainingDistance < nextRemainingDistance) {
+        nextEdge = edge;
+        nextRemainingDistance = candidateRemainingDistance;
+      }
+    }
+    if (!nextEdge || nextEdge.distance > travelBudget) break;
+    travelBudget -= nextEdge.distance;
+    anchorPointIndex = nextEdge.pointIndex;
+    moved = true;
+  }
+
+  field.travelCarry = anchorPointIndex === target.pointIndex
+    ? 0
+    : Math.min(travelBudget, ROPE_ANCHOR_MAX_CARRY);
+  if (moved) {
+    field.anchorPointIndex = anchorPointIndex;
+    field.graphDistances = graphDistancesFrom(geometry, anchorPointIndex);
+    field.maxGraphDistance = maxFiniteGraphDistance(field.graphDistances);
+  }
+
+  const updatedPoint = geometry.points[field.anchorPointIndex];
+  const updatedPosition = linePointPosition(updatedPoint, echoIndex, lastNow);
+  const updatedDistance = Math.hypot(
+    contactOrigin.x - updatedPosition.designX,
+    contactOrigin.y - updatedPosition.designY,
+  );
+  const settle = 1 - Math.exp(-deltaTime * 10);
+  field.anchorDistance += (updatedDistance - field.anchorDistance) * settle;
+}
+
+function ropeFieldFor(echoIndex: number): RopeField | null {
+  const geometry = echoLineGeometry[echoIndex];
+  if (!geometry || geometry.points.length === 0) return null;
+
+  const cached = ropeFields[echoIndex];
+  if (cached) {
+    updateRopeFieldAnchor(cached, geometry, echoIndex);
+    return cached;
+  }
+
+  const closest = closestLinePoint(geometry, echoIndex);
+  const graphDistances = graphDistancesFrom(geometry, closest.pointIndex);
   const field = {
-    anchorPointIndex,
-    anchorDistance: distanceToContact,
+    anchorPointIndex: closest.pointIndex,
+    anchorDistance: closest.distance,
     graphDistances,
-    maxGraphDistance,
+    maxGraphDistance: maxFiniteGraphDistance(graphDistances),
+    lastUpdatedAt: lastNow,
+    travelCarry: 0,
   };
   ropeFields[echoIndex] = field;
   return field;
