@@ -316,8 +316,18 @@ export async function loadLineAsset(url: string, echoIndex: number): Promise<Ech
   };
 }
 
-export async function loadLineAssets(): Promise<EchoLineGeometry[]> {
+export async function loadLineAssets(
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<EchoLineGeometry[]> {
+  let loaded = 0;
+  const total = lineAssetUrls.length;
+
   return Promise.all(
-    lineAssetUrls.map((url, echoIndex) => loadLineAsset(url, echoIndex)),
+    lineAssetUrls.map(async (url, echoIndex) => {
+      const geometry = await loadLineAsset(url, echoIndex);
+      loaded += 1;
+      onProgress?.(loaded, total);
+      return geometry;
+    }),
   );
 }

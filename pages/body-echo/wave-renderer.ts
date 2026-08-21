@@ -45,6 +45,44 @@ export class WaveRenderer {
     ctx.restore();
   }
 
+  renderContact(now: number): void {
+    const { runtime, ctx } = this;
+    if (!runtime.isNameDropWave()) return;
+    const isGathering = runtime.phase === 'gathering';
+    const releaseAge = runtime.phase === 'dissolving'
+      ? Math.max(0, now - runtime.releasedAt)
+      : 0;
+    if (!isGathering && (runtime.phase !== 'dissolving' || releaseAge > 0.2)) return;
+
+    const x = runtime.view.offsetX + runtime.contactOrigin.x * runtime.view.fit;
+    const y = runtime.view.offsetY + runtime.contactOrigin.y * runtime.view.fit;
+    const age = isGathering ? Math.max(0, now - runtime.triggeredAt) : releaseAge;
+    const fade = isGathering ? 1 : 1 - smoothstep(releaseAge / 0.2);
+    const pulse = 0.5 + 0.5 * Math.sin(age * 10);
+    const fit = runtime.view.fit;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = '#ffe600';
+    ctx.fillStyle = '#ffe600';
+    ctx.shadowColor = '#ff9d00';
+    ctx.shadowBlur = Math.max(6, 12 * fit);
+    ctx.globalAlpha = 0.9 * fade;
+    ctx.lineWidth = Math.max(1.2, 1.8 * fit);
+    ctx.beginPath();
+    ctx.arc(x, y, (8 + pulse * 3) * fit, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.3 * fade * (1 - pulse);
+    ctx.beginPath();
+    ctx.arc(x, y, (18 + pulse * 8) * fit, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = fade;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(2.2, 2.8 * fit), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   private renderPrevious(centerX: number, centerY: number, releaseAge: number): void {
     const { runtime, ctx } = this;
     const duration = Math.max(0.001, settings.contactWaveDuration);

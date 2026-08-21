@@ -57,6 +57,101 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
 }
 
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #000;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  transition: opacity 180ms ease;
+}
+
+#loading.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-top-color: rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  animation: loading-spin 700ms linear infinite;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+#render-stages {
+  position: fixed;
+  z-index: 9;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: 50%;
+  display: flex;
+  width: min(680px, calc(100% - 24px));
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(6px, 2.4vw, 24px);
+  transform: translateX(-50%);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#render-stages button {
+  position: relative;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.3);
+  font: 600 9px/1 "SFMono-Regular", "SF Mono", monospace;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: none;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.96);
+  transition: color 140ms ease, transform 140ms ease;
+}
+
+#render-stages button::after {
+  position: absolute;
+  right: 0;
+  bottom: 3px;
+  left: 0;
+  height: 1px;
+  background: currentColor;
+  content: '';
+  transform: scaleX(0);
+  transition: transform 140ms ease;
+}
+
+#render-stages button.active {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+#render-stages button.active::after {
+  transform: scaleX(1);
+}
+
+#render-stages button:active {
+  transform: scale(0.97);
+}
+
+#render-stages button:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.72);
+  outline-offset: 3px;
+}
+
 #error {
   position: fixed;
   inset: 0;
@@ -91,5 +186,15 @@ body {
 @media (hover: hover) and (pointer: fine) {
   #artwork {
     cursor: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #loading {
+    transition: none;
+  }
+
+  .loading-spinner {
+    animation-duration: 1.4s;
   }
 }

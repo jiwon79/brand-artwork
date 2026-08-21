@@ -12,6 +12,9 @@ export const SVG_TO_DESIGN = 0.32;
 export const SVG_SAMPLE_STEP = 3.2;
 export const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 export const BASE_CONTACT_WAVE_DURATION = 2.48;
+export const BASE_CONTACT_GATHER_DURATION = 0.92;
+export const BASE_CONTACT_DENSITY_DURATION = 0.52;
+export const DEFAULT_PULL_SPEED = 1.8;
 export const DEFAULT_WAVE_SPEED = 1.35;
 
 export const ACTIVE_FIGURE: FigureMode = 'Lines';
@@ -32,10 +35,10 @@ export const settings = {
   turbulence: 2.6,
   particleLife: 3.35,
   particleSize: 1.15,
-  contactGatherDuration: 0.92,
-  contactDensityDuration: 0.52,
+  contactGatherDuration: BASE_CONTACT_GATHER_DURATION / DEFAULT_PULL_SPEED,
+  contactDensityDuration: BASE_CONTACT_DENSITY_DURATION / DEFAULT_PULL_SPEED,
   contactCompression: 0.18,
-  contactRopePull: 90,
+  contactRopePull: 100,
   contactRopeReach: 88,
   contactRopeSlack: 3.2,
   contactWaveDuration: BASE_CONTACT_WAVE_DURATION / DEFAULT_WAVE_SPEED,
@@ -63,8 +66,8 @@ export const settings = {
 };
 
 export const defaultTiming = {
-  gatherDuration: settings.contactGatherDuration,
-  densityDuration: settings.contactDensityDuration,
+  gatherDuration: BASE_CONTACT_GATHER_DURATION,
+  densityDuration: BASE_CONTACT_DENSITY_DURATION,
   waveDuration: BASE_CONTACT_WAVE_DURATION,
 };
 

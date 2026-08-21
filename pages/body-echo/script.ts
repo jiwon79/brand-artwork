@@ -1,15 +1,17 @@
 import { ArtworkRenderer } from './artwork-renderer';
-import { settings } from './config';
+import { DESIGN_HEIGHT, DESIGN_WIDTH, settings } from './config';
 import { DragDissolve } from './drag-dissolve';
 import { buildSolidPoints, loadLineAssets } from './geometry';
 import { createTuningGui } from './gui';
 import { InteractionController } from './interaction-controller';
 import { clamp } from './math';
+import { setupRenderStageControls } from './render-stages';
 import { BodyEchoRuntime } from './runtime';
 import type { DebugApi } from './types';
 
 // Composition root: create surfaces, wire modules, load assets, and run frames.
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
+const loading = document.getElementById('loading') as HTMLDivElement;
 const error = document.getElementById('error') as HTMLDivElement;
 const screenCtx = canvas.getContext('2d', { alpha: false });
 if (!screenCtx) throw new Error('2D canvas is not supported.');
@@ -30,6 +32,7 @@ const renderer = new ArtworkRenderer(
 const tuningGui = createTuningGui();
 const interaction = new InteractionController(runtime, drag, canvas, tuningGui);
 let animationFrame = 0;
+let isFirstFrame = true;
 
 function resize(): void {
   const pixelRatio = clamp(window.devicePixelRatio || 1, 1, 2);
@@ -48,6 +51,12 @@ function renderFrame(timestamp: number): void {
   const now = timestamp * 0.001;
   runtime.lastNow = now;
   renderer.render(now);
+  if (isFirstFrame) {
+    isFirstFrame = false;
+    loading.classList.add('hidden');
+    loading.addEventListener('transitionend', () => loading.remove(), { once: true });
+    window.setTimeout(() => loading.remove(), 240);
+  }
   interaction.updateLifecycle(now);
   animationFrame = requestAnimationFrame(renderFrame);
 }
@@ -72,6 +81,7 @@ function applyReducedMotionPreference(): void {
 }
 
 function showError(message: string): void {
+  loading.remove();
   error.textContent = message;
   error.classList.add('show');
 }
@@ -81,6 +91,16 @@ async function initializeBodyEcho(): Promise<void> {
   await loadArtworkAssets();
   applyReducedMotionPreference();
   interaction.bind(showError, resize);
+  const previewPoint = {
+    x: DESIGN_WIDTH * 0.5,
+    y: DESIGN_HEIGHT * 0.76,
+  };
+  setupRenderStageControls((stage) => {
+    if (stage === 2) interaction.previewPull(previewPoint);
+    else if (stage === 3) interaction.previewWave(previewPoint);
+    else if (stage === 4) interaction.previewRelease(previewPoint);
+    else interaction.reset();
+  });
   const debugWindow = window as Window & { __bodyEcho?: DebugApi };
   debugWindow.__bodyEcho = interaction.debugApi();
   cancelAnimationFrame(animationFrame);

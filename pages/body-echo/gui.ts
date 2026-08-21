@@ -1,6 +1,6 @@
 import GUI from 'lil-gui';
 import { isDebugMode } from '../../common/debug';
-import { DEFAULT_WAVE_SPEED, defaultTiming, settings } from './config';
+import { DEFAULT_PULL_SPEED, DEFAULT_WAVE_SPEED, defaultTiming, settings } from './config';
 
 export type TuningGui = {
   toggle: () => void;
@@ -11,7 +11,7 @@ export function createTuningGui(): TuningGui {
 
   const gui = new GUI({ title: 'Body Echo' });
   const tuning = {
-    pullSpeed: 1,
+    pullSpeed: DEFAULT_PULL_SPEED,
     waveSpeed: DEFAULT_WAVE_SPEED,
   };
 

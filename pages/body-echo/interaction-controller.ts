@@ -10,6 +10,7 @@ type GuiToggle = { toggle: () => void };
 export class InteractionController {
   private activePointerId: number | null = null;
   private keyboardGathering = false;
+  private previewReleaseTimer = 0;
 
   constructor(
     private readonly runtime: BodyEchoRuntime,
@@ -54,6 +55,8 @@ export class InteractionController {
   }
 
   reset = (): void => {
+    window.clearTimeout(this.previewReleaseTimer);
+    this.previewReleaseTimer = 0;
     this.runtime.phase = 'idle';
     this.runtime.triggeredAt = 0;
     this.runtime.releasedAt = 0;
@@ -69,6 +72,29 @@ export class InteractionController {
       this.releaseGather();
     } else if (this.runtime.isDragDissolve()) this.reset();
     else this.dissolve();
+  };
+
+  previewPull = (point: DesignPoint): void => {
+    this.reset();
+    this.beginGather(point);
+  };
+
+  previewRelease = (point: DesignPoint): void => {
+    this.previewPull(point);
+    this.previewReleaseTimer = window.setTimeout(() => {
+      this.previewReleaseTimer = 0;
+      this.releaseGather();
+    }, this.runtime.contactReleaseTime() * 1000);
+  };
+
+  previewWave = (point: DesignPoint): void => {
+    window.clearTimeout(this.previewReleaseTimer);
+    this.previewReleaseTimer = 0;
+    if (this.runtime.phase !== 'gathering') {
+      this.reset();
+      this.beginGather(point);
+    }
+    this.releaseGather();
   };
 
   debugApi(): DebugApi {

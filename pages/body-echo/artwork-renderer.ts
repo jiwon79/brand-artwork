@@ -1,6 +1,7 @@
 import { settings } from './config';
 import { DragDissolve } from './drag-dissolve';
 import { FigureRenderer } from './figure-renderer';
+import { renderStageState } from './render-stages';
 import { BodyEchoRuntime } from './runtime';
 import { WaveRenderer } from './wave-renderer';
 
@@ -23,10 +24,15 @@ export class ArtworkRenderer {
   render(now: number): void {
     this.clearArtworkLayer();
     if (this.runtime.phase !== 'blank') {
-      if (!this.runtime.isPreviousContactRelease()) this.wave.render(now);
+      if (renderStageState.current >= 3 && !this.runtime.isPreviousContactRelease()) {
+        this.wave.render(now);
+      }
       this.figures.render(now);
       this.drag.renderConnector();
-      if (this.runtime.isPreviousContactRelease()) this.wave.render(now);
+      if (renderStageState.current >= 2) this.wave.renderContact(now);
+      if (renderStageState.current >= 3 && this.runtime.isPreviousContactRelease()) {
+        this.wave.render(now);
+      }
     }
     this.compositeToScreen();
   }

@@ -32,7 +32,10 @@ const staticCopyTargets = pageEntries
 
 export default defineConfig({
   server: {
-    allowedHosts: ['.ngrok-free.app'],
+    allowedHosts: [
+      '.ngrok-free.app',
+      '.ts.net',
+    ],
   },
   plugins: [
     {
