@@ -47,6 +47,7 @@ docs/
 ## Research
 
 - [`guseul-liquid-glass.md`](./research/guseul-liquid-glass.md) - liquid glass 레퍼런스와 외부 구현 조사
+- [`instagram-vibe-coding-series.md`](./research/instagram-vibe-coding-series.md) - `바이브코딩으로 예쁜 거 만들기` Instagram 게시 이력, 캡션과 성과 스냅샷
 
 ## Placement Rules
 
