@@ -11,6 +11,8 @@ import type { DebugApi } from './types';
 // Composition root: create surfaces, wire modules, load assets, and run frames.
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const loading = document.getElementById('loading') as HTMLDivElement;
+const loadingLabel = document.getElementById('loading-label') as HTMLSpanElement;
+const loadingProgress = document.getElementById('loading-progress') as HTMLDivElement;
 const error = document.getElementById('error') as HTMLDivElement;
 const screenCtx = canvas.getContext('2d', { alpha: false });
 if (!screenCtx) throw new Error('2D canvas is not supported.');
@@ -32,6 +34,44 @@ const tuningGui = createTuningGui();
 const interaction = new InteractionController(runtime, drag, canvas, tuningGui);
 let animationFrame = 0;
 let isFirstFrame = true;
+let displayedLoadingProgress = 0;
+let targetLoadingProgress = 0;
+let loadingProgressTotal = 0;
+let loadingProgressTimer: number | undefined;
+let resolveLoadingProgress: () => void;
+const loadingProgressComplete = new Promise<void>((resolve) => {
+  resolveLoadingProgress = resolve;
+});
+
+function advanceLoadingProgress(): void {
+  loadingProgressTimer = undefined;
+  if (displayedLoadingProgress >= targetLoadingProgress) return;
+
+  displayedLoadingProgress += 1;
+  loadingLabel.textContent = `SVG 불러오는 중 · ${displayedLoadingProgress}/${loadingProgressTotal}`;
+  loadingProgress.setAttribute('aria-valuemax', String(loadingProgressTotal));
+  loadingProgress.setAttribute('aria-valuenow', String(displayedLoadingProgress));
+  loadingProgress.style.setProperty(
+    '--loading-progress',
+    `${(displayedLoadingProgress / loadingProgressTotal) * 100}%`,
+  );
+
+  if (displayedLoadingProgress === loadingProgressTotal) {
+    resolveLoadingProgress();
+    return;
+  }
+  if (displayedLoadingProgress < targetLoadingProgress) {
+    loadingProgressTimer = window.setTimeout(advanceLoadingProgress, 90);
+  }
+}
+
+function queueLoadingProgress(loaded: number, total: number): void {
+  targetLoadingProgress = Math.max(targetLoadingProgress, loaded);
+  loadingProgressTotal = total;
+  if (loadingProgressTimer === undefined && displayedLoadingProgress < targetLoadingProgress) {
+    advanceLoadingProgress();
+  }
+}
 
 function resize(): void {
   const pixelRatio = clamp(window.devicePixelRatio || 1, 1, 2);
@@ -65,8 +105,9 @@ async function loadArtworkAssets(): Promise<void> {
   solidImage.decoding = 'async';
   solidImage.src = new URL('./assets/figure-source-start.png', import.meta.url).href;
   const [lineGeometry, solidPoints] = await Promise.all([
-    loadLineAssets(),
+    loadLineAssets(queueLoadingProgress),
     solidImage.decode().then(() => buildSolidPoints(solidImage)),
+    loadingProgressComplete,
   ]);
   runtime.echoLineGeometry = lineGeometry;
   runtime.solidPoints = solidPoints;

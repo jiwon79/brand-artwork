@@ -64,12 +64,37 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   background: #000;
   color: rgba(255, 255, 255, 0.72);
   font-size: 11px;
   letter-spacing: 0.08em;
   transition: opacity 180ms ease;
+}
+
+.loading-content {
+  width: min(180px, calc(100vw - 48px));
+}
+
+.loading-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.loading-progress {
+  height: 2px;
+  margin-top: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.loading-progress-fill {
+  display: block;
+  width: var(--loading-progress, 0%);
+  height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  transition: width 180ms ease;
 }
 
 #loading.hidden {
@@ -131,6 +156,10 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   #loading {
+    transition: none;
+  }
+
+  .loading-progress-fill {
     transition: none;
   }
 
