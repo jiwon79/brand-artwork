@@ -57,6 +57,41 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
 }
 
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #000;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  transition: opacity 180ms ease;
+}
+
+#loading.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-top-color: rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  animation: loading-spin 700ms linear infinite;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
 #error {
   position: fixed;
   inset: 0;
@@ -91,5 +126,15 @@ body {
 @media (hover: hover) and (pointer: fine) {
   #artwork {
     cursor: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #loading {
+    transition: none;
+  }
+
+  .loading-spinner {
+    animation-duration: 1.4s;
   }
 }
