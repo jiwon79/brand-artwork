@@ -12,7 +12,11 @@ import type { DebugApi } from './types';
 const canvas = document.getElementById('artwork') as HTMLCanvasElement;
 const loading = document.getElementById('loading') as HTMLDivElement;
 const loadingLabel = document.getElementById('loading-label') as HTMLSpanElement;
+const loadingDescription = document.getElementById('loading-description') as HTMLSpanElement;
 const loadingProgress = document.getElementById('loading-progress') as HTMLDivElement;
+const loadingStageItems = Array.from(
+  document.querySelectorAll<HTMLElement>('[data-loading-stage]'),
+);
 const error = document.getElementById('error') as HTMLDivElement;
 const screenCtx = canvas.getContext('2d', { alpha: false });
 if (!screenCtx) throw new Error('2D canvas is not supported.');
@@ -36,9 +40,14 @@ let animationFrame = 0;
 let isFirstFrame = true;
 let displayedLoadingProgress = 0;
 let targetLoadingProgress = 0;
-let loadingProgressTotal = 0;
 let loadingProgressTimer: number | undefined;
 let resolveLoadingProgress: () => void;
+const loadingStages = [
+  { label: '01 · LINE', description: 'SVG의 선 구조를 준비합니다' },
+  { label: '02 · CHROMATIC', description: 'RGB 채널에 간격을 만듭니다' },
+  { label: '03 · WAVE', description: '접촉점에서 파동을 확장합니다' },
+  { label: '04 · DISSOLVE', description: '파동이 지난 선을 입자로 분해합니다' },
+] as const;
 const loadingProgressComplete = new Promise<void>((resolve) => {
   resolveLoadingProgress = resolve;
 });
@@ -48,28 +57,38 @@ function advanceLoadingProgress(): void {
   if (displayedLoadingProgress >= targetLoadingProgress) return;
 
   displayedLoadingProgress += 1;
-  loadingLabel.textContent = `SVG 불러오는 중 · ${displayedLoadingProgress}/${loadingProgressTotal}`;
-  loadingProgress.setAttribute('aria-valuemax', String(loadingProgressTotal));
+  const stage = loadingStages[displayedLoadingProgress - 1];
+  loading.dataset.stage = String(displayedLoadingProgress);
+  loadingLabel.textContent = stage.label;
+  loadingDescription.textContent = stage.description;
   loadingProgress.setAttribute('aria-valuenow', String(displayedLoadingProgress));
   loadingProgress.style.setProperty(
     '--loading-progress',
-    `${(displayedLoadingProgress / loadingProgressTotal) * 100}%`,
+    `${(displayedLoadingProgress / loadingStages.length) * 100}%`,
   );
+  loadingStageItems.forEach((item, index) => {
+    item.classList.toggle('complete', index + 1 < displayedLoadingProgress);
+    item.classList.toggle('active', index + 1 === displayedLoadingProgress);
+  });
 
-  if (displayedLoadingProgress === loadingProgressTotal) {
-    resolveLoadingProgress();
+  if (displayedLoadingProgress === loadingStages.length) {
+    window.setTimeout(resolveLoadingProgress, 520);
     return;
   }
   if (displayedLoadingProgress < targetLoadingProgress) {
-    loadingProgressTimer = window.setTimeout(advanceLoadingProgress, 90);
+    loadingProgressTimer = window.setTimeout(advanceLoadingProgress, 420);
   }
 }
 
 function queueLoadingProgress(loaded: number, total: number): void {
-  targetLoadingProgress = Math.max(targetLoadingProgress, loaded);
-  loadingProgressTotal = total;
+  const readyStage = Math.min(
+    loadingStages.length,
+    Math.ceil((loaded / total) * loadingStages.length),
+  );
+  targetLoadingProgress = Math.max(targetLoadingProgress, readyStage);
   if (loadingProgressTimer === undefined && displayedLoadingProgress < targetLoadingProgress) {
-    advanceLoadingProgress();
+    if (displayedLoadingProgress === 0) advanceLoadingProgress();
+    else loadingProgressTimer = window.setTimeout(advanceLoadingProgress, 420);
   }
 }
 

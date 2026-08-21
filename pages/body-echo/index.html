@@ -25,23 +25,51 @@
       aria-label="겹쳐진 인체 잔상이 터치와 드래그에 반응하고 두 손가락 사이의 선에 닿은 부분이 RGB 입자로 분해되는 인터랙티브 작품"
     ></canvas>
   </main>
-  <div id="loading" role="status" aria-live="polite">
+  <div id="loading" role="status" aria-live="polite" data-stage="1">
     <div class="loading-content">
+      <div class="loading-preview" aria-hidden="true">
+        <svg viewBox="0 0 180 104">
+          <g class="preview-figure">
+            <path class="preview-line preview-line-red" d="M91 9 C80 10 78 21 88 26 C99 32 84 37 73 32 C63 27 57 38 67 47 C74 53 84 52 89 61 C94 71 85 82 75 94 M67 46 C54 50 45 60 34 65 M86 47 C101 51 111 60 122 64 M79 63 C67 72 59 83 52 96 M90 63 C102 73 109 84 116 96" />
+            <path class="preview-line preview-line-green" d="M91 9 C80 10 78 21 88 26 C99 32 84 37 73 32 C63 27 57 38 67 47 C74 53 84 52 89 61 C94 71 85 82 75 94 M67 46 C54 50 45 60 34 65 M86 47 C101 51 111 60 122 64 M79 63 C67 72 59 83 52 96 M90 63 C102 73 109 84 116 96" />
+            <path class="preview-line preview-line-blue" d="M91 9 C80 10 78 21 88 26 C99 32 84 37 73 32 C63 27 57 38 67 47 C74 53 84 52 89 61 C94 71 85 82 75 94 M67 46 C54 50 45 60 34 65 M86 47 C101 51 111 60 122 64 M79 63 C67 72 59 83 52 96 M90 63 C102 73 109 84 116 96" />
+            <path class="preview-line preview-line-white" d="M91 9 C80 10 78 21 88 26 C99 32 84 37 73 32 C63 27 57 38 67 47 C74 53 84 52 89 61 C94 71 85 82 75 94 M67 46 C54 50 45 60 34 65 M86 47 C101 51 111 60 122 64 M79 63 C67 72 59 83 52 96 M90 63 C102 73 109 84 116 96" />
+          </g>
+          <g class="preview-wave">
+            <circle cx="82" cy="55" r="12" />
+            <circle cx="82" cy="55" r="12" />
+          </g>
+          <g class="preview-particles">
+            <circle cx="100" cy="29" r="1.6" style="--dx: 28px; --dy: -8px; --delay: 0ms" />
+            <circle cx="105" cy="39" r="1.2" style="--dx: 36px; --dy: 3px; --delay: 90ms" />
+            <circle cx="112" cy="51" r="1.8" style="--dx: 30px; --dy: -4px; --delay: 180ms" />
+            <circle cx="119" cy="64" r="1.3" style="--dx: 38px; --dy: 8px; --delay: 50ms" />
+            <circle cx="109" cy="75" r="1.5" style="--dx: 32px; --dy: 4px; --delay: 140ms" />
+            <circle cx="116" cy="89" r="1.1" style="--dx: 40px; --dy: -2px; --delay: 230ms" />
+          </g>
+        </svg>
+      </div>
       <div class="loading-message">
-        <span class="loading-spinner" aria-hidden="true"></span>
-        <span id="loading-label">SVG 불러오는 중 · 0/6</span>
+        <span id="loading-label">01 · LINE</span>
+        <span id="loading-description">SVG의 선 구조를 준비합니다</span>
       </div>
       <div
         id="loading-progress"
         class="loading-progress"
         role="progressbar"
-        aria-label="SVG 로딩 진행률"
-        aria-valuemin="0"
-        aria-valuemax="6"
-        aria-valuenow="0"
+        aria-label="작품 준비 단계"
+        aria-valuemin="1"
+        aria-valuemax="4"
+        aria-valuenow="1"
       >
         <span class="loading-progress-fill"></span>
       </div>
+      <ol class="loading-stages" aria-hidden="true">
+        <li class="active" data-loading-stage="1">LINE</li>
+        <li data-loading-stage="2">CHROMATIC</li>
+        <li data-loading-stage="3">WAVE</li>
+        <li data-loading-stage="4">DISSOLVE</li>
+      </ol>
     </div>
   </div>
   <div id="error" role="alert"></div>

@@ -34,7 +34,7 @@ export default defineConfig({
   server: {
     allowedHosts: [
       '.ngrok-free.app',
-      'trading-history-mcp-dev.tail069b1f.ts.net',
+      '.ts.net',
     ],
   },
   plugins: [
