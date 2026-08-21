@@ -87,6 +87,16 @@ export class InteractionController {
     }, this.runtime.contactReleaseTime() * 1000);
   };
 
+  previewWave = (point: DesignPoint): void => {
+    window.clearTimeout(this.previewReleaseTimer);
+    this.previewReleaseTimer = 0;
+    if (this.runtime.phase !== 'gathering') {
+      this.reset();
+      this.beginGather(point);
+    }
+    this.releaseGather();
+  };
+
   debugApi(): DebugApi {
     return {
       dissolve: this.replay,

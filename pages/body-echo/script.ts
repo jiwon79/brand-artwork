@@ -97,7 +97,8 @@ async function initializeBodyEcho(): Promise<void> {
   };
   setupRenderStageControls((stage) => {
     if (stage === 2) interaction.previewPull(previewPoint);
-    else if (stage === 3 || stage === 4) interaction.previewRelease(previewPoint);
+    else if (stage === 3) interaction.previewWave(previewPoint);
+    else if (stage === 4) interaction.previewRelease(previewPoint);
     else interaction.reset();
   });
   const debugWindow = window as Window & { __bodyEcho?: DebugApi };
