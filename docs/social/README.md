@@ -15,7 +15,7 @@
 
 | 회차 | 프로젝트 | 상태 | 캡션 |
 | --- | --- | --- | --- |
-| 3일차 | Body Echo (`afterbody`) | 초안 | [캡션 초안](./body-echo.md) |
+| 3일차 | Body Echo | 초안 | [캡션 초안](./body-echo.md) |
 
 ## 데이터 기준
 

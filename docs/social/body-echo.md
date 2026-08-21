@@ -1,6 +1,6 @@
 # Body Echo 소셜 게시 초안
 
-Body Echo를 소개할 `바이브코딩으로 예쁜 거 만들기` 3일차 Instagram 캡션 초안이다. 공개 작품명은 `Body Echo`, 현재 구현 코드명은 `afterbody`다. 게시 후에는 이 파일에 게시 시각, 원본 URL과 Windsor MCP 성과 스냅샷을 추가한다.
+Body Echo를 소개할 `바이브코딩으로 예쁜 거 만들기` 3일차 Instagram 캡션 초안이다. 게시 후에는 이 파일에 게시 시각, 원본 URL과 Windsor MCP 성과 스냅샷을 추가한다.
 
 ## 게시 정보
 
@@ -9,8 +9,8 @@ Body Echo를 소개할 `바이브코딩으로 예쁜 거 만들기` 3일차 Inst
 | 상태 | 게시 전 초안 |
 | 시리즈 | `바이브코딩으로 예쁜 거 만들기` 3일차 |
 | 공개 작품명 | Body Echo |
-| 구현 코드명 | `afterbody` |
-| 구현 | `pages/afterbody/` — `agent/afterbody` 브랜치 |
+| 구현 | [`pages/body-echo/`](../../pages/body-echo/) |
+| 구현 문서 | [Architecture](../artworks/body-echo/architecture.md) |
 | 게시 시각 | 미정 |
 | Instagram | 미정 |
 | 데이터 | 게시 후 Windsor MCP로 조회 |
