@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">Body Echo interaction and rendering pipeline</title>
+  <desc id="desc">Pointer input becomes a design-space contact point, SVG samples become a connected rope graph, hold deforms the graph, release schedules a radial wave and particles, and two canvas passes produce the final image.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#7c8aa5"/>
+    </marker>
+    <style>
+      .bg { fill: #0b0d12; }
+      .panel { fill: #141821; stroke: #343d50; stroke-width: 1.5; rx: 16; }
+      .step { fill: #7dd3fc; font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 1px; }
+      .title { fill: #f6f7fb; font: 700 18px system-ui, sans-serif; }
+      .body { fill: #bac2d2; font: 13px system-ui, sans-serif; }
+      .code { fill: #93a4c3; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .accent { fill: none; stroke: #67e8f9; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .rgb-r { fill: none; stroke: #ff4d4d; stroke-width: 2.5; }
+      .rgb-g { fill: none; stroke: #6cff7a; stroke-width: 2.5; }
+      .rgb-b { fill: none; stroke: #4da3ff; stroke-width: 2.5; }
+      .muted { fill: none; stroke: #61708d; stroke-width: 1.5; stroke-dasharray: 4 5; }
+      .flow { fill: none; stroke: #7c8aa5; stroke-width: 2; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="440"/>
+
+  <g transform="translate(24 28)">
+    <rect class="panel" width="208" height="370"/>
+    <text class="step" x="18" y="30">01 INPUT</text>
+    <text class="title" x="18" y="59">Touch → design point</text>
+    <rect x="32" y="88" width="144" height="82" rx="8" fill="#0d1118" stroke="#3c465b"/>
+    <circle cx="130" cy="122" r="12" fill="#f6f7fb"/>
+    <line class="muted" x1="130" y1="122" x2="82" y2="153"/>
+    <text class="code" x="41" y="192">clientX, clientY</text>
+    <text class="body" x="18" y="226">canvas rect와 view.fit을</text>
+    <text class="body" x="18" y="246">사용해 480×270 작품</text>
+    <text class="body" x="18" y="266">좌표로 변환한다.</text>
+    <text class="code" x="18" y="305">contactOrigin</text>
+    <text class="code" x="18" y="326">phase = gathering</text>
+  </g>
+
+  <path class="flow" d="M238 213 H258"/>
+
+  <g transform="translate(264 28)">
+    <rect class="panel" width="208" height="370"/>
+    <text class="step" x="18" y="30">02 GEOMETRY</text>
+    <text class="title" x="18" y="59">SVG → rope graph</text>
+    <path class="accent" d="M36 150 C52 92 78 97 84 137 S118 187 130 132 S163 90 178 146"/>
+    <circle cx="43" cy="132" r="4" fill="#67e8f9"/>
+    <circle cx="74" cy="111" r="4" fill="#67e8f9"/>
+    <circle cx="98" cy="161" r="4" fill="#67e8f9"/>
+    <circle cx="132" cy="126" r="6" fill="#f6f7fb"/>
+    <circle cx="168" cy="125" r="4" fill="#67e8f9"/>
+    <text class="body" x="18" y="208">path를 일정 거리로 표본화하고</text>
+    <text class="body" x="18" y="228">분리 contour 사이에는 보이지</text>
+    <text class="body" x="18" y="248">않는 virtual joint를 만든다.</text>
+    <text class="code" x="18" y="286">points + tangent</text>
+    <text class="code" x="18" y="307">graph adjacency</text>
+    <text class="code" x="18" y="328">Path2D</text>
+  </g>
+
+  <path class="flow" d="M478 213 H498"/>
+
+  <g transform="translate(504 28)">
+    <rect class="panel" width="208" height="370"/>
+    <text class="step" x="18" y="30">03 HOLD</text>
+    <text class="title" x="18" y="59">Pull along the rope</text>
+    <circle cx="164" cy="120" r="9" fill="#f6f7fb"/>
+    <path class="muted" d="M34 155 C67 92 96 179 164 120"/>
+    <path class="accent" d="M34 155 C76 133 116 124 164 120"/>
+    <path class="flow" d="M91 139 C116 129 136 123 153 121"/>
+    <text class="body" x="18" y="208">가장 가까운 sample이 anchor가</text>
+    <text class="body" x="18" y="228">되고 graph distance가 멀수록</text>
+    <text class="body" x="18" y="248">당김이 지수적으로 약해진다.</text>
+    <text class="code" x="18" y="286">ropeFieldFor()</text>
+    <text class="code" x="18" y="307">gatheredLinePosition()</text>
+    <text class="code" x="18" y="328">phase = gathering</text>
+  </g>
+
+  <path class="flow" d="M718 213 H738"/>
+
+  <g transform="translate(744 28)">
+    <rect class="panel" width="208" height="370"/>
+    <text class="step" x="18" y="30">04 RELEASE</text>
+    <text class="title" x="18" y="59">Wave-gated dissolve</text>
+    <circle cx="104" cy="127" r="55" fill="none" stroke="#9bdcf6" stroke-width="12" opacity=".25"/>
+    <circle cx="104" cy="127" r="5" fill="#f6f7fb"/>
+    <rect x="56" y="101" width="5" height="5" fill="#ff4d4d"/>
+    <rect x="71" y="157" width="5" height="5" fill="#6cff7a"/>
+    <rect x="146" y="116" width="5" height="5" fill="#4da3ff"/>
+    <text class="body" x="18" y="208">각 sample의 중심 거리를 wave</text>
+    <text class="body" x="18" y="228">시간으로 바꾼다. crest가 닿은</text>
+    <text class="body" x="18" y="248">순서대로 선이 픽셀이 된다.</text>
+    <text class="code" x="18" y="286">spawnTimeFor()</text>
+    <text class="code" x="18" y="307">ParticleRenderer.draw()</text>
+    <text class="code" x="18" y="328">phase = dissolving</text>
+  </g>
+
+  <path class="flow" d="M958 213 H978"/>
+
+  <g transform="translate(984 28)">
+    <rect class="panel" width="192" height="370"/>
+    <text class="step" x="18" y="30">05 OUTPUT</text>
+    <text class="title" x="18" y="59">Two canvas passes</text>
+    <path class="rgb-r" d="M38 104 C65 76 87 141 148 103"/>
+    <path class="rgb-g" d="M40 108 C67 80 89 145 150 107"/>
+    <path class="rgb-b" d="M42 112 C69 84 91 149 152 111"/>
+    <rect x="34" y="153" width="124" height="22" rx="5" fill="#20283a"/>
+    <text class="code" x="45" y="168">artworkCanvas</text>
+    <text class="body" x="18" y="208">offscreen에 RGB 선·입자·파동을</text>
+    <text class="body" x="18" y="228">그린 뒤 main canvas에서 glow와</text>
+    <text class="body" x="18" y="248">scanline을 합성한다.</text>
+    <text class="code" x="18" y="286">renderArtworkLayer()</text>
+    <text class="code" x="18" y="307">compositeArtworkToScreen()</text>
+    <text class="code" x="18" y="328">requestAnimationFrame</text>
+  </g>
+</svg>

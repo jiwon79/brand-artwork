@@ -31,6 +31,9 @@ const staticCopyTargets = pageEntries
   }));
 
 export default defineConfig({
+  server: {
+    allowedHosts: ['.ngrok-free.app'],
+  },
   plugins: [
     {
       name: 'inject-site-favicon',

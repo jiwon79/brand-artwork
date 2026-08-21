@@ -4,6 +4,8 @@
   // Touch-only: skip on non-touch devices
   if (!('ontouchstart' in window)) return;
 
+  const showReleaseRipple = document.documentElement.dataset.touchCursorReleaseRipple !== 'false';
+
   interface CursorElements {
     dot: HTMLElement;
     ring: HTMLElement;
@@ -97,7 +99,7 @@
   function removeCursor(touch: Touch): void {
     const c = cursors.get(touch.identifier);
     if (!c) return;
-    spawnRipple(touch.clientX, touch.clientY);
+    if (showReleaseRipple) spawnRipple(touch.clientX, touch.clientY);
     c.dot.remove();
     c.ring.remove();
     cursors.delete(touch.identifier);

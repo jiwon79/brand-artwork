@@ -1,0 +1,95 @@
+:root {
+  color-scheme: dark;
+  background: #000;
+  font-family: "SFMono-Regular", "SF Mono", "Roboto Mono", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  overscroll-behavior: none;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+#artwork {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000;
+  image-rendering: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  user-select: none;
+  cursor: pointer;
+  outline: none;
+}
+
+::selection {
+  background: transparent;
+}
+
+#artwork:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+#error {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  place-items: center;
+  padding: 24px;
+  background: #000;
+  color: #ff3c3c;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+#error.show {
+  display: grid;
+}
+
+.lil-gui.root {
+  z-index: 10;
+}
+
+.tc-dot {
+  background: rgba(255, 255, 255, 0.82) !important;
+}
+
+.tc-ring,
+.tc-ripple {
+  border-color: rgba(255, 255, 255, 0.38) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #artwork {
+    cursor: none;
+  }
+}
