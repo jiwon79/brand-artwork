@@ -1,5 +1,6 @@
 import GUI from 'lil-gui';
 import type { ShaderMaterial } from 'three';
+import { isDebugMode } from '../../common/debug';
 import type { ColorTextParameters } from './config';
 
 type ParameterGuiOptions = {
@@ -16,6 +17,8 @@ type ParameterGuiOptions = {
  * 작품의 실행 흐름과 무관하므로 script.ts의 렌더 파이프라인에서 분리한다.
  */
 export function bindParameterGui(options: ParameterGuiOptions): void {
+  if (!isDebugMode()) return;
+
   const {
     state,
     surfaceSourceMaterial,
@@ -167,8 +170,6 @@ export function bindParameterGui(options: ParameterGuiOptions): void {
   surfaceFolder.close();
   colorFolder.close();
   advancedFolder.close();
-  gui.hide();
-
   window.addEventListener('keydown', (event) => {
     if (event.target instanceof HTMLInputElement) return;
     if (event.key.toLowerCase() === 'g') {

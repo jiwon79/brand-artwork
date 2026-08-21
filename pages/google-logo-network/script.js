@@ -1,6 +1,7 @@
 'use strict';
 
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -538,7 +539,7 @@ applyBrand('Google');
 
 init();
 
-const gui = new GUI({ title: 'Brand' });
+const gui = exposeGuiInDebugMode(new GUI({ title: 'Brand' }));
 gui.add(guiParams, 'glowRadial').name('Radial Glow');
 gui.add(guiParams, 'brand', ['Google', 'YouTube', 'Gmail', 'Gemini'])
   .name('Brand')

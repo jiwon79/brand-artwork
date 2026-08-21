@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 // ── Constants ────────────────────────────────────────────
 const W = 405;
@@ -500,7 +501,7 @@ applyGrading();
 
 // ── GUI ──────────────────────────────────────────────────
 const guiMount = document.getElementById('gui-mount') as HTMLElement;
-const gui = new GUI({ title: 'Controls', container: guiMount });
+const gui = exposeGuiInDebugMode(new GUI({ title: 'Controls', container: guiMount }));
 
 precompute();
 

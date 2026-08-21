@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -464,7 +465,7 @@ requestAnimationFrame(animate);
 
 // ── Font size GUI ──────────────────────────────────────────
 try {
-  const gui = new GUI({ title: 'debug' });
+  const gui = exposeGuiInDebugMode(new GUI({ title: 'debug' }));
     gui.add(guiParams, 'fontSize', 10, Math.round(Math.min(W, H) * 0.8), 1)
       .name('font size (CSS px)')
       .onChange(v => {

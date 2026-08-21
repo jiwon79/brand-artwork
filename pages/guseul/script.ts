@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { isDebugMode } from '../../common/debug';
 import {
   GuseulWebGLRenderer,
   type GpuGlassFrame,
@@ -559,6 +560,7 @@ function projectMarbleCircle(circle: MarbleCircle, params: RenderParams): Visibl
 }
 
 function setupGui(): void {
+  if (!isDebugMode()) return;
   const gui = new GUI({ title: 'Guseul layers' });
   gui.domElement.addEventListener('pointerdown', (event) => {
     event.stopPropagation();
