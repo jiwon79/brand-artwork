@@ -61,6 +61,13 @@
 
   const cursors = new Map<number, CursorElements>();
 
+  function ignoresTouchCursor(event: TouchEvent): boolean {
+    return event.composedPath().some((target) => (
+      target instanceof HTMLElement
+      && target.dataset.touchCursorIgnore === 'true'
+    ));
+  }
+
   function placeCursor(el: HTMLElement, x: number, y: number): void {
     el.style.left = x + 'px';
     el.style.top  = y + 'px';
@@ -106,6 +113,7 @@
   }
 
   document.addEventListener('touchstart', (e: TouchEvent) => {
+    if (ignoresTouchCursor(e)) return;
     for (const t of e.changedTouches) createCursor(t);
   }, { passive: true });
 
