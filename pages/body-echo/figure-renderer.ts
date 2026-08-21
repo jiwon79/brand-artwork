@@ -295,10 +295,10 @@ export class FigureRenderer {
     const fade = 1 - smoothstep((releaseAge - duration * 0.72) / (duration * 0.28));
 
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = channelColors[channelIndex];
-    ctx.shadowColor = channelColors[channelIndex];
-    ctx.shadowBlur = Math.max(2, 4 * runtime.view.fit);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#ffe600';
+    ctx.shadowColor = '#ff8a00';
+    ctx.shadowBlur = Math.max(5, 9 * runtime.view.fit);
     for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 3) {
       const point = geometry.points[pointIndex];
       const position = runtime.gatheredLinePosition(
@@ -313,8 +313,8 @@ export class FigureRenderer {
       const distanceToFront = Math.abs(Math.hypot(x - centerX, y - centerY) - radius);
       const strength = 1 - clamp(distanceToFront / band, 0, 1);
       if (strength <= 0.05) continue;
-      const size = Math.max(0.8, (0.7 + strength * 1.8) * runtime.view.fit);
-      ctx.globalAlpha = strength * strength * 0.96 * fade;
+      const size = Math.max(1.4, (1.2 + strength * 3.2) * runtime.view.fit);
+      ctx.globalAlpha = (0.42 + strength * 0.58) * fade;
       ctx.fillRect(x - size * 0.5, y - size * 0.5, size, size);
     }
     ctx.restore();

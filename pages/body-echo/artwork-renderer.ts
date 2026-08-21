@@ -29,6 +29,7 @@ export class ArtworkRenderer {
       }
       this.figures.render(now);
       this.drag.renderConnector();
+      if (renderStageState.current >= 2) this.wave.renderContact(now);
       if (renderStageState.current >= 3 && this.runtime.isPreviousContactRelease()) {
         this.wave.render(now);
       }
