@@ -771,7 +771,7 @@ Field target이 half float인 이유는 여러 gain을 합친 1보다 큰 값과
 | `Contour` | 현재 고해상도 글자와 최종 threshold 외곽선 하나 |
 | `Final` | geometry, palette, 배경 글자를 합친 작품 |
 
-숫자키 `1…4`, 좌우 방향키, `?stage=0…3`으로 바꿀 수 있다. 첫 손가락이 canvas에 capture된 중에도 두 번째 손가락의 `pointerdown`으로 버튼을 즉시 바꿀 수 있다.
+공통 `artwork-stepper`가 하단에 항상 표시된다. 숫자키 `1…4`, 좌우 방향키, `?stage=solver|contact|contour|final`로 바꿀 수 있다. 첫 손가락이 canvas에 capture된 중에도 두 번째 손가락의 `pointerdown`으로 버튼을 즉시 바꿀 수 있다.
 
 `common/touch-cursor.ts`의 54px ring과 ripple은 `pointer-events: none`인 DOM overlay다. 화면 녹화에서 터치 위치만 보여주며 simulation 좌표에는 참여하지 않는다.
 
@@ -791,11 +791,11 @@ Field target이 half float인 이유는 여러 gain을 합친 1보다 큰 값과
 | 모드 | 사용법 | 목적 |
 | --- | --- | --- |
 | 일반 | `/pages/color-text/` | 실제 터치 작품 |
-| Process | `?stage=0…3` | 특정 중간 단계에서 시작 |
+| Process | `?stage=solver|contact|contour|final` | 특정 중간 단계에서 시작 |
 | 검증 | `?qa=1&qaX=0.37&qaY=0.52` | 고정 synthetic packet으로 재현 가능한 비교 |
 | 3분류 검증 | 검증 주소에 `&qaLabels=1` | 배경·글자·효과 3분류 출력 |
 | OG | `?og` | 1200×630 SNS 이미지용 확대·제목, 버튼 숨김 |
-| GUI | 키보드 `g` | lil-gui 열기·닫기 |
+| GUI | `?debug`, 키보드 `g` | lil-gui 표시·열기·닫기 |
 
 lil-gui는 현재 값을 여섯 폴더로 나눈다.
 

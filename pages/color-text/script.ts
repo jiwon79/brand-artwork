@@ -41,10 +41,10 @@ document.body.classList.toggle('og-preview', OG_PREVIEW_MODE);
 const QA_MODE = searchParams.has('qa');
 const QA_LABEL_MODE = searchParams.has('qaLabels');
 const PROCESS_STEPS = [
-  { value: 0, label: 'Solver' },
-  { value: 1, label: 'Contact' },
-  { value: 2, label: 'Contour' },
-  { value: 3, label: 'Final' },
+  { id: 'solver', label: 'Solver', stage: 0 },
+  { id: 'contact', label: 'Contact', stage: 1 },
+  { id: 'contour', label: 'Contour', stage: 2 },
+  { id: 'final', label: 'Final', stage: 3 },
 ] as const;
 const PROCESS_STAGE_COUNT = PROCESS_STEPS.length;
 const requestedProcessStageParam = searchParams.get('stage');
@@ -578,8 +578,11 @@ function bindProcessStepper(): void {
   createStepper({
     ariaLabel: 'Rendering stages',
     steps: PROCESS_STEPS,
-    value: processStage,
-    onChange: setProcessStage,
+    initialStep: PROCESS_STEPS[processStage].id,
+    onChange: (stepId) => {
+      const step = PROCESS_STEPS.find((candidate) => candidate.id === stepId);
+      if (step) setProcessStage(step.stage);
+    },
   });
 }
 
