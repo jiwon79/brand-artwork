@@ -1,5 +1,5 @@
 import { ArtworkRenderer } from './artwork-renderer';
-import { settings } from './config';
+import { DESIGN_HEIGHT, DESIGN_WIDTH, settings } from './config';
 import { DragDissolve } from './drag-dissolve';
 import { buildSolidPoints, loadLineAssets } from './geometry';
 import { createTuningGui } from './gui';
@@ -91,9 +91,14 @@ async function initializeBodyEcho(): Promise<void> {
   await loadArtworkAssets();
   applyReducedMotionPreference();
   interaction.bind(showError, resize);
+  const previewPoint = {
+    x: DESIGN_WIDTH * 0.5,
+    y: DESIGN_HEIGHT * 0.76,
+  };
   setupRenderStageControls((stage) => {
-    interaction.reset();
-    if (stage >= 2) requestAnimationFrame(() => interaction.replay());
+    if (stage === 2) interaction.previewPull(previewPoint);
+    else if (stage === 3 || stage === 4) interaction.previewRelease(previewPoint);
+    else interaction.reset();
   });
   const debugWindow = window as Window & { __bodyEcho?: DebugApi };
   debugWindow.__bodyEcho = interaction.debugApi();

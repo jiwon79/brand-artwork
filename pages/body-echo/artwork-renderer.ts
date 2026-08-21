@@ -24,12 +24,12 @@ export class ArtworkRenderer {
   render(now: number): void {
     this.clearArtworkLayer();
     if (this.runtime.phase !== 'blank') {
-      if (renderStageState.current >= 2 && !this.runtime.isPreviousContactRelease()) {
+      if (renderStageState.current >= 3 && !this.runtime.isPreviousContactRelease()) {
         this.wave.render(now);
       }
       this.figures.render(now);
       this.drag.renderConnector();
-      if (renderStageState.current >= 2 && this.runtime.isPreviousContactRelease()) {
+      if (renderStageState.current >= 3 && this.runtime.isPreviousContactRelease()) {
         this.wave.render(now);
       }
     }

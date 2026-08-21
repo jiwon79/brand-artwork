@@ -98,10 +98,10 @@ body {
   bottom: max(10px, env(safe-area-inset-bottom));
   left: 50%;
   display: flex;
-  width: min(520px, calc(100% - 24px));
+  width: min(680px, calc(100% - 24px));
   align-items: center;
   justify-content: space-between;
-  gap: clamp(10px, 4vw, 28px);
+  gap: clamp(6px, 2.4vw, 24px);
   transform: translateX(-50%);
   pointer-events: auto;
   touch-action: none;
@@ -114,7 +114,7 @@ body {
   border: 0;
   background: transparent;
   color: rgba(255, 255, 255, 0.3);
-  font: 600 10px/1 "SFMono-Regular", "SF Mono", monospace;
+  font: 600 9px/1 "SFMono-Regular", "SF Mono", monospace;
   letter-spacing: 0.045em;
   text-transform: uppercase;
   cursor: pointer;

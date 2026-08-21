@@ -14,6 +14,7 @@ import { ParticleRenderer } from './particles';
 import { renderStageState } from './render-stages';
 import { BodyEchoRuntime } from './runtime';
 import type { FigurePoint, PositionedPoint } from './types';
+import { waveRadiusForProgress } from './wave-timing';
 
 /** Renders stable SVG/raster figures and replaces released samples with particles. */
 export class FigureRenderer {
@@ -171,10 +172,15 @@ export class FigureRenderer {
       ctx.globalAlpha = 0.84;
       for (let echoIndex = 0; echoIndex < echoCount; echoIndex += 1) {
         ctx.globalAlpha = 0.84;
-        if (renderStageState.current < 3) {
+        if (renderStageState.current < 4) {
           if (renderStageState.current < 2 || runtime.phase === 'idle') {
             this.drawExactLinePath(echoIndex, channelIndex, now);
-          } else this.drawStableGatheredLinePath(echoIndex, channelIndex, now);
+          } else {
+            this.drawStableGatheredLinePath(echoIndex, channelIndex, now);
+            if (renderStageState.current === 3) {
+              this.drawWaveIntersections(echoIndex, channelIndex, now);
+            }
+          }
           continue;
         }
         if (runtime.isDragDissolve() && runtime.phase === 'dragging') {
@@ -265,6 +271,53 @@ export class FigureRenderer {
     ctx.lineWidth = geometry.strokeWidth * SVG_TO_DESIGN
       * settings.lineThickness * runtime.view.fit;
     ctx.stroke();
+  }
+
+  private drawWaveIntersections(
+    echoIndex: number,
+    channelIndex: number,
+    now: number,
+  ): void {
+    const { runtime, ctx } = this;
+    if (runtime.phase !== 'dissolving' || !runtime.isNameDropWave()) return;
+    const geometry = runtime.echoLineGeometry[echoIndex];
+    if (!geometry) return;
+
+    const releaseAge = Math.max(0, now - runtime.releasedAt);
+    const duration = Math.max(0.001, settings.contactWaveDuration);
+    const progress = clamp(releaseAge / duration, 0, 1);
+    const radius = waveRadiusForProgress(progress, runtime.contactWaveExtent()) * runtime.view.fit;
+    const band = Math.max(3.5, settings.contactWaveBandWidth * 0.16 * runtime.view.fit);
+    const centerX = runtime.view.offsetX + runtime.contactOrigin.x * runtime.view.fit;
+    const centerY = runtime.view.offsetY + runtime.contactOrigin.y * runtime.view.fit;
+    const gatherElapsed = runtime.visualGatherElapsed(now);
+    const channelOffset = settings.rgbOffset * runtime.view.fit;
+    const fade = 1 - smoothstep((releaseAge - duration * 0.72) / (duration * 0.28));
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = channelColors[channelIndex];
+    ctx.shadowColor = channelColors[channelIndex];
+    ctx.shadowBlur = Math.max(2, 4 * runtime.view.fit);
+    for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 3) {
+      const point = geometry.points[pointIndex];
+      const position = runtime.gatheredLinePosition(
+        point,
+        pointIndex,
+        echoIndex,
+        now,
+        gatherElapsed,
+      );
+      const x = position.x + channelX[channelIndex] * channelOffset;
+      const y = position.y + channelY[channelIndex] * channelOffset;
+      const distanceToFront = Math.abs(Math.hypot(x - centerX, y - centerY) - radius);
+      const strength = 1 - clamp(distanceToFront / band, 0, 1);
+      if (strength <= 0.05) continue;
+      const size = Math.max(0.8, (0.7 + strength * 1.8) * runtime.view.fit);
+      ctx.globalAlpha = strength * strength * 0.96 * fade;
+      ctx.fillRect(x - size * 0.5, y - size * 0.5, size, size);
+    }
+    ctx.restore();
   }
 
   private drawStableSolidPoint(

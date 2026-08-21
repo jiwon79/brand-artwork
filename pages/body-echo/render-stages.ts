@@ -1,9 +1,16 @@
-export const renderStageLabels = ['LINE', 'CHROMATIC', 'WAVE', 'DISSOLVE'] as const;
+export const renderStageLabels = [
+  'LINE',
+  'CHROMATIC',
+  'PULL',
+  'WAVE',
+  'DISSOLVE',
+  'INTERACT',
+] as const;
 
-export type RenderStage = 0 | 1 | 2 | 3;
+export type RenderStage = 0 | 1 | 2 | 3 | 4 | 5;
 
 export const renderStageState = {
-  current: 3 as RenderStage,
+  current: 5 as RenderStage,
 };
 
 export function setupRenderStageControls(onChange: (stage: RenderStage) => void): void {
@@ -28,12 +35,12 @@ export function setupRenderStageControls(onChange: (stage: RenderStage) => void)
     });
   });
   window.addEventListener('keydown', (event) => {
-    if (/^[1-4]$/.test(event.key)) selectStage((Number(event.key) - 1) as RenderStage);
+    if (/^[1-6]$/.test(event.key)) selectStage((Number(event.key) - 1) as RenderStage);
     if (event.key === 'ArrowLeft') {
       selectStage(Math.max(0, renderStageState.current - 1) as RenderStage);
     }
     if (event.key === 'ArrowRight') {
-      selectStage(Math.min(3, renderStageState.current + 1) as RenderStage);
+      selectStage(Math.min(renderStageLabels.length - 1, renderStageState.current + 1) as RenderStage);
     }
   });
 }

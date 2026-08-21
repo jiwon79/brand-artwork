@@ -71,6 +71,17 @@ export class InteractionController {
     else this.dissolve();
   };
 
+  previewPull = (point: DesignPoint): void => {
+    this.reset();
+    this.beginGather(point);
+    this.runtime.triggeredAt = this.now() - this.runtime.contactReleaseTime();
+  };
+
+  previewRelease = (point: DesignPoint): void => {
+    this.previewPull(point);
+    this.releaseGather();
+  };
+
   debugApi(): DebugApi {
     return {
       dissolve: this.replay,
