@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 const FLOWER_COUNT = 49;
 const FLOWER_IMAGES: string[] = Array.from(
@@ -14,7 +15,7 @@ const params = {
   maxSize: 52,
 };
 
-const gui = new GUI({ title: '설정' });
+const gui = exposeGuiInDebugMode(new GUI({ title: '설정' }));
 gui.add(params, 'clusterCount', 1, 7, 1).name('꽃 개수');
 gui.add(params, 'clusterSpread', 0, 67, 1).name('퍼짐 범위 (px)');
 gui.add(params, 'spawnDistance', 1, 64, 1).name('꽃 간격 (px)');

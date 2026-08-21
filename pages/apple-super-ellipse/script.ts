@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 // ── Config ───────────────────────────────────────────────
 const GAP     = 0.5;
@@ -283,7 +284,7 @@ window.addEventListener('resize', () => {
 });
 
 // ── GUI ───────────────────────────────────────────────────
-const gui = new GUI({ title: 'options' });
+const gui = exposeGuiInDebugMode(new GUI({ title: 'options' }));
 gui.add(params, 'falloff', Object.keys(falloffFns) as FalloffKey[]).name('falloff');
 gui.add(params, 'brushSize', 20, 200, 1).name('brush size');
 gui.add(params, 'cell', 5, 200, 1).name('cell size (px)').onChange(() => initGrid());

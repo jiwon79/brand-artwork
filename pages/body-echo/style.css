@@ -92,64 +92,14 @@ body {
   }
 }
 
-#render-stages {
-  position: fixed;
-  z-index: 9;
-  bottom: max(10px, env(safe-area-inset-bottom));
-  left: 50%;
-  display: flex;
-  width: min(680px, calc(100% - 24px));
-  align-items: center;
-  justify-content: space-between;
-  gap: clamp(6px, 2.4vw, 24px);
-  transform: translateX(-50%);
-  pointer-events: auto;
-  touch-action: none;
-}
-
-#render-stages button {
-  position: relative;
-  min-width: 0;
-  padding: 8px 0;
-  border: 0;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.3);
-  font: 600 9px/1 "SFMono-Regular", "SF Mono", monospace;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-  cursor: pointer;
-  touch-action: none;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.96);
-  transition: color 140ms ease, transform 140ms ease;
-}
-
-#render-stages button::after {
-  position: absolute;
-  right: 0;
-  bottom: 3px;
-  left: 0;
-  height: 1px;
-  background: currentColor;
-  content: '';
-  transform: scaleX(0);
-  transition: transform 140ms ease;
-}
-
-#render-stages button.active {
-  color: rgba(255, 255, 255, 0.92);
-}
-
-#render-stages button.active::after {
-  transform: scaleX(1);
-}
-
-#render-stages button:active {
-  transform: scale(0.97);
-}
-
-#render-stages button:focus-visible {
-  outline: 1px solid rgba(255, 255, 255, 0.72);
-  outline-offset: 3px;
+artwork-stepper {
+  --stepper-z-index: 9;
+  --stepper-max-width: 680px;
+  --stepper-muted-color: rgba(255, 255, 255, 0.3);
+  --stepper-color: rgba(255, 255, 255, 0.92);
+  --stepper-font: 600 9px/1 "SFMono-Regular", "SF Mono", monospace;
+  --stepper-text-shadow: 0 1px 8px rgba(0, 0, 0, 0.96);
+  --stepper-focus-color: rgba(255, 255, 255, 0.72);
 }
 
 #error {

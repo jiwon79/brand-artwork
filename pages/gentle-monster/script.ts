@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 interface ColorVariant {
   color_name: string | null;
@@ -613,7 +614,7 @@ class Catalog {
   }
 
   private bindGui(): void {
-    const gui = new GUI({ title: 'Gentle Monster' });
+    const gui = exposeGuiInDebugMode(new GUI({ title: 'Gentle Monster' }));
     const update = () => this.applySceneTransform();
     const relayout = () => {
       this.items.forEach((el, idx) => {

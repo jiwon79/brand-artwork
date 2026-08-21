@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 const errorEl = document.getElementById('error') as HTMLDivElement;
 const stage = document.getElementById('stage') as HTMLCanvasElement;
@@ -317,7 +318,7 @@ const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
 scene.add(quad);
 
 // ── lil-gui controls ─────────────────────────────────────
-const gui = new GUI({ title: 'Controls' });
+const gui = exposeGuiInDebugMode(new GUI({ title: 'Controls' }));
 
 const lensFolder = gui.addFolder('Lens');
 lensFolder.add(state, 'radius', 0.1, 0.8, 0.005).name('Radius');

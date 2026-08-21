@@ -1,5 +1,6 @@
 import { Delaunay } from 'd3-delaunay';
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 import * as THREE from 'three';
 
 type Point = {
@@ -124,7 +125,7 @@ const fractureTuning = {
   reset: () => resetArtwork(),
 };
 
-const gui = new GUI({ title: 'Wakppu tuning' });
+const gui = exposeGuiInDebugMode(new GUI({ title: 'Wakppu tuning' }));
 const fractureFolder = gui.addFolder('Fracture');
 fractureFolder.add(fractureTuning, 'shardCount', 0.35, 2.2, 0.01).name('조각 수');
 fractureFolder.add(fractureTuning, 'crackRange', 0.55, 2.25, 0.01).name('크랙 범위');
