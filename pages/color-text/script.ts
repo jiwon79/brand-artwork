@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createStepper } from '../../common/stepper';
 import {
   ART_HEIGHT,
   ART_WIDTH,
@@ -39,14 +40,20 @@ const OG_PREVIEW_MODE = searchParams.has('og');
 document.body.classList.toggle('og-preview', OG_PREVIEW_MODE);
 const QA_MODE = searchParams.has('qa');
 const QA_LABEL_MODE = searchParams.has('qaLabels');
-const DEBUG_STAGE_COUNT = 4;
-const requestedDebugStageParam = searchParams.get('stage');
-const requestedDebugStage = requestedDebugStageParam === null
+const PROCESS_STEPS = [
+  { value: 0, label: 'Solver' },
+  { value: 1, label: 'Contact' },
+  { value: 2, label: 'Contour' },
+  { value: 3, label: 'Final' },
+] as const;
+const PROCESS_STAGE_COUNT = PROCESS_STEPS.length;
+const requestedProcessStageParam = searchParams.get('stage');
+const requestedProcessStage = requestedProcessStageParam === null
   ? Number.NaN
-  : Number(requestedDebugStageParam);
-let debugStage = Number.isFinite(requestedDebugStage)
-  ? THREE.MathUtils.clamp(Math.round(requestedDebugStage), 0, DEBUG_STAGE_COUNT - 1)
-  : DEBUG_STAGE_COUNT - 1;
+  : Number(requestedProcessStageParam);
+let processStage = Number.isFinite(requestedProcessStage)
+  ? THREE.MathUtils.clamp(Math.round(requestedProcessStage), 0, PROCESS_STAGE_COUNT - 1)
+  : PROCESS_STAGE_COUNT - 1;
 const qaPointerX = Number(searchParams.get('qaX'));
 const qaPointerY = Number(searchParams.get('qaY'));
 const QA_POINTER_LOCKED = searchParams.has('qaX')
@@ -396,7 +403,7 @@ const debugMaterial = new THREE.ShaderMaterial({
     uPosterSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uSurfaceThreshold: { value: state.surfaceThreshold },
     uSurfaceSoftness: { value: state.surfaceSoftness },
-    uMode: { value: debugStage },
+    uMode: { value: processStage },
     uArtSize: { value: new THREE.Vector2(ART_WIDTH, ART_HEIGHT) },
     uSolverParticles: { value: solverUniformParticles },
     uSolverVelocityEnds: { value: solverUniformVelocityEnds },
@@ -554,54 +561,29 @@ window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',
 });
 
 // 8. Process View와 제작용 GUI ------------------------------------------------
-function setDebugStage(nextStage: number): void {
-  debugStage = THREE.MathUtils.clamp(
+function setProcessStage(nextStage: number): void {
+  processStage = THREE.MathUtils.clamp(
     Math.round(nextStage),
     0,
-    DEBUG_STAGE_COUNT - 1,
+    PROCESS_STAGE_COUNT - 1,
   );
-  debugMaterial.uniforms.uMode.value = debugStage === 0
+  debugMaterial.uniforms.uMode.value = processStage === 0
     ? 2
-    : debugStage === 1
+    : processStage === 1
       ? 1
       : 3;
+}
 
-  document.querySelectorAll<HTMLButtonElement>('[data-debug-stage]').forEach((button) => {
-    const selected = Number(button.dataset.debugStage) === debugStage;
-    button.classList.toggle('active', selected);
-    if (selected) button.setAttribute('aria-current', 'step');
-    else button.removeAttribute('aria-current');
+function bindProcessStepper(): void {
+  createStepper({
+    ariaLabel: 'Rendering stages',
+    steps: PROCESS_STEPS,
+    value: processStage,
+    onChange: setProcessStage,
   });
 }
 
-function bindDebugControls(): void {
-  document.querySelectorAll<HTMLButtonElement>('[data-debug-stage]').forEach((button) => {
-    const selectStage = (): void => {
-      setDebugStage(Number(button.dataset.debugStage));
-    };
-    // A second touch must be able to switch process views while the primary
-    // pointer remains captured by the canvas and keeps emitting liquid.
-    button.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      selectStage();
-    });
-    button.addEventListener('click', (event) => {
-      // Pointer input was already handled at pointerdown. Keep click for
-      // keyboard and assistive-technology activation.
-      if (event.detail === 0) selectStage();
-    });
-  });
-  window.addEventListener('keydown', (event) => {
-    if (event.target instanceof HTMLInputElement) return;
-    if (/^[1-4]$/.test(event.key)) setDebugStage(Number(event.key) - 1);
-    if (event.key === 'ArrowLeft') setDebugStage(debugStage - 1);
-    if (event.key === 'ArrowRight') setDebugStage(debugStage + 1);
-  });
-  setDebugStage(debugStage);
-}
-
-bindDebugControls();
+bindProcessStepper();
 bindParameterGui({
   state,
   surfaceSourceMaterial,
@@ -752,7 +734,7 @@ function uploadLiquidState(): void {
     }
   }
 
-  if (debugStage === 0) updateSolverDebugData();
+  if (processStage === 0) updateSolverDebugData();
   else debugMaterial.uniforms.uSourceActive.value = 0;
 }
 
@@ -869,7 +851,7 @@ function renderOutputPass(elapsed: number): void {
   debugMaterial.uniforms.uSolverPinchTime.value = state.dripPinchTime;
   debugMaterial.uniforms.uSolverStreamWidth.value = state.dripStreamWidth;
 
-  const outputMaterial = debugStage < DEBUG_STAGE_COUNT - 1
+  const outputMaterial = processStage < PROCESS_STAGE_COUNT - 1
     ? debugMaterial
     : finalMaterial;
   renderPass(outputMaterial, null);

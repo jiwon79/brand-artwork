@@ -65,69 +65,6 @@ body {
   }
 }
 
-#debug-controls {
-  position: fixed;
-  z-index: 10;
-  left: 50%;
-  bottom: max(10px, env(safe-area-inset-bottom));
-  display: flex;
-  width: min(520px, calc(100% - 24px));
-  align-items: center;
-  justify-content: space-between;
-  gap: clamp(10px, 4vw, 28px);
-  transform: translateX(-50%);
-  pointer-events: auto;
-  touch-action: none;
-}
-
-#debug-controls button {
-  position: relative;
-  min-width: 0;
-  padding: 8px 0;
-  border: 0;
-  background: transparent;
-  color: rgba(37, 36, 34, 0.36);
-  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-  touch-action: none;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
-  cursor: pointer;
-  text-shadow: 0 1px 8px rgba(251, 251, 250, 0.96);
-  transition: color 140ms ease, transform 140ms ease;
-}
-
-#debug-controls button::after {
-  position: absolute;
-  right: 0;
-  bottom: 3px;
-  left: 0;
-  height: 1px;
-  background: currentColor;
-  content: '';
-  transform: scaleX(0);
-  transition: transform 140ms ease;
-}
-
-#debug-controls button.active {
-  color: #252422;
-}
-
-#debug-controls button.active::after {
-  transform: scaleX(1);
-}
-
-#debug-controls button:active {
-  transform: scale(0.97);
-}
-
-#debug-controls button:focus-visible {
-  outline: 2px solid #655ef4;
-  outline-offset: 2px;
-}
-
 body.og-preview::before,
 body.og-preview::after {
   position: fixed;
@@ -152,7 +89,7 @@ body.og-preview::after {
   letter-spacing: 0.11em;
 }
 
-body.og-preview #debug-controls {
+body.og-preview artwork-stepper {
   display: none;
 }
 
@@ -182,15 +119,4 @@ body.og-preview #debug-controls {
   height: 54px !important;
   border-color: rgba(35, 75, 116, 0.42) !important;
   mix-blend-mode: multiply;
-}
-
-@media (max-width: 560px) {
-  #debug-controls {
-    width: calc(100% - 24px);
-    gap: 10px;
-  }
-
-  #debug-controls button {
-    font-size: 9px;
-  }
 }
