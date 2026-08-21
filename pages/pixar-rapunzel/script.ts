@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 import { Rope, config, type Bounds } from './rope';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -112,7 +113,7 @@ function loop() {
 }
 
 // ── GUI ───────────────────────────────────────────────────
-const gui = new GUI({ title: 'debug' });
+const gui = exposeGuiInDebugMode(new GUI({ title: 'debug' }));
 gui.domElement.style.setProperty('--widget-height', '20px');
 gui.close();
 

@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 import { initCamera } from './camera';
 import { initHandTracker, drawHandLandmarks, drawPinchLine } from './handTracker';
 import type { HandResults, Landmark } from './handTracker';
@@ -21,7 +22,7 @@ const ctx = overlayCanvas.getContext('2d')!;
 
 const params = { minCutoff: 3.0, beta: 0.05 };
 
-const gui = new GUI({ title: 'Filter' });
+const gui = exposeGuiInDebugMode(new GUI({ title: 'Filter' }));
 gui.add(params, 'minCutoff', 0.5, 10.0, 0.1).name('Min Cutoff').onChange(applyFilterParams);
 gui.add(params, 'beta', 0.001, 0.2, 0.001).name('Beta').onChange(applyFilterParams);
 

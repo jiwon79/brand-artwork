@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 const SAMPLE_URLS: Record<string, string> = {
   gangnam: new URL('./assets/gangnam.mp3', import.meta.url).href,
@@ -308,7 +309,7 @@ function applyAudio() {
 }
 applyTonearm();
 
-const gui = new GUI({ title: 'Tuning' });
+const gui = exposeGuiInDebugMode(new GUI({ title: 'Tuning' }));
 const fTone = gui.addFolder('Tonearm');
 fTone.add(tonearm$, 'top', 0, 50, 0.5).onChange(applyTonearm);
 fTone.add(tonearm$, 'right', 0, 50, 0.5).onChange(applyTonearm);

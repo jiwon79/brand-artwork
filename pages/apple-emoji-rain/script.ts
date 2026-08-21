@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -394,7 +395,7 @@ function refreshParticleSizes() {
   }
 }
 
-const gui = new GUI({ title: '설정' });
+const gui = exposeGuiInDebugMode(new GUI({ title: '설정' }));
 gui.add(params, 'gravity', 0.1, 3.0, 0.05).name('중력').onChange((v: number) => {
   const mag = Math.sqrt(gx * gx + gy * gy) || 1;
   gx = gx / mag * v;

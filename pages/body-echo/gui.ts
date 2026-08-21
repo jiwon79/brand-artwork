@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { isDebugMode } from '../../common/debug';
 import { DEFAULT_PULL_SPEED, DEFAULT_WAVE_SPEED, defaultTiming, settings } from './config';
 
 export type TuningGui = {
@@ -6,6 +7,8 @@ export type TuningGui = {
 };
 
 export function createTuningGui(): TuningGui {
+  if (!isDebugMode()) return { toggle: () => {} };
+
   const gui = new GUI({ title: 'Body Echo' });
   const tuning = {
     pullSpeed: DEFAULT_PULL_SPEED,
@@ -39,8 +42,7 @@ export function createTuningGui(): TuningGui {
   releaseFolder.add(settings, 'rgbOffset', 0, 10, 0.1).name('Chromatic amount');
   gui.close();
 
-  let visible = new URLSearchParams(window.location.search).get('debug') === '1';
-  if (!visible) gui.hide();
+  let visible = true;
 
   return {
     toggle: () => {
