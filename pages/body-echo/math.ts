@@ -11,3 +11,12 @@ export function smoothstep(value: number): number {
   const progress = clamp(value, 0, 1);
   return progress * progress * (3 - 2 * progress);
 }
+
+export function biasedSmoothstep(value: number, bias: number): number {
+  const progress = smoothstep(value);
+  const normalizedBias = clamp(bias, -1, 1);
+  const exponent = 1 + Math.abs(normalizedBias) * 3;
+  return normalizedBias >= 0
+    ? 1 - Math.pow(1 - progress, exponent)
+    : Math.pow(progress, exponent);
+}

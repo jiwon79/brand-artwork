@@ -13,7 +13,7 @@ import {
   solidEchoYCenters,
   solidEchoYScales,
 } from './config';
-import { clamp, hash, smoothstep } from './math';
+import { biasedSmoothstep, clamp, hash, smoothstep } from './math';
 import type {
   ContactExtentCache,
   DesignPoint,
@@ -158,7 +158,10 @@ export class BodyEchoRuntime {
 
   contactPullProgress(elapsed: number): number {
     if (!this.isNameDropWave()) return 0;
-    return smoothstep(elapsed / Math.max(0.001, this.contactReleaseTime()));
+    return biasedSmoothstep(
+      elapsed / Math.max(0.001, this.contactReleaseTime()),
+      settings.contactPullEasing,
+    );
   }
 
   gatheredPosition(

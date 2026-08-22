@@ -40,6 +40,7 @@ export const settings = {
   contactRopePull: 200,
   contactRopeReach: 88,
   contactRopeSlack: 3.2,
+  contactPullEasing: 0.35,
   contactWaveDuration: BASE_CONTACT_WAVE_DURATION / DEFAULT_WAVE_SPEED,
   contactWaveBandWidth: 60,
   contactWaveBrightness: 0.08,

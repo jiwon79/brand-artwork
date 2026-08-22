@@ -18,6 +18,7 @@ export function createTuningGui(): TuningGui {
   const pullFolder = gui.addFolder('Pull');
   pullFolder.add(settings, 'contactRopePull', 8, 200, 1).name('Amount');
   pullFolder.add(settings, 'contactRopeReach', 16, 320, 1).name('Reach');
+  pullFolder.add(settings, 'contactPullEasing', -1, 1, 0.05).name('Easing');
   pullFolder
     .add(tuning, 'pullSpeed', 0.4, 2.5, 0.05)
     .name('Speed')
