@@ -33,6 +33,8 @@ export function createTuningGui(): TuningGui {
     .onChange((speed: number) => {
       settings.contactWaveDuration = defaultTiming.waveDuration / speed;
     });
+  releaseFolder.add(settings, 'contactWaveBrightness', 0, 1, 0.01).name('Wave brightness');
+  releaseFolder.add(settings, 'contactWaveBandWidth', 4, 160, 1).name('Wave width');
   releaseFolder.add(settings, 'contactReleaseSpeed', 0.05, 3, 0.05).name('Particle speed');
   releaseFolder.add(settings, 'contactForce', 4, 80, 1).name('Particle spread');
   releaseFolder
