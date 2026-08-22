@@ -1,4 +1,4 @@
-import { channelX, channelY, settings } from './config';
+import { channelX, channelY, chromaticOffsetForEcho, settings } from './config';
 import { clamp, hash, smoothstep } from './math';
 import { BodyEchoRuntime } from './runtime';
 import type { FigurePoint } from './types';
@@ -42,7 +42,7 @@ export class ParticleRenderer {
         : runtime.gatheredPosition(baseOrigin, echoIndex, runtime.contactReleaseTime())
       : baseOrigin;
     const channelSeed = hash(point.x, point.y, channelIndex + echoIndex * 3);
-    const channelOffset = settings.rgbOffset * runtime.view.fit;
+    const channelOffset = chromaticOffsetForEcho(echoIndex) * runtime.view.fit;
     let x: number;
     let y: number;
 

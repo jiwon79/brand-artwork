@@ -25,6 +25,7 @@ export const ACTIVE_RELEASE_STYLE: ContactReleaseStyle = 'Current · Density';
 export const settings = {
   echoes: 6,
   rgbOffset: 3.4,
+  rgbOffsetStep: 0,
   lineThickness: 1,
   idleMotion: 0.34,
   hold: 0.72,
@@ -64,6 +65,10 @@ export const settings = {
   glow: 0.26,
   scanlines: 0.08,
 };
+
+export function chromaticOffsetForEcho(echoIndex: number): number {
+  return settings.rgbOffset + settings.rgbOffsetStep * echoIndex;
+}
 
 export const defaultTiming = {
   gatherDuration: BASE_CONTACT_GATHER_DURATION,

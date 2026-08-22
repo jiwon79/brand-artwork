@@ -40,6 +40,7 @@ export function createTuningGui(): TuningGui {
     .name('Particle fade time');
   releaseFolder.add(settings, 'contactParticleSize', 0.2, 2.5, 0.05).name('Particle size');
   releaseFolder.add(settings, 'rgbOffset', 0, 10, 0.1).name('Chromatic amount');
+  releaseFolder.add(settings, 'rgbOffsetStep', -10, 10, 0.1).name('Chromatic step');
   gui.close();
 
   let visible = true;

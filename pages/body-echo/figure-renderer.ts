@@ -4,6 +4,7 @@ import {
   channelColors,
   channelX,
   channelY,
+  chromaticOffsetForEcho,
   echoCenters,
   lineEchoYCenters,
   settings,
@@ -43,8 +44,9 @@ export class FigureRenderer {
     const geometry = runtime.echoLineGeometry[echoIndex];
     if (!geometry) return;
     const designX = echoCenters[echoIndex] + runtime.lineSway(echoIndex, now)
-      + channelX[channelIndex] * settings.rgbOffset;
-    const designY = lineEchoYCenters[echoIndex] + channelY[channelIndex] * settings.rgbOffset;
+      + channelX[channelIndex] * chromaticOffsetForEcho(echoIndex);
+    const designY = lineEchoYCenters[echoIndex]
+      + channelY[channelIndex] * chromaticOffsetForEcho(echoIndex);
     ctx.save();
     ctx.translate(runtime.view.offsetX + designX * runtime.view.fit, runtime.view.offsetY + designY * runtime.view.fit);
     ctx.scale(SVG_TO_DESIGN * runtime.view.fit, SVG_TO_DESIGN * runtime.view.fit);
@@ -76,7 +78,7 @@ export class FigureRenderer {
       const bucketCount = 6;
       const opacityBuckets = Array.from({ length: bucketCount }, () => new Path2D());
       const fadeDuration = Math.max(0.01, settings.contactLineFadeDuration);
-      const channelOffset = settings.rgbOffset * runtime.view.fit;
+      const channelOffset = chromaticOffsetForEcho(echoIndex) * runtime.view.fit;
       let previousPosition: PositionedPoint | null = null;
       let previousOpacity = 0;
 
@@ -147,7 +149,7 @@ export class FigureRenderer {
       const position = runtime.gatheredLinePosition(
         point, pointIndex, echoIndex, now, gatherElapsed, basePosition,
       );
-      const offset = settings.rgbOffset * runtime.view.fit;
+      const offset = chromaticOffsetForEcho(echoIndex) * runtime.view.fit;
       const x = position.x + channelX[channelIndex] * offset;
       const y = position.y + channelY[channelIndex] * offset;
       if (drawing) ctx.lineTo(x, y);
@@ -193,7 +195,7 @@ export class FigureRenderer {
           for (let pointIndex = 0; pointIndex < geometry.points.length; pointIndex += 1) {
             const state = states[pointIndex];
             if (state) drag.drawParticle(
-              geometry.points[pointIndex], state, channelIndex, now, baseSize,
+              geometry.points[pointIndex], state, echoIndex, channelIndex, now, baseSize,
             );
           }
           continue;
@@ -334,7 +336,7 @@ export class FigureRenderer {
       echoIndex,
       elapsed,
     );
-    const offset = settings.rgbOffset * runtime.view.fit;
+    const offset = chromaticOffsetForEcho(echoIndex) * runtime.view.fit;
     ctx.fillRect(
       position.x + channelX[channelIndex] * offset,
       position.y + channelY[channelIndex] * offset,

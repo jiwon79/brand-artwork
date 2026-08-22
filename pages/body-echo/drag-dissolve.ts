@@ -3,6 +3,7 @@ import {
   channelColors,
   channelX,
   channelY,
+  chromaticOffsetForEcho,
   settings,
 } from './config';
 import { clamp, hash } from './math';
@@ -146,7 +147,7 @@ export class DragDissolve {
       if (point.startsPath || states[pointIndex]) drawing = false;
       if (states[pointIndex]) continue;
       const position = runtime.linePointPosition(point, echoIndex, now);
-      const offset = settings.rgbOffset * runtime.view.fit;
+      const offset = chromaticOffsetForEcho(echoIndex) * runtime.view.fit;
       const x = position.x + channelX[channelIndex] * offset;
       const y = position.y + channelY[channelIndex] * offset;
       if (drawing) ctx.lineTo(x, y);
@@ -163,6 +164,7 @@ export class DragDissolve {
   drawParticle(
     point: FigurePoint,
     state: DragParticleState,
+    echoIndex: number,
     channelIndex: number,
     now: number,
     baseSize: number,
@@ -181,7 +183,7 @@ export class DragDissolve {
     const normalY = state.velocityX / velocityLength;
     const travelX = state.originX + state.velocityX * age + normalX * curl;
     const travelY = state.originY + state.velocityY * age + normalY * curl;
-    const offset = settings.rgbOffset * runtime.view.fit;
+    const offset = chromaticOffsetForEcho(echoIndex) * runtime.view.fit;
     const x = runtime.view.offsetX + travelX * runtime.view.fit + channelX[channelIndex] * offset;
     const y = runtime.view.offsetY + travelY * runtime.view.fit + channelY[channelIndex] * offset;
     const size = baseSize * (0.68 + channelSeed * 0.72)
