@@ -39,6 +39,9 @@ importers:
       playwright:
         specifier: ^1.59.1
         version: 1.60.0
+      svg-path-properties:
+        specifier: ^2.0.2
+        version: 2.0.2
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -398,6 +401,10 @@ packages:
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
+
+  svg-path-properties@2.0.2:
+    resolution: {integrity: sha512-NsSMBNZmod9Gr22gxa8FOiZUIzrI8o65veuCyppoNftNfpKjP5qoouA3ZyioOsQ2a4O8cRV8rHmG9LZF2HhXvw==}
+    engines: {node: '>=22.0.0'}
 
   three@0.163.0:
     resolution: {integrity: sha512-HlMgCb2TF/dTLRtknBnjUTsR8FsDqBY43itYop2+Zg822I+Kd0Ua2vs8CvfBVefXkBdNDrLMoRTGCIIpfCuDew==}
@@ -761,6 +768,8 @@ snapshots:
       '@rolldown/binding-win32-x64-msvc': 1.0.3
 
   source-map-js@1.2.1: {}
+
+  svg-path-properties@2.0.2: {}
 
   three@0.163.0: {}
 

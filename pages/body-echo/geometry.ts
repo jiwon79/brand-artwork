@@ -1,12 +1,9 @@
-import {
-  SOURCE_X_LIMIT,
-  SVG_NAMESPACE,
-  SVG_SAMPLE_STEP,
-  SVG_TO_DESIGN,
-  lineAssetUrls,
-} from './config';
+import { SOURCE_X_LIMIT, SVG_TO_DESIGN } from './config';
 import { hash } from './math';
 import type { EchoLineGeometry, FigurePoint, LineGraphEdge } from './types';
+
+const GENERATED_GEOMETRY_MAGIC = 0x31474542;
+const generatedGeometryUrl = new URL('./assets/generated-line-geometry.bin', import.meta.url).href;
 
 function dilate(input: Uint8Array, width: number, height: number, radius: number): Uint8Array {
   const output = new Uint8Array(input.length);
@@ -129,25 +126,15 @@ export function buildSolidPoints(image: HTMLImageElement): FigurePoint[] {
   return points;
 }
 
-function readNumber(value: string | null, fallback: number): number {
-  if (value === null) return fallback;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-export function buildLineGraph(points: FigurePoint[]): LineGraphEdge[][] {
+function buildLineGraph(
+  points: FigurePoint[],
+  joints: Array<[number, number, number]>,
+): LineGraphEdge[][] {
   const graph = points.map(() => [] as LineGraphEdge[]);
-  const pathGroups = new Map<number, number[]>();
-
-  for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
+  for (let pointIndex = 1; pointIndex < points.length; pointIndex += 1) {
     const point = points[pointIndex];
-    const pathIndex = point.pathIndex ?? 0;
-    const group = pathGroups.get(pathIndex) ?? [];
-    group.push(pointIndex);
-    pathGroups.set(pathIndex, group);
-
-    if (pointIndex === 0 || points[pointIndex - 1].pathIndex !== pathIndex) continue;
     const previousPoint = points[pointIndex - 1];
+    if (point.pathIndex !== previousPoint.pathIndex) continue;
     const distance = Math.max(
       0.001,
       Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y) * SVG_TO_DESIGN,
@@ -155,179 +142,92 @@ export function buildLineGraph(points: FigurePoint[]): LineGraphEdge[][] {
     graph[pointIndex - 1].push({ pointIndex, distance });
     graph[pointIndex].push({ pointIndex: pointIndex - 1, distance });
   }
-
-  const groups = [...pathGroups.entries()];
-  if (groups.length <= 1) return graph;
-
-  const mainPath = groups.reduce((longest, candidate) => (
-    candidate[1].length > longest[1].length ? candidate : longest
-  ));
-  const connectedPaths = new Set([mainPath[0]]);
-
-  // Separate SVG contours remain visually disconnected. These nearest-endpoint
-  // joints exist only in the tension graph so a held strand can affect the body.
-  while (connectedPaths.size < groups.length) {
-    let closest: {
-      pathIndex: number;
-      endpointIndex: number;
-      targetIndex: number;
-      distance: number;
-    } | null = null;
-
-    for (const [pathIndex, pointIndices] of groups) {
-      if (connectedPaths.has(pathIndex) || pointIndices.length === 0) continue;
-      const endpoints = pointIndices.length === 1
-        ? pointIndices
-        : [pointIndices[0], pointIndices[pointIndices.length - 1]];
-
-      for (const endpointIndex of endpoints) {
-        const endpoint = points[endpointIndex];
-        for (const [connectedPathIndex, connectedPointIndices] of groups) {
-          if (!connectedPaths.has(connectedPathIndex)) continue;
-          for (const targetIndex of connectedPointIndices) {
-            const target = points[targetIndex];
-            const distance = Math.hypot(endpoint.x - target.x, endpoint.y - target.y);
-            if (!closest || distance < closest.distance) {
-              closest = { pathIndex, endpointIndex, targetIndex, distance };
-            }
-          }
-        }
-      }
-    }
-
-    if (!closest) break;
-    const jointDistance = Math.max(1.5, closest.distance * SVG_TO_DESIGN * 0.72);
-    graph[closest.endpointIndex].push({
-      pointIndex: closest.targetIndex,
-      distance: jointDistance,
-    });
-    graph[closest.targetIndex].push({
-      pointIndex: closest.endpointIndex,
-      distance: jointDistance,
-    });
-    connectedPaths.add(closest.pathIndex);
+  for (const [startIndex, endIndex, distance] of joints) {
+    graph[startIndex].push({ pointIndex: endIndex, distance });
+    graph[endIndex].push({ pointIndex: startIndex, distance });
   }
-
   return graph;
 }
 
-export async function loadLineAsset(url: string, echoIndex: number): Promise<EchoLineGeometry> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Could not load line figure ${echoIndex + 1}.`);
+function readGeneratedLineGeometry(buffer: ArrayBuffer): EchoLineGeometry[] {
+  const view = new DataView(buffer);
+  const decoder = new TextDecoder();
+  let offset = 0;
+  const readUint32 = (): number => {
+    const value = view.getUint32(offset, true);
+    offset += 4;
+    return value;
+  };
+  const readFloat32 = (): number => {
+    const value = view.getFloat32(offset, true);
+    offset += 4;
+    return value;
+  };
 
-  const source = await response.text();
-  const documentSvg = new DOMParser().parseFromString(source, 'image/svg+xml');
-  if (documentSvg.querySelector('parsererror')) {
-    throw new Error(`Line figure ${echoIndex + 1} is not valid SVG.`);
+  if (readUint32() !== GENERATED_GEOMETRY_MAGIC) {
+    throw new Error('Body Echo geometry has an invalid header.');
   }
 
-  const svg = documentSvg.querySelector('svg');
-  const sourcePath = documentSvg.querySelector('path');
-  const pathData = sourcePath?.getAttribute('d');
-  if (!svg || !sourcePath || !pathData) throw new Error(`Line figure ${echoIndex + 1} has no path.`);
+  const geometryCount = readUint32();
+  const geometry: EchoLineGeometry[] = [];
+  for (let echoIndex = 0; echoIndex < geometryCount; echoIndex += 1) {
+    const strokeWidth = readFloat32();
+    const viewBoxX = readFloat32();
+    const viewBoxY = readFloat32();
+    const width = readFloat32();
+    const height = readFloat32();
+    const pathDataLength = readUint32();
+    const pathData = decoder.decode(new Uint8Array(buffer, offset, pathDataLength));
+    offset += pathDataLength;
 
-  const fallbackWidth = readNumber(svg.getAttribute('width'), 1);
-  const fallbackHeight = readNumber(svg.getAttribute('height'), 1);
-  const viewBox = (svg.getAttribute('viewBox') ?? `0 0 ${fallbackWidth} ${fallbackHeight}`)
-    .trim()
-    .split(/[\s,]+/)
-    .map(Number);
-  if (viewBox.length !== 4 || viewBox.some((value) => !Number.isFinite(value))) {
-    throw new Error(`Line figure ${echoIndex + 1} has an invalid viewBox.`);
-  }
-
-  const [viewBoxX, viewBoxY, width, height] = viewBox;
-  const strokeWidth = readNumber(sourcePath.getAttribute('stroke-width'), 1);
-  const measurementSvg = document.createElementNS(SVG_NAMESPACE, 'svg');
-  const measurementPath = document.createElementNS(SVG_NAMESPACE, 'path');
-  measurementSvg.setAttribute('viewBox', viewBox.join(' '));
-  measurementSvg.setAttribute('aria-hidden', 'true');
-  measurementSvg.style.position = 'fixed';
-  measurementSvg.style.left = '-10000px';
-  measurementSvg.style.top = '-10000px';
-  measurementSvg.style.width = '1px';
-  measurementSvg.style.height = '1px';
-  measurementSvg.style.opacity = '0';
-  measurementPath.setAttribute('d', pathData);
-  measurementSvg.append(measurementPath);
-  document.body.append(measurementSvg);
-
-  const points: FigurePoint[] = [];
-  const centerX = viewBoxX + width * 0.5;
-  const centerY = viewBoxY + height * 0.5;
-  const subpaths = pathData.match(/[Mm][^Mm]*/g) ?? [pathData];
-
-  for (let pathIndex = 0; pathIndex < subpaths.length; pathIndex += 1) {
-    const subpathData = subpaths[pathIndex];
-    measurementPath.setAttribute('d', subpathData);
-    const length = measurementPath.getTotalLength();
-
-    for (let distance = 0; distance < length; distance += SVG_SAMPLE_STEP) {
-      const point = measurementPath.getPointAtLength(distance);
-      const tangentStart = measurementPath.getPointAtLength(Math.max(0, distance - SVG_SAMPLE_STEP));
-      const tangentEnd = measurementPath.getPointAtLength(Math.min(length, distance + SVG_SAMPLE_STEP));
-      const tangentLength = Math.max(
-        0.001,
-        Math.hypot(tangentEnd.x - tangentStart.x, tangentEnd.y - tangentStart.y),
-      );
+    const centerX = viewBoxX + width * 0.5;
+    const centerY = viewBoxY + height * 0.5;
+    const pointCount = readUint32();
+    const points: FigurePoint[] = [];
+    for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+      const x = readFloat32();
+      const y = readFloat32();
+      const pathIndex = readFloat32();
+      const pathDistance = readFloat32();
       points.push({
-        x: point.x - centerX,
-        y: point.y - centerY,
-        seed: hash(point.x, point.y, echoIndex),
-        seed2: hash(point.y, point.x, echoIndex + 7),
-        startsPath: distance === 0,
+        x,
+        y,
+        seed: hash(x + centerX, y + centerY, echoIndex),
+        seed2: hash(y + centerY, x + centerX, echoIndex + 7),
+        startsPath: pathDistance === 0,
         pathIndex,
-        pathDistance: distance,
-        tangentX: (tangentEnd.x - tangentStart.x) / tangentLength,
-        tangentY: (tangentEnd.y - tangentStart.y) / tangentLength,
+        pathDistance,
+        tangentX: readFloat32(),
+        tangentY: readFloat32(),
       });
     }
 
-    const finalPoint = measurementPath.getPointAtLength(length);
-    const finalTangentStart = measurementPath.getPointAtLength(Math.max(0, length - SVG_SAMPLE_STEP));
-    const finalTangentLength = Math.max(
-      0.001,
-      Math.hypot(finalPoint.x - finalTangentStart.x, finalPoint.y - finalTangentStart.y),
-    );
-    points.push({
-      x: finalPoint.x - centerX,
-      y: finalPoint.y - centerY,
-      seed: hash(finalPoint.x, finalPoint.y, echoIndex),
-      seed2: hash(finalPoint.y, finalPoint.x, echoIndex + 7),
-      startsPath: length === 0,
-      pathIndex,
-      pathDistance: length,
-      tangentX: (finalPoint.x - finalTangentStart.x) / finalTangentLength,
-      tangentY: (finalPoint.y - finalTangentStart.y) / finalTangentLength,
+    const jointCount = readUint32();
+    const joints: Array<[number, number, number]> = [];
+    for (let jointIndex = 0; jointIndex < jointCount; jointIndex += 1) {
+      joints.push([readUint32(), readUint32(), readFloat32()]);
+    }
+    geometry.push({
+      path: new Path2D(pathData),
+      points,
+      samples: points.filter((_, index) => index % 3 === 0),
+      graph: buildLineGraph(points, joints),
+      strokeWidth,
+      viewBoxX,
+      viewBoxY,
+      width,
+      height,
     });
   }
-  measurementSvg.remove();
-
-  return {
-    path: new Path2D(pathData),
-    points,
-    samples: points.filter((_, index) => index % 3 === 0),
-    graph: buildLineGraph(points),
-    strokeWidth,
-    viewBoxX,
-    viewBoxY,
-    width,
-    height,
-  };
+  return geometry;
 }
 
 export async function loadLineAssets(
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<EchoLineGeometry[]> {
-  let loaded = 0;
-  const total = lineAssetUrls.length;
-
-  return Promise.all(
-    lineAssetUrls.map(async (url, echoIndex) => {
-      const geometry = await loadLineAsset(url, echoIndex);
-      loaded += 1;
-      onProgress?.(loaded, total);
-      return geometry;
-    }),
-  );
+  const response = await fetch(generatedGeometryUrl);
+  if (!response.ok) throw new Error('Could not load generated Body Echo geometry.');
+  const geometry = readGeneratedLineGeometry(await response.arrayBuffer());
+  geometry.forEach((_, index) => onProgress?.(index + 1, geometry.length));
+  return geometry;
 }
