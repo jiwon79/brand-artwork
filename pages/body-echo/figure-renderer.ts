@@ -92,9 +92,7 @@ export class FigureRenderer {
         const spawnTime = runtime.spawnTimeFor(
           spawnPosition.designX, spawnPosition.designY, point, echoIndex,
         );
-        const opacity = 1 - smoothstep(
-          (elapsed - (spawnTime - fadeDuration)) / fadeDuration,
-        );
+        const opacity = 1 - smoothstep((elapsed - spawnTime) / fadeDuration);
         const position = runtime.gatheredLinePosition(
           point, pointIndex, echoIndex, now, gatherElapsed, basePosition,
         );

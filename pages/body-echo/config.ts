@@ -43,7 +43,7 @@ export const settings = {
   contactWaveDuration: BASE_CONTACT_WAVE_DURATION / DEFAULT_WAVE_SPEED,
   contactWaveBandWidth: 52,
   contactWaveBrightness: 0.58,
-  contactLineFadeDuration: 0.3,
+  contactLineFadeDuration: 0.1,
   contactDiffusionDuration: 1.65,
   contactParticleFadeDuration: 0.9,
   contactParticleDensity: 3,
