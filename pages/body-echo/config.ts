@@ -24,8 +24,8 @@ export const ACTIVE_RELEASE_STYLE: ContactReleaseStyle = 'Current · Density';
 
 export const settings = {
   echoes: 6,
-  rgbOffset: 3.4,
-  rgbOffsetStep: 0,
+  rgbOffset: 7,
+  rgbOffsetStep: -0.8,
   lineThickness: 1,
   idleMotion: 0.34,
   hold: 0.72,
