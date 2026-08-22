@@ -12,7 +12,7 @@ export const SVG_TO_DESIGN = 0.32;
 export const BASE_CONTACT_WAVE_DURATION = 2.48;
 export const BASE_CONTACT_GATHER_DURATION = 0.92;
 export const BASE_CONTACT_DENSITY_DURATION = 0.52;
-export const DEFAULT_PULL_SPEED = 1.8;
+export const DEFAULT_PULL_SPEED = 2.15;
 export const DEFAULT_WAVE_SPEED = 1.35;
 
 export const ACTIVE_FIGURE: FigureMode = 'Lines';
@@ -37,12 +37,12 @@ export const settings = {
   contactGatherDuration: BASE_CONTACT_GATHER_DURATION / DEFAULT_PULL_SPEED,
   contactDensityDuration: BASE_CONTACT_DENSITY_DURATION / DEFAULT_PULL_SPEED,
   contactCompression: 0.18,
-  contactRopePull: 100,
+  contactRopePull: 200,
   contactRopeReach: 88,
   contactRopeSlack: 3.2,
   contactWaveDuration: BASE_CONTACT_WAVE_DURATION / DEFAULT_WAVE_SPEED,
-  contactWaveBandWidth: 52,
-  contactWaveBrightness: 0.58,
+  contactWaveBandWidth: 60,
+  contactWaveBrightness: 0.08,
   contactLineFadeDuration: 0.1,
   contactDiffusionDuration: 1.65,
   contactParticleFadeDuration: 0.9,
