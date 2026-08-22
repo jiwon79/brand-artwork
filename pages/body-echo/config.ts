@@ -52,7 +52,6 @@ export const settings = {
   contactParticleSize: 1.2,
   contactForce: 45,
   contactSpread: 6,
-  contactReleaseSpread: 0.025,
   contactReleaseSpeed: 1.45,
   dragRadius: 18,
   dragConnectorRadius: 4,

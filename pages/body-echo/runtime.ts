@@ -275,16 +275,12 @@ export class BodyEchoRuntime {
         designX - this.contactOrigin.x,
         designY - this.contactOrigin.y,
       );
-      const shuffledRelease = hash(point.x, point.y, echoIndex + 31)
-        * settings.contactReleaseSpread;
       if (this.isPreviousContactRelease()) {
         return this.contactReleaseTime()
-          + clamp(distance / (DESIGN_WIDTH * 0.72), 0, 1) * settings.contactWaveDuration
-          + shuffledRelease;
+          + clamp(distance / (DESIGN_WIDTH * 0.72), 0, 1) * settings.contactWaveDuration;
       }
       return this.contactReleaseTime()
-        + waveDelayForDistance(distance, this.contactWaveExtent(), settings.contactWaveDuration)
-        + shuffledRelease;
+        + waveDelayForDistance(distance, this.contactWaveExtent(), settings.contactWaveDuration);
     }
 
     const xProgress = clamp(designX / DESIGN_WIDTH, 0, 1);
@@ -297,14 +293,13 @@ export class BodyEchoRuntime {
       return settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
     }
     if (this.isPreviousContactRelease()) {
-      return settings.contactWaveDuration + settings.contactReleaseSpread
+      return settings.contactWaveDuration
         + settings.particleLife / settings.contactReleaseSpeed + 0.8;
     }
-    return settings.contactWaveDuration + settings.contactReleaseSpread
-      + Math.max(
-        settings.contactDiffusionDuration / settings.contactReleaseSpeed,
-        settings.contactParticleFadeDuration,
-      ) + 0.65;
+    return settings.contactWaveDuration + Math.max(
+      settings.contactDiffusionDuration / settings.contactReleaseSpeed,
+      settings.contactParticleFadeDuration,
+    ) + 0.65;
   }
 
   private positioned(designX: number, designY: number): PositionedPoint {
