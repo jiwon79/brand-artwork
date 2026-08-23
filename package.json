@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "generate:body-echo-geometry": "node scripts/generate-body-echo-geometry.mjs",
+    "prebuild": "pnpm generate:body-echo-geometry",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit --noUnusedLocals --noUnusedParameters"
@@ -21,6 +23,7 @@
     "@types/node": "^26.1.1",
     "@types/three": "0.163.0",
     "playwright": "^1.59.1",
+    "svg-path-properties": "^2.0.2",
     "typescript": "^5.4.0",
     "vite": "^8.0.16",
     "vite-plugin-static-copy": "^4.0.1"

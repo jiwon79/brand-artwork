@@ -13,7 +13,7 @@ import {
   solidEchoYCenters,
   solidEchoYScales,
 } from './config';
-import { clamp, hash, smoothstep } from './math';
+import { biasedSmoothstep, clamp, hash, smoothstep } from './math';
 import type {
   ContactExtentCache,
   DesignPoint,
@@ -156,16 +156,11 @@ export class BodyEchoRuntime {
     return this.positioned(designX, designY);
   }
 
-  contactGatherProgress(elapsed: number): number {
+  contactPullProgress(elapsed: number): number {
     if (!this.isNameDropWave()) return 0;
-    return smoothstep(elapsed / Math.max(0.001, settings.contactGatherDuration));
-  }
-
-  contactDensityProgress(elapsed: number): number {
-    if (!this.isNameDropWave()) return 0;
-    return smoothstep(
-      (elapsed - settings.contactGatherDuration)
-      / Math.max(0.001, settings.contactDensityDuration),
+    return biasedSmoothstep(
+      elapsed / Math.max(0.001, this.contactReleaseTime()),
+      settings.contactPullEasing,
     );
   }
 
@@ -174,9 +169,7 @@ export class BodyEchoRuntime {
     echoIndex: number,
     elapsed: number,
   ): PositionedPoint {
-    const gather = this.contactGatherProgress(elapsed);
-    const density = this.contactDensityProgress(elapsed);
-    const progress = gather * 0.72 + density * 0.28;
+    const progress = this.contactPullProgress(elapsed);
     if (progress <= 0) return position;
 
     const deltaX = this.contactOrigin.x - position.designX;
@@ -202,9 +195,8 @@ export class BodyEchoRuntime {
   ): PositionedPoint {
     if (!this.isRopePull()) return this.gatheredPosition(basePosition, echoIndex, elapsed);
 
-    const gather = this.contactGatherProgress(elapsed);
-    const density = this.contactDensityProgress(elapsed);
-    if (gather <= 0 && density <= 0) return basePosition;
+    const progress = this.contactPullProgress(elapsed);
+    if (progress <= 0) return basePosition;
 
     const geometry = this.echoLineGeometry[echoIndex];
     const field = this.ropeFieldFor(echoIndex);
@@ -214,9 +206,9 @@ export class BodyEchoRuntime {
     const graphExtent = Math.max(1, field.maxGraphDistance);
     const normalizedDistance = clamp(graphDistance / graphExtent, 0, 1);
     const effectiveReach = Math.max(1, settings.contactRopeReach)
-      * (0.68 + gather * 0.65 + density * 0.25);
+      * (0.68 + progress * 0.9);
     const localTension = Math.exp(-graphDistance / Math.max(1, effectiveReach));
-    const transmittedTension = (0.045 + gather * 0.075 + density * 0.045)
+    const transmittedTension = (0.045 + progress * 0.12)
       * (1 - normalizedDistance * 0.35);
     const distanceTension = localTension + (1 - localTension) * transmittedTension;
     const springResponse = 1 - Math.exp(-elapsed / (0.055 + normalizedDistance * 0.3));
@@ -230,15 +222,14 @@ export class BodyEchoRuntime {
     const anchorDistance = Math.max(0.001, Math.hypot(deltaX, deltaY));
     const proximity = 0.12
       + Math.exp(-field.anchorDistance / (DESIGN_WIDTH * 0.24)) * 0.88;
-    const tension = gather * 0.76 + density * 0.24;
     const pullDistance = Math.min(anchorDistance * 0.78, settings.contactRopePull)
-      * tension * influence * proximity;
+      * progress * influence * proximity;
     const tangentX = point.tangentX ?? 1;
     const tangentY = point.tangentY ?? 0;
     const pathCoordinate = (point.pathDistance ?? 0) * SVG_TO_DESIGN;
     const pathPhase = (point.pathIndex ?? 0) * 1.37 + echoIndex * 0.53;
     const slack = Math.sin(pathCoordinate * 0.065 + pathPhase)
-      * settings.contactRopeSlack * gather * influence * (1 - influence * 0.28);
+      * settings.contactRopeSlack * progress * influence * (1 - influence * 0.28);
 
     return this.positioned(
       basePosition.designX + (deltaX / anchorDistance) * pullDistance - tangentY * slack,
@@ -275,16 +266,12 @@ export class BodyEchoRuntime {
         designX - this.contactOrigin.x,
         designY - this.contactOrigin.y,
       );
-      const shuffledRelease = hash(point.x, point.y, echoIndex + 31)
-        * settings.contactReleaseSpread;
       if (this.isPreviousContactRelease()) {
         return this.contactReleaseTime()
-          + clamp(distance / (DESIGN_WIDTH * 0.72), 0, 1) * settings.contactWaveDuration
-          + shuffledRelease;
+          + clamp(distance / (DESIGN_WIDTH * 0.72), 0, 1) * settings.contactWaveDuration;
       }
       return this.contactReleaseTime()
-        + waveDelayForDistance(distance, this.contactWaveExtent(), settings.contactWaveDuration)
-        + shuffledRelease;
+        + waveDelayForDistance(distance, this.contactWaveExtent(), settings.contactWaveDuration);
     }
 
     const xProgress = clamp(designX / DESIGN_WIDTH, 0, 1);
@@ -297,14 +284,13 @@ export class BodyEchoRuntime {
       return settings.hold + settings.sweepDuration + settings.particleLife + 0.45;
     }
     if (this.isPreviousContactRelease()) {
-      return settings.contactWaveDuration + settings.contactReleaseSpread
+      return settings.contactWaveDuration
         + settings.particleLife / settings.contactReleaseSpeed + 0.8;
     }
-    return settings.contactWaveDuration + settings.contactReleaseSpread
-      + Math.max(
-        settings.contactDiffusionDuration / settings.contactReleaseSpeed,
-        settings.contactParticleFadeDuration,
-      ) + 0.65;
+    return settings.contactWaveDuration + Math.max(
+      settings.contactDiffusionDuration / settings.contactReleaseSpeed,
+      settings.contactParticleFadeDuration,
+    ) + 0.65;
   }
 
   private positioned(designX: number, designY: number): PositionedPoint {
