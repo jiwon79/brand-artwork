@@ -110,7 +110,7 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 
 터치를 시작하면 `BodyEchoRuntime.ropeFieldFor()`가 각 인체마다 가장 가까운 sample을 anchor로 선택하고, 그 anchor에서 모든 sample까지의 graph distance를 한 번 계산해 캐시한다. 손가락을 움직이는 동안 anchor와 cache는 유지하고 목표점 `contactOrigin`만 갱신한다. 즉 처음 잡은 strand를 놓지 않은 채 끌고 간다.
 
-`BodyEchoRuntime.gatheredLinePosition()`은 graph distance의 지수 감쇠, 먼 구간에 남기는 작은 전달 장력, 거리에 따른 response lag, path normal 방향의 slack을 합쳐 sample 위치를 만든다. 이는 실제 줄의 질량과 충돌을 적분하는 물리 시뮬레이션이 아니라, 연속적인 rope-like 반응을 위한 경험적 근사다. 수식과 값 변화는 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에 분리했다.
+`BodyEchoRuntime.gatheredLinePosition()`은 graph distance의 지수 감쇠, 먼 구간에 남기는 작은 전달 장력, 거리에 따른 response lag, path normal 방향의 slack을 합쳐 sample 위치를 만든다. 이는 실제 줄의 질량과 충돌을 적분하는 물리 시뮬레이션이 아니라, 연속적인 rope-like 반응을 위한 경험적 근사다. graph-distance 장력의 공통 원리와 일반 수식은 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에서 설명하고, 아래에는 Body Echo가 선택한 실제 계산과 값을 기록한다.
 
 현재 구현에서 작은 전달 장력 `T_i`는 고정된 하나의 값이 아니다. 당김 진행도 `p`와 sample `i`의 정규화된 graph distance `n_i`를 사용한다. `p`는 hold 반응이 진행되며 0에서 1로 증가하고, `n_i`는 anchor에서 0, graph에서 가장 먼 sample에서 1이다.
 

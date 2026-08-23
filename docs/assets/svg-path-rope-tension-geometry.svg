@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="440" viewBox="0 0 1120 440" role="img" aria-labelledby="title desc">
+  <title id="title">SVG path rope tension geometry</title>
+  <desc id="desc">Three transparent geometry groups show sampled contours, optional virtual graph joints, and tension decreasing with graph distance from an anchor.</desc>
+  <defs>
+    <style>
+      .path{fill:none;stroke:#67e8f9;stroke-width:3;stroke-linecap:round}
+      .edge{fill:none;stroke:#72809b;stroke-width:1.5}
+      .joint{fill:none;stroke:#fbbf24;stroke-width:2;stroke-dasharray:5 5}
+      .sample{fill:#0b0d12;stroke:#67e8f9;stroke-width:2}
+      .anchor{fill:#fff;stroke:#f472b6;stroke-width:3}
+      .near{fill:#f472b6}.mid{fill:#a78bfa}.far{fill:#4b5870}
+    </style>
+  </defs>
+  <g transform="translate(24 28)">
+    <path class="path" d="M45 150 C72 95 122 98 145 151 S210 205 240 145"/>
+    <path class="path" d="M93 214 C68 250 82 292 122 305"/>
+    <path class="path" d="M206 216 C242 251 246 290 218 311"/>
+    <g class="sample">
+      <circle cx="47" cy="146" r="5"/><circle cx="78" cy="112" r="5"/><circle cx="116" cy="116" r="5"/><circle cx="145" cy="151" r="5"/><circle cx="181" cy="184" r="5"/><circle cx="219" cy="171" r="5"/><circle cx="240" cy="145" r="5"/>
+      <circle cx="93" cy="214" r="5"/><circle cx="78" cy="251" r="5"/><circle cx="91" cy="286" r="5"/><circle cx="122" cy="305" r="5"/>
+      <circle cx="206" cy="216" r="5"/><circle cx="234" cy="251" r="5"/><circle cx="238" cy="286" r="5"/><circle cx="218" cy="311" r="5"/>
+    </g>
+  </g>
+  <g transform="translate(394 28)">
+    <path class="edge" d="M45 150 L78 112 L116 116 L145 151 L181 184 L219 171 L240 145"/>
+    <path class="edge" d="M93 214 L78 251 L91 286 L122 305"/>
+    <path class="edge" d="M206 216 L234 251 L238 286 L218 311"/>
+    <path class="joint" d="M93 214 L145 151"/><path class="joint" d="M206 216 L181 184"/>
+    <g class="sample">
+      <circle cx="45" cy="150" r="5"/><circle cx="78" cy="112" r="5"/><circle cx="116" cy="116" r="5"/><circle cx="145" cy="151" r="5"/><circle cx="181" cy="184" r="5"/><circle cx="219" cy="171" r="5"/><circle cx="240" cy="145" r="5"/>
+      <circle cx="93" cy="214" r="5"/><circle cx="78" cy="251" r="5"/><circle cx="91" cy="286" r="5"/><circle cx="122" cy="305" r="5"/><circle cx="206" cy="216" r="5"/><circle cx="234" cy="251" r="5"/><circle cx="238" cy="286" r="5"/><circle cx="218" cy="311" r="5"/>
+    </g>
+  </g>
+  <g transform="translate(764 28)">
+    <path class="edge" d="M50 151 L88 119 L128 130 L163 166 L202 194 L243 184 L276 151"/>
+    <path class="edge" d="M112 226 L93 260 L108 296 L143 314"/>
+    <path class="joint" d="M112 226 L163 166"/>
+    <circle class="anchor" cx="163" cy="166" r="9"/>
+    <circle class="near" cx="128" cy="130" r="7"/><circle class="near" cx="202" cy="194" r="7"/>
+    <circle class="mid" cx="88" cy="119" r="6"/><circle class="mid" cx="112" cy="226" r="6"/>
+    <circle class="far" cx="50" cy="151" r="5"/><circle class="far" cx="93" cy="260" r="5"/><circle class="far" cx="108" cy="296" r="5"/><circle class="far" cx="143" cy="314" r="5"/>
+  </g>
+</svg>
