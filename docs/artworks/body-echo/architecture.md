@@ -112,6 +112,17 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 
 `BodyEchoRuntime.gatheredLinePosition()`은 graph distance의 지수 감쇠, 먼 구간에 남기는 작은 전달 장력, 거리에 따른 response lag, path normal 방향의 slack을 합쳐 sample 위치를 만든다. 이는 실제 줄의 질량과 충돌을 적분하는 물리 시뮬레이션이 아니라, 연속적인 rope-like 반응을 위한 경험적 근사다. 수식과 값 변화는 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에 분리했다.
 
+현재 구현에서 작은 전달 장력 `T_i`는 고정된 하나의 값이 아니다. 당김 진행도 `p`와 sample `i`의 정규화된 graph distance `n_i`를 사용한다. `p`는 hold 반응이 진행되며 0에서 1로 증가하고, `n_i`는 anchor에서 0, graph에서 가장 먼 sample에서 1이다.
+
+```text
+n_i = clamp(g_i / g_max, 0, 1)
+T_i = (0.045 + 0.12p) × (1 - 0.35n_i)
+```
+
+예를 들어 당김이 끝까지 진행된 `p = 1`에서는 anchor 근처의 `T_i`가 `0.165`, 중간 거리 `n_i = 0.5`에서는 약 `0.136`, 가장 먼 지점에서는 약 `0.107`이다. anchor에서는 원래 local tension `L_i`가 1이므로 이 전달분이 결과를 바꾸지 않는다. `T_i`는 주로 `L_i`가 0에 가까워진 먼 지점의 목표 장력에 약 10%의 하한을 남겨, 움직이는 선과 멈춘 선의 경계가 드러나지 않게 한다. 실제 이동량은 이 목표 장력에 시간 반응, 전체 당김 진행도와 당김 거리를 더 적용해 결정한다.
+
+`0.045`, `0.12`, `0.35`는 물리 법칙에서 유도한 상수가 아니라 현재 형상에 맞춰 시각적으로 조정한 예시다. 각각 당기기 시작할 때의 기본 전달량, 진행되며 추가되는 전달량, 거리에 따라 전달량을 줄이는 정도를 정한다. 전달량을 줄이면 변형이 anchor 주변에 더 국소적으로 모이고, 늘리면 선 전체가 더 강하게 함께 움직인다.
+
 ## 4. 렌더 패스
 
 ### 4.1 release 시각과 파티클 생성
