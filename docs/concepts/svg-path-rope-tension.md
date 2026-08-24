@@ -2,6 +2,8 @@
 
 SVG path를 일정 간격의 weighted graph로 바꾸고 anchor부터 선을 따라간 거리에 따라 당김을 감쇠하면, 선의 연결 구조를 유지하는 rope-like 변형을 만들 수 있다.
 
+`SVG Path Rope Tension`은 널리 정해진 물리 simulation 기법명이 아니라 path sampling, graph distance와 거리 감쇠를 조합한 변형 절차를 설명하기 위한 이름이다.
+
 ## 1. 그림으로 먼저 보기
 
 ![SVG contour를 rope tension graph로 바꾸는 과정](../assets/svg-path-rope-tension.svg)

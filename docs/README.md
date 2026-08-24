@@ -41,6 +41,13 @@ docs/
 
 ## Concepts
 
+Concept는 다음 중 하나를 만족할 때 독립 문서로 둔다.
+
+- 여러 구현에서 같은 이름과 원리로 쓰이는 그래픽스·수학 기법 또는 GPU 실행 모델
+- 표준 기법명은 아니지만 입력, 중간 상태, 수식, 출력과 한계가 분명하고 작품과 독립적으로 다시 적용할 수 있는 비단순 절차
+
+반대로 단일 작품의 파라미터 선택, 좌표 변환이나 역함수 한 번으로 끝나는 계산은 다른 곳에 응용할 수 있더라도 artwork architecture에 포함한다. 여러 원리를 조합한 자체 방법을 Concept로 유지할 때는 제목이 설명용 이름임을 본문 첫머리에 밝힌다.
+
 - [`fragment-shader-execution.md`](./concepts/fragment-shader-execution.md) - 2x2 quad, warp/wave, helper invocation과 mipmap 선택 과정
 - [`golden-angle-sphere-distribution.md`](./concepts/golden-angle-sphere-distribution.md) - 점을 구 표면 전체에 분산하는 Fibonacci sphere 원리
 - [`jump-flood-nearest-seed.md`](./concepts/jump-flood-nearest-seed.md) - GPU pass가 큰 jump부터 가까운 seed 좌표를 전달하는 JFA 원리와 bounded 근사
