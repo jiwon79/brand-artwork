@@ -100,6 +100,8 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 - `FigurePoint[] points`: hold 변형과 release 파티클 계산을 위한 일정 간격 sample
 - `LineGraphEdge[][] graph`: sample 사이로 장력을 전달하기 위한 인접 목록
 
+현재 생성 파일은 SVG 길이 3.2 단위 간격으로 표본화한 총 7,600개 sample을 저장한다. 인체별 sample 수는 앞에서부터 `743`, `875`, `1,010`, `1,098`, `1,370`, `2,504`개다.
+
 한 SVG `<path>` 안에도 여러 `M`으로 시작하는 torso, arm, leg contour가 있을 수 있다. sample 단계에서 contour를 분리해야 실제로 끊긴 팔과 다리 사이에 화면상 직선이 생기지 않는다. 대신 `buildLineGraph()`는 가장 긴 contour에서 시작해 아직 연결되지 않은 contour의 끝점을 가까운 기존 sample과 **virtual joint**로 연결한다. 이 joint는 장력 계산에만 사용되고 stroke에는 사용되지 않는다.
 
 초기화 비용은 각 SVG에 대해 한 번만 발생한다. 매 frame에는 준비된 `Path2D`, sample, graph를 재사용한다.

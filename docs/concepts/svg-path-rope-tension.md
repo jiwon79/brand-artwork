@@ -108,6 +108,8 @@ P'_i = P_i + delta × I_i
 
 `responseLag_i`를 모든 sample에 같은 값으로 두면 전체가 비슷한 속도로 반응한다. graph distance가 먼 sample일수록 큰 값을 주면 장력이 선을 따라 늦게 전달되는 인상을 만들 수 있다.
 
+`delta`는 sample마다 터치점을 향하는 벡터가 아니라 anchor가 끌려간 방향과 거리다. 모든 sample이 같은 `delta` 방향을 공유하고 `I_i`로 이동량만 다르게 하면 이웃 sample 사이의 원래 상대 위치가 더 잘 유지된다. 반대로 각 sample에서 터치점으로 향하는 벡터를 사용하면 sample마다 방향이 달라져 선 전체가 한 점으로 수축하고, 큰 변형에서 segment가 겹치거나 뒤집힐 수 있다. 한 점으로 빨려 들어가는 표현이 목적이라면 sample별 방향 벡터 `delta_i`를 사용하는 별도의 attraction 모델이 더 적합하다.
+
 ## 6. 왜 이 수식인가
 
 `exp(-g_i / R)`는 anchor에서 정확히 1이고 거리가 늘어날수록 연속적으로 감소한다. 특정 거리에서 갑자기 0이 되는 hard cutoff가 없으므로 이웃 sample의 이동량도 급격히 끊기지 않는다. `R`은 거리의 단위를 없애는 scale이며, `g_i / R`이 같으면 원본 path의 크기가 달라도 같은 비율의 감쇠를 얻는다.
@@ -171,6 +173,7 @@ virtual joint, 최소 전달분과 거리별 response lag는 각각 독립적인
 - self-intersection을 graph joint로 추가하지 않으면 화면상 교차점 사이에는 장력이 전달되지 않는다. 교차점을 연결하려면 별도의 교차 검출이 필요하다.
 - 연결되지 않은 component에 `T_i`를 적용하면 graph 관계와 무관하게 움직임이 생긴다. 독립 component에는 `T_i = 0`을 사용하거나 component별 anchor를 선택해야 한다.
 - 실제 줄의 overshoot, 관성, 길이 제약과 충돌이 필요하면 mass-spring 또는 position-based dynamics가 더 적합하다.
+- 변형된 polyline을 실제 곡선으로 재구성하려면 Catmull–Rom spline, quadratic midpoint smoothing 또는 cubic Bézier fitting을 사용할 수 있다.
 
 ## 10. 구현 참고
 
