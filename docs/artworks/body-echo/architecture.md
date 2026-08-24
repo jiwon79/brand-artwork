@@ -133,7 +133,25 @@ T_i = (0.045 + 0.12p) × (1 - 0.35n_i)
 
 각 SVG sample의 파티클 생성 시각은 `BodyEchoRuntime.spawnTimeFor()`가 정한다. [`wave-timing.ts`](../../../pages/body-echo/wave-timing.ts)는 화면 ring에는 forward easing을, sample의 거리에는 같은 함수의 inverse easing을 적용한다. 그래서 crest가 sample 위치에 도착하는 시각과 선이 파티클로 바뀌는 기준 시각이 일치한다.
 
-`contactWaveExtent`는 터치점에서 480 × 270 design frame의 네 모서리까지 거리 중 가장 큰 값이다. 따라서 터치점이 화면 중앙이 아니어도 wave progress가 1이 될 때 가장 먼 모서리까지 도달한다. 실제 spawn에는 최대 `0.025 s`의 작은 jitter가 더해져 개별 pixel은 crest보다 아주 조금 늦을 수 있다. forward/inverse 대응의 유도와 적용 범위는 [Wavefront Event Scheduling](../../concepts/wavefront-event-scheduling.md)에서 설명한다.
+정규화된 release 시간은 `u`, easing exponent는 `a = 1.25`, wave 최대 반지름은 `D`, release 전체 시간은 `T`다. 화면 ring의 반지름은 다음처럼 증가한다.
+
+```text
+E(u) = 1 - (1 - u)^a
+radius(u) = E(u) × D
+```
+
+터치 중심에서 sample `i`까지의 거리를 `d_i`라고 하면 정규화 거리는 `q_i = clamp(d_i / D, 0, 1)`이다. crest가 sample에 도착하는 시간 `u_i`는 `E(u_i) = q_i`를 만족해야 하므로 같은 easing의 역함수로 구한다.
+
+```text
+u_i = E^-1(q_i)
+    = 1 - (1 - q_i)^(1 / a)
+
+spawnTime_i = contactReleaseTime + u_i × T
+```
+
+이는 별도의 wave simulation이나 일반적으로 명명된 scheduling 알고리즘이 아니라, 단조 증가하는 진행 함수의 역함수로 위치별 도착 시간을 맞추는 계산이다. easing이 단조 증가하지 않으면 같은 거리에 도착하는 시간이 여러 개일 수 있어 이 방식으로 하나의 `spawnTime_i`를 정할 수 없다.
+
+`contactWaveExtent`는 터치점에서 480 × 270 design frame의 네 모서리까지 거리 중 최댓값을 `D`로 사용한다. 따라서 터치점이 중앙에서 벗어나도 `u = 1`일 때 가장 먼 모서리까지 도달한다. 현재 NameDrop 경로는 jitter를 더하지 않으므로 선 fade와 사각 파티클 전환 기준이 crest 도착 시각과 정확히 같은 계산을 사용한다.
 
 ### 4.2 선과 파티클
 

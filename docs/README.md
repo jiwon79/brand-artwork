@@ -49,7 +49,6 @@ docs/
 - [`sdf-glass-rendering.md`](./concepts/sdf-glass-rendering.md) - SDF에서 normal, 가상 유리 단면, 굴절 offset을 만드는 공통 원리
 - [`smooth-union.md`](./concepts/smooth-union.md) - signed-distance field의 union과 부드러운 접합 원리
 - [`svg-path-rope-tension.md`](./concepts/svg-path-rope-tension.md) - SVG contour를 graph로 바꾸고 거리 감쇠로 rope 장력을 전달하는 원리
-- [`wavefront-event-scheduling.md`](./concepts/wavefront-event-scheduling.md) - forward/inverse easing으로 보이는 파동과 위치별 event 시각을 맞추는 원리
 
 ## Research
 
