@@ -155,15 +155,40 @@ spawnTime_i = contactReleaseTime + u_i × T
 
 ### 4.2 선과 파티클
 
-`FigureRenderer.renderLines()`는 RGB 채널과 여섯 인체를 순회한다.
+`FigureRenderer.renderLines()`는 RGB 채널과 여섯 인체를 순회하며 phase에 맞는 선과 파티클을 그린다.
 
 - `idle`: `FigureRenderer.drawExactLinePath()`가 원본 `Path2D`를 stroke한다.
-- `gathering`: `FigureRenderer.drawDissolvingLinePath()`가 모든 sample을 rope 위치로 옮겨 연결한다.
-- `dissolving`: wave가 아직 닿지 않은 segment는 선으로, 도착 시각을 지난 sample은 `ParticleRenderer.draw()`의 사각형으로 그린다.
+- `gathering`: 변형된 sample을 원래 contour 순서대로 연결해 완전히 보이는 선을 그린다.
+- `dissolving`: 같은 선을 wave 도착 시각에 맞춰 segment별로 흐리게 만들고 사각 파티클로 전환한다.
 
-`FigureRenderer.drawDissolvingLinePath()`는 선 fade를 여섯 opacity bucket으로 나눈다. Canvas 2D는 하나의 path 안에서 segment마다 alpha를 직접 바꿀 수 없기 때문에, 비슷한 opacity의 segment를 같은 `Path2D`에 모아 여섯 번 stroke하는 절충이다.
+#### 4.2.1 변형된 sample을 다시 선으로 연결하기
 
-`ParticleRenderer.draw()`은 원래 sample 위치에서 contact 바깥 방향과 그 수직 tangent 방향을 섞어 이동시킨다. RGB 세 채널은 `rgbOffset`만큼 서로 다른 위치에서 시작한다. 현재 lil-gui의 release 기본값은 다음과 같다.
+최종 `Interact` 단계에서는 `FigureRenderer.drawDissolvingLinePath()`가 `gathering`과 `dissolving`의 선을 모두 담당한다. 함수 이름에는 `Dissolving`이 들어 있지만, `gathering`에서는 아직 wave가 출발하지 않았으므로 선을 지우지 않는다.
+
+각 sample의 변형 위치는 3.3절의 `gatheredLinePosition()` 결과를 그대로 사용한다. 원래 contour의 첫 sample에서는 `moveTo()`로 그리기를 시작하고, 뒤따르는 sample은 `lineTo()`로 연결한다. 다음 contour가 시작되면 다시 `moveTo()`를 호출한다.
+
+```text
+contour 0: moveTo(P'_0) → lineTo(P'_1) → lineTo(P'_2) → ...
+contour 1: moveTo(P'_k) → lineTo(P'_(k+1)) → ...
+```
+
+따라서 graph의 virtual joint는 장력 전달에만 쓰이고 화면의 stroke에는 나타나지 않는다. 선이 곡선처럼 보이는 이유는 촘촘한 sample의 이동량이 연속적으로 바뀌고 Canvas가 `lineCap = round`, `lineJoin = round`로 짧은 segment 사이의 모서리를 둥글게 그리기 때문이다.
+
+#### 4.2.2 Wave가 닿은 segment를 fade하기
+
+`dissolving`이 시작되면 각 sample은 4.1절에서 계산한 `spawnTime_i`를 기준으로 선의 opacity를 1에서 0으로 낮춘다.
+
+```text
+wave 도착 전       opacity = 1
+wave 통과 중       opacity = 1 → 0
+fade 종료 후       opacity = 0
+```
+
+두 sample을 잇는 segment의 opacity는 양 끝 sample opacity의 평균이다. 같은 시각에도 wave와의 거리가 다르면 segment마다 opacity가 달라진다.
+
+Canvas 2D는 하나의 `Path2D`를 한 번 stroke할 때 내부 segment마다 다른 alpha를 지정할 수 없다. 모든 segment를 따로 stroke하면 호출 수가 지나치게 늘어나므로, `drawDissolvingLinePath()`는 segment opacity를 여섯 단계로 양자화한다. 비슷한 opacity의 segment를 같은 `Path2D` bucket에 모은 뒤, 여섯 bucket을 낮은 alpha부터 높은 alpha까지 한 번씩 stroke한다. 이는 연속적인 opacity를 여섯 값으로 근사해 draw call 수를 제한하는 절충이다.
+
+sample의 현재 시간이 `spawnTime_i`를 지나면 `ParticleRenderer.draw()`도 같은 위치에서 사각 파티클을 시작한다. 파티클은 contact 바깥 방향과 그 수직 tangent 방향을 섞어 이동하며, RGB 세 채널은 `rgbOffset`만큼 서로 다른 위치에서 시작한다. 현재 lil-gui의 release 기본값은 다음과 같다.
 
 | GUI | 코드 값 | 기본값 |
 | --- | --- | ---: |
