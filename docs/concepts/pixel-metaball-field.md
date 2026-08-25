@@ -2,6 +2,8 @@
 
 활성 픽셀 이미지를 주변에서 여러 번 읽어 연속적인 높이 지도 `F`를 만들고, 그중 한 높이를 외곽선으로 꺼내는 방법이다.
 
+`Pixel-sampled Metaball Field`는 널리 정해진 알고리즘명이 아니라, raster mask의 주변값을 원판 표본으로 누적해 Metaball과 비슷한 연결 효과를 만드는 image-space 절차를 설명하기 위한 이름이다.
+
 ## 1. 그림으로 먼저 보기
 
 ![활성 픽셀에서 주변 표본 field와 threshold 외곽선까지](../assets/pixel-metaball-field.svg)

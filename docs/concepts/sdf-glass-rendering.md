@@ -2,6 +2,8 @@
 
 이 문서는 signed-distance field(SDF)로 2D 외곽선을 만들고, 그 외곽선 위에 가상의 유리 단면을 세워 texture를 굴절시키는 공통 원리를 설명한다.
 
+`SDF Glass Rendering`은 하나의 표준 알고리즘명이 아니라 SDF 외곽선, gradient normal, 높이 profile과 굴절 sampling을 연결한 렌더링 절차를 가리키는 설명용 이름이다.
+
 특정 작품의 contact 구조, GUI 값, grid 해상도나 함수 이름에는 의존하지 않는다. 원, 둥근 사각형, 여러 blob처럼 **거리 함수로 표현할 수 있는 형태**라면 같은 흐름을 적용할 수 있다.
 
 ```text

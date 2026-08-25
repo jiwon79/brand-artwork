@@ -100,6 +100,8 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 - `FigurePoint[] points`: hold 변형과 release 파티클 계산을 위한 일정 간격 sample
 - `LineGraphEdge[][] graph`: sample 사이로 장력을 전달하기 위한 인접 목록
 
+현재 생성 파일은 SVG 길이 3.2 단위 간격으로 표본화한 총 7,600개 sample을 저장한다. 인체별 sample 수는 앞에서부터 `743`, `875`, `1,010`, `1,098`, `1,370`, `2,504`개다.
+
 한 SVG `<path>` 안에도 여러 `M`으로 시작하는 torso, arm, leg contour가 있을 수 있다. sample 단계에서 contour를 분리해야 실제로 끊긴 팔과 다리 사이에 화면상 직선이 생기지 않는다. 대신 `buildLineGraph()`는 가장 긴 contour에서 시작해 아직 연결되지 않은 contour의 끝점을 가까운 기존 sample과 **virtual joint**로 연결한다. 이 joint는 장력 계산에만 사용되고 stroke에는 사용되지 않는다.
 
 초기화 비용은 각 SVG에 대해 한 번만 발생한다. 매 frame에는 준비된 `Path2D`, sample, graph를 재사용한다.
@@ -110,7 +112,18 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 
 터치를 시작하면 `BodyEchoRuntime.ropeFieldFor()`가 각 인체마다 가장 가까운 sample을 anchor로 선택하고, 그 anchor에서 모든 sample까지의 graph distance를 한 번 계산해 캐시한다. 손가락을 움직이는 동안 anchor와 cache는 유지하고 목표점 `contactOrigin`만 갱신한다. 즉 처음 잡은 strand를 놓지 않은 채 끌고 간다.
 
-`BodyEchoRuntime.gatheredLinePosition()`은 graph distance의 지수 감쇠, 먼 구간에 남기는 작은 전달 장력, 거리에 따른 response lag, path normal 방향의 slack을 합쳐 sample 위치를 만든다. 이는 실제 줄의 질량과 충돌을 적분하는 물리 시뮬레이션이 아니라, 연속적인 rope-like 반응을 위한 경험적 근사다. 수식과 값 변화는 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에 분리했다.
+`BodyEchoRuntime.gatheredLinePosition()`은 graph distance의 지수 감쇠, 먼 구간에 남기는 작은 전달 장력, 거리에 따른 response lag, path normal 방향의 slack을 합쳐 sample 위치를 만든다. 이는 실제 줄의 질량과 충돌을 적분하는 물리 시뮬레이션이 아니라, 연속적인 rope-like 반응을 위한 경험적 근사다. graph-distance 장력의 공통 원리와 일반 수식은 [SVG Path Rope Tension](../../concepts/svg-path-rope-tension.md)에서 설명하고, 아래에는 Body Echo가 선택한 실제 계산과 값을 기록한다.
+
+현재 구현에서 작은 전달 장력 `T_i`는 고정된 하나의 값이 아니다. 당김 진행도 `p`와 sample `i`의 정규화된 graph distance `n_i`를 사용한다. `p`는 hold 반응이 진행되며 0에서 1로 증가하고, `n_i`는 anchor에서 0, graph에서 가장 먼 sample에서 1이다.
+
+```text
+n_i = clamp(g_i / g_max, 0, 1)
+T_i = (0.045 + 0.12p) × (1 - 0.35n_i)
+```
+
+예를 들어 당김이 끝까지 진행된 `p = 1`에서는 anchor 근처의 `T_i`가 `0.165`, 중간 거리 `n_i = 0.5`에서는 약 `0.136`, 가장 먼 지점에서는 약 `0.107`이다. anchor에서는 원래 local tension `L_i`가 1이므로 이 전달분이 결과를 바꾸지 않는다. `T_i`는 주로 `L_i`가 0에 가까워진 먼 지점의 목표 장력에 약 10%의 하한을 남겨, 움직이는 선과 멈춘 선의 경계가 드러나지 않게 한다. 실제 이동량은 이 목표 장력에 시간 반응, 전체 당김 진행도와 당김 거리를 더 적용해 결정한다.
+
+`0.045`, `0.12`, `0.35`는 물리 법칙에서 유도한 상수가 아니라 현재 형상에 맞춰 시각적으로 조정한 예시다. 각각 당기기 시작할 때의 기본 전달량, 진행되며 추가되는 전달량, 거리에 따라 전달량을 줄이는 정도를 정한다. 전달량을 줄이면 변형이 anchor 주변에 더 국소적으로 모이고, 늘리면 선 전체가 더 강하게 함께 움직인다.
 
 ## 4. 렌더 패스
 
@@ -120,19 +133,62 @@ NameDrop 경로의 정상 전이는 `idle → gathering → dissolving → idle`
 
 각 SVG sample의 파티클 생성 시각은 `BodyEchoRuntime.spawnTimeFor()`가 정한다. [`wave-timing.ts`](../../../pages/body-echo/wave-timing.ts)는 화면 ring에는 forward easing을, sample의 거리에는 같은 함수의 inverse easing을 적용한다. 그래서 crest가 sample 위치에 도착하는 시각과 선이 파티클로 바뀌는 기준 시각이 일치한다.
 
-`contactWaveExtent`는 터치점에서 480 × 270 design frame의 네 모서리까지 거리 중 가장 큰 값이다. 따라서 터치점이 화면 중앙이 아니어도 wave progress가 1이 될 때 가장 먼 모서리까지 도달한다. 실제 spawn에는 최대 `0.025 s`의 작은 jitter가 더해져 개별 pixel은 crest보다 아주 조금 늦을 수 있다. forward/inverse 대응의 유도와 적용 범위는 [Wavefront Event Scheduling](../../concepts/wavefront-event-scheduling.md)에서 설명한다.
+정규화된 release 시간은 `u`, easing exponent는 `a = 1.25`, wave 최대 반지름은 `D`, release 전체 시간은 `T`다. 화면 ring의 반지름은 다음처럼 증가한다.
+
+```text
+E(u) = 1 - (1 - u)^a
+radius(u) = E(u) × D
+```
+
+터치 중심에서 sample `i`까지의 거리를 `d_i`라고 하면 정규화 거리는 `q_i = clamp(d_i / D, 0, 1)`이다. crest가 sample에 도착하는 시간 `u_i`는 `E(u_i) = q_i`를 만족해야 하므로 같은 easing의 역함수로 구한다.
+
+```text
+u_i = E^-1(q_i)
+    = 1 - (1 - q_i)^(1 / a)
+
+spawnTime_i = contactReleaseTime + u_i × T
+```
+
+이는 별도의 wave simulation이나 일반적으로 명명된 scheduling 알고리즘이 아니라, 단조 증가하는 진행 함수의 역함수로 위치별 도착 시간을 맞추는 계산이다. easing이 단조 증가하지 않으면 같은 거리에 도착하는 시간이 여러 개일 수 있어 이 방식으로 하나의 `spawnTime_i`를 정할 수 없다.
+
+`contactWaveExtent`는 터치점에서 480 × 270 design frame의 네 모서리까지 거리 중 최댓값을 `D`로 사용한다. 따라서 터치점이 중앙에서 벗어나도 `u = 1`일 때 가장 먼 모서리까지 도달한다. 현재 NameDrop 경로는 jitter를 더하지 않으므로 선 fade와 사각 파티클 전환 기준이 crest 도착 시각과 정확히 같은 계산을 사용한다.
 
 ### 4.2 선과 파티클
 
-`FigureRenderer.renderLines()`는 RGB 채널과 여섯 인체를 순회한다.
+`FigureRenderer.renderLines()`는 RGB 채널과 여섯 인체를 순회하며 phase에 맞는 선과 파티클을 그린다.
 
 - `idle`: `FigureRenderer.drawExactLinePath()`가 원본 `Path2D`를 stroke한다.
-- `gathering`: `FigureRenderer.drawDissolvingLinePath()`가 모든 sample을 rope 위치로 옮겨 연결한다.
-- `dissolving`: wave가 아직 닿지 않은 segment는 선으로, 도착 시각을 지난 sample은 `ParticleRenderer.draw()`의 사각형으로 그린다.
+- `gathering`: 변형된 sample을 원래 contour 순서대로 연결해 완전히 보이는 선을 그린다.
+- `dissolving`: 같은 선을 wave 도착 시각에 맞춰 segment별로 흐리게 만들고 사각 파티클로 전환한다.
 
-`FigureRenderer.drawDissolvingLinePath()`는 선 fade를 여섯 opacity bucket으로 나눈다. Canvas 2D는 하나의 path 안에서 segment마다 alpha를 직접 바꿀 수 없기 때문에, 비슷한 opacity의 segment를 같은 `Path2D`에 모아 여섯 번 stroke하는 절충이다.
+#### 4.2.1 변형된 sample을 다시 선으로 연결하기
 
-`ParticleRenderer.draw()`은 원래 sample 위치에서 contact 바깥 방향과 그 수직 tangent 방향을 섞어 이동시킨다. RGB 세 채널은 `rgbOffset`만큼 서로 다른 위치에서 시작한다. 현재 lil-gui의 release 기본값은 다음과 같다.
+최종 `Interact` 단계에서는 `FigureRenderer.drawDissolvingLinePath()`가 `gathering`과 `dissolving`의 선을 모두 담당한다. 함수 이름에는 `Dissolving`이 들어 있지만, `gathering`에서는 아직 wave가 출발하지 않았으므로 선을 지우지 않는다.
+
+각 sample의 변형 위치는 3.3절의 `gatheredLinePosition()` 결과를 그대로 사용한다. 원래 contour의 첫 sample에서는 `moveTo()`로 그리기를 시작하고, 뒤따르는 sample은 `lineTo()`로 연결한다. 다음 contour가 시작되면 다시 `moveTo()`를 호출한다.
+
+```text
+contour 0: moveTo(P'_0) → lineTo(P'_1) → lineTo(P'_2) → ...
+contour 1: moveTo(P'_k) → lineTo(P'_(k+1)) → ...
+```
+
+따라서 graph의 virtual joint는 장력 전달에만 쓰이고 화면의 stroke에는 나타나지 않는다. 선이 곡선처럼 보이는 이유는 촘촘한 sample의 이동량이 연속적으로 바뀌고 Canvas가 `lineCap = round`, `lineJoin = round`로 짧은 segment 사이의 모서리를 둥글게 그리기 때문이다.
+
+#### 4.2.2 Wave가 닿은 segment를 fade하기
+
+`dissolving`이 시작되면 각 sample은 4.1절에서 계산한 `spawnTime_i`를 기준으로 선의 opacity를 1에서 0으로 낮춘다.
+
+```text
+wave 도착 전       opacity = 1
+wave 통과 중       opacity = 1 → 0
+fade 종료 후       opacity = 0
+```
+
+두 sample을 잇는 segment의 opacity는 양 끝 sample opacity의 평균이다. 같은 시각에도 wave와의 거리가 다르면 segment마다 opacity가 달라진다.
+
+Canvas 2D는 하나의 `Path2D`를 한 번 stroke할 때 내부 segment마다 다른 alpha를 지정할 수 없다. 모든 segment를 따로 stroke하면 호출 수가 지나치게 늘어나므로, `drawDissolvingLinePath()`는 segment opacity를 여섯 단계로 양자화한다. 비슷한 opacity의 segment를 같은 `Path2D` bucket에 모은 뒤, 여섯 bucket을 낮은 alpha부터 높은 alpha까지 한 번씩 stroke한다. 이는 연속적인 opacity를 여섯 값으로 근사해 draw call 수를 제한하는 절충이다.
+
+sample의 현재 시간이 `spawnTime_i`를 지나면 `ParticleRenderer.draw()`도 같은 위치에서 사각 파티클을 시작한다. 파티클은 contact 바깥 방향과 그 수직 tangent 방향을 섞어 이동하며, RGB 세 채널은 `rgbOffset`만큼 서로 다른 위치에서 시작한다. 현재 lil-gui의 release 기본값은 다음과 같다.
 
 | GUI | 코드 값 | 기본값 |
 | --- | --- | ---: |
