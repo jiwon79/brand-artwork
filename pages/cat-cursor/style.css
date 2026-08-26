@@ -1,0 +1,136 @@
+:root {
+  color: #161616;
+  background: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  overflow: hidden;
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cat-stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  background: #fff;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.cat-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cat-frame {
+  display: block;
+  width: auto;
+  height: min(94svh, 900px);
+  max-width: min(94vw, 540px);
+  object-fit: contain;
+  opacity: 0;
+  transform: translateY(3.5%);
+  transition: opacity 500ms ease;
+  -webkit-user-drag: none;
+}
+
+.is-ready .cat-frame {
+  opacity: 1;
+}
+
+.brand-mark,
+.frame-readout,
+.instruction {
+  position: absolute;
+  z-index: 2;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.brand-mark {
+  top: 26px;
+  left: 30px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.instruction {
+  bottom: 28px;
+  left: 50%;
+  padding: 10px 14px;
+  border: 1px solid rgb(22 22 22 / 22%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 82%);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  transition: opacity 400ms ease, transform 400ms ease;
+  backdrop-filter: blur(8px);
+}
+
+.has-interacted .instruction {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+}
+
+.frame-readout {
+  right: 30px;
+  bottom: 30px;
+  display: flex;
+  gap: 5px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .brand-mark {
+    top: 20px;
+    left: 20px;
+  }
+
+  .frame-readout {
+    right: 20px;
+    bottom: 22px;
+  }
+
+  .instruction {
+    bottom: 20px;
+  }
+
+  .cat-frame {
+    height: 90svh;
+    max-width: 118vw;
+    transform: translateY(2.5%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-frame,
+  .instruction {
+    transition-duration: 0ms;
+  }
+}

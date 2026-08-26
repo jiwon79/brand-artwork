@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#ffffff">
+  <title>Cat Cursor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="cat-stage" class="cat-stage" aria-label="커서를 따라 시선을 움직이는 고양이">
+    <div class="brand-mark" aria-hidden="true">EYES ON YOU</div>
+
+    <div class="cat-wrap">
+      <img
+        id="cat-frame"
+        class="cat-frame"
+        src="./assets/cat-poster.webp"
+        alt="커서를 바라보는 주황색 고양이"
+        draggable="false"
+        decoding="sync"
+      >
+    </div>
+
+    <div id="instruction" class="instruction" aria-live="polite">프레임 준비 중 0%</div>
+
+    <div class="frame-readout" aria-hidden="true">
+      <span id="frame-number">81</span>
+      <span>/</span>
+      <span>96</span>
+    </div>
+  </main>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
