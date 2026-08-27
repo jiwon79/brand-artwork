@@ -64,8 +64,7 @@ body {
 
 .brand-mark,
 .frame-readout,
-.instruction,
-.debug-help {
+.instruction {
   position: absolute;
   z-index: 2;
   letter-spacing: 0.13em;
@@ -124,16 +123,28 @@ body {
   transform: translateX(-50%);
 }
 
-.debug-help {
+.debug-toggle {
+  position: absolute;
+  z-index: 4;
   top: 26px;
   right: 30px;
-  display: none;
+  padding: 7px 9px;
+  border: 1px solid rgb(22 22 22 / 28%);
+  border-radius: 999px;
+  color: #161616;
+  background: rgb(255 255 255 / 88%);
+  cursor: pointer;
   font-size: 9px;
   font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
 }
 
-.is-debug .debug-help {
-  display: block;
+.debug-toggle[aria-pressed='true'] {
+  color: #fff;
+  border-color: #161616;
+  background: #161616;
 }
 
 .brand-mark {
@@ -178,7 +189,7 @@ body {
     left: 20px;
   }
 
-  .debug-help {
+  .debug-toggle {
     top: 20px;
     right: 20px;
   }

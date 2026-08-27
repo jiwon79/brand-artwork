@@ -1,4 +1,5 @@
 const CIRCLE_FRAME_COUNT = 96;
+const ASSET_VERSION = '20260827-3';
 
 const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => {
   const angle = -(index / CIRCLE_FRAME_COUNT) * Math.PI * 2;
@@ -10,29 +11,46 @@ const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => 
     total: CIRCLE_FRAME_COUNT,
     x: Math.cos(angle),
     y: Math.sin(angle),
-    src: `./assets/cat-frames/frame-${String(index + 1).padStart(3, '0')}.webp`,
+    src: `./assets/cat-frames/frame-${String(index + 1).padStart(3, '0')}.webp?v=${ASSET_VERSION}`,
   };
 });
 
 const generatedPointers = [
-  { id: 'CENTER', x: 0, y: 0, src: './assets/cat-generated-cross/center.webp' },
-  { id: 'R25', x: 0.25, y: 0, src: './assets/cat-generated-cross/right-25.webp' },
-  { id: 'R50', x: 0.5, y: 0, src: './assets/cat-generated-cross/right-50.webp' },
-  { id: 'R75', x: 0.75, y: 0, src: './assets/cat-generated-cross/right-75.webp' },
-  { id: 'L25', x: -0.25, y: 0, src: './assets/cat-generated-cross/left-25.webp' },
-  { id: 'L50', x: -0.5, y: 0, src: './assets/cat-generated-cross/left-50.webp' },
-  { id: 'L75', x: -0.75, y: 0, src: './assets/cat-generated-cross/left-75.webp' },
-  { id: 'U25', x: 0, y: -0.25, src: './assets/cat-generated-cross/up-25.webp' },
-  { id: 'U50', x: 0, y: -0.5, src: './assets/cat-generated-cross/up-50.webp' },
-  { id: 'U75', x: 0, y: -0.75, src: './assets/cat-generated-cross/up-75.webp' },
-  { id: 'D25', x: 0, y: 0.25, src: './assets/cat-generated-cross/down-25.webp' },
-  { id: 'D50', x: 0, y: 0.5, src: './assets/cat-generated-cross/down-50.webp' },
-  { id: 'D75', x: 0, y: 0.75, src: './assets/cat-generated-cross/down-75.webp' },
+  { id: 'CENTER', x: 0, y: 0, file: 'center.webp' },
+  { id: 'R12.5', x: 0.125, y: 0, file: 'right-12-5.webp' },
+  { id: 'R25', x: 0.25, y: 0, file: 'right-25.webp' },
+  { id: 'R37.5', x: 0.375, y: 0, file: 'right-37-5.webp' },
+  { id: 'R50', x: 0.5, y: 0, file: 'right-50.webp' },
+  { id: 'R62.5', x: 0.625, y: 0, file: 'right-62-5.webp' },
+  { id: 'R75', x: 0.75, y: 0, file: 'right-75.webp' },
+  { id: 'R87.5', x: 0.875, y: 0, file: 'right-87-5.webp' },
+  { id: 'L12.5', x: -0.125, y: 0, file: 'left-12-5.webp' },
+  { id: 'L25', x: -0.25, y: 0, file: 'left-25.webp' },
+  { id: 'L37.5', x: -0.375, y: 0, file: 'left-37-5.webp' },
+  { id: 'L50', x: -0.5, y: 0, file: 'left-50.webp' },
+  { id: 'L62.5', x: -0.625, y: 0, file: 'left-62-5.webp' },
+  { id: 'L75', x: -0.75, y: 0, file: 'left-75.webp' },
+  { id: 'L87.5', x: -0.875, y: 0, file: 'left-87-5.webp' },
+  { id: 'U12.5', x: 0, y: -0.125, file: 'up-12-5.webp' },
+  { id: 'U25', x: 0, y: -0.25, file: 'up-25.webp' },
+  { id: 'U37.5', x: 0, y: -0.375, file: 'up-37-5.webp' },
+  { id: 'U50', x: 0, y: -0.5, file: 'up-50.webp' },
+  { id: 'U62.5', x: 0, y: -0.625, file: 'up-62-5.webp' },
+  { id: 'U75', x: 0, y: -0.75, file: 'up-75.webp' },
+  { id: 'U87.5', x: 0, y: -0.875, file: 'up-87-5.webp' },
+  { id: 'D12.5', x: 0, y: 0.125, file: 'down-12-5.webp' },
+  { id: 'D25', x: 0, y: 0.25, file: 'down-25.webp' },
+  { id: 'D37.5', x: 0, y: 0.375, file: 'down-37-5.webp' },
+  { id: 'D50', x: 0, y: 0.5, file: 'down-50.webp' },
+  { id: 'D62.5', x: 0, y: 0.625, file: 'down-62-5.webp' },
+  { id: 'D75', x: 0, y: 0.75, file: 'down-75.webp' },
+  { id: 'D87.5', x: 0, y: 0.875, file: 'down-87-5.webp' },
 ].map((pointer, index, pointers) => ({
   ...pointer,
   group: 'generated',
   index,
   total: pointers.length,
+  src: `./assets/cat-generated-cross/${pointer.file}?v=${ASSET_VERSION}`,
 }));
 
 const imagePointers = [...circlePointers, ...generatedPointers];
@@ -43,12 +61,16 @@ const sequenceName = document.getElementById('sequence-name');
 const frameNumber = document.getElementById('frame-number');
 const frameTotal = document.getElementById('frame-total');
 const debugLayer = document.getElementById('pointer-debug');
+const debugToggle = document.getElementById('debug-toggle');
 const debugMarkers = new Map();
+const decodedImages = new Map();
 
 let ready = false;
 let hasInteracted = false;
 let activePointer = generatedPointers[0];
 let debugEnabled = new URLSearchParams(window.location.search).has('debug');
+let pointerDirty = false;
+let targetPoint = { x: 0, y: 0 };
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -108,7 +130,8 @@ function updateFrame(pointer) {
 function trackPointer(event) {
   if (!ready) return;
 
-  updateFrame(nearestImagePointer(pointerPosition(event)));
+  targetPoint = pointerPosition(event);
+  pointerDirty = true;
 
   if (!hasInteracted) {
     hasInteracted = true;
@@ -154,6 +177,8 @@ function createDebugMarkers() {
 function setDebugMode(enabled) {
   debugEnabled = enabled;
   stage.classList.toggle('is-debug', enabled);
+  debugToggle.setAttribute('aria-pressed', String(enabled));
+  debugToggle.textContent = enabled ? 'Points on' : 'Points off';
   if (enabled) layoutDebugMarkers();
 }
 
@@ -163,7 +188,16 @@ async function preloadFrames() {
   await Promise.all(
     imagePointers.map(({ src }) => new Promise((resolve) => {
       const image = new Image();
-      const settle = () => {
+      image.decoding = 'async';
+
+      const settle = async () => {
+        try {
+          await image.decode();
+        } catch {
+          // A failed frame must not block the rest of the interaction.
+        }
+
+        decodedImages.set(src, image);
         loaded += 1;
         instruction.textContent = `프레임 준비 중 ${Math.round((loaded / imagePointers.length) * 100)}%`;
         resolve();
@@ -183,11 +217,23 @@ async function preloadFrames() {
   stage.classList.add('is-ready');
 }
 
+function render() {
+  if (ready && pointerDirty) {
+    pointerDirty = false;
+    updateFrame(nearestImagePointer(targetPoint));
+  }
+
+  requestAnimationFrame(render);
+}
+
 stage.addEventListener('pointermove', trackPointer);
 stage.addEventListener('pointerdown', trackPointer);
+debugToggle.addEventListener('pointerdown', (event) => event.stopPropagation());
+debugToggle.addEventListener('click', () => setDebugMode(!debugEnabled));
 window.addEventListener('resize', layoutDebugMarkers);
 window.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() === 'd') setDebugMode(!debugEnabled);
 });
 
 void preloadFrames();
+requestAnimationFrame(render);
