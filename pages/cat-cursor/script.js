@@ -1,5 +1,5 @@
 const CIRCLE_FRAME_COUNT = 96;
-const ASSET_VERSION = '20260828-1';
+const ASSET_VERSION = '20260828-2';
 
 const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => {
   const angle = -(index / CIRCLE_FRAME_COUNT) * Math.PI * 2;
@@ -27,13 +27,16 @@ const generatedPointers = [
       file: `right-ltx-${String(frame).padStart(3, '0')}.webp`,
     };
   }),
-  { id: 'L12.5', x: -0.125, y: 0, file: 'left-12-5.webp' },
-  { id: 'L25', x: -0.25, y: 0, file: 'left-25.webp' },
-  { id: 'L37.5', x: -0.375, y: 0, file: 'left-37-5.webp' },
-  { id: 'L50', x: -0.5, y: 0, file: 'left-50.webp' },
-  { id: 'L62.5', x: -0.625, y: 0, file: 'left-62-5.webp' },
-  { id: 'L75', x: -0.75, y: 0, file: 'left-75.webp' },
-  { id: 'L87.5', x: -0.875, y: 0, file: 'left-87-5.webp' },
+  ...Array.from({ length: 23 }, (_, index) => {
+    const frame = index + 2;
+
+    return {
+      id: `L-WAN${String(index + 1).padStart(2, '0')}`,
+      x: -(index + 1) / 24,
+      y: 0,
+      file: `left-wan-${String(frame).padStart(3, '0')}.webp`,
+    };
+  }),
   { id: 'U12.5', x: 0, y: -0.125, file: 'up-12-5.webp' },
   { id: 'U25', x: 0, y: -0.25, file: 'up-25.webp' },
   { id: 'U37.5', x: 0, y: -0.375, file: 'up-37-5.webp' },
