@@ -40,8 +40,14 @@ body {
   position: absolute;
   inset: 0;
   display: grid;
+  opacity: 0;
   place-items: end center;
+  transition: opacity 500ms ease;
   pointer-events: none;
+}
+
+.is-ready .cat-wrap {
+  opacity: 1;
 }
 
 .cat-frame {
@@ -51,14 +57,9 @@ body {
   height: min(94svh, 900px);
   max-width: min(94vw, 540px);
   object-fit: contain;
-  opacity: 0;
-  transform: translateY(3.5%);
-  transition: opacity 200ms ease-out;
-  -webkit-user-drag: none;
-}
-
-.is-ready .cat-frame.is-visible {
   opacity: 1;
+  transform: translateY(3.5%);
+  -webkit-user-drag: none;
 }
 
 .brand-mark,
@@ -129,7 +130,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cat-frame,
+  .cat-wrap,
   .instruction {
     transition-duration: 0ms;
   }

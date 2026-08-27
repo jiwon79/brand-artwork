@@ -5,14 +5,14 @@ const SEQUENCE_CONFIG = {
     path: (index) => `./assets/cat-frames/frame-${String(index + 1).padStart(3, '0')}.webp`,
   },
   horizontal: {
-    count: 73,
+    count: 33,
     label: 'H',
-    path: (index) => `./assets/cat-horizontal-frames/frame-${String(index + 1).padStart(3, '0')}.webp`,
+    path: (index) => `./assets/cat-generated-horizontal-frames/frame-${String(index + 1).padStart(3, '0')}.webp`,
   },
   vertical: {
-    count: 73,
+    count: 33,
     label: 'V',
-    path: (index) => `./assets/cat-vertical-frames/frame-${String(index + 1).padStart(3, '0')}.webp`,
+    path: (index) => `./assets/cat-generated-vertical-frames/frame-${String(index + 1).padStart(3, '0')}.webp`,
   },
 };
 
@@ -20,10 +20,7 @@ const SEQUENCE_HYSTERESIS = 0.12;
 const FOLLOW_EASING = 0.16;
 
 const stage = document.getElementById('cat-stage');
-const catLayers = [
-  document.getElementById('cat-frame'),
-  document.getElementById('cat-frame-transition'),
-];
+const cat = document.getElementById('cat-frame');
 const instruction = document.getElementById('instruction');
 const sequenceName = document.getElementById('sequence-name');
 const frameNumber = document.getElementById('frame-number');
@@ -41,7 +38,6 @@ let ready = false;
 let hasInteracted = false;
 let currentSequence = 'horizontal';
 let currentFrame = Math.floor(SEQUENCE_CONFIG.horizontal.count / 2);
-let activeLayerIndex = 0;
 const targetPoint = { x: 0, y: 0 };
 const currentPoint = { x: 0, y: 0 };
 
@@ -86,7 +82,7 @@ function trackPointer(event) {
   if (!ready) return;
 
   const stageBounds = stage.getBoundingClientRect();
-  const catBounds = catLayers[activeLayerIndex].getBoundingClientRect();
+  const catBounds = cat.getBoundingClientRect();
   const faceX = catBounds.left + catBounds.width * 0.5;
   const faceY = catBounds.top + catBounds.height * 0.32;
 
@@ -144,23 +140,9 @@ function frameForPoint(sequence, point) {
 }
 
 function updateFrame(sequence, frame) {
-  const sequenceChanged = sequence !== currentSequence;
-
-  if (sequenceChanged) {
-    const incomingLayerIndex = 1 - activeLayerIndex;
-    const outgoingLayer = catLayers[activeLayerIndex];
-    const incomingLayer = catLayers[incomingLayerIndex];
-
-    incomingLayer.src = framePaths[sequence][frame];
-    incomingLayer.classList.add('is-visible');
-    outgoingLayer.classList.remove('is-visible');
-    activeLayerIndex = incomingLayerIndex;
-  } else {
-    catLayers[activeLayerIndex].src = framePaths[sequence][frame];
-  }
-
   currentSequence = sequence;
   currentFrame = frame;
+  cat.src = framePaths[sequence][frame];
   sequenceName.textContent = SEQUENCE_CONFIG[sequence].label;
   frameNumber.textContent = String(frame + 1).padStart(2, '0');
   frameTotal.textContent = String(SEQUENCE_CONFIG[sequence].count);
