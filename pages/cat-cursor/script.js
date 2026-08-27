@@ -1,5 +1,5 @@
 const CIRCLE_FRAME_COUNT = 96;
-const ASSET_VERSION = '20260827-6';
+const ASSET_VERSION = '20260828-1';
 
 const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => {
   const angle = -(index / CIRCLE_FRAME_COUNT) * Math.PI * 2;
@@ -17,21 +17,16 @@ const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => 
 
 const generatedPointers = [
   { id: 'CENTER', x: 0, y: 0, file: 'center.webp' },
-  { id: 'R6.25', x: 0.0625, y: 0, file: 'right-6-25.webp' },
-  { id: 'R12.5', x: 0.125, y: 0, file: 'right-12-5.webp' },
-  { id: 'R18.75', x: 0.1875, y: 0, file: 'right-18-75.webp' },
-  { id: 'R25', x: 0.25, y: 0, file: 'right-25.webp' },
-  { id: 'R31.25', x: 0.3125, y: 0, file: 'right-31-25.webp' },
-  { id: 'R37.5', x: 0.375, y: 0, file: 'right-37-5.webp' },
-  { id: 'R43.75', x: 0.4375, y: 0, file: 'right-43-75.webp' },
-  { id: 'R50', x: 0.5, y: 0, file: 'right-50.webp' },
-  { id: 'R56.25', x: 0.5625, y: 0, file: 'right-56-25.webp' },
-  { id: 'R62.5', x: 0.625, y: 0, file: 'right-62-5.webp' },
-  { id: 'R68.75', x: 0.6875, y: 0, file: 'right-68-75.webp' },
-  { id: 'R75', x: 0.75, y: 0, file: 'right-75.webp' },
-  { id: 'R81.25', x: 0.8125, y: 0, file: 'right-81-25.webp' },
-  { id: 'R87.5', x: 0.875, y: 0, file: 'right-87-5.webp' },
-  { id: 'R93.75', x: 0.9375, y: 0, file: 'right-93-75.webp' },
+  ...Array.from({ length: 23 }, (_, index) => {
+    const frame = index + 2;
+
+    return {
+      id: `R-LTX${String(index + 1).padStart(2, '0')}`,
+      x: (index + 1) / 24,
+      y: 0,
+      file: `right-ltx-${String(frame).padStart(3, '0')}.webp`,
+    };
+  }),
   { id: 'L12.5', x: -0.125, y: 0, file: 'left-12-5.webp' },
   { id: 'L25', x: -0.25, y: 0, file: 'left-25.webp' },
   { id: 'L37.5', x: -0.375, y: 0, file: 'left-37-5.webp' },

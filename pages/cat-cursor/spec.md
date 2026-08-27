@@ -3,10 +3,10 @@
 ## Interaction
 
 - The original cat video is decomposed into a 96-frame circular WebP sequence at 24 fps.
-- Thirty-seven keyframes fill the missing cross: one shared center, fifteen center-to-right intermediates, and seven intermediates for each of the other three cardinal directions.
-- The fifteen center-to-right poses are generated at 6.25% intervals with FILM using a 16× interpolation multiplier. The center and original right cardinal frame remain unchanged, so only the fifteen model-generated middle frames are added to the path.
+- Forty-five keyframes fill the missing cross: one shared center, twenty-three center-to-right intermediates, and seven intermediates for each of the other three cardinal directions.
+- The twenty-three center-to-right poses use every intermediate frame from the existing 25-frame LTX-2.5 first/last-frame video. The center and original right cardinal frame remain unchanged.
 - The other three axes use standalone generated poses. All cross-path intermediates use the original 400 × 736 frame size before runtime.
-- Each of the 133 source images owns a normalized pointer position: 96 around the circle and 37 along the central cross.
+- Each of the 141 source images owns a normalized pointer position: 96 around the circle and 45 along the central cross.
 - Pointer coordinates are normalized from the cat's face to the four edges of the stage. The image whose pointer has the smallest two-dimensional distance from the cursor is displayed.
 - Debug mode displays every image pointer and highlights the active one. Use the on-screen `Points` button, press `D`, or append `?debug=1` to the URL to enable it.
 - Debug pointer screen positions are recalculated from normalized coordinates when the viewport changes size.
@@ -17,6 +17,6 @@
 
 ## Loading
 
-- All 133 frames preload and decode before interaction begins.
+- All 141 frames preload and decode before interaction begins.
 - The poster remains hidden behind the loading state until the sequence is ready.
 - The page then swaps predecoded frame URLs without seeking a video element.
