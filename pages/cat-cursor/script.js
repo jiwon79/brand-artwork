@@ -1,6 +1,6 @@
 const UPPER_ARC_FRAME_COUNT = 49;
 const LOWER_ARC_FRAME_COUNT = 49;
-const ASSET_VERSION = '20260829-1';
+const ASSET_VERSION = '20260829-2';
 const RIGHT_REFERENCE_SRC = `./assets/source/cat-reference-right-9x16.png?v=${ASSET_VERSION}`;
 const LEFT_REFERENCE_SRC = `./assets/source/cat-reference-left-9x16.png?v=${ASSET_VERSION}`;
 
