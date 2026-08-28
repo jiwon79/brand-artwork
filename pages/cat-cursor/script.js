@@ -1,6 +1,8 @@
 const UPPER_ARC_FRAME_COUNT = 49;
 const LOWER_ARC_FRAME_COUNT = 49;
-const ASSET_VERSION = '20260828-7';
+const ASSET_VERSION = '20260828-8';
+const RIGHT_REFERENCE_SRC = `./assets/source/cat-reference-right-9x16.png?v=${ASSET_VERSION}`;
+const LEFT_REFERENCE_SRC = `./assets/source/cat-reference-left-9x16.png?v=${ASSET_VERSION}`;
 
 const centerPointer = {
   id: 'CENTER',
@@ -15,6 +17,8 @@ const centerPointer = {
 const upperArcPointers = Array.from({ length: UPPER_ARC_FRAME_COUNT }, (_, index) => {
   const progress = index / (UPPER_ARC_FRAME_COUNT - 1);
   const angle = -progress * Math.PI;
+  const isRightEndpoint = index === 0;
+  const isLeftEndpoint = index === UPPER_ARC_FRAME_COUNT - 1;
 
   return {
     id: `U${String(index + 1).padStart(2, '0')}`,
@@ -23,7 +27,11 @@ const upperArcPointers = Array.from({ length: UPPER_ARC_FRAME_COUNT }, (_, index
     total: UPPER_ARC_FRAME_COUNT,
     x: Math.cos(angle),
     y: Math.sin(angle),
-    src: `./assets/cat-upper-frames/frame-${String(index + 1).padStart(3, '0')}.webp?v=${ASSET_VERSION}`,
+    src: isRightEndpoint
+      ? RIGHT_REFERENCE_SRC
+      : isLeftEndpoint
+        ? LEFT_REFERENCE_SRC
+        : `./assets/cat-upper-frames/frame-${String(index + 1).padStart(3, '0')}.webp?v=${ASSET_VERSION}`,
   };
 });
 
