@@ -1,5 +1,6 @@
 const UPPER_ARC_FRAME_COUNT = 49;
-const ASSET_VERSION = '20260828-6';
+const LOWER_ARC_FRAME_COUNT = 49;
+const ASSET_VERSION = '20260828-7';
 
 const centerPointer = {
   id: 'CENTER',
@@ -26,7 +27,23 @@ const upperArcPointers = Array.from({ length: UPPER_ARC_FRAME_COUNT }, (_, index
   };
 });
 
-const imagePointers = [centerPointer, ...upperArcPointers];
+const lowerArcPointers = Array.from({ length: LOWER_ARC_FRAME_COUNT - 2 }, (_, index) => {
+  const sourceIndex = index + 1;
+  const progress = sourceIndex / (LOWER_ARC_FRAME_COUNT - 1);
+  const angle = Math.PI * (1 - progress);
+
+  return {
+    id: `L${String(sourceIndex + 1).padStart(2, '0')}`,
+    group: 'lower',
+    index: sourceIndex,
+    total: LOWER_ARC_FRAME_COUNT,
+    x: Math.cos(angle),
+    y: Math.sin(angle),
+    src: `./assets/cat-lower-frames/frame-${String(sourceIndex + 1).padStart(3, '0')}.webp?v=${ASSET_VERSION}`,
+  };
+});
+
+const imagePointers = [centerPointer, ...upperArcPointers, ...lowerArcPointers];
 const stage = document.getElementById('cat-stage');
 const cat = document.getElementById('cat-frame');
 const instruction = document.getElementById('instruction');
@@ -91,7 +108,9 @@ function updateFrame(pointer) {
 
   activePointer = pointer;
   cat.src = pointer.src;
-  sequenceName.textContent = pointer.group === 'upper' ? 'U' : 'P';
+  sequenceName.textContent = pointer.group === 'center'
+    ? 'P'
+    : pointer.group === 'upper' ? 'U' : 'L';
   frameNumber.textContent = pointer.id;
   frameTotal.textContent = String(pointer.total);
 
