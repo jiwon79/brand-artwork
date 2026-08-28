@@ -37,7 +37,14 @@ const styles = `
     stroke: var(--touch-pointer-outline);
     stroke-linejoin: round;
     stroke-width: 1.75;
+    transform-box: view-box;
+    transform-origin: 2px 2px;
+    transition: transform 90ms cubic-bezier(0.2, 0.8, 0.2, 1);
     vector-effect: non-scaling-stroke;
+  }
+
+  .touch-pointer-cursor--pressed .touch-pointer-cursor__shape {
+    transform: scale(0.88);
   }
 
   .touch-pointer-cursor--releasing .touch-pointer-cursor__glyph {
@@ -70,6 +77,10 @@ const styles = `
     .touch-pointer-cursor__glyph,
     .touch-pointer-cursor--releasing .touch-pointer-cursor__glyph {
       animation-duration: 1ms;
+    }
+
+    .touch-pointer-cursor__shape {
+      transition-duration: 1ms;
     }
   }
 `;
@@ -158,6 +169,10 @@ export function createTouchPointer(): TouchPointerController {
 
     removeCursor(event.pointerId, false);
     const element = createCursorElement(event.clientX, event.clientY);
+    element.classList.toggle(
+      'touch-pointer-cursor--pressed',
+      event.pressure > 0 || event.buttons > 0,
+    );
     document.body.appendChild(element);
     elements.add(element);
     cursors.set(event.pointerId, { element, releaseTimer: null });
@@ -167,12 +182,17 @@ export function createTouchPointer(): TouchPointerController {
     const cursor = cursors.get(event.pointerId);
     if (!cursor) return;
     positionCursor(cursor.element, event.clientX, event.clientY);
+    cursor.element.classList.toggle(
+      'touch-pointer-cursor--pressed',
+      event.pressure > 0 || event.buttons > 0,
+    );
   }
 
   function onPointerUp(event: PointerEvent): void {
     const cursor = cursors.get(event.pointerId);
     if (!cursor) return;
     positionCursor(cursor.element, event.clientX, event.clientY);
+    cursor.element.classList.remove('touch-pointer-cursor--pressed');
     removeCursor(event.pointerId, true);
   }
 

@@ -12,7 +12,11 @@ let syntheticTarget: Element = preview;
 let lastX = 0;
 let lastY = 0;
 
-function emitSyntheticTouch(type: 'pointerdown' | 'pointermove' | 'pointercancel'): void {
+function emitSyntheticTouch(
+  type: 'pointerdown' | 'pointermove' | 'pointercancel',
+  pressure = 0,
+  buttons = 0,
+): void {
   syntheticTarget.dispatchEvent(new PointerEvent(type, {
     bubbles: true,
     composed: true,
@@ -20,6 +24,8 @@ function emitSyntheticTouch(type: 'pointerdown' | 'pointermove' | 'pointercancel
     pointerType: 'touch',
     clientX: lastX,
     clientY: lastY,
+    pressure,
+    buttons,
   }));
 }
 
@@ -43,14 +49,26 @@ preview.addEventListener('pointermove', (event) => {
   }
 
   syntheticTarget = target;
+  const pressure = event.buttons > 0 ? 0.5 : 0;
   if (!syntheticPointerActive) {
     syntheticPointerActive = true;
-    emitSyntheticTouch('pointerdown');
+    emitSyntheticTouch('pointerdown', pressure, event.buttons);
     return;
   }
 
-  emitSyntheticTouch('pointermove');
+  emitSyntheticTouch('pointermove', pressure, event.buttons);
 });
+
+function forwardMousePress(event: PointerEvent): void {
+  if (event.pointerType !== 'mouse' || !syntheticPointerActive) return;
+
+  lastX = event.clientX;
+  lastY = event.clientY;
+  emitSyntheticTouch('pointermove', event.buttons > 0 ? 0.5 : 0, event.buttons);
+}
+
+preview.addEventListener('pointerdown', forwardMousePress);
+preview.addEventListener('pointerup', forwardMousePress);
 
 preview.addEventListener('pointerleave', stopSyntheticPointer);
 window.addEventListener('blur', stopSyntheticPointer);
