@@ -1,5 +1,5 @@
 const CIRCLE_FRAME_COUNT = 96;
-const ASSET_VERSION = '20260828-2';
+const ASSET_VERSION = '20260828-4';
 
 const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => {
   const angle = -(index / CIRCLE_FRAME_COUNT) * Math.PI * 2;
