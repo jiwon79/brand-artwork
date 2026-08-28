@@ -1,71 +1,32 @@
-const CIRCLE_FRAME_COUNT = 96;
-const ASSET_VERSION = '20260828-5';
+const UPPER_ARC_FRAME_COUNT = 49;
+const ASSET_VERSION = '20260828-6';
 
-const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => {
-  const angle = -(index / CIRCLE_FRAME_COUNT) * Math.PI * 2;
+const centerPointer = {
+  id: 'CENTER',
+  group: 'center',
+  index: 0,
+  total: 1,
+  x: 0,
+  y: 0,
+  src: `./assets/cat-center.webp?v=${ASSET_VERSION}`,
+};
+
+const upperArcPointers = Array.from({ length: UPPER_ARC_FRAME_COUNT }, (_, index) => {
+  const progress = index / (UPPER_ARC_FRAME_COUNT - 1);
+  const angle = -progress * Math.PI;
 
   return {
-    id: `C${String(index + 1).padStart(2, '0')}`,
-    group: 'circle',
+    id: `U${String(index + 1).padStart(2, '0')}`,
+    group: 'upper',
     index,
-    total: CIRCLE_FRAME_COUNT,
+    total: UPPER_ARC_FRAME_COUNT,
     x: Math.cos(angle),
     y: Math.sin(angle),
-    src: `./assets/cat-frames/frame-${String(index + 1).padStart(3, '0')}.webp?v=${ASSET_VERSION}`,
+    src: `./assets/cat-upper-frames/frame-${String(index + 1).padStart(3, '0')}.webp?v=${ASSET_VERSION}`,
   };
 });
 
-const generatedPointers = [
-  { id: 'CENTER', x: 0, y: 0, file: 'center.webp' },
-  ...Array.from({ length: 23 }, (_, index) => {
-    const step = index + 1;
-
-    return {
-      id: `R${String(step).padStart(2, '0')}`,
-      x: step / 24,
-      y: 0,
-      file: `right-${String(step).padStart(2, '0')}.webp`,
-    };
-  }),
-  ...Array.from({ length: 23 }, (_, index) => {
-    const step = index + 1;
-
-    return {
-      id: `L${String(step).padStart(2, '0')}`,
-      x: -step / 24,
-      y: 0,
-      file: `left-${String(step).padStart(2, '0')}.webp`,
-    };
-  }),
-  ...Array.from({ length: 15 }, (_, index) => {
-    const step = index + 1;
-
-    return {
-      id: `U${String(step).padStart(2, '0')}`,
-      x: 0,
-      y: -step / 16,
-      file: `up-${String(step).padStart(2, '0')}.webp`,
-    };
-  }),
-  ...Array.from({ length: 15 }, (_, index) => {
-    const step = index + 1;
-
-    return {
-      id: `D${String(step).padStart(2, '0')}`,
-      x: 0,
-      y: step / 16,
-      file: `down-${String(step).padStart(2, '0')}.webp`,
-    };
-  }),
-].map((pointer, index, pointers) => ({
-  ...pointer,
-  group: 'generated',
-  index,
-  total: pointers.length,
-  src: `./assets/cat-generated-cross/${pointer.file}?v=${ASSET_VERSION}`,
-}));
-
-const imagePointers = [...circlePointers, ...generatedPointers];
+const imagePointers = [centerPointer, ...upperArcPointers];
 const stage = document.getElementById('cat-stage');
 const cat = document.getElementById('cat-frame');
 const instruction = document.getElementById('instruction');
@@ -79,7 +40,7 @@ const decodedImages = new Map();
 
 let ready = false;
 let hasInteracted = false;
-let activePointer = generatedPointers[0];
+let activePointer = centerPointer;
 let debugEnabled = new URLSearchParams(window.location.search).has('debug');
 let pointerDirty = false;
 let targetPoint = { x: 0, y: 0 };
@@ -130,7 +91,7 @@ function updateFrame(pointer) {
 
   activePointer = pointer;
   cat.src = pointer.src;
-  sequenceName.textContent = pointer.group === 'circle' ? 'C' : 'P';
+  sequenceName.textContent = pointer.group === 'upper' ? 'U' : 'P';
   frameNumber.textContent = pointer.id;
   frameTotal.textContent = String(pointer.total);
 
