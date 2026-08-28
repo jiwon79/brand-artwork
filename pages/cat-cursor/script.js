@@ -1,6 +1,7 @@
 const UPPER_ARC_FRAME_COUNT = 49;
 const LOWER_ARC_FRAME_COUNT = 49;
-const ASSET_VERSION = '20260829-2';
+const RADIAL_FRAME_COUNT = 49;
+const ASSET_VERSION = '20260829-3';
 const RIGHT_REFERENCE_SRC = `./assets/source/cat-reference-right-9x16.png?v=${ASSET_VERSION}`;
 const LEFT_REFERENCE_SRC = `./assets/source/cat-reference-left-9x16.png?v=${ASSET_VERSION}`;
 
@@ -51,7 +52,39 @@ const lowerArcPointers = Array.from({ length: LOWER_ARC_FRAME_COUNT - 2 }, (_, i
   };
 });
 
-const imagePointers = [centerPointer, ...upperArcPointers, ...lowerArcPointers];
+function createRadialPointers(side, direction) {
+  return Array.from({ length: RADIAL_FRAME_COUNT - 2 }, (_, index) => {
+    const sourceIndex = index + 1;
+    const progress = sourceIndex / (RADIAL_FRAME_COUNT - 1);
+
+    return {
+      id: `${direction > 0 ? 'R' : 'L'}${String(sourceIndex + 1).padStart(2, '0')}`,
+      group: `center-${side}`,
+      index: sourceIndex,
+      total: RADIAL_FRAME_COUNT,
+      x: direction * progress,
+      y: 0,
+      src: `./assets/cat-center-${side}-frames/frame-${String(sourceIndex + 1).padStart(3, '0')}.webp?v=${ASSET_VERSION}`,
+    };
+  });
+}
+
+const centerRightPointers = createRadialPointers('right', 1);
+const centerLeftPointers = createRadialPointers('left', -1);
+const imagePointers = [
+  centerPointer,
+  ...centerRightPointers,
+  ...centerLeftPointers,
+  ...upperArcPointers,
+  ...lowerArcPointers,
+];
+const sequenceLabels = {
+  center: 'P',
+  'center-right': 'R',
+  'center-left': 'L',
+  upper: 'U',
+  lower: 'D',
+};
 const stage = document.getElementById('cat-stage');
 const cat = document.getElementById('cat-frame');
 const instruction = document.getElementById('instruction');
@@ -116,9 +149,7 @@ function updateFrame(pointer) {
 
   activePointer = pointer;
   cat.src = pointer.src;
-  sequenceName.textContent = pointer.group === 'center'
-    ? 'P'
-    : pointer.group === 'upper' ? 'U' : 'L';
+  sequenceName.textContent = sequenceLabels[pointer.group];
   frameNumber.textContent = pointer.id;
   frameTotal.textContent = String(pointer.total);
 
