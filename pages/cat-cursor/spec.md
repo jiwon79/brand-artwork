@@ -2,14 +2,13 @@
 
 ## Interaction
 
-- The original cat video is decomposed into a 96-frame circular WebP sequence at 24 fps.
-- Circular frames 89–95 are sampled from an LTX-2.5 bridge between the original frame 88 and frame 1. Frame 96 is an exact copy of frame 1, making the circular wrap pixel-identical.
-- Sixty-one keyframes fill the missing cross: one shared center, twenty-three intermediates on both horizontal paths, and seven intermediates on each vertical path.
-- The twenty-three center-to-right poses use every intermediate frame from the existing 25-frame LTX-2.5 first/last-frame video. The center and original right cardinal frame remain unchanged.
-- The twenty-three center-to-left poses use every intermediate frame from a 25-frame Wan2.2 14B first/last-frame video. The center and original left cardinal frame remain unchanged.
-- The two vertical axes use standalone generated poses. All cross-path intermediates use the original 400 × 736 frame size before runtime.
-- Generated intermediates are exposure- and white-balance-normalized from their border samples. Only background regions connected to the image border are composited onto pure white, preserving the cat's white fur edges.
-- Each of the 157 source images owns a normalized pointer position: 96 around the circle and 61 along the central cross.
+- GPT Image provides only the initial cat identity reference. Every visible pose is selected from Seedance-generated video frames.
+- The 96-frame circle combines a Seedance 2.5 right-to-top-to-left clip with a Seedance 2.0 first/last-frame left-to-bottom-to-right clip.
+- Seventy-seven keyframes fill the cross: one center, twenty-three intermediates on each horizontal arm, and fifteen intermediates on each vertical arm.
+- The horizontal path comes from one Seedance left-to-center-to-right clip. The center is extracted from that clip, while the four cardinal endpoints are owned by the circle so joins use one shared image.
+- The upward path uses the clean centered portion of a Seedance center-to-top clip. The downward path reuses the clean descent from the lower semicircle after three neutral center-adjacent points; the failed direct upward-moving take is not used.
+- All runtime frames are independently encoded at 405 × 720, preserving the generated 9:16 composition while reducing decode memory on tablets.
+- Each of the 173 source images owns a normalized pointer position: 96 around the circle and 77 along the central cross.
 - Pointer coordinates are normalized from the cat's face to the four edges of the stage. The image whose pointer has the smallest two-dimensional distance from the cursor is displayed.
 - Debug mode displays every image pointer and highlights the active one. Use the on-screen `Points` button, press `D`, or append `?debug=1` to the URL to enable it.
 - Debug pointer screen positions are recalculated from normalized coordinates when the viewport changes size.
@@ -20,6 +19,6 @@
 
 ## Loading
 
-- All 157 frames preload and decode before interaction begins.
+- All 173 frames preload and decode before interaction begins.
 - The poster remains hidden behind the loading state until the sequence is ready.
 - The page then swaps predecoded frame URLs without seeking a video element.

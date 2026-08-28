@@ -1,5 +1,5 @@
 const CIRCLE_FRAME_COUNT = 96;
-const ASSET_VERSION = '20260828-4';
+const ASSET_VERSION = '20260828-5';
 
 const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => {
   const angle = -(index / CIRCLE_FRAME_COUNT) * Math.PI * 2;
@@ -18,39 +18,45 @@ const circlePointers = Array.from({ length: CIRCLE_FRAME_COUNT }, (_, index) => 
 const generatedPointers = [
   { id: 'CENTER', x: 0, y: 0, file: 'center.webp' },
   ...Array.from({ length: 23 }, (_, index) => {
-    const frame = index + 2;
+    const step = index + 1;
 
     return {
-      id: `R-LTX${String(index + 1).padStart(2, '0')}`,
-      x: (index + 1) / 24,
+      id: `R${String(step).padStart(2, '0')}`,
+      x: step / 24,
       y: 0,
-      file: `right-ltx-${String(frame).padStart(3, '0')}.webp`,
+      file: `right-${String(step).padStart(2, '0')}.webp`,
     };
   }),
   ...Array.from({ length: 23 }, (_, index) => {
-    const frame = index + 2;
+    const step = index + 1;
 
     return {
-      id: `L-WAN${String(index + 1).padStart(2, '0')}`,
-      x: -(index + 1) / 24,
+      id: `L${String(step).padStart(2, '0')}`,
+      x: -step / 24,
       y: 0,
-      file: `left-wan-${String(frame).padStart(3, '0')}.webp`,
+      file: `left-${String(step).padStart(2, '0')}.webp`,
     };
   }),
-  { id: 'U12.5', x: 0, y: -0.125, file: 'up-12-5.webp' },
-  { id: 'U25', x: 0, y: -0.25, file: 'up-25.webp' },
-  { id: 'U37.5', x: 0, y: -0.375, file: 'up-37-5.webp' },
-  { id: 'U50', x: 0, y: -0.5, file: 'up-50.webp' },
-  { id: 'U62.5', x: 0, y: -0.625, file: 'up-62-5.webp' },
-  { id: 'U75', x: 0, y: -0.75, file: 'up-75.webp' },
-  { id: 'U87.5', x: 0, y: -0.875, file: 'up-87-5.webp' },
-  { id: 'D12.5', x: 0, y: 0.125, file: 'down-12-5.webp' },
-  { id: 'D25', x: 0, y: 0.25, file: 'down-25.webp' },
-  { id: 'D37.5', x: 0, y: 0.375, file: 'down-37-5.webp' },
-  { id: 'D50', x: 0, y: 0.5, file: 'down-50.webp' },
-  { id: 'D62.5', x: 0, y: 0.625, file: 'down-62-5.webp' },
-  { id: 'D75', x: 0, y: 0.75, file: 'down-75.webp' },
-  { id: 'D87.5', x: 0, y: 0.875, file: 'down-87-5.webp' },
+  ...Array.from({ length: 15 }, (_, index) => {
+    const step = index + 1;
+
+    return {
+      id: `U${String(step).padStart(2, '0')}`,
+      x: 0,
+      y: -step / 16,
+      file: `up-${String(step).padStart(2, '0')}.webp`,
+    };
+  }),
+  ...Array.from({ length: 15 }, (_, index) => {
+    const step = index + 1;
+
+    return {
+      id: `D${String(step).padStart(2, '0')}`,
+      x: 0,
+      y: step / 16,
+      file: `down-${String(step).padStart(2, '0')}.webp`,
+    };
+  }),
 ].map((pointer, index, pointers) => ({
   ...pointer,
   group: 'generated',
