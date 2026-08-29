@@ -26,7 +26,7 @@
 
 The reusable Comfy Cloud recipe, prompts, endpoint rules, luminance checks, and native-frame processor are documented in [`../../docs/artworks/cat-cursor/generation.md`](../../docs/artworks/cat-cursor/generation.md).
 
-- Generate the upper/lower semicircles and center-to-side paths separately with LTX 2.5 First/Last Frame at 576 × 1024, 4 seconds, and 24 fps.
+- Generate the upper/lower semicircles and center-to-side paths separately with LTX 2.5 First/Last Frame at 576 × 1024 and 24 fps. Semicircles use 4 seconds; horizontal paths use 2 seconds to avoid an unnecessary natural blink during a simple head turn.
 - Use 49 poses for each semicircle and 24 poses for each horizontal path.
 - Use uniquely named current endpoint uploads; do not select an older cloud asset with the same filename.
 - Keep prompt enhancement off and require a fixed pure-white background, torso, camera, crop, face scale, exposure, and anatomical markings.

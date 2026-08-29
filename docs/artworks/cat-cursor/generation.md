@@ -13,7 +13,7 @@
 Use the `video_ltx2_5_flf2v` workflow with LTX 2.5 First/Last Frame:
 
 - resolution: `576 × 1024`
-- duration: `4 seconds`
+- duration: `4 seconds` for semicircles; `2 seconds` for horizontal paths
 - frame rate: `24 fps`
 - prompt enhancement: off
 - output: 97 native frames
@@ -35,13 +35,13 @@ Use the provided exact screen-left-facing first frame and exact screen-right-fac
 ### Center-to-right prompt
 
 ```text
-Use the provided exact forward-facing CENTER first frame and exact screen-right-facing last frame as fixed anchors. Create one smooth continuous STRAIGHT HORIZONTAL head-and-eye tracking motion in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly RIGHT. The gaze and head must move only horizontally CENTER → RIGHT at a steady speed, with no upward or downward arc, no pause, no reversal, and no overshoot. Only the head, eyes, and ears move as anatomically necessary. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Do not mirror or swap anatomical left/right markings. Preserve both endpoint compositions exactly. Keep the entire face, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, or lighting change.
+Throughout this short two-second motion, the cat holds a bright, alert, wide-eyed attentive expression identical to the endpoint photographs. Both eye openings stay consistently round and equally open, with both irises continuously clear and unobstructed. Use the provided exact forward-facing CENTER first frame and exact screen-right-facing last frame as fixed anchors. Create one smooth continuous STRAIGHT HORIZONTAL gaze transition in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly RIGHT. The head orientation and pupils move continuously CENTER → RIGHT at a steady speed. Preserve the same relaxed brow, eyelid height, eye aperture, mouth, and facial expression throughout. The ears remain naturally attached to the rotating head without independent movement. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Preserve both endpoint compositions exactly. Keep the entire face, both bright open eyes, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. The result is one clean studio reference turn with constant alert eye openness and only a horizontal change in gaze direction.
 ```
 
 ### Center-to-left prompt
 
 ```text
-Use the provided exact forward-facing CENTER first frame and exact screen-left-facing last frame as fixed anchors. Create one smooth continuous STRAIGHT HORIZONTAL head-and-eye tracking motion in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly LEFT. The gaze and head must move only horizontally CENTER → LEFT at a steady speed, with no upward or downward arc, no pause, no reversal, and no overshoot. Only the head, eyes, and ears move as anatomically necessary. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Do not mirror or swap anatomical left/right markings. Preserve both endpoint compositions exactly. Keep the entire face, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, or lighting change.
+Throughout this short two-second motion, the cat holds a bright, alert, wide-eyed attentive expression identical to the endpoint photographs. Both eye openings stay consistently round and equally open, with both irises continuously clear and unobstructed. Use the provided exact forward-facing CENTER first frame and exact screen-left-facing last frame as fixed anchors. Create one smooth continuous STRAIGHT HORIZONTAL gaze transition in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly LEFT. The head orientation and pupils move continuously CENTER → LEFT at a steady speed. Preserve the same relaxed brow, eyelid height, eye aperture, mouth, and facial expression throughout. The ears remain naturally attached to the rotating head without independent movement. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Preserve both endpoint compositions exactly. Keep the entire face, both bright open eyes, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. The result is one clean studio reference turn with constant alert eye openness and only a horizontal change in gaze direction.
 ```
 
 ## Native-frame processing
@@ -65,16 +65,16 @@ The horizontal paths use 24 poses:
 
 ```sh
 pnpm process:cat-cursor-ltx \
-  --video .qa/cat-cursor-ltx-horizontal-v2/right/video/ltx25_cat_center_right_v2_00001_.mp4 \
+  --video .qa/cat-cursor-ltx-horizontal-v4/right/video/ltx25_cat_center_right_v4_short_alert_00001_.mp4 \
   --output pages/cat-cursor/assets/cat-center-right-frames \
   --poses 24 \
-  --start-offset 4 \
+  --start-offset 3 \
   --end-offset 4
 
 pnpm process:cat-cursor-ltx \
-  --video .qa/cat-cursor-ltx-horizontal-v2/left/video/ltx25_cat_center_left_v2_00001_.mp4 \
+  --video .qa/cat-cursor-ltx-horizontal-v4/left/video/ltx25_cat_center_left_v4_short_alert_00001_.mp4 \
   --output pages/cat-cursor/assets/cat-center-left-frames \
   --poses 24 \
-  --start-offset 3 \
-  --end-offset 5
+  --start-offset 4 \
+  --end-offset 4
 ```
