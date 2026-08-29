@@ -3,7 +3,9 @@ const LOWER_ARC_FRAME_COUNT = 49;
 const RADIAL_FRAME_COUNT = 24;
 const POINTER_PADDING_RATIO = 0.15;
 const FACE_CENTER_Y_RATIO = 0.47;
-const ASSET_VERSION = '20260829-11';
+const TRANSITION_FRAME_RATE = 24;
+const TRANSITION_FRAME_INTERVAL = 1000 / TRANSITION_FRAME_RATE;
+const ASSET_VERSION = '20260829-12';
 const RIGHT_REFERENCE_SRC = `./assets/source/cat-reference-right-9x16.png?v=${ASSET_VERSION}`;
 const LEFT_REFERENCE_SRC = `./assets/source/cat-reference-left-9x16.png?v=${ASSET_VERSION}`;
 
@@ -85,6 +87,31 @@ const imagePointers = [
   ...upperArcPointers,
   ...lowerArcPointers,
 ];
+
+const rightPointer = upperArcPointers[0];
+const topPointer = upperArcPointers[(UPPER_ARC_FRAME_COUNT - 1) / 2];
+const leftPointer = upperArcPointers[UPPER_ARC_FRAME_COUNT - 1];
+const bottomPointer = lowerArcPointers.find((pointer) => (
+  pointer.index === (LOWER_ARC_FRAME_COUNT - 1) / 2
+));
+const pointerNeighbors = new Map(imagePointers.map((pointer) => [pointer, new Set()]));
+
+function connectPointerPath(path) {
+  for (let index = 1; index < path.length; index += 1) {
+    const previous = path[index - 1];
+    const current = path[index];
+    pointerNeighbors.get(previous).add(current);
+    pointerNeighbors.get(current).add(previous);
+  }
+}
+
+connectPointerPath(upperArcPointers);
+connectPointerPath([leftPointer, ...lowerArcPointers, rightPointer]);
+connectPointerPath([centerPointer, ...centerRightPointers, rightPointer]);
+connectPointerPath([centerPointer, ...centerLeftPointers, leftPointer]);
+connectPointerPath([centerPointer, ...centerTopPointers, topPointer]);
+connectPointerPath([centerPointer, ...centerBottomPointers, bottomPointer]);
+
 const sequenceLabels = {
   center: 'P',
   'center-right': 'R',
@@ -108,9 +135,11 @@ const decodedImages = new Map();
 let ready = false;
 let hasInteracted = false;
 let activePointer = centerPointer;
+let targetPointer = centerPointer;
 let debugEnabled = new URLSearchParams(window.location.search).has('debug');
 let pointerDirty = false;
 let targetPoint = { x: 0, y: 0 };
+let lastTransitionTime = 0;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -157,6 +186,32 @@ function nearestImagePointer(point) {
       ? { pointer, distanceSquared }
       : nearest;
   }, { pointer: imagePointers[0], distanceSquared: Number.POSITIVE_INFINITY }).pointer;
+}
+
+function nextPointerToward(start, target) {
+  if (start === target) return start;
+
+  const queue = [start];
+  const previous = new Map([[start, null]]);
+
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+    const current = queue[queueIndex];
+
+    for (const neighbor of pointerNeighbors.get(current)) {
+      if (previous.has(neighbor)) continue;
+      previous.set(neighbor, current);
+
+      if (neighbor === target) {
+        let next = target;
+        while (previous.get(next) !== start) next = previous.get(next);
+        return next;
+      }
+
+      queue.push(neighbor);
+    }
+  }
+
+  return target;
 }
 
 function updateFrame(pointer) {
@@ -262,10 +317,20 @@ async function preloadFrames() {
   stage.classList.add('is-ready');
 }
 
-function render() {
+function render(timestamp) {
   if (ready && pointerDirty) {
     pointerDirty = false;
-    updateFrame(nearestImagePointer(targetPoint));
+    targetPointer = nearestImagePointer(targetPoint);
+  }
+
+  if (
+    ready
+    && activePointer !== targetPointer
+    && timestamp - lastTransitionTime >= TRANSITION_FRAME_INTERVAL
+  ) {
+    const elapsed = timestamp - lastTransitionTime;
+    lastTransitionTime = timestamp - (elapsed % TRANSITION_FRAME_INTERVAL);
+    updateFrame(nextPointerToward(activePointer, targetPointer));
   }
 
   requestAnimationFrame(render);
