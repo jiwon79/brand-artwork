@@ -53,9 +53,12 @@ function selectedIndices(sourceCount, poseCount) {
   ));
 }
 
-function endpointOffset(poseIndex, poseCount, rampFrames, startOffset, endOffset) {
+function endpointOffset(poseIndex, poseCount, rampFrames, startHoldFrames, startOffset, endOffset) {
   if (poseIndex <= rampFrames + 1) {
-    return startOffset * (rampFrames + 2 - poseIndex) / rampFrames;
+    const step = poseIndex - 2;
+    if (step < startHoldFrames) return startOffset;
+
+    return startOffset * (rampFrames - step) / (rampFrames - startHoldFrames + 1);
   }
 
   if (poseIndex >= poseCount - rampFrames) {
@@ -73,6 +76,7 @@ function usage() {
     'Options:',
     '  --poses <count>          Total poses including canonical endpoints (default: 49)',
     '  --start-offset <Y>       Luma correction beside the first endpoint (default: 0)',
+    '  --start-hold <count>      First corrected frames kept at full start offset (default: 1)',
     '  --end-offset <Y>         Luma correction beside the last endpoint (default: 0)',
     '  --ramp-frames <count>    Interior frames used for each endpoint ramp (default: 7)',
     '  --quality <0-100>        WebP quality (default: 82)',
@@ -89,6 +93,7 @@ const videoPath = resolve(options.video);
 const outputPath = resolve(options.output);
 const poseCount = requireNumber(options.poses, 'poses', 49);
 const startOffset = requireNumber(options['start-offset'], 'start-offset', 0);
+const startHoldFrames = requireNumber(options['start-hold'], 'start-hold', 1);
 const endOffset = requireNumber(options['end-offset'], 'end-offset', 0);
 const rampFrames = requireNumber(options['ramp-frames'], 'ramp-frames', 7);
 const quality = requireNumber(options.quality, 'quality', 82);
@@ -96,6 +101,9 @@ const quality = requireNumber(options.quality, 'quality', 82);
 if (!Number.isInteger(poseCount) || poseCount < 3) throw new Error('poses must be an integer of at least 3');
 if (!Number.isInteger(rampFrames) || rampFrames < 1 || rampFrames * 2 >= poseCount - 1) {
   throw new Error('ramp-frames must leave at least one uncorrected interior pose');
+}
+if (!Number.isInteger(startHoldFrames) || startHoldFrames < 1 || startHoldFrames > rampFrames) {
+  throw new Error('start-hold must be an integer between 1 and ramp-frames');
 }
 
 const sourceCount = nativeFrameCount(videoPath);
@@ -128,6 +136,7 @@ try {
       poseIndex,
       poseCount,
       rampFrames,
+      startHoldFrames,
       startOffset,
       endOffset,
     ).toFixed(4);
@@ -156,6 +165,7 @@ try {
     interiorFrames: poseCount - 2,
     selectedSourceFrames: indices.map((index) => index + 1),
     startOffset,
+    startHoldFrames,
     endOffset,
     rampFrames,
     output: outputPath,

@@ -68,7 +68,8 @@ pnpm process:cat-cursor-ltx \
   --video .qa/cat-cursor-ltx-horizontal-v4/right/video/ltx25_cat_center_right_v4_short_alert_00001_.mp4 \
   --output pages/cat-cursor/assets/cat-center-right-frames \
   --poses 24 \
-  --start-offset 3 \
+  --start-offset 4 \
+  --start-hold 3 \
   --end-offset 4
 
 pnpm process:cat-cursor-ltx \
@@ -76,5 +77,6 @@ pnpm process:cat-cursor-ltx \
   --output pages/cat-cursor/assets/cat-center-left-frames \
   --poses 24 \
   --start-offset 4 \
+  --start-hold 3 \
   --end-offset 4
 ```
