@@ -1,7 +1,7 @@
 const UPPER_ARC_FRAME_COUNT = 49;
 const LOWER_ARC_FRAME_COUNT = 49;
 const RADIAL_FRAME_COUNT = 24;
-const ASSET_VERSION = '20260829-7';
+const ASSET_VERSION = '20260829-8';
 const RIGHT_REFERENCE_SRC = `./assets/source/cat-reference-right-9x16.png?v=${ASSET_VERSION}`;
 const LEFT_REFERENCE_SRC = `./assets/source/cat-reference-left-9x16.png?v=${ASSET_VERSION}`;
 
@@ -52,30 +52,34 @@ const lowerArcPointers = Array.from({ length: LOWER_ARC_FRAME_COUNT - 2 }, (_, i
   };
 });
 
-function createRadialPointers(side, direction) {
+function createRadialPointers(side, xDirection, yDirection, idPrefix) {
   return Array.from({ length: RADIAL_FRAME_COUNT - 2 }, (_, index) => {
     const sourceIndex = index + 1;
     const progress = sourceIndex / (RADIAL_FRAME_COUNT - 1);
 
     return {
-      id: `H${direction > 0 ? 'R' : 'L'}${String(sourceIndex + 1).padStart(2, '0')}`,
+      id: `${idPrefix}${String(sourceIndex + 1).padStart(2, '0')}`,
       group: `center-${side}`,
       index: sourceIndex,
       total: RADIAL_FRAME_COUNT,
-      x: direction * progress,
-      y: 0,
+      x: xDirection * progress,
+      y: yDirection * progress,
       src: `./assets/cat-center-${side}-frames/frame-${String(sourceIndex + 1).padStart(3, '0')}.webp?v=${ASSET_VERSION}`,
     };
   });
 }
 
-const centerRightPointers = createRadialPointers('right', 1);
-const centerLeftPointers = createRadialPointers('left', -1);
+const centerRightPointers = createRadialPointers('right', 1, 0, 'HR');
+const centerLeftPointers = createRadialPointers('left', -1, 0, 'HL');
+const centerTopPointers = createRadialPointers('top', 0, -1, 'VT');
+const centerBottomPointers = createRadialPointers('bottom', 0, 1, 'VB');
 
 const imagePointers = [
   centerPointer,
   ...centerRightPointers,
   ...centerLeftPointers,
+  ...centerTopPointers,
+  ...centerBottomPointers,
   ...upperArcPointers,
   ...lowerArcPointers,
 ];
@@ -83,6 +87,8 @@ const sequenceLabels = {
   center: 'P',
   'center-right': 'R',
   'center-left': 'L',
+  'center-top': 'T',
+  'center-bottom': 'B',
   upper: 'U',
   lower: 'D',
 };

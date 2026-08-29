@@ -6,6 +6,7 @@
 - `left` is generated as an identity-preserving edit of `center`, with `right` used only as a three-dimensional identity and marking reference.
 - Never create `left` by horizontally flipping `right`. A flip swaps the cat's asymmetric facial spots and stripes.
 - Every runtime path replaces its generated first and last frames with the canonical endpoint files.
+- The vertical paths use the exact native midpoint frames from the accepted upper and lower circle videos as their `top` and `bottom` last-frame inputs. Runtime still lets the circle pointers own those endpoints.
 - Give every uploaded canonical image a unique versioned filename. Comfy Cloud can retain an older asset under the same visible name, which makes a valid generation start from the wrong crop or scale.
 
 ## Comfy Cloud settings
@@ -13,10 +14,10 @@
 Use the `video_ltx2_5_flf2v` workflow with LTX 2.5 First/Last Frame:
 
 - resolution: `576 × 1024`
-- duration: `4 seconds` for semicircles; `2 seconds` for horizontal paths
+- duration: `4 seconds` for semicircles; `2 seconds` for horizontal and vertical paths
 - frame rate: `24 fps`
 - prompt enhancement: off
-- output: 97 native frames
+- output: 97 native frames for 4-second paths; 49 native frames for 2-second paths
 - background: flat pure white `#FFFFFF`
 - camera, torso, crop, face scale, exposure, and anatomical left/right markings remain fixed
 
@@ -42,6 +43,18 @@ Throughout this short two-second motion, the cat holds a bright, alert, wide-eye
 
 ```text
 Throughout this short two-second motion, the cat holds a bright, alert, wide-eyed attentive expression identical to the endpoint photographs. Both eye openings stay consistently round and equally open, with both irises continuously clear and unobstructed. Use the provided exact forward-facing CENTER first frame and exact screen-left-facing last frame as fixed anchors. Create one smooth continuous STRAIGHT HORIZONTAL gaze transition in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly LEFT. The head orientation and pupils move continuously CENTER → LEFT at a steady speed. Preserve the same relaxed brow, eyelid height, eye aperture, mouth, and facial expression throughout. The ears remain naturally attached to the rotating head without independent movement. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Preserve both endpoint compositions exactly. Keep the entire face, both bright open eyes, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. The result is one clean studio reference turn with constant alert eye openness and only a horizontal change in gaze direction.
+```
+
+### Center-to-top prompt
+
+```text
+Throughout this short two-second motion, the cat stays awake, alert, and attentive with both eyes continuously open; there is no blink, squint, eyelid droop, or eye closure at any intermediate frame. Use the provided exact forward-facing CENTER first frame and exact upward-looking TOP last frame as fixed anchors. Create one smooth continuous STRAIGHT VERTICAL gaze transition in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly UP toward the TOP EDGE. The head orientation, muzzle, and pupils move continuously CENTER → TOP at a steady speed, with no sideways detour, pause, reversal, or overshoot. Preserve the same relaxed brow, eye aperture, mouth, and facial expression as far as anatomically possible while looking upward. The ears remain naturally attached to the rotating head without independent movement. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Preserve both endpoint compositions exactly. Keep the entire face, both open eyes, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, lighting change, or blinking.
+```
+
+### Center-to-bottom prompt
+
+```text
+Throughout this short two-second motion, the cat stays awake and attentive; it never blinks or deliberately closes its eyes. Both eyes remain continuously visible and open as far as anatomically possible while the gaze turns downward, with any eyelid lowering caused only by the final downward head angle. Use the provided exact forward-facing CENTER first frame and exact downward-looking BOTTOM last frame as fixed anchors. Create one smooth continuous STRAIGHT VERTICAL gaze transition in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly DOWN toward the BOTTOM EDGE. The head orientation, muzzle, and pupils move continuously CENTER → BOTTOM at a steady speed, with no sideways detour, pause, reversal, or overshoot. Preserve the same relaxed brow, mouth, and facial expression while the head gently tilts downward; do not add a blink, sleepy expression, or squint. The ears remain naturally attached to the rotating head without independent movement. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Preserve both endpoint compositions exactly. Keep the entire face, both eyes, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame; do not bury the face into the chest. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, lighting change, or blink.
 ```
 
 ## Native-frame processing
@@ -77,6 +90,26 @@ pnpm process:cat-cursor-ltx \
   --output pages/cat-cursor/assets/cat-center-left-frames \
   --poses 24 \
   --start-offset 4 \
+  --start-hold 3 \
+  --end-offset 4
+```
+
+The vertical paths also use 24 poses. Their endpoint inputs are native frame 49 from the corresponding accepted 97-frame circle video:
+
+```sh
+pnpm process:cat-cursor-ltx \
+  --video .qa/cat-cursor-ltx-vertical-v1/top/video/video/ltx25_cat_center_top_v1_alert_00001_.mp4 \
+  --output pages/cat-cursor/assets/cat-center-top-frames \
+  --poses 24 \
+  --start-offset 4 \
+  --start-hold 3 \
+  --end-offset 3
+
+pnpm process:cat-cursor-ltx \
+  --video .qa/cat-cursor-ltx-vertical-v1/bottom/video/video/ltx25_cat_center_bottom_v1_attentive_00001_.mp4 \
+  --output pages/cat-cursor/assets/cat-center-bottom-frames \
+  --poses 24 \
+  --start-offset 5 \
   --start-hold 3 \
   --end-offset 4
 ```
