@@ -5,12 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#ffffff">
   <title>Cat Cursor</title>
-  <link rel="stylesheet" href="style.css?v=20260829-14">
+  <link rel="stylesheet" href="style.css?v=20260829-16">
 </head>
 <body>
   <main id="cat-stage" class="cat-stage" aria-label="커서를 따라 시선을 움직이는 고양이">
-    <div class="brand-mark" aria-hidden="true">EYES ON YOU</div>
-
     <div class="cat-wrap">
       <img
         id="cat-frame"
@@ -23,21 +21,9 @@
     </div>
 
     <div id="pointer-debug" class="pointer-debug" aria-hidden="true"></div>
-    <button id="debug-toggle" class="debug-toggle" type="button" aria-pressed="false">
-      Points off
-    </button>
-
-    <div id="instruction" class="instruction" aria-live="polite">프레임 준비 중 0%</div>
-
-    <div class="frame-readout" aria-hidden="true">
-      <span id="sequence-name">X</span>
-      <span id="frame-number">CENTER</span>
-      <span>/</span>
-      <span id="frame-total">1</span>
-    </div>
   </main>
 
   <script type="module" src="touch-pointer.js?v=20260829-13"></script>
-  <script type="module" src="script.js?v=20260829-15"></script>
+  <script type="module" src="script.js?v=20260829-16"></script>
 </body>
 </html>

@@ -1,3 +1,5 @@
+import GUI from './vendor/lil-gui.esm.min.js';
+
 const UPPER_ARC_FRAME_COUNT = 49;
 const LOWER_ARC_FRAME_COUNT = 49;
 const RADIAL_FRAME_COUNT = 24;
@@ -114,31 +116,17 @@ connectPointerPath([centerPointer, ...centerLeftPointers, leftPointer]);
 connectPointerPath([centerPointer, ...centerTopPointers, topPointer]);
 connectPointerPath([centerPointer, ...centerBottomPointers, bottomPointer]);
 
-const sequenceLabels = {
-  center: 'P',
-  'center-right': 'R',
-  'center-left': 'L',
-  'center-top': 'T',
-  'center-bottom': 'B',
-  upper: 'U',
-  lower: 'D',
-};
 const stage = document.getElementById('cat-stage');
 const cat = document.getElementById('cat-frame');
-const instruction = document.getElementById('instruction');
-const sequenceName = document.getElementById('sequence-name');
-const frameNumber = document.getElementById('frame-number');
-const frameTotal = document.getElementById('frame-total');
 const debugLayer = document.getElementById('pointer-debug');
-const debugToggle = document.getElementById('debug-toggle');
 const debugMarkers = new Map();
 const decodedImages = new Map();
+const guiState = { debugPoints: false };
+const gui = new GUI({ title: 'Cat Cursor' });
 
 let ready = false;
-let hasInteracted = false;
 let activePointer = centerPointer;
 let targetPointer = centerPointer;
-let debugEnabled = new URLSearchParams(window.location.search).has('debug');
 let pointerDirty = false;
 let targetPoint = { x: 0, y: 0 };
 let lastRenderTime = 0;
@@ -228,9 +216,6 @@ function updateFrame(pointer) {
 
   activePointer = pointer;
   cat.src = pointer.src;
-  sequenceName.textContent = sequenceLabels[pointer.group];
-  frameNumber.textContent = pointer.id;
-  frameTotal.textContent = String(pointer.total);
 
   for (const [candidate, marker] of debugMarkers) {
     marker.classList.toggle('is-active', candidate === pointer);
@@ -242,11 +227,6 @@ function trackPointer(event) {
 
   targetPoint = pointerPosition(event);
   pointerDirty = true;
-
-  if (!hasInteracted) {
-    hasInteracted = true;
-    stage.classList.add('has-interacted');
-  }
 }
 
 function screenPosition(pointer) {
@@ -284,16 +264,15 @@ function createDebugMarkers() {
 }
 
 function setDebugMode(enabled) {
-  debugEnabled = enabled;
   stage.classList.toggle('is-debug', enabled);
-  debugToggle.setAttribute('aria-pressed', String(enabled));
-  debugToggle.textContent = enabled ? 'Points on' : 'Points off';
   if (enabled) layoutDebugMarkers();
 }
 
-async function preloadFrames() {
-  let loaded = 0;
+gui.add(guiState, 'debugPoints')
+  .name('Debug points')
+  .onChange(setDebugMode);
 
+async function preloadFrames() {
   await Promise.all(
     imagePointers.map(({ src }) => new Promise((resolve) => {
       const image = new Image();
@@ -307,8 +286,6 @@ async function preloadFrames() {
         }
 
         decodedImages.set(src, image);
-        loaded += 1;
-        instruction.textContent = `프레임 준비 중 ${Math.round((loaded / imagePointers.length) * 100)}%`;
         resolve();
       };
 
@@ -321,8 +298,7 @@ async function preloadFrames() {
   ready = true;
   updateFrame(activePointer);
   createDebugMarkers();
-  setDebugMode(debugEnabled);
-  instruction.textContent = '커서를 움직여 보세요';
+  setDebugMode(guiState.debugPoints);
   stage.classList.add('is-ready');
 }
 
@@ -359,12 +335,7 @@ function render(timestamp) {
 
 stage.addEventListener('pointermove', trackPointer);
 stage.addEventListener('pointerdown', trackPointer);
-debugToggle.addEventListener('pointerdown', (event) => event.stopPropagation());
-debugToggle.addEventListener('click', () => setDebugMode(!debugEnabled));
 window.addEventListener('resize', layoutDebugMarkers);
-window.addEventListener('keydown', (event) => {
-  if (event.key.toLowerCase() === 'd') setDebugMode(!debugEnabled);
-});
 
 void preloadFrames();
 requestAnimationFrame(render);
