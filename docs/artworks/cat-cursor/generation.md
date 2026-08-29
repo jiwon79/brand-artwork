@@ -32,6 +32,18 @@ Use the provided exact screen-right-facing first frame and exact screen-left-fac
 Use the provided exact screen-left-facing first frame and exact screen-right-facing last frame as fixed anchors. Create one smooth continuous LOWER semicircular head-and-eye tracking motion in SCREEN coordinates: 0% look clearly LEFT, 50% look clearly DOWN toward the BOTTOM EDGE with the muzzle and pupils lowered and the head gently tilted downward, 100% look clearly RIGHT. The gaze must travel only along the lower arc LEFT → BOTTOM → RIGHT. At no point should the cat look straight forward at the camera as the main midpoint pose, and it must never look upward. The head and pupils move continuously at a steady speed without pause, reversal, or shortcut. Keep both eyes naturally visible during the downward pose; do not bury the face into the chest. Only the head, eyes, and ears move as anatomically necessary. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Do not mirror or swap the cat's anatomical left/right markings. Preserve both endpoint compositions exactly. Keep the entire face, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, or lighting change.
 ```
 
+### Center-to-right prompt
+
+```text
+Use the provided exact forward-facing CENTER first frame and exact screen-right-facing last frame as fixed anchors. Create one smooth continuous STRAIGHT HORIZONTAL head-and-eye tracking motion in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly RIGHT. The gaze and head must move only horizontally CENTER → RIGHT at a steady speed, with no upward or downward arc, no pause, no reversal, and no overshoot. Only the head, eyes, and ears move as anatomically necessary. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Do not mirror or swap anatomical left/right markings. Preserve both endpoint compositions exactly. Keep the entire face, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, or lighting change.
+```
+
+### Center-to-left prompt
+
+```text
+Use the provided exact forward-facing CENTER first frame and exact screen-left-facing last frame as fixed anchors. Create one smooth continuous STRAIGHT HORIZONTAL head-and-eye tracking motion in SCREEN coordinates: 0% look straight ahead at CENTER, 100% look clearly LEFT. The gaze and head must move only horizontally CENTER → LEFT at a steady speed, with no upward or downward arc, no pause, no reversal, and no overshoot. Only the head, eyes, and ears move as anatomically necessary. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Do not mirror or swap anatomical left/right markings. Preserve both endpoint compositions exactly. Keep the entire face, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, or lighting change.
+```
+
 ## Native-frame processing
 
 The checked-in processor selects evenly spaced native source frames without interpolation. It excludes the two generated endpoint frames from runtime output because canonical PNG files own those pointers.
@@ -48,3 +60,21 @@ pnpm process:cat-cursor-ltx \
 Measure background, face, and torso luminance before choosing the endpoint offsets. The processor applies the offset only near each seam, tapers it over seven interior poses, and preserves chroma. It also raises the high-luminance range by at most two Y levels so generated white backgrounds match the canonical PNG files.
 
 The same command is reusable for another LTX path: change `--video`, `--output`, and `--poses`. The script calculates evenly distributed native source indices rather than using FFmpeg interpolation, optical flow, or blended frames.
+
+The horizontal paths use 24 poses:
+
+```sh
+pnpm process:cat-cursor-ltx \
+  --video .qa/cat-cursor-ltx-horizontal-v2/right/video/ltx25_cat_center_right_v2_00001_.mp4 \
+  --output pages/cat-cursor/assets/cat-center-right-frames \
+  --poses 24 \
+  --start-offset 4 \
+  --end-offset 4
+
+pnpm process:cat-cursor-ltx \
+  --video .qa/cat-cursor-ltx-horizontal-v2/left/video/ltx25_cat_center_left_v2_00001_.mp4 \
+  --output pages/cat-cursor/assets/cat-center-left-frames \
+  --poses 24 \
+  --start-offset 3 \
+  --end-offset 5
+```
