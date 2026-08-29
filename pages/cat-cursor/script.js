@@ -1,7 +1,10 @@
 const UPPER_ARC_FRAME_COUNT = 49;
 const LOWER_ARC_FRAME_COUNT = 49;
 const RADIAL_FRAME_COUNT = 24;
-const ASSET_VERSION = '20260829-8';
+const POINTER_PADDING_RATIO = 0.05;
+const POINTER_PADDING_MIN = 24;
+const POINTER_PADDING_MAX = 48;
+const ASSET_VERSION = '20260829-9';
 const RIGHT_REFERENCE_SRC = `./assets/source/cat-reference-right-9x16.png?v=${ASSET_VERSION}`;
 const LEFT_REFERENCE_SRC = `./assets/source/cat-reference-left-9x16.png?v=${ASSET_VERSION}`;
 
@@ -119,22 +122,31 @@ function normalizedOffset(delta, negativeExtent, positiveExtent) {
   return clamp(delta / Math.max(extent, 1), -1, 1);
 }
 
+function pointerPadding(stageBounds) {
+  return clamp(
+    Math.min(stageBounds.width, stageBounds.height) * POINTER_PADDING_RATIO,
+    POINTER_PADDING_MIN,
+    POINTER_PADDING_MAX,
+  );
+}
+
 function pointerPosition(event) {
   const stageBounds = stage.getBoundingClientRect();
   const catBounds = cat.getBoundingClientRect();
   const faceX = catBounds.left + catBounds.width * 0.5;
   const faceY = catBounds.top + catBounds.height * 0.32;
+  const padding = pointerPadding(stageBounds);
 
   return {
     x: normalizedOffset(
       event.clientX - faceX,
-      faceX - stageBounds.left,
-      stageBounds.right - faceX,
+      faceX - stageBounds.left - padding,
+      stageBounds.right - faceX - padding,
     ),
     y: normalizedOffset(
       event.clientY - faceY,
-      faceY - stageBounds.top,
-      stageBounds.bottom - faceY,
+      faceY - stageBounds.top - padding,
+      stageBounds.bottom - faceY - padding,
     ),
   };
 }
@@ -182,8 +194,13 @@ function screenPosition(pointer) {
   const catBounds = cat.getBoundingClientRect();
   const faceX = catBounds.left + catBounds.width * 0.5;
   const faceY = catBounds.top + catBounds.height * 0.32;
-  const xExtent = pointer.x < 0 ? faceX - stageBounds.left : stageBounds.right - faceX;
-  const yExtent = pointer.y < 0 ? faceY - stageBounds.top : stageBounds.bottom - faceY;
+  const padding = pointerPadding(stageBounds);
+  const xExtent = pointer.x < 0
+    ? Math.max(faceX - stageBounds.left - padding, 1)
+    : Math.max(stageBounds.right - faceX - padding, 1);
+  const yExtent = pointer.y < 0
+    ? Math.max(faceY - stageBounds.top - padding, 1)
+    : Math.max(stageBounds.bottom - faceY - padding, 1);
 
   return {
     x: faceX - stageBounds.left + pointer.x * xExtent,
