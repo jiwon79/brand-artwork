@@ -11,7 +11,7 @@
 - Interior frames are encoded at 405 × 720. Their high-luminance range is normalized, and seven poses near each endpoint receive a short direction-specific luminance ramp so exposure converges at the seam.
 - Each visible pose owns a normalized pointer position: one center pointer, 49 upper-arc pointers, 47 lower-arc intermediates, and 22 intermediates on each of four center paths. Shared center and cardinal endpoints appear only once, for 185 pointer-owned images in total.
 - Pointer coordinates use a square field centered on the cat's face. Its diameter is 70% of the viewport's short side, leaving 15% padding on either side. The pointer nearest the cursor becomes the target pose.
-- Adjacent poses on each semicircle and center path form a connected graph with shared center and cardinal endpoints. The displayed pose traverses the shortest connected route from its current node to the target node at 24 fps instead of jumping directly across the graph.
+- Adjacent poses on each semicircle and center path form a connected graph with shared center and cardinal endpoints. The displayed pose traverses the shortest connected route from its current node to the target node at 48 fps instead of jumping directly across the graph.
 - Touch input displays the shared Figma-style pointer from `common/touch-pointer.ts`.
 - Debug mode displays every image pointer and highlights the active one. Use the on-screen `Points` button, press `D`, or append `?debug=1` to the URL.
 - Debug pointer positions are recalculated when the viewport changes size.
