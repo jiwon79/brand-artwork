@@ -2,7 +2,8 @@ const UPPER_ARC_FRAME_COUNT = 49;
 const LOWER_ARC_FRAME_COUNT = 49;
 const RADIAL_FRAME_COUNT = 24;
 const POINTER_PADDING_RATIO = 0.15;
-const ASSET_VERSION = '20260829-10';
+const FACE_CENTER_Y_RATIO = 0.47;
+const ASSET_VERSION = '20260829-11';
 const RIGHT_REFERENCE_SRC = `./assets/source/cat-reference-right-9x16.png?v=${ASSET_VERSION}`;
 const LEFT_REFERENCE_SRC = `./assets/source/cat-reference-left-9x16.png?v=${ASSET_VERSION}`;
 
@@ -129,7 +130,7 @@ function pointerPosition(event) {
   const stageBounds = stage.getBoundingClientRect();
   const catBounds = cat.getBoundingClientRect();
   const faceX = catBounds.left + catBounds.width * 0.5;
-  const faceY = catBounds.top + catBounds.height * 0.32;
+  const faceY = catBounds.top + catBounds.height * FACE_CENTER_Y_RATIO;
   const radius = pointerRadius(stageBounds);
 
   return {
@@ -188,7 +189,7 @@ function screenPosition(pointer) {
   const stageBounds = stage.getBoundingClientRect();
   const catBounds = cat.getBoundingClientRect();
   const faceX = catBounds.left + catBounds.width * 0.5;
-  const faceY = catBounds.top + catBounds.height * 0.32;
+  const faceY = catBounds.top + catBounds.height * FACE_CENTER_Y_RATIO;
   const radius = pointerRadius(stageBounds);
 
   return {
