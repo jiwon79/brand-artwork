@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "generate:body-echo-geometry": "node scripts/generate-body-echo-geometry.mjs",
+    "process:cat-cursor-ltx": "node scripts/process-cat-cursor-ltx-path.mjs",
     "prebuild": "pnpm generate:body-echo-geometry",
     "build": "vite build",
     "preview": "vite preview",
