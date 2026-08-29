@@ -3,8 +3,10 @@ const LOWER_ARC_FRAME_COUNT = 49;
 const RADIAL_FRAME_COUNT = 24;
 const POINTER_PADDING_RATIO = 0.15;
 const FACE_CENTER_Y_RATIO = 0.47;
-const TRANSITION_FRAME_RATE = 48;
-const TRANSITION_FRAME_INTERVAL = 1000 / TRANSITION_FRAME_RATE;
+const MIN_TRANSITION_FRAME_RATE = 48;
+const MAX_TRANSITION_FRAME_RATE = 144;
+const FULL_SPEED_PATH_DISTANCE = 48;
+const MAX_RENDER_DELTA = 100;
 const ASSET_VERSION = '20260829-13';
 const RIGHT_REFERENCE_SRC = `./assets/source/cat-reference-right-9x16.png?v=${ASSET_VERSION}`;
 const LEFT_REFERENCE_SRC = `./assets/source/cat-reference-left-9x16.png?v=${ASSET_VERSION}`;
@@ -139,7 +141,8 @@ let targetPointer = centerPointer;
 let debugEnabled = new URLSearchParams(window.location.search).has('debug');
 let pointerDirty = false;
 let targetPoint = { x: 0, y: 0 };
-let lastTransitionTime = 0;
+let lastRenderTime = 0;
+let transitionStepBudget = 0;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -188,8 +191,8 @@ function nearestImagePointer(point) {
   }, { pointer: imagePointers[0], distanceSquared: Number.POSITIVE_INFINITY }).pointer;
 }
 
-function nextPointerToward(start, target) {
-  if (start === target) return start;
+function pointerPath(start, target) {
+  if (start === target) return [];
 
   const queue = [start];
   const previous = new Map([[start, null]]);
@@ -202,16 +205,22 @@ function nextPointerToward(start, target) {
       previous.set(neighbor, current);
 
       if (neighbor === target) {
-        let next = target;
-        while (previous.get(next) !== start) next = previous.get(next);
-        return next;
+        const path = [target];
+        let pathPointer = target;
+
+        while (previous.get(pathPointer) !== start) {
+          pathPointer = previous.get(pathPointer);
+          path.unshift(pathPointer);
+        }
+
+        return path;
       }
 
       queue.push(neighbor);
     }
   }
 
-  return target;
+  return [target];
 }
 
 function updateFrame(pointer) {
@@ -318,19 +327,31 @@ async function preloadFrames() {
 }
 
 function render(timestamp) {
+  const frameDelta = lastRenderTime === 0
+    ? 0
+    : Math.min(timestamp - lastRenderTime, MAX_RENDER_DELTA);
+  lastRenderTime = timestamp;
+
   if (ready && pointerDirty) {
     pointerDirty = false;
     targetPointer = nearestImagePointer(targetPoint);
   }
 
-  if (
-    ready
-    && activePointer !== targetPointer
-    && timestamp - lastTransitionTime >= TRANSITION_FRAME_INTERVAL
-  ) {
-    const elapsed = timestamp - lastTransitionTime;
-    lastTransitionTime = timestamp - (elapsed % TRANSITION_FRAME_INTERVAL);
-    updateFrame(nextPointerToward(activePointer, targetPointer));
+  if (ready && activePointer !== targetPointer) {
+    const path = pointerPath(activePointer, targetPointer);
+    const distanceRatio = clamp(path.length / FULL_SPEED_PATH_DISTANCE, 0, 1);
+    const transitionFrameRate = MIN_TRANSITION_FRAME_RATE
+      + (MAX_TRANSITION_FRAME_RATE - MIN_TRANSITION_FRAME_RATE) * distanceRatio;
+
+    transitionStepBudget += (frameDelta * transitionFrameRate) / 1000;
+
+    const stepCount = Math.min(Math.floor(transitionStepBudget), path.length);
+    if (stepCount > 0) {
+      transitionStepBudget -= stepCount;
+      updateFrame(path[stepCount - 1]);
+    }
+  } else {
+    transitionStepBudget = 0;
   }
 
   requestAnimationFrame(render);
