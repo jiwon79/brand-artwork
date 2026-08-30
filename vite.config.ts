@@ -6,12 +6,11 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 const root = new URL('.', import.meta.url).pathname;
 const pagesDir = resolve(root, 'pages');
 const cursorCatVariantRoute = /^\/pages\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
-const legacyCursorCatRoute = /^\/pages\/cursor-cat-circle(?:\/|\?|$)/;
+const retiredCursorCatRoute = /^\/pages\/cursor-cat-circle(?:\/|\?|$)/;
 
 type MiddlewareResponse = {
   statusCode: number;
-  setHeader(name: string, value: string): void;
-  end(): void;
+  end(body?: string): void;
 };
 
 function cursorCatRouteFallback() {
@@ -20,13 +19,9 @@ function cursorCatRouteFallback() {
     response: MiddlewareResponse,
     next: () => void,
   ) => {
-    if (request.url && legacyCursorCatRoute.test(request.url)) {
-      response.statusCode = 302;
-      response.setHeader(
-        'Location',
-        request.url.replace('/pages/cursor-cat-circle', '/pages/cursor-cat'),
-      );
-      response.end();
+    if (request.url && retiredCursorCatRoute.test(request.url)) {
+      response.statusCode = 404;
+      response.end('Not Found');
       return;
     }
     if (request.url && cursorCatVariantRoute.test(request.url)) {
