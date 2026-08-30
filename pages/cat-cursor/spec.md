@@ -14,7 +14,7 @@
 - Pointer coordinates use a square field centered on the cat's face. Its diameter is 70% of the viewport's short side, leaving 15% padding on either side. The pointer nearest the cursor becomes the target pose.
 - Adjacent poses on each semicircle and center path form a connected graph with shared center and cardinal endpoints. The displayed pose traverses the shortest connected route instead of jumping directly across the graph. Its traversal rate scales continuously from 48 fps near the target to 144 fps at a 48-edge distance, so long moves accelerate and then decelerate as they approach the destination.
 - Touch input displays the shared Figma-style pointer from `common/touch-pointer.ts`.
-- The artwork surface contains no labels, instructions, frame readout, or custom debug buttons. A lil-gui `Debug points` toggle controls the pointer overlay and highlights the active frame node.
+- The artwork surface contains no labels, instructions, frame readout, or custom debug buttons. A lil-gui `Debug points` toggle controls the pointer overlay and highlights the active frame node. Pressing `D` toggles the same state, while the `?debug` query enables it on initial load; both stay synchronized with the lil-gui control.
 - Debug pointer positions are recalculated when the viewport changes size.
 - There is no runtime blending: only one predecoded photographic frame is visible at a time, and each transition step advances to an adjacent predecoded frame.
 - Cardinal mapping is upper pose 1 right, upper pose 25 up, upper pose 49 left, and lower pose 25 down.

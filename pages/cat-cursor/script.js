@@ -121,7 +121,9 @@ const cat = document.getElementById('cat-frame');
 const debugLayer = document.getElementById('pointer-debug');
 const debugMarkers = new Map();
 const decodedImages = new Map();
-const guiState = { debugPoints: false };
+const guiState = {
+  debugPoints: new URLSearchParams(window.location.search).has('debug'),
+};
 const gui = new GUI({ title: 'Cat Cursor' });
 
 let ready = false;
@@ -264,11 +266,13 @@ function createDebugMarkers() {
 }
 
 function setDebugMode(enabled) {
+  guiState.debugPoints = enabled;
+  debugController.updateDisplay();
   stage.classList.toggle('is-debug', enabled);
   if (enabled) layoutDebugMarkers();
 }
 
-gui.add(guiState, 'debugPoints')
+const debugController = gui.add(guiState, 'debugPoints')
   .name('Debug points')
   .onChange(setDebugMode);
 
@@ -336,6 +340,11 @@ function render(timestamp) {
 stage.addEventListener('pointermove', trackPointer);
 stage.addEventListener('pointerdown', trackPointer);
 window.addEventListener('resize', layoutDebugMarkers);
+window.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() === 'd') {
+    setDebugMode(!guiState.debugPoints);
+  }
+});
 
 void preloadFrames();
 requestAnimationFrame(render);
