@@ -5,8 +5,8 @@ const LOWER_ARC_FRAME_COUNT = 49;
 const RADIAL_FRAME_COUNT = 24;
 const POINTER_PADDING_RATIO = 0.15;
 const FACE_CENTER_Y_RATIO = 0.47;
-const MIN_TRANSITION_FRAME_RATE = 48;
-const MAX_TRANSITION_FRAME_RATE = 144;
+const DEFAULT_TRANSITION_FRAME_RATE = 48;
+const MAX_DISTANCE_FRAME_RATE_MULTIPLIER = 3;
 const FULL_SPEED_PATH_DISTANCE = 48;
 const MAX_RENDER_DELTA = 100;
 const ASSET_VERSION = '20260829-13';
@@ -123,6 +123,7 @@ const debugMarkers = new Map();
 const decodedImages = new Map();
 const guiState = {
   debugPoints: new URLSearchParams(window.location.search).has('debug'),
+  frameRate: DEFAULT_TRANSITION_FRAME_RATE,
 };
 const gui = new GUI({ title: 'Cat Cursor' });
 
@@ -276,6 +277,8 @@ function setDebugMode(enabled) {
 const debugController = gui.add(guiState, 'debugPoints')
   .name('Debug points')
   .onChange(setDebugMode);
+gui.add(guiState, 'frameRate', 12, 120, 1)
+  .name('Frame rate');
 
 gui.show(guiState.debugPoints);
 
@@ -323,8 +326,8 @@ function render(timestamp) {
   if (ready && activePointer !== targetPointer) {
     const path = pointerPath(activePointer, targetPointer);
     const distanceRatio = clamp(path.length / FULL_SPEED_PATH_DISTANCE, 0, 1);
-    const transitionFrameRate = MIN_TRANSITION_FRAME_RATE
-      + (MAX_TRANSITION_FRAME_RATE - MIN_TRANSITION_FRAME_RATE) * distanceRatio;
+    const transitionFrameRate = guiState.frameRate
+      * (1 + (MAX_DISTANCE_FRAME_RATE_MULTIPLIER - 1) * distanceRatio);
 
     transitionStepBudget += (frameDelta * transitionFrameRate) / 1000;
 
