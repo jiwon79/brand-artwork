@@ -234,6 +234,62 @@ function matchTone(source, targetTone) {
   return { graded: applyToneProfile(source, profile), profile };
 }
 
+function whitenConnectedBackground(source) {
+  const output = Buffer.from(source);
+  const pixelCount = FRAME_WIDTH * FRAME_HEIGHT;
+  const background = new Uint8Array(pixelCount);
+  const queue = new Int32Array(pixelCount);
+  let queueStart = 0;
+  let queueEnd = 0;
+
+  function enqueue(pixel) {
+    if (background[pixel]) return;
+
+    const offset = pixel * RGB_CHANNELS;
+    const red = source[offset];
+    const green = source[offset + 1];
+    const blue = source[offset + 2];
+    const maximum = Math.max(red, green, blue);
+    const minimum = Math.min(red, green, blue);
+
+    // Video backgrounds are a nearly uniform RGB 250–253. Requiring both a
+    // high floor and low chroma keeps orange/gray fur out of the flood fill.
+    if (minimum < 246 || maximum - minimum > 8) return;
+
+    background[pixel] = 1;
+    queue[queueEnd] = pixel;
+    queueEnd += 1;
+  }
+
+  for (let x = 0; x < FRAME_WIDTH; x += 1) enqueue(x);
+  for (let y = 1; y < FRAME_HEIGHT; y += 1) {
+    enqueue(y * FRAME_WIDTH);
+    enqueue(y * FRAME_WIDTH + FRAME_WIDTH - 1);
+  }
+
+  while (queueStart < queueEnd) {
+    const pixel = queue[queueStart];
+    queueStart += 1;
+    const x = pixel % FRAME_WIDTH;
+    const y = Math.floor(pixel / FRAME_WIDTH);
+
+    if (x > 0) enqueue(pixel - 1);
+    if (x < FRAME_WIDTH - 1) enqueue(pixel + 1);
+    if (y > 0) enqueue(pixel - FRAME_WIDTH);
+    if (y < FRAME_HEIGHT - 1) enqueue(pixel + FRAME_WIDTH);
+  }
+
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    if (!background[pixel]) continue;
+    const offset = pixel * RGB_CHANNELS;
+    output[offset] = 255;
+    output[offset + 1] = 255;
+    output[offset + 2] = 255;
+  }
+
+  return output;
+}
+
 function describeProfile(label, profile) {
   const orangeLift = profile.targetOrangeLuma - profile.sourceOrangeLuma;
   const whiteLift = profile.targetWhiteLuma - profile.sourceWhiteLuma;
@@ -275,7 +331,7 @@ for (let index = 1; index < RIGHT_POSE_FRAMES.length - 1; index += 1) {
   if (index === 1 || index === RIGHT_POSE_FRAMES.length - 2) {
     describeProfile(`frame ${String(runtimeFrame).padStart(3, '0')}`, profile);
   }
-  encodeWebp(graded, webp);
+  encodeWebp(whitenConnectedBackground(graded), webp);
 }
 
 for (let index = 0; index < LEFT_POSE_FRAMES.length; index += 1) {
@@ -290,7 +346,7 @@ for (let index = 0; index < LEFT_POSE_FRAMES.length; index += 1) {
   if (index === 0 || index === LEFT_POSE_FRAMES.length - 1) {
     describeProfile(`frame ${String(runtimeFrame).padStart(3, '0')}`, profile);
   }
-  encodeWebp(graded, webp);
+  encodeWebp(whitenConnectedBackground(graded), webp);
 }
 
-console.log(`Rebuilt and tone-matched 58 calibrated intermediate frames in ${outputDirectory}`);
+console.log(`Rebuilt 58 calibrated intermediate frames with pure white connected backgrounds in ${outputDirectory}`);
