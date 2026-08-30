@@ -64,7 +64,7 @@ The checked-in processor selects evenly spaced native source frames without inte
 ```sh
 pnpm process:cat-cursor-ltx \
   --video .qa/cat-cursor-ltx-circle-v3/upper/video/ltx25_cat_orbit_upper_right_left_v3_00001_.mp4 \
-  --output pages/cat-cursor/assets/cat-upper-frames \
+  --output pages/cursor-cat/assets/frames/upper \
   --poses 49 \
   --start-offset 4 \
   --end-offset 8
@@ -79,7 +79,7 @@ The horizontal paths use 24 poses:
 ```sh
 pnpm process:cat-cursor-ltx \
   --video .qa/cat-cursor-ltx-horizontal-v4/right/video/ltx25_cat_center_right_v4_short_alert_00001_.mp4 \
-  --output pages/cat-cursor/assets/cat-center-right-frames \
+  --output pages/cursor-cat/assets/frames/center-right \
   --poses 24 \
   --start-offset 4 \
   --start-hold 3 \
@@ -87,7 +87,7 @@ pnpm process:cat-cursor-ltx \
 
 pnpm process:cat-cursor-ltx \
   --video .qa/cat-cursor-ltx-horizontal-v4/left/video/ltx25_cat_center_left_v4_short_alert_00001_.mp4 \
-  --output pages/cat-cursor/assets/cat-center-left-frames \
+  --output pages/cursor-cat/assets/frames/center-left \
   --poses 24 \
   --start-offset 4 \
   --start-hold 3 \
@@ -99,7 +99,7 @@ The vertical paths also use 24 poses. Their endpoint inputs are native frame 49 
 ```sh
 pnpm process:cat-cursor-ltx \
   --video .qa/cat-cursor-ltx-vertical-v1/top/video/video/ltx25_cat_center_top_v1_alert_00001_.mp4 \
-  --output pages/cat-cursor/assets/cat-center-top-frames \
+  --output pages/cursor-cat/assets/frames/center-top \
   --poses 24 \
   --start-offset 4 \
   --start-hold 3 \
@@ -107,7 +107,7 @@ pnpm process:cat-cursor-ltx \
 
 pnpm process:cat-cursor-ltx \
   --video .qa/cat-cursor-ltx-vertical-v1/bottom/video/video/ltx25_cat_center_bottom_v1_attentive_00001_.mp4 \
-  --output pages/cat-cursor/assets/cat-center-bottom-frames \
+  --output pages/cursor-cat/assets/frames/center-bottom \
   --poses 24 \
   --start-offset 5 \
   --start-hold 3 \
