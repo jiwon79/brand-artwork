@@ -15,7 +15,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const DEFAULT_BUCKET = 'brand-artwork-cursor-animals';
 const DEFAULT_FRAME_COUNT = 120;
-const OBJECT_PREFIX = 'cursor-cat-circle';
+const OBJECT_PREFIX = 'cursor-cat';
 const ID_PATTERN = /^[a-z0-9]{10}$/;
 const FRAME_PATTERN = /^frame-(\d{3})\.webp$/;
 const WRANGLER = resolve(
@@ -150,7 +150,7 @@ async function uploadFile(bucket, objectKey, filePath, contentType, cacheControl
 function usage() {
   return [
     'Usage:',
-    '  pnpm register:cursor-circle --source <flat-frame-dir> --name <display-name> --calibration <json> [options]',
+    '  pnpm register:cursor-cat --source <flat-frame-dir> --name <display-name> --calibration <json> [options]',
     '',
     'Options:',
     '  --id <id>                 Use main or a fixed 10-character lowercase ID',
@@ -196,12 +196,12 @@ const manifest = {
   displayScales: calibration.displayScales,
 };
 
-const temporaryPath = mkdtempSync(join(tmpdir(), 'cursor-circle-'));
+const temporaryPath = mkdtempSync(join(tmpdir(), 'cursor-cat-'));
 const manifestPath = join(temporaryPath, 'manifest.json');
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 const route = id === 'main'
-  ? '/pages/cursor-cat-circle/'
-  : `/pages/cursor-cat-circle/${id}/`;
+  ? '/pages/cursor-cat/'
+  : `/pages/cursor-cat/${id}/`;
 
 try {
   if (dryRun) {

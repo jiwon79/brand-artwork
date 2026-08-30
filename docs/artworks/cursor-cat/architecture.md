@@ -1,6 +1,6 @@
-# Cursor Cat Circle 아키텍처
+# Cursor Cat 아키텍처
 
-Cursor Cat Circle은 커서 방향을 120장의 원형 시선 포즈 중 하나로 바꾸는 정적 웹 작품이다. HTML·TypeScript·CSS만 Git과 웹 빌드에 포함되고, 이미지 프레임은 Cloudflare R2에서 불러온다.
+Cursor Cat은 커서 방향을 120장의 원형 시선 포즈 중 하나로 바꾸는 정적 웹 작품이다. HTML·TypeScript·CSS만 Git과 웹 빌드에 포함되고, 이미지 프레임은 Cloudflare R2에서 불러온다.
 
 ## 입력
 
@@ -14,8 +14,8 @@ Cursor Cat Circle은 커서 방향을 120장의 원형 시선 포즈 중 하나�
 
 경로 규칙은 다음과 같다.
 
-- `/pages/cursor-cat-circle/` → R2 pack `main`
-- `/pages/cursor-cat-circle/<10자리 영문 소문자·숫자>/` → 같은 ID의 R2 pack
+- `/pages/cursor-cat/` → R2 pack `main`
+- `/pages/cursor-cat/<10자리 영문 소문자·숫자>/` → 같은 ID의 R2 pack
 - 형식이 다른 ID는 로드하지 않는다.
 
 ## R2 pack
@@ -23,10 +23,10 @@ Cursor Cat Circle은 커서 방향을 120장의 원형 시선 포즈 중 하나�
 한 pack은 하나의 prefix 아래에 필요한 파일만 평평하게 둔다.
 
 ```text
-cursor-cat-circle/<ID>/manifest.json
-cursor-cat-circle/<ID>/frame-001.webp
+cursor-cat/<ID>/manifest.json
+cursor-cat/<ID>/frame-001.webp
 ...
-cursor-cat-circle/<ID>/frame-120.webp
+cursor-cat/<ID>/frame-120.webp
 ```
 
 별도 poster 이미지는 두지 않는다. frame 001이 초기 poster와 오른쪽 포즈를 겸한다. canonical 이미지, 생성 영상, contact sheet와 처리 중간 PNG는 runtime에 필요하지 않으므로 R2와 Git에 올리지 않는다.

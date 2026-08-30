@@ -335,7 +335,7 @@ const rightVideo = resolve(options['right-video']);
 const leftVideo = resolve(options['left-video']);
 const lowerVideo = resolve(options['lower-video']);
 const outputDirectory = resolve(options.output);
-const temporaryDirectory = resolve('.qa/cursor-cat-circle-processing');
+const temporaryDirectory = resolve('.qa/cursor-cat-processing');
 
 mkdirSync(outputDirectory, { recursive: true });
 mkdirSync(temporaryDirectory, { recursive: true });

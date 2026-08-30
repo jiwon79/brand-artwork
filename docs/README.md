@@ -22,7 +22,7 @@ docs/
 ## Guides
 
 - [`reference-extension-workflow.md`](./guides/reference-extension-workflow.md) - 레퍼런스 복원 뒤 정체성을 유지하며 새로운 상호작용을 제안·비교·선택하는 공통 작업 방식
-- [`cursor-circle-registration.md`](./guides/cursor-circle-registration.md) - flat 120-frame pack을 R2 main 또는 10자리 랜덤 경로에 등록하는 절차
+- [`cursor-cat-registration.md`](./guides/cursor-cat-registration.md) - flat 120-frame pack을 R2 main 또는 10자리 랜덤 경로에 등록하는 절차
 
 ## Artworks
 
@@ -35,10 +35,10 @@ docs/
 - [`architecture.md`](./artworks/color-text/architecture.md) - Color Text의 물 packet, 글자 atlas, geometry·color field, spring feedback 전체 구조
 - [`interaction-ideation.md`](./artworks/color-text/interaction-ideation.md) - 터치 드립과 글자 반응을 실제로 제안·비교·수정한 Color Text 결정 기록
 
-### Cursor Cat Circle
+### Cursor Cat
 
-- [`architecture.md`](./artworks/cursor-cat-circle/architecture.md) - R2 manifest, 시선 기준점, 원형 frame 선택과 모바일 출력 구조
-- [`generation.md`](./artworks/cursor-cat-circle/generation.md) - Seedance 생성, 각도 샘플링, 색·배경·크기 보정과 검증 절차
+- [`architecture.md`](./artworks/cursor-cat/architecture.md) - R2 manifest, 시선 기준점, 원형 frame 선택과 모바일 출력 구조
+- [`generation.md`](./artworks/cursor-cat/generation.md) - Seedance 생성, 각도 샘플링, 색·배경·크기 보정과 검증 절차
 
 ### Guseul
 

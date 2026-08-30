@@ -1,6 +1,6 @@
-# Cursor Cat Circle 프레임 제작
+# Cursor Cat 프레임 제작
 
-이 문서는 현재 원형 고양이 세트를 만들며 확인한 문제와 재현 절차를 기록한다. 런타임과 R2 구조는 [`architecture.md`](./architecture.md), 새 세트 등록 절차는 [`../../guides/cursor-circle-registration.md`](../../guides/cursor-circle-registration.md)를 따른다.
+이 문서는 현재 원형 고양이 세트를 만들며 확인한 문제와 재현 절차를 기록한다. 런타임과 R2 구조는 [`architecture.md`](./architecture.md), 새 세트 등록 절차는 [`../../guides/cursor-cat-registration.md`](../../guides/cursor-cat-registration.md)를 따른다.
 
 ## 목표 결과
 
@@ -97,21 +97,21 @@ Create one smooth continuous LOWER semicircular head-and-eye tracking motion in 
 생성 영상과 canonical 방향 이미지는 Git 밖의 작업 폴더에 둔다. processor는 최종 120장만 flat output 폴더에 만든다.
 
 ```bash
-pnpm process:cursor-cat-circle -- \
-  --right-video .qa/cursor-cat-circle/source/right-to-top.mp4 \
-  --left-video .qa/cursor-cat-circle/source/top-to-left.mp4 \
-  --lower-video .qa/cursor-cat-circle/source/left-bottom-right.mp4 \
-  --right-image .qa/cursor-cat-circle/source/right.webp \
-  --top-image .qa/cursor-cat-circle/source/top.webp \
-  --left-image .qa/cursor-cat-circle/source/left.webp \
-  --output .qa/cursor-cat-circle/pack
+pnpm process:cursor-cat -- \
+  --right-video .qa/cursor-cat/source/right-to-top.mp4 \
+  --left-video .qa/cursor-cat/source/top-to-left.mp4 \
+  --lower-video .qa/cursor-cat/source/left-bottom-right.mp4 \
+  --right-image .qa/cursor-cat/source/right.webp \
+  --top-image .qa/cursor-cat/source/top.webp \
+  --left-image .qa/cursor-cat/source/left.webp \
+  --output .qa/cursor-cat/pack
 ```
 
 출력은 `frame-001.webp`부터 `frame-120.webp`까지만 있어야 한다. R2 업로드 명령은 등록 가이드를 따른다.
 
 ## 시선 기준점 보정
 
-커서 방향은 화면 중앙이 아니라 각 포즈의 두 눈 사이에서 계산한다. 기준점은 이미지의 576 × 1024 좌표를 `[0, 1]`로 정규화해 [`../../../config/cursor-cat-circle-main.json`](../../../config/cursor-cat-circle-main.json)에 기록한다.
+커서 방향은 화면 중앙이 아니라 각 포즈의 두 눈 사이에서 계산한다. 기준점은 이미지의 576 × 1024 좌표를 `[0, 1]`로 정규화해 [`../../../config/cursor-cat-main.json`](../../../config/cursor-cat-main.json)에 기록한다.
 
 | runtime frame | 방향 | 눈 기준점 `(x, y)` |
 | --- | --- | --- |

@@ -5,18 +5,38 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 const root = new URL('.', import.meta.url).pathname;
 const pagesDir = resolve(root, 'pages');
-const cursorCatCircleVariantRoute = /^\/pages\/cursor-cat-circle\/[a-z0-9]{10}\/?(?:\?.*)?$/;
+const cursorCatVariantRoute = /^\/pages\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
+const legacyCursorCatRoute = /^\/pages\/cursor-cat-circle(?:\/|\?|$)/;
 
-function cursorCatCircleRouteFallback() {
-  const rewrite = (request: { url?: string }, _response: unknown, next: () => void) => {
-    if (request.url && cursorCatCircleVariantRoute.test(request.url)) {
-      request.url = '/pages/cursor-cat-circle/index.html';
+type MiddlewareResponse = {
+  statusCode: number;
+  setHeader(name: string, value: string): void;
+  end(): void;
+};
+
+function cursorCatRouteFallback() {
+  const rewrite = (
+    request: { url?: string },
+    response: MiddlewareResponse,
+    next: () => void,
+  ) => {
+    if (request.url && legacyCursorCatRoute.test(request.url)) {
+      response.statusCode = 302;
+      response.setHeader(
+        'Location',
+        request.url.replace('/pages/cursor-cat-circle', '/pages/cursor-cat'),
+      );
+      response.end();
+      return;
+    }
+    if (request.url && cursorCatVariantRoute.test(request.url)) {
+      request.url = '/pages/cursor-cat/index.html';
     }
     next();
   };
 
   return {
-    name: 'cursor-cat-circle-route-fallback',
+    name: 'cursor-cat-route-fallback',
     configureServer(server: { middlewares: { use: (handler: typeof rewrite) => void } }) {
       server.middlewares.use(rewrite);
     },
@@ -58,7 +78,7 @@ export default defineConfig({
     ],
   },
   plugins: [
-    cursorCatCircleRouteFallback(),
+    cursorCatRouteFallback(),
     {
       name: 'inject-site-favicon',
       transformIndexHtml() {

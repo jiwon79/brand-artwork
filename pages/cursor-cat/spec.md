@@ -1,4 +1,4 @@
-# Cursor Cat Circle
+# Cursor Cat
 
 - 커서 방향을 따라 120개의 원형 시선 포즈를 표시한다.
 - 기준 frame은 001 오른쪽, 031 위, 061 왼쪽, 091 아래다.
@@ -10,4 +10,4 @@
 - `?debug=1` 또는 `D` 키로 실제 frame 선택 경계와 눈→커서 방향을 확인한다.
 - 모바일은 `dvh`를 사용해 고양이 아래를 현재 viewport 아래에 고정한다.
 
-상세 구현은 [`../../docs/artworks/cursor-cat-circle/architecture.md`](../../docs/artworks/cursor-cat-circle/architecture.md), 제작 과정은 [`../../docs/artworks/cursor-cat-circle/generation.md`](../../docs/artworks/cursor-cat-circle/generation.md), 새 pack 등록은 [`../../docs/guides/cursor-circle-registration.md`](../../docs/guides/cursor-circle-registration.md)를 따른다.
+상세 구현은 [`../../docs/artworks/cursor-cat/architecture.md`](../../docs/artworks/cursor-cat/architecture.md), 제작 과정은 [`../../docs/artworks/cursor-cat/generation.md`](../../docs/artworks/cursor-cat/generation.md), 새 pack 등록은 [`../../docs/guides/cursor-cat-registration.md`](../../docs/guides/cursor-cat-registration.md)를 따른다.

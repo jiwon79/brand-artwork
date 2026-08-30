@@ -1,11 +1,11 @@
 # Cursor Circle 세트 등록
 
-원형 시선 플레이어의 프레임은 Git이 아니라 Cloudflare R2의 `brand-artwork-cursor-animals` bucket에 보관한다. 플레이어 코드는 `pages/cursor-cat-circle/` 하나이며 경로 ID에 따라 다른 pack을 불러온다.
+원형 시선 플레이어의 프레임은 Git이 아니라 Cloudflare R2의 `brand-artwork-cursor-animals` bucket에 보관한다. 플레이어 코드는 `pages/cursor-cat/` 하나이며 경로 ID에 따라 다른 pack을 불러온다.
 
 ## 경로 규칙
 
-- 기본 작품: `/pages/cursor-cat-circle/`
-- 추가 작품: `/pages/cursor-cat-circle/<10자리 랜덤 ID>/`
+- 기본 작품: `/pages/cursor-cat/`
+- 추가 작품: `/pages/cursor-cat/<10자리 랜덤 ID>/`
 - 기본 작품의 R2 ID는 `main`이다.
 - 추가 작품은 등록 스크립트가 영문 소문자와 숫자로 된 10자리 ID를 만든다.
 - 이름, 동물 종류와 순번을 공개 경로에 포함하지 않는다.
@@ -52,10 +52,10 @@ anchor는 frame 0에서 시작해 frame 120에서 끝나야 하며 frame 번호�
 먼저 dry-run으로 번호 누락과 calibration을 확인한다.
 
 ```bash
-pnpm register:cursor-circle -- \
-  --source .qa/cursor-cat-circle/pack \
-  --name "Cursor Cat Circle" \
-  --calibration config/cursor-cat-circle-main.json \
+pnpm register:cursor-cat -- \
+  --source .qa/cursor-cat/pack \
+  --name "Cursor Cat" \
+  --calibration config/cursor-cat-main.json \
   --id main \
   --dry-run true
 ```
@@ -63,10 +63,10 @@ pnpm register:cursor-circle -- \
 검증이 끝나면 `--dry-run`을 뺀다.
 
 ```bash
-pnpm register:cursor-circle -- \
-  --source .qa/cursor-cat-circle/pack \
-  --name "Cursor Cat Circle" \
-  --calibration config/cursor-cat-circle-main.json \
+pnpm register:cursor-cat -- \
+  --source .qa/cursor-cat/pack \
+  --name "Cursor Cat" \
+  --calibration config/cursor-cat-main.json \
   --id main \
   --alt "커서를 바라보는 주황색 고양이"
 ```
@@ -76,24 +76,24 @@ pnpm register:cursor-circle -- \
 추가 작품은 `--id`를 생략한다.
 
 ```bash
-pnpm register:cursor-circle -- \
+pnpm register:cursor-cat -- \
   --source /path/to/flat-circle-pack \
   --name "Cursor Puppy Circle" \
   --calibration /path/to/puppy-calibration.json \
   --alt "커서를 바라보는 강아지"
 ```
 
-완료 출력의 `id`와 `route`를 기록한다. 예를 들어 ID가 `a1b2c3d4e5`라면 공개 경로는 `/pages/cursor-cat-circle/a1b2c3d4e5/`다.
+완료 출력의 `id`와 `route`를 기록한다. 예를 들어 ID가 `a1b2c3d4e5`라면 공개 경로는 `/pages/cursor-cat/a1b2c3d4e5/`다.
 
 ## R2 결과
 
 등록 스크립트가 만드는 object는 pack당 121개다.
 
 ```text
-cursor-cat-circle/<ID>/manifest.json
-cursor-cat-circle/<ID>/frame-001.webp
+cursor-cat/<ID>/manifest.json
+cursor-cat/<ID>/frame-001.webp
 ...
-cursor-cat-circle/<ID>/frame-120.webp
+cursor-cat/<ID>/frame-120.webp
 ```
 
 frame은 먼저 병렬 업로드하고 manifest는 마지막에 올린다. manifest에는 매 업로드마다 새 `version`이 들어간다.

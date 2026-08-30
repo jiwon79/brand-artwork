@@ -13,7 +13,7 @@
     "vite.config.ts",
     "common/touch-cursor.ts",
     "common/touch-pointer.ts",
-    "pages/cursor-cat-circle/**/*.ts",
+    "pages/cursor-cat/**/*.ts",
     "pages/color-text/**/*.ts",
     "pages/guseul/**/*.ts"
   ],

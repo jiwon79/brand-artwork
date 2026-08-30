@@ -1,4 +1,4 @@
-import { CURSOR_CAT_CIRCLE_ASSET_BASE_URL } from './config';
+import { CURSOR_CAT_ASSET_BASE_URL } from './config';
 
 const FRAME_COUNT = 120;
 const QUARTER_FRAME_COUNT = FRAME_COUNT / 4;
@@ -19,7 +19,7 @@ type DebugArcSample = Point & { frame: number; angle: number };
 type GazeOriginAnchor = Point & { frame: number };
 type DisplayScaleAnchor = { frame: number; scale: number };
 
-interface CursorCircleManifest {
+interface CursorCatManifest {
   schemaVersion: 1;
   id: string;
   version: string;
@@ -40,7 +40,7 @@ function requiredElement<T extends HTMLElement>(
 ): T {
   const element = document.getElementById(id);
   if (!(element instanceof constructor)) {
-    throw new Error(`Cursor Cat Circle requires #${id}`);
+    throw new Error(`Cursor Cat requires #${id}`);
   }
   return element;
 }
@@ -61,7 +61,7 @@ function anchorPair<T extends { frame: number }>(anchors: T[], frame: number): [
   const endIndex = anchors.findIndex((anchor) => anchor.frame >= frame);
   const end = anchors[Math.max(endIndex, 0)] ?? anchors[anchors.length - 1];
   const start = anchors[Math.max(endIndex - 1, 0)] ?? anchors[0];
-  if (!start || !end) throw new Error('Cursor Cat Circle calibration is empty');
+  if (!start || !end) throw new Error('Cursor Cat calibration is empty');
   return [start, end];
 }
 
@@ -106,7 +106,7 @@ function catLayoutBounds(): Bounds {
 
 function artworkIdFromPath(): string | null {
   const parts = window.location.pathname.split('/').filter(Boolean);
-  const pageIndex = parts.lastIndexOf('cursor-cat-circle');
+  const pageIndex = parts.lastIndexOf('cursor-cat');
   const candidate = parts[pageIndex + 1];
 
   if (!candidate || candidate === 'index.html') return DEFAULT_ARTWORK_ID;
@@ -114,13 +114,13 @@ function artworkIdFromPath(): string | null {
 }
 
 function manifestUrl(artworkId: string): string {
-  return `${CURSOR_CAT_CIRCLE_ASSET_BASE_URL.replace(/\/$/, '')}/${artworkId}/manifest.json`;
+  return `${CURSOR_CAT_ASSET_BASE_URL.replace(/\/$/, '')}/${artworkId}/manifest.json`;
 }
 
-function frameSource(manifest: CursorCircleManifest, index: number): string {
+function frameSource(manifest: CursorCatManifest, index: number): string {
   const frame = String(index + 1).padStart(3, '0');
   const path = manifest.framePattern.replace('{frame}', frame);
-  const baseUrl = CURSOR_CAT_CIRCLE_ASSET_BASE_URL.replace(/\/$/, '');
+  const baseUrl = CURSOR_CAT_ASSET_BASE_URL.replace(/\/$/, '');
   return `${baseUrl}/${manifest.id}/${path}?v=${encodeURIComponent(manifest.version)}`;
 }
 
@@ -144,8 +144,8 @@ function anchorsAreValid(
 function validateManifest(
   value: unknown,
   expectedId: string,
-): asserts value is CursorCircleManifest {
-  const manifest = value as Partial<CursorCircleManifest> | null;
+): asserts value is CursorCatManifest {
+  const manifest = value as Partial<CursorCatManifest> | null;
   if (
     manifest?.schemaVersion !== 1
     || manifest.id !== expectedId
@@ -164,7 +164,7 @@ function validateManifest(
       anchor.scale > 0 && anchor.scale <= 2
     )) !== true
   ) {
-    throw new Error('Invalid Cursor Cat Circle manifest');
+    throw new Error('Invalid Cursor Cat manifest');
   }
 }
 
@@ -174,7 +174,7 @@ const debugCanvas = requiredElement('debug-canvas', HTMLCanvasElement);
 const loadingStatus = requiredElement('loading-status', HTMLElement);
 const debugContext = (() => {
   const context = debugCanvas.getContext('2d');
-  if (!context) throw new Error('Cursor Cat Circle requires a 2D debug canvas');
+  if (!context) throw new Error('Cursor Cat requires a 2D debug canvas');
   return context;
 })();
 
@@ -545,13 +545,13 @@ async function loadFrames(frameSources: string[], concurrency = 8): Promise<HTML
 async function initialize(): Promise<void> {
   try {
     const artworkId = artworkIdFromPath();
-    if (!artworkId) throw new Error('Invalid Cursor Cat Circle artwork ID');
+    if (!artworkId) throw new Error('Invalid Cursor Cat artwork ID');
 
     const response = await fetch(manifestUrl(artworkId), {
       cache: artworkId === DEFAULT_ARTWORK_ID ? 'no-store' : 'force-cache',
     });
     if (!response.ok) {
-      throw new Error(`Could not load Cursor Cat Circle manifest: ${response.status}`);
+      throw new Error(`Could not load Cursor Cat manifest: ${response.status}`);
     }
 
     const manifest: unknown = await response.json();
