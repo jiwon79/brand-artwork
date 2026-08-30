@@ -22,3 +22,6 @@ pages/gentle-monster/scripts/verify_*.png
 **/*-qa.*
 **/qa-*.*
 **/*.qa.*
+
+# Cursor Animal runtime frames are stored in Cloudflare R2
+pages/cursor-cat/assets/

@@ -5,6 +5,26 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 const root = new URL('.', import.meta.url).pathname;
 const pagesDir = resolve(root, 'pages');
+const cursorCatVariantRoute = /^\/pages\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
+
+function cursorCatRouteFallback() {
+  const rewrite = (request: { url?: string }, _response: unknown, next: () => void) => {
+    if (request.url && cursorCatVariantRoute.test(request.url)) {
+      request.url = '/pages/cursor-cat/index.html';
+    }
+    next();
+  };
+
+  return {
+    name: 'cursor-cat-route-fallback',
+    configureServer(server: { middlewares: { use: (handler: typeof rewrite) => void } }) {
+      server.middlewares.use(rewrite);
+    },
+    configurePreviewServer(server: { middlewares: { use: (handler: typeof rewrite) => void } }) {
+      server.middlewares.use(rewrite);
+    },
+  };
+}
 
 // pages/ 하위에서 index.html을 가진 폴더만 자동 탐색
 const pageEntries = readdirSync(pagesDir, { withFileTypes: true })
@@ -38,6 +58,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    cursorCatRouteFallback(),
     {
       name: 'inject-site-favicon',
       transformIndexHtml() {

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#ffffff">
+  <title>Cursor Animal</title>
+  <link rel="stylesheet" href="/pages/cursor-cat/style.css?v=20260830-18">
+</head>
+<body>
+  <main id="cat-stage" class="cat-stage" aria-label="커서를 따라 시선을 움직이는 동물">
+    <div class="cat-wrap">
+      <img
+        id="animal-frame"
+        class="cat-frame"
+        alt=""
+        draggable="false"
+        decoding="async"
+      >
+    </div>
+
+    <div id="pointer-debug" class="pointer-debug" aria-hidden="true"></div>
+  </main>
+
+  <script type="module" src="/pages/cursor-cat/touch-pointer.js?v=20260829-13"></script>
+  <script type="module" src="/pages/cursor-cat/script.js?v=20260830-22"></script>
+</body>
+</html>
