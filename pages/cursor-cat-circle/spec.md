@@ -18,6 +18,13 @@
 - Left and right arrow keys step through the same arc for keyboard testing.
 - The horizontal, vertical, and center paths from the original Cursor Cat are not included.
 
+## Debug mode
+
+- `?debug=1` enables the mapping overlay on load; pressing `D` toggles it and keeps the URL state synchronized.
+- The upper arc is sampled through the production pointer-selection function, so every tick marks an actual runtime frame boundary at the displayed radius.
+- The active target segment is blue, the rendered gaze ray is magenta, and the target gaze ray and pointer connection are blue.
+- The HUD shows target and rendered frame numbers, their calibrated angles, the active quarter, and the keyboard toggle.
+
 ## Remaining coverage
 
 - A complete circle still requires left → bottom and bottom → right quarter-circle assets.

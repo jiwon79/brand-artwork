@@ -69,8 +69,26 @@ body {
   -webkit-user-drag: none;
 }
 
+.debug-canvas {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.is-debug .debug-canvas {
+  visibility: visible;
+  opacity: 1;
+}
+
 .loading-status {
   position: absolute;
+  z-index: 1;
   top: 50%;
   left: 50%;
   margin: 0;
