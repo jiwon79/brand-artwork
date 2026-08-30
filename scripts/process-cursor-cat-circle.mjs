@@ -22,6 +22,14 @@ const LEFT_POSE_FRAMES = [
   50, 52, 54, 56, 59, 61, 65, 71, 81,
 ];
 
+// The lower-semicircle clip contains 97 frames and moves at a nearly constant
+// angular speed. Preserve its first/last anchors as canonical frame 061 and
+// frame 001, and sample the 59 three-degree poses between them.
+const LOWER_SOURCE_FRAME_COUNT = 97;
+const LOWER_POSE_FRAMES = Array.from({ length: 59 }, (_, index) => (
+  Math.round(((index + 1) * (LOWER_SOURCE_FRAME_COUNT - 1)) / 60) + 1
+));
+
 function parseOptions(argv) {
   const options = {};
   const args = argv.filter((argument) => argument !== '--');
@@ -33,7 +41,7 @@ function parseOptions(argv) {
     options[key.slice(2)] = value;
   }
 
-  for (const required of ['right-video', 'left-video', 'output']) {
+  for (const required of ['right-video', 'left-video', 'lower-video', 'output']) {
     if (!options[required]) throw new Error(`Missing --${required}`);
   }
 
@@ -82,18 +90,18 @@ function decodeRgb(input) {
   return rgb;
 }
 
-function encodeWebp(rgb, output) {
+function encodeWebp(rgba, output) {
   const png = join(temporaryDirectory, `graded-${basename(output, '.webp')}.png`);
   run('ffmpeg', [
     '-hide_banner', '-loglevel', 'error',
     '-f', 'rawvideo',
-    '-pix_fmt', 'rgb24',
+    '-pix_fmt', 'rgba',
     '-s:v', `${FRAME_WIDTH}x${FRAME_HEIGHT}`,
     '-i', 'pipe:0',
     '-frames:v', '1',
     '-y', png,
-  ], { encoding: null, input: rgb });
-  run('cwebp', ['-quiet', '-q', '85', '-m', '6', '-sharp_yuv', png, '-o', output]);
+  ], { encoding: null, input: rgba });
+  run('cwebp', ['-quiet', '-q', '85', '-alpha_q', '100', '-m', '6', '-sharp_yuv', png, '-o', output]);
 }
 
 function measureTone(rgb) {
@@ -234,8 +242,7 @@ function matchTone(source, targetTone) {
   return { graded: applyToneProfile(source, profile), profile };
 }
 
-function whitenConnectedBackground(source) {
-  const output = Buffer.from(source);
+function makeConnectedBackgroundTransparent(source) {
   const pixelCount = FRAME_WIDTH * FRAME_HEIGHT;
   const background = new Uint8Array(pixelCount);
   const queue = new Int32Array(pixelCount);
@@ -279,12 +286,14 @@ function whitenConnectedBackground(source) {
     if (y < FRAME_HEIGHT - 1) enqueue(pixel + FRAME_WIDTH);
   }
 
+  const output = Buffer.allocUnsafe(pixelCount * 4);
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
-    if (!background[pixel]) continue;
-    const offset = pixel * RGB_CHANNELS;
-    output[offset] = 255;
-    output[offset + 1] = 255;
-    output[offset + 2] = 255;
+    const sourceOffset = pixel * RGB_CHANNELS;
+    const outputOffset = pixel * 4;
+    output[outputOffset] = background[pixel] ? 255 : source[sourceOffset];
+    output[outputOffset + 1] = background[pixel] ? 255 : source[sourceOffset + 1];
+    output[outputOffset + 2] = background[pixel] ? 255 : source[sourceOffset + 2];
+    output[outputOffset + 3] = background[pixel] ? 0 : 255;
   }
 
   return output;
@@ -305,18 +314,37 @@ function describeProfile(label, profile) {
 const options = parseOptions(process.argv.slice(2));
 const rightVideo = resolve(options['right-video']);
 const leftVideo = resolve(options['left-video']);
+const lowerVideo = resolve(options['lower-video']);
 const outputDirectory = resolve(options.output);
+const canonicalDirectory = resolve(dirname(outputDirectory), 'canonical-frames');
 const temporaryDirectory = resolve('.qa/cursor-cat-circle-processing');
 
 mkdirSync(outputDirectory, { recursive: true });
 mkdirSync(temporaryDirectory, { recursive: true });
 
-const canonicalRight = decodeRgb(join(outputDirectory, 'frame-001.webp'));
-const canonicalTop = decodeRgb(join(outputDirectory, 'frame-031.webp'));
-const canonicalLeft = decodeRgb(join(outputDirectory, 'frame-061.webp'));
+const canonicalRight = decodeRgb(join(canonicalDirectory, 'right.webp'));
+const canonicalTop = decodeRgb(join(canonicalDirectory, 'top.webp'));
+const canonicalLeft = decodeRgb(join(canonicalDirectory, 'left.webp'));
 const rightTone = measureTone(canonicalRight);
 const topTone = measureTone(canonicalTop);
 const leftTone = measureTone(canonicalLeft);
+
+// Lossy WebP turns an RGB #FFFFFF canvas into roughly RGB 253 on decode.
+// Transparent connected backgrounds composite against the page's CSS #fff
+// without changing the approved foreground pixels or inflating every frame
+// to a fully lossless photographic asset.
+encodeWebp(
+  makeConnectedBackgroundTransparent(canonicalRight),
+  join(outputDirectory, 'frame-001.webp'),
+);
+encodeWebp(
+  makeConnectedBackgroundTransparent(canonicalTop),
+  join(outputDirectory, 'frame-031.webp'),
+);
+encodeWebp(
+  makeConnectedBackgroundTransparent(canonicalLeft),
+  join(outputDirectory, 'frame-061.webp'),
+);
 
 // Keep frames 001, 031, and 061 as their approved canonical endpoint assets.
 for (let index = 1; index < RIGHT_POSE_FRAMES.length - 1; index += 1) {
@@ -331,7 +359,7 @@ for (let index = 1; index < RIGHT_POSE_FRAMES.length - 1; index += 1) {
   if (index === 1 || index === RIGHT_POSE_FRAMES.length - 2) {
     describeProfile(`frame ${String(runtimeFrame).padStart(3, '0')}`, profile);
   }
-  encodeWebp(whitenConnectedBackground(graded), webp);
+  encodeWebp(makeConnectedBackgroundTransparent(graded), webp);
 }
 
 for (let index = 0; index < LEFT_POSE_FRAMES.length; index += 1) {
@@ -346,7 +374,22 @@ for (let index = 0; index < LEFT_POSE_FRAMES.length; index += 1) {
   if (index === 0 || index === LEFT_POSE_FRAMES.length - 1) {
     describeProfile(`frame ${String(runtimeFrame).padStart(3, '0')}`, profile);
   }
-  encodeWebp(whitenConnectedBackground(graded), webp);
+  encodeWebp(makeConnectedBackgroundTransparent(graded), webp);
 }
 
-console.log(`Rebuilt 58 calibrated intermediate frames with pure white connected backgrounds in ${outputDirectory}`);
+for (let index = 0; index < LOWER_POSE_FRAMES.length; index += 1) {
+  const runtimeFrame = index + 62;
+  const sourceFrame = LOWER_POSE_FRAMES[index];
+  const png = join(temporaryDirectory, `lower-${String(sourceFrame).padStart(3, '0')}.png`);
+  const webp = join(outputDirectory, `frame-${String(runtimeFrame).padStart(3, '0')}.webp`);
+  extractFrame(lowerVideo, sourceFrame, png);
+  const source = decodeRgb(png);
+  const targetTone = interpolate(leftTone, rightTone, (index + 1) / 60);
+  const { graded, profile } = matchTone(source, targetTone);
+  if (index === 0 || index === Math.floor(LOWER_POSE_FRAMES.length / 2) || index === LOWER_POSE_FRAMES.length - 1) {
+    describeProfile(`frame ${String(runtimeFrame).padStart(3, '0')}`, profile);
+  }
+  encodeWebp(makeConnectedBackgroundTransparent(graded), webp);
+}
+
+console.log(`Rebuilt 120 calibrated frames with transparent connected backgrounds for pure white CSS compositing in ${outputDirectory}`);

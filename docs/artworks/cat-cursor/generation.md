@@ -30,7 +30,7 @@ Use the provided exact screen-right-facing first frame and exact screen-left-fac
 ### Lower arc prompt
 
 ```text
-Use the provided exact screen-left-facing first frame and exact screen-right-facing last frame as fixed anchors. Create one smooth continuous LOWER semicircular head-and-eye tracking motion in SCREEN coordinates: 0% look clearly LEFT, 50% look clearly DOWN toward the BOTTOM EDGE with the muzzle and pupils lowered and the head gently tilted downward, 100% look clearly RIGHT. The gaze must travel only along the lower arc LEFT → BOTTOM → RIGHT. At no point should the cat look straight forward at the camera as the main midpoint pose, and it must never look upward. The head and pupils move continuously at a steady speed without pause, reversal, or shortcut. Keep both eyes naturally visible during the downward pose; do not bury the face into the chest. Only the head, eyes, and ears move as anatomically necessary. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, and flat pure white #FFFFFF background fixed. Do not mirror or swap the cat's anatomical left/right markings. Preserve both endpoint compositions exactly. Keep the entire face, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, or lighting change.
+Use the provided exact screen-left-facing first frame and exact screen-right-facing last frame as fixed anchors. Create one smooth continuous LOWER semicircular head-and-eye tracking motion in SCREEN coordinates: 0% look clearly LEFT, 50% look clearly DOWN toward the BOTTOM EDGE with the muzzle and pupils lowered and the head gently tilted downward, 100% look clearly RIGHT. The gaze must travel only along the lower arc LEFT → BOTTOM → RIGHT. At no point should the cat look straight forward at the camera as the main midpoint pose, and it must never look upward. The head and pupils move continuously at a steady speed without pause, reversal, or shortcut. Keep both eyes naturally visible during the downward pose; do not bury the face into the chest. Only the head, eyes, and ears move as anatomically necessary. Keep the neck base, torso, shoulders, camera, framing, face scale, crop, orange-and-white cat identity, exact asymmetric facial markings, fur detail, exposure, white balance, contrast, saturation, and flat pure white #FFFFFF background fixed. Do not mirror or swap the cat's anatomical left/right markings. Preserve both endpoint compositions exactly. Keep the entire face, both ears, nose, chin, muzzle, and whiskers inside the strict 9:16 frame. No body sway, camera motion, zoom, reframing, cuts, morphing, facial deformation, gray tint, gradient, shadow, floor, or lighting change.
 ```
 
 ### Center-to-right prompt
@@ -58,6 +58,43 @@ Throughout this short two-second motion, the cat stays awake and attentive; it n
 ```
 
 ## Native-frame processing
+
+### `cursor-cat-circle` Seedance path
+
+The full-circle page uses the Comfy Cloud `api_seedance2_0_flf2v` workflow and
+the `ByteDance Seedance 2.0` first/last-frame node. The accepted lower arc uses
+the canonical left pose as its first frame and the canonical right pose as its
+last frame with these settings:
+
+- resolution: `720p`
+- ratio: `9:16`
+- duration: `4 seconds`
+- output: `97` native frames at `24 fps`
+- audio and watermark: off
+- seed: `569956546`
+
+The runtime has `120` unique three-degree poses: right is frame `001`, top is
+`031`, left is `061`, and bottom is `091`. The processor keeps the three
+canonical upper anchors, samples `59` interior frames from the lower video,
+matches coat and white-fur tone between the left/right anchors, and stores the
+connected studio background as transparent alpha. The page composites those
+frames over CSS `#FFFFFF`, avoiding the RGB 252–253 background introduced by
+lossy WebP encoding.
+
+```sh
+pnpm process:cursor-cat-circle -- \
+  --right-video .qa/cursor-cat-circle-quarter-v1/video/seedance20-right-to-top-v1.mp4 \
+  --left-video .qa/cursor-cat-circle-quarter-v1/video/seedance20-top-to-left-lowcost-v1.mp4 \
+  --lower-video .qa/cursor-cat-circle-lower-arc-v1/video/seedance20-left-to-right-lower-720p-v1.mp4 \
+  --output pages/cursor-cat-circle/assets/circle-frames
+```
+
+The approved right/top/left source images live in
+`pages/cursor-cat-circle/assets/canonical-frames/`; the processor reads those
+files instead of reusing already alpha-processed runtime frames, so reruns stay
+idempotent.
+
+### `cursor-cat` LTX paths
 
 The checked-in processor selects evenly spaced native source frames without interpolation. It excludes the two generated endpoint frames from runtime output because canonical PNG files own those pointers.
 

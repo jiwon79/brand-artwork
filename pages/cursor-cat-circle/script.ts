@@ -1,20 +1,26 @@
-const FRAME_COUNT = 61;
-const MIDPOINT_FRAME = (FRAME_COUNT - 1) / 2;
-const LOWER_PROJECTION_Y_RATIO = 0.48;
+const FRAME_COUNT = 120;
+const QUARTER_FRAME_COUNT = FRAME_COUNT / 4;
+const TOP_FRAME = QUARTER_FRAME_COUNT;
+const LEFT_FRAME = QUARTER_FRAME_COUNT * 2;
+const BOTTOM_FRAME = QUARTER_FRAME_COUNT * 3;
+const POINTER_CENTER_Y_RATIO = 0.46;
 const SECOND_QUARTER_SCALE = 0.993;
-const KEYBOARD_STEP = 2 / (FRAME_COUNT - 1);
+const KEYBOARD_STEP = 2 / FRAME_COUNT;
 const FRAME_RESPONSE = 0.34;
 const MAX_RENDER_DELTA = 64;
 const DEBUG_ARC_SAMPLE_COUNT = 720;
+const FRAME_ASSET_VERSION = 2;
 
 type Point = { x: number; y: number };
 type Bounds = { left: number; top: number; width: number; height: number };
 type DebugArcSample = Point & { frame: number; angle: number };
 
-const GAZE_ORIGINS: [Point, Point, Point] = [
+const GAZE_ORIGINS: [Point, Point, Point, Point, Point] = [
   { x: 0.69, y: 0.46 },
   { x: 0.51, y: 0.33 },
   { x: 0.29, y: 0.46 },
+  { x: 0.50, y: 0.65 },
+  { x: 0.69, y: 0.46 },
 ];
 
 type ElementConstructor<T extends HTMLElement> = new () => T;
@@ -30,21 +36,23 @@ function requiredElement<T extends HTMLElement>(
   return element;
 }
 
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.min(Math.max(value, minimum), maximum);
-}
-
 function lerp(start: number, end: number, progress: number): number {
   return start + (end - start) * progress;
 }
 
+function wrapProgress(progress: number): number {
+  return ((progress % 1) + 1) % 1;
+}
+
+function wrappedProgressDelta(target: number, current: number): number {
+  return ((target - current + 1.5) % 1) - 0.5;
+}
+
 function frameGazeOrigin(index: number): Point {
-  const isFirstQuarter = index <= MIDPOINT_FRAME;
-  const start = isFirstQuarter ? GAZE_ORIGINS[0] : GAZE_ORIGINS[1];
-  const end = isFirstQuarter ? GAZE_ORIGINS[1] : GAZE_ORIGINS[2];
-  const localProgress = isFirstQuarter
-    ? index / MIDPOINT_FRAME
-    : (index - MIDPOINT_FRAME) / MIDPOINT_FRAME;
+  const quarter = Math.floor(index / QUARTER_FRAME_COUNT);
+  const start = GAZE_ORIGINS[quarter] ?? GAZE_ORIGINS[0];
+  const end = GAZE_ORIGINS[quarter + 1] ?? GAZE_ORIGINS[1];
+  const localProgress = (index % QUARTER_FRAME_COUNT) / QUARTER_FRAME_COUNT;
 
   return {
     x: lerp(start.x, end.x, localProgress),
@@ -53,7 +61,7 @@ function frameGazeOrigin(index: number): Point {
 }
 
 function frameGazeAngle(index: number): number {
-  return -(index / (FRAME_COUNT - 1)) * Math.PI;
+  return -(index / FRAME_COUNT) * Math.PI * 2;
 }
 
 function angularDistance(first: number, second: number): number {
@@ -75,7 +83,7 @@ function catLayoutBounds(): Bounds {
 
 function frameSource(index: number): string {
   const frame = String(index + 1).padStart(3, '0');
-  return `/pages/cursor-cat-circle/assets/upper-arc-frames/frame-${frame}.webp`;
+  return `/pages/cursor-cat-circle/assets/circle-frames/frame-${frame}.webp?v=${FRAME_ASSET_VERSION}`;
 }
 
 const stage = requiredElement('cat-stage', HTMLElement);
@@ -100,33 +108,29 @@ let debugLayoutKey = '';
 let debugArcSamples: DebugArcSample[] = [];
 
 function showFrame(index: number): void {
-  const nextIndex = clamp(index, 0, FRAME_COUNT - 1);
+  const nextIndex = ((Math.round(index) % FRAME_COUNT) + FRAME_COUNT) % FRAME_COUNT;
   if (nextIndex === renderedFrame && cat.src.endsWith(sources[nextIndex] ?? '')) return;
 
   renderedFrame = nextIndex;
+  const scale = nextIndex <= TOP_FRAME
+    ? 1
+    : nextIndex <= LEFT_FRAME
+      ? SECOND_QUARTER_SCALE
+      : lerp(SECOND_QUARTER_SCALE, 1, (nextIndex - LEFT_FRAME) / (FRAME_COUNT - LEFT_FRAME));
   cat.style.setProperty(
     '--frame-scale',
-    String(nextIndex > MIDPOINT_FRAME ? SECOND_QUARTER_SCALE : 1),
+    String(scale),
   );
   cat.src = decodedFrames[nextIndex]?.src ?? sources[nextIndex] ?? sources[0];
 }
 
 function pointerFrame(clientX: number, clientY: number): number {
   const bounds = catLayoutBounds();
-  const projectionY = bounds.top + bounds.height * LOWER_PROJECTION_Y_RATIO;
+  const projectionY = bounds.top + bounds.height * POINTER_CENTER_Y_RATIO;
   const centerX = bounds.left + bounds.width * 0.5;
 
   if (Math.abs(clientX - centerX) + Math.abs(clientY - projectionY) < 1) {
-    return Math.round(targetProgress * (FRAME_COUNT - 1));
-  }
-
-  // Only the generated upper semicircle exists. Positions below the face are
-  // projected to the closest horizontal endpoint instead of inventing poses.
-  if (clientY > projectionY) {
-    if (Math.abs(clientX - centerX) < 1) {
-      return Math.round(targetProgress * (FRAME_COUNT - 1));
-    }
-    return clientX < centerX ? FRAME_COUNT - 1 : 0;
+    return Math.round(targetProgress * FRAME_COUNT) % FRAME_COUNT;
   }
 
   let bestFrame = renderedFrame;
@@ -150,7 +154,7 @@ function pointerFrame(clientX: number, clientY: number): number {
 }
 
 function pointerProgress(clientX: number, clientY: number): number {
-  return pointerFrame(clientX, clientY) / (FRAME_COUNT - 1);
+  return pointerFrame(clientX, clientY) / FRAME_COUNT;
 }
 
 function updatePointer(event: PointerEvent): void {
@@ -160,7 +164,7 @@ function updatePointer(event: PointerEvent): void {
 
   if (reducedMotion.matches) {
     renderedProgress = targetProgress;
-    showFrame(Math.round(renderedProgress * (FRAME_COUNT - 1)));
+    showFrame(Math.round(renderedProgress * FRAME_COUNT));
   }
 }
 
@@ -174,10 +178,8 @@ function updateKeyboard(event: KeyboardEvent): void {
   if (!ready || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
 
   event.preventDefault();
-  targetProgress = clamp(
+  targetProgress = wrapProgress(
     targetProgress + (event.key === 'ArrowLeft' ? KEYBOARD_STEP : -KEYBOARD_STEP),
-    0,
-    1,
   );
 }
 
@@ -201,7 +203,7 @@ function debugArcGeometry(bounds: Bounds): { center: Point; radius: number } {
   return {
     center: {
       x: bounds.left + bounds.width * 0.5,
-      y: bounds.top + bounds.height * LOWER_PROJECTION_Y_RATIO,
+      y: bounds.top + bounds.height * POINTER_CENTER_Y_RATIO,
     },
     radius: Math.min(stageBounds.width, stageBounds.height) * 0.38,
   };
@@ -217,7 +219,7 @@ function rebuildDebugArc(bounds: Bounds): void {
   if (layoutKey === debugLayoutKey) return;
   debugLayoutKey = layoutKey;
   debugArcSamples = Array.from({ length: DEBUG_ARC_SAMPLE_COUNT + 1 }, (_, index) => {
-    const angle = -(index / DEBUG_ARC_SAMPLE_COUNT) * Math.PI;
+    const angle = -(index / DEBUG_ARC_SAMPLE_COUNT) * Math.PI * 2;
     const x = center.x + Math.cos(angle) * radius;
     const y = center.y + Math.sin(angle) * radius;
     return { x, y, angle, frame: pointerFrame(x, y) };
@@ -318,7 +320,7 @@ function drawDebugArc(targetFrame: number, bounds: Bounds): void {
   debugContext.textAlign = 'center';
   debugContext.textBaseline = 'middle';
 
-  for (const frame of [0, 10, 20, 30, 40, 50, 60]) {
+  for (const frame of [0, 15, 30, 45, 60, 75, 90, 105]) {
     const angle = frameGazeAngle(frame);
     const x = center.x + Math.cos(angle) * (radius + 18);
     const y = center.y + Math.sin(angle) * (radius + 18);
@@ -327,16 +329,24 @@ function drawDebugArc(targetFrame: number, bounds: Bounds): void {
 }
 
 function drawDebugHud(targetFrame: number): void {
-  const targetAngle = (targetFrame / (FRAME_COUNT - 1)) * 180;
-  const renderedAngle = (renderedFrame / (FRAME_COUNT - 1)) * 180;
-  const direction = targetFrame < MIDPOINT_FRAME
+  const targetAngle = (targetFrame / FRAME_COUNT) * 360;
+  const renderedAngle = (renderedFrame / FRAME_COUNT) * 360;
+  const direction = targetFrame < TOP_FRAME
     ? 'RIGHT → TOP'
-    : targetFrame > MIDPOINT_FRAME
-      ? 'TOP → LEFT'
-      : 'TOP';
+    : targetFrame === TOP_FRAME
+      ? 'TOP'
+      : targetFrame < LEFT_FRAME
+        ? 'TOP → LEFT'
+        : targetFrame === LEFT_FRAME
+          ? 'LEFT'
+          : targetFrame < BOTTOM_FRAME
+            ? 'LEFT → BOTTOM'
+            : targetFrame === BOTTOM_FRAME
+              ? 'BOTTOM'
+              : 'BOTTOM → RIGHT';
   const lines = [
-    ['TARGET', `${String(targetFrame + 1).padStart(3, '0')} / 061   ${targetAngle.toFixed(1)}°`],
-    ['RENDERED', `${String(renderedFrame + 1).padStart(3, '0')} / 061   ${renderedAngle.toFixed(1)}°`],
+    ['TARGET', `${String(targetFrame + 1).padStart(3, '0')} / 120   ${targetAngle.toFixed(1)}°`],
+    ['RENDERED', `${String(renderedFrame + 1).padStart(3, '0')} / 120   ${renderedAngle.toFixed(1)}°`],
     ['PATH', direction],
     ['TOGGLE', 'D'],
   ];
@@ -351,7 +361,7 @@ function drawDebugHud(targetFrame: number): void {
   debugContext.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
   debugContext.textAlign = 'left';
   debugContext.textBaseline = 'top';
-  debugContext.fillText('CURSOR CAT · UPPER ARC DEBUG', x + 12, y + 10);
+  debugContext.fillText('CURSOR CAT · FULL CIRCLE DEBUG', x + 12, y + 10);
 
   lines.forEach(([label, value], index) => {
     const lineY = y + 33 + index * 18;
@@ -367,7 +377,7 @@ function drawDebug(): void {
   prepareDebugCanvas();
 
   const bounds = catLayoutBounds();
-  const targetFrame = Math.round(targetProgress * (FRAME_COUNT - 1));
+  const targetFrame = Math.round(targetProgress * FRAME_COUNT) % FRAME_COUNT;
   const { radius } = debugArcGeometry(bounds);
   const targetOrigin = screenGazeOrigin(targetFrame, bounds);
   const renderedOrigin = screenGazeOrigin(renderedFrame, bounds);
@@ -402,13 +412,14 @@ function render(time: number): void {
 
   if (ready && !reducedMotion.matches) {
     const response = 1 - Math.pow(1 - FRAME_RESPONSE, delta / 16.67);
-    renderedProgress += (targetProgress - renderedProgress) * response;
+    const progressDelta = wrappedProgressDelta(targetProgress, renderedProgress);
+    renderedProgress = wrapProgress(renderedProgress + progressDelta * response);
 
-    if (Math.abs(targetProgress - renderedProgress) < 0.0005) {
+    if (Math.abs(progressDelta) < 0.0005) {
       renderedProgress = targetProgress;
     }
 
-    showFrame(Math.round(renderedProgress * (FRAME_COUNT - 1)));
+    showFrame(Math.round(renderedProgress * FRAME_COUNT));
   }
 
   drawDebug();
@@ -420,8 +431,32 @@ async function loadFrame(source: string): Promise<HTMLImageElement> {
   const image = new Image();
   image.decoding = 'async';
   image.src = source;
-  await image.decode();
+  try {
+    await image.decode();
+  } catch (error) {
+    throw new Error(`Could not decode cursor-cat frame: ${source}`, { cause: error });
+  }
   return image;
+}
+
+async function loadFrames(frameSources: string[], concurrency = 8): Promise<HTMLImageElement[]> {
+  const frames = new Array<HTMLImageElement>(frameSources.length);
+  let nextIndex = 0;
+
+  async function loadNext(): Promise<void> {
+    while (nextIndex < frameSources.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const source = frameSources[index];
+      if (!source) continue;
+      frames[index] = await loadFrame(source);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, frameSources.length) }, loadNext),
+  );
+  return frames;
 }
 
 async function initialize(): Promise<void> {
@@ -429,7 +464,7 @@ async function initialize(): Promise<void> {
     await cat.decode();
     stage.classList.add('is-poster-ready');
 
-    const frames = await Promise.all(sources.map(loadFrame));
+    const frames = await loadFrames(sources);
     decodedFrames.push(...frames);
     ready = true;
     stage.classList.add('is-ready');
