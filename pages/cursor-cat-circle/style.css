@@ -54,6 +54,8 @@ body {
 }
 
 .cat-frame {
+  --frame-scale: 1;
+
   display: block;
   width: min(100vw, 56.25vh);
   width: min(100vw, 56.25lvh);
@@ -62,6 +64,8 @@ body {
   max-height: 100%;
   object-fit: contain;
   object-position: center bottom;
+  transform: scale(var(--frame-scale));
+  transform-origin: center bottom;
   -webkit-user-drag: none;
 }
 

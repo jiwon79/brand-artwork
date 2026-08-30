@@ -1,9 +1,18 @@
 const FRAME_COUNT = 61;
-const FACE_CENTER_X_RATIO = 0.5;
-const FACE_CENTER_Y_RATIO = 0.48;
+const MIDPOINT_FRAME = (FRAME_COUNT - 1) / 2;
+const LOWER_PROJECTION_Y_RATIO = 0.48;
+const SECOND_QUARTER_SCALE = 0.993;
 const KEYBOARD_STEP = 2 / (FRAME_COUNT - 1);
 const FRAME_RESPONSE = 0.34;
 const MAX_RENDER_DELTA = 64;
+
+type Point = { x: number; y: number };
+
+const GAZE_ORIGINS: [Point, Point, Point] = [
+  { x: 0.69, y: 0.46 },
+  { x: 0.51, y: 0.33 },
+  { x: 0.29, y: 0.46 },
+];
 
 type ElementConstructor<T extends HTMLElement> = new () => T;
 
@@ -20,6 +29,41 @@ function requiredElement<T extends HTMLElement>(
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
+}
+
+function lerp(start: number, end: number, progress: number): number {
+  return start + (end - start) * progress;
+}
+
+function frameGazeOrigin(index: number): Point {
+  const isFirstQuarter = index <= MIDPOINT_FRAME;
+  const start = isFirstQuarter ? GAZE_ORIGINS[0] : GAZE_ORIGINS[1];
+  const end = isFirstQuarter ? GAZE_ORIGINS[1] : GAZE_ORIGINS[2];
+  const localProgress = isFirstQuarter
+    ? index / MIDPOINT_FRAME
+    : (index - MIDPOINT_FRAME) / MIDPOINT_FRAME;
+
+  return {
+    x: lerp(start.x, end.x, localProgress),
+    y: lerp(start.y, end.y, localProgress),
+  };
+}
+
+function angularDistance(first: number, second: number): number {
+  return Math.abs(Math.atan2(Math.sin(first - second), Math.cos(first - second)));
+}
+
+function catLayoutBounds(): { left: number; top: number; width: number; height: number } {
+  const transformed = cat.getBoundingClientRect();
+  const width = cat.offsetWidth;
+  const height = cat.offsetHeight;
+
+  return {
+    left: transformed.left - (width - transformed.width) * 0.5,
+    top: transformed.bottom - height,
+    width,
+    height,
+  };
 }
 
 function frameSource(index: number): string {
@@ -45,27 +89,47 @@ function showFrame(index: number): void {
   if (nextIndex === renderedFrame && cat.src.endsWith(sources[nextIndex] ?? '')) return;
 
   renderedFrame = nextIndex;
+  cat.style.setProperty(
+    '--frame-scale',
+    String(nextIndex > MIDPOINT_FRAME ? SECOND_QUARTER_SCALE : 1),
+  );
   cat.src = decodedFrames[nextIndex]?.src ?? sources[nextIndex] ?? sources[0];
 }
 
 function pointerProgress(clientX: number, clientY: number): number {
-  const bounds = cat.getBoundingClientRect();
-  const faceX = bounds.left + bounds.width * FACE_CENTER_X_RATIO;
-  const faceY = bounds.top + bounds.height * FACE_CENTER_Y_RATIO;
-  const deltaX = clientX - faceX;
-  const deltaY = clientY - faceY;
+  const bounds = catLayoutBounds();
+  const projectionY = bounds.top + bounds.height * LOWER_PROJECTION_Y_RATIO;
+  const centerX = bounds.left + bounds.width * 0.5;
 
-  if (Math.abs(deltaX) + Math.abs(deltaY) < 1) return targetProgress;
+  if (Math.abs(clientX - centerX) + Math.abs(clientY - projectionY) < 1) {
+    return targetProgress;
+  }
 
   // Only the generated upper semicircle exists. Positions below the face are
   // projected to the closest horizontal endpoint instead of inventing poses.
-  if (deltaY > 0) {
-    if (Math.abs(deltaX) < 1) return targetProgress;
-    return deltaX < 0 ? 1 : 0;
+  if (clientY > projectionY) {
+    if (Math.abs(clientX - centerX) < 1) return targetProgress;
+    return clientX < centerX ? 1 : 0;
   }
 
-  const angle = Math.atan2(deltaY, deltaX);
-  return clamp(-angle / Math.PI, 0, 1);
+  let bestFrame = renderedFrame;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < FRAME_COUNT; index += 1) {
+    const origin = frameGazeOrigin(index);
+    const originX = bounds.left + bounds.width * origin.x;
+    const originY = bounds.top + bounds.height * origin.y;
+    const pointerAngle = Math.atan2(clientY - originY, clientX - originX);
+    const gazeAngle = -(index / (FRAME_COUNT - 1)) * Math.PI;
+    const distance = angularDistance(pointerAngle, gazeAngle);
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestFrame = index;
+    }
+  }
+
+  return bestFrame / (FRAME_COUNT - 1);
 }
 
 function updatePointer(event: PointerEvent): void {
