@@ -4,31 +4,37 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#ffffff">
-  <title>Cursor Animal</title>
-  <link rel="stylesheet" href="/pages/cursor-cat/style.css?v=20260830-19">
+  <title>Cursor Cat</title>
+  <link rel="stylesheet" href="/pages/cursor-cat/style.css">
 </head>
 <body>
   <main
     id="cat-stage"
     class="cat-stage"
+    tabindex="0"
     aria-busy="true"
-    aria-label="커서를 따라 시선을 움직이는 동물"
+    aria-label="커서 위치를 따라 원형으로 시선을 움직이는 주황색 고양이"
   >
     <div class="cat-wrap">
       <img
-        id="animal-frame"
+        id="cat-frame"
         class="cat-frame"
         alt=""
         draggable="false"
         decoding="async"
+        fetchpriority="high"
       >
     </div>
+
+    <canvas
+      id="debug-canvas"
+      class="debug-canvas"
+      aria-hidden="true"
+    ></canvas>
 
     <p id="loading-status" class="loading-status" role="status" aria-live="polite">
       이미지 로딩 중…
     </p>
-
-    <div id="pointer-debug" class="pointer-debug" aria-hidden="true"></div>
   </main>
 
   <script type="module" src="/common/touch-pointer.ts"></script>

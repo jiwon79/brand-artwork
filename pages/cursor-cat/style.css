@@ -19,7 +19,7 @@ body {
 
 body {
   min-height: 100vh;
-  min-height: 100lvh;
+  min-height: 100dvh;
   overflow: hidden;
   background: #fff;
   -webkit-font-smoothing: antialiased;
@@ -29,10 +29,11 @@ body {
   position: relative;
   width: 100vw;
   height: 100vh;
-  height: 100lvh;
+  height: 100dvh;
   overflow: hidden;
   background: #fff;
   cursor: crosshair;
+  outline: none;
   touch-action: none;
   user-select: none;
 }
@@ -43,8 +44,8 @@ body {
   display: grid;
   opacity: 0;
   place-items: end center;
-  transition: opacity 500ms ease;
   pointer-events: none;
+  transition: opacity 240ms ease;
 }
 
 .is-poster-ready .cat-wrap,
@@ -53,30 +54,46 @@ body {
 }
 
 .cat-frame {
-  grid-area: 1 / 1;
+  --frame-scale: 1;
+
   display: block;
   width: min(100vw, 56.25vh);
-  width: min(100vw, 56.25lvh);
+  width: min(100vw, 56.25dvh);
   height: auto;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
   object-position: center bottom;
-  opacity: 1;
+  transform: scale(var(--frame-scale));
+  transform-origin: center bottom;
   -webkit-user-drag: none;
+}
+
+.debug-canvas {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.is-debug .debug-canvas {
+  visibility: visible;
+  opacity: 1;
 }
 
 .loading-status {
   position: absolute;
-  z-index: 2;
+  z-index: 1;
   top: 50%;
   left: 50%;
   margin: 0;
-  padding: 8px 12px;
-  border-radius: 999px;
-  color: #161616;
-  background: rgb(255 255 255 / 88%);
-  font-size: 14px;
+  color: #555;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
   pointer-events: none;
@@ -93,60 +110,9 @@ body {
   color: #c00;
 }
 
-.pointer-debug {
-  position: absolute;
-  z-index: 3;
-  inset: 0;
-  display: none;
-  pointer-events: none;
-}
-
-.is-debug .pointer-debug {
-  display: block;
-}
-
-.image-pointer {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  border: 1px solid rgb(0 99 255 / 80%);
-  border-radius: 50%;
-  background: rgb(255 255 255 / 80%);
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 80%);
-  transform: translate(-50%, -50%);
-}
-
-.image-pointer--center {
-  width: 9px;
-  height: 9px;
-  border-color: #ff3b30;
-}
-
-.image-pointer.is-active {
-  z-index: 1;
-  width: 15px;
-  height: 15px;
-  border-width: 3px;
-  background: #fff;
-}
-
-.image-pointer.is-active::after {
-  position: absolute;
-  top: 18px;
-  left: 50%;
-  padding: 3px 5px;
-  border-radius: 3px;
-  color: #fff;
-  background: #161616;
-  content: attr(data-label);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  transform: translateX(-50%);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .cat-wrap {
+  .cat-wrap,
+  .loading-status {
     transition-duration: 0ms;
   }
 }

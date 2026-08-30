@@ -1,52 +1,35 @@
-import GUI from 'lil-gui';
 import { CURSOR_CAT_ASSET_BASE_URL } from './config';
 
-const POINTER_PADDING_RATIO = 0.15;
-const FACE_CENTER_Y_RATIO = 0.47;
-const DEFAULT_TRANSITION_FRAME_RATE = 36;
-const MAX_DISTANCE_FRAME_RATE_MULTIPLIER = 3;
-const FULL_SPEED_PATH_DISTANCE = 48;
-const MAX_RENDER_DELTA = 100;
-const DEFAULT_ANIMAL_ID = 'main';
-const ANIMAL_ID_PATTERN = /^[a-z0-9]{10}$/;
+const FRAME_COUNT = 120;
+const QUARTER_FRAME_COUNT = FRAME_COUNT / 4;
+const TOP_FRAME = QUARTER_FRAME_COUNT;
+const LEFT_FRAME = QUARTER_FRAME_COUNT * 2;
+const BOTTOM_FRAME = QUARTER_FRAME_COUNT * 3;
+const POINTER_CENTER_Y_RATIO = 0.46;
+const KEYBOARD_STEP = 2 / FRAME_COUNT;
+const FRAME_RESPONSE = 0.34;
+const MAX_RENDER_DELTA = 64;
+const DEBUG_ARC_SAMPLE_COUNT = 720;
+const DEFAULT_ARTWORK_ID = 'main';
+const ARTWORK_ID_PATTERN = /^[a-z0-9]{10}$/;
 
-interface ManifestAssets {
-  poster: string;
-  center: string;
-  left: string;
-  right: string;
-  upper: string;
-  lower: string;
-  centerLeft: string;
-  centerRight: string;
-  centerTop: string;
-  centerBottom: string;
-}
+type Point = { x: number; y: number };
+type Bounds = { left: number; top: number; width: number; height: number };
+type DebugArcSample = Point & { frame: number; angle: number };
+type GazeOriginAnchor = Point & { frame: number };
+type DisplayScaleAnchor = { frame: number; scale: number };
 
-interface CursorAnimalManifest {
+interface CursorCatManifest {
   schemaVersion: 1;
   id: string;
   version: string;
   name: string;
   alt: string;
   ariaLabel: string;
-  frameCounts: {
-    arc: number;
-    radial: number;
-  };
-  assets: ManifestAssets;
-}
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface ImagePointer extends Point {
-  id: string;
-  group: string;
-  src: string;
-  index?: number;
+  frameCount: number;
+  framePattern: string;
+  gazeOrigins: GazeOriginAnchor[];
+  displayScales: DisplayScaleAnchor[];
 }
 
 type ElementConstructor<T extends HTMLElement> = new () => T;
@@ -62,446 +45,546 @@ function requiredElement<T extends HTMLElement>(
   return element;
 }
 
-const stage = requiredElement('cat-stage', HTMLElement);
-const animal = requiredElement('animal-frame', HTMLImageElement);
-const loadingStatus = requiredElement('loading-status', HTMLElement);
-const debugLayer = requiredElement('pointer-debug', HTMLElement);
-const debugMarkers = new Map<ImagePointer, HTMLElement>();
-const decodedImages = new Map<string, HTMLImageElement>();
-const guiState = {
-  debugPoints: new URLSearchParams(window.location.search).has('debug'),
-  frameRate: DEFAULT_TRANSITION_FRAME_RATE,
-};
-const gui = new GUI({ title: 'Cursor Animal' });
+function lerp(start: number, end: number, progress: number): number {
+  return start + (end - start) * progress;
+}
 
-let imagePointers: ImagePointer[] = [];
-let pointerNeighbors = new Map<ImagePointer, Set<ImagePointer>>();
-let activePointer: ImagePointer | null = null;
-let targetPointer: ImagePointer | null = null;
-let ready = false;
-let pointerDirty = false;
-let targetPoint: Point = { x: 0, y: 0 };
-let lastRenderTime = 0;
-let transitionStepBudget = 0;
+function wrapProgress(progress: number): number {
+  return ((progress % 1) + 1) % 1;
+}
 
-function animalIdFromPath(): string | null {
+function wrappedProgressDelta(target: number, current: number): number {
+  return ((target - current + 1.5) % 1) - 0.5;
+}
+
+function anchorPair<T extends { frame: number }>(anchors: T[], frame: number): [T, T] {
+  const endIndex = anchors.findIndex((anchor) => anchor.frame >= frame);
+  const end = anchors[Math.max(endIndex, 0)] ?? anchors[anchors.length - 1];
+  const start = anchors[Math.max(endIndex - 1, 0)] ?? anchors[0];
+  if (!start || !end) throw new Error('Cursor Cat calibration is empty');
+  return [start, end];
+}
+
+function frameGazeOrigin(index: number): Point {
+  const [start, end] = anchorPair(gazeOriginAnchors, index);
+  const range = end.frame - start.frame;
+  const localProgress = range === 0 ? 0 : (index - start.frame) / range;
+
+  return {
+    x: lerp(start.x, end.x, localProgress),
+    y: lerp(start.y, end.y, localProgress),
+  };
+}
+
+function frameDisplayScale(index: number): number {
+  const [start, end] = anchorPair(displayScaleAnchors, index);
+  const range = end.frame - start.frame;
+  const localProgress = range === 0 ? 0 : (index - start.frame) / range;
+  return lerp(start.scale, end.scale, localProgress);
+}
+
+function frameGazeAngle(index: number): number {
+  return -(index / FRAME_COUNT) * Math.PI * 2;
+}
+
+function angularDistance(first: number, second: number): number {
+  return Math.abs(Math.atan2(Math.sin(first - second), Math.cos(first - second)));
+}
+
+function catLayoutBounds(): Bounds {
+  const transformed = cat.getBoundingClientRect();
+  const width = cat.offsetWidth;
+  const height = cat.offsetHeight;
+
+  return {
+    left: transformed.left - (width - transformed.width) * 0.5,
+    top: transformed.bottom - height,
+    width,
+    height,
+  };
+}
+
+function artworkIdFromPath(): string | null {
   const parts = window.location.pathname.split('/').filter(Boolean);
   const pageIndex = parts.lastIndexOf('cursor-cat');
   const candidate = parts[pageIndex + 1];
 
-  if (!candidate || candidate === 'index.html') return DEFAULT_ANIMAL_ID;
-  return ANIMAL_ID_PATTERN.test(candidate) ? candidate : null;
+  if (!candidate || candidate === 'index.html') return DEFAULT_ARTWORK_ID;
+  return ARTWORK_ID_PATTERN.test(candidate) ? candidate : null;
 }
 
-function manifestUrl(animalId: string): string {
-  return `${CURSOR_CAT_ASSET_BASE_URL.replace(/\/$/, '')}/${animalId}/manifest.json`;
+function manifestUrl(artworkId: string): string {
+  return `${CURSOR_CAT_ASSET_BASE_URL.replace(/\/$/, '')}/${artworkId}/manifest.json`;
 }
 
-function assetUrl(manifest: CursorAnimalManifest, path: string): string {
+function frameSource(manifest: CursorCatManifest, index: number): string {
+  const frame = String(index + 1).padStart(3, '0');
+  const path = manifest.framePattern.replace('{frame}', frame);
   const baseUrl = CURSOR_CAT_ASSET_BASE_URL.replace(/\/$/, '');
   return `${baseUrl}/${manifest.id}/${path}?v=${encodeURIComponent(manifest.version)}`;
 }
 
-function framePath(pattern: string, index: number): string {
-  return pattern.replace('{frame}', String(index).padStart(3, '0'));
+function anchorsAreValid(
+  anchors: Array<{ frame: number } & Record<string, unknown>> | undefined,
+  valueKeys: string[],
+): boolean {
+  return Array.isArray(anchors)
+    && anchors.length >= 2
+    && anchors[0]?.frame === 0
+    && anchors[anchors.length - 1]?.frame === FRAME_COUNT
+    && anchors.every((anchor, index) => (
+      Number.isInteger(anchor.frame)
+      && anchor.frame >= 0
+      && anchor.frame <= FRAME_COUNT
+      && (index === 0 || anchor.frame > (anchors[index - 1]?.frame ?? -1))
+      && valueKeys.every((key) => Number.isFinite(anchor[key]))
+    ));
 }
 
 function validateManifest(
-  manifest: unknown,
+  value: unknown,
   expectedId: string,
-): asserts manifest is CursorAnimalManifest {
-  const candidate = manifest as Partial<CursorAnimalManifest> | null;
-  const frameCounts = candidate?.frameCounts;
+): asserts value is CursorCatManifest {
+  const manifest = value as Partial<CursorCatManifest> | null;
   if (
-    candidate?.schemaVersion !== 1
-    || candidate.id !== expectedId
-    || typeof candidate.version !== 'string'
-    || typeof candidate.name !== 'string'
-    || typeof candidate.alt !== 'string'
-    || typeof candidate.ariaLabel !== 'string'
-    || !Number.isInteger(frameCounts?.arc)
-    || !Number.isInteger(frameCounts?.radial)
-    || !frameCounts
-    || frameCounts.arc < 3
-    || frameCounts.arc % 2 === 0
-    || frameCounts.radial < 3
+    manifest?.schemaVersion !== 1
+    || manifest.id !== expectedId
+    || typeof manifest.version !== 'string'
+    || typeof manifest.name !== 'string'
+    || typeof manifest.alt !== 'string'
+    || typeof manifest.ariaLabel !== 'string'
+    || manifest.frameCount !== FRAME_COUNT
+    || manifest.framePattern !== 'frame-{frame}.webp'
+    || !anchorsAreValid(manifest.gazeOrigins, ['x', 'y'])
+    || !anchorsAreValid(manifest.displayScales, ['scale'])
+    || manifest.gazeOrigins?.every((anchor) => (
+      anchor.x >= 0 && anchor.x <= 1 && anchor.y >= 0 && anchor.y <= 1
+    )) !== true
+    || manifest.displayScales?.every((anchor) => (
+      anchor.scale > 0 && anchor.scale <= 2
+    )) !== true
   ) {
-    throw new Error('Invalid cursor-animal manifest');
-  }
-
-  const requiredAssets: Array<keyof ManifestAssets> = [
-    'poster', 'center', 'left', 'right',
-    'upper', 'lower', 'centerLeft', 'centerRight', 'centerTop', 'centerBottom',
-  ];
-  if (requiredAssets.some((key) => typeof candidate.assets?.[key] !== 'string')) {
-    throw new Error('Cursor-animal manifest is missing assets');
+    throw new Error('Invalid Cursor Cat manifest');
   }
 }
 
-function createPointerGraph(manifest: CursorAnimalManifest): void {
-  const arcFrameCount = manifest.frameCounts.arc;
-  const radialFrameCount = manifest.frameCounts.radial;
-  const source = (path: string): string => assetUrl(manifest, path);
-  const centerPointer: ImagePointer = {
-    id: 'CENTER',
-    group: 'center',
-    x: 0,
-    y: 0,
-    src: source(manifest.assets.center),
-  };
+const stage = requiredElement('cat-stage', HTMLElement);
+const cat = requiredElement('cat-frame', HTMLImageElement);
+const debugCanvas = requiredElement('debug-canvas', HTMLCanvasElement);
+const loadingStatus = requiredElement('loading-status', HTMLElement);
+const debugContext = (() => {
+  const context = debugCanvas.getContext('2d');
+  if (!context) throw new Error('Cursor Cat requires a 2D debug canvas');
+  return context;
+})();
 
-  const upperArcPointers = Array.from({ length: arcFrameCount }, (_, index): ImagePointer => {
-    const progress = index / (arcFrameCount - 1);
-    const angle = -progress * Math.PI;
+let sources: string[] = [];
+const decodedFrames: HTMLImageElement[] = [];
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-    return {
-      id: `U${String(index + 1).padStart(2, '0')}`,
-      group: 'upper',
-      x: Math.cos(angle),
-      y: Math.sin(angle),
-      src: index === 0
-        ? source(manifest.assets.right)
-        : index === arcFrameCount - 1
-          ? source(manifest.assets.left)
-          : source(framePath(manifest.assets.upper, index + 1)),
-    };
-  });
+let ready = false;
+let debugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
+let targetProgress = 0;
+let renderedProgress = 0;
+let renderedFrame = 0;
+let previousRenderTime = 0;
+let pointerPosition: Point | null = null;
+let debugLayoutKey = '';
+let debugArcSamples: DebugArcSample[] = [];
+let gazeOriginAnchors: GazeOriginAnchor[] = [];
+let displayScaleAnchors: DisplayScaleAnchor[] = [];
 
-  const lowerArcPointers = Array.from(
-    { length: arcFrameCount - 2 },
-    (_, index): ImagePointer => {
-    const sourceIndex = index + 1;
-    const progress = sourceIndex / (arcFrameCount - 1);
-    const angle = Math.PI * (1 - progress);
+function showFrame(index: number): void {
+  const nextIndex = ((Math.round(index) % FRAME_COUNT) + FRAME_COUNT) % FRAME_COUNT;
+  if (nextIndex === renderedFrame && cat.src.endsWith(sources[nextIndex] ?? '')) return;
 
-    return {
-      id: `L${String(sourceIndex + 1).padStart(2, '0')}`,
-      group: 'lower',
-      index: sourceIndex,
-      x: Math.cos(angle),
-      y: Math.sin(angle),
-      src: source(framePath(manifest.assets.lower, sourceIndex + 1)),
-    };
-    },
+  renderedFrame = nextIndex;
+  const scale = frameDisplayScale(nextIndex);
+  cat.style.setProperty(
+    '--frame-scale',
+    String(scale),
   );
+  cat.src = decodedFrames[nextIndex]?.src ?? sources[nextIndex] ?? sources[0];
+}
 
-  function createRadialPointers(
-    side: string,
-    xDirection: number,
-    yDirection: number,
-    idPrefix: string,
-    pattern: string,
-  ): ImagePointer[] {
-    return Array.from({ length: radialFrameCount - 2 }, (_, index): ImagePointer => {
-      const sourceIndex = index + 1;
-      const progress = sourceIndex / (radialFrameCount - 1);
+function pointerFrame(clientX: number, clientY: number): number {
+  const bounds = catLayoutBounds();
+  const projectionY = bounds.top + bounds.height * POINTER_CENTER_Y_RATIO;
+  const centerX = bounds.left + bounds.width * 0.5;
 
-      return {
-        id: `${idPrefix}${String(sourceIndex + 1).padStart(2, '0')}`,
-        group: `center-${side}`,
-        x: xDirection * progress,
-        y: yDirection * progress,
-        src: source(framePath(pattern, sourceIndex + 1)),
-      };
-    });
+  if (Math.abs(clientX - centerX) + Math.abs(clientY - projectionY) < 1) {
+    return Math.round(targetProgress * FRAME_COUNT) % FRAME_COUNT;
   }
 
-  const centerRightPointers = createRadialPointers(
-    'right', 1, 0, 'HR', manifest.assets.centerRight,
-  );
-  const centerLeftPointers = createRadialPointers(
-    'left', -1, 0, 'HL', manifest.assets.centerLeft,
-  );
-  const centerTopPointers = createRadialPointers(
-    'top', 0, -1, 'VT', manifest.assets.centerTop,
-  );
-  const centerBottomPointers = createRadialPointers(
-    'bottom', 0, 1, 'VB', manifest.assets.centerBottom,
-  );
+  let bestFrame = renderedFrame;
+  let bestDistance = Number.POSITIVE_INFINITY;
 
-  imagePointers = [
-    centerPointer,
-    ...centerRightPointers,
-    ...centerLeftPointers,
-    ...centerTopPointers,
-    ...centerBottomPointers,
-    ...upperArcPointers,
-    ...lowerArcPointers,
-  ];
-  pointerNeighbors = new Map(imagePointers.map((pointer) => [pointer, new Set()]));
+  for (let index = 0; index < FRAME_COUNT; index += 1) {
+    const origin = frameGazeOrigin(index);
+    const originX = bounds.left + bounds.width * origin.x;
+    const originY = bounds.top + bounds.height * origin.y;
+    const pointerAngle = Math.atan2(clientY - originY, clientX - originX);
+    const gazeAngle = frameGazeAngle(index);
+    const distance = angularDistance(pointerAngle, gazeAngle);
 
-  const rightPointer = upperArcPointers[0];
-  const topPointer = upperArcPointers[(arcFrameCount - 1) / 2];
-  const leftPointer = upperArcPointers[arcFrameCount - 1];
-  const bottomPointer = lowerArcPointers.find((pointer) => (
-    pointer.index === (arcFrameCount - 1) / 2
-  ));
-  if (!rightPointer || !topPointer || !leftPointer || !bottomPointer) {
-    throw new Error('Cursor Cat is missing a cardinal pointer');
-  }
-
-  function connectPointerPath(path: ImagePointer[]): void {
-    for (let index = 1; index < path.length; index += 1) {
-      const previous = path[index - 1];
-      const current = path[index];
-      pointerNeighbors.get(previous)?.add(current);
-      pointerNeighbors.get(current)?.add(previous);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestFrame = index;
     }
   }
 
-  connectPointerPath(upperArcPointers);
-  connectPointerPath([leftPointer, ...lowerArcPointers, rightPointer]);
-  connectPointerPath([centerPointer, ...centerRightPointers, rightPointer]);
-  connectPointerPath([centerPointer, ...centerLeftPointers, leftPointer]);
-  connectPointerPath([centerPointer, ...centerTopPointers, topPointer]);
-  connectPointerPath([centerPointer, ...centerBottomPointers, bottomPointer]);
-
-  activePointer = centerPointer;
-  targetPointer = centerPointer;
+  return bestFrame;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
+function pointerProgress(clientX: number, clientY: number): number {
+  return pointerFrame(clientX, clientY) / FRAME_COUNT;
 }
 
-function normalizedOffset(
-  delta: number,
-  negativeExtent: number,
-  positiveExtent: number,
-): number {
-  const extent = delta < 0 ? negativeExtent : positiveExtent;
-  return clamp(delta / Math.max(extent, 1), -1, 1);
-}
-
-function pointerRadius(stageBounds: DOMRect): number {
-  const shortSide = Math.min(stageBounds.width, stageBounds.height);
-  return Math.max(shortSide * (0.5 - POINTER_PADDING_RATIO), 1);
-}
-
-function pointerPosition(event: PointerEvent): Point {
-  const stageBounds = stage.getBoundingClientRect();
-  const animalBounds = animal.getBoundingClientRect();
-  const faceX = animalBounds.left + animalBounds.width * 0.5;
-  const faceY = animalBounds.top + animalBounds.height * FACE_CENTER_Y_RATIO;
-  const radius = pointerRadius(stageBounds);
-
-  return {
-    x: normalizedOffset(event.clientX - faceX, radius, radius),
-    y: normalizedOffset(event.clientY - faceY, radius, radius),
-  };
-}
-
-function nearestImagePointer(point: Point): ImagePointer {
-  const firstPointer = imagePointers[0];
-  if (!firstPointer) throw new Error('Cursor Cat has no image pointers');
-
-  return imagePointers.reduce<{ pointer: ImagePointer; distanceSquared: number }>((nearest, pointer) => {
-    const dx = point.x - pointer.x;
-    const dy = point.y - pointer.y;
-    const distanceSquared = dx * dx + dy * dy;
-
-    return distanceSquared < nearest.distanceSquared
-      ? { pointer, distanceSquared }
-      : nearest;
-  }, { pointer: firstPointer, distanceSquared: Number.POSITIVE_INFINITY }).pointer;
-}
-
-function pointerPath(start: ImagePointer, target: ImagePointer): ImagePointer[] {
-  if (start === target) return [];
-
-  const queue = [start];
-  const previous = new Map<ImagePointer, ImagePointer | null>([[start, null]]);
-
-  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
-    const current = queue[queueIndex];
-
-    for (const neighbor of pointerNeighbors.get(current) ?? []) {
-      if (previous.has(neighbor)) continue;
-      previous.set(neighbor, current);
-
-      if (neighbor === target) {
-        const path = [target];
-        let pathPointer = target;
-
-        while (previous.get(pathPointer) !== start) {
-          const priorPointer = previous.get(pathPointer);
-          if (!priorPointer) return [target];
-          pathPointer = priorPointer;
-          path.unshift(pathPointer);
-        }
-
-        return path;
-      }
-
-      queue.push(neighbor);
-    }
-  }
-
-  return [target];
-}
-
-function updateFrame(pointer: ImagePointer): void {
-  if (pointer === activePointer && animal.src === pointer.src) return;
-
-  activePointer = pointer;
-  animal.src = pointer.src;
-
-  for (const [candidate, marker] of debugMarkers) {
-    marker.classList.toggle('is-active', candidate === pointer);
-  }
-}
-
-function trackPointer(event: PointerEvent): void {
+function updatePointer(event: PointerEvent): void {
+  pointerPosition = { x: event.clientX, y: event.clientY };
   if (!ready) return;
-  targetPoint = pointerPosition(event);
-  pointerDirty = true;
-}
+  targetProgress = pointerProgress(event.clientX, event.clientY);
 
-function screenPosition(pointer: ImagePointer): Point {
-  const stageBounds = stage.getBoundingClientRect();
-  const animalBounds = animal.getBoundingClientRect();
-  const faceX = animalBounds.left + animalBounds.width * 0.5;
-  const faceY = animalBounds.top + animalBounds.height * FACE_CENTER_Y_RATIO;
-  const radius = pointerRadius(stageBounds);
-
-  return {
-    x: faceX - stageBounds.left + pointer.x * radius,
-    y: faceY - stageBounds.top + pointer.y * radius,
-  };
-}
-
-function layoutDebugMarkers(): void {
-  for (const [pointer, marker] of debugMarkers) {
-    const position = screenPosition(pointer);
-    marker.style.left = `${position.x}px`;
-    marker.style.top = `${position.y}px`;
+  if (reducedMotion.matches) {
+    renderedProgress = targetProgress;
+    showFrame(Math.round(renderedProgress * FRAME_COUNT));
   }
 }
 
-function createDebugMarkers(): void {
-  for (const pointer of imagePointers) {
-    const marker = document.createElement('span');
-    marker.className = `image-pointer image-pointer--${pointer.group}`;
-    marker.dataset.label = pointer.id;
-    marker.classList.toggle('is-active', pointer === activePointer);
-    debugLayer.append(marker);
-    debugMarkers.set(pointer, marker);
+function updateKeyboard(event: KeyboardEvent): void {
+  if (event.key.toLowerCase() === 'd') {
+    event.preventDefault();
+    setDebugEnabled(!debugEnabled, true);
+    return;
   }
-  layoutDebugMarkers();
-}
 
-function setDebugMode(enabled: boolean): void {
-  guiState.debugPoints = enabled;
-  debugController.updateDisplay();
-  gui.show(enabled);
-  stage.classList.toggle('is-debug', enabled);
-  if (enabled && ready) layoutDebugMarkers();
-}
+  if (!ready || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
 
-const debugController = gui.add(guiState, 'debugPoints')
-  .name('Debug points')
-  .onChange(setDebugMode);
-gui.add(guiState, 'frameRate', 12, 120, 1).name('Frame rate');
-gui.show(guiState.debugPoints);
-
-async function preloadFrames(): Promise<void> {
-  let loadedFrameCount = 0;
-  loadingStatus.textContent = `이미지 로딩 중 0 / ${imagePointers.length}`;
-
-  await Promise.all(
-    imagePointers.map(({ src }) => new Promise<void>((resolve) => {
-      const image = new Image();
-      image.decoding = 'async';
-
-      const settle = async (): Promise<void> => {
-        try {
-          await image.decode();
-        } catch {
-          // A failed frame must not block the rest of the interaction.
-        }
-        decodedImages.set(src, image);
-        loadedFrameCount += 1;
-        loadingStatus.textContent = `이미지 로딩 중 ${loadedFrameCount} / ${imagePointers.length}`;
-        resolve();
-      };
-
-      image.onload = settle;
-      image.onerror = settle;
-      image.src = src;
-    })),
+  event.preventDefault();
+  targetProgress = wrapProgress(
+    targetProgress + (event.key === 'ArrowLeft' ? KEYBOARD_STEP : -KEYBOARD_STEP),
   );
 }
 
-async function initialize(): Promise<void> {
-  const animalId = animalIdFromPath();
-  if (!animalId) throw new Error('Unknown cursor-animal route');
+function setDebugEnabled(enabled: boolean, updateUrl = false): void {
+  debugEnabled = enabled;
+  stage.classList.toggle('is-debug', enabled);
+  debugCanvas.setAttribute('aria-hidden', String(!enabled));
 
-  const response = await fetch(manifestUrl(animalId), { mode: 'cors' });
-  if (!response.ok) throw new Error(`Animal manifest returned ${response.status}`);
+  if (!enabled) debugContext.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
 
-  const manifest: unknown = await response.json();
-  validateManifest(manifest, animalId);
-  createPointerGraph(manifest);
-
-  document.title = manifest.name;
-  stage.setAttribute('aria-label', manifest.ariaLabel);
-  animal.alt = manifest.alt;
-  animal.src = assetUrl(manifest, manifest.assets.poster);
-  stage.classList.add('is-poster-ready');
-
-  await preloadFrames();
-  ready = true;
-  if (!activePointer) throw new Error('Cursor Cat has no active pointer');
-  updateFrame(activePointer);
-  createDebugMarkers();
-  setDebugMode(guiState.debugPoints);
-  stage.setAttribute('aria-busy', 'false');
-  stage.classList.add('is-ready');
+  if (updateUrl) {
+    const url = new URL(window.location.href);
+    if (enabled) url.searchParams.set('debug', '1');
+    else url.searchParams.delete('debug');
+    window.history.replaceState(null, '', url);
+  }
 }
 
-function render(timestamp: number): void {
-  const frameDelta = lastRenderTime === 0
-    ? 0
-    : Math.min(timestamp - lastRenderTime, MAX_RENDER_DELTA);
-  lastRenderTime = timestamp;
+function debugArcGeometry(bounds: Bounds): { center: Point; radius: number } {
+  const stageBounds = stage.getBoundingClientRect();
+  return {
+    center: {
+      x: bounds.left + bounds.width * 0.5,
+      y: bounds.top + bounds.height * POINTER_CENTER_Y_RATIO,
+    },
+    radius: Math.min(stageBounds.width, stageBounds.height) * 0.38,
+  };
+}
 
-  if (ready && pointerDirty) {
-    pointerDirty = false;
-    targetPointer = nearestImagePointer(targetPoint);
+function rebuildDebugArc(bounds: Bounds): void {
+  const { center, radius } = debugArcGeometry(bounds);
+  const layoutKey = [
+    center.x.toFixed(2), center.y.toFixed(2), radius.toFixed(2),
+    bounds.width.toFixed(2), bounds.height.toFixed(2),
+  ].join(':');
+
+  if (layoutKey === debugLayoutKey) return;
+  debugLayoutKey = layoutKey;
+  debugArcSamples = Array.from({ length: DEBUG_ARC_SAMPLE_COUNT + 1 }, (_, index) => {
+    const angle = -(index / DEBUG_ARC_SAMPLE_COUNT) * Math.PI * 2;
+    const x = center.x + Math.cos(angle) * radius;
+    const y = center.y + Math.sin(angle) * radius;
+    return { x, y, angle, frame: pointerFrame(x, y) };
+  });
+}
+
+function prepareDebugCanvas(): void {
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const width = stage.clientWidth;
+  const height = stage.clientHeight;
+  const targetWidth = Math.round(width * pixelRatio);
+  const targetHeight = Math.round(height * pixelRatio);
+
+  if (debugCanvas.width !== targetWidth || debugCanvas.height !== targetHeight) {
+    debugCanvas.width = targetWidth;
+    debugCanvas.height = targetHeight;
+    debugLayoutKey = '';
   }
 
-  if (ready && activePointer && targetPointer && activePointer !== targetPointer) {
-    const path = pointerPath(activePointer, targetPointer);
-    const distanceRatio = clamp(path.length / FULL_SPEED_PATH_DISTANCE, 0, 1);
-    const transitionFrameRate = guiState.frameRate
-      * (1 + (MAX_DISTANCE_FRAME_RATE_MULTIPLIER - 1) * distanceRatio);
+  debugContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  debugContext.clearRect(0, 0, width, height);
+}
 
-    transitionStepBudget += (frameDelta * transitionFrameRate) / 1000;
-
-    const stepCount = Math.min(Math.floor(transitionStepBudget), path.length);
-    if (stepCount > 0) {
-      transitionStepBudget -= stepCount;
-      const nextPointer = path[stepCount - 1];
-      if (nextPointer) updateFrame(nextPointer);
-    }
+function drawCircle(point: Point, radius: number, color: string, fill = true): void {
+  debugContext.beginPath();
+  debugContext.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  if (fill) {
+    debugContext.fillStyle = color;
+    debugContext.fill();
   } else {
-    transitionStepBudget = 0;
+    debugContext.strokeStyle = color;
+    debugContext.lineWidth = 2;
+    debugContext.stroke();
   }
+}
+
+function screenGazeOrigin(frame: number, bounds: Bounds): Point {
+  const origin = frameGazeOrigin(frame);
+  return {
+    x: bounds.left + bounds.width * origin.x,
+    y: bounds.top + bounds.height * origin.y,
+  };
+}
+
+function drawGazeRay(frame: number, bounds: Bounds, radius: number, color: string): void {
+  const origin = screenGazeOrigin(frame, bounds);
+  const angle = frameGazeAngle(frame);
+  debugContext.beginPath();
+  debugContext.moveTo(origin.x, origin.y);
+  debugContext.lineTo(
+    origin.x + Math.cos(angle) * radius,
+    origin.y + Math.sin(angle) * radius,
+  );
+  debugContext.strokeStyle = color;
+  debugContext.lineWidth = 1.5;
+  debugContext.stroke();
+}
+
+function drawDebugArc(targetFrame: number, bounds: Bounds): void {
+  rebuildDebugArc(bounds);
+
+  for (let index = 1; index < debugArcSamples.length; index += 1) {
+    const previous = debugArcSamples[index - 1];
+    const current = debugArcSamples[index];
+    if (!previous || !current) continue;
+
+    debugContext.beginPath();
+    debugContext.moveTo(previous.x, previous.y);
+    debugContext.lineTo(current.x, current.y);
+    debugContext.strokeStyle = current.frame === targetFrame
+      ? 'rgba(13, 153, 255, 0.95)'
+      : 'rgba(63, 73, 84, 0.28)';
+    debugContext.lineWidth = current.frame === targetFrame ? 5 : 2;
+    debugContext.stroke();
+
+    if (current.frame !== previous.frame) {
+      const { center, radius } = debugArcGeometry(bounds);
+      const innerRadius = radius - 5;
+      const outerRadius = radius + 6;
+      debugContext.beginPath();
+      debugContext.moveTo(
+        center.x + Math.cos(current.angle) * innerRadius,
+        center.y + Math.sin(current.angle) * innerRadius,
+      );
+      debugContext.lineTo(
+        center.x + Math.cos(current.angle) * outerRadius,
+        center.y + Math.sin(current.angle) * outerRadius,
+      );
+      debugContext.strokeStyle = 'rgba(34, 42, 51, 0.52)';
+      debugContext.lineWidth = 1;
+      debugContext.stroke();
+    }
+  }
+
+  const { center, radius } = debugArcGeometry(bounds);
+  debugContext.fillStyle = 'rgba(34, 42, 51, 0.72)';
+  debugContext.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+  debugContext.textAlign = 'center';
+  debugContext.textBaseline = 'middle';
+
+  for (const frame of [0, 15, 30, 45, 60, 75, 90, 105]) {
+    const angle = frameGazeAngle(frame);
+    const x = center.x + Math.cos(angle) * (radius + 18);
+    const y = center.y + Math.sin(angle) * (radius + 18);
+    debugContext.fillText(String(frame + 1).padStart(3, '0'), x, y);
+  }
+}
+
+function drawDebugHud(targetFrame: number): void {
+  const targetAngle = (targetFrame / FRAME_COUNT) * 360;
+  const renderedAngle = (renderedFrame / FRAME_COUNT) * 360;
+  const direction = targetFrame < TOP_FRAME
+    ? 'RIGHT → TOP'
+    : targetFrame === TOP_FRAME
+      ? 'TOP'
+      : targetFrame < LEFT_FRAME
+        ? 'TOP → LEFT'
+        : targetFrame === LEFT_FRAME
+          ? 'LEFT'
+          : targetFrame < BOTTOM_FRAME
+            ? 'LEFT → BOTTOM'
+            : targetFrame === BOTTOM_FRAME
+              ? 'BOTTOM'
+              : 'BOTTOM → RIGHT';
+  const lines = [
+    ['TARGET', `${String(targetFrame + 1).padStart(3, '0')} / 120   ${targetAngle.toFixed(1)}°`],
+    ['RENDERED', `${String(renderedFrame + 1).padStart(3, '0')} / 120   ${renderedAngle.toFixed(1)}°`],
+    ['PATH', direction],
+    ['TOGGLE', 'D'],
+  ];
+  const width = Math.min(258, stage.clientWidth - 24);
+  const height = 116;
+  const x = 12;
+  const y = 12;
+
+  debugContext.fillStyle = 'rgba(17, 20, 24, 0.88)';
+  debugContext.fillRect(x, y, width, height);
+  debugContext.fillStyle = '#ffffff';
+  debugContext.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+  debugContext.textAlign = 'left';
+  debugContext.textBaseline = 'top';
+  debugContext.fillText('CURSOR CAT · FULL CIRCLE DEBUG', x + 12, y + 10);
+
+  lines.forEach(([label, value], index) => {
+    const lineY = y + 33 + index * 18;
+    debugContext.fillStyle = 'rgba(255, 255, 255, 0.56)';
+    debugContext.fillText(label ?? '', x + 12, lineY);
+    debugContext.fillStyle = index === 0 ? '#0d99ff' : index === 1 ? '#ff3b72' : '#ffffff';
+    debugContext.fillText(value ?? '', x + 78, lineY);
+  });
+}
+
+function drawDebug(): void {
+  if (!debugEnabled || !ready) return;
+  prepareDebugCanvas();
+
+  const bounds = catLayoutBounds();
+  const targetFrame = Math.round(targetProgress * FRAME_COUNT) % FRAME_COUNT;
+  const { radius } = debugArcGeometry(bounds);
+  const targetOrigin = screenGazeOrigin(targetFrame, bounds);
+  const renderedOrigin = screenGazeOrigin(renderedFrame, bounds);
+
+  drawDebugArc(targetFrame, bounds);
+  drawGazeRay(renderedFrame, bounds, radius, 'rgba(255, 59, 114, 0.72)');
+  drawGazeRay(targetFrame, bounds, radius, 'rgba(13, 153, 255, 0.9)');
+
+  if (pointerPosition) {
+    debugContext.save();
+    debugContext.setLineDash([4, 4]);
+    debugContext.beginPath();
+    debugContext.moveTo(targetOrigin.x, targetOrigin.y);
+    debugContext.lineTo(pointerPosition.x, pointerPosition.y);
+    debugContext.strokeStyle = 'rgba(13, 153, 255, 0.72)';
+    debugContext.lineWidth = 1;
+    debugContext.stroke();
+    debugContext.restore();
+    drawCircle(pointerPosition, 5, '#0d99ff', false);
+  }
+
+  drawCircle(renderedOrigin, 5, '#ff3b72', false);
+  drawCircle(targetOrigin, 4, '#0d99ff');
+  drawDebugHud(targetFrame);
+}
+
+function render(time: number): void {
+  const delta = previousRenderTime === 0
+    ? 16.67
+    : Math.min(time - previousRenderTime, MAX_RENDER_DELTA);
+  previousRenderTime = time;
+
+  if (ready && !reducedMotion.matches) {
+    const response = 1 - Math.pow(1 - FRAME_RESPONSE, delta / 16.67);
+    const progressDelta = wrappedProgressDelta(targetProgress, renderedProgress);
+    renderedProgress = wrapProgress(renderedProgress + progressDelta * response);
+
+    if (Math.abs(progressDelta) < 0.0005) {
+      renderedProgress = targetProgress;
+    }
+
+    showFrame(Math.round(renderedProgress * FRAME_COUNT));
+  }
+
+  drawDebug();
 
   requestAnimationFrame(render);
 }
 
-stage.addEventListener('pointermove', trackPointer);
-stage.addEventListener('pointerdown', trackPointer);
-window.addEventListener('resize', layoutDebugMarkers);
-window.addEventListener('keydown', (event) => {
-  if (event.key.toLowerCase() === 'd') setDebugMode(!guiState.debugPoints);
-});
+async function loadFrame(source: string): Promise<HTMLImageElement> {
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = source;
+  try {
+    await image.decode();
+  } catch {
+    throw new Error(`Could not decode cursor-cat frame: ${source}`);
+  }
+  return image;
+}
 
-void initialize().catch((error) => {
-  console.error(error);
-  stage.setAttribute('aria-busy', 'false');
-  loadingStatus.textContent = '이미지를 불러오지 못했습니다';
-  stage.classList.add('is-error');
-});
+async function loadFrames(frameSources: string[], concurrency = 8): Promise<HTMLImageElement[]> {
+  const frames = new Array<HTMLImageElement>(frameSources.length);
+  let nextIndex = 0;
+
+  async function loadNext(): Promise<void> {
+    while (nextIndex < frameSources.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const source = frameSources[index];
+      if (!source) continue;
+      frames[index] = await loadFrame(source);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, frameSources.length) }, loadNext),
+  );
+  return frames;
+}
+
+async function initialize(): Promise<void> {
+  try {
+    const artworkId = artworkIdFromPath();
+    if (!artworkId) throw new Error('Invalid Cursor Cat artwork ID');
+
+    const response = await fetch(manifestUrl(artworkId), {
+      cache: artworkId === DEFAULT_ARTWORK_ID ? 'no-store' : 'force-cache',
+    });
+    if (!response.ok) {
+      throw new Error(`Could not load Cursor Cat manifest: ${response.status}`);
+    }
+
+    const manifest: unknown = await response.json();
+    validateManifest(manifest, artworkId);
+    gazeOriginAnchors = manifest.gazeOrigins;
+    displayScaleAnchors = manifest.displayScales;
+    sources = Array.from(
+      { length: FRAME_COUNT },
+      (_, index) => frameSource(manifest, index),
+    );
+    stage.setAttribute('aria-label', manifest.ariaLabel);
+    cat.alt = manifest.alt;
+    cat.src = sources[0] ?? '';
+    await cat.decode();
+    stage.classList.add('is-poster-ready');
+
+    const frames = await loadFrames(sources);
+    decodedFrames.push(...frames);
+    ready = true;
+    stage.classList.add('is-ready');
+    stage.setAttribute('aria-busy', 'false');
+    loadingStatus.textContent = '이미지 로딩 완료';
+  } catch (error) {
+    stage.classList.add('is-error', 'is-poster-ready');
+    stage.setAttribute('aria-busy', 'false');
+    loadingStatus.textContent = '이미지를 불러오지 못했습니다.';
+    console.error(error);
+  }
+}
+
+stage.addEventListener('pointermove', updatePointer, { passive: true });
+stage.addEventListener('pointerdown', updatePointer, { passive: true });
+window.addEventListener('keydown', updateKeyboard);
+setDebugEnabled(debugEnabled);
 requestAnimationFrame(render);
+void initialize();

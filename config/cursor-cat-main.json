@@ -1,0 +1,17 @@
+{
+  "frameCount": 120,
+  "gazeOrigins": [
+    { "frame": 0, "x": 0.69, "y": 0.46 },
+    { "frame": 30, "x": 0.51, "y": 0.33 },
+    { "frame": 60, "x": 0.29, "y": 0.46 },
+    { "frame": 90, "x": 0.43, "y": 0.77 },
+    { "frame": 120, "x": 0.69, "y": 0.46 }
+  ],
+  "displayScales": [
+    { "frame": 0, "scale": 1 },
+    { "frame": 30, "scale": 1 },
+    { "frame": 31, "scale": 0.993 },
+    { "frame": 60, "scale": 0.993 },
+    { "frame": 120, "scale": 1 }
+  ]
+}

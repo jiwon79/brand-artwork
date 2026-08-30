@@ -6,9 +6,24 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 const root = new URL('.', import.meta.url).pathname;
 const pagesDir = resolve(root, 'pages');
 const cursorCatVariantRoute = /^\/pages\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
+const retiredCursorCatRoute = /^\/pages\/cursor-cat-circle(?:\/|\?|$)/;
+
+type MiddlewareResponse = {
+  statusCode: number;
+  end(body?: string): void;
+};
 
 function cursorCatRouteFallback() {
-  const rewrite = (request: { url?: string }, _response: unknown, next: () => void) => {
+  const rewrite = (
+    request: { url?: string },
+    response: MiddlewareResponse,
+    next: () => void,
+  ) => {
+    if (request.url && retiredCursorCatRoute.test(request.url)) {
+      response.statusCode = 404;
+      response.end('Not Found');
+      return;
+    }
     if (request.url && cursorCatVariantRoute.test(request.url)) {
       request.url = '/pages/cursor-cat/index.html';
     }
