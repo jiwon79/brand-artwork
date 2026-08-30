@@ -7,6 +7,7 @@
 - Two approved Seedance 2.0 quarter-circle clips are pose-calibrated into 61 WebP frames: 31 frames for right → top and 30 additional frames for top → left.
 - Every runtime frame is normalized to a 576 × 1024 canvas and keeps the approved white negative space around the cat.
 - Sampling follows equal gaze-angle steps rather than equal video-time steps, removing the generated holds around the top and left poses.
+- Every intermediate frame is tone-matched to a smooth interpolation of the three canonical GPT Image frames. Orange-fur luminance/saturation and neutral-fur luminance/white balance are measured separately, while the pure white background is protected from grading.
 - The second quarter receives a 0.7% bottom-anchored display correction so its subject scale meets the canonical top frame without a visible seam.
 
 ## Interaction
