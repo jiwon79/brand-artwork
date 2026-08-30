@@ -3,7 +3,7 @@ import { CURSOR_CAT_ASSET_BASE_URL } from './asset-config.js';
 
 const POINTER_PADDING_RATIO = 0.15;
 const FACE_CENTER_Y_RATIO = 0.47;
-const DEFAULT_TRANSITION_FRAME_RATE = 24;
+const DEFAULT_TRANSITION_FRAME_RATE = 36;
 const MAX_DISTANCE_FRAME_RATE_MULTIPLIER = 3;
 const FULL_SPEED_PATH_DISTANCE = 48;
 const MAX_RENDER_DELTA = 100;
@@ -12,6 +12,7 @@ const ANIMAL_ID_PATTERN = /^[a-z0-9]{10}$/;
 
 const stage = document.getElementById('cat-stage');
 const animal = document.getElementById('animal-frame');
+const loadingStatus = document.getElementById('loading-status');
 const debugLayer = document.getElementById('pointer-debug');
 const debugMarkers = new Map();
 const decodedImages = new Map();
@@ -325,6 +326,9 @@ gui.add(guiState, 'frameRate', 12, 120, 1).name('Frame rate');
 gui.show(guiState.debugPoints);
 
 async function preloadFrames() {
+  let loadedFrameCount = 0;
+  loadingStatus.textContent = `이미지 로딩 중 0 / ${imagePointers.length}`;
+
   await Promise.all(
     imagePointers.map(({ src }) => new Promise((resolve) => {
       const image = new Image();
@@ -337,6 +341,8 @@ async function preloadFrames() {
           // A failed frame must not block the rest of the interaction.
         }
         decodedImages.set(src, image);
+        loadedFrameCount += 1;
+        loadingStatus.textContent = `이미지 로딩 중 ${loadedFrameCount} / ${imagePointers.length}`;
         resolve();
       };
 
@@ -369,6 +375,7 @@ async function initialize() {
   updateFrame(activePointer);
   createDebugMarkers();
   setDebugMode(guiState.debugPoints);
+  stage.setAttribute('aria-busy', 'false');
   stage.classList.add('is-ready');
 }
 
@@ -412,6 +419,8 @@ window.addEventListener('keydown', (event) => {
 
 void initialize().catch((error) => {
   console.error(error);
+  stage.setAttribute('aria-busy', 'false');
+  loadingStatus.textContent = '이미지를 불러오지 못했습니다';
   stage.classList.add('is-error');
 });
 requestAnimationFrame(render);
