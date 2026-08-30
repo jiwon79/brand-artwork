@@ -12,7 +12,7 @@
 - The 9:16 cat frame and stage use the same large-viewport height (`lvh`, with `vh` fallback), so mobile browser chrome cannot leave a `vh`/`svh` height mismatch below the artwork. The frame remains horizontally centered and flush with the bottom edge without exceeding the viewport width.
 - Each visible pose owns a normalized pointer position: one center pointer, 49 upper-arc pointers, 47 lower-arc intermediates, and 22 intermediates on each of four center paths. Shared center and cardinal endpoints appear only once, for 185 pointer-owned images in total.
 - Pointer coordinates use a square field centered on the cat's face. Its diameter is 70% of the viewport's short side, leaving 15% padding on either side. The pointer nearest the cursor becomes the target pose.
-- Adjacent poses on each semicircle and center path form a connected graph with shared center and cardinal endpoints. The displayed pose traverses the shortest connected route instead of jumping directly across the graph. Its traversal rate starts at the lil-gui `Frame rate` value near the target and scales continuously up to three times that value at a 48-edge distance, so long moves accelerate and then decelerate as they approach the destination. The control ranges from 12 to 120 and defaults to 24.
+- Adjacent poses on each semicircle and center path form a connected graph with shared center and cardinal endpoints. The displayed pose traverses the shortest connected route instead of jumping directly across the graph. Its traversal rate starts at the lil-gui `Frame rate` value near the target and scales continuously up to three times that value at a 48-edge distance, so long moves accelerate and then decelerate as they approach the destination. The control ranges from 12 to 120 and defaults to 36.
 - Touch input displays the shared Figma-style pointer from `common/touch-pointer.ts`.
 - The artwork surface contains no labels, instructions, frame readout, or custom debug buttons. The lil-gui panel is hidden with debug mode and appears only while its `Debug points` state is active. Pressing `D` toggles the same state, while the `?debug` query enables it on initial load; the panel, pointer overlay, and control remain synchronized.
 - Debug pointer positions are recalculated when the viewport changes size.
@@ -22,7 +22,7 @@
 ## Loading
 
 - The route `/pages/cursor-cat/` loads the R2 pack with ID `main`. A 10-character lowercase ID after that path loads the matching immutable pack.
-- The player fetches a small R2 `manifest.json`, displays its poster immediately, then preloads and decodes all 185 pointer-owned images before interaction begins.
+- The player fetches a small R2 `manifest.json`, displays its poster immediately, then preloads and decodes all 185 pointer-owned images before interaction begins. A visible counter reports loading progress and disappears when every frame is ready.
 - The page swaps predecoded frame URLs instead of seeking a video element.
 - Runtime images live in the `brand-artwork-cursor-animals` R2 bucket and are not copied into the Git build.
 - Additional animals reuse this player and are registered with `pnpm register:cursor-animal`; the reusable procedure is documented in [`../../docs/guides/cursor-animal-registration.md`](../../docs/guides/cursor-animal-registration.md).
