@@ -19,7 +19,7 @@ body {
 
 body {
   min-height: 100vh;
-  min-height: 100lvh;
+  min-height: 100dvh;
   overflow: hidden;
   background: #fff;
   -webkit-font-smoothing: antialiased;
@@ -29,7 +29,7 @@ body {
   position: relative;
   width: 100vw;
   height: 100vh;
-  height: 100lvh;
+  height: 100dvh;
   overflow: hidden;
   background: #fff;
   cursor: crosshair;
@@ -58,7 +58,7 @@ body {
 
   display: block;
   width: min(100vw, 56.25vh);
-  width: min(100vw, 56.25lvh);
+  width: min(100vw, 56.25dvh);
   height: auto;
   max-width: 100%;
   max-height: 100%;

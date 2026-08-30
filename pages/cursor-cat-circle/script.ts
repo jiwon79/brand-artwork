@@ -9,7 +9,7 @@ const KEYBOARD_STEP = 2 / FRAME_COUNT;
 const FRAME_RESPONSE = 0.34;
 const MAX_RENDER_DELTA = 64;
 const DEBUG_ARC_SAMPLE_COUNT = 720;
-const FRAME_ASSET_VERSION = 2;
+const FRAME_ASSET_VERSION = 3;
 
 type Point = { x: number; y: number };
 type Bounds = { left: number; top: number; width: number; height: number };
@@ -19,7 +19,7 @@ const GAZE_ORIGINS: [Point, Point, Point, Point, Point] = [
   { x: 0.69, y: 0.46 },
   { x: 0.51, y: 0.33 },
   { x: 0.29, y: 0.46 },
-  { x: 0.50, y: 0.65 },
+  { x: 0.43, y: 0.77 },
   { x: 0.69, y: 0.46 },
 ];
 

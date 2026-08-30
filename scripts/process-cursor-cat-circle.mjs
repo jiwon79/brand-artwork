@@ -22,13 +22,24 @@ const LEFT_POSE_FRAMES = [
   50, 52, 54, 56, 59, 61, 65, 71, 81,
 ];
 
-// The lower-semicircle clip contains 97 frames and moves at a nearly constant
-// angular speed. Preserve its first/last anchors as canonical frame 061 and
-// frame 001, and sample the 59 three-degree poses between them.
+// The lower-semicircle clip contains 97 frames, but its true downward pose is
+// native frame 55 rather than the temporal midpoint (frame 49). Sample each
+// half independently so runtime frame 091 remains the 270-degree anchor.
 const LOWER_SOURCE_FRAME_COUNT = 97;
-const LOWER_POSE_FRAMES = Array.from({ length: 59 }, (_, index) => (
-  Math.round(((index + 1) * (LOWER_SOURCE_FRAME_COUNT - 1)) / 60) + 1
-));
+const LOWER_BOTTOM_SOURCE_FRAME = 55;
+const LOWER_POSE_FRAMES = Array.from({ length: 59 }, (_, index) => {
+  const step = index + 1;
+  if (step <= 30) {
+    return Math.round(
+      1 + (step * (LOWER_BOTTOM_SOURCE_FRAME - 1)) / 30,
+    );
+  }
+
+  return Math.round(
+    LOWER_BOTTOM_SOURCE_FRAME
+      + ((step - 30) * (LOWER_SOURCE_FRAME_COUNT - LOWER_BOTTOM_SOURCE_FRAME)) / 30,
+  );
+});
 
 function parseOptions(argv) {
   const options = {};

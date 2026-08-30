@@ -75,11 +75,13 @@ last frame with these settings:
 
 The runtime has `120` unique three-degree poses: right is frame `001`, top is
 `031`, left is `061`, and bottom is `091`. The processor keeps the three
-canonical upper anchors, samples `59` interior frames from the lower video,
-matches coat and white-fur tone between the left/right anchors, and stores the
-connected studio background as transparent alpha. The page composites those
-frames over CSS `#FFFFFF`, avoiding the RGB 252–253 background introduced by
-lossy WebP encoding.
+canonical upper anchors and samples `59` interior frames from the lower video.
+Because the generated clip reaches its true downward pose at native frame `55`
+rather than its temporal midpoint, the two lower quarters are sampled
+independently around that visual anchor. The processor also matches coat and
+white-fur tone between the left/right anchors and stores the connected studio
+background as transparent alpha. The page composites those frames over CSS
+`#FFFFFF`, avoiding the RGB 252–253 background introduced by lossy WebP encoding.
 
 ```sh
 pnpm process:cursor-cat-circle -- \
