@@ -26,14 +26,31 @@ body {
 }
 
 .cat-stage {
-  display: grid;
+  position: relative;
   width: 100vw;
   height: 100vh;
   height: 100lvh;
   overflow: hidden;
   background: #fff;
-  place-items: end center;
+  cursor: crosshair;
+  outline: none;
+  touch-action: none;
   user-select: none;
+}
+
+.cat-wrap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  opacity: 0;
+  place-items: end center;
+  pointer-events: none;
+  transition: opacity 240ms ease;
+}
+
+.is-poster-ready .cat-wrap,
+.is-ready .cat-wrap {
+  opacity: 1;
 }
 
 .cat-frame {
@@ -46,4 +63,34 @@ body {
   object-fit: contain;
   object-position: center bottom;
   -webkit-user-drag: none;
+}
+
+.loading-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: 0;
+  color: #555;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 160ms ease, visibility 160ms ease;
+}
+
+.is-ready .loading-status {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.is-error .loading-status {
+  color: #c00;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-wrap,
+  .loading-status {
+    transition-duration: 0ms;
+  }
 }

@@ -2,14 +2,21 @@
 
 ## Current phase
 
-- This page starts a simplified rebuild of Cursor Cat.
-- The first canonical image is a newly generated orange-and-white cat whose head and gaze point toward screen right.
-- The image uses a fixed 9:16 camera, a centered upright torso, and a pure-white background so it can become the right endpoint of a later pose sequence.
-- The approved source is the user-adjusted 9:16 composition, with white negative space around the cat. The page displays that full frame without applying an additional subject-scale adjustment.
-- The page currently displays only this canonical image. It does not synthesize or imply missing poses.
+- This page is a simplified rebuild of Cursor Cat using only a circular pose path.
+- The current asset set covers the upper semicircle: screen right → top → screen left.
+- Two approved Seedance 2.0 quarter-circle clips are sampled into 61 WebP frames: 31 frames for right → top and 30 additional frames for top → left.
+- Every runtime frame is normalized to a 576 × 1024 canvas and keeps the approved white negative space around the cat.
 
-## Intended interaction
+## Interaction
 
-- The pose field will contain only a circular path.
-- The horizontal and vertical paths from the original Cursor Cat will not be carried over.
-- Future runtime frames must keep the cat identity, torso, crop, camera, lighting, exposure, and background fixed while the head and gaze travel around the circle.
+- The cursor is measured from the cat's face center and converted to a polar angle.
+- Angles across the upper half of the screen map directly onto the 61-frame upper arc.
+- Pointer positions below the face project to the closest available horizontal endpoint. The page does not synthesize missing lower poses.
+- Frame changes use a short response curve so fast cursor movement still travels through the intervening poses instead of jumping between directions.
+- Left and right arrow keys step through the same arc for keyboard testing.
+- The horizontal, vertical, and center paths from the original Cursor Cat are not included.
+
+## Remaining coverage
+
+- A complete circle still requires left → bottom and bottom → right quarter-circle assets.
+- Those future quarters should reuse the left and right endpoints and introduce one canonical bottom-facing frame.
