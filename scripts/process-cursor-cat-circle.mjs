@@ -52,7 +52,15 @@ function parseOptions(argv) {
     options[key.slice(2)] = value;
   }
 
-  for (const required of ['right-video', 'left-video', 'lower-video', 'output']) {
+  for (const required of [
+    'right-video',
+    'left-video',
+    'lower-video',
+    'right-image',
+    'top-image',
+    'left-image',
+    'output',
+  ]) {
     if (!options[required]) throw new Error(`Missing --${required}`);
   }
 
@@ -327,15 +335,14 @@ const rightVideo = resolve(options['right-video']);
 const leftVideo = resolve(options['left-video']);
 const lowerVideo = resolve(options['lower-video']);
 const outputDirectory = resolve(options.output);
-const canonicalDirectory = resolve(dirname(outputDirectory), 'canonical-frames');
 const temporaryDirectory = resolve('.qa/cursor-cat-circle-processing');
 
 mkdirSync(outputDirectory, { recursive: true });
 mkdirSync(temporaryDirectory, { recursive: true });
 
-const canonicalRight = decodeRgb(join(canonicalDirectory, 'right.webp'));
-const canonicalTop = decodeRgb(join(canonicalDirectory, 'top.webp'));
-const canonicalLeft = decodeRgb(join(canonicalDirectory, 'left.webp'));
+const canonicalRight = decodeRgb(resolve(options['right-image']));
+const canonicalTop = decodeRgb(resolve(options['top-image']));
+const canonicalLeft = decodeRgb(resolve(options['left-image']));
 const rightTone = measureTone(canonicalRight);
 const topTone = measureTone(canonicalTop);
 const leftTone = measureTone(canonicalLeft);

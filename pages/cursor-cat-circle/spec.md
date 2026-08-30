@@ -1,33 +1,13 @@
 # Cursor Cat Circle
 
-## Current phase
+- 커서 방향을 따라 120개의 원형 시선 포즈를 표시한다.
+- 기준 frame은 001 오른쪽, 031 위, 061 왼쪽, 091 아래다.
+- 메인 경로는 R2 pack `main`을 사용한다.
+- 정확히 10자리인 영문 소문자·숫자 서브 경로는 같은 ID의 R2 pack을 사용한다.
+- pack은 flat WebP 120장과 manifest 하나만 가진다. runtime 이미지는 Git build에 포함하지 않는다.
+- manifest가 눈 기준점과 표시 scale calibration을 제공한다.
+- 모든 frame을 preload·decode한 뒤 pointer 상호작용을 시작한다.
+- `?debug=1` 또는 `D` 키로 실제 frame 선택 경계와 눈→커서 방향을 확인한다.
+- 모바일은 `dvh`를 사용해 고양이 아래를 현재 viewport 아래에 고정한다.
 
-- This page is a simplified rebuild of Cursor Cat using only a circular pose path.
-- The current asset set covers the upper semicircle: screen right → top → screen left.
-- Two approved Seedance 2.0 quarter-circle clips are pose-calibrated into 61 WebP frames: 31 frames for right → top and 30 additional frames for top → left.
-- Every runtime frame is normalized to a 576 × 1024 canvas and keeps the approved white negative space around the cat.
-- Sampling follows equal gaze-angle steps rather than equal video-time steps, removing the generated holds around the top and left poses.
-- Every intermediate frame is tone-matched to a smooth interpolation of the three canonical GPT Image frames. Orange-fur luminance/saturation and neutral-fur luminance/white balance are measured separately.
-- A connected-background pass replaces the video model's light-gray canvas with exact RGB white without crossing into the cat. The three approved canonical frames remain byte-for-byte unchanged.
-- The second quarter receives a 0.7% bottom-anchored display correction so its subject scale meets the canonical top frame without a visible seam.
-
-## Interaction
-
-- The cursor angle is measured from an eye origin that travels with the head from the right pose through the top pose to the left pose.
-- Each cursor position is matched against the calibrated gaze ray of all 61 frames; the closest ray becomes the target pose.
-- Pointer positions below the face project to the closest available horizontal endpoint. The page does not synthesize missing lower poses.
-- Frame changes use a short response curve so fast cursor movement still travels through the intervening poses instead of jumping between directions.
-- Left and right arrow keys step through the same arc for keyboard testing.
-- The horizontal, vertical, and center paths from the original Cursor Cat are not included.
-
-## Debug mode
-
-- `?debug=1` enables the mapping overlay on load; pressing `D` toggles it and keeps the URL state synchronized.
-- The upper arc is sampled through the production pointer-selection function, so every tick marks an actual runtime frame boundary at the displayed radius.
-- The active target segment is blue, the rendered gaze ray is magenta, and the target gaze ray and pointer connection are blue.
-- The HUD shows target and rendered frame numbers, their calibrated angles, the active quarter, and the keyboard toggle.
-
-## Remaining coverage
-
-- A complete circle still requires left → bottom and bottom → right quarter-circle assets.
-- Those future quarters should reuse the left and right endpoints and introduce one canonical bottom-facing frame.
+상세 구현은 [`../../docs/artworks/cursor-cat-circle/architecture.md`](../../docs/artworks/cursor-cat-circle/architecture.md), 제작 과정은 [`../../docs/artworks/cursor-cat-circle/generation.md`](../../docs/artworks/cursor-cat-circle/generation.md), 새 pack 등록은 [`../../docs/guides/cursor-circle-registration.md`](../../docs/guides/cursor-circle-registration.md)를 따른다.

@@ -5,18 +5,18 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 const root = new URL('.', import.meta.url).pathname;
 const pagesDir = resolve(root, 'pages');
-const cursorCatVariantRoute = /^\/pages\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
+const cursorCatCircleVariantRoute = /^\/pages\/cursor-cat-circle\/[a-z0-9]{10}\/?(?:\?.*)?$/;
 
-function cursorCatRouteFallback() {
+function cursorCatCircleRouteFallback() {
   const rewrite = (request: { url?: string }, _response: unknown, next: () => void) => {
-    if (request.url && cursorCatVariantRoute.test(request.url)) {
-      request.url = '/pages/cursor-cat/index.html';
+    if (request.url && cursorCatCircleVariantRoute.test(request.url)) {
+      request.url = '/pages/cursor-cat-circle/index.html';
     }
     next();
   };
 
   return {
-    name: 'cursor-cat-route-fallback',
+    name: 'cursor-cat-circle-route-fallback',
     configureServer(server: { middlewares: { use: (handler: typeof rewrite) => void } }) {
       server.middlewares.use(rewrite);
     },
@@ -58,7 +58,7 @@ export default defineConfig({
     ],
   },
   plugins: [
-    cursorCatRouteFallback(),
+    cursorCatCircleRouteFallback(),
     {
       name: 'inject-site-favicon',
       transformIndexHtml() {

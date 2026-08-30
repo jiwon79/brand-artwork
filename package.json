@@ -5,9 +5,8 @@
   "scripts": {
     "dev": "vite",
     "generate:body-echo-geometry": "node scripts/generate-body-echo-geometry.mjs",
-    "process:cat-cursor-ltx": "node scripts/process-cat-cursor-ltx-path.mjs",
     "process:cursor-cat-circle": "node scripts/process-cursor-cat-circle.mjs",
-    "register:cursor-animal": "node scripts/register-cursor-animal.mjs",
+    "register:cursor-circle": "node scripts/register-cursor-circle.mjs",
     "prebuild": "pnpm generate:body-echo-geometry",
     "build": "vite build",
     "preview": "vite preview",

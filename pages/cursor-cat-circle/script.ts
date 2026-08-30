@@ -1,27 +1,36 @@
+import { CURSOR_CAT_CIRCLE_ASSET_BASE_URL } from './config';
+
 const FRAME_COUNT = 120;
 const QUARTER_FRAME_COUNT = FRAME_COUNT / 4;
 const TOP_FRAME = QUARTER_FRAME_COUNT;
 const LEFT_FRAME = QUARTER_FRAME_COUNT * 2;
 const BOTTOM_FRAME = QUARTER_FRAME_COUNT * 3;
 const POINTER_CENTER_Y_RATIO = 0.46;
-const SECOND_QUARTER_SCALE = 0.993;
 const KEYBOARD_STEP = 2 / FRAME_COUNT;
 const FRAME_RESPONSE = 0.34;
 const MAX_RENDER_DELTA = 64;
 const DEBUG_ARC_SAMPLE_COUNT = 720;
-const FRAME_ASSET_VERSION = 3;
+const DEFAULT_ARTWORK_ID = 'main';
+const ARTWORK_ID_PATTERN = /^[a-z0-9]{10}$/;
 
 type Point = { x: number; y: number };
 type Bounds = { left: number; top: number; width: number; height: number };
 type DebugArcSample = Point & { frame: number; angle: number };
+type GazeOriginAnchor = Point & { frame: number };
+type DisplayScaleAnchor = { frame: number; scale: number };
 
-const GAZE_ORIGINS: [Point, Point, Point, Point, Point] = [
-  { x: 0.69, y: 0.46 },
-  { x: 0.51, y: 0.33 },
-  { x: 0.29, y: 0.46 },
-  { x: 0.43, y: 0.77 },
-  { x: 0.69, y: 0.46 },
-];
+interface CursorCircleManifest {
+  schemaVersion: 1;
+  id: string;
+  version: string;
+  name: string;
+  alt: string;
+  ariaLabel: string;
+  frameCount: number;
+  framePattern: string;
+  gazeOrigins: GazeOriginAnchor[];
+  displayScales: DisplayScaleAnchor[];
+}
 
 type ElementConstructor<T extends HTMLElement> = new () => T;
 
@@ -48,16 +57,30 @@ function wrappedProgressDelta(target: number, current: number): number {
   return ((target - current + 1.5) % 1) - 0.5;
 }
 
+function anchorPair<T extends { frame: number }>(anchors: T[], frame: number): [T, T] {
+  const endIndex = anchors.findIndex((anchor) => anchor.frame >= frame);
+  const end = anchors[Math.max(endIndex, 0)] ?? anchors[anchors.length - 1];
+  const start = anchors[Math.max(endIndex - 1, 0)] ?? anchors[0];
+  if (!start || !end) throw new Error('Cursor Cat Circle calibration is empty');
+  return [start, end];
+}
+
 function frameGazeOrigin(index: number): Point {
-  const quarter = Math.floor(index / QUARTER_FRAME_COUNT);
-  const start = GAZE_ORIGINS[quarter] ?? GAZE_ORIGINS[0];
-  const end = GAZE_ORIGINS[quarter + 1] ?? GAZE_ORIGINS[1];
-  const localProgress = (index % QUARTER_FRAME_COUNT) / QUARTER_FRAME_COUNT;
+  const [start, end] = anchorPair(gazeOriginAnchors, index);
+  const range = end.frame - start.frame;
+  const localProgress = range === 0 ? 0 : (index - start.frame) / range;
 
   return {
     x: lerp(start.x, end.x, localProgress),
     y: lerp(start.y, end.y, localProgress),
   };
+}
+
+function frameDisplayScale(index: number): number {
+  const [start, end] = anchorPair(displayScaleAnchors, index);
+  const range = end.frame - start.frame;
+  const localProgress = range === 0 ? 0 : (index - start.frame) / range;
+  return lerp(start.scale, end.scale, localProgress);
 }
 
 function frameGazeAngle(index: number): number {
@@ -81,19 +104,81 @@ function catLayoutBounds(): Bounds {
   };
 }
 
-function frameSource(index: number): string {
+function artworkIdFromPath(): string | null {
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  const pageIndex = parts.lastIndexOf('cursor-cat-circle');
+  const candidate = parts[pageIndex + 1];
+
+  if (!candidate || candidate === 'index.html') return DEFAULT_ARTWORK_ID;
+  return ARTWORK_ID_PATTERN.test(candidate) ? candidate : null;
+}
+
+function manifestUrl(artworkId: string): string {
+  return `${CURSOR_CAT_CIRCLE_ASSET_BASE_URL.replace(/\/$/, '')}/${artworkId}/manifest.json`;
+}
+
+function frameSource(manifest: CursorCircleManifest, index: number): string {
   const frame = String(index + 1).padStart(3, '0');
-  return `/pages/cursor-cat-circle/assets/circle-frames/frame-${frame}.webp?v=${FRAME_ASSET_VERSION}`;
+  const path = manifest.framePattern.replace('{frame}', frame);
+  const baseUrl = CURSOR_CAT_CIRCLE_ASSET_BASE_URL.replace(/\/$/, '');
+  return `${baseUrl}/${manifest.id}/${path}?v=${encodeURIComponent(manifest.version)}`;
+}
+
+function anchorsAreValid(
+  anchors: Array<{ frame: number } & Record<string, unknown>> | undefined,
+  valueKeys: string[],
+): boolean {
+  return Array.isArray(anchors)
+    && anchors.length >= 2
+    && anchors[0]?.frame === 0
+    && anchors[anchors.length - 1]?.frame === FRAME_COUNT
+    && anchors.every((anchor, index) => (
+      Number.isInteger(anchor.frame)
+      && anchor.frame >= 0
+      && anchor.frame <= FRAME_COUNT
+      && (index === 0 || anchor.frame > (anchors[index - 1]?.frame ?? -1))
+      && valueKeys.every((key) => Number.isFinite(anchor[key]))
+    ));
+}
+
+function validateManifest(
+  value: unknown,
+  expectedId: string,
+): asserts value is CursorCircleManifest {
+  const manifest = value as Partial<CursorCircleManifest> | null;
+  if (
+    manifest?.schemaVersion !== 1
+    || manifest.id !== expectedId
+    || typeof manifest.version !== 'string'
+    || typeof manifest.name !== 'string'
+    || typeof manifest.alt !== 'string'
+    || typeof manifest.ariaLabel !== 'string'
+    || manifest.frameCount !== FRAME_COUNT
+    || manifest.framePattern !== 'frame-{frame}.webp'
+    || !anchorsAreValid(manifest.gazeOrigins, ['x', 'y'])
+    || !anchorsAreValid(manifest.displayScales, ['scale'])
+    || manifest.gazeOrigins?.every((anchor) => (
+      anchor.x >= 0 && anchor.x <= 1 && anchor.y >= 0 && anchor.y <= 1
+    )) !== true
+    || manifest.displayScales?.every((anchor) => (
+      anchor.scale > 0 && anchor.scale <= 2
+    )) !== true
+  ) {
+    throw new Error('Invalid Cursor Cat Circle manifest');
+  }
 }
 
 const stage = requiredElement('cat-stage', HTMLElement);
 const cat = requiredElement('cat-frame', HTMLImageElement);
 const debugCanvas = requiredElement('debug-canvas', HTMLCanvasElement);
 const loadingStatus = requiredElement('loading-status', HTMLElement);
-const debugContext = debugCanvas.getContext('2d');
-if (!debugContext) throw new Error('Cursor Cat Circle requires a 2D debug canvas');
+const debugContext = (() => {
+  const context = debugCanvas.getContext('2d');
+  if (!context) throw new Error('Cursor Cat Circle requires a 2D debug canvas');
+  return context;
+})();
 
-const sources = Array.from({ length: FRAME_COUNT }, (_, index) => frameSource(index));
+let sources: string[] = [];
 const decodedFrames: HTMLImageElement[] = [];
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -106,17 +191,15 @@ let previousRenderTime = 0;
 let pointerPosition: Point | null = null;
 let debugLayoutKey = '';
 let debugArcSamples: DebugArcSample[] = [];
+let gazeOriginAnchors: GazeOriginAnchor[] = [];
+let displayScaleAnchors: DisplayScaleAnchor[] = [];
 
 function showFrame(index: number): void {
   const nextIndex = ((Math.round(index) % FRAME_COUNT) + FRAME_COUNT) % FRAME_COUNT;
   if (nextIndex === renderedFrame && cat.src.endsWith(sources[nextIndex] ?? '')) return;
 
   renderedFrame = nextIndex;
-  const scale = nextIndex <= TOP_FRAME
-    ? 1
-    : nextIndex <= LEFT_FRAME
-      ? SECOND_QUARTER_SCALE
-      : lerp(SECOND_QUARTER_SCALE, 1, (nextIndex - LEFT_FRAME) / (FRAME_COUNT - LEFT_FRAME));
+  const scale = frameDisplayScale(nextIndex);
   cat.style.setProperty(
     '--frame-scale',
     String(scale),
@@ -433,8 +516,8 @@ async function loadFrame(source: string): Promise<HTMLImageElement> {
   image.src = source;
   try {
     await image.decode();
-  } catch (error) {
-    throw new Error(`Could not decode cursor-cat frame: ${source}`, { cause: error });
+  } catch {
+    throw new Error(`Could not decode cursor-cat frame: ${source}`);
   }
   return image;
 }
@@ -461,6 +544,27 @@ async function loadFrames(frameSources: string[], concurrency = 8): Promise<HTML
 
 async function initialize(): Promise<void> {
   try {
+    const artworkId = artworkIdFromPath();
+    if (!artworkId) throw new Error('Invalid Cursor Cat Circle artwork ID');
+
+    const response = await fetch(manifestUrl(artworkId), {
+      cache: artworkId === DEFAULT_ARTWORK_ID ? 'no-store' : 'force-cache',
+    });
+    if (!response.ok) {
+      throw new Error(`Could not load Cursor Cat Circle manifest: ${response.status}`);
+    }
+
+    const manifest: unknown = await response.json();
+    validateManifest(manifest, artworkId);
+    gazeOriginAnchors = manifest.gazeOrigins;
+    displayScaleAnchors = manifest.displayScales;
+    sources = Array.from(
+      { length: FRAME_COUNT },
+      (_, index) => frameSource(manifest, index),
+    );
+    stage.setAttribute('aria-label', manifest.ariaLabel);
+    cat.alt = manifest.alt;
+    cat.src = sources[0] ?? '';
     await cat.decode();
     stage.classList.add('is-poster-ready');
 
