@@ -268,6 +268,7 @@ function createDebugMarkers() {
 function setDebugMode(enabled) {
   guiState.debugPoints = enabled;
   debugController.updateDisplay();
+  gui.show(enabled);
   stage.classList.toggle('is-debug', enabled);
   if (enabled) layoutDebugMarkers();
 }
@@ -275,6 +276,8 @@ function setDebugMode(enabled) {
 const debugController = gui.add(guiState, 'debugPoints')
   .name('Debug points')
   .onChange(setDebugMode);
+
+gui.show(guiState.debugPoints);
 
 async function preloadFrames() {
   await Promise.all(
