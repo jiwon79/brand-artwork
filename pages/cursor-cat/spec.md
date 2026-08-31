@@ -7,6 +7,8 @@
 - pack은 flat WebP 120장과 manifest 하나만 가진다. runtime 이미지는 Git build에 포함하지 않는다.
 - manifest가 눈 기준점과 표시 scale calibration을 제공한다.
 - 모든 frame을 preload·decode한 뒤 pointer 상호작용을 시작한다.
+- 하단 `Angle / Frame / Final` 단계에서 터치 각도, 실제 120-frame 선택 경계와 최종 결과를 차례로 보여준다.
+- `?stage=angle|frame|final`, 숫자키 `1…3`과 좌우 방향키로 원리 단계를 바꾼다.
 - `?debug=1` 또는 `D` 키로 실제 frame 선택 경계와 눈→커서 방향을 확인한다.
 - 모바일은 `dvh`를 사용해 고양이 아래를 현재 viewport 아래에 고정한다.
 
