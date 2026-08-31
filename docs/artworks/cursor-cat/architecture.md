@@ -105,8 +105,8 @@ manifest의 `displayScales`는 frame index 사이를 보간해 CSS transform에 
 
 | 단계 | 보여주는 값 |
 | --- | --- |
-| `Angle` | 선택된 후보의 눈 기준점, pointer까지의 선, `atan2`로 측정한 시계 방향 각도 |
-| `Frame` | 실제 selection 함수를 다시 표본화한 120개 원형 구간, 선택 구간과 frame 번호 |
+| `Angle` | 선택된 후보의 눈 기준점, pointer까지의 선, `atan2`로 측정한 각도 호 |
+| `Frame` | 실제 selection 함수를 다시 표본화한 120개 원형 구간과 선택 구간 |
 | `Final` | guide가 없는 최종 WebP 출력과 원형 최단 경로 보간 |
 
 `?stage=angle|frame|final`, 숫자키 `1…3`과 좌우 방향키로 단계를 바꾼다. Angle 단계가 선택된 frame의 눈 기준점을 쓰는 이유는 모든 포즈에 공통인 고정 중심이 없기 때문이다. Frame 단계의 원형 경계도 단순히 3° 간격으로 그리지 않고, 원 위의 각 표본을 production `pointerFrame()`에 넣어 실제로 frame이 바뀌는 위치에 tick을 그린다.

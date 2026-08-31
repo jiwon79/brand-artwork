@@ -388,18 +388,6 @@ function processPointer(frame: number, bounds: Bounds, radius: number): Point {
   };
 }
 
-function drawProcessHeading(title: string, detail: string): void {
-  const centerX = stage.clientWidth * 0.5;
-  debugContext.textAlign = 'center';
-  debugContext.textBaseline = 'top';
-  debugContext.fillStyle = 'rgba(22, 22, 22, 0.46)';
-  debugContext.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
-  debugContext.fillText(title, centerX, 120);
-  debugContext.fillStyle = '#161616';
-  debugContext.font = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace';
-  debugContext.fillText(detail, centerX, 136);
-}
-
 function drawPointerRay(origin: Point, pointer: Point): void {
   debugContext.save();
   debugContext.setLineDash([5, 5]);
@@ -418,7 +406,6 @@ function drawAngleProcess(targetFrame: number, bounds: Bounds): void {
   const origin = screenGazeOrigin(targetFrame, bounds);
   const pointer = processPointer(targetFrame, bounds, radius);
   const pointerAngle = Math.atan2(pointer.y - origin.y, pointer.x - origin.x);
-  const clockwiseDegrees = wrapProgress(-pointerAngle / (Math.PI * 2)) * 360;
   const arcRadius = Math.min(42, Math.max(26, Math.hypot(
     pointer.x - origin.x,
     pointer.y - origin.y,
@@ -440,7 +427,6 @@ function drawAngleProcess(targetFrame: number, bounds: Bounds): void {
   debugContext.stroke();
 
   drawCircle(origin, 4, '#161616');
-  drawProcessHeading('01 · TOUCH ANGLE', `${clockwiseDegrees.toFixed(1)}° FROM GAZE ORIGIN`);
 }
 
 function drawFrameProcess(targetFrame: number, bounds: Bounds): void {
@@ -452,10 +438,6 @@ function drawFrameProcess(targetFrame: number, bounds: Bounds): void {
   drawGazeRay(targetFrame, bounds, radius, 'rgba(22, 22, 22, 0.8)');
   drawPointerRay(origin, pointer);
   drawCircle(origin, 4, '#0d99ff');
-  drawProcessHeading(
-    '02 · NEAREST FRAME',
-    `${String(targetFrame + 1).padStart(3, '0')} / ${FRAME_COUNT}`,
-  );
 }
 
 function drawDebugArc(targetFrame: number, bounds: Bounds): void {
