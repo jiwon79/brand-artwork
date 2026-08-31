@@ -22,6 +22,7 @@ docs/
 ## Guides
 
 - [`reference-extension-workflow.md`](./guides/reference-extension-workflow.md) - 레퍼런스 복원 뒤 정체성을 유지하며 새로운 상호작용을 제안·비교·선택하는 공통 작업 방식
+- [`cursor-animal-creation.md`](./guides/cursor-animal-creation.md) - AI 코딩 도구와 이미지·영상 생성 도구로 반려동물 Cursor Artwork를 만드는 전달용 가이드
 - [`cursor-cat-registration.md`](./guides/cursor-cat-registration.md) - flat 120-frame pack을 R2 main 또는 10자리 랜덤 경로에 등록하는 절차
 
 ## Artworks
