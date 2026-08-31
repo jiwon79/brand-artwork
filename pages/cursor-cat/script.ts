@@ -596,9 +596,13 @@ function render(time: number): void {
   requestAnimationFrame(render);
 }
 
-async function loadFrame(source: string): Promise<HTMLImageElement> {
+async function loadFrame(
+  source: string,
+  fetchPriority: 'high' | 'auto' = 'auto',
+): Promise<HTMLImageElement> {
   const image = new Image();
   image.decoding = 'async';
+  image.fetchPriority = fetchPriority;
   image.src = source;
   try {
     await image.decode();
@@ -608,9 +612,14 @@ async function loadFrame(source: string): Promise<HTMLImageElement> {
   return image;
 }
 
-async function loadFrames(frameSources: string[], concurrency = 8): Promise<HTMLImageElement[]> {
+async function loadFrames(
+  frameSources: string[],
+  concurrency = 8,
+  onProgress?: (loadedCount: number) => void,
+): Promise<HTMLImageElement[]> {
   const frames = new Array<HTMLImageElement>(frameSources.length);
   let nextIndex = 0;
+  let loadedCount = 0;
 
   async function loadNext(): Promise<void> {
     while (nextIndex < frameSources.length) {
@@ -619,6 +628,8 @@ async function loadFrames(frameSources: string[], concurrency = 8): Promise<HTML
       const source = frameSources[index];
       if (!source) continue;
       frames[index] = await loadFrame(source);
+      loadedCount += 1;
+      onProgress?.(loadedCount);
     }
   }
 
@@ -650,18 +661,25 @@ async function initialize(): Promise<void> {
     );
     stage.setAttribute('aria-label', manifest.ariaLabel);
     cat.alt = manifest.alt;
-    cat.src = sources[0] ?? '';
+    loadingStatus.textContent = 'Loading 0%';
+    const firstSource = sources[0];
+    if (!firstSource) throw new Error('Cursor Cat requires frame 001');
+    const firstFrame = await loadFrame(firstSource, 'high');
+    cat.src = firstFrame.src;
     await cat.decode();
-    stage.classList.add('is-poster-ready');
+    loadingStatus.textContent = `Loading ${Math.round(100 / FRAME_COUNT)}%`;
 
-    const frames = await loadFrames(sources);
-    decodedFrames.push(...frames);
+    const frames = await loadFrames(sources.slice(1), 8, (loadedCount) => {
+      const progress = Math.round(((loadedCount + 1) / FRAME_COUNT) * 100);
+      loadingStatus.textContent = `Loading ${progress}%`;
+    });
+    decodedFrames.push(firstFrame, ...frames);
     ready = true;
     stage.classList.add('is-ready');
     stage.setAttribute('aria-busy', 'false');
     loadingStatus.textContent = '이미지 로딩 완료';
   } catch (error) {
-    stage.classList.add('is-error', 'is-poster-ready');
+    stage.classList.add('is-error');
     stage.setAttribute('aria-busy', 'false');
     loadingStatus.textContent = '이미지를 불러오지 못했습니다.';
     console.error(error);

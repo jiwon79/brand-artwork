@@ -47,9 +47,9 @@ manifest에는 다음 값이 들어 있다.
 
 1. URL에서 `main` 또는 10자리 ID를 구한다.
 2. R2 manifest를 가져와 schema, ID, 120-frame 계약과 calibration anchor를 검사한다.
-3. frame 001을 표시해 poster-ready 상태가 된다.
-4. 최대 8개 요청을 동시에 사용해 120장을 preload하고 decode한다.
-5. 모든 이미지가 준비된 뒤에만 pointer 입력으로 target frame을 갱신한다.
+3. 고양이는 숨긴 채 frame 001을 먼저 decode하고 중앙 로딩 진행률을 시작한다.
+4. 최대 8개 요청을 동시에 사용해 나머지 119장을 preload하고, 완료 수를 백분율로 표시한다.
+5. 120장이 모두 준비된 뒤 고양이를 표시하고 pointer 입력으로 target frame을 갱신한다.
 
 페이지가 유지하는 주요 상태는 다음과 같다.
 
