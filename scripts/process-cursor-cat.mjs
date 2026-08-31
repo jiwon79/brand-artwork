@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 const FRAME_WIDTH = 576;
 const FRAME_HEIGHT = 1024;
 const RGB_CHANNELS = 3;
+const RGBA_CHANNELS = 4;
 const RGB_BUFFER_SIZE = FRAME_WIDTH * FRAME_HEIGHT * RGB_CHANNELS;
 
 const RIGHT_POSE_FRAMES = [
@@ -318,6 +319,58 @@ function makeConnectedBackgroundTransparent(source) {
   return output;
 }
 
+function constrainAlphaToNeighborEnvelope(target, previous, next, radius = 4) {
+  const pixelCount = FRAME_WIDTH * FRAME_HEIGHT;
+  const seed = new Uint8Array(pixelCount);
+  const horizontal = new Uint8Array(pixelCount);
+  const envelope = new Uint8Array(pixelCount);
+
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    const alphaOffset = pixel * RGBA_CHANNELS + 3;
+    seed[pixel] = previous[alphaOffset] > 0 || next[alphaOffset] > 0 ? 1 : 0;
+  }
+
+  for (let y = 0; y < FRAME_HEIGHT; y += 1) {
+    const row = y * FRAME_WIDTH;
+    let active = 0;
+    for (let x = 0; x <= radius; x += 1) active += seed[row + x];
+
+    for (let x = 0; x < FRAME_WIDTH; x += 1) {
+      horizontal[row + x] = active > 0 ? 1 : 0;
+      const removeX = x - radius;
+      const addX = x + radius + 1;
+      if (removeX >= 0) active -= seed[row + removeX];
+      if (addX < FRAME_WIDTH) active += seed[row + addX];
+    }
+  }
+
+  for (let x = 0; x < FRAME_WIDTH; x += 1) {
+    let active = 0;
+    for (let y = 0; y <= radius; y += 1) active += horizontal[y * FRAME_WIDTH + x];
+
+    for (let y = 0; y < FRAME_HEIGHT; y += 1) {
+      const pixel = y * FRAME_WIDTH + x;
+      envelope[pixel] = active > 0 ? 1 : 0;
+      const removeY = y - radius;
+      const addY = y + radius + 1;
+      if (removeY >= 0) active -= horizontal[removeY * FRAME_WIDTH + x];
+      if (addY < FRAME_HEIGHT) active += horizontal[addY * FRAME_WIDTH + x];
+    }
+  }
+
+  const output = Buffer.from(target);
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    if (envelope[pixel]) continue;
+    const offset = pixel * RGBA_CHANNELS;
+    output[offset] = 255;
+    output[offset + 1] = 255;
+    output[offset + 2] = 255;
+    output[offset + 3] = 0;
+  }
+
+  return output;
+}
+
 function describeProfile(label, profile) {
   const orangeLift = profile.targetOrangeLuma - profile.sourceOrangeLuma;
   const whiteLift = profile.targetWhiteLuma - profile.sourceWhiteLuma;
@@ -395,6 +448,7 @@ for (let index = 0; index < LEFT_POSE_FRAMES.length; index += 1) {
   encodeWebp(makeConnectedBackgroundTransparent(graded), webp);
 }
 
+const lowerStartFrames = [];
 for (let index = 0; index < LOWER_POSE_FRAMES.length; index += 1) {
   const runtimeFrame = index + 62;
   const sourceFrame = LOWER_POSE_FRAMES[index];
@@ -407,7 +461,22 @@ for (let index = 0; index < LOWER_POSE_FRAMES.length; index += 1) {
   if (index === 0 || index === Math.floor(LOWER_POSE_FRAMES.length / 2) || index === LOWER_POSE_FRAMES.length - 1) {
     describeProfile(`frame ${String(runtimeFrame).padStart(3, '0')}`, profile);
   }
-  encodeWebp(makeConnectedBackgroundTransparent(graded), webp);
+  const rgba = makeConnectedBackgroundTransparent(graded);
+  if (index <= 2) {
+    lowerStartFrames.push({ rgba, webp });
+    if (index === 2) {
+      const cleanedMiddle = constrainAlphaToNeighborEnvelope(
+        lowerStartFrames[1].rgba,
+        lowerStartFrames[0].rgba,
+        lowerStartFrames[2].rgba,
+      );
+      encodeWebp(lowerStartFrames[0].rgba, lowerStartFrames[0].webp);
+      encodeWebp(cleanedMiddle, lowerStartFrames[1].webp);
+      encodeWebp(lowerStartFrames[2].rgba, lowerStartFrames[2].webp);
+    }
+  } else {
+    encodeWebp(rgba, webp);
+  }
 }
 
 console.log(`Rebuilt 120 calibrated frames with transparent connected backgrounds for pure white CSS compositing in ${outputDirectory}`);
