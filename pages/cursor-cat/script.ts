@@ -295,12 +295,17 @@ function setDebugEnabled(enabled: boolean, updateUrl = false): void {
 
 function debugArcGeometry(bounds: Bounds): { center: Point; radius: number } {
   const stageBounds = stage.getBoundingClientRect();
+  const center = {
+    x: bounds.left + bounds.width * 0.5,
+    y: bounds.top + bounds.height * POINTER_CENTER_Y_RATIO,
+  };
+  const radius = Math.min(
+    Math.min(stageBounds.width, stageBounds.height) * 0.38,
+    Math.max(80, center.y - 86),
+  );
   return {
-    center: {
-      x: bounds.left + bounds.width * 0.5,
-      y: bounds.top + bounds.height * POINTER_CENTER_Y_RATIO,
-    },
-    radius: Math.min(stageBounds.width, stageBounds.height) * 0.38,
+    center,
+    radius,
   };
 }
 
@@ -389,10 +394,10 @@ function drawProcessHeading(title: string, detail: string): void {
   debugContext.textBaseline = 'top';
   debugContext.fillStyle = 'rgba(22, 22, 22, 0.46)';
   debugContext.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
-  debugContext.fillText(title, centerX, 18);
+  debugContext.fillText(title, centerX, 120);
   debugContext.fillStyle = '#161616';
   debugContext.font = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace';
-  debugContext.fillText(detail, centerX, 34);
+  debugContext.fillText(detail, centerX, 136);
 }
 
 function drawPointerRay(origin: Point, pointer: Point): void {
@@ -528,7 +533,7 @@ function drawDebugHud(targetFrame: number): void {
   const width = Math.min(258, stage.clientWidth - 24);
   const height = 116;
   const x = 12;
-  const y = 12;
+  const y = stage.clientWidth <= 560 ? 72 : 12;
 
   debugContext.fillStyle = 'rgba(17, 20, 24, 0.88)';
   debugContext.fillRect(x, y, width, height);

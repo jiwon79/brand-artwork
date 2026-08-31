@@ -88,6 +88,8 @@ body {
 }
 
 artwork-stepper {
+  --stepper-top: max(10px, env(safe-area-inset-top));
+  --stepper-bottom: auto;
   --stepper-max-width: 330px;
   --stepper-color: #161616;
   --stepper-muted-color: rgba(22, 22, 22, 0.32);

@@ -101,7 +101,7 @@ manifest의 `displayScales`는 frame index 사이를 보간해 CSS transform에 
 
 ## Process view
 
-하단 `Angle / Frame / Final` 스테퍼는 production selection을 바꾸지 않고 같은 중간 상태를 단계별로 보여준다.
+상단 `Angle / Frame / Final` 스테퍼는 production selection을 바꾸지 않고 같은 중간 상태를 단계별로 보여준다.
 
 | 단계 | 보여주는 값 |
 | --- | --- |
