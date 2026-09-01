@@ -3,16 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>NASA Lens</title>
+  <title>NASA Refraction</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <canvas id="stage"></canvas>
-  <div id="cursor"></div>
+  <canvas id="stage" aria-label="NASA 로고를 통과하며 굴절되는 두 개의 광원"></canvas>
 
-  <div id="error">WebGL not available on this device</div>
+  <header class="hud hud--top" aria-label="Artwork information">
+    <span class="hud-chip">NASA</span>
+    <span class="hud-chip">REFRACTION</span>
+  </header>
+
+  <footer class="hud hud--bottom">
+    <span id="fps" class="hud-chip">-- FPS</span>
+    <button id="info-toggle" class="hud-chip hud-button" type="button" aria-expanded="false" aria-controls="info-panel">INFO</button>
+  </footer>
+
+  <aside id="info-panel" class="info-panel" aria-hidden="true">
+    <p class="info-panel__eyebrow">LIGHT STUDY 01</p>
+    <p>빈 공간을 누르면 가까운 광원이 이동합니다. 광원을 드래그해 입사각과 굴절 그림자를 바꿔보세요.</p>
+    <p class="info-panel__meta">SVG MASK · SCREEN-SPACE REFRACTION · CHROMATIC DISPERSION</p>
+  </aside>
+
+  <div id="cursor" aria-hidden="true"></div>
+  <div id="error" role="alert">WebGL not available on this device</div>
 
   <script type="module" src="script.ts"></script>
-  <script type="module" src="/common/touch-cursor.ts"></script>
 </body>
 </html>

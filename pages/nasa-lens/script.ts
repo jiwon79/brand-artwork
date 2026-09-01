@@ -2,498 +2,651 @@ import * as THREE from 'three';
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 
-const errorEl = document.getElementById('error') as HTMLDivElement;
-const stage = document.getElementById('stage') as HTMLCanvasElement;
-const cursor = document.getElementById('cursor') as HTMLDivElement;
+const MAX_LIGHTS = 2;
 
-window.addEventListener('error', (e) => {
-  errorEl.textContent = 'Error: ' + (e.message || 'unknown');
-  errorEl.classList.add('show');
-});
-
-const state = {
-  radius: 0.4,
-  strength: 1.5,
-  thickness: 2.0,
-  fontScale: 1.0,       // multiplier on the auto-calibrated font size
-  lineSpacing: 1.35,    // row spacing as a multiplier of fontSize
-  starSize: 0.035,      // star radius as a fraction of fontSize (halved from 0.07)
-  starThickness: 0.4,   // inner/outer radius ratio — lower = thinner/spikier
-  starSpeed: 15,        // pixels per second of random drift
-  starsPerGap: 1.5,     // average stars in each row gap (fractional → probabilistic)
-  engageDuration: 0.2,  // seconds for the lens to fade in after first touch
-  burstDuration: 0.55,  // seconds the release burst animation runs
-  burstSize: 2.8,       // max radius multiplier at the end of the burst
-  burstIntensity: 1.4,  // fade-out exponent; higher = lens drops off faster
-  mouse: { x: 0.5, y: 0.5 },
-  mouseTarget: { x: 0.5, y: 0.5 },
-  interacting: false,
-  isTouch: false,
+type Light = {
+  position: THREE.Vector2;
+  initialPosition: THREE.Vector2;
+  target: THREE.Vector2;
+  color: THREE.Color;
+  intensity: number;
+  spread: number;
 };
 
-type Star = { x: number; y: number; vx: number; vy: number };
-let stars: Star[] = [];
-let fieldWidth = 0;
-let fieldHeight = 0;
-let fontSizeCache = 0;
+const stage = document.getElementById('stage') as HTMLCanvasElement;
+const cursor = document.getElementById('cursor') as HTMLDivElement;
+const errorEl = document.getElementById('error') as HTMLDivElement;
+const fpsEl = document.getElementById('fps') as HTMLSpanElement;
+const infoToggle = document.getElementById('info-toggle') as HTMLButtonElement;
+const infoPanel = document.getElementById('info-panel') as HTMLElement;
 
-// Cache the canvas's on-screen rect. Touch/mouse clientX/Y are in visual-
-// viewport CSS pixels, so driving the lens and canvas sizing from this rect
-// (rather than window.innerWidth/Height) keeps the lens centered on the
-// touch point even when mobile Safari's URL bar shifts the viewport.
+const params = {
+  logoScale: 0.345,
+  logoY: 0.49,
+  intensity: 0.96,
+  haze: 0.76,
+  shadow: 0.88,
+  transmission: 0.18,
+  refraction: 0.014,
+  dispersion: 0.0045,
+  edgeGlow: 0.96,
+  ambientRays: 0.68,
+  grain: 0.18,
+  autoSwivel: true,
+  swivelAmount: 0.018,
+};
+
+const lights: Light[] = [
+  {
+    position: new THREE.Vector2(0.235, 0.805),
+    initialPosition: new THREE.Vector2(0.235, 0.805),
+    target: new THREE.Vector2(0.5, 0.49),
+    color: new THREE.Color('#fff8ef'),
+    intensity: 1,
+    spread: 0.30,
+  },
+  {
+    position: new THREE.Vector2(0.785, 0.735),
+    initialPosition: new THREE.Vector2(0.785, 0.735),
+    target: new THREE.Vector2(0.5, 0.49),
+    color: new THREE.Color('#edf7ff'),
+    intensity: 0.96,
+    spread: 0.23,
+  },
+];
+
 let stageRect = stage.getBoundingClientRect();
-function refreshStageRect(): void {
-  stageRect = stage.getBoundingClientRect();
+let activeLight = 0;
+let dragging = false;
+let alternateLight = 0;
+
+function showError(message: string): void {
+  errorEl.textContent = message;
+  errorEl.classList.add('show');
 }
 
-// ── Background canvases (offscreen) ──────────────────────
-// bgCanvas holds only the static SPACE text (baked once per resize) and
-// is sampled with the lens's "thickness" dilation. starsCanvas is a
-// separate texture holding only the stars (redrawn each frame) so the
-// dilation — tuned for thick text strokes — doesn't fragment the tiny
-// star shapes into separate arms.
-const bgCanvas = document.createElement('canvas');
-const bgCtx = bgCanvas.getContext('2d')!;
-const starsCanvas = document.createElement('canvas');
-const starsCtx = starsCanvas.getContext('2d')!;
+window.addEventListener('error', (event) => {
+  showError(`Error: ${event.message || 'unknown'}`);
+});
 
-function bakeBackground(): void {
-  const w = stageRect.width;
-  const h = stageRect.height;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-  bgCanvas.width = w * dpr;
-  bgCanvas.height = h * dpr;
-  starsCanvas.width = w * dpr;
-  starsCanvas.height = h * dpr;
-  bgCtx.setTransform(1, 0, 0, 1, 0, 0);
-  bgCtx.scale(dpr, dpr);
-  bgCtx.fillStyle = '#000';
-  bgCtx.fillRect(0, 0, w, h);
-
-  // Calibrate fontSize so ~6 letters span the viewport width
-  // (user asked for 5–7 visible chars).
-  const REF_SIZE = 100;
-  const TARGET_CHARS = 6;
-  bgCtx.font = '900 ' + REF_SIZE + 'px "Arial Black", "Helvetica Neue", sans-serif';
-  const refCharAvg = bgCtx.measureText('SPACES').width / 6;
-  const fontSize = (w / TARGET_CHARS) * (REF_SIZE / refCharAvg) * state.fontScale;
-
-  const rowSpacing = fontSize * state.lineSpacing;
-  const rows = Math.ceil(h / rowSpacing) + 2;
-  const totalH = rowSpacing * rows;
-  const startY = (h - totalH) / 2 + rowSpacing / 2;
-
-  bgCtx.font = '900 ' + fontSize + 'px "Arial Black", "Helvetica Neue", sans-serif';
-  bgCtx.textAlign = 'left';
-  bgCtx.textBaseline = 'middle';
-
-  const BASE = 'SPACE '.repeat(12);
-  const shifts = [0, 0.4, 1.2, 1.9, 0.7, 2.4, 0.2, 1.5];
-
-  for (let i = 0; i < rows; i++) {
-    const y = startY + i * rowSpacing;
-    const offX = -shifts[i % shifts.length] * fontSize;
-
-    bgCtx.strokeStyle = 'rgba(255, 200, 40, 0.55)';
-    bgCtx.lineWidth = Math.max(2, fontSize * 0.035);
-    bgCtx.strokeText(BASE, offX, y);
-    bgCtx.strokeStyle = 'rgba(255, 230, 90, 0.95)';
-    bgCtx.lineWidth = Math.max(1, fontSize * 0.012);
-    bgCtx.strokeText(BASE, offX, y);
-  }
-
-  // Rebuild the star field. Star count per row gap follows state.starsPerGap:
-  // the integer part is guaranteed and the fractional part rolls a per-gap
-  // hashRand to add one more (so 1.5 ≈ 50/50 between 1 and 2). Positions and
-  // drift directions are seeded by row index for a stable initial layout.
-  stars = [];
-  const density = Math.max(0, state.starsPerGap);
-  const baseCount = Math.floor(density);
-  const extraChance = density - baseCount;
-  for (let i = 0; i < rows - 1; i++) {
-    const gapY = startY + (i + 0.5) * rowSpacing;
-    const count = baseCount + (hashRand(i, 0) < extraChance ? 1 : 0);
-    for (let k = 0; k < count; k++) {
-      const sx = hashRand(i, k * 2 + 1) * w;
-      const sy = gapY + (hashRand(i, k * 2 + 2) - 0.5) * fontSize * 0.25;
-      const ang = hashRand(i, k * 11 + 7) * Math.PI * 2;
-      stars.push({ x: sx, y: sy, vx: Math.cos(ang), vy: Math.sin(ang) });
-    }
-  }
-
-  fieldWidth = w;
-  fieldHeight = h;
-  fontSizeCache = fontSize;
-
-  bgTexture.needsUpdate = true;
-  renderStars();
-}
-
-// Per-frame: redraw the current star positions onto starsCanvas (transparent
-// background) and flag the separate stars texture for upload.
-function renderStars(): void {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-  starsCtx.setTransform(1, 0, 0, 1, 0, 0);
-  starsCtx.clearRect(0, 0, starsCanvas.width, starsCanvas.height);
-  starsCtx.scale(dpr, dpr);
-
-  const r = fontSizeCache * state.starSize;
-  for (const s of stars) {
-    drawStar(starsCtx, s.x, s.y, r, state.starThickness);
-  }
-
-  starsTexture.needsUpdate = true;
-}
-
-function updateStars(dt: number): void {
-  const speed = state.starSpeed;
-  if (speed <= 0 || stars.length === 0) return;
-  // Wrap around the viewport so stars never disappear.
-  const margin = fontSizeCache * 0.5;
-  const wSpan = fieldWidth + margin * 2;
-  const hSpan = fieldHeight + margin * 2;
-  for (const s of stars) {
-    s.x += s.vx * speed * dt;
-    s.y += s.vy * speed * dt;
-    if (s.x < -margin) s.x += wSpan;
-    else if (s.x > fieldWidth + margin) s.x -= wSpan;
-    if (s.y < -margin) s.y += hSpan;
-    else if (s.y > fieldHeight + margin) s.y -= hSpan;
-  }
-}
-
-// Deterministic pseudo-random in [0, 1) from two integer seeds.
-function hashRand(a: number, b: number): number {
-  const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
-  return s - Math.floor(s);
-}
-
-function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, innerRatio: number): void {
-  const inner = r * innerRatio;
-  ctx.save();
-  ctx.fillStyle = 'rgba(255, 214, 64, 1)';
-  ctx.strokeStyle = 'rgba(255, 236, 140, 0.9)';
-  ctx.lineWidth = Math.max(1, r * 0.08);
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const ang = -Math.PI / 2 + (i * Math.PI) / 5;
-    const rr = i % 2 === 0 ? r : inner;
-    const px = cx + Math.cos(ang) * rr;
-    const py = cy + Math.sin(ang) * rr;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-// ── Three.js setup ───────────────────────────────────────
 let renderer: THREE.WebGLRenderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas: stage, antialias: true, alpha: false });
-} catch (e) {
-  errorEl.textContent = 'WebGL unavailable: ' + (e as Error).message;
-  errorEl.classList.add('show');
-  throw e;
+  renderer = new THREE.WebGLRenderer({
+    canvas: stage,
+    alpha: false,
+    antialias: false,
+    powerPreference: 'high-performance',
+  });
+} catch (error) {
+  showError(`WebGL unavailable: ${(error as Error).message}`);
+  throw error;
 }
 
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setClearColor(0x050001, 1);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.setSize(stageRect.width, stageRect.height, false);
 
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-const bgTexture = new THREE.CanvasTexture(bgCanvas);
-bgTexture.minFilter = THREE.LinearFilter;
-bgTexture.magFilter = THREE.LinearFilter;
-bgTexture.wrapS = THREE.ClampToEdgeWrapping;
-bgTexture.wrapT = THREE.ClampToEdgeWrapping;
-
-const starsTexture = new THREE.CanvasTexture(starsCanvas);
-starsTexture.minFilter = THREE.LinearFilter;
-starsTexture.magFilter = THREE.LinearFilter;
-starsTexture.wrapS = THREE.ClampToEdgeWrapping;
-starsTexture.wrapT = THREE.ClampToEdgeWrapping;
+const logoTexture = new THREE.TextureLoader().load(
+  './assets/nasa-worm.svg',
+  (texture) => {
+    texture.needsUpdate = true;
+  },
+  undefined,
+  () => showError('NASA logo mask could not be loaded'),
+);
+logoTexture.minFilter = THREE.LinearFilter;
+logoTexture.magFilter = THREE.LinearFilter;
+logoTexture.wrapS = THREE.ClampToEdgeWrapping;
+logoTexture.wrapT = THREE.ClampToEdgeWrapping;
+logoTexture.colorSpace = THREE.NoColorSpace;
 
 const uniforms = {
-  uTex: { value: bgTexture },
-  uStars: { value: starsTexture },
-  uMouse: { value: new THREE.Vector2(0.5, 0.5) },
-  uRadius: { value: state.radius },
-  uStrength: { value: state.strength },
-  uThickness: { value: state.thickness },
-  uActive: { value: 0.0 },
-  // Effective-radius multiplier, driven by JS. Usually 1.0; briefly grows
-  // during the release animation to make the lens "burst outward" when the
-  // user lets go of the drag.
-  uExpand: { value: 1.0 },
+  uLogo: { value: logoTexture },
   uResolution: { value: new THREE.Vector2(stageRect.width, stageRect.height) },
+  uLogoRect: { value: new THREE.Vector4() },
+  uLightPos: { value: lights.map((light) => light.position.clone()) },
+  uLightTarget: { value: lights.map((light) => light.target.clone()) },
+  uLightColor: { value: lights.map((light) => light.color.clone()) },
+  uLightIntensity: { value: lights.map((light) => light.intensity) },
+  uLightSpread: { value: lights.map((light) => light.spread) },
+  uTime: { value: 0 },
+  uIntensity: { value: params.intensity },
+  uHaze: { value: params.haze },
+  uShadow: { value: params.shadow },
+  uTransmission: { value: params.transmission },
+  uRefraction: { value: params.refraction },
+  uDispersion: { value: params.dispersion },
+  uEdgeGlow: { value: params.edgeGlow },
+  uAmbientRays: { value: params.ambientRays },
+  uGrain: { value: params.grain },
 };
 
 const vertexShader = `
   varying vec2 vUv;
+
   void main() {
     vUv = uv;
     gl_Position = vec4(position, 1.0);
   }
 `;
 
-// Spherical magnifying lens. Magnification shaped so it smoothly reaches 1.0
-// at the rim — sampleP == p there, so the lens result is continuous with bg.
 const fragmentShader = `
   precision highp float;
+
+  #define MAX_LIGHTS ${MAX_LIGHTS}
   varying vec2 vUv;
-  uniform sampler2D uTex;
-  uniform sampler2D uStars;
-  uniform vec2 uMouse;
+
+  uniform sampler2D uLogo;
   uniform vec2 uResolution;
-  uniform float uRadius;
-  uniform float uStrength;
-  uniform float uThickness;
-  uniform float uActive;
-  uniform float uExpand;
+  uniform vec4 uLogoRect;
+  uniform vec2 uLightPos[MAX_LIGHTS];
+  uniform vec2 uLightTarget[MAX_LIGHTS];
+  uniform vec3 uLightColor[MAX_LIGHTS];
+  uniform float uLightIntensity[MAX_LIGHTS];
+  uniform float uLightSpread[MAX_LIGHTS];
+  uniform float uTime;
+  uniform float uIntensity;
+  uniform float uHaze;
+  uniform float uShadow;
+  uniform float uTransmission;
+  uniform float uRefraction;
+  uniform float uDispersion;
+  uniform float uEdgeGlow;
+  uniform float uAmbientRays;
+  uniform float uGrain;
+
+  float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+
+  float noise21(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+      mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0)), f.x),
+      f.y
+    );
+  }
+
+  float fbm(vec2 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 4; i++) {
+      value += noise21(p) * amplitude;
+      p = p * 2.03 + vec2(17.13, 9.21);
+      amplitude *= 0.5;
+    }
+    return value;
+  }
+
+  float cross2(vec2 a, vec2 b) {
+    return a.x * b.y - a.y * b.x;
+  }
+
+  float logoMask(vec2 uv) {
+    vec2 logoUv = (uv - uLogoRect.xy) / uLogoRect.zw;
+    vec2 lower = step(vec2(0.0), logoUv);
+    vec2 upper = step(logoUv, vec2(1.0));
+    float inside = lower.x * lower.y * upper.x * upper.y;
+    return texture2D(uLogo, logoUv).a * inside;
+  }
+
+  vec3 backgroundAt(vec2 uv) {
+    vec2 p = uv - vec2(0.5, 0.48);
+    p.x *= uResolution.x / uResolution.y;
+
+    float radius = length(p);
+    float vignette = 1.0 - smoothstep(0.28, 0.92, radius);
+    float centerBloom = exp(-radius * 2.8);
+    float angle = atan(p.y, p.x);
+    float curtain = fbm(vec2(angle * 3.1 + 2.7, radius * 4.0 - uTime * 0.012));
+    curtain = pow(max(curtain - 0.30, 0.0), 1.6);
+
+    vec3 base = vec3(0.095, 0.0004, 0.0012);
+    base += vec3(0.34, 0.002, 0.006) * centerBloom * 0.90;
+    base += vec3(0.34, 0.001, 0.005) * curtain * vignette * uAmbientRays;
+    base *= mix(0.45, 1.0, vignette);
+    return base;
+  }
+
+  vec3 rawLight(
+    vec2 uv,
+    vec2 lightPos,
+    vec2 lightTarget,
+    vec3 lightColor,
+    float lightIntensity,
+    float spread
+  ) {
+    vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+    vec2 relative = (uv - lightPos) * aspect;
+    vec2 axis = normalize((lightTarget - lightPos) * aspect);
+    float distanceToLight = length(relative);
+    vec2 rayDirection = relative / max(distanceToLight, 0.0001);
+
+    float alignment = dot(rayDirection, axis);
+    float signedAngle = atan(cross2(axis, rayDirection), alignment);
+    float cone = 1.0 - smoothstep(spread - 0.014, spread + 0.012, abs(signedAngle));
+    cone *= step(0.0, alignment);
+
+    float polarNoise = fbm(vec2(signedAngle * 37.0, distanceToLight * 5.0 - uTime * 0.05));
+    float fineRays = noise21(vec2(signedAngle * 190.0, distanceToLight * 2.2 + uTime * 0.025));
+    float haze = mix(1.0, 0.74 + polarNoise * 0.26 + fineRays * 0.04, uHaze);
+    float distanceFade = exp(-distanceToLight * 0.24);
+    float body = cone * haze * distanceFade;
+
+    float edgeWarm = exp(-abs(signedAngle + spread) * 94.0) * cone;
+    float edgeCool = exp(-abs(signedAngle - spread) * 94.0) * cone;
+    vec3 spectralEdge = vec3(1.0, 0.28, 0.02) * edgeWarm * 0.34;
+    spectralEdge += vec3(0.02, 0.36, 1.0) * edgeCool * 0.42;
+
+    float sourceCore = exp(-distanceToLight * 155.0);
+    float sourceHalo = exp(-distanceToLight * 34.0);
+    vec3 source = lightColor * (sourceCore * 3.3 + sourceHalo * 0.52);
+
+    return (lightColor * body + spectralEdge) * lightIntensity * uIntensity + source * lightIntensity;
+  }
+
+  float opticalDepth(vec2 lightPos, vec2 destination, float spectralOffset) {
+    vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+    vec2 light = lightPos * aspect;
+    vec2 pixel = destination * aspect;
+    vec2 logoCenter = (uLogoRect.xy + uLogoRect.zw * 0.5) * aspect;
+    vec2 axis = normalize(logoCenter - light);
+    vec2 perpendicular = vec2(-axis.y, axis.x);
+    float logoDistance = dot(logoCenter - light, axis);
+    float pixelDistance = dot(pixel - light, axis);
+
+    if (pixelDistance <= logoDistance) return 0.0;
+
+    float projectionScale = logoDistance / max(pixelDistance, 0.0001);
+    vec2 projected = light + (pixel - light) * projectionScale;
+    vec2 projectedUv = (projected + perpendicular * spectralOffset) / aspect;
+    vec2 blurX = vec2(uLogoRect.z * 0.045, 0.0);
+    vec2 blurY = vec2(0.0, uLogoRect.w * 0.16);
+    float blurredMask = logoMask(projectedUv) * 0.14;
+    blurredMask += logoMask(projectedUv + blurX) * 0.10;
+    blurredMask += logoMask(projectedUv - blurX) * 0.10;
+    blurredMask += logoMask(projectedUv + blurX * 2.0) * 0.06;
+    blurredMask += logoMask(projectedUv - blurX * 2.0) * 0.06;
+    blurredMask += logoMask(projectedUv + blurY) * 0.10;
+    blurredMask += logoMask(projectedUv - blurY) * 0.10;
+    blurredMask += logoMask(projectedUv + blurY * 2.0) * 0.06;
+    blurredMask += logoMask(projectedUv - blurY * 2.0) * 0.06;
+    blurredMask += logoMask(projectedUv + blurX + blurY) * 0.055;
+    blurredMask += logoMask(projectedUv + blurX - blurY) * 0.055;
+    blurredMask += logoMask(projectedUv - blurX + blurY) * 0.055;
+    blurredMask += logoMask(projectedUv - blurX - blurY) * 0.055;
+    float contact = smoothstep(logoDistance, logoDistance + 0.018, pixelDistance);
+    return smoothstep(0.06, 0.46, blurredMask) * contact;
+  }
+
+  float behindLogoPlane(vec2 lightPos, vec2 destination) {
+    vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+    vec2 light = lightPos * aspect;
+    vec2 pixel = destination * aspect;
+    vec2 logoCenter = (uLogoRect.xy + uLogoRect.zw * 0.5) * aspect;
+    vec2 axis = normalize(logoCenter - light);
+    float logoDistance = dot(logoCenter - light, axis);
+    float pixelDistance = dot(pixel - light, axis);
+    return smoothstep(logoDistance - 0.01, logoDistance + 0.035, pixelDistance);
+  }
+
+  vec2 refractionBend(vec2 lightPos, vec2 destination) {
+    vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+    vec2 light = lightPos * aspect;
+    vec2 pixel = destination * aspect;
+    vec2 logoCenter = (uLogoRect.xy + uLogoRect.zw * 0.5) * aspect;
+    vec2 axis = normalize(logoCenter - light);
+    float logoDistance = dot(logoCenter - light, axis);
+    float pixelDistance = dot(pixel - light, axis);
+
+    if (pixelDistance <= logoDistance) return vec2(0.0);
+
+    float projectionScale = logoDistance / max(pixelDistance, 0.0001);
+    vec2 projectedUv = (light + (pixel - light) * projectionScale) / aspect;
+    vec2 normalStep = 3.0 / uResolution;
+    vec2 gradient = vec2(
+      logoMask(projectedUv + vec2(normalStep.x, 0.0)) - logoMask(projectedUv - vec2(normalStep.x, 0.0)),
+      logoMask(projectedUv + vec2(0.0, normalStep.y)) - logoMask(projectedUv - vec2(0.0, normalStep.y))
+    );
+    float gradientLength = length(gradient);
+    vec2 normal = gradient / max(gradientLength, 0.0001);
+    float travel = clamp((pixelDistance - logoDistance) / max(logoDistance, 0.0001), 0.0, 1.8);
+    return normal * uRefraction * travel * smoothstep(0.01, 0.42, gradientLength) * 2.4;
+  }
+
+  vec3 environmentWithoutOcclusion(vec2 uv) {
+    vec3 color = backgroundAt(uv);
+    for (int lightIndex = 0; lightIndex < MAX_LIGHTS; lightIndex++) {
+      color += rawLight(
+        uv,
+        uLightPos[lightIndex],
+        uLightTarget[lightIndex],
+        uLightColor[lightIndex],
+        uLightIntensity[lightIndex],
+        uLightSpread[lightIndex]
+      );
+    }
+    return color;
+  }
 
   void main() {
-    // Compute lens geometry in pixel space so the lens is perfectly circular
-    // regardless of viewport aspect ratio.
-    vec2 pxPos = vUv * uResolution;
-    vec2 pxMouse = uMouse * uResolution;
-    vec2 pxDelta = pxPos - pxMouse;
-    float pxDist = length(pxDelta);
-    float pxR = uRadius * uExpand * min(uResolution.x, uResolution.y);
+    vec2 uv = vUv;
+    vec3 color = backgroundAt(uv);
+    float centerMask = logoMask(uv);
 
-    float t = pxDist / pxR;
+    for (int lightIndex = 0; lightIndex < MAX_LIGHTS; lightIndex++) {
+      vec3 light = rawLight(
+        uv,
+        uLightPos[lightIndex],
+        uLightTarget[lightIndex],
+        uLightColor[lightIndex],
+        uLightIntensity[lightIndex],
+        uLightSpread[lightIndex]
+      );
 
-    float lensMask = 1.0 - smoothstep(0.0, 1.0, t);
-    lensMask *= uActive;
+      vec2 bend = refractionBend(uLightPos[lightIndex], uv);
+      vec2 bendDirection = normalize(bend + vec2(0.00001));
+      vec3 bentRed = rawLight(
+        uv + bend + bendDirection * uDispersion,
+        uLightPos[lightIndex], uLightTarget[lightIndex], uLightColor[lightIndex],
+        uLightIntensity[lightIndex], uLightSpread[lightIndex]
+      );
+      vec3 bentGreen = rawLight(
+        uv + bend,
+        uLightPos[lightIndex], uLightTarget[lightIndex], uLightColor[lightIndex],
+        uLightIntensity[lightIndex], uLightSpread[lightIndex]
+      );
+      vec3 bentBlue = rawLight(
+        uv + bend - bendDirection * uDispersion,
+        uLightPos[lightIndex], uLightTarget[lightIndex], uLightColor[lightIndex],
+        uLightIntensity[lightIndex], uLightSpread[lightIndex]
+      );
+      vec3 refractedLight = vec3(bentRed.r, bentGreen.g, bentBlue.b);
 
-    float tc = min(t, 1.0);
-    float z = sqrt(max(0.0, 1.0 - tc * tc));
+      float depthRed = opticalDepth(uLightPos[lightIndex], uv, uDispersion * 0.14);
+      float depthGreen = opticalDepth(uLightPos[lightIndex], uv, 0.0);
+      float depthBlue = opticalDepth(uLightPos[lightIndex], uv, -uDispersion * 0.14);
+      vec3 depth = vec3(depthRed, depthGreen, depthBlue) * (1.0 - centerMask);
+      vec3 visibility = 1.0 - depth * uShadow * (1.0 - uTransmission);
+      float behind = behindLogoPlane(uLightPos[lightIndex], uv) * (1.0 - centerMask);
+      float outgoing = lightIndex == 0 ? 0.74 : 0.12;
+      float bendAmount = smoothstep(0.0002, max(uRefraction * 0.85, 0.0003), length(bend));
+      light = mix(light, refractedLight, behind * bendAmount * 0.88);
+      light += abs(refractedLight - light) * behind * bendAmount * 0.32;
+      visibility *= mix(1.0, outgoing, behind);
 
-    float extra = uStrength * pow(z, 0.6) * lensMask * 1.8;
-    float mag = 1.0 + extra;
+      float averageDepth = (depthRed + depthGreen + depthBlue) / 3.0;
+      color *= 1.0 - averageDepth * uShadow * 0.60 * (1.0 - centerMask);
+      color += light * visibility;
 
-    vec2 samplePx = pxMouse + pxDelta / mag;
-    vec2 sampleUv = samplePx / uResolution;
-    sampleUv = clamp(sampleUv, vec2(0.0), vec2(1.0));
-
-    vec4 col = texture2D(uTex, sampleUv);
-
-    float coreStrength = pow(z, 1.5) * lensMask;
-    float dilate = coreStrength * (uThickness - 0.5);
-    if (dilate > 0.01) {
-      vec2 px = dilate * 4.0 / uResolution;
-      vec4 maxC = col;
-      maxC = max(maxC, texture2D(uTex, sampleUv + vec2( 1.0,  0.0) * px));
-      maxC = max(maxC, texture2D(uTex, sampleUv + vec2(-1.0,  0.0) * px));
-      maxC = max(maxC, texture2D(uTex, sampleUv + vec2( 0.0,  1.0) * px));
-      maxC = max(maxC, texture2D(uTex, sampleUv + vec2( 0.0, -1.0) * px));
-      maxC = max(maxC, texture2D(uTex, sampleUv + vec2( 0.707,  0.707) * px));
-      maxC = max(maxC, texture2D(uTex, sampleUv + vec2(-0.707,  0.707) * px));
-      maxC = max(maxC, texture2D(uTex, sampleUv + vec2( 0.707, -0.707) * px));
-      maxC = max(maxC, texture2D(uTex, sampleUv + vec2(-0.707, -0.707) * px));
-      col = mix(col, maxC, clamp(dilate, 0.0, 1.0));
+      vec3 spectralShadow = vec3(depthGreen - depthRed, 0.0, depthGreen - depthBlue);
+      color += max(spectralShadow, 0.0) * vec3(0.12, 0.01, 0.15) * uEdgeGlow;
     }
 
-    // Stars live on their own texture and are composited on top of the
-    // dilated text so the thickness pass doesn't shatter their small shapes.
-    vec4 starsCol = texture2D(uStars, sampleUv);
-    col.rgb = mix(col.rgb, starsCol.rgb, starsCol.a);
+    vec2 normalStep = 2.4 / uResolution;
+    float maskLeft = logoMask(uv - vec2(normalStep.x, 0.0));
+    float maskRight = logoMask(uv + vec2(normalStep.x, 0.0));
+    float maskDown = logoMask(uv - vec2(0.0, normalStep.y));
+    float maskUp = logoMask(uv + vec2(0.0, normalStep.y));
+    vec2 maskGradient = vec2(maskRight - maskLeft, maskUp - maskDown);
+    vec2 surfaceNormal = normalize(maskGradient + vec2(0.00001));
 
-    float innerShade = smoothstep(0.75, 1.0, tc) * lensMask;
-    col.rgb *= mix(1.0, 0.88, innerShade);
+    float dilated = max(max(maskLeft, maskRight), max(maskDown, maskUp));
+    float eroded = min(min(maskLeft, maskRight), min(maskDown, maskUp));
+    float rim = clamp(dilated - eroded, 0.0, 1.0);
 
-    col.rgb = clamp(col.rgb, 0.0, 1.0);
-    gl_FragColor = col;
+    vec2 glowStep = 7.0 / uResolution;
+    float wideMask = max(
+      max(logoMask(uv - vec2(glowStep.x, 0.0)), logoMask(uv + vec2(glowStep.x, 0.0))),
+      max(logoMask(uv - vec2(0.0, glowStep.y)), logoMask(uv + vec2(0.0, glowStep.y)))
+    );
+    float outerGlow = max(wideMask - centerMask, 0.0);
+
+    vec2 refractVector = -surfaceNormal * uRefraction * (0.22 + rim * 0.78);
+    vec3 refractedRed = environmentWithoutOcclusion(uv + refractVector + surfaceNormal * uDispersion * 0.70);
+    vec3 refractedGreen = environmentWithoutOcclusion(uv + refractVector);
+    vec3 refractedBlue = environmentWithoutOcclusion(uv + refractVector - surfaceNormal * uDispersion * 0.70);
+    vec3 refracted = vec3(refractedRed.r, refractedGreen.g, refractedBlue.b);
+
+    float surfaceIllumination = 0.0;
+    vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+    vec2 aspectNormal = normalize(surfaceNormal * aspect);
+    for (int lightIndex = 0; lightIndex < MAX_LIGHTS; lightIndex++) {
+      vec2 towardLight = normalize((uLightPos[lightIndex] - uv) * aspect);
+      surfaceIllumination += pow(max(dot(aspectNormal, towardLight), 0.0), 2.4) * uLightIntensity[lightIndex];
+    }
+
+    vec3 glass = refracted * 0.12;
+    glass = mix(glass, vec3(0.36, 0.001, 0.006), 0.88);
+    glass += vec3(1.0, 0.10, 0.07) * surfaceIllumination * rim * 0.20;
+    glass += vec3(0.11, 0.001, 0.006) * (1.0 - rim);
+    color = mix(color, glass, centerMask * 0.90);
+
+    color += vec3(1.0, 0.02, 0.035) * outerGlow * 0.46 * uEdgeGlow;
+    color += vec3(1.0, 0.12, 0.11) * rim * (0.34 + surfaceIllumination * 0.78) * uEdgeGlow;
+    color += vec3(0.95, 0.55, 0.32) * max(surfaceNormal.x, 0.0) * rim * 0.12 * uEdgeGlow;
+    color += vec3(0.08, 0.27, 1.0) * max(-surfaceNormal.x, 0.0) * rim * 0.12 * uEdgeGlow;
+
+    float vignette = smoothstep(0.94, 0.28, length((uv - 0.5) * vec2(uResolution.x / uResolution.y, 1.0)));
+    color *= mix(0.60, 1.0, vignette);
+
+    float grain = hash21(gl_FragCoord.xy + fract(uTime) * 173.0) - 0.5;
+    color += grain * uGrain * (0.16 + dot(color, vec3(0.333)) * 0.09);
+    color = max(color, vec3(0.0));
+    color = color / (1.0 + color * 0.54);
+    color = pow(color, vec3(0.86));
+
+    gl_FragColor = vec4(color, 1.0);
   }
 `;
 
-const mat = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader });
-const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+const material = new THREE.ShaderMaterial({
+  uniforms,
+  vertexShader,
+  fragmentShader,
+  depthTest: false,
+  depthWrite: false,
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
 scene.add(quad);
 
-// ── lil-gui controls ─────────────────────────────────────
-const gui = exposeGuiInDebugMode(new GUI({ title: 'Controls' }));
-
-const lensFolder = gui.addFolder('Lens');
-lensFolder.add(state, 'radius', 0.1, 0.8, 0.005).name('Radius');
-lensFolder.add(state, 'strength', 0, 3.0, 0.01).name('Strength');
-lensFolder.add(state, 'thickness', 0.5, 4.0, 0.01).name('Thickness');
-
-const textFolder = gui.addFolder('Text');
-textFolder.add(state, 'fontScale', 0.3, 2.5, 0.01).name('Font Scale').onChange(bakeBackground);
-textFolder.add(state, 'lineSpacing', 0.8, 3.0, 0.01).name('Line Spacing').onChange(bakeBackground);
-
-const starFolder = gui.addFolder('Stars');
-starFolder.add(state, 'starsPerGap', 0, 5, 0.1).name('Density').onChange(bakeBackground);
-starFolder.add(state, 'starSize', 0.005, 0.12, 0.001).name('Size');
-starFolder.add(state, 'starThickness', 0.15, 0.7, 0.01).name('Thickness');
-starFolder.add(state, 'starSpeed', 0, 80, 1).name('Speed');
-
-const burstFolder = gui.addFolder('Burst');
-burstFolder.add(state, 'engageDuration', 0.05, 1.5, 0.01).name('Engage');
-burstFolder.add(state, 'burstDuration', 0.1, 2.0, 0.01).name('Duration');
-burstFolder.add(state, 'burstSize', 1.2, 5.0, 0.05).name('Size');
-burstFolder.add(state, 'burstIntensity', 0.3, 4.0, 0.05).name('Intensity');
-
-if (window.innerWidth <= 700) gui.close();
-
-// ── Input ────────────────────────────────────────────────
-function setPointer(x: number, y: number): void {
-  const localX = x - stageRect.left;
-  const localY = y - stageRect.top;
-  state.mouseTarget.x = localX / stageRect.width;
-  state.mouseTarget.y = 1.0 - localY / stageRect.height;
-  cursor.style.transform =
-    'translate(' + x + 'px, ' + y + 'px) translate(-50%, -50%)';
+function updateLogoRect(): void {
+  const minDimension = Math.min(stageRect.width, stageRect.height);
+  const logoWidthPx = minDimension * params.logoScale;
+  const logoHeightPx = logoWidthPx * (141.732 / 508.204);
+  const logoWidthUv = logoWidthPx / stageRect.width;
+  const logoHeightUv = logoHeightPx / stageRect.height;
+  uniforms.uLogoRect.value.set(
+    0.5 - logoWidthUv / 2,
+    params.logoY - logoHeightUv / 2,
+    logoWidthUv,
+    logoHeightUv,
+  );
+  for (const light of lights) light.target.set(0.5, params.logoY);
 }
 
-// Desktop: the lens only engages while the user is dragging (mouse button
-// held). Hover just moves the cursor indicator — no lens.
-window.addEventListener('mousemove', (e) => {
-  if (state.isTouch) return;
-  setPointer(e.clientX, e.clientY);
-});
+function syncUniforms(elapsedSeconds: number): void {
+  uniforms.uTime.value = elapsedSeconds;
+  uniforms.uIntensity.value = params.intensity;
+  uniforms.uHaze.value = params.haze;
+  uniforms.uShadow.value = params.shadow;
+  uniforms.uTransmission.value = params.transmission;
+  uniforms.uRefraction.value = params.refraction;
+  uniforms.uDispersion.value = params.dispersion;
+  uniforms.uEdgeGlow.value = params.edgeGlow;
+  uniforms.uAmbientRays.value = params.ambientRays;
+  uniforms.uGrain.value = params.grain;
 
-stage.addEventListener('mousedown', (e) => {
-  if (state.isTouch) return;
-  state.interacting = true;
-  setPointer(e.clientX, e.clientY);
-  // Snap lens to cursor so it appears right at the press point
-  state.mouse.x = state.mouseTarget.x;
-  state.mouse.y = state.mouseTarget.y;
-});
-
-window.addEventListener('mouseup', () => {
-  if (state.isTouch) return;
-  state.interacting = false;
-});
-
-window.addEventListener('blur', () => {
-  state.interacting = false;
-});
-
-stage.addEventListener('touchstart', (e) => {
-  state.isTouch = true;
-  state.interacting = true;
-  const t = e.touches[0];
-  if (t) {
-    setPointer(t.clientX, t.clientY);
-    // Snap on first touch so the lens appears where the finger lands
-    state.mouse.x = state.mouseTarget.x;
-    state.mouse.y = state.mouseTarget.y;
+  for (let index = 0; index < lights.length; index += 1) {
+    const light = lights[index];
+    const destination = uniforms.uLightPos.value[index];
+    if (!dragging || activeLight !== index) {
+      const swivel = params.autoSwivel
+        ? Math.sin(elapsedSeconds * (0.32 + index * 0.06) + index * 2.1) * params.swivelAmount
+        : 0;
+      destination.set(light.position.x + swivel, light.position.y + swivel * (index === 0 ? 0.35 : -0.25));
+    } else {
+      destination.copy(light.position);
+    }
+    uniforms.uLightTarget.value[index].copy(light.target);
+    uniforms.uLightIntensity.value[index] = light.intensity;
+    uniforms.uLightSpread.value[index] = light.spread;
   }
-}, { passive: true });
+}
 
-stage.addEventListener('touchmove', (e) => {
-  const t = e.touches[0];
-  if (t) setPointer(t.clientX, t.clientY);
-}, { passive: true });
+function normalizedPointer(clientX: number, clientY: number): THREE.Vector2 {
+  return new THREE.Vector2(
+    THREE.MathUtils.clamp((clientX - stageRect.left) / stageRect.width, 0.04, 0.96),
+    THREE.MathUtils.clamp(1 - (clientY - stageRect.top) / stageRect.height, 0.05, 0.95),
+  );
+}
 
-stage.addEventListener('touchend', () => { state.interacting = false; });
-stage.addEventListener('touchcancel', () => { state.interacting = false; });
+function distanceToLightInPixels(pointer: THREE.Vector2, light: Light): number {
+  const dx = (pointer.x - light.position.x) * stageRect.width;
+  const dy = (pointer.y - light.position.y) * stageRect.height;
+  return Math.hypot(dx, dy);
+}
 
-// ── Resize ───────────────────────────────────────────────
-let resizeTimer: number | undefined;
+function selectLight(pointer: THREE.Vector2): number {
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < lights.length; index += 1) {
+    const distance = distanceToLightInPixels(pointer, lights[index]);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
+
+  if (nearestDistance <= 76) return nearestIndex;
+  const nextIndex = alternateLight;
+  alternateLight = (alternateLight + 1) % lights.length;
+  return nextIndex;
+}
+
+function moveLight(index: number, pointer: THREE.Vector2): void {
+  lights[index].position.copy(pointer);
+}
+
+function resetLights(): void {
+  lights.forEach((light) => light.position.copy(light.initialPosition));
+  activeLight = 0;
+  alternateLight = 0;
+}
+
+function positionCursor(clientX: number, clientY: number): void {
+  cursor.style.transform = `translate(${clientX}px, ${clientY}px) translate(-50%, -50%)`;
+}
+
+window.addEventListener('pointermove', (event) => {
+  positionCursor(event.clientX, event.clientY);
+  if (!dragging) return;
+  moveLight(activeLight, normalizedPointer(event.clientX, event.clientY));
+});
+
+stage.addEventListener('pointerdown', (event) => {
+  dragging = true;
+  const pointer = normalizedPointer(event.clientX, event.clientY);
+  activeLight = selectLight(pointer);
+  moveLight(activeLight, pointer);
+  stage.setPointerCapture(event.pointerId);
+});
+
+stage.addEventListener('pointerup', (event) => {
+  dragging = false;
+  if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+});
+
+stage.addEventListener('pointercancel', () => {
+  dragging = false;
+});
+
+stage.addEventListener('dblclick', resetLights);
+window.addEventListener('blur', () => {
+  dragging = false;
+});
+
+window.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() === 'r') resetLights();
+});
+
+infoToggle.addEventListener('click', () => {
+  const open = infoToggle.getAttribute('aria-expanded') !== 'true';
+  infoToggle.setAttribute('aria-expanded', String(open));
+  infoPanel.setAttribute('aria-hidden', String(!open));
+  infoPanel.classList.toggle('is-open', open);
+});
+
+const gui = exposeGuiInDebugMode(new GUI({ title: 'Refraction' }));
+const compositionFolder = gui.addFolder('Composition');
+compositionFolder.add(params, 'logoScale', 0.24, 0.65, 0.005).name('Logo scale').onChange(updateLogoRect);
+compositionFolder.add(params, 'logoY', 0.35, 0.65, 0.005).name('Logo Y').onChange(updateLogoRect);
+compositionFolder.add(params, 'ambientRays', 0, 1, 0.01).name('Ambient rays');
+compositionFolder.add(params, 'grain', 0, 0.4, 0.005).name('Grain');
+
+const opticsFolder = gui.addFolder('Optics');
+opticsFolder.add(params, 'intensity', 0, 2.5, 0.01).name('Intensity');
+opticsFolder.add(params, 'haze', 0, 1, 0.01).name('Haze');
+opticsFolder.add(params, 'shadow', 0, 1, 0.01).name('Shadow');
+opticsFolder.add(params, 'transmission', 0, 0.65, 0.01).name('Transmission');
+opticsFolder.add(params, 'refraction', 0, 0.04, 0.0005).name('Refraction');
+opticsFolder.add(params, 'dispersion', 0, 0.015, 0.00025).name('Dispersion');
+opticsFolder.add(params, 'edgeGlow', 0, 2.5, 0.01).name('Edge glow');
+
+const motionFolder = gui.addFolder('Motion');
+motionFolder.add(params, 'autoSwivel').name('Auto swivel');
+motionFolder.add(params, 'swivelAmount', 0, 0.06, 0.001).name('Swivel amount');
+
+for (let index = 0; index < lights.length; index += 1) {
+  const lightFolder = gui.addFolder(`Light ${index + 1}`);
+  lightFolder.add(lights[index], 'intensity', 0, 2, 0.01).name('Intensity');
+  lightFolder.add(lights[index], 'spread', 0.08, 0.55, 0.005).name('Spread');
+}
+
 function handleResize(): void {
-  window.clearTimeout(resizeTimer);
-  resizeTimer = window.setTimeout(() => {
-    refreshStageRect();
-    renderer.setSize(stageRect.width, stageRect.height, false);
-    uniforms.uResolution.value.set(stageRect.width, stageRect.height);
-    bakeBackground();
-  }, 100);
-}
-window.addEventListener('resize', handleResize);
-window.addEventListener('orientationchange', handleResize);
-window.addEventListener('scroll', refreshStageRect, { passive: true });
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', handleResize);
-  window.visualViewport.addEventListener('scroll', refreshStageRect);
+  stageRect = stage.getBoundingClientRect();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setSize(stageRect.width, stageRect.height, false);
+  uniforms.uResolution.value.set(stageRect.width, stageRect.height);
+  updateLogoRect();
 }
 
-// ── Loop ─────────────────────────────────────────────────
-let lastFrameTime = performance.now();
-// Lens transition state. engageT progresses 0→1 while the user drags; on
-// release it freezes to whatever value it had reached and feeds the release
-// burst so a quick tap still bursts from partial strength. releaseT drives
-// the burst from that point out to burstSize / 0.
-let engageT = 0;
-let releasing = false;
-let releaseT = 0;
-let releaseFromActive = 0;
-let releaseFromExpand = 1;
+let resizeTimer: number | undefined;
+window.addEventListener('resize', () => {
+  window.clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(handleResize, 80);
+});
+window.visualViewport?.addEventListener('resize', handleResize);
+
+const clock = new THREE.Clock();
+let fpsFrameCount = 0;
+let fpsLastUpdate = performance.now();
 
 function tick(): void {
+  const elapsed = clock.getElapsedTime();
+  syncUniforms(elapsed);
+  renderer.render(scene, camera);
+
+  fpsFrameCount += 1;
   const now = performance.now();
-  const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
-  lastFrameTime = now;
-
-  updateStars(dt);
-  renderStars();
-
-  state.mouse.x += (state.mouseTarget.x - state.mouse.x) * 0.18;
-  state.mouse.y += (state.mouseTarget.y - state.mouse.y) * 0.18;
-
-  if (state.interacting) {
-    if (releasing) {
-      // Re-touching during a burst. Seed engageT from the current uActive so
-      // the fade-in picks up where the release left off instead of snapping
-      // back to 0. Inverse of uActive = 1 - (1 - engageT)^2.
-      releasing = false;
-      releaseT = 0;
-      engageT = 1 - Math.sqrt(Math.max(0, 1 - uniforms.uActive.value));
-    }
-    const dur = Math.max(0.02, state.engageDuration);
-    engageT = Math.min(1, engageT + dt / dur);
-    // Ease-out so the fade-in lands softly at full strength.
-    uniforms.uActive.value = 1 - Math.pow(1 - engageT, 2);
-    // Glide uExpand back to 1 instead of snapping — matters when we just
-    // cancelled a burst where uExpand had already grown past 1.
-    uniforms.uExpand.value += (1 - uniforms.uExpand.value) * Math.min(1, dt * 8);
-  } else {
-    if (!releasing && uniforms.uActive.value > 0.02) {
-      // Just released — snapshot current values so the burst is continuous
-      // even if the lens never reached full strength.
-      releasing = true;
-      releaseT = 0;
-      releaseFromActive = uniforms.uActive.value;
-      releaseFromExpand = uniforms.uExpand.value;
-    }
-    engageT = 0;
-    if (releasing) {
-      releaseT += dt;
-      const duration = Math.max(0.05, state.burstDuration);
-      const p = Math.min(1, releaseT / duration);
-      const easeOut = 1 - Math.pow(1 - p, 2);
-      uniforms.uExpand.value = releaseFromExpand + (state.burstSize - releaseFromExpand) * easeOut;
-      uniforms.uActive.value = releaseFromActive * Math.pow(1 - p, state.burstIntensity);
-      if (p >= 1) {
-        releasing = false;
-        releaseT = 0;
-        uniforms.uActive.value = 0;
-        uniforms.uExpand.value = 1;
-      }
-    } else {
-      uniforms.uActive.value = 0;
-      uniforms.uExpand.value = 1;
-    }
+  if (now - fpsLastUpdate >= 500) {
+    const fps = Math.round((fpsFrameCount * 1000) / (now - fpsLastUpdate));
+    fpsEl.textContent = `${fps.toString().padStart(2, '0')} FPS`;
+    fpsFrameCount = 0;
+    fpsLastUpdate = now;
   }
 
-  uniforms.uMouse.value.x = state.mouse.x;
-  uniforms.uMouse.value.y = state.mouse.y;
-  uniforms.uRadius.value = state.radius;
-  uniforms.uStrength.value = state.strength;
-  uniforms.uThickness.value = state.thickness;
-
-  renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
 
-bakeBackground();
+updateLogoRect();
 tick();
