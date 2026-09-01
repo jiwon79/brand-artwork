@@ -32,6 +32,9 @@ if (
 const params = {
   lineGap: 70,
   lineWidth: 3,
+  surfaceCurvature: 0.022,
+  lensStrength: 0.16,
+  dragZoom: 0.035,
   returnStiffness: 205,
   returnDamping: 24,
   background: '#050505',
@@ -56,6 +59,7 @@ interface LineState {
 interface DragState {
   pointerId: number;
   startY: number;
+  previousX: number;
   previousY: number;
   originIndex: number | null;
   originY: number;
@@ -95,12 +99,12 @@ function toLocalPoint(event: PointerEvent): { x: number; y: number } {
   };
 }
 
-function findNearestLine(y: number): number {
+function findNearestLine(x: number, y: number): number {
   let nearestIndex = 0;
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (let index = 0; index < lines.length; index += 1) {
-    const distance = Math.abs(lines[index].baseY - y);
+    const distance = Math.abs(distortedY(x, lines[index].baseY) - y);
     if (distance < nearestDistance) {
       nearestDistance = distance;
       nearestIndex = index;
@@ -110,21 +114,28 @@ function findNearestLine(y: number): number {
   return nearestIndex;
 }
 
-function findLineAtY(y: number): number | null {
-  const index = findNearestLine(y);
+function findLineAtY(x: number, y: number): number | null {
+  const index = findNearestLine(x, y);
   const hitSlop = Math.max(8, params.lineWidth * 2);
-  return Math.abs(lines[index].baseY - y) <= hitSlop ? index : null;
+  return Math.abs(distortedY(x, lines[index].baseY) - y) <= hitSlop ? index : null;
 }
 
-function findFirstCrossedLine(fromY: number, toY: number): number | null {
+function findFirstCrossedLine(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): number | null {
+  const sampleX = (fromX + toX) / 2;
+
   if (toY > fromY) {
     for (let index = 0; index < lines.length; index += 1) {
-      const lineY = lines[index].baseY;
+      const lineY = distortedY(sampleX, lines[index].baseY);
       if (lineY > fromY && lineY <= toY) return index;
     }
   } else if (toY < fromY) {
     for (let index = lines.length - 1; index >= 0; index -= 1) {
-      const lineY = lines[index].baseY;
+      const lineY = distortedY(sampleX, lines[index].baseY);
       if (lineY < fromY && lineY >= toY) return index;
     }
   }
@@ -136,15 +147,67 @@ function isActiveDrag(currentDrag: DragState): currentDrag is ActiveDragState {
   return currentDrag.originIndex !== null;
 }
 
-function horizontalPath(y: number): string {
-  return `M 0 ${y.toFixed(2)} H ${width.toFixed(2)}`;
+function pullStrength(currentDrag: ActiveDragState): number {
+  return clamp(
+    Math.abs(currentDrag.apexY - currentDrag.originY) / (params.lineGap * 2),
+    0,
+    1,
+  );
+}
+
+function distortedY(
+  x: number,
+  baseY: number,
+  currentDrag: ActiveDragState | null = null,
+): number {
+  const centerY = height / 2;
+  const normalizedX = (x - width / 2) / Math.max(width / 2, 1);
+  const curvedY = centerY
+    + (baseY - centerY) * (1 - params.surfaceCurvature * normalizedX ** 2);
+
+  if (!currentDrag) return curvedY;
+
+  const radiusX = Math.max(width * 0.58, 1);
+  const radiusY = Math.max(params.lineGap * 5.2, 1);
+  const normalizedLensX = (x - currentDrag.apexX) / radiusX;
+  const normalizedLensY = (curvedY - currentDrag.apexY) / radiusY;
+  const falloff = Math.exp(
+    -(normalizedLensX ** 2 + normalizedLensY ** 2) * 2.25,
+  );
+  const magnification = params.lensStrength * pullStrength(currentDrag) * falloff;
+
+  return currentDrag.apexY + (curvedY - currentDrag.apexY) * (1 + magnification);
+}
+
+function horizontalPath(
+  y: number,
+  currentDrag: ActiveDragState | null = null,
+): string {
+  const segmentCount = Math.max(24, Math.ceil(width / 28));
+  const points: string[] = [];
+
+  for (let index = 0; index <= segmentCount; index += 1) {
+    const x = (index / segmentCount) * width;
+    const pointY = distortedY(x, y, currentDrag);
+    points.push(`${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${pointY.toFixed(2)}`);
+  }
+
+  return points.join(' ');
 }
 
 function pulledPath(baseY: number, apexX: number, apexY: number): string {
   return [
-    `M 0 ${baseY.toFixed(2)}`,
+    `M 0 ${distortedY(0, baseY).toFixed(2)}`,
     `L ${apexX.toFixed(2)} ${apexY.toFixed(2)}`,
-    `L ${width.toFixed(2)} ${baseY.toFixed(2)}`,
+    `L ${width.toFixed(2)} ${distortedY(width, baseY).toFixed(2)}`,
+  ].join(' ');
+}
+
+function revealClipPath(currentDrag: ActiveDragState): string {
+  return [
+    horizontalPath(currentDrag.originY),
+    `L ${currentDrag.apexX.toFixed(2)} ${currentDrag.apexY.toFixed(2)}`,
+    'Z',
   ].join(' ');
 }
 
@@ -186,14 +249,7 @@ function renderReveal(currentDrag: ActiveDragState): void {
     return;
   }
 
-  const path = [
-    `M 0 ${currentDrag.originY.toFixed(2)}`,
-    `L ${currentDrag.apexX.toFixed(2)} ${currentDrag.apexY.toFixed(2)}`,
-    `L ${width.toFixed(2)} ${currentDrag.originY.toFixed(2)}`,
-    'Z',
-  ].join(' ');
-
-  revealPath.setAttribute('d', path);
+  revealPath.setAttribute('d', revealClipPath(currentDrag));
   reveal.setAttribute('opacity', strength.toFixed(3));
   originPullPath.setAttribute(
     'd',
@@ -226,6 +282,15 @@ function render(): void {
   revealCopy.setAttribute('fill', params.textColor);
 
   const activeDrag = drag && isActiveDrag(drag) ? drag : null;
+  const zoom = activeDrag ? 1 + params.dragZoom * pullStrength(activeDrag) : 1;
+
+  stage.style.setProperty(
+    '--surface-origin',
+    activeDrag
+      ? `${activeDrag.apexX.toFixed(2)}px ${activeDrag.apexY.toFixed(2)}px`
+      : '50% 50%',
+  );
+  stage.style.setProperty('--surface-scale', zoom.toFixed(4));
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -239,7 +304,7 @@ function render(): void {
       'd',
       pulled && activeDrag && !keepOriginal
         ? pulledPath(line.baseY, activeDrag.apexX, activeDrag.apexY)
-        : horizontalPath(line.baseY),
+        : horizontalPath(line.baseY, keepOriginal ? null : activeDrag),
     );
     line.path.setAttribute('stroke-width', params.lineWidth.toFixed(2));
     line.path.setAttribute(
@@ -302,16 +367,23 @@ function resize(): void {
 }
 
 function onPointerDown(event: PointerEvent): void {
+  if (drag?.returning) {
+    drag = null;
+    stage.classList.remove('is-dragging');
+    render();
+  }
+
   if (drag || (event.pointerType === 'mouse' && event.button !== 0)) return;
 
   event.preventDefault();
   const point = toLocalPoint(event);
-  const originIndex = findLineAtY(point.y);
+  const originIndex = findLineAtY(point.x, point.y);
   const originY = originIndex === null ? point.y : lines[originIndex].baseY;
 
   drag = {
     pointerId: event.pointerId,
     startY: point.y,
+    previousX: point.x,
     previousY: point.y,
     originIndex,
     originY,
@@ -343,14 +415,21 @@ function onPointerMove(event: PointerEvent): void {
 
   if (drag && drag.pointerId === event.pointerId && !drag.returning) {
     event.preventDefault();
+    const previousX = drag.previousX;
     const previousY = drag.previousY;
     drag.apexX = point.x;
     drag.apexY = point.y;
+    drag.previousX = point.x;
     drag.previousY = point.y;
     drag.velocityY = 0;
 
     if (!isActiveDrag(drag)) {
-      const crossedIndex = findFirstCrossedLine(previousY, point.y);
+      const crossedIndex = findFirstCrossedLine(
+        previousX,
+        previousY,
+        point.x,
+        point.y,
+      );
       if (crossedIndex !== null) {
         drag.originIndex = crossedIndex;
         drag.originY = lines[crossedIndex].baseY;
@@ -365,7 +444,7 @@ function onPointerMove(event: PointerEvent): void {
   }
 
   if (!drag && event.pointerType !== 'touch') {
-    const nextHoveredIndex = findLineAtY(point.y) ?? -1;
+    const nextHoveredIndex = findLineAtY(point.x, point.y) ?? -1;
     if (nextHoveredIndex !== hoveredIndex) {
       hoveredIndex = nextHoveredIndex;
       render();
@@ -428,6 +507,9 @@ window.addEventListener('resize', resize);
 const gui = new GUI({ title: 'Line Pull' });
 gui.add(params, 'lineGap', 42, 120, 1).name('line gap').onFinishChange(resize);
 gui.add(params, 'lineWidth', 0.5, 6, 0.1).name('line width').onChange(render);
+gui.add(params, 'surfaceCurvature', 0, 0.06, 0.001).name('surface curve').onChange(render);
+gui.add(params, 'lensStrength', 0, 0.4, 0.005).name('lens strength').onChange(render);
+gui.add(params, 'dragZoom', 0, 0.08, 0.001).name('drag zoom').onChange(render);
 gui.add(params, 'returnStiffness', 80, 420, 1).name('return stiffness');
 gui.add(params, 'returnDamping', 8, 42, 0.5).name('return damping');
 gui.addColor(params, 'background').name('background').onChange(render);

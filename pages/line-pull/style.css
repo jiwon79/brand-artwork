@@ -28,12 +28,41 @@ body {
 }
 
 .stage {
+  --surface-origin: 50% 50%;
+  --surface-scale: 1;
+
   position: fixed;
   inset: 0;
   overflow: hidden;
   cursor: grab;
   outline: none;
   touch-action: none;
+}
+
+.stage::before,
+.stage::after {
+  position: absolute;
+  inset: 0;
+  background-image: url('./assets/reference-screen-texture.webp');
+  background-repeat: repeat;
+  background-size: 512px 480px;
+  content: '';
+  pointer-events: none;
+  transform: scale(var(--surface-scale));
+  transform-origin: var(--surface-origin);
+  will-change: transform;
+}
+
+.stage::before {
+  z-index: 2;
+  mix-blend-mode: multiply;
+  opacity: 0.32;
+}
+
+.stage::after {
+  z-index: 3;
+  mix-blend-mode: screen;
+  opacity: 0.18;
 }
 
 .stage.is-dragging {
@@ -45,6 +74,9 @@ body {
   width: 100%;
   height: 100%;
   overflow: visible;
+  transform: scale(var(--surface-scale));
+  transform-origin: var(--surface-origin);
+  will-change: transform;
 }
 
 .line-field path,
@@ -65,7 +97,7 @@ body {
   position: fixed;
   left: 50%;
   bottom: max(25px, env(safe-area-inset-bottom));
-  z-index: 2;
+  z-index: 4;
   color: rgba(247, 245, 238, 0.44);
   font-size: 10px;
   font-weight: 600;
