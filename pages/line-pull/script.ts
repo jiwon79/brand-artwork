@@ -12,7 +12,7 @@ const reveal = document.querySelector<SVGGElement>('#reveal');
 const revealPath = document.querySelector<SVGPathElement>('#reveal-path');
 const revealBackground = document.querySelector<SVGRectElement>('#reveal-background');
 const revealCopy = document.querySelector<SVGTextElement>('#reveal-copy');
-const revealStaticEdge = document.querySelector<SVGPathElement>('#reveal-static-edge');
+const originPullPath = document.querySelector<SVGPathElement>('#origin-pull-path');
 const hint = document.querySelector<HTMLElement>('#hint');
 
 if (
@@ -23,7 +23,7 @@ if (
   || !revealPath
   || !revealBackground
   || !revealCopy
-  || !revealStaticEdge
+  || !originPullPath
   || !hint
 ) {
   throw new Error('Line Pull: required DOM nodes are missing.');
@@ -32,7 +32,6 @@ if (
 const params = {
   lineGap: 70,
   lineWidth: 3,
-  panelRows: 2.15,
   returnStiffness: 205,
   returnDamping: 24,
   background: '#050505',
@@ -56,7 +55,9 @@ interface LineState {
 
 interface DragState {
   pointerId: number;
-  originIndex: number;
+  startY: number;
+  previousY: number;
+  originIndex: number | null;
   originY: number;
   apexX: number;
   apexY: number;
@@ -64,6 +65,8 @@ interface DragState {
   returning: boolean;
   messageIndex: number;
 }
+
+type ActiveDragState = DragState & { originIndex: number };
 
 let width = 0;
 let height = 0;
@@ -107,6 +110,32 @@ function findNearestLine(y: number): number {
   return nearestIndex;
 }
 
+function findLineAtY(y: number): number | null {
+  const index = findNearestLine(y);
+  const hitSlop = Math.max(8, params.lineWidth * 2);
+  return Math.abs(lines[index].baseY - y) <= hitSlop ? index : null;
+}
+
+function findFirstCrossedLine(fromY: number, toY: number): number | null {
+  if (toY > fromY) {
+    for (let index = 0; index < lines.length; index += 1) {
+      const lineY = lines[index].baseY;
+      if (lineY > fromY && lineY <= toY) return index;
+    }
+  } else if (toY < fromY) {
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const lineY = lines[index].baseY;
+      if (lineY < fromY && lineY >= toY) return index;
+    }
+  }
+
+  return null;
+}
+
+function isActiveDrag(currentDrag: DragState): currentDrag is ActiveDragState {
+  return currentDrag.originIndex !== null;
+}
+
 function horizontalPath(y: number): string {
   return `M 0 ${y.toFixed(2)} H ${width.toFixed(2)}`;
 }
@@ -125,22 +154,6 @@ function isLinePulled(baseY: number, originY: number, apexY: number): boolean {
   return baseY >= minY && baseY <= maxY;
 }
 
-function staticPanelEdgeY(currentDrag: DragState): number {
-  const edgeDepth = params.lineGap * params.panelRows;
-  return currentDrag.apexY >= currentDrag.originY
-    ? currentDrag.originY - edgeDepth
-    : currentDrag.originY + edgeDepth;
-}
-
-function isLineInsidePanel(baseY: number, currentDrag: DragState): boolean {
-  if (Math.abs(currentDrag.apexY - currentDrag.originY) < 1) return false;
-
-  const staticEdgeY = staticPanelEdgeY(currentDrag);
-  const minY = Math.min(staticEdgeY, currentDrag.originY) + 0.5;
-  const maxY = Math.max(staticEdgeY, currentDrag.originY) - 0.5;
-  return baseY > minY && baseY < maxY;
-}
-
 function setMessage(linesOfCopy: string[]): void {
   revealCopy.replaceChildren();
 
@@ -157,47 +170,42 @@ function setMessage(linesOfCopy: string[]): void {
   });
 }
 
-function renderReveal(currentDrag: DragState): void {
+function clearReveal(): void {
+  reveal.setAttribute('opacity', '0');
+  revealPath.setAttribute('d', '');
+  originPullPath.setAttribute('opacity', '0');
+  originPullPath.setAttribute('d', '');
+}
+
+function renderReveal(currentDrag: ActiveDragState): void {
   const delta = currentDrag.apexY - currentDrag.originY;
   const strength = clamp(Math.abs(delta) / 10, 0, 1);
 
   if (strength <= 0.001) {
-    reveal.setAttribute('opacity', '0');
-    revealPath.setAttribute('d', '');
-    revealStaticEdge.setAttribute('opacity', '0');
-    revealStaticEdge.setAttribute('d', '');
+    clearReveal();
     return;
   }
 
-  const pullingDown = delta >= 0;
-  const staticEdgeY = staticPanelEdgeY(currentDrag);
-
-  const path = pullingDown
-    ? [
-        `M 0 ${staticEdgeY.toFixed(2)}`,
-        `H ${width.toFixed(2)}`,
-        `V ${currentDrag.originY.toFixed(2)}`,
-        `L ${currentDrag.apexX.toFixed(2)} ${currentDrag.apexY.toFixed(2)}`,
-        `L 0 ${currentDrag.originY.toFixed(2)}`,
-        'Z',
-      ].join(' ')
-    : [
-        `M 0 ${currentDrag.originY.toFixed(2)}`,
-        `L ${currentDrag.apexX.toFixed(2)} ${currentDrag.apexY.toFixed(2)}`,
-        `L ${width.toFixed(2)} ${currentDrag.originY.toFixed(2)}`,
-        `V ${staticEdgeY.toFixed(2)}`,
-        `H 0`,
-        'Z',
-      ].join(' ');
+  const path = [
+    `M 0 ${currentDrag.originY.toFixed(2)}`,
+    `L ${currentDrag.apexX.toFixed(2)} ${currentDrag.apexY.toFixed(2)}`,
+    `L ${width.toFixed(2)} ${currentDrag.originY.toFixed(2)}`,
+    'Z',
+  ].join(' ');
 
   revealPath.setAttribute('d', path);
   reveal.setAttribute('opacity', strength.toFixed(3));
-  revealStaticEdge.setAttribute('d', horizontalPath(staticEdgeY));
-  revealStaticEdge.setAttribute('stroke', params.lineColor);
-  revealStaticEdge.setAttribute('stroke-width', params.lineWidth.toFixed(2));
-  revealStaticEdge.setAttribute('opacity', strength.toFixed(3));
+  originPullPath.setAttribute(
+    'd',
+    pulledPath(currentDrag.originY, currentDrag.apexX, currentDrag.apexY),
+  );
+  originPullPath.setAttribute('stroke', params.lineColor);
+  originPullPath.setAttribute('stroke-width', params.lineWidth.toFixed(2));
+  originPullPath.setAttribute('stroke-linecap', 'square');
+  originPullPath.setAttribute('stroke-linejoin', 'miter');
+  originPullPath.setAttribute('opacity', strength.toFixed(3));
 
-  const copyY = staticEdgeY + (currentDrag.apexY - staticEdgeY) * 0.42;
+  const copyY = currentDrag.originY + delta * 0.52;
   const copyLines = messages[currentDrag.messageIndex];
   const fontSize = Number(revealCopy.getAttribute('font-size')) || 72;
   const totalTextHeight = (copyLines.length - 1) * fontSize * 0.83;
@@ -217,18 +225,20 @@ function render(): void {
   revealBackground.setAttribute('fill', params.panelColor);
   revealCopy.setAttribute('fill', params.textColor);
 
+  const activeDrag = drag && isActiveDrag(drag) ? drag : null;
+
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const pulled = drag
-      ? isLinePulled(line.baseY, drag.originY, drag.apexY)
+    const pulled = activeDrag
+      ? isLinePulled(line.baseY, activeDrag.originY, activeDrag.apexY)
       : false;
-    const hiddenByPanel = drag ? isLineInsidePanel(line.baseY, drag) : false;
+    const keepOriginal = activeDrag?.originIndex === index;
 
-    line.path.setAttribute('visibility', hiddenByPanel ? 'hidden' : 'visible');
+    line.path.setAttribute('visibility', 'visible');
     line.path.setAttribute(
       'd',
-      pulled && drag
-        ? pulledPath(line.baseY, drag.apexX, drag.apexY)
+      pulled && activeDrag && !keepOriginal
+        ? pulledPath(line.baseY, activeDrag.apexX, activeDrag.apexY)
         : horizontalPath(line.baseY),
     );
     line.path.setAttribute('stroke-width', params.lineWidth.toFixed(2));
@@ -238,13 +248,8 @@ function render(): void {
     );
   }
 
-  if (drag) renderReveal(drag);
-  else {
-    reveal.setAttribute('opacity', '0');
-    revealPath.setAttribute('d', '');
-    revealStaticEdge.setAttribute('opacity', '0');
-    revealStaticEdge.setAttribute('d', '');
-  }
+  if (activeDrag) renderReveal(activeDrag);
+  else clearReveal();
 }
 
 function buildLineField(): void {
@@ -271,7 +276,7 @@ function buildLineField(): void {
 function cancelDrag(immediate: boolean): void {
   if (!drag) return;
 
-  if (immediate || reducedMotion.matches) {
+  if (!isActiveDrag(drag) || immediate || reducedMotion.matches) {
     drag = null;
     stage.classList.remove('is-dragging');
     render();
@@ -301,11 +306,13 @@ function onPointerDown(event: PointerEvent): void {
 
   event.preventDefault();
   const point = toLocalPoint(event);
-  const originIndex = findNearestLine(point.y);
-  const originY = lines[originIndex].baseY;
+  const originIndex = findLineAtY(point.y);
+  const originY = originIndex === null ? point.y : lines[originIndex].baseY;
 
   drag = {
     pointerId: event.pointerId,
+    startY: point.y,
+    previousY: point.y,
     originIndex,
     originY,
     apexX: point.x,
@@ -315,8 +322,10 @@ function onPointerDown(event: PointerEvent): void {
     messageIndex: interactionCount % messages.length,
   };
 
-  interactionCount += 1;
-  setMessage(messages[drag.messageIndex]);
+  if (isActiveDrag(drag)) {
+    interactionCount += 1;
+    setMessage(messages[drag.messageIndex]);
+  }
   hoveredIndex = -1;
   stage.classList.add('is-dragging');
   stage.setPointerCapture(event.pointerId);
@@ -334,15 +343,29 @@ function onPointerMove(event: PointerEvent): void {
 
   if (drag && drag.pointerId === event.pointerId && !drag.returning) {
     event.preventDefault();
+    const previousY = drag.previousY;
     drag.apexX = point.x;
     drag.apexY = point.y;
+    drag.previousY = point.y;
     drag.velocityY = 0;
+
+    if (!isActiveDrag(drag)) {
+      const crossedIndex = findFirstCrossedLine(previousY, point.y);
+      if (crossedIndex !== null) {
+        drag.originIndex = crossedIndex;
+        drag.originY = lines[crossedIndex].baseY;
+        drag.messageIndex = interactionCount % messages.length;
+        interactionCount += 1;
+        setMessage(messages[drag.messageIndex]);
+      }
+    }
+
     render();
     return;
   }
 
   if (!drag && event.pointerType !== 'touch') {
-    const nextHoveredIndex = findNearestLine(point.y);
+    const nextHoveredIndex = findLineAtY(point.y) ?? -1;
     if (nextHoveredIndex !== hoveredIndex) {
       hoveredIndex = nextHoveredIndex;
       render();
@@ -374,7 +397,7 @@ function animate(now: number): void {
   const deltaTime = Math.min((now - lastFrameTime) / 1000, 0.032);
   lastFrameTime = now;
 
-  if (drag?.returning) {
+  if (drag?.returning && isActiveDrag(drag)) {
     const displacement = drag.originY - drag.apexY;
     drag.velocityY += displacement * params.returnStiffness * deltaTime;
     drag.velocityY *= Math.exp(-params.returnDamping * deltaTime);
@@ -405,7 +428,6 @@ window.addEventListener('resize', resize);
 const gui = new GUI({ title: 'Line Pull' });
 gui.add(params, 'lineGap', 42, 120, 1).name('line gap').onFinishChange(resize);
 gui.add(params, 'lineWidth', 0.5, 6, 0.1).name('line width').onChange(render);
-gui.add(params, 'panelRows', 0.5, 3, 0.05).name('panel rows').onChange(render);
 gui.add(params, 'returnStiffness', 80, 420, 1).name('return stiffness');
 gui.add(params, 'returnDamping', 8, 42, 0.5).name('return damping');
 gui.addColor(params, 'background').name('background').onChange(render);

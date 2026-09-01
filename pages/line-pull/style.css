@@ -48,7 +48,7 @@ body {
 }
 
 .line-field path,
-.reveal-static-edge {
+.origin-pull-path {
   fill: none;
   vector-effect: non-scaling-stroke;
 }
