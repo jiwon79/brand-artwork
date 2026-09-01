@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#050505">
+  <title>Line Pull</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main
+    id="stage"
+    class="stage"
+    aria-label="Pull anywhere on the horizontal lines to reveal hidden messages"
+  >
+    <svg id="artwork" class="artwork" aria-hidden="true">
+      <defs>
+        <clipPath id="reveal-clip" clipPathUnits="userSpaceOnUse">
+          <path id="reveal-path"></path>
+        </clipPath>
+      </defs>
+
+      <g id="reveal" class="reveal" clip-path="url(#reveal-clip)" opacity="0">
+        <rect id="reveal-background"></rect>
+        <text id="reveal-copy" text-anchor="middle" dominant-baseline="middle"></text>
+      </g>
+
+      <path id="reveal-static-edge" class="reveal-static-edge"></path>
+      <g id="line-field" class="line-field"></g>
+    </svg>
+
+    <p id="hint" class="hint" aria-hidden="true">
+      <span class="hint__desktop">Press anywhere and pull</span>
+      <span class="hint__touch">Touch anywhere and pull</span>
+    </p>
+  </main>
+
+  <script type="module" src="script.ts"></script>
+  <script type="module" src="/common/touch-pointer.ts"></script>
+</body>
+</html>
