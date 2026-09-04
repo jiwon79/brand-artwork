@@ -33,8 +33,9 @@ const params = {
   lineGap: 70,
   lineWidth: 3,
   surfaceCurvature: 0.022,
-  lensStrength: 0.16,
+  lensStrength: 0.26,
   dragZoom: 0.035,
+  splitLift: 1.02,
   returnStiffness: 205,
   returnDamping: 24,
   background: '#050505',
@@ -147,12 +148,21 @@ function isActiveDrag(currentDrag: DragState): currentDrag is ActiveDragState {
   return currentDrag.originIndex !== null;
 }
 
-function pullStrength(currentDrag: ActiveDragState): number {
-  return clamp(
-    Math.abs(currentDrag.apexY - currentDrag.originY) / (params.lineGap * 2),
-    0,
-    1,
-  );
+function lensProgress(currentDrag: ActiveDragState): number {
+  const distance = Math.abs(currentDrag.apexY - currentDrag.originY);
+  return 1 - Math.exp(-distance / Math.max(params.lineGap * 1.7, 1));
+}
+
+function lensCenterY(currentDrag: ActiveDragState): number {
+  return currentDrag.originY
+    + (currentDrag.apexY - currentDrag.originY) * 0.5;
+}
+
+function baseSurfaceY(x: number, baseY: number): number {
+  const centerY = height / 2;
+  const normalizedX = (x - width / 2) / Math.max(width / 2, 1);
+  return centerY
+    + (baseY - centerY) * (1 - params.surfaceCurvature * normalizedX ** 2);
 }
 
 function distortedY(
@@ -160,23 +170,40 @@ function distortedY(
   baseY: number,
   currentDrag: ActiveDragState | null = null,
 ): number {
-  const centerY = height / 2;
-  const normalizedX = (x - width / 2) / Math.max(width / 2, 1);
-  const curvedY = centerY
-    + (baseY - centerY) * (1 - params.surfaceCurvature * normalizedX ** 2);
+  const curvedY = baseSurfaceY(x, baseY);
 
   if (!currentDrag) return curvedY;
 
-  const radiusX = Math.max(width * 0.58, 1);
-  const radiusY = Math.max(params.lineGap * 5.2, 1);
-  const normalizedLensX = (x - currentDrag.apexX) / radiusX;
-  const normalizedLensY = (curvedY - currentDrag.apexY) / radiusY;
-  const falloff = Math.exp(
-    -(normalizedLensX ** 2 + normalizedLensY ** 2) * 2.25,
-  );
-  const magnification = params.lensStrength * pullStrength(currentDrag) * falloff;
+  const delta = currentDrag.apexY - currentDrag.originY;
+  const direction = Math.sign(delta);
 
-  return currentDrag.apexY + (curvedY - currentDrag.apexY) * (1 + magnification);
+  if (direction === 0) return curvedY;
+
+  const normalizedLensX = (
+    x - currentDrag.apexX
+  ) / Math.max(width * 0.72, 1);
+  const horizontalFalloff = 0.55
+    + 0.45 * Math.exp(-(normalizedLensX ** 2) * 1.6);
+  const scale = 1
+    + params.lensStrength * lensProgress(currentDrag) * horizontalFalloff;
+  const signedFromOrigin = (baseY - currentDrag.originY) * direction;
+
+  if (signedFromOrigin <= 0) {
+    const originSurfaceY = baseSurfaceY(x, currentDrag.originY);
+    const splitOffset = -delta * params.splitLift;
+    return originSurfaceY
+      + splitOffset
+      + (curvedY - originSurfaceY) * scale;
+  }
+
+  const signedFromApex = (baseY - currentDrag.apexY) * direction;
+
+  if (signedFromApex >= 0) {
+    const apexSurfaceY = baseSurfaceY(x, currentDrag.apexY);
+    return currentDrag.apexY + (curvedY - apexSurfaceY) * scale;
+  }
+
+  return curvedY;
 }
 
 function horizontalPath(
@@ -195,18 +222,31 @@ function horizontalPath(
   return points.join(' ');
 }
 
-function pulledPath(baseY: number, apexX: number, apexY: number): string {
+function splitBoundaryPath(currentDrag: ActiveDragState): string {
+  return horizontalPath(currentDrag.originY, currentDrag);
+}
+
+function pulledPath(
+  baseY: number,
+  apexX: number,
+  apexY: number,
+): string {
   return [
-    `M 0 ${distortedY(0, baseY).toFixed(2)}`,
+    `M 0 ${baseSurfaceY(0, baseY).toFixed(2)}`,
     `L ${apexX.toFixed(2)} ${apexY.toFixed(2)}`,
-    `L ${width.toFixed(2)} ${distortedY(width, baseY).toFixed(2)}`,
+    `L ${width.toFixed(2)} ${baseSurfaceY(width, baseY).toFixed(2)}`,
   ].join(' ');
 }
 
 function revealClipPath(currentDrag: ActiveDragState): string {
+  const leftY = baseSurfaceY(0, currentDrag.originY);
+  const rightY = baseSurfaceY(width, currentDrag.originY);
+
   return [
-    horizontalPath(currentDrag.originY),
+    splitBoundaryPath(currentDrag),
+    `L ${width.toFixed(2)} ${rightY.toFixed(2)}`,
     `L ${currentDrag.apexX.toFixed(2)} ${currentDrag.apexY.toFixed(2)}`,
+    `L 0 ${leftY.toFixed(2)}`,
     'Z',
   ].join(' ');
 }
@@ -253,7 +293,11 @@ function renderReveal(currentDrag: ActiveDragState): void {
   reveal.setAttribute('opacity', strength.toFixed(3));
   originPullPath.setAttribute(
     'd',
-    pulledPath(currentDrag.originY, currentDrag.apexX, currentDrag.apexY),
+    pulledPath(
+      currentDrag.originY,
+      currentDrag.apexX,
+      currentDrag.apexY,
+    ),
   );
   originPullPath.setAttribute('stroke', params.lineColor);
   originPullPath.setAttribute('stroke-width', params.lineWidth.toFixed(2));
@@ -261,7 +305,12 @@ function renderReveal(currentDrag: ActiveDragState): void {
   originPullPath.setAttribute('stroke-linejoin', 'miter');
   originPullPath.setAttribute('opacity', strength.toFixed(3));
 
-  const copyY = currentDrag.originY + delta * 0.52;
+  const splitBoundaryY = distortedY(
+    currentDrag.apexX,
+    currentDrag.originY,
+    currentDrag,
+  );
+  const copyY = (splitBoundaryY + currentDrag.apexY) / 2;
   const copyLines = messages[currentDrag.messageIndex];
   const fontSize = Number(revealCopy.getAttribute('font-size')) || 72;
   const totalTextHeight = (copyLines.length - 1) * fontSize * 0.83;
@@ -282,12 +331,12 @@ function render(): void {
   revealCopy.setAttribute('fill', params.textColor);
 
   const activeDrag = drag && isActiveDrag(drag) ? drag : null;
-  const zoom = activeDrag ? 1 + params.dragZoom * pullStrength(activeDrag) : 1;
+  const zoom = activeDrag ? 1 + params.dragZoom * lensProgress(activeDrag) : 1;
 
   stage.style.setProperty(
     '--surface-origin',
     activeDrag
-      ? `${activeDrag.apexX.toFixed(2)}px ${activeDrag.apexY.toFixed(2)}px`
+      ? `${activeDrag.apexX.toFixed(2)}px ${lensCenterY(activeDrag).toFixed(2)}px`
       : '50% 50%',
   );
   stage.style.setProperty('--surface-scale', zoom.toFixed(4));
@@ -303,8 +352,14 @@ function render(): void {
     line.path.setAttribute(
       'd',
       pulled && activeDrag && !keepOriginal
-        ? pulledPath(line.baseY, activeDrag.apexX, activeDrag.apexY)
-        : horizontalPath(line.baseY, keepOriginal ? null : activeDrag),
+        ? pulledPath(
+          line.baseY,
+          activeDrag.apexX,
+          activeDrag.apexY,
+        )
+        : keepOriginal && activeDrag
+          ? splitBoundaryPath(activeDrag)
+          : horizontalPath(line.baseY, activeDrag),
     );
     line.path.setAttribute('stroke-width', params.lineWidth.toFixed(2));
     line.path.setAttribute(
@@ -510,6 +565,7 @@ gui.add(params, 'lineWidth', 0.5, 6, 0.1).name('line width').onChange(render);
 gui.add(params, 'surfaceCurvature', 0, 0.06, 0.001).name('surface curve').onChange(render);
 gui.add(params, 'lensStrength', 0, 0.4, 0.005).name('lens strength').onChange(render);
 gui.add(params, 'dragZoom', 0, 0.08, 0.001).name('drag zoom').onChange(render);
+gui.add(params, 'splitLift', 0, 1.2, 0.01).name('split lift').onChange(render);
 gui.add(params, 'returnStiffness', 80, 420, 1).name('return stiffness');
 gui.add(params, 'returnDamping', 8, 42, 0.5).name('return damping');
 gui.addColor(params, 'background').name('background').onChange(render);
