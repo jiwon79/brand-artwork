@@ -39,7 +39,7 @@ body {
 .surface-grain {
   position: absolute;
   inset: 0;
-  /* The former convolution + multiply/screen pair is baked into this alpha tile. */
+  /* Relief, irregular bright grain and subtle color noise are baked into one tile. */
   z-index: 3;
   background-image: url('./assets/surface-relief@1x.webp');
   background-image: image-set(
