@@ -1,5 +1,6 @@
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
+import { createFrameLoop } from './frame-loop';
 import {
   boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, pointsPath,
   pullDelta, restY, sampleXs,
@@ -15,6 +16,7 @@ function required<T extends Element>(selector: string): T {
 }
 
 const stage = required<HTMLElement>('#stage');
+const surfaceGrain = required<HTMLElement>('#surface-grain');
 const artwork = required<SVGSVGElement>('#artwork');
 const lineField = required<SVGGElement>('#line-field');
 const reveal = required<SVGGElement>('#reveal');
@@ -63,9 +65,9 @@ let height = 0;
 let lines: LineState[] = [];
 let drag: DragState | null = null;
 let hoveredIndex = -1;
-let lastFrameTime = performance.now();
 let interactionCount = 0;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const render = createFrameLoop(animate);
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -144,15 +146,16 @@ function renderReveal(model: Surface, current: ActiveDrag, xs: number[]): void {
   });
 }
 
-function render(): void {
+function renderFrame(): void {
   const model = surface();
   const current = drag && isActive(drag) ? drag : null;
   const xs = sampleXs(model, current);
   const strength = current ? lensProgress(model, current) : 0;
   stage.style.backgroundColor = params.background;
   // Only the grain is CSS-scaled. All interactive geometry stays in pointer coordinates.
-  stage.style.setProperty('--surface-scale', String(1 + 0.05 * strength));
-  stage.style.setProperty('--surface-origin', current ? `${current.apexX}px ${current.originY}px` : '50% 50%');
+  // Update only the composited layer, not inherited variables across the SVG tree.
+  surfaceGrain.style.transform = `scale(${1 + 0.05 * strength})`;
+  surfaceGrain.style.transformOrigin = current ? `${current.apexX}px ${current.originY}px` : '50% 50%';
   revealBackground.setAttribute('width', String(width));
   revealBackground.setAttribute('height', String(height));
   revealBackground.setAttribute('fill', params.panelColor);
@@ -248,9 +251,7 @@ function finishPointer(event: PointerEvent): void {
   if (drag && drag.pointerId === event.pointerId && !drag.returning) cancelDrag();
 }
 
-function animate(now: number): void {
-  const dt = Math.min(Math.max((now - lastFrameTime) / 1000, 0), 0.064);
-  lastFrameTime = now;
+function animate(dt: number): boolean {
   if (drag && isActive(drag)) {
     if (drag.returning) {
       const restingY = restY(surface(), drag.apexX, drag.originY);
@@ -265,14 +266,14 @@ function animate(now: number): void {
         if (before * (drag.apexY - restingY) <= 0) { closed = true; break; }
       }
       if (closed || (Math.abs(restingY - drag.apexY) < 0.12 && Math.abs(drag.velocityY) < 0.5)) drag = null;
-      render();
     } else if (Math.abs(drag.targetY - drag.apexY) > 0.001) {
       drag.apexY += (drag.targetY - drag.apexY)
         * (reducedMotion.matches ? 1 : -Math.expm1(-params.followSpeed * dt));
-      render();
     }
   }
-  requestAnimationFrame(animate);
+  renderFrame();
+  return !!(drag && isActive(drag)
+    && (drag.returning || Math.abs(drag.targetY - drag.apexY) > 0.001));
 }
 
 stage.addEventListener('pointerdown', onPointerDown);
@@ -305,4 +306,3 @@ gui.addColor(params, 'textColor').name('text').onChange(render);
 exposeGuiInDebugMode(gui);
 
 resize();
-requestAnimationFrame(animate);

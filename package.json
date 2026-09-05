@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "generate:line-pull-texture": "node scripts/generate-line-pull-texture.mjs",
     "generate:body-echo-geometry": "node scripts/generate-body-echo-geometry.mjs",
     "process:cat-cursor-ltx": "node scripts/process-cat-cursor-ltx-path.mjs",
     "register:cursor-animal": "node scripts/register-cursor-animal.mjs",

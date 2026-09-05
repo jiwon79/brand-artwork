@@ -28,9 +28,6 @@ body {
 }
 
 .stage {
-  --surface-origin: 50% 50%;
-  --surface-scale: 1;
-
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -39,34 +36,23 @@ body {
   touch-action: none;
 }
 
-.stage::before,
-.stage::after {
+.surface-grain {
   position: absolute;
   inset: 0;
-  background-image: url('./assets/reference-screen-texture.webp');
+  /* The former convolution + multiply/screen pair is baked into this alpha tile. */
+  z-index: 3;
+  background-image: url('./assets/surface-relief@1x.webp');
+  background-image: image-set(
+    url('./assets/surface-relief@1x.webp') 1x,
+    url('./assets/surface-relief@2x.webp') 2x,
+    url('./assets/surface-relief@3x.webp') 3x
+  );
   background-repeat: repeat;
   background-size: 384px 360px;
-  content: '';
   pointer-events: none;
-  transform: scale(var(--surface-scale));
-  transform-origin: var(--surface-origin);
+  transform: scale(1);
+  transform-origin: 50% 50%;
   will-change: transform;
-}
-
-.stage::before {
-  z-index: 2;
-  mix-blend-mode: multiply;
-  /* Deepen the little pits without replacing the photographed weave with noise. */
-  filter: url('#surface-relief') contrast(1.2) brightness(1.8);
-  opacity: 0.5;
-}
-
-.stage::after {
-  z-index: 3;
-  mix-blend-mode: screen;
-  /* Separate raised flecks from the dark base instead of lifting the whole black. */
-  filter: url('#surface-relief') contrast(2.2) brightness(0.32);
-  opacity: 0.34;
 }
 
 .stage.is-dragging {
