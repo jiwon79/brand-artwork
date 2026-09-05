@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { boundaryPoint, crossingTime, lensProgress, linePoint, restY, sampleXs } from './geometry.ts';
+import { boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, restY, sampleXs } from './geometry.ts';
 
 const surface = {
-  width: 720, height: 1280, lineGap: 70, surfaceCurvature: 0.022,
+  width: 720, height: 1280, lineGap: 56, surfaceCurvature: 0.022,
   lensStrength: 0.2, horizontalLens: 0.27, boundaryEase: 0.65,
   boundaryCreep: 0.02, apexSpacing: 0.16,
 };
@@ -36,7 +36,7 @@ test('every reached line keeps a distinct, ordered tip in both directions', () =
       let previous = linePoint(surface, pull, pull.originY, pull.apexX).y;
       for (let i = 1; i <= 35; i++) {
         const y = linePoint(surface, pull, pull.originY + direction * i * surface.lineGap, pull.apexX).y;
-        assert.ok(direction * (y - previous) >= 11, 'tips must not collapse to one point');
+        assert.ok(direction * (y - previous) >= surface.lineGap * 0.15, 'tips must not collapse to one point');
         previous = y;
       }
     }
@@ -69,7 +69,7 @@ test('neighboring lines acquire and release their bend continuously', () => {
   for (const direction of [-1, 1]) {
     for (let distance = 0; distance < 600; distance += 0.5) {
       for (let i = 1; i < 6; i++) {
-        const y = 437 + direction * i * 70;
+        const y = 437 + direction * i * surface.lineGap;
         const before = linePoint(surface, pullAt(direction * distance), y, 440).y;
         const after = linePoint(surface, pullAt(direction * (distance + 0.001)), y, 440).y;
         assert.ok(Math.abs(after - before) < 0.003, 'newly reached line jumped');
@@ -89,5 +89,22 @@ test('hit testing finds fast diagonal and horizontal crossings of curved lines',
     const t = crossingTime(surface, from, to, 437);
     assert.ok(t > 0 && t <= 1);
     near(from.y + (to.y - from.y) * t, restY(surface, from.x + (to.x - from.x) * t, 437));
+  }
+});
+
+test('copy stays centered and unchanged when only the pointer moves sideways', () => {
+  for (const width of [390, 720, 1440]) {
+    const model = { ...surface, width };
+    for (const distance of [-600, -140, 140, 600]) {
+      for (const count of [1, 2]) {
+        const pull = { originY: 437, apexY: 437 + distance, apexX: width / 2 };
+        const expected = copyLayout(model, pull, count);
+        near(expected.x, width / 2);
+        for (const x of [0, width * 0.1, width * 0.9, width]) {
+          assert.deepEqual(copyLayout(model, { ...pull, apexX: x }, count), expected);
+        }
+        assert.ok(expected.scaleX > 1, 'keep the pull-driven text magnification');
+      }
+    }
   }
 });

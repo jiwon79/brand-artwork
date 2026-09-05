@@ -49,6 +49,25 @@ export function surfacePoint(surface: Surface, pull: Pull | null, x: number, y: 
   };
 }
 
+export function copyLayout(surface: Surface, pull: Pull, lineCount: number) {
+  // Typography has its own centered lens: moving the pointer sideways must not
+  // translate the copy, including indirectly through the surface's curvature.
+  const x = surface.width / 2;
+  const centeredPull = { ...pull, apexX: x };
+  const strength = lensProgress(surface, centeredPull);
+  const fontSize = Math.min(190, Math.max(64, surface.width * 0.205)) * (1 + 0.065 * strength);
+  const lineHeight = fontSize * 0.83;
+  return {
+    x,
+    y: surfacePoint(surface, centeredPull, x, pull.originY).y
+      + Math.sign(pullDelta(surface, centeredPull)) * fontSize * 0.4
+      - (lineCount - 1) * lineHeight / 2,
+    fontSize,
+    lineHeight,
+    scaleX: 1 + 0.12 * strength,
+  };
+}
+
 function opening(surface: Surface, pull: Pull) {
   const delta = pullDelta(surface, pull);
   const direction = Math.sign(delta);

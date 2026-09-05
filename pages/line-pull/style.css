@@ -45,7 +45,7 @@ body {
   inset: 0;
   background-image: url('./assets/reference-screen-texture.webp');
   background-repeat: repeat;
-  background-size: 512px 480px;
+  background-size: 384px 360px;
   content: '';
   pointer-events: none;
   transform: scale(var(--surface-scale));
@@ -56,13 +56,17 @@ body {
 .stage::before {
   z-index: 2;
   mix-blend-mode: multiply;
-  opacity: 0.32;
+  /* Deepen the little pits without replacing the photographed weave with noise. */
+  filter: url('#surface-relief') contrast(1.2) brightness(1.8);
+  opacity: 0.5;
 }
 
 .stage::after {
   z-index: 3;
   mix-blend-mode: screen;
-  opacity: 0.18;
+  /* Separate raised flecks from the dark base instead of lifting the whole black. */
+  filter: url('#surface-relief') contrast(2.2) brightness(0.32);
+  opacity: 0.34;
 }
 
 .stage.is-dragging {

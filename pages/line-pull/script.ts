@@ -1,8 +1,8 @@
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import {
-  boundaryPoint, crossingTime, lensProgress, linePoint, pointsPath,
-  pullDelta, restY, sampleXs, surfacePoint,
+  boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, pointsPath,
+  pullDelta, restY, sampleXs,
   type Point, type Pull, type Surface,
 } from './geometry';
 
@@ -25,7 +25,7 @@ const originPullPath = required<SVGPathElement>('#origin-pull-path');
 const hint = required<HTMLElement>('#hint');
 
 const params = {
-  lineGap: 70,
+  lineGap: 56,
   lineWidth: 3,
   surfaceCurvature: 0.022,
   lensStrength: 0.20,
@@ -132,20 +132,15 @@ function renderReveal(model: Surface, current: ActiveDrag, xs: number[]): void {
   originPullPath.setAttribute('stroke-width', String(params.lineWidth));
   originPullPath.setAttribute('opacity', '1');
 
-  // Content belongs to the magnified surface, not the moving midpoint of the slit.
-  const strength = lensProgress(model, current);
-  const fontSize = clamp(width * 0.205, 64, 190) * (1 + 0.065 * strength);
-  const copyX = width / 2 + (current.apexX - width / 2) * 0.68 * strength;
-  const copyY = surfacePoint(model, current, current.apexX, current.originY).y
-    + Math.sign(delta) * fontSize * 0.4;
   const spans = [...revealCopy.children];
+  const { x: copyX, y: copyY, fontSize, scaleX, lineHeight } = copyLayout(model, current, spans.length);
   revealCopy.setAttribute('font-size', String(fontSize));
-  revealCopy.setAttribute('transform', `translate(${copyX} 0) scale(${1 + 0.12 * strength} 1) translate(${-copyX} 0)`);
+  revealCopy.setAttribute('transform', `translate(${copyX} 0) scale(${scaleX} 1) translate(${-copyX} 0)`);
   revealCopy.setAttribute('x', String(copyX));
-  revealCopy.setAttribute('y', String(copyY - (spans.length - 1) * fontSize * 0.83 / 2));
+  revealCopy.setAttribute('y', String(copyY));
   spans.forEach((span, index) => {
     span.setAttribute('x', String(copyX));
-    span.setAttribute('dy', index === 0 ? '0' : String(fontSize * 0.83));
+    span.setAttribute('dy', index === 0 ? '0' : String(lineHeight));
   });
 }
 
