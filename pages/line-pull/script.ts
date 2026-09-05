@@ -1,6 +1,7 @@
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import { createFrameLoop } from './frame-loop';
+import { themeForInteraction } from './palette';
 import {
   boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, pointsPath,
   pullDelta, restY, sampleXs,
@@ -41,8 +42,7 @@ const params = {
   background: '#050505',
   lineColor: '#f4f2ec',
   hoverColor: '#ffffff',
-  panelColor: '#c61f3f',
-  textColor: '#f4f0df',
+  ...themeForInteraction(0),
 };
 
 const messages = [['Invisible'], ['More', 'Detail'], ['Hidden', 'Layers'], ['Pull', 'Further']];
@@ -106,7 +106,10 @@ function firstCrossing(from: Point, to: Point): number | null {
 function activate(current: DragState, index: number): void {
   current.originIndex = index;
   current.originY = lines[index].baseY;
-  current.messageIndex = interactionCount++ % messages.length;
+  current.messageIndex = interactionCount % messages.length;
+  Object.assign(params, themeForInteraction(interactionCount++));
+  panelColorController.updateDisplay();
+  textColorController.updateDisplay();
   revealCopy.replaceChildren(...messages[current.messageIndex].map(text => {
     const span = document.createElementNS(SVG_NS, 'tspan');
     span.textContent = text;
@@ -301,8 +304,8 @@ gui.add(params, 'returnStiffness', 80, 420, 1).name('return stiffness');
 gui.add(params, 'returnDamping', 8, 42, 0.5).name('return damping');
 gui.addColor(params, 'background').name('background').onChange(render);
 gui.addColor(params, 'lineColor').name('line').onChange(render);
-gui.addColor(params, 'panelColor').name('panel').onChange(render);
-gui.addColor(params, 'textColor').name('text').onChange(render);
+const panelColorController = gui.addColor(params, 'panelColor').name('panel').onChange(render);
+const textColorController = gui.addColor(params, 'textColor').name('text').onChange(render);
 exposeGuiInDebugMode(gui);
 
 resize();
