@@ -15,7 +15,8 @@
     "common/touch-pointer.ts",
     "pages/cursor-cat/**/*.ts",
     "pages/color-text/**/*.ts",
-    "pages/guseul/**/*.ts"
+    "pages/guseul/**/*.ts",
+    "pages/line-pull/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

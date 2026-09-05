@@ -74,15 +74,14 @@ body {
   width: 100%;
   height: 100%;
   overflow: visible;
-  transform: scale(var(--surface-scale));
-  transform-origin: var(--surface-origin);
-  will-change: transform;
 }
 
 .line-field path,
 .origin-pull-path {
   fill: none;
   vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: square;
 }
 
 .reveal text {
