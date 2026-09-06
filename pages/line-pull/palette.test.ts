@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { revealPalette, themeForInteraction } from './palette.ts';
+import { revealPalette, themeForInteraction } from './palette';
 
 test('keep the original red pair and include each approved additional color', () => {
   expect(revealPalette.map(theme => theme.panelColor)).toStrictEqual([
@@ -19,8 +19,10 @@ test('cycle all five pairs independently of fixed slot content', () => {
 });
 
 test('pair each background with readable light or dark lettering', () => {
-  const luminance = hex => {
-    const rgb = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255)
+  const luminance = (hex: string) => {
+    const channels = hex.slice(1).match(/../g);
+    if (!channels || channels.length !== 3) throw new Error(`Invalid RGB color: ${hex}`);
+    const rgb = channels.map(value => parseInt(value, 16) / 255)
       .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
     return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
   };

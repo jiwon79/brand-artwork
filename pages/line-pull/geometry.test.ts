@@ -1,13 +1,13 @@
 import { expect, test } from 'vitest';
-import { boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, restY, sampleXs } from './geometry.ts';
+import { boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, restY, sampleXs } from './geometry';
 
 const surface = {
   width: 720, height: 1280, lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
   lensStrength: 0.2, horizontalLens: 0.27, boundaryEase: 0.65,
   boundaryCreep: 0.02, apexSpacing: 0.16,
 };
-const near = (a, b, epsilon = 1e-6) => expect(Math.abs(a - b), `${a} != ${b}`).toBeLessThanOrEqual(epsilon);
-const pullAt = (distance, x = 440, originY = 437) => ({
+const near = (a: number, b: number, epsilon = 1e-6) => expect(Math.abs(a - b), `${a} != ${b}`).toBeLessThanOrEqual(epsilon);
+const pullAt = (distance: number, x = 440, originY = 437) => ({
   originY, apexX: x, apexY: restY(surface, x, originY) + distance,
 });
 
@@ -96,7 +96,9 @@ test('neighboring lines acquire and release their bend continuously', () => {
 });
 
 test('hit testing finds fast diagonal and horizontal crossings of curved lines', () => {
-  near(crossingTime(surface, { x: 360, y: 400 }, { x: 360, y: 600 }, 437), 0.185);
+  const firstCrossing = crossingTime(surface, { x: 360, y: 400 }, { x: 360, y: 600 }, 437);
+  if (firstCrossing === null) throw new Error('Expected a line crossing');
+  near(firstCrossing, 0.185);
   expect(crossingTime(surface, { x: 360, y: 400 }, { x: 360, y: 410 }, 437)).toBe(null);
   for (const [from, to] of [
     [{ x: 0, y: 300 }, { x: 700, y: 900 }],
@@ -104,6 +106,7 @@ test('hit testing finds fast diagonal and horizontal crossings of curved lines',
     [{ x: 0, y: 439 }, { x: 360, y: 439 }],
   ]) {
     const t = crossingTime(surface, from, to, 437);
+    if (t === null) throw new Error('Expected a line crossing');
     expect(t > 0 && t <= 1).toBeTruthy();
     near(from.y + (to.y - from.y) * t, restY(surface, from.x + (to.x - from.x) * t, 437));
   }

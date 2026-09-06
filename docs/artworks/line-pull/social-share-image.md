@@ -8,8 +8,8 @@
 - 최종 공유 카드: `pages/line-pull/assets/og-image.png`
 - 제작 화면: `scripts/line-pull-social-image.html`
 - 합성 코드: `scripts/line-pull-social-image.mjs`
-- 합성 단위 테스트: `scripts/line-pull-social-image.test.mjs`
-- 공유 메타데이터와 PNG 검사: `pages/line-pull/social-preview.test.mjs`
+- 합성 단위 테스트: `scripts/line-pull-social-image.test.ts`
+- 공유 메타데이터와 PNG 검사: `pages/line-pull/social-preview.test.ts`
 
 원본과 출력은 모두 1200 × 630이다. 합성은 원본을 크기 변경 없이 그린 뒤 상단 144px에만 어두운 그라디언트와 텍스트를 얹는다. 왼쪽에는 `Line Pull`, 오른쪽에는 `바이브코딩으로 예쁜 거 만들기 · 4일차`를 배치한다. 붉은 틈·인사말·접힌 선은 아래 영역에 있어 합성 대상에서 제외된다.
 

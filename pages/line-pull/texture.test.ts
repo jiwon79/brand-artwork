@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { bakeRelief, grainOverlay, reliefOverlay } from '../../scripts/generate-line-pull-texture.mjs';
 
-const clamp = x => Math.min(1, Math.max(0, x));
+const clamp = (x: number) => Math.min(1, Math.max(0, x));
 test('base relief blend preserves the previous multiply/screen result for any backdrop', () => {
   for (let i = 0; i <= 100; i++) {
     const value = i / 100;

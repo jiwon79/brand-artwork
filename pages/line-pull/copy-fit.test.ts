@@ -1,22 +1,25 @@
 import { expect, test } from 'vitest';
-import { fitCopyInOpenings } from './copy-fit.ts';
-import { boundaryPoint, copyLayout, linePoint, sampleXs } from './geometry.ts';
-import { pointInOpening } from './layers.ts';
+import { fitCopyInOpenings, type CopyBounds } from './copy-fit';
+import { boundaryPoint, copyLayout, linePoint, sampleXs, type Point, type Pull, type Surface } from './geometry';
+import { pointInOpening } from './layers';
 
 const model = {
   width: 1265, height: 860, lineGap: 48.16, lineWidth: 3, surfaceCurvature: 0.022,
   lensStrength: 0.2, horizontalLens: 0.27, boundaryEase: 0.65, boundaryCreep: 0.02, apexSpacing: 0.16,
 };
 const metrics = { x: -1.8, y: -0.55, width: 3.6, height: 1.95 };
-const rect = (left, top, right, bottom) => [
+const rect = (left: number, top: number, right: number, bottom: number): Point[] => [
   { x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom },
 ];
-const polygonFor = (surface, pull) => {
+const polygonFor = (surface: Surface, pull: Pull): Point[] => {
   const xs = sampleXs(surface, pull);
   return [...xs.map(x => boundaryPoint(surface, pull, x)),
     ...[...xs].reverse().map(x => linePoint(surface, pull, pull.originY, x))];
 };
-function assertContained(layout, bounds, polygons, width, height) {
+function assertContained(
+  layout: ReturnType<typeof copyLayout>, bounds: CopyBounds, polygons: readonly Point[][],
+  width: number, height: number,
+) {
   const left = layout.x + bounds.x * layout.fontSize * layout.scaleX;
   const top = layout.y + bounds.y * layout.fontSize;
   const right = left + bounds.width * layout.fontSize * layout.scaleX;

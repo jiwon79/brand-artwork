@@ -1,8 +1,9 @@
 import { expect, test } from 'vitest';
-import { boundaryPoint, crossingTimes, linePoint, sampleXs } from './geometry.ts';
-import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_LAYERS, messageForSlot, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers.ts';
+import { boundaryPoint, crossingTimes, linePoint, sampleXs, type Point, type Pull, type Surface } from './geometry';
+import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_LAYERS, messageForSlot, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers';
 
-const returningLayer = (parent = null, pinned = true) => ({
+type ReturningLayer = Parameters<typeof returnLayerChain>[0];
+const returningLayer = (parent: ReturningLayer | null = null, pinned = true) => ({
   parent, dirty: false,
   pull: { pinned, returning: false, velocityY: 23, apexX: 360, apexY: 700, targetY: 720 },
 });
@@ -45,10 +46,10 @@ const model = {
   width: 720, height: 1280, lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
   lensStrength: 0.2, horizontalLens: 0.27, boundaryEase: 0.65, boundaryCreep: 0.02, apexSpacing: 0.16,
 };
-const rect = (left, top, right, bottom) => [
+const rect = (left: number, top: number, right: number, bottom: number): Point[] => [
   { x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom },
 ];
-const polygonFor = (surface, pull) => {
+const polygonFor = (surface: Surface, pull: Pull): Point[] => {
   const xs = sampleXs(surface, pull);
   return [...xs.map(x => boundaryPoint(surface, pull, x)),
     ...[...xs].reverse().map(x => linePoint(surface, pull, pull.originY, x))];
@@ -89,7 +90,7 @@ test('each inner grid stays aligned to its own phase and covers the visible scre
     for (const phase of [-1000, 31.36, 255, 5000]) {
       const rows = lineRows(height, gap, phase);
       expect(rows[0].baseY).toBeLessThanOrEqual(-gap * 3);
-      expect(rows.at(-1).baseY).toBeGreaterThanOrEqual(height + gap * 3);
+      expect(rows[rows.length - 1].baseY).toBeGreaterThanOrEqual(height + gap * 3);
       expect(new Set(rows.map(row => row.row)).size).toBe(rows.length);
       rows.forEach(row => expect(row.baseY).toBe(phase + row.row * gap));
     }

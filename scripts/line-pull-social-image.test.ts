@@ -2,9 +2,13 @@ import { expect, test, vi } from 'vitest';
 import { drawSocialImage, socialImage } from './line-pull-social-image.mjs';
 
 const context = () => ({
-  canvas: {}, drawImage: vi.fn(), fillRect: vi.fn(),
-  createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
-  fillText: vi.fn(),
+  canvas: { width: 0, height: 0 },
+  drawImage: vi.fn<(source: Pick<HTMLImageElement, 'naturalWidth' | 'naturalHeight'>, x: number, y: number) => void>(),
+  fillRect: vi.fn<CanvasRenderingContext2D['fillRect']>(),
+  createLinearGradient: vi.fn<(x0: number, y0: number, x1: number, y1: number) => Pick<CanvasGradient, 'addColorStop'>>(
+    () => ({ addColorStop: vi.fn<CanvasGradient['addColorStop']>() }),
+  ),
+  fillText: vi.fn<CanvasRenderingContext2D['fillText']>(),
 });
 
 test('compose the title and episode above the greeting without rescaling the capture', () => {

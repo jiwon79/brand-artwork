@@ -39,7 +39,7 @@ test('generated loops fill the G and produce a connected propagation graph', () 
   expect(schedule.every((time) => Number.isFinite(time)), 'every loop should receive an activation time').toBe(true);
 
   for (const loop of loops) {
-    const insideCount = loop.samples.filter((point) => mask.contains(point.x, point.y)).length;
+    const insideCount = loop.samples.filter((point: { x: number; y: number }) => mask.contains(point.x, point.y)).length;
     expect(insideCount / loop.samples.length, `loop ${loop.id} should mostly stay inside the G mask`).toBeGreaterThan(0.74);
   }
 });
