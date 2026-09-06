@@ -112,7 +112,7 @@ source pixel was closest, so the `Y` junction became a convex cap. The
 accumulated geometry field preserves the influence of both arms at once; their
 competing gradients create the concave saddle visible in the reference.
 
-This interpretation is grounded in the supplied Instagram caption and the
+This interpretation is grounded in the supplied Instagram reference and the
 official tools it names: Scenery's [Metaball overview](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ),
 its [manual](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ/manual), and Cavalry's
 [Falloff documentation](https://cavalry.studio/docs/nodes/utilities/falloff/).

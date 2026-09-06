@@ -63,9 +63,10 @@ Concept는 다음 중 하나를 만족할 때 독립 문서로 둔다.
 
 ## Social
 
-- [`README.md`](./social/README.md) - 소셜 데이터 공통 기준과 `바이브코딩으로 예쁜 거 만들기` 시리즈 비교
-- [`guseul.md`](./social/guseul.md) - Guseul Instagram 게시 정보, 캡션과 성과 스냅샷
-- [`color-text.md`](./social/color-text.md) - Color Text Instagram 게시 정보, 캡션과 성과 스냅샷
+- [`README.md`](./social/README.md) - Notion 캡션 보관 위치, 소셜 데이터 공통 기준과 시리즈 비교
+- [`guseul.md`](./social/guseul.md) - Guseul Instagram 게시 정보와 성과 스냅샷
+- [`color-text.md`](./social/color-text.md) - Color Text Instagram 게시 정보와 성과 스냅샷
+- [`body-echo.md`](./social/body-echo.md) - Body Echo 게시 준비 정보와 Notion 문서 링크
 
 ## Placement Rules
 
@@ -77,7 +78,8 @@ Concept는 다음 중 하나를 만족할 때 독립 문서로 둔다.
 - 다른 작품에도 적용할 수 있는 수학 및 렌더링 원리는 `concepts/`에 둔다.
 - `concepts/` 본문에는 작품명, 작품 전용 함수명, 현재 기본값, pass 구성, 튜닝 기록을 넣지 않는다. 실제 적용은 문서 끝의 `구현 참고`에서 `artworks/<name>/` 문서 링크로만 연결한다.
 - 외부 프로젝트, 논문, 시각 레퍼런스를 조사한 기록은 `research/`에 둔다.
-- 작품별 소셜 게시 이력, 캡션과 성과 스냅샷은 `social/<project>.md`에 둔다. 여러 작품을 묶는 시리즈 비교와 공통 재조회 기준은 `social/README.md`에 둔다.
+- 캡션 원문·초안·번역·문체 분석은 Notion의 [Project → Vibe](https://app.notion.com/p/3cca89f7e31a80fda5a6c203adf4a04d) 아래 작품별 페이지에서 관리한다. 로컬에는 본문을 복제하지 않고 `social/README.md`에 찾는 경로와 직접 링크만 둔다.
+- 작품별 소셜 게시 이력과 성과 스냅샷은 `social/<project>.md`에 둔다. 여러 작품을 묶는 시리즈 비교와 공통 재조회 기준은 `social/README.md`에 둔다.
 - 문서에서 사용하는 SVG와 이미지는 모두 `assets/`에 둔다. 문서 옆 `figures/`나 `images/` 폴더는 만들지 않는다.
 - QA 비교 이미지, 측정값, 분석 스크립트와 `design-qa.md` 같은 검증 기록은 문서로 보관하지 않는다. 필요하면 gitignore된 `qa/` 또는 `.qa/`에서 임시로 생성한다.
 - 선택 근거가 없는 원본 실험 로그와 개인 메모는 유지하지 않는다. 이후 판단에 필요한 문제 → 원인 → 결정의 변화만 작품별 결정 기록으로 정리한다.

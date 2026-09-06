@@ -6,11 +6,9 @@ Pre-production spec for `pages/google-pagerank-vote`.
 
 This page is intended as a reel/web artwork concept, not yet an implementation. The reference video is stored next to this file as `reference.mp4`.
 
-## Hook
+## Presentation
 
-**구글 검색은 25년 넘게 투표로 순위를 매겼다**
-
-Use this as the caption/title hook. The video itself should not explain PageRank, show equations, or include instructional copy. The caption carries the factual explanation.
+The video itself should not explain PageRank, show equations, or include instructional copy. Social copy is managed in Notion; see [the location guide](../../docs/social/README.md#캡션은-notion에서-확인).
 
 ## Reference
 
@@ -230,11 +228,3 @@ Use `devicePixelRatio` scaling and keep all simulation coordinates in CSS pixels
 - No on-screen equation or explanatory title appears in the animation.
 - Works at mobile reel aspect ratio.
 - Runs smoothly enough for screen recording.
-
-## Caption Direction
-
-First line:
-
-> 구글 검색은 25년 넘게 투표로 순위를 매겼다
-
-Follow-up caption can explain that PageRank treated links like votes and weighted votes from more important pages more heavily. Keep equations and historical detail in the caption, not the visual.
