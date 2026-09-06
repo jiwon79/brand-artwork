@@ -32,7 +32,7 @@ Interactive web implementations of brand artworks.
 
 ## Workflow
 
-- 소셜 공유 이미지는 GPT Image 등 생성형 이미지 도구를 쓰지 않고 실제 작품 렌더링을 1200×630 PNG로 직접 캡처한다. 제작·연결·검증은 `docs/guides/social-share-images.md`를 따른다.
+- 소셜 공유 이미지는 GPT Image 등 생성형 이미지 도구를 쓰지 않고 실제 작품 렌더링을 1200×630 PNG로 직접 캡처한다. 작품명·회차 텍스트가 필요하면 캡처 원본을 보존하고 코드로 합성한다. 제작·연결·검증은 `docs/guides/social-share-images.md`를 따른다.
 - 테스트는 Vitest의 `test`·`expect`로 작성한다. 전체 실행은 `pnpm test`, 변경 감시는 `pnpm test:watch`, 작품별 실행은 `pnpm test pages/<brand>`를 사용한다.
 - QA 비교 이미지, 측정 JSON, 분석 스크립트와 `design-qa.md` 같은 검증 기록은 커밋하지 않는다. 필요하면 gitignore된 `qa/` 또는 `.qa/`에서 임시로 만들고 작업이 끝나면 제거한다.
 - 하나의 의미 있는 작업 단위가 끝날 때마다 별도 확인 없이 커밋하고 즉시 푸시한다. 서로 독립적인 변경을 하나의 큰 커밋으로 묶지 않는다.

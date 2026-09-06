@@ -28,6 +28,8 @@ test('share descriptions and accessible image text remain consistent', () => {
   expect(meta('og:description')).toBe(meta('description'));
   expect(meta('twitter:description')).toBe(meta('description'));
   expect(meta('og:image:alt')).toContain('안녕하세요');
+  expect(meta('og:image:alt')).toContain('Line Pull');
+  expect(meta('og:image:alt')).toContain('바이브코딩으로 예쁜 거 만들기 · 4일차');
   expect(meta('twitter:image:alt')).toBe(meta('og:image:alt'));
 });
 

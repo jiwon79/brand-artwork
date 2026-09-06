@@ -21,7 +21,7 @@ docs/
 
 ## Guides
 
-- [`social-share-images.md`](./guides/social-share-images.md) - 실제 작품 화면을 PNG로 캡처하고 소셜 공유 메타데이터에 연결·검증하는 공통 절차
+- [`social-share-images.md`](./guides/social-share-images.md) - 실제 작품 화면을 PNG로 캡처하고 제목·회차 합성 및 소셜 공유 메타데이터 연결·검증을 수행하는 공통 절차
 - [`reference-extension-workflow.md`](./guides/reference-extension-workflow.md) - 레퍼런스 복원 뒤 정체성을 유지하며 새로운 상호작용을 제안·비교·선택하는 공통 작업 방식
 
 ## Artworks
@@ -39,6 +39,10 @@ docs/
 
 - [`architecture.md`](./artworks/guseul/architecture.md) - 현재 코드, 입력, SDF, 렌더링 전체 구조
 - [`surface-refraction.md`](./artworks/guseul/surface-refraction.md) - Guseul의 contact SDF, 유리 단면, 굴절 구현
+
+### Line Pull
+
+- [`social-share-image.md`](./artworks/line-pull/social-share-image.md) - 실제 캡처에 작품명·4일차 표기를 합성하는 PNG 제작 도구와 재생성 방법
 
 ## Concepts
 
