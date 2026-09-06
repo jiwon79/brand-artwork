@@ -1,5 +1,4 @@
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { expect, test } from 'vitest';
 import { boundaryPoint, crossingTimes, linePoint, sampleXs } from './geometry.ts';
 import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_LAYERS, messageForSlot, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers.ts';
 
@@ -12,8 +11,8 @@ test('releasing an inner layer starts both springs together without jumping thei
   const outer = returningLayer(), inner = returningLayer(outer, false);
   returnLayerChain(inner);
   for (const layer of [outer, inner]) {
-    assert.equal(layer.dirty, true);
-    assert.deepEqual(layer.pull, {
+    expect(layer.dirty).toBe(true);
+    expect(layer.pull).toStrictEqual({
       pinned: false, returning: true, velocityY: 0, apexX: 360, apexY: 700, targetY: 720,
     });
   }
@@ -23,10 +22,10 @@ test('a deeper release also unpins every ancestor', () => {
   const outer = returningLayer(), inner = returningLayer(outer), deepest = returningLayer(inner, false);
   returnLayerChain(deepest);
   for (const layer of [outer, inner, deepest]) {
-    assert.equal(layer.pull.returning, true);
-    assert.equal(layer.pull.pinned, false);
-    assert.equal(layer.pull.velocityY, 0);
-    assert.equal(layer.dirty, true);
+    expect(layer.pull.returning).toBe(true);
+    expect(layer.pull.pinned).toBe(false);
+    expect(layer.pull.velocityY).toBe(0);
+    expect(layer.dirty).toBe(true);
   }
 });
 
@@ -34,12 +33,12 @@ test('returning a chain leaves inactive layers inactive and does not touch other
   const outer = returningLayer(), inactive = { parent: outer, pull: null, dirty: false };
   const inner = returningLayer(inactive, false), unrelated = returningLayer();
   returnLayerChain(inner);
-  assert.equal(inactive.pull, null);
-  assert.equal(inactive.dirty, false);
-  assert.equal(outer.pull.returning, true);
-  assert.equal(unrelated.pull.pinned, true);
-  assert.equal(unrelated.pull.returning, false);
-  assert.equal(unrelated.dirty, false);
+  expect(inactive.pull).toBe(null);
+  expect(inactive.dirty).toBe(false);
+  expect(outer.pull.returning).toBe(true);
+  expect(unrelated.pull.pinned).toBe(true);
+  expect(unrelated.pull.returning).toBe(false);
+  expect(unrelated.dirty).toBe(false);
 });
 
 const model = {
@@ -56,32 +55,32 @@ const polygonFor = (surface, pull) => {
 };
 
 test('nested content is deterministic per slot, sparse, and bounded in depth', () => {
-  assert.equal(MAX_LAYERS, 2);
+  expect(MAX_LAYERS).toBe(2);
   for (let depth = 0; depth < MAX_LAYERS - 1; depth++) {
-    for (let row = -10; row <= 10; row++) assert.equal(isNestedSlot(row, depth), isNestedSlot(row + 3, depth));
-    assert.deepEqual([0, 1, 2].map(row => isNestedSlot(row, depth)), [false, true, false]);
+    for (let row = -10; row <= 10; row++) expect(isNestedSlot(row, depth)).toBe(isNestedSlot(row + 3, depth));
+    expect([0, 1, 2].map(row => isNestedSlot(row, depth))).toStrictEqual([false, true, false]);
   }
   for (let depth = MAX_LAYERS - 1; depth <= 5; depth++) {
-    for (let row = -10; row <= 10; row++) assert.equal(isNestedSlot(row, depth), false);
+    for (let row = -10; row <= 10; row++) expect(isNestedSlot(row, depth)).toBe(false);
   }
 });
 
 test('outer slots repeat greeting, hidden inner grid, and closing phrase in a fixed order', () => {
   for (let cycle = -10; cycle <= 10; cycle++) {
-    assert.deepEqual(messageForSlot(cycle * 3, 0), ['안녕하세요']);
-    assert.deepEqual(messageForSlot(cycle * 3 + 1, 0), []);
-    assert.deepEqual(messageForSlot(cycle * 3 + 2, 0), ['잘부탁드립니다']);
+    expect(messageForSlot(cycle * 3, 0)).toStrictEqual(['안녕하세요']);
+    expect(messageForSlot(cycle * 3 + 1, 0)).toStrictEqual([]);
+    expect(messageForSlot(cycle * 3 + 2, 0)).toStrictEqual(['잘부탁드립니다']);
   }
 });
 
 test('the name appears only inside the second layer, never after repeated outer pulls', () => {
   const messages = new Set();
   for (let row = -30; row <= 30; row++) {
-    assert.equal(messageForSlot(row, 0).includes('이지원입니다'), false);
-    assert.deepEqual(messageForSlot(row, 1), ['이지원입니다']);
+    expect(messageForSlot(row, 0).includes('이지원입니다')).toBe(false);
+    expect(messageForSlot(row, 1)).toStrictEqual(['이지원입니다']);
     for (const depth of [0, 1]) for (const message of messageForSlot(row, depth)) messages.add(message);
   }
-  assert.deepEqual([...messages].sort(), ['안녕하세요', '이지원입니다', '잘부탁드립니다'].sort());
+  expect([...messages].sort()).toStrictEqual(['안녕하세요', '이지원입니다', '잘부탁드립니다'].sort());
 });
 
 test('each inner grid stays aligned to its own phase and covers the visible screen', () => {
@@ -89,52 +88,52 @@ test('each inner grid stays aligned to its own phase and covers the visible scre
     const gap = layerGap(56, depth);
     for (const phase of [-1000, 31.36, 255, 5000]) {
       const rows = lineRows(height, gap, phase);
-      assert.ok(rows[0].baseY <= -gap * 3);
-      assert.ok(rows.at(-1).baseY >= height + gap * 3);
-      assert.equal(new Set(rows.map(row => row.row)).size, rows.length);
-      rows.forEach(row => assert.equal(row.baseY, phase + row.row * gap));
+      expect(rows[0].baseY).toBeLessThanOrEqual(-gap * 3);
+      expect(rows.at(-1).baseY).toBeGreaterThanOrEqual(height + gap * 3);
+      expect(new Set(rows.map(row => row.row)).size).toBe(rows.length);
+      rows.forEach(row => expect(row.baseY).toBe(phase + row.row * gap));
     }
-    assert.ok(gap >= 32 && gap <= 56);
+    expect(gap >= 32 && gap <= 56).toBeTruthy();
   }
 });
 
 test('opening hit tests follow the folded polygon, not its bounding rectangle', () => {
   const polygon = [{ x: 0, y: 100 }, { x: 720, y: 100 }, { x: 720, y: 200 }, { x: 360, y: 600 }, { x: 0, y: 200 }];
-  assert.equal(pointInOpening(polygon, { x: 360, y: 500 }), true);
-  assert.equal(pointInOpening(polygon, { x: 20, y: 500 }), false);
-  assert.equal(pointInOpening(polygon, { x: 360, y: 101 }, 4), false);
-  assert.equal(pointInOpening(polygon, { x: 360, y: 110 }, 4), true);
-  assert.equal(pointInOpening([], { x: 360, y: 110 }), false);
-  assert.equal(pointInOpening([...polygon].reverse(), { x: 360, y: 500 }), true);
+  expect(pointInOpening(polygon, { x: 360, y: 500 })).toBe(true);
+  expect(pointInOpening(polygon, { x: 20, y: 500 })).toBe(false);
+  expect(pointInOpening(polygon, { x: 360, y: 101 }, 4)).toBe(false);
+  expect(pointInOpening(polygon, { x: 360, y: 110 }, 4)).toBe(true);
+  expect(pointInOpening([], { x: 360, y: 110 })).toBe(false);
+  expect(pointInOpening([...polygon].reverse(), { x: 360, y: 500 })).toBe(true);
 });
 
 test('pinning requires usable space after clipping by every ancestor and the viewport', () => {
   const child = rect(0, -100, 720, 600);
   const parent = rect(0, 200, 720, 270);
   const grandparent = rect(0, 220, 720, 1000);
-  assert.equal(visibleOpeningHeight(child, 360, 500), 500);
-  assert.equal(visibleOpeningHeight(child, 360, 1280, [parent, grandparent]), 50);
-  assert.equal(canKeepOpening(child, 360, 1280, 48), true);
-  assert.equal(canKeepOpening(child, 360, 1280, 48, [parent]), false);
-  assert.equal(canKeepOpening(rect(0, 1400, 720, 1800), 360, 1280, 48), false);
-  assert.equal(canKeepOpening(child, 800, 1280, 48), false);
+  expect(visibleOpeningHeight(child, 360, 500)).toBe(500);
+  expect(visibleOpeningHeight(child, 360, 1280, [parent, grandparent])).toBe(50);
+  expect(canKeepOpening(child, 360, 1280, 48)).toBe(true);
+  expect(canKeepOpening(child, 360, 1280, 48, [parent])).toBe(false);
+  expect(canKeepOpening(rect(0, 1400, 720, 1800), 360, 1280, 48)).toBe(false);
+  expect(canKeepOpening(child, 800, 1280, 48)).toBe(false);
 });
 
 test('curved pull pockets support both directions and edge grabs', () => {
   for (const direction of [-1, 1]) for (const apexX of [0, 1, 360, 719, 720]) {
     const pull = { originY: 500, apexX, apexY: 500 + direction * 340 };
     const polygon = polygonFor(model, pull);
-    assert.equal(canKeepOpening(polygon, apexX, 1280, layerGap(56, 1)), true);
+    expect(canKeepOpening(polygon, apexX, 1280, layerGap(56, 1))).toBe(true);
     const upper = boundaryPoint(model, pull, apexX), lower = linePoint(model, pull, 500, apexX);
-    assert.equal(pointInOpening(polygon, { x: apexX, y: (upper.y + lower.y) / 2 }), true);
+    expect(pointInOpening(polygon, { x: apexX, y: (upper.y + lower.y) / 2 })).toBe(true);
   }
 });
 
 test('retain the later curve intersection when the earlier one is outside the parent opening', () => {
   const from = { x: 0, y: 439 }, to = { x: 720, y: 439 };
   const times = crossingTimes(model, from, to, 437);
-  assert.equal(times.length, 2);
+  expect(times.length).toBe(2);
   const parent = rect(360, 400, 720, 500);
   const visible = times.filter(t => pointInOpening(parent, { x: 720 * t, y: 439 }, 4));
-  assert.deepEqual(visible, [times[1]]);
+  expect(visible).toStrictEqual([times[1]]);
 });

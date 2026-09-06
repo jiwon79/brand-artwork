@@ -11,6 +11,7 @@
   },
   "include": [
     "vite.config.ts",
+    "vitest.config.ts",
     "common/touch-cursor.ts",
     "common/touch-pointer.ts",
     "pages/cursor-cat/**/*.ts",

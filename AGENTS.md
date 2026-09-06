@@ -7,6 +7,7 @@ Interactive web implementations of brand artworks.
 - TypeScript + Vite
 - lil-gui (debug/parameter tuning UI)
 - pnpm (package manager)
+- Vitest (unit tests)
 
 ## Project Structure
 
@@ -30,6 +31,7 @@ Interactive web implementations of brand artworks.
 
 ## Workflow
 
+- 테스트는 Vitest의 `test`·`expect`로 작성한다. 전체 실행은 `pnpm test`, 변경 감시는 `pnpm test:watch`, 작품별 실행은 `pnpm test pages/<brand>`를 사용한다.
 - QA 비교 이미지, 측정 JSON, 분석 스크립트와 `design-qa.md` 같은 검증 기록은 커밋하지 않는다. 필요하면 gitignore된 `qa/` 또는 `.qa/`에서 임시로 만들고 작업이 끝나면 제거한다.
 - 하나의 의미 있는 작업 단위가 끝날 때마다 별도 확인 없이 커밋하고 즉시 푸시한다. 서로 독립적인 변경을 하나의 큰 커밋으로 묶지 않는다.
 - 작업을 완료하면 항상 Draft PR을 생성하거나, 현재 브랜치의 기존 PR을 최신 상태로 유지한다.

@@ -1,5 +1,4 @@
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { expect, test } from 'vitest';
 import { boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, restY, sampleXs } from './geometry.ts';
 
 const surface = {
@@ -7,7 +6,7 @@ const surface = {
   lensStrength: 0.2, horizontalLens: 0.27, boundaryEase: 0.65,
   boundaryCreep: 0.02, apexSpacing: 0.16,
 };
-const near = (a, b, epsilon = 1e-6) => assert.ok(Math.abs(a - b) <= epsilon, `${a} != ${b}`);
+const near = (a, b, epsilon = 1e-6) => expect(Math.abs(a - b), `${a} != ${b}`).toBeLessThanOrEqual(epsilon);
 const pullAt = (distance, x = 440, originY = 437) => ({
   originY, apexX: x, apexY: restY(surface, x, originY) + distance,
 });
@@ -20,12 +19,12 @@ test('upper boundary approaches its neighbor, then creeps with it without crossi
       const boundary = boundaryPoint(surface, pull, pull.apexX).y;
       const neighbor = linePoint(surface, pull, pull.originY - direction * surface.lineGap, pull.apexX).y;
       const gap = direction * (boundary - neighbor);
-      assert.ok(gap >= surface.lineWidth - 1e-9 && gap <= lastGap + 1e-9);
+      expect(gap >= surface.lineWidth - 1e-9 && gap <= lastGap + 1e-9).toBeTruthy();
       lastGap = gap;
     }
     const a = boundaryPoint(surface, pullAt(direction * 340), 440).y;
     const b = boundaryPoint(surface, pullAt(direction * 2100), 440).y;
-    assert.ok(Math.abs(a - b) < 4, 'long pull must not send the upper boundary flying');
+    expect(Math.abs(a - b), 'long pull must not send the upper boundary flying').toBeLessThan(4);
   }
 });
 
@@ -54,7 +53,7 @@ test('every reached line keeps a distinct, ordered tip in both directions', () =
       let previous = linePoint(surface, pull, pull.originY, pull.apexX).y;
       for (let i = 1; i <= 35; i++) {
         const y = linePoint(surface, pull, pull.originY + direction * i * surface.lineGap, pull.apexX).y;
-        assert.ok(direction * (y - previous) >= surface.lineGap * 0.15, 'tips must not collapse to one point');
+        expect(direction * (y - previous), 'tips must not collapse to one point').toBeGreaterThanOrEqual(surface.lineGap * 0.15);
         previous = y;
       }
     }
@@ -68,7 +67,7 @@ test('main tip stays in pointer coordinates at every x and at unlimited heights'
       const tip = linePoint(surface, pull, pull.originY, x);
       near(tip.x, x);
       near(tip.y, pull.apexY);
-      assert.ok(sampleXs(surface, pull).includes(x));
+      expect(sampleXs(surface, pull).includes(x)).toBeTruthy();
     }
   }
 });
@@ -77,7 +76,7 @@ test('lens strength never decreases as pull distance grows', () => {
   let previous = 0;
   for (let distance = 0; distance <= 5000; distance += 5) {
     const strength = lensProgress(surface, pullAt(distance));
-    assert.ok(strength >= previous && strength <= 1);
+    expect(strength >= previous && strength <= 1).toBeTruthy();
     near(strength, lensProgress(surface, pullAt(-distance)));
     previous = strength;
   }
@@ -90,7 +89,7 @@ test('neighboring lines acquire and release their bend continuously', () => {
         const y = 437 + direction * i * surface.lineGap;
         const before = linePoint(surface, pullAt(direction * distance), y, 440).y;
         const after = linePoint(surface, pullAt(direction * (distance + 0.001)), y, 440).y;
-        assert.ok(Math.abs(after - before) < 0.003, 'newly reached line jumped');
+        expect(Math.abs(after - before), 'newly reached line jumped').toBeLessThan(0.003);
       }
     }
   }
@@ -98,14 +97,14 @@ test('neighboring lines acquire and release their bend continuously', () => {
 
 test('hit testing finds fast diagonal and horizontal crossings of curved lines', () => {
   near(crossingTime(surface, { x: 360, y: 400 }, { x: 360, y: 600 }, 437), 0.185);
-  assert.equal(crossingTime(surface, { x: 360, y: 400 }, { x: 360, y: 410 }, 437), null);
+  expect(crossingTime(surface, { x: 360, y: 400 }, { x: 360, y: 410 }, 437)).toBe(null);
   for (const [from, to] of [
     [{ x: 0, y: 300 }, { x: 700, y: 900 }],
     [{ x: 700, y: 900 }, { x: 0, y: 300 }],
     [{ x: 0, y: 439 }, { x: 360, y: 439 }],
   ]) {
     const t = crossingTime(surface, from, to, 437);
-    assert.ok(t > 0 && t <= 1);
+    expect(t > 0 && t <= 1).toBeTruthy();
     near(from.y + (to.y - from.y) * t, restY(surface, from.x + (to.x - from.x) * t, 437));
   }
 });
@@ -119,7 +118,7 @@ test('copy stays centered and unchanged when only the pointer moves sideways', (
         const expected = copyLayout(model, pull, count);
         near(expected.x, width / 2);
         for (const x of [0, width * 0.1, width * 0.9, width]) {
-          assert.deepEqual(copyLayout(model, { ...pull, apexX: x }, count), expected);
+          expect(copyLayout(model, { ...pull, apexX: x }, count)).toStrictEqual(expected);
         }
         near(expected.scaleX, 1);
       }
@@ -133,7 +132,7 @@ test('copy retains pull-driven magnification without stretching Hangul sideways'
     for (const distance of [0, 10, 40, 100, 300, 1000]) {
       const layout = copyLayout(surface, pullAt(direction * distance), 1);
       near(layout.scaleX, 1);
-      assert.ok(layout.fontSize > previous);
+      expect(layout.fontSize).toBeGreaterThan(previous);
       previous = layout.fontSize;
     }
   }

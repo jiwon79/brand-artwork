@@ -1,21 +1,20 @@
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { expect, test } from 'vitest';
 import { revealPalette, themeForInteraction } from './palette.ts';
 
 test('keep the original red pair and include each approved additional color', () => {
-  assert.deepEqual(revealPalette.map(theme => theme.panelColor), [
+  expect(revealPalette.map(theme => theme.panelColor)).toStrictEqual([
     '#c61f3f', '#d6df45', '#3555cc', '#aa94c7', '#88b5a0',
   ]);
-  assert.deepEqual(themeForInteraction(0), { panelColor: '#c61f3f', textColor: '#f4f0df' });
+  expect(themeForInteraction(0)).toStrictEqual({ panelColor: '#c61f3f', textColor: '#f4f0df' });
 });
 
 test('cycle all five pairs independently of fixed slot content', () => {
   for (let index = 0; index < 40; index++) {
-    assert.deepEqual(themeForInteraction(index), revealPalette[index % 5]);
+    expect(themeForInteraction(index)).toStrictEqual(revealPalette[index % 5]);
   }
   for (const repeatInterval of [1, 2, 3]) {
     const colors = Array.from({ length: 5 }, (_, cycle) => themeForInteraction(cycle * repeatInterval).panelColor);
-    assert.equal(new Set(colors).size, 5);
+    expect(new Set(colors).size).toBe(5);
   }
 });
 
@@ -27,6 +26,6 @@ test('pair each background with readable light or dark lettering', () => {
   };
   for (const { panelColor, textColor } of revealPalette) {
     const [dark, light] = [luminance(panelColor), luminance(textColor)].sort((a, b) => a - b);
-    assert.ok((light + 0.05) / (dark + 0.05) >= 4.5, `low contrast on ${panelColor}`);
+    expect((light + 0.05) / (dark + 0.05), `low contrast on ${panelColor}`).toBeGreaterThanOrEqual(4.5);
   }
 });

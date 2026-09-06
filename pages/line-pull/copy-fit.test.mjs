@@ -1,5 +1,4 @@
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { expect, test } from 'vitest';
 import { fitCopyInOpenings } from './copy-fit.ts';
 import { boundaryPoint, copyLayout, linePoint, sampleXs } from './geometry.ts';
 import { pointInOpening } from './layers.ts';
@@ -22,20 +21,20 @@ function assertContained(layout, bounds, polygons, width, height) {
   const top = layout.y + bounds.y * layout.fontSize;
   const right = left + bounds.width * layout.fontSize * layout.scaleX;
   const bottom = top + bounds.height * layout.fontSize;
-  assert.ok(left >= 0 && right <= width && top >= 0 && bottom <= height);
+  expect(left >= 0 && right <= width && top >= 0 && bottom <= height).toBeTruthy();
   for (let i = 0; i <= 24; i++) for (const y of [top, bottom]) {
     const point = { x: left + (right - left) * i / 24, y };
-    for (const polygon of polygons) assert.ok(pointInOpening(polygon, point), JSON.stringify({ point, layout }));
+    for (const polygon of polygons) expect(pointInOpening(polygon, point), JSON.stringify({ point, layout })).toBeTruthy();
   }
 }
 
 test('fit the entire multiline copy inside both clips, not the full viewport', () => {
   const parent = rect(0, 200, 1265, 450), child = rect(0, 300, 1265, 800);
   const desired = copyLayout(model, { originY: 330, apexX: 630, apexY: 700 }, 2);
-  assert.ok(desired.fontSize * metrics.height > 150, 'the old layout clips');
+  expect(desired.fontSize * metrics.height, 'the old layout clips').toBeGreaterThan(150);
   const fitted = fitCopyInOpenings(desired, metrics, [parent, child], 1265, 860, 12);
-  assert.equal(fitted.x, 1265 / 2);
-  assert.ok(fitted.fontSize > 60 && fitted.fontSize < 65);
+  expect(fitted.x).toBe(1265 / 2);
+  expect(fitted.fontSize > 60 && fitted.fontSize < 65).toBeTruthy();
   assertContained(fitted, metrics, [parent, child], 1265, 860);
 });
 
@@ -46,7 +45,7 @@ test('check intermediate folded-edge peaks and either polygon winding', () => {
   const desired = { x: 632.5, y: 250, fontSize: 190, lineHeight: 157.7, scaleX: 1.12 };
   const fitted = fitCopyInOpenings(desired, metrics, [parent, child], 1265, 860, 12);
   assertContained(fitted, metrics, [parent, child], 1265, 860);
-  assert.deepEqual(fitCopyInOpenings(desired, metrics, [parent, [...child].reverse()], 1265, 860, 12), fitted);
+  expect(fitCopyInOpenings(desired, metrics, [parent, [...child].reverse()], 1265, 860, 12)).toStrictEqual(fitted);
 });
 
 test('fit real curved pockets, upward pulls, off-center grabs, and mobile viewports', () => {
@@ -61,8 +60,8 @@ test('fit real curved pockets, upward pulls, off-center grabs, and mobile viewpo
       const inner = polygonFor(surface, innerPull);
       for (const bounds of [metrics, { x: -2.1, y: -0.55, width: 4.2, height: 1.12 }]) {
         const layout = fitCopyInOpenings(copyLayout(surface, innerPull, 2), bounds, [outer, inner], width, height, 12);
-        assert.equal(layout.x, width / 2);
-        assert.ok(layout.fontSize > 20, 'readable inner copy after opening');
+        expect(layout.x).toBe(width / 2);
+        expect(layout.fontSize, 'readable inner copy after opening').toBeGreaterThan(20);
         assertContained(layout, bounds, [outer, inner], width, height);
       }
     }
@@ -76,7 +75,7 @@ test('copy grows then plateaus as a centered opening is pulled further', () => {
     const pull = { originY: 330, apexX: 632.5, apexY: 330 + distance };
     const inner = polygonFor(model, pull);
     const layout = fitCopyInOpenings(copyLayout(model, pull, 2), metrics, [outer, inner], 1265, 860, 12);
-    assert.ok(layout.fontSize >= previous - 0.02, `${layout.fontSize} < ${previous}`);
+    expect(layout.fontSize, `${layout.fontSize} < ${previous}`).toBeGreaterThanOrEqual(previous - 0.02);
     previous = layout.fontSize;
   }
 });
@@ -85,8 +84,8 @@ test('empty or invisible openings never produce invalid text coordinates', () =>
   const desired = copyLayout(model, { originY: 300, apexX: 600, apexY: 600 }, 2);
   for (const polygons of [[[]], [rect(0, 1000, 1265, 1200)], [rect(0, 100, 300, 600)]]) {
     const fitted = fitCopyInOpenings(desired, metrics, polygons, 1265, 860, 12);
-    assert.equal(fitted.fontSize, 0);
-    assert.ok(Object.values(fitted).every(Number.isFinite));
+    expect(fitted.fontSize).toBe(0);
+    expect(Object.values(fitted).every(Number.isFinite)).toBeTruthy();
   }
 });
 
@@ -98,7 +97,7 @@ test('long single-line Korean outer copy fits the viewport without following the
     const expected = fitCopyInOpenings(copyLayout(surface, pull, 1), bounds, [], width, 860, 12);
     assertContained(expected, bounds, [], width, 860);
     for (const apexX of [0, width / 2, width]) {
-      assert.deepEqual(fitCopyInOpenings(copyLayout(surface, { ...pull, apexX }, 1), bounds, [], width, 860, 12), expected);
+      expect(fitCopyInOpenings(copyLayout(surface, { ...pull, apexX }, 1), bounds, [], width, 860, 12)).toStrictEqual(expected);
     }
   }
 });
