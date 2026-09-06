@@ -11,6 +11,7 @@
 | Guseul | [Guseul · 1일차](https://app.notion.com/p/3cda89f7e31a81abb5d4e400ee742826) | 캡션 |
 | Color Text | [Color Text · 2일차](https://app.notion.com/p/3cda89f7e31a81d0b566fe5dd0d0b993) | 캡션 |
 | Body Echo | [Body Echo · 3일차](https://app.notion.com/p/3cda89f7e31a8147a835fcce47562c3d) | 캡션 초안, 첫 문장 후보 |
+| Line Pull (줄 당기기) | [Line Pull · 4일차](https://app.notion.com/p/3d3a89f7e31a8105855ee61f7f14092b) | 캡션 초안, 레퍼런스 |
 | Cat Cursor | [Cat Cursor · 회차 미정](https://app.notion.com/p/3cda89f7e31a8110962fe86d18b400f2) | 캡션 |
 
 위 링크와 섹션은 2026-09-06에 Notion에서 직접 확인했다. 새로운 작품은 Vibe 아래 기존 페이지가 있는지 먼저 찾고, 없으면 그 아래에 작품별 페이지를 만들어 관리한다. 확인하지 않은 페이지 주소나 회차를 추정해서 기록하지 않는다. 캡션을 수정할 때 로컬 `caption.md`나 별도 초안 파일을 다시 만들지 않는다.
@@ -29,6 +30,7 @@
 | 회차 | 프로젝트 | 상태 | 게시 준비 기록 |
 | --- | --- | --- | --- |
 | 3일차 | Body Echo | 게시 전 | [Body Echo](./body-echo.md) |
+| 4일차 | Line Pull (줄 당기기) | 게시 전 | [Notion 게시 준비 기록](https://app.notion.com/p/3d3a89f7e31a8105855ee61f7f14092b) |
 
 ## 데이터 기준
 
