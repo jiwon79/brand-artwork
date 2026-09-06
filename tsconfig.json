@@ -11,11 +11,19 @@
   },
   "include": [
     "vite.config.ts",
+    "vitest.config.ts",
     "common/touch-cursor.ts",
     "common/touch-pointer.ts",
     "pages/cursor-cat/**/*.ts",
     "pages/color-text/**/*.ts",
-    "pages/guseul/**/*.ts"
+    "pages/guseul/**/*.ts",
+    "pages/line-pull/**/*.ts",
+    "common/**/*.test.ts",
+    "common/**/*.spec.ts",
+    "pages/**/*.test.ts",
+    "pages/**/*.spec.ts",
+    "scripts/**/*.test.ts",
+    "scripts/**/*.spec.ts"
   ],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "**/qa/**", "**/.qa/**"]
 }

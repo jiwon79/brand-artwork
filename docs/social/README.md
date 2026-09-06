@@ -1,6 +1,20 @@
 # Social
 
-작품별 소셜 게시 이력과 성과 스냅샷을 보관한다. 게시 플랫폼의 원본 URL, 게시 시각, 캡션, 누적 성과와 재조회 기준을 작품별 파일에 기록한다.
+로컬에는 작품별 게시 정보, 성과 스냅샷과 재조회 기준을 보관한다. 캡션 원문·초안·번역·문체 분석은 복제하지 않고 Notion에서 관리한다.
+
+## 캡션은 Notion에서 확인
+
+시작 위치는 [Project → Vibe](https://app.notion.com/p/3cca89f7e31a80fda5a6c203adf4a04d)다. Vibe의 **작품별 기록**에서 작품 페이지를 열고 **캡션** 또는 **캡션 초안** 섹션을 확인한다. 초안과 확정본, 레퍼런스 계정 크레딧도 해당 작품 페이지에서 관리한다.
+
+| 작품 | Notion 페이지 | 확인할 섹션 |
+| --- | --- | --- |
+| Guseul | [Guseul · 1일차](https://app.notion.com/p/3cda89f7e31a81abb5d4e400ee742826) | 캡션 |
+| Color Text | [Color Text · 2일차](https://app.notion.com/p/3cda89f7e31a81d0b566fe5dd0d0b993) | 캡션 |
+| Body Echo | [Body Echo · 3일차](https://app.notion.com/p/3cda89f7e31a8147a835fcce47562c3d) | 캡션 초안, 첫 문장 후보 |
+| Line Pull (줄 당기기) | [Line Pull · 4일차](https://app.notion.com/p/3d3a89f7e31a8105855ee61f7f14092b) | 캡션 초안, 레퍼런스 |
+| Cat Cursor | [Cat Cursor · 회차 미정](https://app.notion.com/p/3cda89f7e31a8110962fe86d18b400f2) | 캡션 |
+
+위 링크와 섹션은 2026-09-06에 Notion에서 직접 확인했다. 새로운 작품은 Vibe 아래 기존 페이지가 있는지 먼저 찾고, 없으면 그 아래에 작품별 페이지를 만들어 관리한다. 확인하지 않은 페이지 주소나 회차를 추정해서 기록하지 않는다. 캡션을 수정할 때 로컬 `caption.md`나 별도 초안 파일을 다시 만들지 않는다.
 
 ## `바이브코딩으로 예쁜 거 만들기` 시리즈
 
@@ -13,9 +27,10 @@
 
 ## 게시 예정
 
-| 회차 | 프로젝트 | 상태 | 캡션 |
+| 회차 | 프로젝트 | 상태 | 게시 준비 기록 |
 | --- | --- | --- | --- |
-| 3일차 | Body Echo | 초안 | [캡션 초안](./body-echo.md) |
+| 3일차 | Body Echo | 게시 전 | [Body Echo](./body-echo.md) |
+| 4일차 | Line Pull (줄 당기기) | 게시 전 | [Notion 게시 준비 기록](https://app.notion.com/p/3d3a89f7e31a8105855ee61f7f14092b) |
 
 ## 데이터 기준
 

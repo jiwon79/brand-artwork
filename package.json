@@ -4,12 +4,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "generate:line-pull-texture": "node scripts/generate-line-pull-texture.mjs",
     "generate:body-echo-geometry": "node scripts/generate-body-echo-geometry.mjs",
     "process:cursor-cat": "node scripts/process-cursor-cat.mjs",
     "register:cursor-cat": "node scripts/register-cursor-cat.mjs",
     "prebuild": "pnpm generate:body-echo-geometry",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
     "typecheck": "tsc --noEmit --noUnusedLocals --noUnusedParameters"
   },
   "dependencies": {
@@ -29,6 +32,7 @@
     "typescript": "^5.4.0",
     "vite": "^8.0.16",
     "vite-plugin-static-copy": "^4.0.1",
+    "vitest": "^5.0.0",
     "wrangler": "^4.127.1"
   }
 }
