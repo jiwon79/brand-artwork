@@ -3,8 +3,12 @@ import { exposeGuiInDebugMode } from '../../common/debug';
 import { createFrameLoop } from './frame-loop';
 import { themeForInteraction } from './palette';
 import {
+  advanceRipple, createReleaseRipple, rippleOffset, ripplePoint,
+  type ReleaseRipple, type RippleColumn,
+} from './ripple';
+import {
   boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, pointsPath,
-  pullDelta, restY, sampleXs,
+  pullDelta, restY, sampleXs, surfacePoint,
   type Point, type Pull, type Surface,
 } from './geometry';
 
@@ -39,6 +43,7 @@ const params = {
   followSpeed: 32,
   returnStiffness: 205,
   returnDamping: 24,
+  releaseWave: 1,
   background: '#050505',
   lineColor: '#f4f2ec',
   hoverColor: '#ffffff',
@@ -64,6 +69,7 @@ let width = 0;
 let height = 0;
 let lines: LineState[] = [];
 let drag: DragState | null = null;
+let ripple: ReleaseRipple | null = null;
 let hoveredIndex = -1;
 let interactionCount = 0;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -125,11 +131,11 @@ function clearReveal(): void {
   originPullPath.setAttribute('d', '');
 }
 
-function renderReveal(model: Surface, current: ActiveDrag, xs: number[]): void {
+function renderReveal(model: Surface, current: ActiveDrag, xs: number[], columns?: RippleColumn[]): void {
   const delta = pullDelta(model, current);
   if (Math.abs(delta) < 0.01) { clearReveal(); return; }
-  const upper = xs.map(x => boundaryPoint(model, current, x));
-  const lower = xs.map(x => linePoint(model, current, current.originY, x));
+  const upper = xs.map((x, i) => ripplePoint(boundaryPoint(model, current, x), columns?.[i]));
+  const lower = xs.map((x, i) => ripplePoint(linePoint(model, current, current.originY, x), columns?.[i]));
   revealPath.setAttribute('d', pointsPath([...upper, ...[...lower].reverse()], true));
   reveal.setAttribute('opacity', '1');
   originPullPath.setAttribute('d', pointsPath(lower));
@@ -153,6 +159,12 @@ function renderFrame(): void {
   const model = surface();
   const current = drag && isActive(drag) ? drag : null;
   const xs = sampleXs(model, current);
+  // Share horizontal wave samples across every line and the reveal clip.
+  const wave = ripple;
+  const columns = wave ? xs.map(x => {
+    const center = surfacePoint(model, current, x, wave.originY);
+    return { offset: rippleOffset(wave, center.x), centerY: center.y, spread: wave.spread };
+  }) : undefined;
   const strength = current ? lensProgress(model, current) : 0;
   stage.style.backgroundColor = params.background;
   // Only the grain is CSS-scaled. All interactive geometry stays in pointer coordinates.
@@ -164,20 +176,27 @@ function renderFrame(): void {
   revealBackground.setAttribute('fill', params.panelColor);
   revealCopy.setAttribute('fill', params.textColor);
   lines.forEach((line, index) => {
-    const points = xs.map(x => current?.originIndex === index
+    const points = xs.map((x, i) => ripplePoint(current?.originIndex === index
       ? boundaryPoint(model, current, x)
-      : linePoint(model, current, line.baseY, x));
+      : linePoint(model, current, line.baseY, x), columns?.[i]));
     line.path.setAttribute('d', pointsPath(points));
     line.path.setAttribute('stroke-width', String(params.lineWidth));
     line.path.setAttribute('stroke', index === hoveredIndex && !drag ? params.hoverColor : params.lineColor);
   });
-  if (current) renderReveal(model, current, xs);
+  if (current) renderReveal(model, current, xs, columns);
   else clearReveal();
 }
 
-function cancelDrag(immediate = false): void {
-  if (!drag) return;
+function cancelDrag(immediate = false, emitRipple = false): void {
+  if (!emitRipple || immediate || reducedMotion.matches) ripple = null;
+  if (!drag) { render(); return; }
   const pointerId = drag.pointerId;
+  if (emitRipple && !immediate && isActive(drag) && !reducedMotion.matches) {
+    ripple = createReleaseRipple({
+      x: drag.apexX, originY: drag.originY, travel: pullDelta(surface(), drag),
+      lineGap: params.lineGap, width, strength: params.releaseWave,
+    });
+  }
   // Change state before releasing capture: lostpointercapture must not restart the spring.
   if (immediate || !isActive(drag) || reducedMotion.matches) drag = null;
   else { drag.returning = true; drag.pointerId = -1; drag.velocityY = 0; }
@@ -209,6 +228,8 @@ function onPointerDown(event: PointerEvent): void {
   if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
   if (drag?.returning) cancelDrag(true);
   if (drag) return;
+  // New input owns the surface immediately, including after the spring has closed.
+  ripple = null;
   event.preventDefault();
   const point = localPoint(event);
   const index = lineAt(point);
@@ -251,10 +272,13 @@ function onPointerMove(event: PointerEvent): void {
 }
 
 function finishPointer(event: PointerEvent): void {
-  if (drag && drag.pointerId === event.pointerId && !drag.returning) cancelDrag();
+  if (drag && drag.pointerId === event.pointerId && !drag.returning) {
+    cancelDrag(false, event.type === 'pointerup');
+  }
 }
 
 function animate(dt: number): boolean {
+  ripple = reducedMotion.matches ? null : advanceRipple(ripple, dt);
   if (drag && isActive(drag)) {
     if (drag.returning) {
       const restingY = restY(surface(), drag.apexX, drag.originY);
@@ -275,7 +299,7 @@ function animate(dt: number): boolean {
     }
   }
   renderFrame();
-  return !!(drag && isActive(drag)
+  return !!ripple || !!(drag && isActive(drag)
     && (drag.returning || Math.abs(drag.targetY - drag.apexY) > 0.001));
 }
 
@@ -289,6 +313,9 @@ stage.addEventListener('pointerleave', event => {
 });
 window.addEventListener('blur', () => cancelDrag());
 window.addEventListener('resize', resize);
+reducedMotion.addEventListener('change', () => {
+  if (reducedMotion.matches) cancelDrag(true);
+});
 
 const gui = new GUI({ title: 'Line Pull' });
 gui.add(params, 'lineGap', 42, 120, 1).name('line gap').onFinishChange(resize);
@@ -302,6 +329,7 @@ gui.add(params, 'apexSpacing', 0.05, 0.4, 0.01).name('tip spacing').onChange(ren
 gui.add(params, 'followSpeed', 16, 80, 1).name('pull response');
 gui.add(params, 'returnStiffness', 80, 420, 1).name('return stiffness');
 gui.add(params, 'returnDamping', 8, 42, 0.5).name('return damping');
+gui.add(params, 'releaseWave', 0, 1, 0.05).name('release wave');
 gui.addColor(params, 'background').name('background').onChange(render);
 gui.addColor(params, 'lineColor').name('line').onChange(render);
 const panelColorController = gui.addColor(params, 'panelColor').name('panel').onChange(render);
