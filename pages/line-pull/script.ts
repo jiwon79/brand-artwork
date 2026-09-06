@@ -124,6 +124,20 @@ function clearPull(layer: Layer): void {
   layer.dirty = true;
 }
 
+function measureCopy(layer: Layer): void {
+  // Measure once per activation (and once more if the webfont arrives mid-pull).
+  // Frames use these em-space bounds without forcing browser layout reads.
+  const copy = layer.view.copy;
+  copy.setAttribute('font-size', '100');
+  copy.setAttribute('x', '0'); copy.setAttribute('y', '0');
+  [...copy.children].forEach((span, i) => {
+    span.setAttribute('x', '0'); span.setAttribute('dy', i === 0 ? '0' : '83');
+  });
+  const box = copy.getBBox();
+  layer.copyBounds = { x: box.x / 100, y: box.y / 100, width: box.width / 100, height: box.height / 100 };
+  layer.dirty = true;
+}
+
 function activate(layer: Layer, current: DragState, index: number): void {
   current.originIndex = index;
   current.originY = layer.lines[index].baseY;
@@ -140,18 +154,7 @@ function activate(layer: Layer, current: DragState, index: number): void {
   }
   layer.view.reveal.setAttribute('data-content', layer.child ? 'nested' : 'copy');
   layer.view.copy.setAttribute('display', layer.child ? 'none' : 'inline');
-  if (!layer.child) {
-    // Measure the actual font and complete multiline block once per activation.
-    // Frames below use these em-space bounds without forcing browser layout reads.
-    const copy = layer.view.copy;
-    copy.setAttribute('font-size', '100');
-    copy.setAttribute('x', '0'); copy.setAttribute('y', '0');
-    [...copy.children].forEach((span, i) => {
-      span.setAttribute('x', '0'); span.setAttribute('dy', i === 0 ? '0' : '83');
-    });
-    const box = copy.getBBox();
-    layer.copyBounds = { x: box.x / 100, y: box.y / 100, width: box.width / 100, height: box.height / 100 };
-  }
+  if (!layer.child) measureCopy(layer);
   layer.dirty = true;
 }
 
@@ -464,3 +467,12 @@ const panelColorController = gui.addColor(params, 'panelColor').name('panel').on
 const textColorController = gui.addColor(params, 'textColor').name('text').onChange(updateTheme);
 exposeGuiInDebugMode(gui);
 resize();
+
+// Preload even while the messages are hidden. If a pull precedes font loading,
+// refresh its cached bounds so the new glyphs still fit the same opening.
+void document.fonts.load('800 100px "Pretendard"', '안녕하세요이지원입니다잘부탁드립니다').then(() => {
+  for (let layer: Layer | null = root; layer; layer = layer.child) {
+    if (layer.pull && isActive(layer.pull) && !layer.child) measureCopy(layer);
+  }
+  render();
+}).catch(() => { /* The Korean system-font fallback remains interactive. */ });

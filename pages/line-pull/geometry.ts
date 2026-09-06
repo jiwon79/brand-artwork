@@ -65,7 +65,8 @@ export function copyLayout(surface: Surface, pull: Pull, lineCount: number) {
       - (lineCount - 1) * lineHeight / 2,
     fontSize,
     lineHeight,
-    scaleX: 1 + 0.12 * strength,
+    // Keep Hangul proportions intact; fontSize already supplies uniform magnification.
+    scaleX: 1,
   };
 }
 

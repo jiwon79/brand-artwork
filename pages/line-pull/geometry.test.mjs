@@ -121,8 +121,20 @@ test('copy stays centered and unchanged when only the pointer moves sideways', (
         for (const x of [0, width * 0.1, width * 0.9, width]) {
           assert.deepEqual(copyLayout(model, { ...pull, apexX: x }, count), expected);
         }
-        assert.ok(expected.scaleX > 1, 'keep the pull-driven text magnification');
+        near(expected.scaleX, 1);
       }
+    }
+  }
+});
+
+test('copy retains pull-driven magnification without stretching Hangul sideways', () => {
+  for (const direction of [-1, 1]) {
+    let previous = 0;
+    for (const distance of [0, 10, 40, 100, 300, 1000]) {
+      const layout = copyLayout(surface, pullAt(direction * distance), 1);
+      near(layout.scaleX, 1);
+      assert.ok(layout.fontSize > previous);
+      previous = layout.fontSize;
     }
   }
 });
