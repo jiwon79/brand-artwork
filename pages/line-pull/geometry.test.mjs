@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, restY, sampleXs } from './geometry.ts';
 
 const surface = {
-  width: 720, height: 1280, lineGap: 56, surfaceCurvature: 0.022,
+  width: 720, height: 1280, lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
   lensStrength: 0.2, horizontalLens: 0.27, boundaryEase: 0.65,
   boundaryCreep: 0.02, apexSpacing: 0.16,
 };
@@ -20,12 +20,30 @@ test('upper boundary approaches its neighbor, then creeps with it without crossi
       const boundary = boundaryPoint(surface, pull, pull.apexX).y;
       const neighbor = linePoint(surface, pull, pull.originY - direction * surface.lineGap, pull.apexX).y;
       const gap = direction * (boundary - neighbor);
-      assert.ok(gap >= -1e-9 && gap <= lastGap + 1e-9);
+      assert.ok(gap >= surface.lineWidth - 1e-9 && gap <= lastGap + 1e-9);
       lastGap = gap;
     }
     const a = boundaryPoint(surface, pullAt(direction * 340), 440).y;
     const b = boundaryPoint(surface, pullAt(direction * 2100), 440).y;
     assert.ok(Math.abs(a - b) < 4, 'long pull must not send the upper boundary flying');
+  }
+});
+
+test('attached strokes touch edge-to-edge and retain twice the painted thickness', () => {
+  for (const width of [390, 720, 1920]) for (const lineWidth of [0.5, 3, 6]) {
+    const model = { ...surface, width, lineWidth };
+    for (const direction of [-1, 1]) for (const x of [0, width / 2, width]) {
+      const pull = { originY: 437, apexX: width / 2, apexY: 437 + direction * 5000 };
+      const baseY = pull.originY - direction * model.lineGap;
+      const neighbor = linePoint(model, pull, baseY, x);
+      const boundary = boundaryPoint(model, pull, x);
+      const left = linePoint(model, pull, baseY, x - 0.01);
+      const right = linePoint(model, pull, baseY, x + 0.01);
+      const slope = (right.y - left.y) / (right.x - left.x);
+      const normalDistance = direction * (boundary.y - neighbor.y) / Math.hypot(1, slope);
+      near(normalDistance, lineWidth);
+      near(normalDistance + lineWidth, lineWidth * 2);
+    }
   }
 });
 

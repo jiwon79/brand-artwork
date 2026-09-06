@@ -7,6 +7,7 @@ export interface Surface {
   width: number;
   height: number;
   lineGap: number;
+  lineWidth: number;
   surfaceCurvature: number;
   lensStrength: number;
   horizontalLens: number;
@@ -86,9 +87,19 @@ export function boundaryPoint(surface: Surface, pull: Pull, x: number): Point {
   const origin = surfacePoint(surface, pull, x, pull.originY);
   const neighbor = surfacePoint(surface, pull, x, pull.originY - motion.direction * surface.lineGap);
   const progress = -Math.expm1(-motion.travel / (surface.lineGap * surface.boundaryEase));
+  const strength = lensProgress(surface, pull);
+  const halfWidth = Math.max(surface.width / 2, 1);
+  const nx = (x - surface.width / 2) / halfWidth;
+  const slope = -2 * (pull.originY - motion.direction * surface.lineGap - surface.height / 2)
+    * surface.surfaceCurvature * nx / halfWidth
+    * (1 + surface.lensStrength * strength) / (1 + surface.horizontalLens * strength);
+  // Adjacent stroke edges meet; their centerlines stay one stroke width apart.
+  // Account for the curved neighbor's slope in rendered (CSS pixel) coordinates.
+  const separation = surface.lineWidth * Math.hypot(1, slope);
   return {
     x: origin.x,
-    y: origin.y + (neighbor.y - origin.y) * progress - motion.direction * motion.creep,
+    y: origin.y + (neighbor.y + motion.direction * separation - origin.y) * progress
+      - motion.direction * motion.creep,
   };
 }
 
