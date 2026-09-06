@@ -19,7 +19,7 @@ test('social crawlers can read the canonical artwork and image URLs without Java
   expect(meta('og:title')).toBe('Line Pull');
   expect(meta('twitter:title')).toBe(meta('og:title'));
   expect(meta('twitter:card')).toBe('summary_large_image');
-  expect(meta('og:image')).toBe(`${pageUrl}assets/og-image.jpg`);
+  expect(meta('og:image')).toBe(`${pageUrl}assets/og-image.png`);
   expect(meta('twitter:image')).toBe(meta('og:image'));
 });
 
@@ -31,23 +31,15 @@ test('share descriptions and accessible image text remain consistent', () => {
   expect(meta('twitter:image:alt')).toBe(meta('og:image:alt'));
 });
 
-test('the bundled JPEG matches the declared 1200 by 630 card dimensions', () => {
-  const image = readFileSync(new URL('./assets/og-image.jpg', import.meta.url));
-  expect(image.readUInt16BE(0)).toBe(0xffd8);
-  expect(image.readUInt16BE(image.length - 2)).toBe(0xffd9);
-  expect(image.length).toBeLessThan(1_000_000);
-  expect(meta('og:image:type')).toBe('image/jpeg');
-  let dimensions;
-  for (let offset = 2; offset + 9 < image.length;) {
-    expect(image[offset]).toBe(0xff);
-    const marker = image[offset + 1];
-    if ([0xc0, 0xc1, 0xc2].includes(marker)) {
-      dimensions = [image.readUInt16BE(offset + 7), image.readUInt16BE(offset + 5)];
-      break;
-    }
-    if (marker === 0xda || marker === 0xd9) break;
-    offset += 2 + image.readUInt16BE(offset + 2);
-  }
+test('the bundled PNG matches the declared 1200 by 630 card dimensions', () => {
+  const image = readFileSync(new URL('./assets/og-image.png', import.meta.url));
+  expect(image.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+  expect(image.readUInt32BE(8)).toBe(13);
+  expect(image.subarray(12, 16).toString('ascii')).toBe('IHDR');
+  expect(image.subarray(-12).toString('hex')).toBe('0000000049454e44ae426082');
+  expect(image.length).toBeLessThan(5_000_000);
+  expect(meta('og:image:type')).toBe('image/png');
+  const dimensions = [image.readUInt32BE(16), image.readUInt32BE(20)];
   expect(dimensions).toEqual([1200, 630]);
   expect([Number(meta('og:image:width')), Number(meta('og:image:height'))]).toEqual(dimensions);
 });
