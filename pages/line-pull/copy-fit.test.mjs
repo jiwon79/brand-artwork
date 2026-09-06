@@ -89,3 +89,16 @@ test('empty or invisible openings never produce invalid text coordinates', () =>
     assert.ok(Object.values(fitted).every(Number.isFinite));
   }
 });
+
+test('long single-line Korean outer copy fits the viewport without following the pointer x', () => {
+  for (const width of [320, 390, 720, 1265]) for (const glyphCount of [5, 7]) {
+    const surface = { ...model, width };
+    const bounds = { x: -glyphCount / 2, y: -0.6, width: glyphCount, height: 1.2 };
+    const pull = { originY: 250, apexX: width / 2, apexY: 650 };
+    const expected = fitCopyInOpenings(copyLayout(surface, pull, 1), bounds, [], width, 860, 12);
+    assertContained(expected, bounds, [], width, 860);
+    for (const apexX of [0, width / 2, width]) {
+      assert.deepEqual(fitCopyInOpenings(copyLayout(surface, { ...pull, apexX }, 1), bounds, [], width, 860, 12), expected);
+    }
+  }
+});

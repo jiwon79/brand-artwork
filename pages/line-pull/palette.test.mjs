@@ -9,12 +9,12 @@ test('keep the original red pair and include each approved additional color', ()
   assert.deepEqual(themeForInteraction(0), { panelColor: '#c61f3f', textColor: '#f4f0df' });
 });
 
-test('cycle all five pairs independently of the four unchanged messages', () => {
+test('cycle all five pairs independently of fixed slot content', () => {
   for (let index = 0; index < 40; index++) {
     assert.deepEqual(themeForInteraction(index), revealPalette[index % 5]);
   }
-  for (let messageIndex = 0; messageIndex < 4; messageIndex++) {
-    const colors = Array.from({ length: 5 }, (_, cycle) => themeForInteraction(messageIndex + cycle * 4).panelColor);
+  for (const repeatInterval of [1, 2, 3]) {
+    const colors = Array.from({ length: 5 }, (_, cycle) => themeForInteraction(cycle * repeatInterval).panelColor);
     assert.equal(new Set(colors).size, 5);
   }
 });

@@ -3,7 +3,7 @@ import { exposeGuiInDebugMode } from '../../common/debug';
 import { createFrameLoop } from './frame-loop';
 import { fitCopyInOpenings, type CopyBounds } from './copy-fit';
 import { themeForInteraction, type RevealTheme } from './palette';
-import { canKeepOpening, isNestedSlot, layerGap, lineRows, pointInOpening, returnLayerChain } from './layers';
+import { canKeepOpening, isNestedSlot, layerGap, lineRows, messageForSlot, pointInOpening, returnLayerChain } from './layers';
 import {
   boundaryPoint, copyLayout, crossingTimes, lensProgress, linePoint, pointsPath,
   pullDelta, restY, sampleXs, type Point, type Pull, type Surface,
@@ -31,7 +31,6 @@ const params = {
   background: '#050505', lineColor: '#f4f2ec', hoverColor: '#ffffff',
   ...themeForInteraction(0),
 };
-const messages = [['Invisible'], ['More', 'Detail'], ['Hidden', 'Layers'], ['Pull', 'Further']];
 
 interface View {
   group: SVGGElement; clip: SVGClipPathElement; clipPath: SVGPathElement;
@@ -41,7 +40,7 @@ interface View {
 interface DragState extends Pull {
   pointerId: number; previousPoint: Point; originIndex: number | null;
   grabOffsetY: number; targetY: number; velocityY: number;
-  returning: boolean; pinned: boolean; messageIndex: number;
+  returning: boolean; pinned: boolean;
 }
 type ActiveDrag = DragState & { originIndex: number };
 interface Layer {
@@ -128,13 +127,12 @@ function clearPull(layer: Layer): void {
 function activate(layer: Layer, current: DragState, index: number): void {
   current.originIndex = index;
   current.originY = layer.lines[index].baseY;
-  current.messageIndex = interactionCount % messages.length;
   layer.theme = { ...themeForInteraction(interactionCount++) };
   Object.assign(params, layer.theme);
   styledLayer = layer;
   panelColorController.updateDisplay();
   textColorController.updateDisplay();
-  layer.view.copy.replaceChildren(...messages[current.messageIndex].map(text => {
+  layer.view.copy.replaceChildren(...messageForSlot(layer.lines[index].row, layer.depth).map(text => {
     const span = svg('tspan'); span.textContent = text; return span;
   }));
   if (isNestedSlot(layer.lines[index].row, layer.depth)) {
@@ -142,7 +140,7 @@ function activate(layer: Layer, current: DragState, index: number): void {
   }
   layer.view.reveal.setAttribute('data-content', layer.child ? 'nested' : 'copy');
   layer.view.copy.setAttribute('display', layer.child ? 'none' : 'inline');
-  if (layer.parent && !layer.child) {
+  if (!layer.child) {
     // Measure the actual font and complete multiline block once per activation.
     // Frames below use these em-space bounds without forcing browser layout reads.
     const copy = layer.view.copy;
@@ -188,8 +186,10 @@ function renderLayer(layer: Layer): void {
       if (!layer.child) {
         const spans = [...view.copy.children];
         let layout = copyLayout(model, current, spans.length);
-        if (layer.parent && layer.copyBounds) {
-          const clips = [layer.polygon];
+        if (layer.copyBounds) {
+          // Outer copy keeps the original reveal but must fit the viewport width.
+          // Inner copy additionally fits both openings so the parent cannot crop it.
+          const clips = layer.parent ? [layer.polygon] : [];
           for (let parent: Layer | null = layer.parent; parent; parent = parent.parent) clips.push(parent.polygon);
           layout = fitCopyInOpenings(layout, layer.copyBounds, clips, width, height, model.lineWidth * 2 + 6);
         }
@@ -318,7 +318,7 @@ function onPointerDown(event: PointerEvent): void {
   layer.pull = {
     pointerId: event.pointerId, previousPoint: point, originIndex: null, originY,
     apexX: point.x, apexY: restingY, grabOffsetY: point.y - restingY,
-    targetY: restingY, velocityY: 0, returning: false, pinned: false, messageIndex: 0,
+    targetY: restingY, velocityY: 0, returning: false, pinned: false,
   };
   pointerLayer = layer;
   if (index !== null) activate(layer, layer.pull, index);

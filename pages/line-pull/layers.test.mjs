@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { boundaryPoint, crossingTimes, linePoint, sampleXs } from './geometry.ts';
-import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_LAYERS, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers.ts';
+import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_LAYERS, messageForSlot, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers.ts';
 
 const returningLayer = (parent = null, pinned = true) => ({
   parent, dirty: false,
@@ -64,6 +64,24 @@ test('nested content is deterministic per slot, sparse, and bounded in depth', (
   for (let depth = MAX_LAYERS - 1; depth <= 5; depth++) {
     for (let row = -10; row <= 10; row++) assert.equal(isNestedSlot(row, depth), false);
   }
+});
+
+test('outer slots repeat greeting, hidden inner grid, and closing phrase in a fixed order', () => {
+  for (let cycle = -10; cycle <= 10; cycle++) {
+    assert.deepEqual(messageForSlot(cycle * 3, 0), ['안녕하세요']);
+    assert.deepEqual(messageForSlot(cycle * 3 + 1, 0), []);
+    assert.deepEqual(messageForSlot(cycle * 3 + 2, 0), ['잘부탁드립니다']);
+  }
+});
+
+test('the name appears only inside the second layer, never after repeated outer pulls', () => {
+  const messages = new Set();
+  for (let row = -30; row <= 30; row++) {
+    assert.equal(messageForSlot(row, 0).includes('이지원입니다'), false);
+    assert.deepEqual(messageForSlot(row, 1), ['이지원입니다']);
+    for (const depth of [0, 1]) for (const message of messageForSlot(row, depth)) messages.add(message);
+  }
+  assert.deepEqual([...messages].sort(), ['안녕하세요', '이지원입니다', '잘부탁드립니다'].sort());
 });
 
 test('each inner grid stays aligned to its own phase and covers the visible screen', () => {

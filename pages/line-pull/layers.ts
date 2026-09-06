@@ -24,6 +24,12 @@ export function isNestedSlot(row: number, depth: number): boolean {
   return depth + 1 < MAX_LAYERS && ((row % 3) + 3) % 3 === 1;
 }
 
+export function messageForSlot(row: number, depth: number): string[] {
+  if (isNestedSlot(row, depth)) return [];
+  if (depth > 0) return ['이지원입니다'];
+  return [((row % 3) + 3) % 3 === 0 ? '안녕하세요' : '잘부탁드립니다'];
+}
+
 export function layerGap(rootGap: number, depth: number): number {
   return Math.max(32, rootGap * 0.86 ** depth);
 }
