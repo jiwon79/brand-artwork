@@ -2,7 +2,7 @@ import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import { createFrameLoop } from './frame-loop';
 import { themeForInteraction, type RevealTheme } from './palette';
-import { canKeepOpening, isNestedSlot, layerGap, lineRows, pointInOpening } from './layers';
+import { canKeepOpening, isNestedSlot, layerGap, lineRows, pointInOpening, returnLayerChain } from './layers';
 import {
   boundaryPoint, copyLayout, crossingTimes, lensProgress, linePoint, pointsPath,
   pullDelta, restY, sampleXs, type Point, type Pull, type Surface,
@@ -273,7 +273,12 @@ function releasePointer(normalRelease: boolean, immediate = false): void {
   // Detach ownership before lostpointercapture is delivered.
   pointerLayer = null;
   current.pointerId = -1;
-  if (!immediate && normalRelease && layer.child && isActive(current)
+  if (!immediate && normalRelease && layer.parent && isActive(current)) {
+    // Only the first peel stays open for re-grabbing. Releasing an inner line
+    // closes it and its ancestors together, even when it reveals another grid.
+    if (reducedMotion.matches) clearPull(root);
+    else returnLayerChain(layer);
+  } else if (!immediate && normalRelease && layer.child && isActive(current)
     && canKeepOpening(polygon, current.apexX, height, layer.child.model.lineGap, clips)) {
     current.pinned = true;
     current.velocityY = 0;

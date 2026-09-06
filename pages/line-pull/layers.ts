@@ -2,6 +2,23 @@ import type { Point } from './geometry';
 
 export const MAX_NESTED_DEPTH = 3;
 
+interface ReturningLayer {
+  parent: ReturningLayer | null;
+  pull: { pinned: boolean; returning: boolean; velocityY: number } | null;
+  dirty: boolean;
+}
+
+// Release the whole opened stack from its current pose, in the same frame.
+export function returnLayerChain(layer: ReturningLayer): void {
+  for (let current: ReturningLayer | null = layer; current; current = current.parent) {
+    if (!current.pull) continue;
+    current.pull.pinned = false;
+    current.pull.returning = true;
+    current.pull.velocityY = 0;
+    current.dirty = true;
+  }
+}
+
 // Content belongs to the slot, not the number of times the user has tried it.
 export function isNestedSlot(row: number, depth: number): boolean {
   return depth < MAX_NESTED_DEPTH && ((row % 3) + 3) % 3 === 1;

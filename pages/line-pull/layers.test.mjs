@@ -1,7 +1,46 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { boundaryPoint, crossingTimes, linePoint, sampleXs } from './geometry.ts';
-import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_NESTED_DEPTH, pointInOpening, visibleOpeningHeight } from './layers.ts';
+import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_NESTED_DEPTH, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers.ts';
+
+const returningLayer = (parent = null, pinned = true) => ({
+  parent, dirty: false,
+  pull: { pinned, returning: false, velocityY: 23, apexX: 360, apexY: 700, targetY: 720 },
+});
+
+test('releasing an inner layer starts both springs together without jumping their geometry', () => {
+  const outer = returningLayer(), inner = returningLayer(outer, false);
+  returnLayerChain(inner);
+  for (const layer of [outer, inner]) {
+    assert.equal(layer.dirty, true);
+    assert.deepEqual(layer.pull, {
+      pinned: false, returning: true, velocityY: 0, apexX: 360, apexY: 700, targetY: 720,
+    });
+  }
+});
+
+test('a deeper release also unpins every ancestor', () => {
+  const outer = returningLayer(), inner = returningLayer(outer), deepest = returningLayer(inner, false);
+  returnLayerChain(deepest);
+  for (const layer of [outer, inner, deepest]) {
+    assert.equal(layer.pull.returning, true);
+    assert.equal(layer.pull.pinned, false);
+    assert.equal(layer.pull.velocityY, 0);
+    assert.equal(layer.dirty, true);
+  }
+});
+
+test('returning a chain leaves inactive layers inactive and does not touch other pockets', () => {
+  const outer = returningLayer(), inactive = { parent: outer, pull: null, dirty: false };
+  const inner = returningLayer(inactive, false), unrelated = returningLayer();
+  returnLayerChain(inner);
+  assert.equal(inactive.pull, null);
+  assert.equal(inactive.dirty, false);
+  assert.equal(outer.pull.returning, true);
+  assert.equal(unrelated.pull.pinned, true);
+  assert.equal(unrelated.pull.returning, false);
+  assert.equal(unrelated.dirty, false);
+});
 
 const model = {
   width: 720, height: 1280, lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
