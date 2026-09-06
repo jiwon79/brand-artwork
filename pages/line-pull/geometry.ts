@@ -90,9 +90,11 @@ export function boundaryPoint(surface: Surface, pull: Pull, x: number): Point {
   const strength = lensProgress(surface, pull);
   const halfWidth = Math.max(surface.width / 2, 1);
   const nx = (x - surface.width / 2) / halfWidth;
-  const slope = -2 * (pull.originY - motion.direction * surface.lineGap - surface.height / 2)
-    * surface.surfaceCurvature * nx / halfWidth
-    * (1 + surface.lensStrength * strength) / (1 + surface.horizontalLens * strength);
+  // surfacePoint scales around a curved pivot, so include the pivot's slope too.
+  const effectiveY = pull.originY - motion.direction * surface.lineGap
+    + motion.direction * surface.lineGap * surface.lensStrength * strength;
+  const slope = -2 * (effectiveY - surface.height / 2) * surface.surfaceCurvature * nx / halfWidth
+    / (1 + surface.horizontalLens * strength);
   // Adjacent stroke edges meet; their centerlines stay one stroke width apart.
   // Account for the curved neighbor's slope in rendered (CSS pixel) coordinates.
   const separation = surface.lineWidth * Math.hypot(1, slope);
