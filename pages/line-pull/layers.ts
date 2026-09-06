@@ -1,6 +1,6 @@
 import type { Point } from './geometry';
 
-export const MAX_NESTED_DEPTH = 3;
+export const MAX_LAYERS = 2;
 
 interface ReturningLayer {
   parent: ReturningLayer | null;
@@ -21,7 +21,7 @@ export function returnLayerChain(layer: ReturningLayer): void {
 
 // Content belongs to the slot, not the number of times the user has tried it.
 export function isNestedSlot(row: number, depth: number): boolean {
-  return depth < MAX_NESTED_DEPTH && ((row % 3) + 3) % 3 === 1;
+  return depth + 1 < MAX_LAYERS && ((row % 3) + 3) % 3 === 1;
 }
 
 export function layerGap(rootGap: number, depth: number): number {

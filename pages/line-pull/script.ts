@@ -23,7 +23,6 @@ const artwork = required<SVGSVGElement>('#artwork');
 const defs = required<SVGDefsElement>('#artwork-defs');
 const surfaceGrain = required<HTMLElement>('#surface-grain');
 const hint = required<HTMLElement>('#hint');
-const closeButton = required<HTMLButtonElement>('#close-layer');
 const params = {
   lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
   lensStrength: 0.20, horizontalLens: 0.27, boundaryEase: 0.65,
@@ -212,7 +211,6 @@ function renderFrame(): void {
   const strength = current ? lensProgress(root.model, current) : 0;
   surfaceGrain.style.transform = 'scale(' + (1 + 0.05 * strength) + ')';
   surfaceGrain.style.transformOrigin = current ? current.apexX + 'px ' + current.originY + 'px' : '50% 50%';
-  closeButton.hidden = !deepestPinned();
 }
 
 function visibleInLayer(layer: Layer, point: Point): boolean {
@@ -419,8 +417,6 @@ stage.addEventListener('lostpointercapture', finishPointer);
 stage.addEventListener('pointerleave', () => {
   if (!pointerLayer && hoverLayer) { hoverLayer.hoveredIndex = -1; hoverLayer.dirty = true; hoverLayer = null; render(); }
 });
-closeButton.addEventListener('pointerdown', event => event.stopPropagation());
-closeButton.addEventListener('click', closeDeepest);
 window.addEventListener('keydown', event => { if (event.key === 'Escape') closeDeepest(); });
 window.addEventListener('blur', () => releasePointer(false));
 window.addEventListener('resize', resize);

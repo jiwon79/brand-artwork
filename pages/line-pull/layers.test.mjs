@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { boundaryPoint, crossingTimes, linePoint, sampleXs } from './geometry.ts';
-import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_NESTED_DEPTH, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers.ts';
+import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_LAYERS, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers.ts';
 
 const returningLayer = (parent = null, pinned = true) => ({
   parent, dirty: false,
@@ -56,15 +56,18 @@ const polygonFor = (surface, pull) => {
 };
 
 test('nested content is deterministic per slot, sparse, and bounded in depth', () => {
-  for (let depth = 0; depth < MAX_NESTED_DEPTH; depth++) {
+  assert.equal(MAX_LAYERS, 2);
+  for (let depth = 0; depth < MAX_LAYERS - 1; depth++) {
     for (let row = -10; row <= 10; row++) assert.equal(isNestedSlot(row, depth), isNestedSlot(row + 3, depth));
     assert.deepEqual([0, 1, 2].map(row => isNestedSlot(row, depth)), [false, true, false]);
   }
-  for (let row = -10; row <= 10; row++) assert.equal(isNestedSlot(row, MAX_NESTED_DEPTH), false);
+  for (let depth = MAX_LAYERS - 1; depth <= 5; depth++) {
+    for (let row = -10; row <= 10; row++) assert.equal(isNestedSlot(row, depth), false);
+  }
 });
 
 test('each inner grid stays aligned to its own phase and covers the visible screen', () => {
-  for (const height of [320, 844, 1280, 2160]) for (let depth = 0; depth <= MAX_NESTED_DEPTH; depth++) {
+  for (const height of [320, 844, 1280, 2160]) for (let depth = 0; depth < MAX_LAYERS; depth++) {
     const gap = layerGap(56, depth);
     for (const phase of [-1000, 31.36, 255, 5000]) {
       const rows = lineRows(height, gap, phase);

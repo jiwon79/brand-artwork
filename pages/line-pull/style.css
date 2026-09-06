@@ -108,25 +108,6 @@ body {
   display: none;
 }
 
-.layer-close {
-  position: fixed;
-  right: max(18px, env(safe-area-inset-right));
-  bottom: max(18px, env(safe-area-inset-bottom));
-  z-index: 4;
-  padding: 12px 15px;
-  border: 1px solid rgba(244, 242, 236, 0.32);
-  border-radius: 3px;
-  background: #050505;
-  color: #f4f2ec;
-  font: 500 11px/1.2 Arial, sans-serif;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.layer-close[hidden] { display: none; }
-.layer-close span { margin-left: 8px; }
-.layer-close:focus-visible { outline: 2px solid #f4f2ec; outline-offset: 3px; }
-
 @media (pointer: coarse) {
   .stage {
     cursor: default;
