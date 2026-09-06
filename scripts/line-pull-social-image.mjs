@@ -3,12 +3,11 @@ export const socialImage = Object.freeze({
   height: 630,
   headingHeight: 144,
   title: 'Line Pull',
-  series: '바이브코딩으로 예쁜 거 만들기 · 4일차',
 });
 
 // Compose only the header. The greeting and folded artwork below it stay intact.
 export function drawSocialImage(context, source) {
-  const { width, height, headingHeight, title, series } = socialImage;
+  const { width, height, headingHeight, title } = socialImage;
   if (source.naturalWidth !== width || source.naturalHeight !== height) {
     throw new Error('The original capture must be a 1200 × 630 PNG.');
   }
@@ -26,8 +25,4 @@ export function drawSocialImage(context, source) {
   context.fillStyle = '#f4f2ec';
   context.font = '800 52px "Pretendard"';
   context.fillText(title, 56, 82);
-  context.textAlign = 'right';
-  context.fillStyle = '#c5c2bc';
-  context.font = '800 22px "Pretendard"';
-  context.fillText(series, width - 56, 79);
 }

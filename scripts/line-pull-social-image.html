@@ -19,8 +19,8 @@
 <body>
   <main>
     <h1>Line Pull 공유 이미지 합성</h1>
-    <p>실제 PNG 캡처에 작품명과 4일차 표기를 합성합니다. 생성형 이미지나 JPEG 중간 파일은 사용하지 않습니다.</p>
-    <canvas id="preview" width="1200" height="630" role="img" aria-label="Line Pull 작품명과 4일차 표기가 있는 공유 이미지"></canvas>
+    <p>실제 PNG 캡처의 왼쪽 위에 작품명만 합성합니다. 생성형 이미지나 JPEG 중간 파일은 사용하지 않습니다.</p>
+    <canvas id="preview" width="1200" height="630" role="img" aria-label="왼쪽 위에 Line Pull 작품명이 있는 공유 이미지"></canvas>
     <p id="status" role="status">원본 이미지와 Pretendard를 불러오는 중…</p>
     <button id="download" disabled>PNG 다운로드</button>
     <p>입력: <code>pages/line-pull/assets/og-artwork.png</code><br>
@@ -38,7 +38,7 @@
       const [loadedFont] = await Promise.all([font.load(), source.decode()]);
       document.fonts.add(loadedFont);
       drawSocialImage(canvas.getContext('2d'), source);
-      status.textContent = `${socialImage.width} × ${socialImage.height} PNG 준비 완료 · ${socialImage.title} · ${socialImage.series}`;
+      status.textContent = `${socialImage.width} × ${socialImage.height} PNG 준비 완료 · ${socialImage.title}`;
       download.disabled = false;
       download.addEventListener('click', () => {
         canvas.toBlob(blob => {

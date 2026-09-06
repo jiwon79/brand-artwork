@@ -11,7 +11,7 @@ const context = () => ({
   fillText: vi.fn<CanvasRenderingContext2D['fillText']>(),
 });
 
-test('compose the title and episode above the greeting without rescaling the capture', () => {
+test('compose only the upper-left title without rescaling the capture or adding a series label', () => {
   const ctx = context();
   const source = { naturalWidth: 1200, naturalHeight: 630 };
   drawSocialImage(ctx, source);
@@ -19,10 +19,7 @@ test('compose the title and episode above the greeting without rescaling the cap
   expect(ctx.drawImage).toHaveBeenCalledExactlyOnceWith(source, 0, 0);
   expect(ctx.fillRect).toHaveBeenCalledExactlyOnceWith(0, 0, 1200, 144);
   expect(socialImage.headingHeight).toBeLessThan(155);
-  expect(ctx.fillText.mock.calls).toEqual([
-    ['Line Pull', 56, 82],
-    ['바이브코딩으로 예쁜 거 만들기 · 4일차', 1144, 79],
-  ]);
+  expect(ctx.fillText).toHaveBeenCalledExactlyOnceWith('Line Pull', 56, 82);
 });
 
 test('reject differently sized captures instead of stretching the artwork', () => {

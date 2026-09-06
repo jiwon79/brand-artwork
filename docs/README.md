@@ -42,7 +42,7 @@ docs/
 
 ### Line Pull
 
-- [`social-share-image.md`](./artworks/line-pull/social-share-image.md) - 실제 캡처에 작품명·4일차 표기를 합성하는 PNG 제작 도구와 재생성 방법
+- [`social-share-image.md`](./artworks/line-pull/social-share-image.md) - 실제 캡처의 왼쪽 위에 작품명만 합성하는 PNG 제작 도구와 재생성 방법
 
 ## Concepts
 
