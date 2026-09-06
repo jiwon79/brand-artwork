@@ -23,7 +23,6 @@ const stage = required<HTMLElement>('#stage');
 const artwork = required<SVGSVGElement>('#artwork');
 const defs = required<SVGDefsElement>('#artwork-defs');
 const surfaceGrain = required<HTMLElement>('#surface-grain');
-const hint = required<HTMLElement>('#hint');
 const params = {
   lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
   lensStrength: 0.20, horizontalLens: 0.27, boundaryEase: 0.65,
@@ -155,7 +154,6 @@ function activate(layer: Layer, current: DragState, index: number): void {
     const box = copy.getBBox();
     layer.copyBounds = { x: box.x / 100, y: box.y / 100, width: box.width / 100, height: box.height / 100 };
   }
-  hint.classList.add('is-hidden');
   layer.dirty = true;
 }
 
