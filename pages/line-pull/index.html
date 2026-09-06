@@ -14,19 +14,21 @@
     aria-label="Pull anywhere on the horizontal lines to reveal hidden messages"
   >
     <svg id="artwork" class="artwork" aria-hidden="true">
-      <defs>
+      <defs id="artwork-defs">
         <clipPath id="reveal-clip" clipPathUnits="userSpaceOnUse">
           <path id="reveal-path"></path>
         </clipPath>
       </defs>
 
-      <g id="reveal" class="reveal" clip-path="url(#reveal-clip)" opacity="0">
-        <rect id="reveal-background"></rect>
-        <text id="reveal-copy" text-anchor="middle" dominant-baseline="middle"></text>
-      </g>
+      <g id="root-surface" data-layer-depth="0">
+        <g id="reveal" class="reveal" clip-path="url(#reveal-clip)" opacity="0">
+          <rect id="reveal-background"></rect>
+          <text id="reveal-copy" text-anchor="middle" dominant-baseline="middle"></text>
+        </g>
 
-      <path id="origin-pull-path" class="origin-pull-path"></path>
-      <g id="line-field" class="line-field"></g>
+        <path id="origin-pull-path" class="origin-pull-path"></path>
+        <g id="line-field" class="line-field"></g>
+      </g>
     </svg>
 
     <div id="surface-grain" class="surface-grain" aria-hidden="true"></div>
@@ -35,6 +37,7 @@
       <span class="hint__desktop">Press anywhere and pull</span>
       <span class="hint__touch">Touch anywhere and pull</span>
     </p>
+    <button id="close-layer" class="layer-close" type="button" hidden>한 겹 닫기 <span aria-hidden="true">↶</span></button>
   </main>
 
   <script type="module" src="script.ts"></script>

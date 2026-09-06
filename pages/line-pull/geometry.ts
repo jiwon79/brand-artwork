@@ -151,7 +151,7 @@ export function pointsPath(points: Point[], close = false): string {
 }
 
 // Intersect the pointer segment with the actual curved resting line, in CSS pixels.
-export function crossingTime(surface: Surface, from: Point, to: Point, baseY: number): number | null {
+export function crossingTimes(surface: Surface, from: Point, to: Point, baseY: number): number[] {
   const start = from.y - restY(surface, from.x, baseY);
   const end = to.y - restY(surface, to.x, baseY);
   const mid = (from.y + to.y) / 2 - restY(surface, (from.x + to.x) / 2, baseY);
@@ -167,5 +167,9 @@ export function crossingTime(surface: Surface, from: Point, to: Point, baseY: nu
       roots.push((-b - root) / (2 * a), (-b + root) / (2 * a));
     }
   }
-  return roots.filter(t => t > 1e-7 && t <= 1).sort((x, y) => x - y)[0] ?? null;
+  return roots.filter(t => t > 1e-7 && t <= 1).sort((x, y) => x - y);
+}
+
+export function crossingTime(surface: Surface, from: Point, to: Point, baseY: number): number | null {
+  return crossingTimes(surface, from, to, baseY)[0] ?? null;
 }
