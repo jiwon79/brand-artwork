@@ -10,8 +10,9 @@
   "displayScales": [
     { "frame": 0, "scale": 1 },
     { "frame": 30, "scale": 1 },
-    { "frame": 31, "scale": 0.993 },
-    { "frame": 60, "scale": 0.993 },
+    { "frame": 31, "scale": 0.986 },
+    { "frame": 60, "scale": 1 },
+    { "frame": 61, "scale": 0.996 },
     { "frame": 120, "scale": 1 }
   ]
 }

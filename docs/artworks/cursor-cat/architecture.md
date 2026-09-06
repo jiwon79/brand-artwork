@@ -47,9 +47,9 @@ manifest에는 다음 값이 들어 있다.
 
 1. URL에서 `main` 또는 10자리 ID를 구한다.
 2. R2 manifest를 가져와 schema, ID, 120-frame 계약과 calibration anchor를 검사한다.
-3. frame 001을 표시해 poster-ready 상태가 된다.
-4. 최대 8개 요청을 동시에 사용해 120장을 preload하고 decode한다.
-5. 모든 이미지가 준비된 뒤에만 pointer 입력으로 target frame을 갱신한다.
+3. 고양이는 숨긴 채 frame 001을 먼저 decode하고 중앙 로딩 진행률을 시작한다.
+4. 최대 8개 요청을 동시에 사용해 나머지 119장을 preload하고, 완료 수를 백분율로 표시한다.
+5. 120장이 모두 준비된 뒤 고양이를 표시하고 pointer 입력으로 target frame을 갱신한다.
 
 페이지가 유지하는 주요 상태는 다음과 같다.
 
@@ -98,6 +98,20 @@ manifest의 `displayScales`는 frame index 사이를 보간해 CSS transform에 
 - 모바일 주소창이 나타나거나 사라질 때 visual viewport 높이를 따라간다.
 - 이미지와 stage의 bottom은 항상 현재 viewport bottom과 같다.
 - 9:16 비율을 유지하되 폭은 viewport를 넘지 않는다.
+
+## Process view
+
+상단 `Angle / Frame / Final` 스테퍼는 production selection을 바꾸지 않고 같은 중간 상태를 단계별로 보여준다.
+
+| 단계 | 보여주는 값 |
+| --- | --- |
+| `Angle` | 선택된 후보의 눈 기준점, pointer까지의 선, `atan2`로 측정한 각도 호 |
+| `Frame` | 실제 selection 함수를 다시 표본화한 120개 원형 구간과 선택 구간 |
+| `Final` | guide가 없는 최종 WebP 출력과 원형 최단 경로 보간 |
+
+`?stage=angle|frame|final`, 숫자키 `1…3`과 좌우 방향키로 단계를 바꾼다. Angle 단계가 선택된 frame의 눈 기준점을 쓰는 이유는 모든 포즈에 공통인 고정 중심이 없기 때문이다. Frame 단계의 원형 경계도 단순히 3° 간격으로 그리지 않고, 원 위의 각 표본을 production `pointerFrame()`에 넣어 실제로 frame이 바뀌는 위치에 tick을 그린다.
+
+Process view는 관람자를 위한 설명이고 `?debug=1`은 calibration 검증용이다. 둘이 동시에 켜지면 target과 rendered 차이까지 포함한 Debug mode를 우선 표시한다.
 
 ## Debug mode
 

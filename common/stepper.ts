@@ -26,6 +26,7 @@ const stepperStyles = `
   :host {
     position: fixed;
     z-index: var(--stepper-z-index, 10);
+    top: var(--stepper-top, auto);
     left: 50%;
     bottom: var(--stepper-bottom, max(10px, env(safe-area-inset-bottom)));
     display: block;
