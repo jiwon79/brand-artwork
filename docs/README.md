@@ -21,6 +21,7 @@ docs/
 
 ## Guides
 
+- [`social-share-images.md`](./guides/social-share-images.md) - 실제 작품 화면을 PNG로 캡처하고 소셜 공유 메타데이터에 연결·검증하는 공통 절차
 - [`reference-extension-workflow.md`](./guides/reference-extension-workflow.md) - 레퍼런스 복원 뒤 정체성을 유지하며 새로운 상호작용을 제안·비교·선택하는 공통 작업 방식
 
 ## Artworks
