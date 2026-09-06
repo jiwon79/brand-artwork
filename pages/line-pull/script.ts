@@ -1,6 +1,7 @@
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import { createFrameLoop } from './frame-loop';
+import { fitCopyInOpenings, type CopyBounds } from './copy-fit';
 import { themeForInteraction, type RevealTheme } from './palette';
 import { canKeepOpening, isNestedSlot, layerGap, lineRows, pointInOpening, returnLayerChain } from './layers';
 import {
@@ -48,7 +49,7 @@ interface Layer {
   depth: number; parent: Layer | null; child: Layer | null;
   view: View; model: Surface; theme: RevealTheme;
   lines: { row: number; baseY: number; path: SVGPathElement }[];
-  pull: DragState | null; polygon: Point[]; dirty: boolean; hoveredIndex: number;
+  pull: DragState | null; polygon: Point[]; copyBounds: CopyBounds | null; dirty: boolean; hoveredIndex: number;
 }
 
 const rootView: View = {
@@ -96,7 +97,7 @@ function createLayer(parent: Layer | null, phase: number): Layer {
   view.field.replaceChildren();
   return {
     depth, parent, child: null, view, model, theme: { ...themeForInteraction(0) },
-    pull: null, polygon: [], dirty: true, hoveredIndex: -1,
+    pull: null, polygon: [], copyBounds: null, dirty: true, hoveredIndex: -1,
     lines: lineRows(height, model.lineGap, phase).map(row => {
       const path = svg('path');
       path.setAttribute('data-row', String(row.row));
@@ -142,6 +143,18 @@ function activate(layer: Layer, current: DragState, index: number): void {
   }
   layer.view.reveal.setAttribute('data-content', layer.child ? 'nested' : 'copy');
   layer.view.copy.setAttribute('display', layer.child ? 'none' : 'inline');
+  if (layer.parent && !layer.child) {
+    // Measure the actual font and complete multiline block once per activation.
+    // Frames below use these em-space bounds without forcing browser layout reads.
+    const copy = layer.view.copy;
+    copy.setAttribute('font-size', '100');
+    copy.setAttribute('x', '0'); copy.setAttribute('y', '0');
+    [...copy.children].forEach((span, i) => {
+      span.setAttribute('x', '0'); span.setAttribute('dy', i === 0 ? '0' : '83');
+    });
+    const box = copy.getBBox();
+    layer.copyBounds = { x: box.x / 100, y: box.y / 100, width: box.width / 100, height: box.height / 100 };
+  }
   hint.classList.add('is-hidden');
   layer.dirty = true;
 }
@@ -176,7 +189,13 @@ function renderLayer(layer: Layer): void {
       view.origin.setAttribute('opacity', '1');
       if (!layer.child) {
         const spans = [...view.copy.children];
-        const { x, y, fontSize, scaleX, lineHeight } = copyLayout(model, current, spans.length);
+        let layout = copyLayout(model, current, spans.length);
+        if (layer.parent && layer.copyBounds) {
+          const clips = [layer.polygon];
+          for (let parent: Layer | null = layer.parent; parent; parent = parent.parent) clips.push(parent.polygon);
+          layout = fitCopyInOpenings(layout, layer.copyBounds, clips, width, height, model.lineWidth * 2 + 6);
+        }
+        const { x, y, fontSize, scaleX, lineHeight } = layout;
         view.copy.setAttribute('font-size', String(fontSize));
         view.copy.setAttribute('transform', 'translate(' + x + ' 0) scale(' + scaleX + ' 1) translate(' + -x + ' 0)');
         view.copy.setAttribute('x', String(x));
@@ -273,7 +292,7 @@ function releasePointer(normalRelease: boolean, immediate = false): void {
   current.pointerId = -1;
   if (!immediate && normalRelease && layer.parent && isActive(current)) {
     // Only the first peel stays open for re-grabbing. Releasing an inner line
-    // closes it and its ancestors together, even when it reveals another grid.
+    // closes both peels together.
     if (reducedMotion.matches) clearPull(root);
     else returnLayerChain(layer);
   } else if (!immediate && normalRelease && layer.child && isActive(current)
