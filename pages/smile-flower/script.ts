@@ -131,7 +131,8 @@ function start() {
         } else if (part.materialName.includes('enamel')) {
           color.set(mode === 'field' ? CORE_PALETTE[cell.color] : CORE_PALETTE.B);
         } else if (part.materialName.includes('heart')) {
-          color.set(accent).lerp(new THREE.Color('#ffffff'), 0.32);
+          color.set(mode === 'field' ? CORE_PALETTE[cell.color] : CORE_PALETTE.B)
+            .lerp(new THREE.Color('#eee6ec'), 0.32);
         } else if (part.materialName.includes('porcelain')) {
           color.set(mode === 'field' ? PETAL_PALETTE[cell.porcelain] : PETAL_PALETTE.P);
         } else if (part.materialName.includes('stamens')) {
@@ -304,10 +305,12 @@ function start() {
       const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld).translate(0, 0, -depthCenter);
       const isPorcelain = original.name.includes('porcelain');
       const isCore = original.name.includes('enamel') || original.name.includes('heart');
+      const isFlower = model === 'flower';
       const material = new THREE.MeshPhysicalMaterial({
-        color: '#ffffff', roughness: isPorcelain ? 0.42 : isCore ? 0.26 : 0.33,
-        metalness: isCore ? 0.05 : 0, clearcoat: isCore ? 0.35 : 0.12,
-        clearcoatRoughness: 0.24, envMapIntensity: isCore ? 0.5 : isPorcelain ? 0.28 : 0.3,
+        color: '#ffffff', roughness: isFlower ? (isPorcelain ? 0.76 : isCore ? 0.70 : 0.78) : 0.33,
+        metalness: 0, clearcoat: isFlower ? 0 : 0.12,
+        specularIntensity: isFlower ? 0.25 : 1,
+        clearcoatRoughness: 0.5, envMapIntensity: isFlower ? 0.12 : 0.3,
         vertexColors: geometry.hasAttribute('color'),
       });
       // A shallow resin face bends the softbox reflection across the smiley.

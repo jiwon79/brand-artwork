@@ -17,6 +17,12 @@ SCENE_NAME = "Flower Study"
 PETAL_COUNT = 5
 RADIAL_STEPS = 24
 ANGULAR_STEPS = 96
+OUTER_PETAL_ANGLE = math.radians(8)
+
+
+def linear_rgb(hex_color):
+    srgb = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    return tuple(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in srgb)
 
 
 def material(name, color, roughness, coat, metallic=0):
@@ -28,7 +34,8 @@ def material(name, color, roughness, coat, metallic=0):
     bsdf.inputs["Metallic"].default_value = metallic
     bsdf.inputs["IOR"].default_value = 1.46
     bsdf.inputs["Coat Weight"].default_value = coat
-    bsdf.inputs["Coat Roughness"].default_value = 0.19
+    bsdf.inputs["Coat Roughness"].default_value = 0.5
+    bsdf.inputs["Specular IOR Level"].default_value = 0.125
     mat.diffuse_color = (*color, 1)
     return mat
 
@@ -58,8 +65,8 @@ def petal_surface(u, v):
 
 
 def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEPS,
-               surface=petal_surface, thickness=0.022, lip=0.008):
-    angle = math.radians(90 - index * 72)
+               surface=petal_surface, thickness=0.022, lip=0.008, angle_offset=0):
+    angle = math.radians(90 - index * 72) + angle_offset
     c, s = math.cos(angle), math.sin(angle)
 
     def vertex(u, v):
@@ -191,44 +198,32 @@ def petal_projector(petals):
 
 
 def make_stamen(index, mat, project):
-    # A narrow, partially embedded inlay. XY stays straight; depth follows the
-    # actual exported petal mesh, including its tessellation. Split at overlaps
-    # so a strip never bridges the empty space between two different petals.
+    # XY stays straight and depth follows the supporting petal. The outer
+    # petals turn relative to these fixed spokes so no strip crosses a seam.
     angle = math.radians(90 - index * 72)
     c, s = math.cos(angle), math.sin(angle)
-    runs, run, previous_owner = [], [], None
+    rows, support = [], None
     for step in range(129):
         radius = 0.153 + (0.35 - 0.153) * step / 128
-        row, owners = [], []
+        row = []
         for offset in (-0.004, 0.004):
             x, y = radius * c - offset * s, radius * s + offset * c
             height, owner = project(x, y)
+            if support is None:
+                support = owner
+            assert owner == support, "Adjust the outer petal angle: a stamen crosses a petal seam"
             row.append((x, y, height))
-            owners.append(owner)
-        owner = owners[0] if owners[0] == owners[1] else None
-        if owner is None or owner != previous_owner:
-            if len(run) > 1:
-                runs.append(run)
-            run = []
-        if owner is not None:
-            run.append(row)
-        previous_owner = owner
-    if len(run) > 1:
-        runs.append(run)
-    assert runs, "Stamen must remain visible on the petal surface"
+        rows.append(row)
     vertices, faces = [], []
-    for run in runs:
-        first = len(vertices)
-        for row in run:
-            vertices.extend((x, y, z + 0.0006) for x, y, z in row)
-            vertices.extend((x, y, z - 0.0015) for x, y, z in row)
-        for i in range(len(run) - 1):
-            a, b = first + 4 * i, first + 4 * (i + 1)
-            faces.extend([(a, a + 1, b + 1, b), (a + 2, b + 2, b + 3, a + 3),
-                          (a, b, b + 2, a + 2), (a + 1, a + 3, b + 3, b + 1)])
-        last = first + 4 * (len(run) - 1)
-        faces.extend([(first, first + 2, first + 3, first + 1),
-                      (last, last + 1, last + 3, last + 2)])
+    for row in rows:
+        vertices.extend((x, y, z + 0.0006) for x, y, z in row)
+        vertices.extend((x, y, z - 0.0015) for x, y, z in row)
+    for i in range(len(rows) - 1):
+        a, b = 4 * i, 4 * (i + 1)
+        faces.extend([(a, a + 1, b + 1, b), (a + 2, b + 2, b + 3, a + 3),
+                      (a, b, b + 2, a + 2), (a + 1, a + 3, b + 3, b + 1)])
+    last = 4 * (len(rows) - 1)
+    faces.extend([(0, 2, 3, 1), (last, last + 1, last + 3, last + 2)])
     obj = closed_mesh(f"Stamen {index + 1} surface inlay", vertices, faces, [mat])
     obj["surface_clearance"] = 0.0006
     obj["embedded_depth"] = 0.0015
@@ -304,12 +299,12 @@ def build_flower():
     scene.name = SCENE_NAME
     scene["generator"] = "create_flower.py"
     bpy.context.window.scene = scene
-    petal_mat = material("Flower · rose porcelain", (0.88, 0.31, 0.57), 0.34, 0.20)
-    collar_mat = material("Flower · pale rim", (0.82, 0.66, 0.78), 0.28, 0.25)
-    blue_mat = material("Flower · blue enamel", (0.015, 0.14, 0.48), 0.16, 0.65, metallic=0.35)
-    heart_mat = material("Flower · ice blue heart", (0.18, 0.49, 0.8), 0.21, 0.5, metallic=0.25)
-    stamen_mat = material("Flower · silver stamens", (0.13, 0.10, 0.16), 0.32, 0.2, metallic=0.4)
-    parts = [make_petal(index, petal_mat) for index in range(PETAL_COUNT)]
+    petal_mat = material("Flower · rose porcelain", linear_rgb("#e4aecb"), 0.76, 0)
+    collar_mat = material("Flower · pale rim", linear_rgb("#eee4ea"), 0.78, 0)
+    blue_mat = material("Flower · blue enamel", linear_rgb("#5486bb"), 0.70, 0)
+    heart_mat = material("Flower · ice blue heart", linear_rgb("#a6c4de"), 0.70, 0)
+    stamen_mat = material("Flower · silver stamens", linear_rgb("#62576a"), 0.85, 0)
+    parts = [make_petal(index, petal_mat, angle_offset=OUTER_PETAL_ANGLE) for index in range(PETAL_COUNT)]
     bpy.context.view_layer.update()
     project = petal_projector(parts)
     # The bottom stays inside the petals around the entire cup circumference.
