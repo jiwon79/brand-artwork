@@ -1,7 +1,7 @@
 """Create the five-petal reference study through Blender MCP or the Text Editor.
 
 Petals are closed, curved shells with a shared handedness: one edge lifts above
-the following petal. The blue cabochon and its pale collar are separate solids.
+the following petal. A miniature five-petal blue flower sits inside a pale collar.
 The new scene preserves the existing smiley scene. glTF exports only the flower.
 Front is -Y in Blender and +Z in glTF, matching smiley.glb.
 """
@@ -54,7 +54,7 @@ def petal_surface(u, v):
     return x, y, z
 
 
-def make_petal(index, mat):
+def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEPS):
     angle = math.radians(90 - index * 72)
     c, s = math.cos(angle), math.sin(angle)
 
@@ -63,16 +63,16 @@ def make_petal(index, mat):
         return c * x - s * y, s * x + c * y, z
 
     vertices = [vertex(0, 0)]
-    for ring in range(1, RADIAL_STEPS + 1):
-        radius = ring / RADIAL_STEPS
-        for segment in range(ANGULAR_STEPS):
-            theta = 2 * math.pi * segment / ANGULAR_STEPS
+    for ring in range(1, radial_steps + 1):
+        radius = ring / radial_steps
+        for segment in range(angular_steps):
+            theta = 2 * math.pi * segment / angular_steps
             vertices.append(vertex(radius * math.cos(theta), radius * math.sin(theta)))
-    faces = [(0, 1 + i, 1 + (i + 1) % ANGULAR_STEPS) for i in range(ANGULAR_STEPS)]
-    for ring in range(RADIAL_STEPS - 1):
-        a, b = 1 + ring * ANGULAR_STEPS, 1 + (ring + 1) * ANGULAR_STEPS
-        for i in range(ANGULAR_STEPS):
-            j = (i + 1) % ANGULAR_STEPS
+    faces = [(0, 1 + i, 1 + (i + 1) % angular_steps) for i in range(angular_steps)]
+    for ring in range(radial_steps - 1):
+        a, b = 1 + ring * angular_steps, 1 + (ring + 1) * angular_steps
+        for i in range(angular_steps):
+            j = (i + 1) % angular_steps
             faces.append((a + i, b + i, b + j, a + j))
     mesh = bpy.data.meshes.new(f"Petal {index + 1} shell")
     mesh.from_pydata(vertices, [], faces)
@@ -101,6 +101,23 @@ def ellipsoid(name, location, scale, mat):
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
     obj.data.materials.append(mat)
     return obj
+
+
+def make_center_flower(petal_mat, heart_mat):
+    parts = []
+    for index in range(PETAL_COUNT):
+        petal = make_petal(index, petal_mat, radial_steps=12, angular_steps=64)
+        petal.name = f"Center petal {index + 1}"
+        # Keep five curled blades legible inside the collar. The added depth
+        # separates the overlapping lips while retaining a shallow rosette.
+        petal.scale = (0.14, 0.14, 0.22)
+        petal.location.z = 0.135
+        activate(petal)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        parts.append(petal)
+    parts.append(ellipsoid("Center flower heart", (0, 0, 0.169),
+                           (0.024, 0.024, 0.018), heart_mat))
+    return parts
 
 
 def make_stamen(index, mat):
@@ -202,7 +219,8 @@ def build_flower():
     bpy.context.window.scene = scene
     petal_mat = material("Flower · rose porcelain", (0.88, 0.31, 0.57), 0.34, 0.20)
     collar_mat = material("Flower · pale rim", (0.82, 0.66, 0.78), 0.28, 0.25)
-    bead_mat = material("Flower · blue enamel", (0.015, 0.14, 0.48), 0.16, 0.65, metallic=0.35)
+    blue_mat = material("Flower · blue enamel", (0.015, 0.14, 0.48), 0.16, 0.65, metallic=0.35)
+    heart_mat = material("Flower · ice blue heart", (0.18, 0.49, 0.8), 0.21, 0.5, metallic=0.25)
     parts = [make_petal(index, petal_mat) for index in range(PETAL_COUNT)]
     bpy.ops.mesh.primitive_torus_add(major_radius=0.15, minor_radius=0.018,
                                   major_segments=96, minor_segments=16, location=(0, 0, 0.13))
@@ -210,7 +228,7 @@ def build_flower():
     collar.name = "Center collar"
     collar.data.materials.append(collar_mat)
     parts.append(collar)
-    parts.append(ellipsoid("Blue center", (0, 0, 0.139), (0.133, 0.133, 0.097), bead_mat))
+    parts.extend(make_center_flower(blue_mat, heart_mat))
     parts.extend(make_stamen(index, collar_mat) for index in range(PETAL_COUNT))
     for obj in parts:
         for face in obj.data.polygons:
@@ -222,11 +240,12 @@ def build_flower():
     bpy.ops.object.join()
     flower = bpy.context.object
     flower.name = "Flower"
-    flower.data.name = "Five curved petals, collar and blue center"
+    flower.data.name = "Five outer petals and a miniature five-petal blue flower"
     flower.data.transform(Matrix.Rotation(math.pi / 2, 4, "X"))
     flower["petals"] = PETAL_COUNT
+    flower["center_petals"] = PETAL_COUNT
     flower["front_axis"] = "-Y (Blender); +Z (glTF)"
-    flower["reference"] = "Five overlapping pink petals, pale collar and glossy blue button"
+    flower["reference"] = "Five overlapping pink petals, pale collar and a miniature blue flower"
     setup_studio(scene)
     activate(flower)
     bpy.context.view_layer.update()
