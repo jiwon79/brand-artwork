@@ -26,7 +26,7 @@ def bake_contact_occlusion(obj):
                                 [list(p.vertices) for p in mesh.polygons])
     colors = mesh.color_attributes.new(name="Contact occlusion", type="FLOAT_COLOR", domain="POINT")
     mesh.color_attributes.active_color = colors
-    samples = 40
+    samples = 96
     shades = []
     for vertex in mesh.vertices:
         normal = vertex.normal.normalized()
@@ -64,8 +64,9 @@ def procedural_flower(directory, collection):
     make_petal = namespace["make_petal"]
     ellipsoid = namespace["ellipsoid"]
     namespace["make_petal"] = lambda index, mat, **options: make_petal(
-        index, mat, radial_steps=6 if "enamel" in mat.name else 10,
-        angular_steps=32 if "enamel" in mat.name else 48)
+        index, mat, radial_steps=8 if "enamel" in mat.name else 14,
+        angular_steps=48 if "enamel" in mat.name else 72,
+        **{key: value for key, value in options.items() if key not in ("radial_steps", "angular_steps")})
     namespace["ellipsoid"] = lambda *args: ellipsoid(*args, segments=24, rings=12)
     namespace["SCENE_NAME"] = "Flower web export temporary"
     namespace["setup_studio"] = lambda scene: None
