@@ -18,6 +18,7 @@
     "pages/color-text/**/*.ts",
     "pages/guseul/**/*.ts",
     "pages/line-pull/**/*.ts",
+    "pages/smile-flower/**/*.ts",
     "common/**/*.test.ts",
     "common/**/*.spec.ts",
     "pages/**/*.test.ts",

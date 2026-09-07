@@ -1,0 +1,76 @@
+:root {
+  font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
+  color: #eee8ee;
+  background: #000;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; }
+button, a { -webkit-tap-highlight-color: transparent; }
+.masthead { min-height: 114px; margin: 0 44px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid #242024; }
+.back-link { color: #979097; text-decoration: none; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+.back-link span, .edition, .footer-note { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; }
+.back-link:hover { color: #f6d0e8; }
+h1 { font-size: 24px; font-weight: 450; letter-spacing: -0.04em; margin: 0; }
+h1 span { color: #887a85; margin: 0 4px; }
+.edition { color: #857b82; }
+.gallery { display: grid; grid-template-columns: 1fr 1fr; flex: 1; padding: 0 44px; min-height: 520px; }
+.study { min-width: 0; display: flex; flex-direction: column; position: relative; }
+.study + .study { border-left: 1px solid #242024; }
+.stage { position: relative; flex: 1; min-height: 410px; overflow: hidden; }
+canvas { display: block; width: 100%; height: 100%; position: absolute; inset: 0; cursor: grab; outline-offset: -4px; }
+canvas:active { cursor: grabbing; }
+:focus-visible { outline: 1px solid #edb1d2; border-radius: 4px; }
+.status { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; font-size: 12px; color: #a99ba5; pointer-events: none; }
+.status[hidden] { display: none; }
+.status.error { padding: 40px; text-align: center; line-height: 1.8; }
+.caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 24px 32px 30px; }
+.model-name { display: flex; align-items: center; gap: 14px; }
+.number { color: #736972; font-size: 10px; font-variant-numeric: tabular-nums; }
+h2 { margin: 0; font-size: 21px; font-weight: 400; letter-spacing: -0.035em; }
+.swatch { width: 7px; height: 7px; border-radius: 100%; }
+.flower-swatch { background: #6ea9df; }
+.smiley-swatch { background: #e895c7; }
+.controls { display: flex; gap: 4px; }
+button { background: transparent; border: 1px solid transparent; border-radius: 30px; padding: 9px 12px; min-height: 38px; color: #a99ca6; font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
+button span { font-size: 16px; display: inline-block; vertical-align: -1px; margin-right: 4px; }
+button:hover { color: #f4d9e8; border-color: #4e3746; }
+button[aria-pressed='true'] { color: #f3b9da; background: #21111c; border-color: #452438; }
+button:disabled { opacity: 0.4; cursor: default; }
+footer { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin: 0 44px; border-top: 1px solid #242024; min-height: 68px; color: #867a83; }
+footer p { font-size: 10px; line-height: 1.8; margin: 16px 0; }
+footer p span { margin: 0 9px; color: #65515f; }
+.footer-note { color: #655b63; white-space: nowrap; }
+noscript { text-align: center; padding: 24px; }
+
+@media (min-height: 900px) and (min-width: 761px) {
+  .gallery { max-height: 900px; }
+}
+@media (max-width: 1000px) {
+  .masthead, footer { margin-left: 24px; margin-right: 24px; }
+  .gallery { padding: 0 24px; }
+  .caption { padding-left: 16px; padding-right: 16px; }
+  .model-name { gap: 9px; }
+  .swatch { display: none; }
+  .footer-note { display: none; }
+}
+@media (max-width: 760px) {
+  .masthead { min-height: 92px; flex-wrap: wrap; gap: 12px; }
+  .back-link span { display: none; }
+  .back-link { width: 18px; }
+  h1 { font-size: 22px; }
+  .edition { display: none; }
+  .gallery { grid-template-columns: 1fr; }
+  .study + .study { border-left: 0; border-top: 1px solid #242024; }
+  .stage { flex: none; height: min(90vw, 480px); min-height: 280px; }
+  .caption { padding: 12px 4px 24px; }
+  h2 { font-size: 22px; }
+  .swatch { display: block; }
+  footer { min-height: 74px; }
+  footer p { max-width: 320px; font-size: 10px; }
+  footer p span { margin: 0 5px; }
+  button { min-height: 44px; padding: 10px; }
+}
