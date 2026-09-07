@@ -1,7 +1,7 @@
 """Create the five-petal reference study through Blender MCP or the Text Editor.
 
 Petals are closed, curved shells with a shared handedness: one edge lifts above
-the following petal. A miniature five-petal blue flower sits inside a pale collar.
+the following petal. A miniature five-petal blue flower is seated in a shallow, solid-backed cup.
 The new scene preserves the existing smiley scene. glTF exports only the flower.
 Front is -Y in Blender and +Z in glTF, matching smiley.glb.
 """
@@ -11,6 +11,7 @@ from pathlib import Path
 import bmesh
 import bpy
 from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 SCENE_NAME = "Flower Study"
 PETAL_COUNT = 5
@@ -110,7 +111,7 @@ def make_center_flower(petal_mat, heart_mat):
     def cup(u, v):
         # The core has five rounded cups, rather than scaled, twisted blades.
         return (0.063 + 0.073 * u, 0.066 * v,
-                0.178 + 0.027 * (u * u + v * v) + 0.006 * u + 0.020 * v)
+                0.129 + 0.017 * (u * u + v * v) + 0.004 * u + 0.010 * v)
 
     parts = []
     for index in range(PETAL_COUNT):
@@ -118,36 +119,119 @@ def make_center_flower(petal_mat, heart_mat):
                            surface=cup, thickness=0.006, lip=0.002)
         petal.name = f"Center petal {index + 1}"
         parts.append(petal)
-    parts.append(ellipsoid("Center flower heart", (0, 0, 0.191),
-                           (0.022, 0.022, 0.014), heart_mat))
+    parts.append(ellipsoid("Center flower heart", (0, 0, 0.136),
+                           (0.022, 0.022, 0.012), heart_mat))
     return parts
 
 
-def make_stamen(index, mat):
-    angle = math.radians(90 - index * 72)
-    curve = bpy.data.curves.new(f"Stamen {index + 1}", "CURVE")
-    curve.dimensions = "3D"
-    curve.resolution_u = 12
-    curve.bevel_depth = 0.006
-    curve.bevel_resolution = 3
-    curve.use_fill_caps = True
-    spline = curve.splines.new("POLY")
-    spline.points.add(1)
-    for point, radius, height in zip(spline.points, (0.16, 0.36), (0.167, 0.167)):
-        point.co = (radius * math.cos(angle), radius * math.sin(angle), height, 1)
-    obj = bpy.data.objects.new(curve.name, curve)
+def closed_mesh(name, vertices, faces, materials, face_materials=None):
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+    for mat in materials:
+        mesh.materials.append(mat)
+    if face_materials:
+        for polygon, slot in zip(mesh.polygons, face_materials):
+            polygon.material_index = slot
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
-    obj.data.materials.append(mat)
-    activate(obj)
-    bpy.ops.object.convert(target="MESH")
-    obj = bpy.context.object
-    # Curve conversion duplicates cap vertices; weld the coincident rings.
-    mesh = bmesh.new()
-    mesh.from_mesh(obj.data)
-    bmesh.ops.remove_doubles(mesh, verts=list(mesh.verts), dist=0.00001)
-    bmesh.ops.recalc_face_normals(mesh, faces=list(mesh.faces))
-    mesh.to_mesh(obj.data)
-    mesh.free()
+    return obj
+
+
+def make_center_cup(rim_mat, inner_mat):
+    # A revolved closed section: buried bottom, outer wall, rounded lip, inner
+    # wall and a solid floor. The small petals intersect the floor at their bases.
+    profile = [(0, 0.065), (0.152, 0.065), (0.159, 0.070),
+               (0.162, 0.082), (0.162, 0.151), (0.160, 0.157),
+               (0.155, 0.162), (0.146, 0.162), (0.140, 0.157),
+               (0.137, 0.148), (0.137, 0.126), (0, 0.126)]
+    segments = 96
+    vertices, rings, faces, slots = [], [], [], []
+    for radius, height in profile:
+        ring = []
+        for i in range(1 if radius == 0 else segments):
+            angle = 2 * math.pi * i / segments
+            ring.append(len(vertices))
+            vertices.append((radius * math.cos(angle), radius * math.sin(angle), height))
+        rings.append(ring)
+    for section, (first, second) in enumerate(zip(rings, rings[1:])):
+        for i in range(segments):
+            j = (i + 1) % segments
+            if len(first) == 1:
+                faces.append((first[0], second[j], second[i]))
+            elif len(second) == 1:
+                faces.append((first[i], first[j], second[0]))
+            else:
+                faces.append((first[i], first[j], second[j], second[i]))
+            slots.append(1 if section >= 8 else 0)
+    return closed_mesh("Center cup with seated floor", vertices, faces,
+                       [rim_mat, inner_mat], slots)
+
+
+def petal_projector(petals):
+    vertices, faces, owners = [], [], []
+    for owner, petal in enumerate(petals):
+        offset = len(vertices)
+        vertices.extend(petal.matrix_world @ v.co for v in petal.data.vertices)
+        faces.extend(tuple(offset + i for i in p.vertices) for p in petal.data.polygons)
+        owners.extend([owner] * len(petal.data.polygons))
+    tree = BVHTree.FromPolygons(vertices, faces)
+
+    def project(x, y):
+        hit, _, face, _ = tree.ray_cast(Vector((x, y, 1)), Vector((0, 0, -1)), 2)
+        assert hit is not None, "Every inlay point must have a supporting petal"
+        return hit.z, owners[face]
+
+    return project
+
+
+def make_stamen(index, mat, project):
+    # A narrow, partially embedded inlay. XY stays straight; depth follows the
+    # actual exported petal mesh, including its tessellation. Split at overlaps
+    # so a strip never bridges the empty space between two different petals.
+    angle = math.radians(90 - index * 72)
+    c, s = math.cos(angle), math.sin(angle)
+    runs, run, previous_owner = [], [], None
+    for step in range(129):
+        radius = 0.153 + (0.35 - 0.153) * step / 128
+        row, owners = [], []
+        for offset in (-0.004, 0.004):
+            x, y = radius * c - offset * s, radius * s + offset * c
+            height, owner = project(x, y)
+            row.append((x, y, height))
+            owners.append(owner)
+        owner = owners[0] if owners[0] == owners[1] else None
+        if owner is None or owner != previous_owner:
+            if len(run) > 1:
+                runs.append(run)
+            run = []
+        if owner is not None:
+            run.append(row)
+        previous_owner = owner
+    if len(run) > 1:
+        runs.append(run)
+    assert runs, "Stamen must remain visible on the petal surface"
+    vertices, faces = [], []
+    for run in runs:
+        first = len(vertices)
+        for row in run:
+            vertices.extend((x, y, z + 0.0006) for x, y, z in row)
+            vertices.extend((x, y, z - 0.0015) for x, y, z in row)
+        for i in range(len(run) - 1):
+            a, b = first + 4 * i, first + 4 * (i + 1)
+            faces.extend([(a, a + 1, b + 1, b), (a + 2, b + 2, b + 3, a + 3),
+                          (a, b, b + 2, a + 2), (a + 1, a + 3, b + 3, b + 1)])
+        last = first + 4 * (len(run) - 1)
+        faces.extend([(first, first + 2, first + 3, first + 1),
+                      (last, last + 1, last + 3, last + 2)])
+    obj = closed_mesh(f"Stamen {index + 1} surface inlay", vertices, faces, [mat])
+    obj["surface_clearance"] = 0.0006
+    obj["embedded_depth"] = 0.0015
     return obj
 
 
@@ -226,14 +310,19 @@ def build_flower():
     heart_mat = material("Flower · ice blue heart", (0.18, 0.49, 0.8), 0.21, 0.5, metallic=0.25)
     stamen_mat = material("Flower · silver stamens", (0.13, 0.10, 0.16), 0.32, 0.2, metallic=0.4)
     parts = [make_petal(index, petal_mat) for index in range(PETAL_COUNT)]
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.15, minor_radius=0.012,
-                                  major_segments=96, minor_segments=16, location=(0, 0, 0.165))
-    collar = bpy.context.object
-    collar.name = "Center collar"
-    collar.data.materials.append(collar_mat)
-    parts.append(collar)
-    parts.extend(make_center_flower(blue_mat, heart_mat))
-    parts.extend(make_stamen(index, stamen_mat) for index in range(PETAL_COUNT))
+    bpy.context.view_layer.update()
+    project = petal_projector(parts)
+    # The bottom stays inside the petals around the entire cup circumference.
+    assert min(project(0.162 * math.cos(i * math.tau / 96),
+                       0.162 * math.sin(i * math.tau / 96))[0] for i in range(96)) > 0.070
+    parts.append(make_center_cup(collar_mat, blue_mat))
+    center = make_center_flower(blue_mat, heart_mat)
+    for part in center:
+        bpy.context.view_layer.update()
+        depths = [(part.matrix_world @ vertex.co).z for vertex in part.data.vertices]
+        assert min(depths) < 0.126 and max(depths) <= 0.163, "Core must sit in the cup floor, below its lip"
+    parts.extend(center)
+    parts.extend(make_stamen(index, stamen_mat, project) for index in range(PETAL_COUNT))
     for obj in parts:
         for face in obj.data.polygons:
             face.use_smooth = True
@@ -249,7 +338,7 @@ def build_flower():
     flower["petals"] = PETAL_COUNT
     flower["center_petals"] = PETAL_COUNT
     flower["front_axis"] = "-Y (Blender); +Z (glTF)"
-    flower["reference"] = "Five overlapping pink petals, pale collar and a miniature blue flower"
+    flower["reference"] = "Five overlapping pink petals, attached radial inlays and a small flower seated in a pale cup"
     setup_studio(scene)
     activate(flower)
     bpy.context.view_layer.update()
