@@ -9,6 +9,8 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; }
+#studio-canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.masthead, .gallery, footer { position: relative; z-index: 1; }
 button, a { -webkit-tap-highlight-color: transparent; }
 .masthead { min-height: 114px; margin: 0 44px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid #242024; }
 .back-link { color: #979097; text-decoration: none; font-size: 18px; display: flex; align-items: center; gap: 10px; }

@@ -45,7 +45,7 @@ function disposeModel(root: THREE.Object3D) {
   });
 }
 
-async function createStudy(section: HTMLElement) {
+function createStudy(section: HTMLElement, renderer: THREE.WebGLRenderer, environment: THREE.Texture) {
   const name = section.dataset.model as ModelName;
   const stage = section.querySelector<HTMLElement>('.stage')!;
   const canvas = section.querySelector<HTMLCanvasElement>('canvas')!;
@@ -57,7 +57,8 @@ async function createStudy(section: HTMLElement) {
   let failed = false;
   let visible = true;
   let model: THREE.Group | undefined;
-  let renderer: THREE.WebGLRenderer;
+  let shadowsDirty = true;
+  let presented = false;
 
   function showError(message: string) {
     failed = true;
@@ -68,30 +69,8 @@ async function createStudy(section: HTMLElement) {
     rotate.disabled = reset.disabled = true;
   }
 
-  try {
-    renderer = new THREE.WebGLRenderer({
-      canvas, antialias: true, powerPreference: 'high-performance',
-      // Preserve displayed pixels for stable canvas captures.
-      preserveDrawingBuffer: true,
-    });
-  } catch (error) {
-    console.error(`${name}: WebGL initialization failed`, error);
-    showError('3D 화면을 열지 못했습니다. 브라우저의 하드웨어 가속 설정을 확인한 뒤 새로고침해주세요.');
-    return () => listeners.abort();
-  }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setClearColor(0x000000, 1);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.AgXToneMapping;
-  renderer.toneMappingExposure = 1.18;
-  renderer.shadowMap.enabled = name === 'flower';
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  // Geometry and lights stay fixed while the camera orbits. Cache the shadow
-  // maps after the asset arrives instead of redrawing them on every orbit frame.
-  renderer.shadowMap.autoUpdate = false;
   const scene = new THREE.Scene();
-  const environment = studioEnvironment(renderer);
-  scene.environment = environment.texture;
+  scene.environment = environment;
 
   // Sample a broad key light to soften the petal contact shadows. A single
   // variance shadow map leaks light through the thin overlapping shells.
@@ -181,7 +160,7 @@ async function createStudy(section: HTMLElement) {
     }
     controls.update();
   }, { signal: listeners.signal });
-  canvas.addEventListener('webglcontextlost', event => {
+  renderer.domElement.addEventListener('webglcontextlost', event => {
     event.preventDefault();
     showError('3D 연결이 끊어졌습니다. 페이지를 새로고침하면 다시 볼 수 있습니다.');
   }, { signal: listeners.signal });
@@ -189,8 +168,6 @@ async function createStudy(section: HTMLElement) {
   const resize = new ResizeObserver(() => {
     const { width, height } = stage.getBoundingClientRect();
     if (!width || !height) return;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(width, height, false);
     const aspect = width / height;
     // Keep the whole silhouette inside the shorter dimension, including phones.
     const halfHeight = 1.42 / Math.min(aspect, 1);
@@ -206,16 +183,22 @@ async function createStudy(section: HTMLElement) {
   });
   intersection.observe(stage);
 
-  let previousTime = 0;
-  renderer.setAnimationLoop(time => {
-    const delta = Math.min((time - previousTime) / 1000, 0.05);
-    previousTime = time;
-    if (document.hidden || !visible || failed) return;
+  function render(delta: number, viewportHeight: number) {
+    if (!visible || failed || !model) return;
     controls.update(delta);
-    // Present both visible canvases together, including the idle model while
-    // its neighbor is being manipulated or the browser redraws the page.
+    const rect = stage.getBoundingClientRect();
+    renderer.setViewport(rect.left, viewportHeight - rect.bottom, rect.width, rect.height);
+    renderer.setScissor(rect.left, viewportHeight - rect.bottom, rect.width, rect.height);
+    renderer.shadowMap.needsUpdate = shadowsDirty && name === 'flower';
     renderer.render(scene, camera);
-  });
+    shadowsDirty = false;
+    if (!presented) {
+      presented = true;
+      status.hidden = true;
+      stage.setAttribute('aria-busy', 'false');
+      rotate.disabled = reset.disabled = false;
+    }
+  }
 
   // Do not await loading before returning cleanup: Vite can replace this module
   // while a GLB request is pending, and the late result must be disposed too.
@@ -234,33 +217,85 @@ async function createStudy(section: HTMLElement) {
       });
     });
     scene.add(model);
-    renderer.shadowMap.needsUpdate = true;
-    if (!failed) {
-      status.hidden = true;
-      stage.setAttribute('aria-busy', 'false');
-      rotate.disabled = reset.disabled = false;
-    }
+    shadowsDirty = true;
   }, undefined, error => {
     if (disposed) return;
     console.error(`${name}: model loading failed`, error);
     showError('모델을 불러오지 못했습니다. 연결을 확인한 뒤 새로고침해주세요.');
   });
 
-  return () => {
+  function dispose() {
     disposed = true;
     listeners.abort();
     resize.disconnect();
     intersection.disconnect();
     controls.dispose();
-    renderer.setAnimationLoop(null);
     if (model) disposeModel(model);
     keys.forEach(key => key.shadow.dispose());
+  }
+  return { render, dispose };
+}
+
+function start() {
+  const canvas = document.createElement('canvas');
+  canvas.id = 'studio-canvas';
+  canvas.setAttribute('aria-hidden', 'true');
+  document.body.prepend(canvas);
+  let renderer: THREE.WebGLRenderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  } catch (error) {
+    console.error('WebGL initialization failed', error);
+    document.querySelectorAll<HTMLElement>('.status').forEach(status => {
+      status.textContent = '3D 화면을 열지 못했습니다. 하드웨어 가속 설정을 확인한 뒤 새로고침해주세요.';
+      status.classList.add('error');
+      status.parentElement!.setAttribute('aria-busy', 'false');
+    });
+    return () => canvas.remove();
+  }
+  renderer.setClearColor(0x000000, 1);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.AgXToneMapping;
+  renderer.toneMappingExposure = 1.18;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+  const environment = studioEnvironment(renderer);
+  renderer.autoClear = false;
+  const studies = [...document.querySelectorAll<HTMLElement>('.study')]
+    .map(section => createStudy(section, renderer, environment.texture));
+  let previousTime = 0;
+  let size = '';
+  // One GPU surface presents both views together. Each transparent interaction
+  // canvas retains its own orbit controls and camera; scissor regions isolate
+  // the models while following the responsive layout and page scrolling.
+  renderer.setAnimationLoop(time => {
+    const delta = Math.min((time - previousTime) / 1000, 0.05);
+    previousTime = time;
+    if (document.hidden) return;
+    const width = canvas.clientWidth, height = canvas.clientHeight;
+    const pixelRatio = Math.min(window.devicePixelRatio, 2);
+    const nextSize = `${width}:${height}:${pixelRatio}`;
+    if (size !== nextSize) {
+      renderer.setPixelRatio(pixelRatio);
+      renderer.setSize(width, height, false);
+      size = nextSize;
+    }
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, width, height);
+    renderer.clear();
+    renderer.setScissorTest(true);
+    studies.forEach(study => study.render(delta, height));
+  });
+  return () => {
+    renderer.setAnimationLoop(null);
+    studies.forEach(study => study.dispose());
     environment.dispose();
     renderer.dispose();
+    canvas.remove();
   };
 }
 
-const studies = [...document.querySelectorAll<HTMLElement>('.study')].map(createStudy);
-function dispose() { studies.forEach(study => { void study.then(cleanup => cleanup()); }); }
+const dispose = start();
 window.addEventListener('pagehide', event => { if (!event.persisted) dispose(); }, { once: true });
 if (import.meta.hot) import.meta.hot.dispose(dispose);
