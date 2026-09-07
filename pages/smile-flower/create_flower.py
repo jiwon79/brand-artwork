@@ -18,12 +18,13 @@ RADIAL_STEPS = 24
 ANGULAR_STEPS = 96
 
 
-def material(name, color, roughness, coat):
+def material(name, color, roughness, coat, metallic=0):
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
     bsdf.inputs["Base Color"].default_value = (*color, 1)
     bsdf.inputs["Roughness"].default_value = roughness
+    bsdf.inputs["Metallic"].default_value = metallic
     bsdf.inputs["IOR"].default_value = 1.46
     bsdf.inputs["Coat Weight"].default_value = coat
     bsdf.inputs["Coat Roughness"].default_value = 0.19
@@ -199,9 +200,9 @@ def build_flower():
     scene = bpy.data.scenes.new(SCENE_NAME)
     scene["generator"] = "create_flower.py"
     bpy.context.window.scene = scene
-    petal_mat = material("Flower · rose porcelain", (0.78, 0.39, 0.58), 0.34, 0.20)
+    petal_mat = material("Flower · rose porcelain", (0.88, 0.31, 0.57), 0.34, 0.20)
     collar_mat = material("Flower · pale rim", (0.82, 0.66, 0.78), 0.28, 0.25)
-    bead_mat = material("Flower · blue enamel", (0.025, 0.22, 0.65), 0.16, 0.65)
+    bead_mat = material("Flower · blue enamel", (0.015, 0.14, 0.48), 0.16, 0.65, metallic=0.35)
     parts = [make_petal(index, petal_mat) for index in range(PETAL_COUNT)]
     bpy.ops.mesh.primitive_torus_add(major_radius=0.15, minor_radius=0.018,
                                   major_segments=96, minor_segments=16, location=(0, 0, 0.13))

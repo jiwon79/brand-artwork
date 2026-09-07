@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="다섯 장의 꽃잎과 분홍빛 스마일. 두 가지 형태를 빛 속에서 돌려보는 3D 스터디." />
+    <title>Flower & Smiley — Form studies</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23eaa6cc'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="back-link" href="/" aria-label="작품 목록으로 돌아가기">↖ <span>ARTWORK STUDIES</span></a>
+      <h1>Flower <span>&</span> Smiley</h1>
+      <span class="edition">FORM STUDY — 01</span>
+    </header>
+    <main class="gallery" aria-label="꽃과 스마일 3D 모델">
+      <section class="study" data-model="flower" aria-labelledby="flower-title">
+        <div class="stage" aria-busy="true">
+          <canvas aria-label="꽃 3D 모델. 드래그 또는 방향키로 회전" aria-describedby="interaction-help" tabindex="0"></canvas>
+          <p class="status" role="status">꽃을 불러오는 중…</p>
+        </div>
+        <div class="caption">
+          <div class="model-name"><span class="number">01</span><h2 id="flower-title">Flower</h2><span class="swatch flower-swatch" aria-hidden="true"></span></div>
+          <div class="controls" aria-label="꽃 보기 설정">
+            <button type="button" data-action="rotate" aria-label="꽃 자동 회전" aria-pressed="false" disabled><span aria-hidden="true">↻</span> 자동 회전</button>
+            <button type="button" data-action="reset" aria-label="꽃 정면으로 복귀" disabled>정면</button>
+          </div>
+        </div>
+      </section>
+      <section class="study" data-model="smiley" aria-labelledby="smiley-title">
+        <div class="stage" aria-busy="true">
+          <canvas aria-label="스마일 3D 모델. 드래그 또는 방향키로 회전" aria-describedby="interaction-help" tabindex="0"></canvas>
+          <p class="status" role="status">스마일을 불러오는 중…</p>
+        </div>
+        <div class="caption">
+          <div class="model-name"><span class="number">02</span><h2 id="smiley-title">Smiley</h2><span class="swatch smiley-swatch" aria-hidden="true"></span></div>
+          <div class="controls" aria-label="스마일 보기 설정">
+            <button type="button" data-action="rotate" aria-label="스마일 자동 회전" aria-pressed="false" disabled><span aria-hidden="true">↻</span> 자동 회전</button>
+            <button type="button" data-action="reset" aria-label="스마일 정면으로 복귀" disabled>정면</button>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <p id="interaction-help">드래그로 회전 <span>·</span> 스크롤 / 두 손가락으로 확대 <span>·</span> 방향키로 회전, Home으로 정면</p>
+      <span class="footer-note">TWO FORMS, ONE LIGHT.</span>
+    </footer>
+    <noscript>3D 모델을 보려면 브라우저에서 JavaScript를 켜주세요.</noscript>
+    <script type="module" src="./script.ts"></script>
+  </body>
+</html>
