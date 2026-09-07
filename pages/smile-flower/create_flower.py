@@ -50,7 +50,9 @@ def petal_surface(u, v):
     y = 0.475 * v * (0.94 + 0.06 * u) + 0.028 * (1 - u)
     # A shallow cup plus a tangential roll creates cyclic overlap without
     # assigning the five petals a visibly stepped stack of global heights.
-    z = 0.035 + 0.055 * (u * u + v * v) + 0.12 * v + 0.04 * u * v - 0.02 * u
+    # Raise the outer cup while keeping its attachment below the center collar.
+    bowl = (0.055 + 0.0325 * (u + 1)) * (u * u + v * v)
+    z = 0.035 + bowl + 0.10 * v + 0.03 * u * v - 0.02 * u
     return x, y, z
 
 
@@ -93,8 +95,8 @@ def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEP
     return obj
 
 
-def ellipsoid(name, location, scale, mat):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32, location=location)
+def ellipsoid(name, location, scale, mat, segments=64, rings=32):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=segments, ring_count=rings, location=location)
     obj = bpy.context.object
     obj.name = name
     obj.scale = scale
@@ -211,16 +213,21 @@ def build_flower():
     if previous:
         # Rebuild only the scene owned by this generator, never the smiley scene.
         assert previous.get("generator") == "create_flower.py", "Scene name belongs to user data"
+    # Blender always needs one local scene, including in a standalone file.
+    scene = bpy.data.scenes.new(SCENE_NAME + " replacement")
+    bpy.context.window.scene = scene
+    if previous:
         for obj in list(previous.objects):
             bpy.data.objects.remove(obj, do_unlink=True)
         bpy.data.scenes.remove(previous)
-    scene = bpy.data.scenes.new(SCENE_NAME)
+    scene.name = SCENE_NAME
     scene["generator"] = "create_flower.py"
     bpy.context.window.scene = scene
     petal_mat = material("Flower · rose porcelain", (0.88, 0.31, 0.57), 0.34, 0.20)
     collar_mat = material("Flower · pale rim", (0.82, 0.66, 0.78), 0.28, 0.25)
     blue_mat = material("Flower · blue enamel", (0.015, 0.14, 0.48), 0.16, 0.65, metallic=0.35)
     heart_mat = material("Flower · ice blue heart", (0.18, 0.49, 0.8), 0.21, 0.5, metallic=0.25)
+    stamen_mat = material("Flower · silver stamens", (0.13, 0.10, 0.16), 0.32, 0.2, metallic=0.4)
     parts = [make_petal(index, petal_mat) for index in range(PETAL_COUNT)]
     bpy.ops.mesh.primitive_torus_add(major_radius=0.15, minor_radius=0.018,
                                   major_segments=96, minor_segments=16, location=(0, 0, 0.13))
@@ -229,7 +236,7 @@ def build_flower():
     collar.data.materials.append(collar_mat)
     parts.append(collar)
     parts.extend(make_center_flower(blue_mat, heart_mat))
-    parts.extend(make_stamen(index, collar_mat) for index in range(PETAL_COUNT))
+    parts.extend(make_stamen(index, stamen_mat) for index in range(PETAL_COUNT))
     for obj in parts:
         for face in obj.data.polygons:
             face.use_smooth = True
