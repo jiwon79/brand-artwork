@@ -15,7 +15,7 @@ const assets = {
   },
 };
 type ViewMode = 'field' | 'single';
-type Part = { mesh: THREE.InstancedMesh; materialName: string; model: ModelName; variant: ViewMode };
+type Part = { mesh: THREE.InstancedMesh; materialName: string; model: ModelName; variant: ViewMode; colors: THREE.Color[] };
 
 function studioEnvironment(renderer: THREE.WebGLRenderer) {
   const studio = new THREE.Scene();
@@ -31,7 +31,7 @@ function studioEnvironment(renderer: THREE.WebGLRenderer) {
     panel.lookAt(0, 0, 0);
     studio.add(panel);
   }
-  softbox(-3, 4, 5, 4, 5, 1);
+  softbox(-3, 4, 5, 4, 5, 0.25);
   softbox(0, -4, 5, 8, 4, 3);
   softbox(0, 4, -3, 4, 2, 2.5);
   const generator = new THREE.PMREMGenerator(renderer);
@@ -101,10 +101,10 @@ function start() {
     key.position.copy(keyPosition).addScaledVector(keyRight, radius * Math.cos(angle))
       .addScaledVector(keyUp, radius * Math.sin(angle)).multiplyScalar(4);
     key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.mapSize.set(4096, 4096);
     Object.assign(key.shadow.camera, { left: -13, right: 13, top: 14, bottom: -14, near: 0.1, far: 70 });
-    key.shadow.bias = -0.00003;
-    key.shadow.normalBias = 0.009;
+    key.shadow.bias = -0.000005;
+    key.shadow.normalBias = 0.001;
     scene.add(key);
     keyLights.push(key);
   }
@@ -116,7 +116,6 @@ function start() {
   scene.add(rim);
 
   const transform = new THREE.Object3D();
-  const hiddenMatrix = new THREE.Matrix4().makeScale(0.000001, 0.000001, 0.000001);
   const color = new THREE.Color();
 
   function colorInstances() {
@@ -142,7 +141,7 @@ function start() {
         }
         // The top of the reference receives more of the broad studio light.
         if (mode === 'field') color.multiplyScalar(0.6 + 0.4 * (cell.y + REFERENCE_HEIGHT / 2) / REFERENCE_HEIGHT);
-        part.mesh.setColorAt(index, color);
+        part.colors[index] = color.clone();
       }
       part.mesh.instanceColor!.needsUpdate = true;
     }
@@ -151,21 +150,28 @@ function start() {
 
   function updateMatrices() {
     const count = mode === 'field' ? CELLS.length : 1;
+    for (const part of parts) part.mesh.count = 0;
     for (let index = 0; index < count; index++) {
       const cell = CELLS[index];
       const pose = mode === 'field'
         ? sampleRipple(timeline, Math.hypot(cell.x, cell.y))
-        : singleFlip ? sampleFlip(singleFlip.from, singleFlip.elapsed / FLIP_DURATION)
+        : singleFlip ? sampleFlip(singleFlip.from, singleFlip.elapsed / FLIP_DURATION[singleFlip.from])
           : { model: current, rotationX: REST_ANGLE[current] };
       transform.position.set(mode === 'field' ? cell.x : 0, mode === 'field' ? cell.y : 0, 0);
       transform.rotation.set(pose.rotationX, 0, 0);
-      transform.scale.setScalar(mode === 'field' ? (pose.model === 'flower' ? 0.98 : 0.94) : 1);
+      transform.scale.setScalar((mode === 'field' ? 0.98 : 1) * (pose.model === 'flower' ? 1 : 0.98));
       transform.updateMatrix();
       for (const part of parts) {
-        if (part.variant === mode) part.mesh.setMatrixAt(index, part.model === pose.model ? transform.matrix : hiddenMatrix);
+        if (part.variant !== mode || part.model !== pose.model) continue;
+        const slot = part.mesh.count++;
+        part.mesh.setMatrixAt(slot, transform.matrix);
+        part.mesh.setColorAt(slot, part.colors[index]);
       }
     }
-    for (const part of parts) part.mesh.instanceMatrix.needsUpdate = true;
+    for (const part of parts) {
+      part.mesh.instanceMatrix.needsUpdate = true;
+      part.mesh.instanceColor!.needsUpdate = true;
+    }
     renderer.shadowMap.needsUpdate = true;
   }
 
@@ -176,14 +182,27 @@ function start() {
     const halfWidth = mode === 'field' ? REFERENCE_WIDTH / 2 : halfHeight * width / height;
     Object.assign(camera, { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight });
     camera.updateProjectionMatrix();
-    for (const light of keyLights) {
+    const shadowSamples = mode === 'field' ? 3 : 5;
+    for (const [index, light] of keyLights.entries()) {
+      light.castShadow = index < shadowSamples;
+      light.intensity = index < shadowSamples ? 4.45 / shadowSamples : 0;
+      const angle = index * Math.PI * (3 - Math.sqrt(5));
+      const radius = 2.5 * Math.sqrt((index + 0.5) / shadowSamples);
+      light.position.copy(keyPosition).addScaledVector(keyRight, radius * Math.cos(angle))
+        .addScaledVector(keyUp, radius * Math.sin(angle)).multiplyScalar(4);
       const size = mode === 'field' ? 14 : 1.6;
       Object.assign(light.shadow.camera, { left: -size, right: size, top: size, bottom: -size });
       light.shadow.camera.updateProjectionMatrix();
-      light.shadow.normalBias = mode === 'field' ? 0.009 : 0.003;
-      light.shadow.radius = mode === 'field' ? 1.8 : 18;
+      light.shadow.normalBias = 0.001;
+      light.shadow.radius = mode === 'field' ? 6 : 32;
     }
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    // Keep at least the original 1080p raster on a small display and respect
+    // high-DPI phones. Bound total pixels, rather than capping every device at 2x.
+    const targetWidth = mode === 'field' ? 1080 : 1200;
+    const desiredRatio = Math.max(devicePixelRatio, targetWidth / width);
+    const pixelBudgetRatio = Math.sqrt(3_500_000 / (width * height));
+    const textureLimitRatio = renderer.capabilities.maxTextureSize / Math.max(width, height);
+    renderer.setPixelRatio(Math.min(desiredRatio, pixelBudgetRatio, textureLimitRatio));
     renderer.setSize(width, height, false);
     dirty = true;
   }
@@ -286,16 +305,23 @@ function start() {
       const isPorcelain = original.name.includes('porcelain');
       const isCore = original.name.includes('enamel') || original.name.includes('heart');
       const material = new THREE.MeshPhysicalMaterial({
-        color: '#ffffff', roughness: isPorcelain ? 0.42 : isCore ? 0.2 : 0.33,
-        metalness: isCore ? 0.05 : 0, clearcoat: isCore ? 0.5 : 0.12,
-        clearcoatRoughness: 0.24, envMapIntensity: isCore ? 0.75 : isPorcelain ? 0.28 : 0.3,
+        color: '#ffffff', roughness: isPorcelain ? 0.42 : isCore ? 0.26 : 0.33,
+        metalness: isCore ? 0.05 : 0, clearcoat: isCore ? 0.35 : 0.12,
+        clearcoatRoughness: 0.24, envMapIntensity: isCore ? 0.5 : isPorcelain ? 0.28 : 0.3,
         vertexColors: geometry.hasAttribute('color'),
       });
       // A shallow resin face bends the softbox reflection across the smiley.
       if (model === 'smiley') {
+        material.clearcoat = 0.85;
+        material.clearcoatRoughness = 0.2;
+        material.envMapIntensity = 0.8;
         material.onBeforeCompile = shader => {
           shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>',
-            '#include <beginnormal_vertex>\nobjectNormal.xy += position.xy * 0.18 * pow(max(normal.z, 0.0), 12.0);');
+            '#include <beginnormal_vertex>\nobjectNormal.xy += position.xy * 0.65 * pow(max(normal.z, 0.0), 12.0);');
+          // The sampled key lights provide diffuse illumination; the broad
+          // studio panels provide the resin reflection, without point glints.
+          shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_end>',
+            '#include <lights_fragment_end>\nreflectedLight.directSpecular *= 0.15;\n#ifdef USE_CLEARCOAT\nclearcoatSpecularDirect *= 0.15;\n#endif');
         };
       }
       const mesh = new THREE.InstancedMesh(geometry, material, variant === 'field' ? CELLS.length : 1);
@@ -306,7 +332,7 @@ function start() {
       mesh.castShadow = model === 'flower';
       mesh.receiveShadow = model === 'flower';
       scene.add(mesh);
-      parts.push({ mesh, materialName: original.name, model, variant });
+      parts.push({ mesh, materialName: original.name, model, variant, colors: [] });
     });
     disposeModel(gltf.scene);
   })).then(async () => {
@@ -341,7 +367,7 @@ function start() {
     if (mode === 'field' && !paused) timeline += delta;
     if (singleFlip) {
       singleFlip.elapsed += delta;
-      if (singleFlip.elapsed >= FLIP_DURATION) finishFlip();
+      if (singleFlip.elapsed >= FLIP_DURATION[singleFlip.from]) finishFlip();
     }
     if (moving || dirty) {
       updateMatrices();
