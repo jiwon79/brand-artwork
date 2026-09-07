@@ -56,12 +56,13 @@ def petal_surface(u, v):
     return x, y, z
 
 
-def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEPS):
+def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEPS,
+               surface=petal_surface, thickness=0.022, lip=0.008):
     angle = math.radians(90 - index * 72)
     c, s = math.cos(angle), math.sin(angle)
 
     def vertex(u, v):
-        x, y, z = petal_surface(u, v)
+        x, y, z = surface(u, v)
         return c * x - s * y, s * x + c * y, z
 
     vertices = [vertex(0, 0)]
@@ -83,11 +84,11 @@ def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEP
     bpy.context.collection.objects.link(obj)
     obj.data.materials.append(mat)
     shell = obj.modifiers.new("Petal thickness", "SOLIDIFY")
-    shell.thickness = 0.022
+    shell.thickness = thickness
     shell.offset = -1
     apply(obj, shell)
     rim = obj.modifiers.new("Soft petal lip", "BEVEL")
-    rim.width = 0.008
+    rim.width = lip
     rim.segments = 3
     rim.limit_method = "ANGLE"
     rim.angle_limit = math.radians(35)
@@ -106,38 +107,34 @@ def ellipsoid(name, location, scale, mat, segments=64, rings=32):
 
 
 def make_center_flower(petal_mat, heart_mat):
+    def cup(u, v):
+        # The core has five rounded cups, rather than scaled, twisted blades.
+        return (0.063 + 0.073 * u, 0.066 * v,
+                0.178 + 0.027 * (u * u + v * v) + 0.006 * u + 0.020 * v)
+
     parts = []
     for index in range(PETAL_COUNT):
-        petal = make_petal(index, petal_mat, radial_steps=12, angular_steps=64)
+        petal = make_petal(index, petal_mat, radial_steps=12, angular_steps=64,
+                           surface=cup, thickness=0.006, lip=0.002)
         petal.name = f"Center petal {index + 1}"
-        # Keep five curled blades legible inside the collar. The added depth
-        # separates the overlapping lips while retaining a shallow rosette.
-        petal.scale = (0.14, 0.14, 0.22)
-        petal.location.z = 0.135
-        activate(petal)
-        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
         parts.append(petal)
-    parts.append(ellipsoid("Center flower heart", (0, 0, 0.169),
-                           (0.024, 0.024, 0.018), heart_mat))
+    parts.append(ellipsoid("Center flower heart", (0, 0, 0.191),
+                           (0.022, 0.022, 0.014), heart_mat))
     return parts
 
 
 def make_stamen(index, mat):
-    angle = math.radians(90 - index * 72 + 12)
+    angle = math.radians(90 - index * 72)
     curve = bpy.data.curves.new(f"Stamen {index + 1}", "CURVE")
     curve.dimensions = "3D"
     curve.resolution_u = 12
     curve.bevel_depth = 0.006
     curve.bevel_resolution = 3
     curve.use_fill_caps = True
-    spline = curve.splines.new("BEZIER")
-    spline.bezier_points.add(2)
-    for point, radius, offset, height in zip(
-        spline.bezier_points, (0.16, 0.245, 0.34), (0, 0.02, 0.025), (0.108, 0.09, 0.075)
-    ):
-        point.co = (radius * math.cos(angle) - offset * math.sin(angle),
-                    radius * math.sin(angle) + offset * math.cos(angle), height)
-        point.handle_left_type = point.handle_right_type = "AUTO"
+    spline = curve.splines.new("POLY")
+    spline.points.add(1)
+    for point, radius, height in zip(spline.points, (0.16, 0.36), (0.167, 0.167)):
+        point.co = (radius * math.cos(angle), radius * math.sin(angle), height, 1)
     obj = bpy.data.objects.new(curve.name, curve)
     bpy.context.collection.objects.link(obj)
     obj.data.materials.append(mat)
@@ -229,8 +226,8 @@ def build_flower():
     heart_mat = material("Flower · ice blue heart", (0.18, 0.49, 0.8), 0.21, 0.5, metallic=0.25)
     stamen_mat = material("Flower · silver stamens", (0.13, 0.10, 0.16), 0.32, 0.2, metallic=0.4)
     parts = [make_petal(index, petal_mat) for index in range(PETAL_COUNT)]
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.15, minor_radius=0.018,
-                                  major_segments=96, minor_segments=16, location=(0, 0, 0.13))
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.15, minor_radius=0.012,
+                                  major_segments=96, minor_segments=16, location=(0, 0, 0.165))
     collar = bpy.context.object
     collar.name = "Center collar"
     collar.data.materials.append(collar_mat)
