@@ -8,8 +8,8 @@ export const PALETTE = {
 } as const;
 
 export const CORE_PALETTE = {
-  B: '#2666b8', I: '#849bbe', G: '#00a347', Y: '#e99d23',
-  R: '#cc0829', P: '#e46cad', L: '#97bc46', W: '#a596af',
+  B: '#5486bb', I: '#99acc7', G: '#4fab80', Y: '#d9ac55',
+  R: '#c86479', P: '#d399be', L: '#adc777', W: '#b4a6ba',
 } as const;
 
 const centers = [
@@ -43,7 +43,7 @@ const porcelain = [
   'PWRWPW',
 ];
 
-export const PETAL_PALETTE = { W: '#e8d0e3', R: '#e7bfd9', P: '#f396ca' } as const;
+export const PETAL_PALETTE = { W: '#e5d6e3', R: '#dfc5d8', P: '#e4aecb' } as const;
 
 export const CELLS = centers.flatMap((row, r) => [...row].map((color, c) => ({
   x: ((r % 2 ? 0 : 60) + c * 120 - 360) / 60,
