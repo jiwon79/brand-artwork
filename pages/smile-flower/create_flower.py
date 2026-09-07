@@ -251,8 +251,9 @@ def export_flower(directory):
     glb_path, blend_path = str(directory / "flower.glb"), str(directory / "flower.blend")
     bpy.ops.export_scene.gltf(filepath=glb_path, export_format="GLB", use_selection=True,
                              export_cameras=False, export_lights=False)
-    # A standalone scene file, with its own studio, excludes the preserved smiley.
-    bpy.data.libraries.write(blend_path, {bpy.context.scene}, fake_user=True, compress=True)
+    # Save a normal project with a startup scene and workspace, not a datablock
+    # library. Copy mode retains the current project's path and other user scenes.
+    bpy.ops.wm.save_as_mainfile(filepath=blend_path, compress=True, copy=True)
     return {"blend": blend_path, "glb": glb_path}
 
 
