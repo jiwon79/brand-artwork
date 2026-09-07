@@ -55,7 +55,6 @@ async function createStudy(section: HTMLElement) {
   const listeners = new AbortController();
   let disposed = false;
   let failed = false;
-  let dirty = true;
   let visible = true;
   let model: THREE.Group | undefined;
   let renderer: THREE.WebGLRenderer;
@@ -72,7 +71,7 @@ async function createStudy(section: HTMLElement) {
   try {
     renderer = new THREE.WebGLRenderer({
       canvas, antialias: true, powerPreference: 'high-performance',
-      // Keep idle views visible when Chrome recomposites or captures the page.
+      // Preserve displayed pixels for stable canvas captures.
       preserveDrawingBuffer: true,
     });
   } catch (error) {
@@ -140,7 +139,6 @@ async function createStudy(section: HTMLElement) {
   controls.autoRotateSpeed = 0.8;
   controls.update();
   controls.saveState();
-  controls.addEventListener('change', () => { dirty = true; });
 
   function stopRotation() {
     controls.autoRotate = false;
@@ -155,7 +153,6 @@ async function createStudy(section: HTMLElement) {
     controls.update();
     controls.enableDamping = damping;
     controls.reset();
-    dirty = true;
   }
   controls.addEventListener('start', stopRotation);
   rotate.addEventListener('click', () => {
@@ -183,7 +180,6 @@ async function createStudy(section: HTMLElement) {
       camera.updateProjectionMatrix();
     }
     controls.update();
-    dirty = true;
   }, { signal: listeners.signal });
   canvas.addEventListener('webglcontextlost', event => {
     event.preventDefault();
@@ -203,15 +199,12 @@ async function createStudy(section: HTMLElement) {
     camera.top = halfHeight;
     camera.bottom = -halfHeight;
     camera.updateProjectionMatrix();
-    dirty = true;
   });
   resize.observe(stage);
   const intersection = new IntersectionObserver(([entry]) => {
     visible = entry.isIntersecting;
-    dirty = true;
   });
   intersection.observe(stage);
-  document.addEventListener('visibilitychange', () => { dirty = true; }, { signal: listeners.signal });
 
   let previousTime = 0;
   renderer.setAnimationLoop(time => {
@@ -219,10 +212,9 @@ async function createStudy(section: HTMLElement) {
     previousTime = time;
     if (document.hidden || !visible || failed) return;
     controls.update(delta);
-    if (dirty) {
-      renderer.render(scene, camera);
-      dirty = false;
-    }
+    // Present both visible canvases together, including the idle model while
+    // its neighbor is being manipulated or the browser redraws the page.
+    renderer.render(scene, camera);
   });
 
   // Do not await loading before returning cleanup: Vite can replace this module
@@ -243,7 +235,6 @@ async function createStudy(section: HTMLElement) {
     });
     scene.add(model);
     renderer.shadowMap.needsUpdate = true;
-    dirty = true;
     if (!failed) {
       status.hidden = true;
       stage.setAttribute('aria-busy', 'false');
