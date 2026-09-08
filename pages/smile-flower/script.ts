@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CELLS, REFERENCE_HEIGHT, REFERENCE_WIDTH } from './reference-layout';
 import { FLIP_DURATION, REST_ANGLE, otherModel, sampleFlip, sampleRipple, type ModelName } from './flip-motion';
 import { createLookControls, createLook } from './look-controls';
+import { createModelRotation } from './model-rotation';
 
 const assets = {
   field: {
@@ -63,6 +64,8 @@ function start() {
   const replayButton = document.querySelector<HTMLButtonElement>('.replay-button')!;
   const flipButton = document.querySelector<HTMLButtonElement>('.flip-button')!;
   const lookButton = document.querySelector<HTMLButtonElement>('.look-button')!;
+  const inspectionControls = document.querySelector<HTMLElement>('.inspection-controls')!;
+  const resetViewButton = document.querySelector<HTMLButtonElement>('.reset-view-button')!;
   const look = createLook();
   const events = new AbortController();
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -78,6 +81,7 @@ function start() {
   let previousTime: number | undefined;
   let dirty = true;
   let controlsTimer: ReturnType<typeof setTimeout> | undefined;
+  const inspection = createModelRotation(canvas, () => ready && mode === 'single', () => { dirty = true; });
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -165,6 +169,7 @@ function start() {
           : { model: current, rotationX: REST_ANGLE[current] };
       transform.position.set(mode === 'field' ? cell.x : 0, mode === 'field' ? cell.y : 0, 0);
       transform.rotation.set(pose.rotationX, 0, 0);
+      if (mode === 'single') transform.quaternion.premultiply(inspection.rotation);
       transform.scale.setScalar((mode === 'field' ? 0.98 : 1) * (pose.model === 'flower' ? 1 : 0.98));
       transform.updateMatrix();
       for (const part of parts) {
@@ -258,6 +263,10 @@ function start() {
     modeButton.textContent = mode === 'field' ? '하나씩 보기' : '전체 보기';
     playButton.hidden = replayButton.hidden = mode !== 'field';
     flipButton.hidden = mode !== 'single';
+    inspectionControls.hidden = mode !== 'single';
+    canvas.tabIndex = mode === 'single' ? 0 : -1;
+    if (mode === 'single') canvas.setAttribute('aria-describedby', 'rotation-help');
+    else canvas.removeAttribute('aria-describedby');
     playButton.textContent = paused ? '재생' : '일시정지';
     playButton.setAttribute('aria-label', paused ? '애니메이션 재생' : '애니메이션 일시정지');
     canvas.setAttribute('aria-label', mode === 'field' ? '꽃과 스마일이 원형 물결을 따라 뒤집히는 3D 애니메이션' : (current === 'smiley' ? '스마일 3D 모델' : '꽃 3D 모델'));
@@ -280,6 +289,7 @@ function start() {
     finishFlip();
     mode = mode === 'field' ? 'single' : 'field';
     current = 'smiley';
+    inspection.reset();
     timeline = 0;
     announcement.textContent = mode === 'field' ? '전체 애니메이션' : '스마일';
     syncControls();
@@ -287,6 +297,7 @@ function start() {
     resizeView();
     showControls();
   }, { signal: events.signal });
+  resetViewButton.addEventListener('click', () => inspection.reset(), { signal: events.signal });
   playButton.addEventListener('click', () => {
     paused = !paused;
     previousTime = undefined;
@@ -377,7 +388,7 @@ function start() {
     ready = true;
     status.hidden = true;
     artwork.setAttribute('aria-busy', 'false');
-    for (const button of [modeButton, playButton, replayButton, flipButton, lookButton]) button.disabled = false;
+    for (const button of [modeButton, playButton, replayButton, flipButton, lookButton, resetViewButton]) button.disabled = false;
     showControls();
   }).catch(error => {
     if (disposed) return;
@@ -413,6 +424,7 @@ function start() {
     renderer.setAnimationLoop(null);
     clearTimeout(controlsTimer);
     events.abort();
+    inspection.dispose();
     disposeLookControls();
     resize.disconnect();
     intersection.disconnect();
