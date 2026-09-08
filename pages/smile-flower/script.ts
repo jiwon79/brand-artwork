@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CELLS, REFERENCE_HEIGHT, REFERENCE_WIDTH } from './reference-layout';
 import { FLIP_DURATION, REST_ANGLE, otherModel, sampleFlip, sampleRipple, type ModelName } from './flip-motion';
-import { createLookControls, readLook } from './look-controls';
+import { createLookControls, createLook } from './look-controls';
 
 const assets = {
   field: {
@@ -63,7 +63,7 @@ function start() {
   const replayButton = document.querySelector<HTMLButtonElement>('.replay-button')!;
   const flipButton = document.querySelector<HTMLButtonElement>('.flip-button')!;
   const lookButton = document.querySelector<HTMLButtonElement>('.look-button')!;
-  const look = readLook();
+  const look = createLook();
   const events = new AbortController();
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const query = new URLSearchParams(location.search);
