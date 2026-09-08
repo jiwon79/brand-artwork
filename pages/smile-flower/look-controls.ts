@@ -1,7 +1,6 @@
 import GUI, { type Controller } from 'lil-gui';
 import { CORE_PALETTE, PALETTE, PETAL_PALETTE } from './reference-layout';
 
-const STORAGE_KEY = 'smile-flower-look-v1';
 const ranges = {
   exposure: [0.3, 1.6, 0.01], saturation: [0, 1.5, 0.01],
   petalRoughness: [0.2, 1, 0.01], coreRoughness: [0.2, 1, 0.01], smileyRoughness: [0.2, 1, 0.01],
@@ -19,7 +18,7 @@ export type LookSettings = Record<NumericKey, number> & {
   smileys: Record<ColorKey, string>;
 };
 
-function defaults(): LookSettings {
+export function createLook(): LookSettings {
   return {
     exposure: 0.82, saturation: 1,
     petalRoughness: 0.72, coreRoughness: 0.72, smileyRoughness: 0.72,
@@ -30,32 +29,6 @@ function defaults(): LookSettings {
     lightColor: '#fff1fb', rimColor: '#eee4ea', strokeColor: '#62576a',
     petals: { ...PETAL_PALETTE }, cores: { ...CORE_PALETTE }, smileys: { ...PALETTE },
   };
-}
-
-export function readLook(): LookSettings {
-  const look = defaults();
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
-    if (!saved || typeof saved !== 'object') return look;
-    for (const key of Object.keys(ranges) as NumericKey[]) {
-      const value = saved[key];
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        look[key] = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
-      }
-    }
-    if (['ACES', 'AgX', 'Neutral'].includes(saved.toneMapping)) look.toneMapping = saved.toneMapping;
-    const isColor = (value: unknown): value is string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
-    for (const key of ['lightColor', 'rimColor', 'strokeColor'] as const) {
-      if (isColor(saved[key])) look[key] = saved[key];
-    }
-    for (const group of ['petals', 'cores', 'smileys'] as const) {
-      for (const key of Object.keys(look[group])) {
-        const value = saved[group]?.[key];
-        if (isColor(value)) Object.assign(look[group], { [key]: value });
-      }
-    }
-  } catch { /* Use the artwork defaults when browser storage is unavailable. */ }
-  return look;
 }
 
 export function createLookControls(look: LookSettings, onChange: () => void) {
@@ -105,22 +78,16 @@ export function createLookControls(look: LookSettings, onChange: () => void) {
     const folder = gui.addFolder(title);
     for (const key of Object.keys(colorNames) as ColorKey[]) label(folder.addColor(look[group], key), colorNames[key]);
   }
-  function persist() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(look)); }
-    catch { feedback.textContent = '현재 화면에는 적용됐지만 브라우저에 저장하지 못했습니다.'; }
-  }
   gui.onChange(() => { feedback.textContent = ''; onChange(); });
-  gui.onFinishChange(persist);
   const actions = {
     reset() {
-      const initial = defaults();
+      const initial = createLook();
       Object.assign(look.petals, initial.petals);
       Object.assign(look.cores, initial.cores);
       Object.assign(look.smileys, initial.smileys);
       Object.assign(look, { ...initial, petals: look.petals, cores: look.cores, smileys: look.smileys });
       gui.controllersRecursive().forEach(controller => controller.updateDisplay());
       onChange();
-      persist();
       feedback.textContent = '기본값으로 되돌렸습니다.';
     },
     async copy() {
