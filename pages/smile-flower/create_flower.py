@@ -109,7 +109,7 @@ def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEP
 
 def core_surface(radius, angle):
     # One continuous molded face. Its six-lobed pocket has rounded shoulders
-    # and a shallow central hub, all below the surrounding circular face.
+    # with a small circular boss rising above the engraved face.
     # Overlapping circular lobes keep the leaf ends round rather than star-like.
     boundaries = []
     for index in range(CENTER_LOBES):
@@ -123,7 +123,11 @@ def core_surface(radius, angle):
     shoulder = shoulder * shoulder * (3 - 2 * shoulder)
     lobes = 0.8 + 0.2 * math.cos(CENTER_LOBES * (angle - math.pi / 2))
     well = 0.2 + 0.8 * (1 - math.exp(-(radius / 0.035) ** 2)) * lobes
-    return 0.151 - 0.034 * shoulder * well
+    recess = 0.151 - 0.034 * shoulder * well
+    boss_blend = min(1, max(0, (0.029 - radius) / 0.009))
+    boss_blend = boss_blend * boss_blend * (3 - 2 * boss_blend)
+    boss_top = 0.165 - 0.0015 * (min(radius, 0.020) / 0.020) ** 2
+    return recess * (1 - boss_blend) + boss_top * boss_blend
 
 
 def closed_mesh(name, vertices, faces, materials, face_materials=None):
@@ -145,7 +149,7 @@ def closed_mesh(name, vertices, faces, materials, face_materials=None):
     return obj
 
 
-def make_center_cup(rim_mat, inner_mat):
+def make_center_cup(rim_mat, inner_mat, boss_mat):
     # The buried bottom, cylindrical wall, pale lip and engraved colored face
     # belong to one closed mesh; there are no separate small petals or rings.
     profile = [(0, 0.065), (0.152, 0.065), (0.159, 0.070),
@@ -161,10 +165,11 @@ def make_center_cup(rim_mat, inner_mat):
             ring.append(len(vertices))
             vertices.append((radius * math.cos(angle), radius * math.sin(angle), height))
         rings.append(ring)
-    for step in range(CORE_RADIAL_STEPS - 1, -1, -1):
-        radius = 0.137 * step / CORE_RADIAL_STEPS
+    cap_radii = sorted({0.137 * step / CORE_RADIAL_STEPS for step in range(CORE_RADIAL_STEPS)}
+                       | {0.020, 0.024, 0.029}, reverse=True)
+    for radius in cap_radii:
         ring = []
-        for i in range(1 if step == 0 else segments):
+        for i in range(1 if radius == 0 else segments):
             angle = math.tau * i / segments
             ring.append(len(vertices))
             vertices.append((radius * math.cos(angle), radius * math.sin(angle),
@@ -179,14 +184,17 @@ def make_center_cup(rim_mat, inner_mat):
                 faces.append((first[i], first[j], second[0]))
             else:
                 faces.append((first[i], first[j], second[j], second[i]))
-            slots.append(1 if section >= 8 else 0)
+            boss_face = section >= 9 and max(math.hypot(vertices[v][0], vertices[v][1])
+                                             for v in faces[-1]) <= 0.020001
+            slots.append(2 if boss_face else 1 if section >= 8 else 0)
     for index in range(CENTER_LOBES):
         angle = math.pi / 2 + index * math.tau / CENTER_LOBES
         assert core_surface(0.075, angle) < 0.125
         assert core_surface(0.09, angle + math.pi / CENTER_LOBES) == 0.151
     assert all(z >= 0.065 for _, _, z in vertices), "The engraving must retain a solid back"
-    return closed_mesh("Solid center with six recessed petals", vertices, faces,
-                       [rim_mat, inner_mat], slots)
+    assert core_surface(0, 0) > 0.162, "The round boss must rise above the rim"
+    return closed_mesh("Solid center with six recessed petals and a raised round boss", vertices, faces,
+                       [rim_mat, inner_mat, boss_mat], slots)
 
 
 def petal_projector(petals):
@@ -213,7 +221,7 @@ def make_stamen(index, mat, project):
     c, s = math.cos(angle), math.sin(angle)
     rows, support = [], None
     for step in range(129):
-        radius = 0.153 + (0.35 - 0.153) * step / 128
+        radius = 0.153 + (0.30 - 0.153) * step / 128
         row = []
         for offset in (-0.004, 0.004):
             x, y = radius * c - offset * s, radius * s + offset * c
@@ -233,7 +241,21 @@ def make_stamen(index, mat, project):
                       (a, b, b + 2, a + 2), (a + 1, a + 3, b + 3, b + 1)])
     last = 4 * (len(rows) - 1)
     faces.extend([(0, 2, 3, 1), (last, last + 1, last + 3, last + 2)])
-    obj = closed_mesh(f"Stamen {index + 1} surface inlay", vertices, faces, [mat])
+    # The detached terminal dot follows the same petal, with a visible gap.
+    dot_start = len(vertices)
+    dot_points = [(0, 0)] + [(0.0065 * math.cos(i * math.tau / 32),
+                             0.0065 * math.sin(i * math.tau / 32)) for i in range(32)]
+    for relief in (0.0006, -0.0015):
+        for dx, dy in dot_points:
+            x, y = 0.35 * c + dx, 0.35 * s + dy
+            height, owner = project(x, y)
+            assert owner == support, "The terminal dot must remain on its supporting petal"
+            vertices.append((x, y, height + relief))
+    for i in range(32):
+        a, b = dot_start + 1 + i, dot_start + 1 + (i + 1) % 32
+        faces.extend([(dot_start, a, b), (dot_start + 33, b + 33, a + 33),
+                      (a, a + 33, b + 33, b)])
+    obj = closed_mesh(f"Stamen {index + 1} line and terminal dot", vertices, faces, [mat])
     obj["surface_clearance"] = 0.0006
     obj["embedded_depth"] = 0.0015
     return obj
@@ -311,6 +333,7 @@ def build_flower():
     petal_mat = material("Flower · rose porcelain", linear_rgb("#e4aecb"), 0.72, 0)
     collar_mat = material("Flower · pale rim", linear_rgb("#eee4ea"), 0.78, 0)
     blue_mat = material("Flower · blue enamel", linear_rgb("#5486bb"), 0.72, 0)
+    boss_mat = material("Flower · raised center", linear_rgb("#bfd0df"), 0.72, 0)
     stamen_mat = material("Flower · silver stamens", linear_rgb("#62576a"), 0.85, 0)
     parts = [make_petal(index, petal_mat, angle_offset=OUTER_PETAL_ANGLE) for index in range(PETAL_COUNT)]
     bpy.context.view_layer.update()
@@ -318,7 +341,7 @@ def build_flower():
     # The bottom stays inside the petals around the entire cup circumference.
     assert min(project(0.162 * math.cos(i * math.tau / 96),
                        0.162 * math.sin(i * math.tau / 96))[0] for i in range(96)) > 0.070
-    parts.append(make_center_cup(collar_mat, blue_mat))
+    parts.append(make_center_cup(collar_mat, blue_mat, boss_mat))
     parts.extend(make_stamen(index, stamen_mat, project) for index in range(PETAL_COUNT))
     for obj in parts:
         for face in obj.data.polygons:
@@ -334,7 +357,7 @@ def build_flower():
     flower.data.transform(Matrix.Rotation(math.pi / 2, 4, "X"))
     flower["petals"] = PETAL_COUNT
     flower["center_petals"] = CENTER_LOBES
-    flower["center_structure"] = "Six-lobed recess in one solid insert"
+    flower["center_structure"] = "Six-lobed recess with an integrated raised circular boss"
     flower["front_axis"] = "-Y (Blender); +Z (glTF)"
     flower["reference"] = "Five matte plastic petals, attached radial inlays and six recessed petals inside a pale cylindrical rim"
     setup_studio(scene)

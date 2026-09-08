@@ -130,6 +130,9 @@ function start() {
           color.set(accent);
         } else if (part.materialName.includes('enamel')) {
           color.set(mode === 'field' ? CORE_PALETTE[cell.color] : CORE_PALETTE.B);
+        } else if (part.materialName.includes('raised center')) {
+          color.set(mode === 'field' ? CORE_PALETTE[cell.color] : CORE_PALETTE.B)
+            .lerp(new THREE.Color('#eee4ea'), 0.65);
         } else if (part.materialName.includes('porcelain')) {
           color.set(mode === 'field' ? PETAL_PALETTE[cell.porcelain] : PETAL_PALETTE.P);
         } else if (part.materialName.includes('stamens')) {
