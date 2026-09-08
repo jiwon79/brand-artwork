@@ -1,9 +1,9 @@
-"""Build the single resin smiley study in Blender.
+"""Build the single matte plastic smiley study in Blender.
 
 Run this file in Blender's Text Editor, or execute its source through Blender MCP.
 The main entry point writes the model to the adjacent assets directory.
 
-The mesh faces -Y in Blender (+Z after glTF export). Dimensions are 2 x 0.28 x 2.
+The mesh faces -Y in Blender (+Z after glTF export). Dimensions are 2 x 0.40 x 2.
 Only the default/test mesh names and an earlier Smiley study may be replaced.
 """
 import math
@@ -14,7 +14,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 RADIUS = 1.0
-DEPTH = 0.28
+DEPTH = 0.40
 EYE_WIDTH = 0.135
 EYE_HEIGHT = 0.74
 EYE_SPACING = 0.54
@@ -93,17 +93,20 @@ def smile_outline():
     ]
 
 
-def resin_material():
-    material = bpy.data.materials.get("Pink resin") or bpy.data.materials.new("Pink resin")
+def plastic_material():
+    material = bpy.data.materials.get("Pink matte plastic") or bpy.data.materials.new("Pink matte plastic")
     material.use_nodes = True
     bsdf = material.node_tree.nodes.get("Principled BSDF")
-    bsdf.inputs["Base Color"].default_value = (0.95, 0.25, 0.62, 1)
-    bsdf.inputs["Roughness"].default_value = 0.28
+    srgb = (239 / 255, 85 / 255, 181 / 255)
+    color = tuple(((c + 0.055) / 1.055) ** 2.4 for c in srgb)
+    bsdf.inputs["Base Color"].default_value = (*color, 1)
+    bsdf.inputs["Roughness"].default_value = 0.72
     bsdf.inputs["Metallic"].default_value = 0
     bsdf.inputs["IOR"].default_value = 1.46
-    bsdf.inputs["Coat Weight"].default_value = 0.24
-    bsdf.inputs["Coat Roughness"].default_value = 0.22
-    material.diffuse_color = (0.95, 0.25, 0.62, 1)
+    bsdf.inputs["Coat Weight"].default_value = 0
+    bsdf.inputs["Coat Roughness"].default_value = 0.5
+    bsdf.inputs["Specular IOR Level"].default_value = 0.175
+    material.diffuse_color = (*color, 1)
     return material
 
 
@@ -280,7 +283,7 @@ def build_smiley():
     apply(body, normals)
     body.data.transform(Matrix.Rotation(math.pi / 2, 4, "X"))
     body.data.materials.clear()
-    body.data.materials.append(resin_material())
+    body.data.materials.append(plastic_material())
     body["reference"] = "Single pink smiley puck from the supplied flower/smiley flip animation"
     body["front_axis"] = "-Y (Blender); +Z (glTF)"
     body["eye_openings"] = "Two rounded slots cut through the full thickness"

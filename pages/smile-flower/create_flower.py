@@ -1,7 +1,7 @@
 """Create the five-petal reference study through Blender MCP or the Text Editor.
 
 Petals are closed, curved shells with a shared handedness: one edge lifts above
-the following petal. A miniature five-petal blue flower is seated in a shallow, solid-backed cup.
+the following petal. A six-lobed rosette is recessed into the solid center insert.
 The new scene preserves the existing smiley scene. glTF exports only the flower.
 Front is -Y in Blender and +Z in glTF, matching smiley.glb.
 """
@@ -15,8 +15,11 @@ from mathutils.bvhtree import BVHTree
 
 SCENE_NAME = "Flower Study"
 PETAL_COUNT = 5
+CENTER_LOBES = 6
 RADIAL_STEPS = 24
 ANGULAR_STEPS = 96
+CORE_RADIAL_STEPS = 48
+CORE_ANGULAR_STEPS = 192
 OUTER_PETAL_ANGLE = math.radians(8)
 
 
@@ -35,7 +38,7 @@ def material(name, color, roughness, coat, metallic=0):
     bsdf.inputs["IOR"].default_value = 1.46
     bsdf.inputs["Coat Weight"].default_value = coat
     bsdf.inputs["Coat Roughness"].default_value = 0.5
-    bsdf.inputs["Specular IOR Level"].default_value = 0.125
+    bsdf.inputs["Specular IOR Level"].default_value = 0.175
     mat.diffuse_color = (*color, 1)
     return mat
 
@@ -104,31 +107,23 @@ def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEP
     return obj
 
 
-def ellipsoid(name, location, scale, mat, segments=64, rings=32):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=segments, ring_count=rings, location=location)
-    obj = bpy.context.object
-    obj.name = name
-    obj.scale = scale
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    obj.data.materials.append(mat)
-    return obj
-
-
-def make_center_flower(petal_mat, heart_mat):
-    def cup(u, v):
-        # The core has five rounded cups, rather than scaled, twisted blades.
-        return (0.063 + 0.073 * u, 0.066 * v,
-                0.129 + 0.017 * (u * u + v * v) + 0.004 * u + 0.010 * v)
-
-    parts = []
-    for index in range(PETAL_COUNT):
-        petal = make_petal(index, petal_mat, radial_steps=12, angular_steps=64,
-                           surface=cup, thickness=0.006, lip=0.002)
-        petal.name = f"Center petal {index + 1}"
-        parts.append(petal)
-    parts.append(ellipsoid("Center flower heart", (0, 0, 0.136),
-                           (0.022, 0.022, 0.012), heart_mat))
-    return parts
+def core_surface(radius, angle):
+    # One continuous molded face. Its six-lobed pocket has rounded shoulders
+    # and a shallow central hub, all below the surrounding circular face.
+    # Overlapping circular lobes keep the leaf ends round rather than star-like.
+    boundaries = []
+    for index in range(CENTER_LOBES):
+        delta = angle - math.pi / 2 - index * math.tau / CENTER_LOBES
+        discriminant = 0.039 ** 2 - (0.067 * math.sin(delta)) ** 2
+        if discriminant >= 0 and math.cos(delta) > 0:
+            boundaries.append(0.067 * math.cos(delta) + math.sqrt(discriminant))
+    largest = max(boundaries)
+    outline = largest + 0.004 * math.log(sum(math.exp((r - largest) / 0.004) for r in boundaries))
+    shoulder = min(1, max(0, (1 - radius / outline) / 0.28))
+    shoulder = shoulder * shoulder * (3 - 2 * shoulder)
+    lobes = 0.8 + 0.2 * math.cos(CENTER_LOBES * (angle - math.pi / 2))
+    well = 0.2 + 0.8 * (1 - math.exp(-(radius / 0.035) ** 2)) * lobes
+    return 0.151 - 0.034 * shoulder * well
 
 
 def closed_mesh(name, vertices, faces, materials, face_materials=None):
@@ -151,13 +146,13 @@ def closed_mesh(name, vertices, faces, materials, face_materials=None):
 
 
 def make_center_cup(rim_mat, inner_mat):
-    # A revolved closed section: buried bottom, outer wall, rounded lip, inner
-    # wall and a solid floor. The small petals intersect the floor at their bases.
+    # The buried bottom, cylindrical wall, pale lip and engraved colored face
+    # belong to one closed mesh; there are no separate small petals or rings.
     profile = [(0, 0.065), (0.152, 0.065), (0.159, 0.070),
                (0.162, 0.082), (0.162, 0.151), (0.160, 0.157),
                (0.155, 0.162), (0.146, 0.162), (0.140, 0.157),
-               (0.137, 0.148), (0.137, 0.126), (0, 0.126)]
-    segments = 96
+               (0.137, 0.151)]
+    segments = CORE_ANGULAR_STEPS
     vertices, rings, faces, slots = [], [], [], []
     for radius, height in profile:
         ring = []
@@ -165,6 +160,15 @@ def make_center_cup(rim_mat, inner_mat):
             angle = 2 * math.pi * i / segments
             ring.append(len(vertices))
             vertices.append((radius * math.cos(angle), radius * math.sin(angle), height))
+        rings.append(ring)
+    for step in range(CORE_RADIAL_STEPS - 1, -1, -1):
+        radius = 0.137 * step / CORE_RADIAL_STEPS
+        ring = []
+        for i in range(1 if step == 0 else segments):
+            angle = math.tau * i / segments
+            ring.append(len(vertices))
+            vertices.append((radius * math.cos(angle), radius * math.sin(angle),
+                             core_surface(radius, angle)))
         rings.append(ring)
     for section, (first, second) in enumerate(zip(rings, rings[1:])):
         for i in range(segments):
@@ -176,7 +180,12 @@ def make_center_cup(rim_mat, inner_mat):
             else:
                 faces.append((first[i], first[j], second[j], second[i]))
             slots.append(1 if section >= 8 else 0)
-    return closed_mesh("Center cup with seated floor", vertices, faces,
+    for index in range(CENTER_LOBES):
+        angle = math.pi / 2 + index * math.tau / CENTER_LOBES
+        assert core_surface(0.075, angle) < 0.125
+        assert core_surface(0.09, angle + math.pi / CENTER_LOBES) == 0.151
+    assert all(z >= 0.065 for _, _, z in vertices), "The engraving must retain a solid back"
+    return closed_mesh("Solid center with six recessed petals", vertices, faces,
                        [rim_mat, inner_mat], slots)
 
 
@@ -299,10 +308,9 @@ def build_flower():
     scene.name = SCENE_NAME
     scene["generator"] = "create_flower.py"
     bpy.context.window.scene = scene
-    petal_mat = material("Flower · rose porcelain", linear_rgb("#e4aecb"), 0.76, 0)
+    petal_mat = material("Flower · rose porcelain", linear_rgb("#e4aecb"), 0.72, 0)
     collar_mat = material("Flower · pale rim", linear_rgb("#eee4ea"), 0.78, 0)
-    blue_mat = material("Flower · blue enamel", linear_rgb("#5486bb"), 0.70, 0)
-    heart_mat = material("Flower · ice blue heart", linear_rgb("#a6c4de"), 0.70, 0)
+    blue_mat = material("Flower · blue enamel", linear_rgb("#5486bb"), 0.72, 0)
     stamen_mat = material("Flower · silver stamens", linear_rgb("#62576a"), 0.85, 0)
     parts = [make_petal(index, petal_mat, angle_offset=OUTER_PETAL_ANGLE) for index in range(PETAL_COUNT)]
     bpy.context.view_layer.update()
@@ -311,12 +319,6 @@ def build_flower():
     assert min(project(0.162 * math.cos(i * math.tau / 96),
                        0.162 * math.sin(i * math.tau / 96))[0] for i in range(96)) > 0.070
     parts.append(make_center_cup(collar_mat, blue_mat))
-    center = make_center_flower(blue_mat, heart_mat)
-    for part in center:
-        bpy.context.view_layer.update()
-        depths = [(part.matrix_world @ vertex.co).z for vertex in part.data.vertices]
-        assert min(depths) < 0.126 and max(depths) <= 0.163, "Core must sit in the cup floor, below its lip"
-    parts.extend(center)
     parts.extend(make_stamen(index, stamen_mat, project) for index in range(PETAL_COUNT))
     for obj in parts:
         for face in obj.data.polygons:
@@ -328,12 +330,13 @@ def build_flower():
     bpy.ops.object.join()
     flower = bpy.context.object
     flower.name = "Flower"
-    flower.data.name = "Five outer petals and a miniature five-petal blue flower"
+    flower.data.name = "Five outer petals and a six-lobed engraved center"
     flower.data.transform(Matrix.Rotation(math.pi / 2, 4, "X"))
     flower["petals"] = PETAL_COUNT
-    flower["center_petals"] = PETAL_COUNT
+    flower["center_petals"] = CENTER_LOBES
+    flower["center_structure"] = "Six-lobed recess in one solid insert"
     flower["front_axis"] = "-Y (Blender); +Z (glTF)"
-    flower["reference"] = "Five overlapping pink petals, attached radial inlays and a small flower seated in a pale cup"
+    flower["reference"] = "Five matte plastic petals, attached radial inlays and six recessed petals inside a pale cylindrical rim"
     setup_studio(scene)
     activate(flower)
     bpy.context.view_layer.update()
