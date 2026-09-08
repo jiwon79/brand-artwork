@@ -23,7 +23,14 @@
         <button class="play-button" type="button" disabled>일시정지</button>
         <button class="replay-button" type="button" disabled aria-label="처음부터 다시 재생">↻</button>
         <button class="flip-button" type="button" hidden disabled>꽃으로 바꾸기 <span aria-hidden="true">↻</span></button>
+        <button class="look-button" type="button" disabled aria-expanded="false" aria-controls="look-panel">조정</button>
       </div>
+      <aside id="look-panel" class="look-panel" aria-label="색감·재질 조정" hidden>
+        <div class="look-heading"><strong>색감·재질</strong><button class="look-close" type="button" aria-label="조정 패널 닫기">×</button></div>
+        <p class="look-help">무광 정도를 높이면 반사가 넓게 퍼집니다.<br />변경은 이 브라우저에 저장됩니다.</p>
+        <div class="look-gui"></div>
+        <p class="look-feedback" role="status" aria-live="polite"></p>
+      </aside>
       <p class="sr-only" id="model-status" aria-live="polite"></p>
     </main>
     <noscript>3D 애니메이션을 보려면 JavaScript를 켜주세요.</noscript>
