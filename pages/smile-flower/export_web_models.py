@@ -62,12 +62,11 @@ def procedural_flower(directory, collection):
     source = directory.parent / "create_flower.py"
     exec(compile(source.read_text(), str(source), "exec"), namespace)
     make_petal = namespace["make_petal"]
-    ellipsoid = namespace["ellipsoid"]
     namespace["make_petal"] = lambda index, mat, **options: make_petal(
-        index, mat, radial_steps=8 if "enamel" in mat.name else 14,
-        angular_steps=48 if "enamel" in mat.name else 72,
+        index, mat, radial_steps=14, angular_steps=72,
         **{key: value for key, value in options.items() if key not in ("radial_steps", "angular_steps")})
-    namespace["ellipsoid"] = lambda *args: ellipsoid(*args, segments=24, rings=12)
+    namespace["CORE_RADIAL_STEPS"] = 32
+    namespace["CORE_ANGULAR_STEPS"] = 144
     namespace["SCENE_NAME"] = "Flower web export temporary"
     namespace["setup_studio"] = lambda scene: None
     previous_scene = bpy.context.window.scene

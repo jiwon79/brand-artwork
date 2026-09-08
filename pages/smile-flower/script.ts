@@ -130,9 +130,6 @@ function start() {
           color.set(accent);
         } else if (part.materialName.includes('enamel')) {
           color.set(mode === 'field' ? CORE_PALETTE[cell.color] : CORE_PALETTE.B);
-        } else if (part.materialName.includes('heart')) {
-          color.set(mode === 'field' ? CORE_PALETTE[cell.color] : CORE_PALETTE.B)
-            .lerp(new THREE.Color('#eee6ec'), 0.32);
         } else if (part.materialName.includes('porcelain')) {
           color.set(mode === 'field' ? PETAL_PALETTE[cell.porcelain] : PETAL_PALETTE.P);
         } else if (part.materialName.includes('stamens')) {
@@ -303,28 +300,17 @@ function start() {
       if (!(object instanceof THREE.Mesh)) return;
       const original = object.material as THREE.MeshStandardMaterial;
       const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld).translate(0, 0, -depthCenter);
-      const isPorcelain = original.name.includes('porcelain');
-      const isCore = original.name.includes('enamel') || original.name.includes('heart');
-      const isFlower = model === 'flower';
       const material = new THREE.MeshPhysicalMaterial({
-        color: '#ffffff', roughness: isFlower ? (isPorcelain ? 0.76 : isCore ? 0.70 : 0.78) : 0.33,
-        metalness: 0, clearcoat: isFlower ? 0 : 0.12,
-        specularIntensity: isFlower ? 0.25 : 1,
-        clearcoatRoughness: 0.5, envMapIntensity: isFlower ? 0.12 : 0.3,
+        color: '#ffffff', roughness: original.roughness,
+        metalness: 0, clearcoat: 0, ior: 1.46,
+        specularIntensity: 0.35, envMapIntensity: 0.18,
         vertexColors: geometry.hasAttribute('color'),
       });
-      // A shallow resin face bends the softbox reflection across the smiley.
+      // A slight crown gives the molded plastic face a soft lighting gradient.
       if (model === 'smiley') {
-        material.clearcoat = 0.85;
-        material.clearcoatRoughness = 0.2;
-        material.envMapIntensity = 0.8;
         material.onBeforeCompile = shader => {
           shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>',
-            '#include <beginnormal_vertex>\nobjectNormal.xy += position.xy * 0.65 * pow(max(normal.z, 0.0), 12.0);');
-          // The sampled key lights provide diffuse illumination; the broad
-          // studio panels provide the resin reflection, without point glints.
-          shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_end>',
-            '#include <lights_fragment_end>\nreflectedLight.directSpecular *= 0.15;\n#ifdef USE_CLEARCOAT\nclearcoatSpecularDirect *= 0.15;\n#endif');
+            '#include <beginnormal_vertex>\nobjectNormal.xy += position.xy * 0.18 * pow(max(normal.z, 0.0), 12.0);');
         };
       }
       const mesh = new THREE.InstancedMesh(geometry, material, variant === 'field' ? CELLS.length : 1);
