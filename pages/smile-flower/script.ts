@@ -1,8 +1,9 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { CELLS, CORE_PALETTE, PALETTE, PETAL_PALETTE, REFERENCE_HEIGHT, REFERENCE_WIDTH } from './reference-layout';
+import { CELLS, REFERENCE_HEIGHT, REFERENCE_WIDTH } from './reference-layout';
 import { FLIP_DURATION, REST_ANGLE, otherModel, sampleFlip, sampleRipple, type ModelName } from './flip-motion';
+import { createLookControls, readLook } from './look-controls';
 
 const assets = {
   field: {
@@ -15,7 +16,7 @@ const assets = {
   },
 };
 type ViewMode = 'field' | 'single';
-type Part = { mesh: THREE.InstancedMesh; materialName: string; model: ModelName; variant: ViewMode; colors: THREE.Color[] };
+type Part = { mesh: THREE.InstancedMesh; materialName: string; model: ModelName; variant: ViewMode; colors: THREE.Color[]; baseRoughness: number };
 
 function studioEnvironment(renderer: THREE.WebGLRenderer) {
   const studio = new THREE.Scene();
@@ -61,6 +62,8 @@ function start() {
   const playButton = document.querySelector<HTMLButtonElement>('.play-button')!;
   const replayButton = document.querySelector<HTMLButtonElement>('.replay-button')!;
   const flipButton = document.querySelector<HTMLButtonElement>('.flip-button')!;
+  const lookButton = document.querySelector<HTMLButtonElement>('.look-button')!;
+  const look = readLook();
   const events = new AbortController();
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const query = new URLSearchParams(location.search);
@@ -79,7 +82,7 @@ function start() {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.82;
+  renderer.toneMappingExposure = look.exposure;
   renderer.setClearColor(0x000000);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.autoUpdate = false;
@@ -117,6 +120,7 @@ function start() {
 
   const transform = new THREE.Object3D();
   const color = new THREE.Color();
+  const hsl = { h: 0, s: 0, l: 0 };
 
   function colorInstances() {
     for (const part of parts) {
@@ -125,23 +129,24 @@ function start() {
       part.mesh.count = mode === 'field' ? CELLS.length : 1;
       for (let index = 0; index < part.mesh.count; index++) {
         const cell = CELLS[index];
-        const accent = mode === 'field' ? PALETTE[cell.color] : (part.model === 'smiley' ? PALETTE.P : PALETTE.B);
         if (part.model === 'smiley') {
-          color.set(accent);
+          color.set(mode === 'field' ? look.smileys[cell.color] : look.smileys.P);
         } else if (part.materialName.includes('enamel')) {
-          color.set(mode === 'field' ? CORE_PALETTE[cell.color] : CORE_PALETTE.B);
+          color.set(mode === 'field' ? look.cores[cell.color] : look.cores.B);
         } else if (part.materialName.includes('raised center')) {
-          color.set(mode === 'field' ? CORE_PALETTE[cell.color] : CORE_PALETTE.B)
-            .lerp(new THREE.Color('#eee4ea'), 0.65);
+          color.set(mode === 'field' ? look.cores[cell.color] : look.cores.B)
+            .lerp(new THREE.Color(look.rimColor), 0.65);
         } else if (part.materialName.includes('porcelain')) {
-          color.set(mode === 'field' ? PETAL_PALETTE[cell.porcelain] : PETAL_PALETTE.P);
+          color.set(mode === 'field' ? look.petals[cell.porcelain] : look.petals.P);
         } else if (part.materialName.includes('stamens')) {
-          color.set('#62576a');
+          color.set(look.strokeColor);
         } else {
-          color.set('#eee4ea');
+          color.set(look.rimColor);
         }
+        color.getHSL(hsl, THREE.SRGBColorSpace);
+        color.setHSL(hsl.h, Math.min(1, hsl.s * look.saturation), hsl.l, THREE.SRGBColorSpace);
         // The top of the reference receives more of the broad studio light.
-        if (mode === 'field') color.multiplyScalar(0.6 + 0.4 * (cell.y + REFERENCE_HEIGHT / 2) / REFERENCE_HEIGHT);
+        if (mode === 'field') color.multiplyScalar(1 - look.falloff + look.falloff * (cell.y + REFERENCE_HEIGHT / 2) / REFERENCE_HEIGHT);
         part.colors[index] = color.clone();
       }
       part.mesh.instanceColor!.needsUpdate = true;
@@ -176,19 +181,20 @@ function start() {
     renderer.shadowMap.needsUpdate = true;
   }
 
-  function resizeView() {
-    const width = Math.max(1, stage.clientWidth);
-    const height = Math.max(1, stage.clientHeight);
-    const halfHeight = mode === 'field' ? REFERENCE_HEIGHT / 2 : 1.38 / Math.min(width / height, 1);
-    const halfWidth = mode === 'field' ? REFERENCE_WIDTH / 2 : halfHeight * width / height;
-    Object.assign(camera, { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight });
-    camera.updateProjectionMatrix();
+  function updateLighting() {
+    const azimuth = THREE.MathUtils.degToRad(look.azimuth);
+    const elevation = THREE.MathUtils.degToRad(look.elevation);
+    keyPosition.set(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation), Math.cos(azimuth) * Math.cos(elevation))
+      .multiplyScalar(Math.sqrt(46.25));
+    keyRight.crossVectors(keyPosition, THREE.Object3D.DEFAULT_UP).normalize();
+    keyUp.crossVectors(keyRight, keyPosition).normalize();
     const shadowSamples = mode === 'field' ? 3 : 5;
     for (const [index, light] of keyLights.entries()) {
       light.castShadow = index < shadowSamples;
-      light.intensity = index < shadowSamples ? 4.45 / shadowSamples : 0;
+      light.intensity = index < shadowSamples ? look.key / shadowSamples : 0;
+      light.color.set(look.lightColor);
       const angle = index * Math.PI * (3 - Math.sqrt(5));
-      const radius = 2.5 * Math.sqrt((index + 0.5) / shadowSamples);
+      const radius = look.spread * Math.sqrt((index + 0.5) / shadowSamples);
       light.position.copy(keyPosition).addScaledVector(keyRight, radius * Math.cos(angle))
         .addScaledVector(keyUp, radius * Math.sin(angle)).multiplyScalar(4);
       const size = mode === 'field' ? 14 : 1.6;
@@ -197,6 +203,38 @@ function start() {
       light.shadow.normalBias = 0.001;
       light.shadow.radius = mode === 'field' ? 6 : 32;
     }
+    fill.intensity = look.fill;
+    rim.intensity = look.rim;
+    renderer.shadowMap.needsUpdate = true;
+  }
+
+  function applyLook() {
+    const toneMapping = { ACES: THREE.ACESFilmicToneMapping, AgX: THREE.AgXToneMapping, Neutral: THREE.NeutralToneMapping }[look.toneMapping];
+    const toneChanged = renderer.toneMapping !== toneMapping;
+    renderer.toneMapping = toneMapping;
+    renderer.toneMappingExposure = look.exposure;
+    for (const part of parts) {
+      const material = part.mesh.material as THREE.MeshPhysicalMaterial;
+      material.roughness = part.model === 'smiley' ? look.smileyRoughness
+        : part.materialName.includes('porcelain') ? look.petalRoughness
+          : /enamel|raised center/.test(part.materialName) ? look.coreRoughness : part.baseRoughness;
+      material.specularIntensity = look.specular;
+      material.envMapIntensity = look.environment;
+      if (toneChanged) material.needsUpdate = true;
+    }
+    updateLighting();
+    colorInstances();
+  }
+  const disposeLookControls = createLookControls(look, applyLook);
+
+  function resizeView() {
+    const width = Math.max(1, stage.clientWidth);
+    const height = Math.max(1, stage.clientHeight);
+    const halfHeight = mode === 'field' ? REFERENCE_HEIGHT / 2 : 1.38 / Math.min(width / height, 1);
+    const halfWidth = mode === 'field' ? REFERENCE_WIDTH / 2 : halfHeight * width / height;
+    Object.assign(camera, { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight });
+    camera.updateProjectionMatrix();
+    updateLighting();
     // Keep at least the original 1080p raster on a small display and respect
     // high-DPI phones. Bound total pixels, rather than capping every device at 2x.
     const targetWidth = mode === 'field' ? 1080 : 1200;
@@ -324,13 +362,13 @@ function start() {
       mesh.castShadow = model === 'flower';
       mesh.receiveShadow = model === 'flower';
       scene.add(mesh);
-      parts.push({ mesh, materialName: original.name, model, variant, colors: [] });
+      parts.push({ mesh, materialName: original.name, model, variant, colors: [], baseRoughness: original.roughness });
     });
     disposeModel(gltf.scene);
   })).then(async () => {
     if (disposed) return;
     syncControls();
-    colorInstances();
+    applyLook();
     resizeView();
     updateMatrices();
     await renderer.compileAsync(scene, camera);
@@ -339,7 +377,7 @@ function start() {
     ready = true;
     status.hidden = true;
     artwork.setAttribute('aria-busy', 'false');
-    for (const button of [modeButton, playButton, replayButton, flipButton]) button.disabled = false;
+    for (const button of [modeButton, playButton, replayButton, flipButton, lookButton]) button.disabled = false;
     showControls();
   }).catch(error => {
     if (disposed) return;
@@ -375,6 +413,7 @@ function start() {
     renderer.setAnimationLoop(null);
     clearTimeout(controlsTimer);
     events.abort();
+    disposeLookControls();
     resize.disconnect();
     intersection.disconnect();
     parts.forEach(({ mesh }) => { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); mesh.dispose(); });
