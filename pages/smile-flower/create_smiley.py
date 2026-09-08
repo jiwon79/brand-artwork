@@ -3,7 +3,7 @@
 Run this file in Blender's Text Editor, or execute its source through Blender MCP.
 The main entry point writes the model to the adjacent assets directory.
 
-The mesh faces -Y in Blender (+Z after glTF export). Dimensions are 2 x 0.40 x 2.
+The mesh faces -Y in Blender (+Z after glTF export). Dimensions are 2 x 0.50 x 2.
 Only the default/test mesh names and an earlier Smiley study may be replaced.
 """
 import math
@@ -14,7 +14,8 @@ import bpy
 from mathutils import Matrix, Vector
 
 RADIUS = 1.0
-DEPTH = 0.40
+DEPTH = 0.50
+RIM_RADIUS = 0.11
 EYE_WIDTH = 0.135
 EYE_HEIGHT = 0.74
 EYE_SPACING = 0.54
@@ -97,15 +98,15 @@ def plastic_material():
     material = bpy.data.materials.get("Pink matte plastic") or bpy.data.materials.new("Pink matte plastic")
     material.use_nodes = True
     bsdf = material.node_tree.nodes.get("Principled BSDF")
-    srgb = (239 / 255, 85 / 255, 181 / 255)
+    srgb = (233 / 255, 157 / 255, 203 / 255)
     color = tuple(((c + 0.055) / 1.055) ** 2.4 for c in srgb)
     bsdf.inputs["Base Color"].default_value = (*color, 1)
-    bsdf.inputs["Roughness"].default_value = 0.72
+    bsdf.inputs["Roughness"].default_value = 0.76
     bsdf.inputs["Metallic"].default_value = 0
     bsdf.inputs["IOR"].default_value = 1.46
     bsdf.inputs["Coat Weight"].default_value = 0
     bsdf.inputs["Coat Roughness"].default_value = 0.5
-    bsdf.inputs["Specular IOR Level"].default_value = 0.175
+    bsdf.inputs["Specular IOR Level"].default_value = 0.14
     material.diffuse_color = (*color, 1)
     return material
 
@@ -164,9 +165,9 @@ def setup_studio(scene):
     camera.location = (0, -10, 2.2)
     look_at(camera)
     scene.camera = camera
-    area_light(rig, "Key softbox", (-3, -4, 5), 600, 4.0, (1, 0.94, 0.98))
-    area_light(rig, "Fill softbox", (4, -2, 1), 130, 4.0, (0.85, 0.91, 1))
-    area_light(rig, "Edge softbox", (1, 1.8, 3), 180, 3.0, (1, 0.8, 0.91))
+    area_light(rig, "Key softbox", (-3, -4, 5), 600, 4.5, (1, 0.94, 0.98))
+    area_light(rig, "Fill softbox", (4, -2, 1), 200, 4.0, (0.85, 0.91, 1))
+    area_light(rig, "Edge softbox", (1, 1.8, 3), 125, 3.0, (1, 0.8, 0.91))
 
     world = bpy.data.worlds.get("Smiley black studio") or bpy.data.worlds.new("Smiley black studio")
     world.use_nodes = True
@@ -196,7 +197,7 @@ def setup_studio(scene):
     scene.render.image_settings.file_format = "PNG"
     scene.render.film_transparent = False
     scene.view_settings.view_transform = "AgX"
-    scene.view_settings.look = "AgX - Medium High Contrast"
+    scene.view_settings.look = "AgX - Medium Low Contrast"
     scene.view_settings.exposure = 0.35
     for screen in bpy.data.screens:
         for area in screen.areas:
@@ -250,8 +251,8 @@ def build_smiley():
     body.name = MODEL_NAME
     body.data.name = "Smiley mesh"
     rim = body.modifiers.new("Rounded outer rim", "BEVEL")
-    rim.width = 0.045
-    rim.segments = 6
+    rim.width = RIM_RADIUS
+    rim.segments = 12
     rim.limit_method = "ANGLE"
     apply(body, rim)
 
@@ -269,8 +270,8 @@ def build_smiley():
         ]))
 
     lips = body.modifiers.new("Soft cut edges", "BEVEL")
-    lips.width = 0.007
-    lips.segments = 3
+    lips.width = 0.010
+    lips.segments = 4
     lips.limit_method = "ANGLE"
     lips.angle_limit = math.radians(35)
     lips.use_clamp_overlap = True
@@ -288,6 +289,8 @@ def build_smiley():
     body["front_axis"] = "-Y (Blender); +Z (glTF)"
     body["eye_openings"] = "Two rounded slots cut through the full thickness"
     body["mouth_opening"] = "Thin U-shaped through-cut with short terminal cheek marks"
+    body["depth"] = DEPTH
+    body["rim_radius"] = RIM_RADIUS
     setup_studio(scene)
     activate(body)
     bpy.context.view_layer.update()

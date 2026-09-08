@@ -20,12 +20,12 @@ export type LookSettings = Record<NumericKey, number> & {
 
 export function createLook(): LookSettings {
   return {
-    exposure: 0.82, saturation: 1,
-    petalRoughness: 0.72, coreRoughness: 0.72, smileyRoughness: 0.72,
-    specular: 0.35, environment: 0.18, key: 4.45, fill: 0.32, rim: 1.3,
+    exposure: 0.9, saturation: 1,
+    petalRoughness: 0.76, coreRoughness: 0.74, smileyRoughness: 0.76,
+    specular: 0.28, environment: 0.14, key: 4.45, fill: 0.55, rim: 0.9,
     azimuth: Math.atan2(-3, 3.5) * 180 / Math.PI,
     elevation: Math.asin(5 / Math.sqrt(46.25)) * 180 / Math.PI,
-    spread: 2.5, falloff: 0.4, toneMapping: 'ACES',
+    spread: 3.2, falloff: 0.3, toneMapping: 'ACES',
     lightColor: '#fff1fb', rimColor: '#eee4ea', strokeColor: '#62576a',
     petals: { ...PETAL_PALETTE }, cores: { ...CORE_PALETTE }, smileys: { ...PALETTE },
   };

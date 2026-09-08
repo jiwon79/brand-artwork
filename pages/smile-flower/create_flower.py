@@ -21,6 +21,8 @@ ANGULAR_STEPS = 96
 CORE_RADIAL_STEPS = 48
 CORE_ANGULAR_STEPS = 192
 OUTER_PETAL_ANGLE = math.radians(8)
+PETAL_THICKNESS = 0.060
+PETAL_LIP = 0.026
 
 
 def linear_rgb(hex_color):
@@ -38,7 +40,7 @@ def material(name, color, roughness, coat, metallic=0):
     bsdf.inputs["IOR"].default_value = 1.46
     bsdf.inputs["Coat Weight"].default_value = coat
     bsdf.inputs["Coat Roughness"].default_value = 0.5
-    bsdf.inputs["Specular IOR Level"].default_value = 0.175
+    bsdf.inputs["Specular IOR Level"].default_value = 0.14
     mat.diffuse_color = (*color, 1)
     return mat
 
@@ -50,60 +52,59 @@ def activate(obj):
     bpy.context.view_layer.objects.active = obj
 
 
-def apply(obj, modifier):
-    activate(obj)
-    bpy.ops.object.modifier_apply(modifier=modifier.name)
-
-
 def petal_surface(u, v):
     # A nearly circular blade narrows gently at its hidden attachment point.
     x = 0.50 + 0.50 * u
-    y = 0.475 * v * (0.94 + 0.06 * u) + 0.028 * (1 - u)
+    y = 0.495 * v * (0.97 + 0.03 * u) + 0.022 * (1 - u)
     # A shallow cup plus a tangential roll creates cyclic overlap without
     # assigning the five petals a visibly stepped stack of global heights.
     # Raise the outer cup while keeping its attachment below the center collar.
     bowl = (0.055 + 0.0325 * (u + 1)) * (u * u + v * v)
-    z = 0.035 + bowl + 0.10 * v + 0.03 * u * v - 0.02 * u
+    cushion = 0.015 * max(0, 1 - u * u - v * v) ** 2
+    z = 0.035 + bowl + cushion + 0.10 * v + 0.03 * u * v - 0.02 * u
     return x, y, z
 
 
 def make_petal(index, mat, radial_steps=RADIAL_STEPS, angular_steps=ANGULAR_STEPS,
-               surface=petal_surface, thickness=0.022, lip=0.008, angle_offset=0):
+               surface=petal_surface, thickness=PETAL_THICKNESS, lip=PETAL_LIP, angle_offset=0):
     angle = math.radians(90 - index * 72) + angle_offset
     c, s = math.cos(angle), math.sin(angle)
 
-    def vertex(u, v):
+    def vertex(u, v, offset):
         x, y, z = surface(u, v)
-        return c * x - s * y, s * x + c * y, z
+        return c * x - s * y, s * x + c * y, z + offset
 
-    vertices = [vertex(0, 0)]
-    for ring in range(1, radial_steps + 1):
-        radius = ring / radial_steps
-        for segment in range(angular_steps):
-            theta = 2 * math.pi * segment / angular_steps
-            vertices.append(vertex(radius * math.cos(theta), radius * math.sin(theta)))
-    faces = [(0, 1 + i, 1 + (i + 1) % angular_steps) for i in range(angular_steps)]
-    for ring in range(radial_steps - 1):
-        a, b = 1 + ring * angular_steps, 1 + (ring + 1) * angular_steps
+    # Explicit rounded lip: its radius is independent of tessellation,
+    # unlike a bevel clamped by the small edges of a dense surface grid.
+    inset = lip / 0.5
+    inner = 1 - inset
+    profile = [(inner * step / radial_steps, 0) for step in range(radial_steps + 1)]
+    for step in range(1, 13):
+        angle_on_lip = math.pi * step / 12
+        profile.append((inner + inset * math.sin(angle_on_lip),
+                        -thickness / 2 * (1 - math.cos(angle_on_lip))))
+    profile.extend((inner * step / radial_steps, -thickness)
+                   for step in range(radial_steps - 1, -1, -1))
+    vertices, rings, faces = [], [], []
+    for radius, offset in profile:
+        ring = []
+        for segment in range(1 if radius == 0 else angular_steps):
+            theta = math.tau * segment / angular_steps
+            ring.append(len(vertices))
+            vertices.append(vertex(radius * math.cos(theta), radius * math.sin(theta), offset))
+        rings.append(ring)
+    for first, second in zip(rings, rings[1:]):
         for i in range(angular_steps):
             j = (i + 1) % angular_steps
-            faces.append((a + i, b + i, b + j, a + j))
-    mesh = bpy.data.meshes.new(f"Petal {index + 1} shell")
-    mesh.from_pydata(vertices, [], faces)
-    mesh.update()
-    obj = bpy.data.objects.new(f"Petal {index + 1}", mesh)
-    bpy.context.collection.objects.link(obj)
-    obj.data.materials.append(mat)
-    shell = obj.modifiers.new("Petal thickness", "SOLIDIFY")
-    shell.thickness = thickness
-    shell.offset = -1
-    apply(obj, shell)
-    rim = obj.modifiers.new("Soft petal lip", "BEVEL")
-    rim.width = lip
-    rim.segments = 3
-    rim.limit_method = "ANGLE"
-    rim.angle_limit = math.radians(35)
-    apply(obj, rim)
+            if len(first) == 1:
+                faces.append((first[0], second[i], second[j]))
+            elif len(second) == 1:
+                faces.append((first[i], second[0], first[j]))
+            else:
+                faces.append((first[i], second[i], second[j], first[j]))
+    obj = closed_mesh(f"Petal {index + 1}", vertices, faces, [mat])
+    obj["thickness"] = thickness
+    obj["rounded_lip_radius"] = lip
     return obj
 
 
@@ -277,9 +278,9 @@ def setup_studio(scene):
     look_at(camera)
     scene.camera = camera
     for name, location, energy, size, color in (
-        ("Flower key", (-3, -4, 5), 550, 3, (1, 0.93, 0.98)),
-        ("Flower fill", (4, -2, 1), 110, 4, (0.85, 0.91, 1)),
-        ("Flower rim", (1, 1.8, 3), 180, 3, (1, 0.8, 0.91)),
+        ("Flower key", (-3, -4, 5), 550, 4.2, (1, 0.93, 0.98)),
+        ("Flower fill", (4, -2, 1), 180, 4, (0.85, 0.91, 1)),
+        ("Flower rim", (1, 1.8, 3), 125, 3, (1, 0.8, 0.91)),
     ):
         data = bpy.data.lights.new(name, "AREA")
         data.energy, data.shape, data.size, data.color = energy, "DISK", size, color
@@ -298,7 +299,7 @@ def setup_studio(scene):
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = "PNG"
     scene.view_settings.view_transform = "AgX"
-    scene.view_settings.look = "AgX - Medium High Contrast"
+    scene.view_settings.look = "AgX - Medium Low Contrast"
     scene.view_settings.exposure = 0.35
     for screen in bpy.data.screens:
         for area in screen.areas:
@@ -330,10 +331,10 @@ def build_flower():
     scene.name = SCENE_NAME
     scene["generator"] = "create_flower.py"
     bpy.context.window.scene = scene
-    petal_mat = material("Flower · rose porcelain", linear_rgb("#e4aecb"), 0.72, 0)
+    petal_mat = material("Flower · rose porcelain", linear_rgb("#e4bcd3"), 0.76, 0)
     collar_mat = material("Flower · pale rim", linear_rgb("#eee4ea"), 0.78, 0)
-    blue_mat = material("Flower · blue enamel", linear_rgb("#5486bb"), 0.72, 0)
-    boss_mat = material("Flower · raised center", linear_rgb("#bfd0df"), 0.72, 0)
+    blue_mat = material("Flower · blue enamel", linear_rgb("#5486bb"), 0.74, 0)
+    boss_mat = material("Flower · raised center", linear_rgb("#bfd0df"), 0.74, 0)
     stamen_mat = material("Flower · silver stamens", linear_rgb("#62576a"), 0.85, 0)
     parts = [make_petal(index, petal_mat, angle_offset=OUTER_PETAL_ANGLE) for index in range(PETAL_COUNT)]
     bpy.context.view_layer.update()
@@ -356,6 +357,8 @@ def build_flower():
     flower.data.name = "Five outer petals and a six-lobed engraved center"
     flower.data.transform(Matrix.Rotation(math.pi / 2, 4, "X"))
     flower["petals"] = PETAL_COUNT
+    flower["petal_thickness"] = PETAL_THICKNESS
+    flower["petal_lip_radius"] = PETAL_LIP
     flower["center_petals"] = CENTER_LOBES
     flower["center_structure"] = "Six-lobed recess with an integrated raised circular boss"
     flower["front_axis"] = "-Y (Blender); +Z (glTF)"
