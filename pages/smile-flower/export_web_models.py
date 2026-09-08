@@ -98,6 +98,7 @@ def export_web_models(directory):
     original_materials = set(bpy.data.materials)
     original_meshes = set(bpy.data.meshes)
     original_curves = set(bpy.data.curves)
+    original_libraries = set(bpy.data.libraries)
     try:
         for name, ratio in (("flower", 0.18), ("smiley", 0.6)):
             source_path = directory / (name + ".blend")
@@ -138,7 +139,7 @@ def export_web_models(directory):
             activate(obj)
             path = directory / (name + "-web.glb")
             bpy.ops.export_scene.gltf(filepath=str(path), export_format="GLB", use_selection=True,
-                                      export_cameras=False, export_lights=False,
+                                      use_active_scene=True, export_cameras=False, export_lights=False,
                                       export_vertex_color="ACTIVE", export_all_vertex_colors=False)
             report["bytes"] = path.stat().st_size
             reports.append(report)
@@ -158,6 +159,12 @@ def export_web_models(directory):
         for curve in set(bpy.data.curves) - original_curves:
             if curve.users == 0:
                 bpy.data.curves.remove(curve)
+        # Appending the export copy can leave a library reference behind that
+        # prevents the editable source file from being saved on the next edit.
+        linked_libraries = {item.library for item in bpy.data.user_map() if item.library}
+        for library in set(bpy.data.libraries) - original_libraries:
+            if library not in linked_libraries:
+                bpy.data.libraries.remove(library)
         for obj in previous_selected:
             obj.select_set(True)
         bpy.context.view_layer.objects.active = previous_active
