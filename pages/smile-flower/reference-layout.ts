@@ -3,8 +3,8 @@ export const REFERENCE_WIDTH = 12;
 export const REFERENCE_HEIGHT = 1280 / 60;
 
 export const PALETTE = {
-  B: '#4c9ff4', I: '#b1c9ed', G: '#00d071', Y: '#ffbd4d',
-  R: '#f83c42', P: '#ef55b5', L: '#bbdf60', W: '#d4cce4',
+  B: '#80b6eb', I: '#bfceed', G: '#6dca99', Y: '#f4cc80',
+  R: '#ed818b', P: '#e99dcb', L: '#cbdc96', W: '#ded4e7',
 } as const;
 
 export const CORE_PALETTE = {
@@ -43,7 +43,7 @@ const porcelain = [
   'PWRWPW',
 ];
 
-export const PETAL_PALETTE = { W: '#e5d6e3', R: '#dfc5d8', P: '#e4aecb' } as const;
+export const PETAL_PALETTE = { W: '#e9dfeb', R: '#e6cde0', P: '#e4bcd3' } as const;
 
 export const CELLS = centers.flatMap((row, r) => [...row].map((color, c) => ({
   x: ((r % 2 ? 0 : 60) + c * 120 - 360) / 60,
