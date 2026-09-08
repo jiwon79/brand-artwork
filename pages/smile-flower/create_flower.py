@@ -383,7 +383,7 @@ def export_flower(directory):
     activate(bpy.context.scene.objects["Flower"])
     glb_path, blend_path = str(directory / "flower.glb"), str(directory / "flower.blend")
     bpy.ops.export_scene.gltf(filepath=glb_path, export_format="GLB", use_selection=True,
-                             export_cameras=False, export_lights=False)
+                             use_active_scene=True, export_cameras=False, export_lights=False)
     # Save a normal project with a startup scene and workspace, not a datablock
     # library. Copy mode retains the current project's path and other user scenes.
     bpy.ops.wm.save_as_mainfile(filepath=blend_path, compress=True, copy=True)

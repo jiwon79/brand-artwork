@@ -304,7 +304,8 @@ def export_smiley(directory):
     activate(body)
     glb_path = str(directory / "smiley.glb")
     blend_path = str(directory / "smiley.blend")
-    bpy.ops.export_scene.gltf(filepath=glb_path, export_format="GLB", use_selection=True, export_cameras=False, export_lights=False)
+    bpy.ops.export_scene.gltf(filepath=glb_path, export_format="GLB", use_selection=True,
+                             use_active_scene=True, export_cameras=False, export_lights=False)
     bpy.ops.wm.save_as_mainfile(filepath=blend_path, compress=True)
     return {"blend": blend_path, "glb": glb_path}
 
