@@ -124,7 +124,7 @@ export function createFieldInteraction(
   const motion = createFieldMotion();
   const events = new AbortController();
   const options = { signal: events.signal };
-  let pointer: { id: number; point: Point; time: number; visited: Set<number> } | undefined;
+  const pointers = new Map<number, { point: Point; time: number; visited: Set<number> }>();
 
   function point(event: PointerEvent): Point {
     const rect = canvas.getBoundingClientRect();
@@ -133,29 +133,31 @@ export function createFieldInteraction(
       y: (0.5 - (event.clientY - rect.top) / rect.height) * REFERENCE_HEIGHT,
     };
   }
-  function release() {
-    const id = pointer?.id;
-    pointer = undefined;
-    canvas.classList.remove('is-painting');
-    if (id !== undefined && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+  function releasePointer(id: number) {
+    pointers.delete(id);
+    canvas.classList.toggle('is-painting', pointers.size > 0);
+    if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
   }
+  function release() { for (const id of [...pointers.keys()]) releasePointer(id); }
   canvas.addEventListener('pointerdown', event => {
-    if (!enabled() || pointer || !event.isPrimary || event.button !== 0) return;
+    if (!enabled() || pointers.has(event.pointerId) || event.button !== 0) return;
     event.preventDefault();
-    pointer = { id: event.pointerId, point: point(event), time: event.timeStamp, visited: new Set() };
+    pointers.set(event.pointerId, { point: point(event), time: event.timeStamp, visited: new Set() });
     canvas.setPointerCapture(event.pointerId);
     canvas.classList.add('is-painting');
   }, options);
   canvas.addEventListener('pointermove', event => {
-    if (!pointer || pointer.id !== event.pointerId) return;
-    if (!enabled() || event.buttons === 0) return release();
+    const pointer = pointers.get(event.pointerId);
+    if (!pointer) return;
+    if (!enabled()) return release();
+    if (event.buttons === 0) return releasePointer(event.pointerId);
     const next = point(event);
     if (motion.stroke(pointer.point, next, (event.timeStamp - pointer.time) / 1000, pointer.visited, reducedMotion())) onChange();
     pointer.point = next;
     pointer.time = event.timeStamp;
   }, options);
   for (const name of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
-    canvas.addEventListener(name, event => { if (pointer?.id === event.pointerId) release(); }, options);
+    canvas.addEventListener(name, event => { if (pointers.has(event.pointerId)) releasePointer(event.pointerId); }, options);
   }
   window.addEventListener('blur', release, options);
   window.addEventListener('resize', release, options);

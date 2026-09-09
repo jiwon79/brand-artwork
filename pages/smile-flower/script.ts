@@ -6,7 +6,6 @@ import { FLIP_DURATION, REST_ANGLE, otherModel, sampleFlip, type ModelName } fro
 import { createLookControls, createLook } from './look-controls';
 import { createModelRotation } from './model-rotation';
 import { createFieldInteraction } from './field-interaction';
-import { createArtworkPointer } from './artwork-pointer';
 
 const assets = {
   field: {
@@ -80,7 +79,6 @@ function start() {
   let visible = true;
   let previousTime: number | undefined;
   let dirty = true;
-  const disposePointer = createArtworkPointer(canvas);
   const inspection = createModelRotation(canvas, () => ready && mode === 'single', () => { dirty = true; });
   const field = createFieldInteraction(canvas, () => ready && mode === 'field',
     () => reducedMotion.matches, () => { dirty = true; });
@@ -404,7 +402,6 @@ function start() {
     events.abort();
     inspection.dispose();
     field.dispose();
-    disposePointer();
     disposeLookControls();
     resize.disconnect();
     intersection.disconnect();
