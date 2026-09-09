@@ -1,4 +1,5 @@
 import { CURSOR_CAT_ASSET_BASE_URL } from './config';
+import { createStepper } from '../../common/stepper';
 
 const FRAME_COUNT = 120;
 const QUARTER_FRAME_COUNT = FRAME_COUNT / 4;
@@ -6,7 +7,6 @@ const TOP_FRAME = QUARTER_FRAME_COUNT;
 const LEFT_FRAME = QUARTER_FRAME_COUNT * 2;
 const BOTTOM_FRAME = QUARTER_FRAME_COUNT * 3;
 const POINTER_CENTER_Y_RATIO = 0.46;
-const KEYBOARD_STEP = 2 / FRAME_COUNT;
 const FRAME_RESPONSE = 0.34;
 const MAX_RENDER_DELTA = 64;
 const DEBUG_ARC_SAMPLE_COUNT = 720;
@@ -18,6 +18,13 @@ type Bounds = { left: number; top: number; width: number; height: number };
 type DebugArcSample = Point & { frame: number; angle: number };
 type GazeOriginAnchor = Point & { frame: number };
 type DisplayScaleAnchor = { frame: number; scale: number };
+type ProcessStage = 'angle' | 'frame' | 'final';
+
+const PROCESS_STEPS = [
+  { id: 'angle', label: 'Angle' },
+  { id: 'frame', label: 'Frame' },
+  { id: 'final', label: 'Final' },
+] as const;
 
 interface CursorCatManifest {
   schemaVersion: 1;
@@ -184,6 +191,7 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 let ready = false;
 let debugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
+let processStage: ProcessStage = 'final';
 let targetProgress = 0;
 let renderedProgress = 0;
 let renderedFrame = 0;
@@ -255,15 +263,17 @@ function updateKeyboard(event: KeyboardEvent): void {
   if (event.key.toLowerCase() === 'd') {
     event.preventDefault();
     setDebugEnabled(!debugEnabled, true);
-    return;
   }
+}
 
-  if (!ready || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+function setProcessStage(nextStage: ProcessStage): void {
+  processStage = nextStage;
+  stage.dataset.processStage = nextStage;
+  stage.classList.toggle('has-process-overlay', nextStage !== 'final');
 
-  event.preventDefault();
-  targetProgress = wrapProgress(
-    targetProgress + (event.key === 'ArrowLeft' ? KEYBOARD_STEP : -KEYBOARD_STEP),
-  );
+  if (nextStage === 'final' && !debugEnabled) {
+    debugContext.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+  }
 }
 
 function setDebugEnabled(enabled: boolean, updateUrl = false): void {
@@ -271,7 +281,9 @@ function setDebugEnabled(enabled: boolean, updateUrl = false): void {
   stage.classList.toggle('is-debug', enabled);
   debugCanvas.setAttribute('aria-hidden', String(!enabled));
 
-  if (!enabled) debugContext.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+  if (!enabled && processStage === 'final') {
+    debugContext.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+  }
 
   if (updateUrl) {
     const url = new URL(window.location.href);
@@ -283,12 +295,17 @@ function setDebugEnabled(enabled: boolean, updateUrl = false): void {
 
 function debugArcGeometry(bounds: Bounds): { center: Point; radius: number } {
   const stageBounds = stage.getBoundingClientRect();
+  const center = {
+    x: bounds.left + bounds.width * 0.5,
+    y: bounds.top + bounds.height * POINTER_CENTER_Y_RATIO,
+  };
+  const radius = Math.min(
+    Math.min(stageBounds.width, stageBounds.height) * 0.38,
+    Math.max(80, center.y - 86),
+  );
   return {
-    center: {
-      x: bounds.left + bounds.width * 0.5,
-      y: bounds.top + bounds.height * POINTER_CENTER_Y_RATIO,
-    },
-    radius: Math.min(stageBounds.width, stageBounds.height) * 0.38,
+    center,
+    radius,
   };
 }
 
@@ -359,6 +376,68 @@ function drawGazeRay(frame: number, bounds: Bounds, radius: number, color: strin
   debugContext.strokeStyle = color;
   debugContext.lineWidth = 1.5;
   debugContext.stroke();
+}
+
+function processPointer(frame: number, bounds: Bounds, radius: number): Point {
+  if (pointerPosition) return pointerPosition;
+  const origin = screenGazeOrigin(frame, bounds);
+  const angle = frameGazeAngle(frame);
+  return {
+    x: origin.x + Math.cos(angle) * radius,
+    y: origin.y + Math.sin(angle) * radius,
+  };
+}
+
+function drawPointerRay(origin: Point, pointer: Point): void {
+  debugContext.save();
+  debugContext.setLineDash([5, 5]);
+  debugContext.beginPath();
+  debugContext.moveTo(origin.x, origin.y);
+  debugContext.lineTo(pointer.x, pointer.y);
+  debugContext.strokeStyle = 'rgba(13, 153, 255, 0.82)';
+  debugContext.lineWidth = 1.5;
+  debugContext.stroke();
+  debugContext.restore();
+  drawCircle(pointer, 5, '#0d99ff', false);
+}
+
+function drawAngleProcess(targetFrame: number, bounds: Bounds): void {
+  const { radius } = debugArcGeometry(bounds);
+  const origin = screenGazeOrigin(targetFrame, bounds);
+  const pointer = processPointer(targetFrame, bounds, radius);
+  const pointerAngle = Math.atan2(pointer.y - origin.y, pointer.x - origin.x);
+  const arcRadius = Math.min(42, Math.max(26, Math.hypot(
+    pointer.x - origin.x,
+    pointer.y - origin.y,
+  ) * 0.16));
+
+  debugContext.beginPath();
+  debugContext.moveTo(origin.x, origin.y);
+  debugContext.lineTo(origin.x + Math.min(radius, 90), origin.y);
+  debugContext.strokeStyle = 'rgba(22, 22, 22, 0.24)';
+  debugContext.lineWidth = 1;
+  debugContext.stroke();
+
+  drawPointerRay(origin, pointer);
+
+  debugContext.beginPath();
+  debugContext.arc(origin.x, origin.y, arcRadius, 0, pointerAngle, pointerAngle < 0);
+  debugContext.strokeStyle = '#161616';
+  debugContext.lineWidth = 2;
+  debugContext.stroke();
+
+  drawCircle(origin, 4, '#161616');
+}
+
+function drawFrameProcess(targetFrame: number, bounds: Bounds): void {
+  const { radius } = debugArcGeometry(bounds);
+  const origin = screenGazeOrigin(targetFrame, bounds);
+  const pointer = processPointer(targetFrame, bounds, radius);
+
+  drawDebugArc(targetFrame, bounds);
+  drawGazeRay(targetFrame, bounds, radius, 'rgba(22, 22, 22, 0.8)');
+  drawPointerRay(origin, pointer);
+  drawCircle(origin, 4, '#0d99ff');
 }
 
 function drawDebugArc(targetFrame: number, bounds: Bounds): void {
@@ -436,7 +515,7 @@ function drawDebugHud(targetFrame: number): void {
   const width = Math.min(258, stage.clientWidth - 24);
   const height = 116;
   const x = 12;
-  const y = 12;
+  const y = stage.clientWidth <= 560 ? 72 : 12;
 
   debugContext.fillStyle = 'rgba(17, 20, 24, 0.88)';
   debugContext.fillRect(x, y, width, height);
@@ -456,11 +535,18 @@ function drawDebugHud(targetFrame: number): void {
 }
 
 function drawDebug(): void {
-  if (!debugEnabled || !ready) return;
+  if ((!debugEnabled && processStage === 'final') || !ready) return;
   prepareDebugCanvas();
 
   const bounds = catLayoutBounds();
   const targetFrame = Math.round(targetProgress * FRAME_COUNT) % FRAME_COUNT;
+
+  if (!debugEnabled) {
+    if (processStage === 'angle') drawAngleProcess(targetFrame, bounds);
+    else if (processStage === 'frame') drawFrameProcess(targetFrame, bounds);
+    return;
+  }
+
   const { radius } = debugArcGeometry(bounds);
   const targetOrigin = screenGazeOrigin(targetFrame, bounds);
   const renderedOrigin = screenGazeOrigin(renderedFrame, bounds);
@@ -510,9 +596,13 @@ function render(time: number): void {
   requestAnimationFrame(render);
 }
 
-async function loadFrame(source: string): Promise<HTMLImageElement> {
+async function loadFrame(
+  source: string,
+  fetchPriority: 'high' | 'auto' = 'auto',
+): Promise<HTMLImageElement> {
   const image = new Image();
   image.decoding = 'async';
+  image.fetchPriority = fetchPriority;
   image.src = source;
   try {
     await image.decode();
@@ -522,9 +612,14 @@ async function loadFrame(source: string): Promise<HTMLImageElement> {
   return image;
 }
 
-async function loadFrames(frameSources: string[], concurrency = 8): Promise<HTMLImageElement[]> {
+async function loadFrames(
+  frameSources: string[],
+  concurrency = 8,
+  onProgress?: (loadedCount: number) => void,
+): Promise<HTMLImageElement[]> {
   const frames = new Array<HTMLImageElement>(frameSources.length);
   let nextIndex = 0;
+  let loadedCount = 0;
 
   async function loadNext(): Promise<void> {
     while (nextIndex < frameSources.length) {
@@ -533,6 +628,8 @@ async function loadFrames(frameSources: string[], concurrency = 8): Promise<HTML
       const source = frameSources[index];
       if (!source) continue;
       frames[index] = await loadFrame(source);
+      loadedCount += 1;
+      onProgress?.(loadedCount);
     }
   }
 
@@ -564,18 +661,25 @@ async function initialize(): Promise<void> {
     );
     stage.setAttribute('aria-label', manifest.ariaLabel);
     cat.alt = manifest.alt;
-    cat.src = sources[0] ?? '';
+    loadingStatus.textContent = 'Loading 0%';
+    const firstSource = sources[0];
+    if (!firstSource) throw new Error('Cursor Cat requires frame 001');
+    const firstFrame = await loadFrame(firstSource, 'high');
+    cat.src = firstFrame.src;
     await cat.decode();
-    stage.classList.add('is-poster-ready');
+    loadingStatus.textContent = `Loading ${Math.round(100 / FRAME_COUNT)}%`;
 
-    const frames = await loadFrames(sources);
-    decodedFrames.push(...frames);
+    const frames = await loadFrames(sources.slice(1), 8, (loadedCount) => {
+      const progress = Math.round(((loadedCount + 1) / FRAME_COUNT) * 100);
+      loadingStatus.textContent = `Loading ${progress}%`;
+    });
+    decodedFrames.push(firstFrame, ...frames);
     ready = true;
     stage.classList.add('is-ready');
     stage.setAttribute('aria-busy', 'false');
     loadingStatus.textContent = '이미지 로딩 완료';
   } catch (error) {
-    stage.classList.add('is-error', 'is-poster-ready');
+    stage.classList.add('is-error');
     stage.setAttribute('aria-busy', 'false');
     loadingStatus.textContent = '이미지를 불러오지 못했습니다.';
     console.error(error);
@@ -585,6 +689,13 @@ async function initialize(): Promise<void> {
 stage.addEventListener('pointermove', updatePointer, { passive: true });
 stage.addEventListener('pointerdown', updatePointer, { passive: true });
 window.addEventListener('keydown', updateKeyboard);
+createStepper<ProcessStage>({
+  steps: PROCESS_STEPS,
+  initialStep: 'final',
+  ariaLabel: 'Cursor Cat 원리 단계',
+  urlParameter: 'stage',
+  onChange: setProcessStage,
+});
 setDebugEnabled(debugEnabled);
 requestAnimationFrame(render);
 void initialize();
