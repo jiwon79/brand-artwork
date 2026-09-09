@@ -1,7 +1,9 @@
 import { CELLS, REFERENCE_HEIGHT, REFERENCE_WIDTH } from './reference-layout';
 import { REST_ANGLE, type ModelName } from './flip-motion';
+import { createBloomMotion } from './bloom-motion';
 
 type Point = { x: number; y: number };
+type HitPose = Point & { scale?: number };
 type CellState = { angle: number; velocity: number; target?: number };
 const FRICTION = 2.4;
 const SETTLE_SPEED = 1.8;
@@ -10,7 +12,7 @@ const HIT_RADIUS = 0.9;
 
 // Clip captured pointer paths to the artwork before testing the swept segment.
 // This also catches cells between sparse pointer events during a fast swipe.
-export function cellsAlongStroke(from: Point, to: Point) {
+export function cellsAlongStroke(from: Point, to: Point, positions: readonly HitPose[] = CELLS) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   let start = 0;
@@ -29,11 +31,11 @@ export function cellsAlongStroke(from: Point, to: Point) {
     if (start > end) return [];
   }
   const lengthSquared = dx * dx + dy * dy;
-  return CELLS.flatMap((cell, index) => {
+  return positions.flatMap((cell, index) => {
     const projected = lengthSquared ? ((cell.x - from.x) * dx + (cell.y - from.y) * dy) / lengthSquared : 0;
     const t = Math.max(start, Math.min(end, projected));
     const distance = Math.hypot(cell.x - from.x - t * dx, cell.y - from.y - t * dy);
-    return distance <= HIT_RADIUS ? [index] : [];
+    return distance <= HIT_RADIUS * (cell.scale ?? 1) ? [index] : [];
   });
 }
 
@@ -48,7 +50,7 @@ export function createFieldMotion() {
     cell.target = undefined;
   }
   return {
-    stroke(from: Point, to: Point, seconds: number, visited: Set<number>, reducedMotion: boolean) {
+    stroke(from: Point, to: Point, seconds: number, visited: Set<number>, reducedMotion: boolean, positions: readonly HitPose[] = CELLS) {
       const dx = to.x - from.x;
       const dy = to.y - from.y;
       const distance = Math.hypot(dx, dy);
@@ -56,7 +58,7 @@ export function createFieldMotion() {
       const direction = Math.sign(Math.abs(dx) >= Math.abs(dy) ? dx : -dy);
       const speed = Math.min(28, distance / Math.max(seconds, 0.008) * 2.4) * direction;
       let changed = false;
-      for (const index of cellsAlongStroke(from, to)) {
+      for (const index of cellsAlongStroke(from, to, positions)) {
         const cell = cells[index];
         if (reducedMotion) {
           if (visited.has(index)) continue;
@@ -66,10 +68,10 @@ export function createFieldMotion() {
         } else {
           // Weight the impulse by the actual distance inside this cell's disk.
           // Sparse pointer events must not transfer a whole long swipe to each cell.
-          const center = CELLS[index];
+          const center = positions[index];
           const along = ((center.x - from.x) * dx + (center.y - from.y) * dy) / distance;
           const perpendicular = ((center.x - from.x) * dy - (center.y - from.y) * dx) / distance;
-          const halfChord = Math.sqrt(Math.max(0, HIT_RADIUS ** 2 - perpendicular ** 2));
+          const halfChord = Math.sqrt(Math.max(0, (HIT_RADIUS * (center.scale ?? 1)) ** 2 - perpendicular ** 2));
           const contact = Math.max(0, Math.min(distance, along + halfChord) - Math.max(0, along - halfChord));
           if (!contact) continue;
           cell.angle += direction * contact * 0.8;
@@ -122,9 +124,10 @@ export function createFieldInteraction(
   canvas: HTMLCanvasElement, enabled: () => boolean, reducedMotion: () => boolean, onChange: () => void,
 ) {
   const motion = createFieldMotion();
+  const bloom = createBloomMotion();
   const events = new AbortController();
   const options = { signal: events.signal };
-  const pointers = new Map<number, { point: Point; time: number; visited: Set<number> }>();
+  const pointers = new Map<number, { point: Point; origin: Point; clientX: number; clientY: number; time: number; age: number; mode: 'pending' | 'drag' | 'hold'; index: number; visited: Set<number> }>();
 
   function point(event: PointerEvent): Point {
     const rect = canvas.getBoundingClientRect();
@@ -135,6 +138,8 @@ export function createFieldInteraction(
   }
   function releasePointer(id: number) {
     pointers.delete(id);
+    bloom.release(id);
+    onChange();
     canvas.classList.toggle('is-painting', pointers.size > 0);
     if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
   }
@@ -142,7 +147,15 @@ export function createFieldInteraction(
   canvas.addEventListener('pointerdown', event => {
     if (!enabled() || pointers.has(event.pointerId) || event.button !== 0) return;
     event.preventDefault();
-    pointers.set(event.pointerId, { point: point(event), time: event.timeStamp, visited: new Set() });
+    const origin = point(event);
+    let index = -1;
+    let distance = Infinity;
+    bloom.layout.forEach((pose, i) => {
+      const d = Math.hypot(origin.x - pose.x, origin.y - pose.y);
+      if (d < 0.98 * pose.scale && d < distance) { distance = d; index = i; }
+    });
+    pointers.set(event.pointerId, { point: origin, origin, clientX: event.clientX, clientY: event.clientY,
+      time: event.timeStamp, age: 0, mode: 'pending', index, visited: new Set() });
     canvas.setPointerCapture(event.pointerId);
     canvas.classList.add('is-painting');
   }, options);
@@ -152,20 +165,42 @@ export function createFieldInteraction(
     if (!enabled()) return release();
     if (event.buttons === 0) return releasePointer(event.pointerId);
     const next = point(event);
-    if (motion.stroke(pointer.point, next, (event.timeStamp - pointer.time) / 1000, pointer.visited, reducedMotion())) onChange();
+    if (pointer.mode !== 'drag') {
+      if (Math.hypot(event.clientX - pointer.clientX, event.clientY - pointer.clientY) < 8) return;
+      bloom.release(event.pointerId);
+      pointer.mode = 'drag';
+      pointer.point = pointer.origin;
+    }
+    if (motion.stroke(pointer.point, next, (event.timeStamp - pointer.time) / 1000, pointer.visited, reducedMotion(), bloom.layout)) onChange();
     pointer.point = next;
     pointer.time = event.timeStamp;
   }, options);
   for (const name of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
     canvas.addEventListener(name, event => { if (pointers.has(event.pointerId)) releasePointer(event.pointerId); }, options);
   }
+  canvas.addEventListener('contextmenu', event => { if (enabled()) event.preventDefault(); }, options);
   window.addEventListener('blur', release, options);
   window.addEventListener('resize', release, options);
   document.addEventListener('visibilitychange', () => { if (document.hidden) release(); }, options);
   return {
     ...motion,
     release,
-    reset() { release(); motion.reset(); onChange(); },
+    layout: bloom.layout,
+    advance(delta: number) {
+      for (const [id, pointer] of pointers) {
+        if (pointer.mode !== 'pending' || pointer.index < 0) continue;
+        pointer.age += delta;
+        if (pointer.age >= 0.38) {
+          pointer.mode = 'hold';
+          bloom.hold(id, pointer.index);
+        }
+      }
+      const spinning = motion.advance(delta);
+      const growing = bloom.advance(delta, reducedMotion());
+      return spinning || growing;
+    },
+    settle() { motion.settle(); bloom.reset(); },
+    reset() { release(); motion.reset(); bloom.reset(); onChange(); },
     dispose() { release(); events.abort(); },
   };
 }
