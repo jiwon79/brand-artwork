@@ -7,6 +7,7 @@ Interactive web implementations of brand artworks.
 - TypeScript + Vite
 - lil-gui (debug/parameter tuning UI)
 - pnpm (package manager)
+- Vitest (unit tests)
 
 ## Project Structure
 
@@ -16,6 +17,7 @@ Interactive web implementations of brand artworks.
 
 ## Documentation
 
+- 작품별 소셜 게시 이력, 캡션·초안·번역·문체 분석과 성과 스냅샷은 Notion의 `Project > Vibe > 작품별 기록`에서 관리한다. 전달용 제작 설명서·프롬프트·첨부 자료는 Vibe의 `외부 공유`에서 관리한다. 찾는 경로와 작품별 직접 링크는 `docs/README.md`의 External Records에 유지하고, 운영 기록과 공유 페이지 본문을 로컬에 복제하지 않는다. 공통 조회 조건과 지표 정의는 `docs/guides/social-performance-tracking.md`에 둔다.
 - 아키텍처나 구현 원리 정리 요청의 기본 산출물은 Markdown이다. 사용자가 별도 형식을 명시하지 않으면 DOCX, PDF, HTML, Figma/FigJam 문서를 만들지 않는다.
 - 사용자가 문서 경로를 지정하면 그 경로를 그대로 따른다. 경로가 없으면 기존 `docs/README.md`의 배치 규칙을 따른다.
 - 액체 타이포그래피 프로젝트의 공식 이름은 `color-text`이다. 코드 경로는 `pages/color-text/`, 문서 경로는 `docs/artworks/color-text/`로 고정한다. 첨부 파일명이나 작가 이름을 프로젝트 폴더명으로 사용하지 않는다.
@@ -27,10 +29,11 @@ Interactive web implementations of brand artworks.
 - 곡선, blur, gradient와 정밀 외곽선은 투명 배경 SVG로 만들고, 텍스트·화살표·패널 배치는 draw.io에서 조립한 뒤 최종 SVG 한 장으로 export한다. 정밀 SVG 원본, `.drawio` 편집 원본과 최종 SVG를 모두 `docs/assets/`에 보관한다.
 - 작품의 현재 구현 흐름은 `docs/artworks/<name>/`, 재사용 가능한 수학 원리는 `docs/concepts/`에 분리한다.
 - 특정 작품의 후보·실패·선택 이력은 `docs/artworks/<name>/`에 두고, 여러 작업에 재사용할 절차·질문·판단 기준은 `docs/guides/`에 둔다. 공통 guide에는 작품 전용 함수명·기본값·커밋 이력을 넣지 않는다.
-- 작품별 소셜 게시 상태, 캡션과 성과 스냅샷은 Notion의 `Project > Vibe`에서 관리한다. 저장소에는 조회 조건과 지표 정의만 `docs/guides/social-performance-tracking.md`에 둔다.
 
 ## Workflow
 
+- 소셜 공유 이미지는 GPT Image 등 생성형 이미지 도구를 쓰지 않고 실제 작품 렌더링을 1200×630 PNG로 직접 캡처한다. 작품명·회차 텍스트가 필요하면 캡처 원본을 보존하고 코드로 합성한다. 제작·연결·검증은 `docs/guides/social-share-images.md`를 따른다.
+- 테스트는 `.test.ts` 또는 `.spec.ts` 파일에 Vitest의 `test`·`expect`로 작성하고 `pnpm typecheck` 검사 대상에 포함한다. 전체 실행은 `pnpm test`, 변경 감시는 `pnpm test:watch`, 작품별 실행은 `pnpm test pages/<brand>`를 사용한다.
 - QA 비교 이미지, 측정 JSON, 분석 스크립트와 `design-qa.md` 같은 검증 기록은 커밋하지 않는다. 필요하면 gitignore된 `qa/` 또는 `.qa/`에서 임시로 만들고 작업이 끝나면 제거한다.
 - 하나의 의미 있는 작업 단위가 끝날 때마다 별도 확인 없이 커밋하고 즉시 푸시한다. 서로 독립적인 변경을 하나의 큰 커밋으로 묶지 않는다.
 - 작업을 완료하면 항상 Draft PR을 생성하거나, 현재 브랜치의 기존 PR을 최신 상태로 유지한다.

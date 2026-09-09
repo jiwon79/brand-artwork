@@ -1,0 +1,98 @@
+@font-face {
+  font-family: "Pretendard";
+  src: url('./assets/Pretendard-ExtraBold.subset.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --touch-pointer-color: #f7f5ee;
+  --touch-pointer-outline: #050505;
+  --touch-pointer-size: 34px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #050505;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+  outline: none;
+  touch-action: none;
+}
+
+.surface-grain {
+  position: absolute;
+  inset: 0;
+  /* Relief, irregular bright grain and subtle color noise are baked into one tile. */
+  z-index: 3;
+  background-image: url('./assets/surface-relief@1x.webp');
+  background-image: image-set(
+    url('./assets/surface-relief@1x.webp') 1x,
+    url('./assets/surface-relief@2x.webp') 2x,
+    url('./assets/surface-relief@3x.webp') 3x
+  );
+  background-repeat: repeat;
+  background-size: 384px 360px;
+  pointer-events: none;
+  transform: scale(1);
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.stage.is-dragging {
+  cursor: grabbing;
+}
+
+.artwork {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.line-field path,
+.origin-pull-path {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: square;
+}
+
+.reveal text {
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-weight: 800;
+  font-synthesis: none;
+  letter-spacing: -0.065em;
+  paint-order: stroke fill;
+  text-rendering: geometricPrecision;
+}
+
+@media (pointer: coarse) {
+  .stage {
+    cursor: default;
+  }
+}
