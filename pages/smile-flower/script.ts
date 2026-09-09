@@ -2,9 +2,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CELLS, REFERENCE_HEIGHT, REFERENCE_WIDTH } from './reference-layout';
-import { FLIP_DURATION, REST_ANGLE, otherModel, sampleFlip, sampleRipple, type ModelName } from './flip-motion';
+import { FLIP_DURATION, REST_ANGLE, otherModel, sampleFlip, type ModelName } from './flip-motion';
 import { createLookControls, createLook } from './look-controls';
 import { createModelRotation } from './model-rotation';
+import { createFieldInteraction } from './field-interaction';
 
 const assets = {
   field: {
@@ -60,11 +61,11 @@ function start() {
   const status = document.querySelector<HTMLElement>('.status')!;
   const announcement = document.querySelector<HTMLElement>('#model-status')!;
   const modeButton = document.querySelector<HTMLButtonElement>('.mode-button')!;
-  const playButton = document.querySelector<HTMLButtonElement>('.play-button')!;
-  const replayButton = document.querySelector<HTMLButtonElement>('.replay-button')!;
+  const resetFieldButton = document.querySelector<HTMLButtonElement>('.reset-field-button')!;
   const flipButton = document.querySelector<HTMLButtonElement>('.flip-button')!;
   const lookButton = document.querySelector<HTMLButtonElement>('.look-button')!;
-  const inspectionControls = document.querySelector<HTMLElement>('.inspection-controls')!;
+  const fieldHelp = document.querySelector<HTMLElement>('#field-help')!;
+  const rotationHelp = document.querySelector<HTMLElement>('#rotation-help')!;
   const resetViewButton = document.querySelector<HTMLButtonElement>('.reset-view-button')!;
   const look = createLook();
   const events = new AbortController();
@@ -73,15 +74,14 @@ function start() {
   let mode: ViewMode = query.get('mode') === 'single' ? 'single' : 'field';
   let current: ModelName = 'smiley';
   let singleFlip: { from: ModelName; elapsed: number } | undefined;
-  let timeline = 0;
-  let paused = reducedMotion.matches;
   let ready = false;
   let disposed = false;
   let visible = true;
   let previousTime: number | undefined;
   let dirty = true;
-  let controlsTimer: ReturnType<typeof setTimeout> | undefined;
   const inspection = createModelRotation(canvas, () => ready && mode === 'single', () => { dirty = true; });
+  const field = createFieldInteraction(canvas, () => ready && mode === 'field',
+    () => reducedMotion.matches, () => { dirty = true; });
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -164,7 +164,7 @@ function start() {
     for (let index = 0; index < count; index++) {
       const cell = CELLS[index];
       const pose = mode === 'field'
-        ? sampleRipple(timeline, Math.hypot(cell.x, cell.y))
+        ? field.pose(index)
         : singleFlip ? sampleFlip(singleFlip.from, singleFlip.elapsed / FLIP_DURATION[singleFlip.from])
           : { model: current, rotationX: REST_ANGLE[current] };
       transform.position.set(mode === 'field' ? cell.x : 0, mode === 'field' ? cell.y : 0, 0);
@@ -251,25 +251,15 @@ function start() {
     dirty = true;
   }
 
-  function showControls() {
-    artwork.classList.add('controls-visible');
-    clearTimeout(controlsTimer);
-    controlsTimer = setTimeout(() => artwork.classList.remove('controls-visible'), 2200);
-  }
-
   function syncControls() {
     artwork.dataset.mode = mode;
-    artwork.dataset.paused = String(paused);
     modeButton.textContent = mode === 'field' ? '하나씩 보기' : '전체 보기';
-    playButton.hidden = replayButton.hidden = mode !== 'field';
+    resetFieldButton.hidden = fieldHelp.hidden = mode !== 'field';
     flipButton.hidden = mode !== 'single';
-    inspectionControls.hidden = mode !== 'single';
+    resetViewButton.hidden = rotationHelp.hidden = mode !== 'single';
     canvas.tabIndex = mode === 'single' ? 0 : -1;
-    if (mode === 'single') canvas.setAttribute('aria-describedby', 'rotation-help');
-    else canvas.removeAttribute('aria-describedby');
-    playButton.textContent = paused ? '재생' : '일시정지';
-    playButton.setAttribute('aria-label', paused ? '애니메이션 재생' : '애니메이션 일시정지');
-    canvas.setAttribute('aria-label', mode === 'field' ? '꽃과 스마일이 원형 물결을 따라 뒤집히는 3D 애니메이션' : (current === 'smiley' ? '스마일 3D 모델' : '꽃 3D 모델'));
+    canvas.setAttribute('aria-describedby', mode === 'single' ? 'rotation-help' : 'field-help');
+    canvas.setAttribute('aria-label', mode === 'field' ? '드래그한 위치의 꽃과 스마일이 뒤집히는 3D 작품' : (current === 'smiley' ? '스마일 3D 모델' : '꽃 3D 모델'));
     flipButton.textContent = current === 'smiley' ? '꽃으로 바꾸기 ↻' : '스마일로 바꾸기 ↻';
   }
 
@@ -287,30 +277,20 @@ function start() {
   modeButton.addEventListener('click', () => {
     if (!ready) return;
     finishFlip();
+    field.release();
+    field.settle();
     mode = mode === 'field' ? 'single' : 'field';
     current = 'smiley';
     inspection.reset();
-    timeline = 0;
-    announcement.textContent = mode === 'field' ? '전체 애니메이션' : '스마일';
+    announcement.textContent = mode === 'field' ? '드래그한 곳의 모델이 바뀝니다.' : '스마일';
     syncControls();
     colorInstances();
     resizeView();
-    showControls();
   }, { signal: events.signal });
   resetViewButton.addEventListener('click', () => inspection.reset(), { signal: events.signal });
-  playButton.addEventListener('click', () => {
-    paused = !paused;
-    previousTime = undefined;
-    syncControls();
-    showControls();
-  }, { signal: events.signal });
-  replayButton.addEventListener('click', () => {
-    timeline = 0;
-    previousTime = undefined;
-    paused = reducedMotion.matches;
-    dirty = true;
-    syncControls();
-    showControls();
+  resetFieldButton.addEventListener('click', () => {
+    field.reset();
+    announcement.textContent = '모두 꽃으로 되돌렸습니다.';
   }, { signal: events.signal });
   flipButton.addEventListener('click', () => {
     if (!ready || singleFlip) return;
@@ -321,14 +301,13 @@ function start() {
     flipButton.textContent = '전환 중…';
     artwork.setAttribute('aria-busy', 'true');
   }, { signal: events.signal });
-  artwork.addEventListener('pointermove', showControls, { signal: events.signal });
-  artwork.addEventListener('pointerdown', showControls, { signal: events.signal });
   canvas.addEventListener('webglcontextrestored', () => { dirty = true; previousTime = undefined; }, { signal: events.signal });
   reducedMotion.addEventListener('change', () => {
     if (reducedMotion.matches) {
-      paused = true;
+      field.settle();
       finishFlip();
       syncControls();
+      dirty = true;
     }
   }, { signal: events.signal });
 
@@ -388,8 +367,7 @@ function start() {
     ready = true;
     status.hidden = true;
     artwork.setAttribute('aria-busy', 'false');
-    for (const button of [modeButton, playButton, replayButton, flipButton, lookButton, resetViewButton]) button.disabled = false;
-    showControls();
+    for (const button of [modeButton, resetFieldButton, flipButton, lookButton, resetViewButton]) button.disabled = false;
   }).catch(error => {
     if (disposed) return;
     console.error('Could not prepare the artwork.', error);
@@ -404,8 +382,7 @@ function start() {
     }
     const delta = previousTime === undefined ? 0 : Math.min((time - previousTime) / 1000, 0.1);
     previousTime = time;
-    const moving = mode === 'field' ? !paused : Boolean(singleFlip);
-    if (mode === 'field' && !paused) timeline += delta;
+    const moving = mode === 'field' ? field.advance(delta) : Boolean(singleFlip);
     if (singleFlip) {
       singleFlip.elapsed += delta;
       if (singleFlip.elapsed >= FLIP_DURATION[singleFlip.from]) finishFlip();
@@ -422,9 +399,9 @@ function start() {
     disposed = true;
     ready = false;
     renderer.setAnimationLoop(null);
-    clearTimeout(controlsTimer);
     events.abort();
     inspection.dispose();
+    field.dispose();
     disposeLookControls();
     resize.disconnect();
     intersection.disconnect();

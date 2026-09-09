@@ -1,7 +1,6 @@
 export type ModelName = 'smiley' | 'flower';
 
 export const FLIP_DURATION: Record<ModelName, number> = { flower: 0.31, smiley: 0.83 };
-export const RIPPLE_PERIOD = 4;
 export const REST_ANGLE: Record<ModelName, number> = { flower: 0, smiley: -0.28 };
 
 export function otherModel(model: ModelName): ModelName {
@@ -37,17 +36,4 @@ export function sampleFlip(from: ModelName, progress: number) {
     model: incoming ? target : from,
     rotationX: angle - (incoming ? direction * Math.PI : 0),
   };
-}
-
-export function sampleRipple(time: number, radius: number) {
-  const phase = ((time % RIPPLE_PERIOD) + RIPPLE_PERIOD) % RIPPLE_PERIOD;
-  // Twenty blue/green cells reveal two nearly constant-speed radial fronts.
-  // The first begins across a central disk; the return begins at the center.
-  const openAt = 0.21 * Math.max(0, radius - 2.17);
-  const closeAt = 0.47 + 0.22 * radius;
-  if (phase < openAt) return { model: 'flower' as const, rotationX: REST_ANGLE.flower };
-  if (phase < openAt + FLIP_DURATION.flower) return sampleFlip('flower', (phase - openAt) / FLIP_DURATION.flower);
-  if (phase < closeAt) return { model: 'smiley' as const, rotationX: REST_ANGLE.smiley };
-  if (phase < closeAt + FLIP_DURATION.smiley) return sampleFlip('smiley', (phase - closeAt) / FLIP_DURATION.smiley);
-  return { model: 'flower' as const, rotationX: REST_ANGLE.flower };
 }
