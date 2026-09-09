@@ -49,7 +49,12 @@ export function createFieldMotion() {
     cell.velocity = 0;
     cell.target = undefined;
   }
+  const waves: { elapsed: number; arrivals: number[]; visited: Set<number> }[] = [];
   return {
+    wave(center: Point, positions: readonly HitPose[], reducedMotion: boolean) {
+      if (reducedMotion) return;
+      waves.push({ elapsed: 0, arrivals: positions.map(p => Math.hypot(p.x - center.x, p.y - center.y) / 8), visited: new Set() });
+    },
     stroke(from: Point, to: Point, seconds: number, visited: Set<number>, reducedMotion: boolean, positions: readonly HitPose[] = CELLS) {
       const dx = to.x - from.x;
       const dy = to.y - from.y;
@@ -85,6 +90,17 @@ export function createFieldMotion() {
     advance(delta: number) {
       if (delta <= 0) return false;
       let changed = false;
+      for (const wave of waves) {
+        wave.elapsed += delta;
+        wave.arrivals.forEach((arrival, index) => {
+          if (wave.elapsed < arrival || wave.visited.has(index)) return;
+          wave.visited.add(index);
+          cells[index].velocity = 10;
+          cells[index].target = undefined;
+          changed = true;
+        });
+      }
+      for (let i = waves.length - 1; i >= 0; i--) if (waves[i].visited.size === cells.length) waves.splice(i, 1);
       for (const cell of cells) {
         if (cell.velocity === 0 && cell.target === undefined) continue;
         changed = true;
@@ -115,8 +131,8 @@ export function createFieldMotion() {
       const localAngle = cell.angle - halfTurns * Math.PI;
       return { model, rotationX: localAngle + REST_ANGLE[model] * Math.cos(localAngle) ** 2 };
     },
-    settle() { cells.forEach(seat); },
-    reset() { for (const cell of cells) { cell.angle = 0; cell.velocity = 0; cell.target = undefined; } },
+    settle() { waves.length = 0; cells.forEach(seat); },
+    reset() { waves.length = 0; for (const cell of cells) { cell.angle = 0; cell.velocity = 0; cell.target = undefined; } },
   };
 }
 
@@ -136,7 +152,9 @@ export function createFieldInteraction(
       y: (0.5 - (event.clientY - rect.top) / rect.height) * REFERENCE_HEIGHT,
     };
   }
-  function releasePointer(id: number) {
+  function releasePointer(id: number, ripple = false) {
+    const pointer = pointers.get(id);
+    if (ripple && pointer?.mode === 'hold') motion.wave(pointer.point, bloom.layout, reducedMotion());
     pointers.delete(id);
     bloom.release(id);
     onChange();
@@ -165,6 +183,13 @@ export function createFieldInteraction(
     if (!enabled()) return release();
     if (event.buttons === 0) return releasePointer(event.pointerId);
     const next = point(event);
+    if (pointer.mode === 'hold') {
+      bloom.move(event.pointerId, next);
+      pointer.point = next;
+      pointer.time = event.timeStamp;
+      onChange();
+      return;
+    }
     if (pointer.mode !== 'drag') {
       if (Math.hypot(event.clientX - pointer.clientX, event.clientY - pointer.clientY) < 8) return;
       bloom.release(event.pointerId);
@@ -176,7 +201,7 @@ export function createFieldInteraction(
     pointer.time = event.timeStamp;
   }, options);
   for (const name of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
-    canvas.addEventListener(name, event => { if (pointers.has(event.pointerId)) releasePointer(event.pointerId); }, options);
+    canvas.addEventListener(name, event => { if (pointers.has(event.pointerId)) releasePointer(event.pointerId, name === 'pointerup'); }, options);
   }
   canvas.addEventListener('contextmenu', event => { if (enabled()) event.preventDefault(); }, options);
   window.addEventListener('blur', release, options);
@@ -193,6 +218,7 @@ export function createFieldInteraction(
         if (pointer.age >= 0.38) {
           pointer.mode = 'hold';
           bloom.hold(id, pointer.index);
+          pointer.point = { x: CELLS[pointer.index].x, y: CELLS[pointer.index].y };
         }
       }
       const spinning = motion.advance(delta);
