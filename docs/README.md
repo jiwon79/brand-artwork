@@ -48,6 +48,7 @@ docs/
 
 ### Line Pull
 
+- [`architecture.md`](./artworks/line-pull/architecture.md) - 포인터 교차 선택, SVG 선 분리·중첩 클립, 문구 fitting, 프레임 루프와 질감 합성 구조
 - [`social-share-image.md`](./artworks/line-pull/social-share-image.md) - 실제 캡처의 왼쪽 위에 작품명만 합성하는 PNG 제작 도구와 재생성 방법
 
 ## Concepts
