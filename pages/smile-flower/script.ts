@@ -162,15 +162,15 @@ function start() {
     const count = mode === 'field' ? CELLS.length : 1;
     for (const part of parts) part.mesh.count = 0;
     for (let index = 0; index < count; index++) {
-      const cell = CELLS[index];
       const pose = mode === 'field'
         ? field.pose(index)
         : singleFlip ? sampleFlip(singleFlip.from, singleFlip.elapsed / FLIP_DURATION[singleFlip.from])
           : { model: current, rotationX: REST_ANGLE[current] };
-      transform.position.set(mode === 'field' ? cell.x : 0, mode === 'field' ? cell.y : 0, 0);
+      const layout = field.layout[index];
+      transform.position.set(mode === 'field' ? layout.x : 0, mode === 'field' ? layout.y : 0, 0);
       transform.rotation.set(pose.rotationX, 0, 0);
       if (mode === 'single') transform.quaternion.premultiply(inspection.rotation);
-      transform.scale.setScalar((mode === 'field' ? 0.98 : 1) * (pose.model === 'flower' ? 1 : 0.98));
+      transform.scale.setScalar((mode === 'field' ? 0.98 * layout.scale : 1) * (pose.model === 'flower' ? 1 : 0.98));
       transform.updateMatrix();
       for (const part of parts) {
         if (part.variant !== mode || part.model !== pose.model) continue;
