@@ -17,7 +17,7 @@ Interactive web implementations of brand artworks.
 
 ## Documentation
 
-- 캡션 원문·초안·번역·문체 분석은 로컬에 보관하지 않는다. Notion의 [Project → Vibe](https://app.notion.com/p/3cca89f7e31a80fda5a6c203adf4a04d) → 작품별 기록에서 확인·관리하고, 작품별 직접 링크와 찾는 방법은 `docs/social/README.md`에 기록한다.
+- 작품별 소셜 게시 이력, 캡션·초안·번역·문체 분석과 성과 스냅샷은 Notion의 `Project > Vibe > 작품별 기록`에서 관리한다. 전달용 제작 설명서·프롬프트·첨부 자료는 Vibe의 `외부 공유`에서 관리한다. 찾는 경로와 작품별 직접 링크는 `docs/README.md`의 External Records에 유지하고, 운영 기록과 공유 페이지 본문을 로컬에 복제하지 않는다. 공통 조회 조건과 지표 정의는 `docs/guides/social-performance-tracking.md`에 둔다.
 - 아키텍처나 구현 원리 정리 요청의 기본 산출물은 Markdown이다. 사용자가 별도 형식을 명시하지 않으면 DOCX, PDF, HTML, Figma/FigJam 문서를 만들지 않는다.
 - 사용자가 문서 경로를 지정하면 그 경로를 그대로 따른다. 경로가 없으면 기존 `docs/README.md`의 배치 규칙을 따른다.
 - 액체 타이포그래피 프로젝트의 공식 이름은 `color-text`이다. 코드 경로는 `pages/color-text/`, 문서 경로는 `docs/artworks/color-text/`로 고정한다. 첨부 파일명이나 작가 이름을 프로젝트 폴더명으로 사용하지 않는다.

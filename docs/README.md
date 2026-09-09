@@ -1,6 +1,6 @@
 # Documentation
 
-문서는 목적에 따라 다음 다섯 영역으로 나눈다.
+문서는 목적에 따라 다음 네 영역으로 나눈다.
 
 ## Structure
 
@@ -10,7 +10,6 @@ docs/
 ├── concepts/   여러 작품에 재사용할 수 있는 그래픽 원리
 ├── guides/     여러 작업에 재사용할 수 있는 절차와 판단 기준
 ├── research/   외부 구현과 레퍼런스 조사
-├── social/     작품별 소셜 게시 이력과 성과 스냅샷
 ├── assets/     문서에서 사용하는 이미지와 도식
 └── explanation-guide.md  그래픽스 설명과 SVG 작성 기준
 ```
@@ -20,6 +19,8 @@ docs/
 - [`explanation-guide.md`](./explanation-guide.md) - 직관, SVG, 수식, 코드가 끊기지 않도록 그래픽스 개념을 설명하는 공통 작성 기준
 
 ## Guides
+
+- [`social-performance-tracking.md`](./guides/social-performance-tracking.md) - Instagram 성과 조회 조건과 스냅샷 보존 기준
 
 - [`social-share-images.md`](./guides/social-share-images.md) - 실제 작품 화면을 PNG로 캡처하고 제목·회차 합성 및 소셜 공유 메타데이터 연결·검증을 수행하는 공통 절차
 - [`reference-extension-workflow.md`](./guides/reference-extension-workflow.md) - 레퍼런스 복원 뒤 정체성을 유지하며 새로운 상호작용을 제안·비교·선택하는 공통 작업 방식
@@ -74,12 +75,35 @@ Concept는 다음 중 하나를 만족할 때 독립 문서로 둔다.
 
 - [`guseul-liquid-glass.md`](./research/guseul-liquid-glass.md) - liquid glass 레퍼런스와 외부 구현 조사
 
-## Social
+## External Records
 
-- [`README.md`](./social/README.md) - Notion 캡션 보관 위치, 소셜 데이터 공통 기준과 시리즈 비교
-- [`guseul.md`](./social/guseul.md) - Guseul Instagram 게시 정보와 성과 스냅샷
-- [`color-text.md`](./social/color-text.md) - Color Text Instagram 게시 정보와 성과 스냅샷
-- [`body-echo.md`](./social/body-echo.md) - Body Echo 게시 준비 정보와 Notion 문서 링크
+소셜 운영 기록과 외부에 전달하는 제작 자료는 [Project → Vibe](https://app.notion.com/p/3cca89f7e31a80fda5a6c203adf4a04d)에서 관리한다. 저장소에는 찾는 경로와 직접 링크만 유지하고, 캡션·성과 스냅샷·공유 페이지 본문은 복제하지 않는다.
+
+### 작품별 기록
+
+Vibe의 **작품별 기록**에서 게시 상태, 캡션·초안, 크레딧과 날짜별 성과 스냅샷을 확인한다.
+
+| 작품 | 운영 기록 |
+| --- | --- |
+| Guseul | [Guseul · 1일차](https://app.notion.com/p/3cda89f7e31a81abb5d4e400ee742826) |
+| Color Text | [Color Text · 2일차](https://app.notion.com/p/3cda89f7e31a81d0b566fe5dd0d0b993) |
+| Body Echo | [Body Echo · 3일차](https://app.notion.com/p/3cda89f7e31a8147a835fcce47562c3d) |
+| Line Pull | [Line Pull · 4일차](https://app.notion.com/p/3d3a89f7e31a8105855ee61f7f14092b) |
+| Cat Cursor | [Cat Cursor · 회차 미정](https://app.notion.com/p/3cda89f7e31a8110962fe86d18b400f2) |
+
+### 외부 공유
+
+Vibe의 **외부 공유**에는 독자가 직접 따라 만들 수 있는 제작 설명서와 프롬프트, 참고 자료가 있다. 소셜 게시물을 준비할 때 해당 작품의 운영 기록과 함께 아래 전달용 페이지를 확인한다.
+
+| 작품 | 외부 공유 페이지 | 주요 내용 |
+| --- | --- | --- |
+| Cat Cursor | [반려동물 Cursor Artwork 제작 설명서](https://app.notion.com/p/3cda89f7e31a8110961ac9bf73dff3d4) | 반려동물 사진 준비, 이미지·영상 생성, 시선 프레임 정리와 웹 구현 |
+| Guseul | [Guseul — 빛과 색을 품은 유리구슬 만들기](https://app.notion.com/p/3d6a89f7e31a8107a06fd47ffb45716f) | 세 단계 제작 프롬프트, 참고 사진과 내부 이미지 에셋 |
+| Color Text | [Color Text — 글자에서 액체가 흐르는 포스터 만들기](https://app.notion.com/p/3d6a89f7e31a816d9fd2ca03d39bac36) | 세 단계 제작 프롬프트, 참고 사진과 포스터 문구 |
+| Body Echo | [Body Echo — 몸의 선을 당기고 파동으로 흩뜨리기](https://app.notion.com/p/3d6a89f7e31a8124a56cc44c7e1e3ae4) | 세 단계 제작 프롬프트, 참고 사진과 인체 SVG 에셋 |
+| Line Pull | [Line Pull — 선 사이에 숨겨진 자기소개 만들기](https://app.notion.com/p/3d6a89f7e31a81418657d9a7aeaf1b21) | 세 단계 제작 프롬프트, 참고 사진과 폰트·표면 질감 에셋 |
+
+위 목록은 2026-09-09에 Vibe와 외부 공유 페이지에서 확인했다. 첨부 자료의 준비 상태와 최신 내용은 각 Notion 페이지에서 확인한다. 새 작품은 Vibe 아래 기존 페이지를 먼저 찾고, 확인한 주소만 이 목록에 추가한다.
 
 ## Placement Rules
 
@@ -91,8 +115,8 @@ Concept는 다음 중 하나를 만족할 때 독립 문서로 둔다.
 - 다른 작품에도 적용할 수 있는 수학 및 렌더링 원리는 `concepts/`에 둔다.
 - `concepts/` 본문에는 작품명, 작품 전용 함수명, 현재 기본값, pass 구성, 튜닝 기록을 넣지 않는다. 실제 적용은 문서 끝의 `구현 참고`에서 `artworks/<name>/` 문서 링크로만 연결한다.
 - 외부 프로젝트, 논문, 시각 레퍼런스를 조사한 기록은 `research/`에 둔다.
-- 캡션 원문·초안·번역·문체 분석은 Notion의 [Project → Vibe](https://app.notion.com/p/3cca89f7e31a80fda5a6c203adf4a04d) 아래 작품별 페이지에서 관리한다. 로컬에는 본문을 복제하지 않고 `social/README.md`에 찾는 경로와 직접 링크만 둔다.
-- 작품별 소셜 게시 이력과 성과 스냅샷은 `social/<project>.md`에 둔다. 여러 작품을 묶는 시리즈 비교와 공통 재조회 기준은 `social/README.md`에 둔다.
+- 작품별 소셜 게시 이력, 캡션·초안·번역·문체 분석과 성과 스냅샷은 Notion의 `Project > Vibe > 작품별 기록`에, 전달용 제작 자료는 `외부 공유`에 둔다. 찾는 경로와 직접 링크는 이 문서의 External Records에 유지한다.
+- 공통 소셜 조회 조건과 지표 정의는 `guides/social-performance-tracking.md`에 둔다.
 - 문서에서 사용하는 SVG와 이미지는 모두 `assets/`에 둔다. 문서 옆 `figures/`나 `images/` 폴더는 만들지 않는다.
 - QA 비교 이미지, 측정값, 분석 스크립트와 `design-qa.md` 같은 검증 기록은 문서로 보관하지 않는다. 필요하면 gitignore된 `qa/` 또는 `.qa/`에서 임시로 생성한다.
 - 선택 근거가 없는 원본 실험 로그와 개인 메모는 유지하지 않는다. 이후 판단에 필요한 문제 → 원인 → 결정의 변화만 작품별 결정 기록으로 정리한다.

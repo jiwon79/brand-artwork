@@ -8,7 +8,7 @@ This page is intended as a reel/web artwork concept, not yet an implementation. 
 
 ## Presentation
 
-The video itself should not explain PageRank, show equations, or include instructional copy. Social copy is managed in Notion; see [the location guide](../../docs/social/README.md#캡션은-notion에서-확인).
+The video itself should not explain PageRank, show equations, or include instructional copy. Social copy is managed in Notion; see [the location guide](../../docs/README.md#external-records).
 
 ## Reference
 
