@@ -438,8 +438,8 @@ resetBtn.addEventListener('click', reset);
 
 // ── Video ────────────────────────────────────────────────
 const VIDEO_SOURCES: Record<string, string> = {
-  'sky':     'assets/sky.mp4',
-  'sky-alt': 'assets/sky-alt.mp4',
+  'sky':     new URL('./assets/sky.mp4', import.meta.url).href,
+  'sky-alt': new URL('./assets/sky-alt.mp4', import.meta.url).href,
 };
 
 const video = {
