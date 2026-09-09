@@ -6,7 +6,7 @@ export function createModelRotation(canvas: HTMLCanvasElement, enabled: () => bo
   const axis = new Vector3();
   const events = new AbortController();
   const options = { signal: events.signal };
-  let pointer: { id: number; x: number; y: number } | undefined;
+  const pointers = new Map<number, { x: number; y: number }>();
 
   function rotate(dx: number, dy: number, sensitivity: number) {
     const distance = Math.hypot(dx, dy);
@@ -18,31 +18,34 @@ export function createModelRotation(canvas: HTMLCanvasElement, enabled: () => bo
     onChange();
   }
 
-  function release() {
-    const id = pointer?.id;
-    pointer = undefined;
-    canvas.classList.remove('is-dragging');
-    if (id !== undefined && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+  function releasePointer(id: number) {
+    pointers.delete(id);
+    canvas.classList.toggle('is-dragging', pointers.size > 0);
+    if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
   }
+  function release() { for (const id of [...pointers.keys()]) releasePointer(id); }
 
   canvas.addEventListener('pointerdown', event => {
-    if (!enabled() || pointer || !event.isPrimary || event.button !== 0) return;
+    if (!enabled() || pointers.has(event.pointerId) || event.button !== 0) return;
     event.preventDefault();
     canvas.focus({ preventScroll: true });
-    pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     canvas.setPointerCapture(event.pointerId);
     canvas.classList.add('is-dragging');
   }, options);
   canvas.addEventListener('pointermove', event => {
-    if (!pointer || pointer.id !== event.pointerId) return;
-    if (!enabled() || event.buttons === 0) return release();
+    const pointer = pointers.get(event.pointerId);
+    if (!pointer) return;
+    if (!enabled()) return release();
+    if (event.buttons === 0) return releasePointer(event.pointerId);
     const size = Math.max(1, Math.min(canvas.clientWidth, canvas.clientHeight));
-    rotate(event.clientX - pointer.x, event.clientY - pointer.y, Math.PI / size);
+    // Average concurrent finger travel so adding a finger does not multiply speed.
+    rotate(event.clientX - pointer.x, event.clientY - pointer.y, Math.PI / (size * pointers.size));
     pointer.x = event.clientX;
     pointer.y = event.clientY;
   }, options);
   for (const name of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
-    canvas.addEventListener(name, event => { if (pointer?.id === event.pointerId) release(); }, options);
+    canvas.addEventListener(name, event => { if (pointers.has(event.pointerId)) releasePointer(event.pointerId); }, options);
   }
   window.addEventListener('blur', release, options);
   document.addEventListener('visibilitychange', () => { if (document.hidden) release(); }, options);
