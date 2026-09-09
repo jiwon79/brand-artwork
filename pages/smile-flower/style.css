@@ -4,9 +4,9 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 .artwork { width: 100%; height: 100svh; display: grid; place-items: center; background: #000; }
 .stage { position: relative; height: min(100svh, 177.777778vw); width: min(100vw, 56.25svh); overflow: hidden; }
 [data-mode='single'] .stage { width: min(100vw, 100svh); height: min(100vw, 100svh); }
-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
-[data-mode='single'] canvas.is-dragging { cursor: grabbing; }
-[data-mode='field'] canvas.is-painting { cursor: grabbing; }
+canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: none; }
+[data-mode='single'] canvas.is-dragging { cursor: none; }
+[data-mode='field'] canvas.is-painting { cursor: none; }
 #field-help { padding: 10px 14px; border-radius: 20px; background: #110d11d9; color: #e9dce6; pointer-events: none; }
 [data-mode='field'] .inspection-controls { pointer-events: none; }
 .inspection-controls { position: fixed; z-index: 1; bottom: calc(max(18px, env(safe-area-inset-bottom)) + 62px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; white-space: nowrap; color: #baa7b6; font-size: 11px; }
@@ -37,3 +37,10 @@ canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%
   .toolbar a { width: 36px; padding: 0; }
   .toolbar .flip-button { min-width: 132px; }
 }
+
+.artwork-pointer { position: fixed; top: 0; left: 0; z-index: 3; pointer-events: none; will-change: transform; }
+.artwork-pointer::before, .artwork-pointer::after { content: ''; position: absolute; left: 0; top: 0; border-radius: 50%; transform: translate(-50%, -50%); }
+.artwork-pointer::before { width: 28px; height: 28px; border: 1px solid #ffffffc9; background: #ffffff0d; box-shadow: 0 0 0 1px #0003; transition: width 160ms, height 160ms, background 160ms; }
+.artwork-pointer::after { width: 4px; height: 4px; background: #fff; box-shadow: 0 1px 3px #0008; }
+.artwork-pointer.pressed::before { width: 42px; height: 42px; border-color: #f6d6eb; background: #f5b9dd30; }
+@media (prefers-reduced-motion: reduce) { .artwork-pointer::before { transition: none; } }
