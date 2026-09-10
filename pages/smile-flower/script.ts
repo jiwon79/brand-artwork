@@ -167,6 +167,7 @@ function start() {
         : singleFlip ? sampleFlip(singleFlip.from, singleFlip.elapsed / FLIP_DURATION[singleFlip.from])
           : { model: current, rotationX: REST_ANGLE[current] };
       const layout = field.layout[index];
+      if (mode === 'field' && layout.scale === 0) continue;
       transform.position.set(mode === 'field' ? layout.x : 0, mode === 'field' ? layout.y : 0, 0);
       transform.rotation.set(pose.rotationX, 0, 0);
       if (mode === 'single') transform.quaternion.premultiply(inspection.rotation);
