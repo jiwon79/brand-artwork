@@ -1,7 +1,10 @@
+import { createRotationSettings } from './rotation-settings';
 import GUI, { type Controller } from 'lil-gui';
 import { CORE_PALETTE, PALETTE, PETAL_PALETTE } from './reference-layout';
 
 const ranges = {
+  dragSpeed: [0.25, 2, 0.05], dragAmount: [0.25, 3, 0.05],
+  releaseSpeed: [0.25, 2, 0.05], releaseTurns: [1, 8, 1],
   exposure: [0.3, 1.6, 0.01], saturation: [0, 1.5, 0.01],
   petalRoughness: [0.2, 1, 0.01], coreRoughness: [0.2, 1, 0.01], smileyRoughness: [0.2, 1, 0.01],
   specular: [0, 1, 0.01], environment: [0, 1.5, 0.01],
@@ -20,6 +23,7 @@ export type LookSettings = Record<NumericKey, number> & {
 
 export function createLook(): LookSettings {
   return {
+    ...createRotationSettings(),
     exposure: 0.9, saturation: 1,
     petalRoughness: 0.76, coreRoughness: 0.74, smileyRoughness: 0.76,
     specular: 0.28, environment: 0.14, key: 4.45, fill: 0.55, rim: 0.9,
@@ -52,6 +56,11 @@ export function createLookControls(look: LookSettings, onChange: () => void) {
   label(gui.add(look, 'toneMapping', {
     '기본 대비 (ACES)': 'ACES', '부드러운 대비 (AgX)': 'AgX', '색상 유지 (Neutral)': 'Neutral',
   }), '밝은 색 처리');
+  const rotation = gui.addFolder('회전 · 전체 보기').open();
+  number(rotation, 'dragSpeed', '드래그 속도 (배)');
+  number(rotation, 'dragAmount', '드래그 회전량 (배)');
+  number(rotation, 'releaseSpeed', '놓기 속도 (배)');
+  number(rotation, 'releaseTurns', '놓기 회전량 (바퀴)').decimals(0);
   const material = gui.addFolder('재질 · 무광과 반사');
   number(material, 'petalRoughness', '꽃잎 무광 정도');
   number(material, 'coreRoughness', '중앙 무광 정도');

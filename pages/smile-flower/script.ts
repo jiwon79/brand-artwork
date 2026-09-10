@@ -81,7 +81,7 @@ function start() {
   let dirty = true;
   const inspection = createModelRotation(canvas, () => ready && mode === 'single', () => { dirty = true; });
   const field = createFieldInteraction(canvas, () => ready && mode === 'field',
-    () => reducedMotion.matches, () => { dirty = true; });
+    () => reducedMotion.matches, () => { dirty = true; }, look);
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
