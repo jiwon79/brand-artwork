@@ -59,7 +59,7 @@ export function createLookControls(look: LookSettings, onChange: () => void) {
   const rotation = gui.addFolder('회전 · 전체 보기').open();
   number(rotation, 'dragSpeed', '드래그 속도 (배)');
   number(rotation, 'dragAmount', '드래그 회전량 (배)');
-  number(rotation, 'releaseSpeed', '놓기 속도 (배)');
+  number(rotation, 'releaseSpeed', '놓을 때 회전 속도 (배)');
   number(rotation, 'releaseTurns', '놓기 회전량 (바퀴)').decimals(0);
   number(rotation, 'waveSpeed', '퍼지는 속도 (배)');
   const material = gui.addFolder('재질 · 무광과 반사');
