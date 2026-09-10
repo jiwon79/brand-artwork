@@ -8,7 +8,7 @@ type CellState = { angle: number; velocity: number; target?: number };
 const FRICTION = 2.4;
 const SETTLE_SPEED = 1.8;
 const SPRING = 9;
-const HIT_RADIUS = 0.9;
+const HIT_RADIUS = 1.8;
 
 // Clip captured pointer paths to the artwork before testing the swept segment.
 // This also catches cells between sparse pointer events during a fast swipe.
