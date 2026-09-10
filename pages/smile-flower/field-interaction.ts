@@ -4,7 +4,8 @@ import { createBloomMotion } from './bloom-motion';
 
 type Point = { x: number; y: number };
 type HitPose = Point & { scale?: number };
-type CellState = { angle: number; velocity: number; target?: number };
+type CellState = { angle: number; velocity: number; target?: number; drive?: number; waveSpin?: { from: number; target: number; elapsed: number } };
+const WAVE_SPIN_DURATION = 1.15;
 const FRICTION = 2.4;
 const SETTLE_SPEED = 1.8;
 const SPRING = 9;
@@ -53,6 +54,7 @@ export function createFieldMotion() {
     cell.angle = (Math.abs(turns % 2)) * Math.PI;
     cell.velocity = 0;
     cell.target = undefined;
+    cell.waveSpin = undefined;
   }
   const waves: { elapsed: number; arrivals: number[]; visited: Set<number> }[] = [];
   return {
@@ -68,7 +70,10 @@ export function createFieldMotion() {
       const distance = Math.hypot(dx, dy);
       if (distance < 0.00001) return false;
       const direction = Math.sign(Math.abs(dx) >= Math.abs(dy) ? dx : -dy);
-      const speed = Math.min(28, distance / Math.max(seconds, 0.008) * 2.4) * direction;
+      // One velocity-dependent kick per contacted model, with extra energy only
+      // for acceleration or reversal. Slow continuous movement cannot refill the
+      // same minimum impulse on every pointer event and spin indefinitely.
+      const speed = Math.min(100, 20 + distance / Math.max(seconds, 0.001) * 3) * direction;
       let changed = false;
       for (const index of cellsAlongStroke(from, to, positions)) {
         const cell = cells[index];
@@ -86,9 +91,17 @@ export function createFieldMotion() {
           const halfChord = Math.sqrt(Math.max(0, (HIT_RADIUS * (center.scale ?? 1)) ** 2 - perpendicular ** 2));
           const contact = Math.max(0, Math.min(distance, along + halfChord) - Math.max(0, along - halfChord));
           if (!contact) continue;
-          cell.angle += direction * contact * 0.8;
-          cell.velocity += (speed - cell.velocity) * (1 - Math.exp(-contact * 2.8));
+          if (!visited.has(index) || Math.sign(cell.drive ?? 0) !== direction) {
+            cell.velocity = speed;
+            cell.drive = speed;
+          } else if (Math.abs(speed) > Math.abs(cell.drive ?? 0)) {
+            cell.velocity += speed - (cell.drive ?? 0);
+            cell.drive = speed;
+          }
+          visited.add(index);
+          cell.angle += direction * contact * 0.3;
           cell.target = undefined;
+          cell.waveSpin = undefined;
         }
         changed = true;
       }
@@ -102,13 +115,24 @@ export function createFieldMotion() {
         wave.arrivals.forEach((arrival, index) => {
           if (wave.elapsed < arrival || wave.visited.has(index)) return;
           wave.visited.add(index);
-          cells[index].velocity = 10;
-          cells[index].target = undefined;
+          const cell = cells[index];
+          cell.waveSpin = { from: cell.angle, target: Math.round(cell.angle / Math.PI) * Math.PI + 6 * Math.PI, elapsed: 0 };
+          cell.velocity = 0;
+          cell.target = undefined;
           changed = true;
         });
       }
       for (let i = waves.length - 1; i >= 0; i--) if (waves[i].visited.size === cells.length) waves.splice(i, 1);
       for (const cell of cells) {
+        if (cell.waveSpin) {
+          changed = true;
+          const spin = cell.waveSpin;
+          spin.elapsed = Math.min(WAVE_SPIN_DURATION, spin.elapsed + delta);
+          const progress = spin.elapsed / WAVE_SPIN_DURATION;
+          cell.angle = spin.from + (spin.target - spin.from) * (1 - (1 - progress) ** 3);
+          if (progress === 1) seat(cell);
+          continue;
+        }
         if (cell.velocity === 0 && cell.target === undefined) continue;
         changed = true;
         let remaining = delta;
@@ -139,7 +163,7 @@ export function createFieldMotion() {
       return { model, rotationX: localAngle + REST_ANGLE[model] * Math.cos(localAngle) ** 2 };
     },
     settle() { waves.length = 0; cells.forEach(seat); },
-    reset() { waves.length = 0; for (const cell of cells) { cell.angle = 0; cell.velocity = 0; cell.target = undefined; } },
+    reset() { waves.length = 0; for (const cell of cells) { cell.angle = 0; cell.velocity = 0; cell.target = undefined; cell.waveSpin = undefined; cell.drive = undefined; } },
   };
 }
 
