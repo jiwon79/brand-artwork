@@ -4,7 +4,7 @@ import { CORE_PALETTE, PALETTE, PETAL_PALETTE } from './reference-layout';
 
 const ranges = {
   dragSpeed: [0.25, 2, 0.05], dragAmount: [0.25, 3, 0.05],
-  releaseSpeed: [0.25, 2, 0.05], releaseTurns: [1, 8, 1],
+  releaseSpeed: [0.25, 2, 0.05], releaseTurns: [1, 8, 1], waveSpeed: [0.25, 3, 0.05],
   exposure: [0.3, 1.6, 0.01], saturation: [0, 1.5, 0.01],
   petalRoughness: [0.2, 1, 0.01], coreRoughness: [0.2, 1, 0.01], smileyRoughness: [0.2, 1, 0.01],
   specular: [0, 1, 0.01], environment: [0, 1.5, 0.01],
@@ -61,6 +61,7 @@ export function createLookControls(look: LookSettings, onChange: () => void) {
   number(rotation, 'dragAmount', '드래그 회전량 (배)');
   number(rotation, 'releaseSpeed', '놓기 속도 (배)');
   number(rotation, 'releaseTurns', '놓기 회전량 (바퀴)').decimals(0);
+  number(rotation, 'waveSpeed', '퍼지는 속도 (배)');
   const material = gui.addFolder('재질 · 무광과 반사');
   number(material, 'petalRoughness', '꽃잎 무광 정도');
   number(material, 'coreRoughness', '중앙 무광 정도');

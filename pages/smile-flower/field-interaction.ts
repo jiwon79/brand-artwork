@@ -123,7 +123,7 @@ export function createFieldMotion(settings: RotationSettings = createRotationSet
       const rotationDelta = delta * ROTATION_PLAYBACK_RATE * settings.dragSpeed;
       let changed = false;
       for (const wave of waves) {
-        wave.elapsed += delta;
+        wave.elapsed += delta * settings.waveSpeed;
         wave.arrivals.forEach((arrival, index) => {
           if (wave.elapsed < arrival || wave.visited.has(index)) return;
           wave.visited.add(index);
