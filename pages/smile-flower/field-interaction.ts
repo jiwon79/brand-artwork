@@ -6,6 +6,7 @@ type Point = { x: number; y: number };
 type HitPose = Point & { scale?: number };
 type CellState = { angle: number; velocity: number; target?: number; drive?: number; waveSpin?: { from: number; target: number; elapsed: number } };
 const WAVE_SPIN_DURATION = 1.15;
+const ROTATION_PLAYBACK_RATE = 0.6;
 const FRICTION = 2.4;
 const SETTLE_SPEED = 1.8;
 const SPRING = 9;
@@ -109,6 +110,7 @@ export function createFieldMotion() {
     },
     advance(delta: number) {
       if (delta <= 0) return false;
+      const rotationDelta = delta * ROTATION_PLAYBACK_RATE;
       let changed = false;
       for (const wave of waves) {
         wave.elapsed += delta;
@@ -127,7 +129,7 @@ export function createFieldMotion() {
         if (cell.waveSpin) {
           changed = true;
           const spin = cell.waveSpin;
-          spin.elapsed = Math.min(WAVE_SPIN_DURATION, spin.elapsed + delta);
+          spin.elapsed = Math.min(WAVE_SPIN_DURATION, spin.elapsed + rotationDelta);
           const progress = spin.elapsed / WAVE_SPIN_DURATION;
           cell.angle = spin.from + (spin.target - spin.from) * (1 - (1 - progress) ** 3);
           if (progress === 1) seat(cell);
@@ -135,7 +137,7 @@ export function createFieldMotion() {
         }
         if (cell.velocity === 0 && cell.target === undefined) continue;
         changed = true;
-        let remaining = delta;
+        let remaining = rotationDelta;
         if (cell.target === undefined) {
           const coast = Math.min(remaining, Math.max(0, Math.log(Math.abs(cell.velocity) / SETTLE_SPEED) / FRICTION));
           const decay = Math.exp(-FRICTION * coast);
