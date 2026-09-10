@@ -1,3 +1,4 @@
+import { createRotationSettings, type RotationSettings } from './rotation-settings';
 import { CELLS, REFERENCE_HEIGHT, REFERENCE_WIDTH } from './reference-layout';
 import { REST_ANGLE, type ModelName } from './flip-motion';
 import { createBloomMotion } from './bloom-motion';
@@ -48,7 +49,7 @@ export function waveArrival(distance: number) {
   return 0.012 * distance + 0.0075 * distance * distance;
 }
 
-export function createFieldMotion() {
+export function createFieldMotion(settings: RotationSettings = createRotationSettings()) {
   const cells: CellState[] = CELLS.map(() => ({ angle: 0, velocity: 0 }));
   function seat(cell: CellState) {
     const turns = Math.round((cell.target ?? cell.angle) / Math.PI);
@@ -57,13 +58,13 @@ export function createFieldMotion() {
     cell.target = undefined;
     cell.waveSpin = undefined;
   }
-  const waves: { elapsed: number; arrivals: number[]; visited: Set<number> }[] = [];
+  const waves: { elapsed: number; arrivals: number[]; turns: number; visited: Set<number> }[] = [];
   return {
     wave(center: Point, positions: readonly HitPose[], reducedMotion: boolean) {
       if (reducedMotion) return;
       const distances = positions.map(p => Math.hypot(p.x - center.x, p.y - center.y));
       const nearest = Math.min(...distances);
-      waves.push({ elapsed: 0, arrivals: distances.map(distance => waveArrival(distance - nearest)), visited: new Set() });
+      waves.push({ elapsed: 0, turns: settings.releaseTurns, arrivals: distances.map(distance => waveArrival(distance - nearest)), visited: new Set() });
     },
     stroke(from: Point, to: Point, seconds: number, visited: Set<number>, reducedMotion: boolean, positions: readonly HitPose[] = CELLS) {
       const dx = to.x - from.x;
@@ -74,7 +75,7 @@ export function createFieldMotion() {
       // One velocity-dependent kick per contacted model, with extra energy only
       // for acceleration or reversal. Slow continuous movement cannot refill the
       // same minimum impulse on every pointer event and spin indefinitely.
-      const speed = Math.min(100, 20 + distance / Math.max(seconds, 0.001) * 3) * direction;
+      const speed = Math.min(100, 20 + distance / Math.max(seconds, 0.001) * 3) * direction * settings.dragAmount;
       let changed = false;
       for (const index of cellsAlongStroke(from, to, positions)) {
         const cell = cells[index];
@@ -100,7 +101,7 @@ export function createFieldMotion() {
             cell.drive = speed;
           }
           visited.add(index);
-          cell.angle += direction * contact * 0.3;
+          cell.angle += direction * contact * 0.3 * settings.dragAmount;
           cell.target = undefined;
           cell.waveSpin = undefined;
         }
@@ -110,7 +111,7 @@ export function createFieldMotion() {
     },
     advance(delta: number) {
       if (delta <= 0) return false;
-      const rotationDelta = delta * ROTATION_PLAYBACK_RATE;
+      const rotationDelta = delta * ROTATION_PLAYBACK_RATE * settings.dragSpeed;
       let changed = false;
       for (const wave of waves) {
         wave.elapsed += delta;
@@ -118,7 +119,7 @@ export function createFieldMotion() {
           if (wave.elapsed < arrival || wave.visited.has(index)) return;
           wave.visited.add(index);
           const cell = cells[index];
-          cell.waveSpin = { from: cell.angle, target: Math.round(cell.angle / Math.PI) * Math.PI + 6 * Math.PI, elapsed: 0 };
+          cell.waveSpin = { from: cell.angle, target: Math.round(cell.angle / Math.PI) * Math.PI + wave.turns * 2 * Math.PI, elapsed: 0 };
           cell.velocity = 0;
           cell.target = undefined;
           changed = true;
@@ -129,7 +130,7 @@ export function createFieldMotion() {
         if (cell.waveSpin) {
           changed = true;
           const spin = cell.waveSpin;
-          spin.elapsed = Math.min(WAVE_SPIN_DURATION, spin.elapsed + rotationDelta);
+          spin.elapsed = Math.min(WAVE_SPIN_DURATION, spin.elapsed + delta * ROTATION_PLAYBACK_RATE * settings.releaseSpeed);
           const progress = spin.elapsed / WAVE_SPIN_DURATION;
           cell.angle = spin.from + (spin.target - spin.from) * (1 - (1 - progress) ** 3);
           if (progress === 1) seat(cell);
@@ -171,8 +172,9 @@ export function createFieldMotion() {
 
 export function createFieldInteraction(
   canvas: HTMLCanvasElement, enabled: () => boolean, reducedMotion: () => boolean, onChange: () => void,
+  settings: RotationSettings = createRotationSettings(),
 ) {
-  const motion = createFieldMotion();
+  const motion = createFieldMotion(settings);
   const bloom = createBloomMotion();
   const events = new AbortController();
   const options = { signal: events.signal };
