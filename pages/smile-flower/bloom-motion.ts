@@ -34,37 +34,56 @@ export function createBloomMotion() {
       }
       let strength = 0;
       for (const focus of focuses.values()) strength = Math.max(strength, focus.strength);
-      const before = layout.map(pose => pose.scale);
+      const before = layout.map(pose => ({ ...pose }));
       for (const [index, cell] of CELLS.entries()) {
         let influence = 0;
+        let closest: Focus | undefined;
+        let best = 0;
         for (const focus of focuses.values()) {
-          const distance = Math.hypot(cell.x - focus.x, cell.y - focus.y);
-          influence = Math.max(influence, focus.strength * Math.exp(-(distance ** 2) / 7));
+          const distanceSquared = (cell.x - focus.x) ** 2 + (cell.y - focus.y) ** 2;
+          const local = focus.strength * Math.exp(-distanceSquared / 2.7);
+          influence = Math.max(influence, local);
+          const weight = focus.strength * Math.exp(-distanceSquared / 12);
+          if (weight > best) { best = weight; closest = focus; }
         }
-        const target = 1 - 0.45 * strength + 1.85 * influence;
-        const next = layout[index].scale + (target - layout[index].scale) * blend;
-        layout[index].scale = Math.abs(next - target) < 0.0001 ? target : next;
+        // A continuous radial profile keeps the first ring visible. The broader
+        // displacement profile opens a little room instead of erasing neighbors.
+        const target = {
+          scale: 1 - 0.45 * strength + 1.85 * influence,
+          x: cell.x + (closest ? (cell.x - closest.x) * 1.08 * best : 0),
+          y: cell.y + (closest ? (cell.y - closest.y) * 1.08 * best : 0),
+        };
+        const pose = layout[index];
+        for (const key of ['x', 'y', 'scale'] as const) {
+          const next = pose[key] + (target[key] - pose[key]) * blend;
+          pose[key] = Math.abs(next - target[key]) < 0.0001 ? target[key] : next;
+        }
       }
-      // Centers never move. Allocate the available radius to larger models first,
-      // shrinking their neighbors instead. A covered neighbor can reach zero scale.
-      // Sorting the displayed sizes lets a moving focus shrink before another grows.
+      // Preserve every scale; only resolve remaining contacts (mostly where two
+      // finger regions meet). Large central models resist displacement more.
       if (strength > 0 || layout.some(pose => pose.scale !== 1)) {
-        const ordered = layout.map((pose, index) => ({ pose, index }))
-          .sort((a, b) => b.pose.scale - a.pose.scale || a.index - b.index);
-        const visible: typeof layout = [];
-        const radius = 0.98 + 0.06 * strength;
-        for (const { pose } of ordered) {
-          for (const other of visible) {
-            const distance = Math.hypot(pose.x - other.x, pose.y - other.y);
-            const available = (distance - 0.07 * strength) / radius - other.scale;
-            pose.scale = Math.max(0, Math.min(pose.scale, available));
+        for (let pass = 0; pass < 40; pass++) {
+          let worst = 0;
+          for (let i = 0; i < layout.length; i++) for (let j = i + 1; j < layout.length; j++) {
+            const a = layout[i], b = layout[j];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const distance = Math.hypot(dx, dy);
+            const overlap = (0.98 + 0.02 * strength) * (a.scale + b.scale) + 0.04 * strength - distance;
+            if (overlap <= 0.00001) continue;
+            worst = Math.max(worst, overlap);
+            const nx = distance > 1e-8 ? dx / distance : 1;
+            const ny = distance > 1e-8 ? dy / distance : 0;
+            const weightA = 1 / a.scale ** 4, weightB = 1 / b.scale ** 4;
+            const shiftA = overlap * weightA / (weightA + weightB);
+            const shiftB = overlap - shiftA;
+            a.x -= nx * shiftA; a.y -= ny * shiftA;
+            b.x += nx * shiftB; b.y += ny * shiftB;
           }
-          if (pose.scale < 0.0001) pose.scale = 0;
-          else visible.push(pose);
+          if (worst < 0.0001) break;
         }
       }
       layout.forEach((pose, index) => {
-        if (pose.scale !== before[index]) changed = true;
+        if (pose.scale !== before[index].scale || pose.x !== before[index].x || pose.y !== before[index].y) changed = true;
       });
       return changed;
     },
