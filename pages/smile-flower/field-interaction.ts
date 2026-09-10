@@ -54,8 +54,8 @@ export function cellsAlongStroke(from: Point, to: Point, positions: readonly Hit
 // Continuous angular momentum: a stroke transfers velocity, then friction slows
 // the spin. A critically damped spring seats the nearest face at low speed.
 // Travel time is convex in radius: the front starts fast and decelerates outward.
-export function waveArrival(distance: number) {
-  return 0.012 * distance + 0.0075 * distance * distance;
+export function waveArrival(distance: number, deceleration = 1) {
+  return 0.012 * distance + 0.0075 * deceleration * distance * distance;
 }
 
 export function createFieldMotion(settings: RotationSettings = createRotationSettings()) {
@@ -73,7 +73,7 @@ export function createFieldMotion(settings: RotationSettings = createRotationSet
       if (reducedMotion) return;
       const distances = positions.map(p => Math.hypot(p.x - center.x, p.y - center.y));
       const nearest = Math.min(...distances);
-      waves.push({ elapsed: 0, turns: settings.releaseTurns, arrivals: distances.map(distance => waveArrival(distance - nearest)), visited: new Set() });
+      waves.push({ elapsed: 0, turns: settings.releaseTurns, arrivals: distances.map(distance => waveArrival(distance - nearest, settings.waveDeceleration)), visited: new Set() });
     },
     stroke(from: Point, to: Point, seconds: number, visited: Set<number>, reducedMotion: boolean, positions: readonly HitPose[] = CELLS) {
       const dx = to.x - from.x;
