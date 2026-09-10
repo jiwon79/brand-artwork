@@ -6,5 +6,5 @@ export type RotationSettings = {
 };
 
 export function createRotationSettings(): RotationSettings {
-  return { dragSpeed: 1, dragAmount: 1, releaseSpeed: 1, releaseTurns: 3 };
+  return { dragSpeed: 0.5, dragAmount: 0.5, releaseSpeed: 1, releaseTurns: 1 };
 }

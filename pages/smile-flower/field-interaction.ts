@@ -6,12 +6,21 @@ import { createBloomMotion } from './bloom-motion';
 type Point = { x: number; y: number };
 type HitPose = Point & { scale?: number };
 type CellState = { angle: number; velocity: number; target?: number; drive?: number; waveSpin?: { from: number; target: number; elapsed: number } };
-const WAVE_SPIN_DURATION = 1.15;
+const WAVE_SPIN_DURATION = 0.84;
 const ROTATION_PLAYBACK_RATE = 0.6;
 const FRICTION = 2.4;
 const SETTLE_SPEED = 1.8;
 const SPRING = 9;
 const HIT_RADIUS = 1.8;
+
+// Integrate a short sine acceleration and a long cosine deceleration.
+// Velocity is continuous, starts/ends at zero, and has no slow cubic tail.
+export function releaseSpinProgress(progress: number) {
+  const t = Math.max(0, Math.min(1, progress));
+  const acceleration = 0.12;
+  if (t < acceleration) return acceleration * (1 - Math.cos(Math.PI / 2 * t / acceleration));
+  return acceleration + (1 - acceleration) * Math.sin(Math.PI / 2 * (t - acceleration) / (1 - acceleration));
+}
 
 // Clip captured pointer paths to the artwork before testing the swept segment.
 // This also catches cells between sparse pointer events during a fast swipe.
@@ -132,7 +141,7 @@ export function createFieldMotion(settings: RotationSettings = createRotationSet
           const spin = cell.waveSpin;
           spin.elapsed = Math.min(WAVE_SPIN_DURATION, spin.elapsed + delta * ROTATION_PLAYBACK_RATE * settings.releaseSpeed);
           const progress = spin.elapsed / WAVE_SPIN_DURATION;
-          cell.angle = spin.from + (spin.target - spin.from) * (1 - (1 - progress) ** 3);
+          cell.angle = spin.from + (spin.target - spin.from) * releaseSpinProgress(progress);
           if (progress === 1) seat(cell);
           continue;
         }
