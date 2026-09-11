@@ -10,24 +10,18 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main class="artwork" data-mode="field" aria-busy="true">
+    <main class="artwork" aria-busy="true">
       <h1 class="sr-only">Flower & Smiley</h1>
       <div class="stage">
-        <canvas id="studio-canvas" role="img" aria-label="드래그한 위치의 꽃과 스마일이 뒤집히는 3D 작품"></canvas>
+        <canvas id="studio-canvas" aria-describedby="field-help" role="img" aria-label="드래그한 위치의 꽃과 스마일이 뒤집히는 3D 작품"></canvas>
         <p class="status" role="status">꽃을 피우는 중…</p>
       </div>
       <div class="inspection-controls">
         <span id="field-help">꾹 누르고 움직여 피우기 · 놓으면 회전 파동</span>
-        <span id="rotation-help" hidden>드래그해서 회전<span class="sr-only">. 방향키로 회전, Home 키로 기본 각도.</span></span>
-        <button class="reset-view-button" type="button" hidden disabled>기본 각도</button>
       </div>
       <div class="toolbar" aria-label="애니메이션 설정">
         <a href="/" aria-label="작품 목록으로 돌아가기">↖</a>
-        <button class="mode-button" type="button" disabled>하나씩 보기</button>
-        <span class="divider" aria-hidden="true"></span>
         <button class="reset-field-button" type="button" disabled aria-label="모두 꽃으로 되돌리기">초기화</button>
-        <button class="flip-button" type="button" hidden disabled>꽃으로 바꾸기 <span aria-hidden="true">↻</span></button>
-        <button class="look-button" type="button" disabled aria-expanded="false" aria-controls="look-panel">조정</button>
       </div>
       <aside id="look-panel" class="look-panel" aria-label="색감·재질·회전 조정" hidden>
         <div class="look-heading"><strong>색감·재질·회전</strong><button class="look-close" type="button" aria-label="조정 패널 닫기">×</button></div>
