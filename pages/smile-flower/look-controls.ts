@@ -1,3 +1,4 @@
+import { isDebugMode } from '../../common/debug';
 import { createRotationSettings } from './rotation-settings';
 import GUI, { type Controller } from 'lil-gui';
 import { CORE_PALETTE, PALETTE, PETAL_PALETTE } from './reference-layout';
@@ -37,7 +38,6 @@ export function createLook(): LookSettings {
 
 export function createLookControls(look: LookSettings, onChange: () => void) {
   const panel = document.querySelector<HTMLElement>('#look-panel')!;
-  const toggle = document.querySelector<HTMLButtonElement>('.look-button')!;
   const close = panel.querySelector<HTMLButtonElement>('.look-close')!;
   const feedback = panel.querySelector<HTMLElement>('.look-feedback')!;
   const events = new AbortController();
@@ -112,11 +112,19 @@ export function createLookControls(look: LookSettings, onChange: () => void) {
   label(gui.add(actions, 'copy'), '설정 복사');
   function setOpen(open: boolean) {
     panel.hidden = !open;
-    toggle.setAttribute('aria-expanded', String(open));
     if (open) close.focus();
-    else toggle.focus();
+    else if (panel.contains(document.activeElement)) close.blur();
   }
-  toggle.addEventListener('click', () => setOpen(panel.hidden), { signal: events.signal });
+  panel.hidden = !isDebugMode();
+  window.addEventListener('keydown', event => {
+    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable]')) return;
+    if (event.key.toLowerCase() === 'd') {
+      event.preventDefault();
+      setOpen(panel.hidden);
+    }
+  }, { signal: events.signal });
   close.addEventListener('click', () => setOpen(false), { signal: events.signal });
   panel.addEventListener('keydown', event => { if (event.key === 'Escape') setOpen(false); }, { signal: events.signal });
   return () => { events.abort(); gui.destroy(); };
