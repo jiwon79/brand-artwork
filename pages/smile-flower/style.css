@@ -5,16 +5,8 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 .stage { position: relative; height: min(100svh, 177.777778vw); width: min(100vw, 56.25svh); overflow: hidden; }
 canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: grab; }
 canvas.is-painting { cursor: grabbing; }
-#field-help { padding: 10px 14px; border-radius: 20px; background: #110d11d9; color: #e9dce6; pointer-events: none; }
-.inspection-controls { pointer-events: none; }
-.inspection-controls { position: fixed; z-index: 1; bottom: calc(max(18px, env(safe-area-inset-bottom)) + 62px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; white-space: nowrap; color: #baa7b6; font-size: 11px; }
 .status { position: absolute; inset: 0; display: grid; place-content: center; margin: 0; padding: 24px; text-align: center; font-size: 12px; color: #baa7b6; line-height: 1.8; }
 [hidden] { display: none !important; }
-.toolbar { position: fixed; z-index: 1; bottom: max(18px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 3px; padding: 5px; border: 1px solid #ffffff23; border-radius: 30px; background: #110d11bd; backdrop-filter: blur(14px); white-space: nowrap; }
-.toolbar button, .toolbar a { border: 0; border-radius: 24px; background: transparent; color: #e9dce6; min-height: 40px; padding: 0 14px; font: inherit; font-size: 11px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.toolbar a { width: 40px; padding: 0; font-size: 19px; }
-.toolbar button:hover:not(:disabled):not([aria-disabled='true']), .toolbar a:hover { background: #ffffff20; }
-.toolbar :disabled, .toolbar [aria-disabled='true'] { opacity: .5; cursor: wait; }
 :focus-visible { outline: 2px solid #f2c8e3; outline-offset: 3px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .look-panel { position: fixed; z-index: 2; top: max(12px, env(safe-area-inset-top)); right: 12px; width: min(320px, calc(100vw - 24px)); max-height: calc(100svh - 100px); overflow-y: auto; overscroll-behavior: contain; padding: 14px; border: 1px solid #ffffff28; border-radius: 18px; background: #171318f5; box-shadow: 0 12px 40px #0009; }
@@ -24,7 +16,3 @@ canvas.is-painting { cursor: grabbing; }
 .look-feedback:empty { display: none; }
 .look-gui .lil-gui { --background-color: transparent; --widget-color: #332b35; --hover-color: #47394a; --focus-color: #59465e; --text-color: #eee2ec; --title-background-color: #ffffff09; --number-color: #ecc4df; --string-color: #ecc4df; --name-width: 55%; --font-size: 11px; --input-font-size: 11px; --widget-height: 24px; width: 100%; }
 .look-gui .lil-gui.root > .children { max-height: none; }
-@media (max-width: 360px) {
-  .toolbar button, .toolbar a { padding: 0 10px; }
-  .toolbar a { width: 36px; padding: 0; }
-}

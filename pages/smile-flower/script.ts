@@ -51,8 +51,6 @@ function start() {
   const stage = document.querySelector<HTMLElement>('.stage')!;
   const canvas = document.querySelector<HTMLCanvasElement>('canvas')!;
   const status = document.querySelector<HTMLElement>('.status')!;
-  const announcement = document.querySelector<HTMLElement>('#model-status')!;
-  const resetFieldButton = document.querySelector<HTMLButtonElement>('.reset-field-button')!;
   const look = createLook();
   const events = new AbortController();
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -227,10 +225,6 @@ function start() {
     dirty = true;
   }
 
-  resetFieldButton.addEventListener('click', () => {
-    field.reset();
-    announcement.textContent = '모두 꽃으로 되돌렸습니다.';
-  }, { signal: events.signal });
   canvas.addEventListener('webglcontextrestored', () => { dirty = true; previousTime = undefined; }, { signal: events.signal });
   reducedMotion.addEventListener('change', () => {
     if (reducedMotion.matches) {
@@ -292,7 +286,6 @@ function start() {
     ready = true;
     status.hidden = true;
     artwork.setAttribute('aria-busy', 'false');
-    resetFieldButton.disabled = false;
   }).catch(error => {
     if (disposed) return;
     console.error('Could not prepare the artwork.', error);

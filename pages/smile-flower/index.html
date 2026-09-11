@@ -13,15 +13,8 @@
     <main class="artwork" aria-busy="true">
       <h1 class="sr-only">Flower & Smiley</h1>
       <div class="stage">
-        <canvas id="studio-canvas" aria-describedby="field-help" role="img" aria-label="드래그한 위치의 꽃과 스마일이 뒤집히는 3D 작품"></canvas>
+        <canvas id="studio-canvas" role="img" aria-label="드래그한 위치의 꽃과 스마일이 뒤집히는 3D 작품"></canvas>
         <p class="status" role="status">꽃을 피우는 중…</p>
-      </div>
-      <div class="inspection-controls">
-        <span id="field-help">꾹 누르고 움직여 피우기 · 놓으면 회전 파동</span>
-      </div>
-      <div class="toolbar" aria-label="애니메이션 설정">
-        <a href="/" aria-label="작품 목록으로 돌아가기">↖</a>
-        <button class="reset-field-button" type="button" disabled aria-label="모두 꽃으로 되돌리기">초기화</button>
       </div>
       <aside id="look-panel" class="look-panel" aria-label="색감·재질·회전 조정" hidden>
         <div class="look-heading"><strong>색감·재질·회전</strong><button class="look-close" type="button" aria-label="조정 패널 닫기">×</button></div>
@@ -29,7 +22,6 @@
         <div class="look-gui"></div>
         <p class="look-feedback" role="status" aria-live="polite"></p>
       </aside>
-      <p class="sr-only" id="model-status" aria-live="polite"></p>
     </main>
     <noscript>3D 애니메이션을 보려면 JavaScript를 켜주세요.</noscript>
     <script type="module" src="/common/touch-pointer.ts"></script>
