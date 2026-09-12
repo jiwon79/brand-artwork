@@ -53,6 +53,11 @@ docs/
 - [`architecture.md`](./artworks/line-pull/architecture.md) - 포인터 교차 선택, SVG 선 분리·중첩 클립, 문구 fitting, 프레임 루프와 질감 합성 구조
 - [`social-share-image.md`](./artworks/line-pull/social-share-image.md) - 실제 캡처의 왼쪽 위에 작품명만 합성하는 PNG 제작 도구와 재생성 방법
 
+### Smile Flower
+
+- [`architecture.md`](./artworks/smile-flower/architecture.md) - Blender 모델 생성, GLB 최적화, instancing, 회전·bloom·파동 렌더링 구조
+- [`rebuild-guide.md`](./artworks/smile-flower/rebuild-guide.md) - Blender 원본부터 웹 페이지까지 다시 만드는 단계별 가이드
+
 ## Concepts
 
 Concept는 다음 중 하나를 만족할 때 독립 문서로 둔다.
