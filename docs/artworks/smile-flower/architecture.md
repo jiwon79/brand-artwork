@@ -1,8 +1,8 @@
-# 꽃웃음 (Smile Flower) Architecture
+# 웃음꽃 (Smile Flower) Architecture
 
-**꽃웃음**은 Blender에서 만든 꽃과 스마일 형상을 브라우저용 GLB로 변환하고, Three.js의 인스턴스 렌더링 위에 드래그 관성·길게 누르기·방사형 회전 파동을 결합한 작품이다. 코드 이름은 `smile-flower`다. 이 문서는 현재 코드의 입력 → 중간 상태 → 렌더 패스 → 출력 → 검증 순서를 설명한다.
+**웃음꽃**은 Blender에서 만든 꽃과 스마일 형상을 브라우저용 GLB로 변환하고, Three.js의 인스턴스 렌더링 위에 드래그 관성·길게 누르기·방사형 회전 파동을 결합한 작품이다. 코드 이름은 `smile-flower`다. 이 문서는 현재 코드의 입력 → 중간 상태 → 렌더 패스 → 출력 → 검증 순서를 설명한다.
 
-![Blender 모델에서 WebGL 출력까지 이어지는 꽃웃음 파이프라인](../../assets/smile-flower-pipeline.svg)
+![Blender 모델에서 WebGL 출력까지 이어지는 웃음꽃 파이프라인](../../assets/smile-flower-pipeline.svg)
 
 ## 1. 해결하려는 문제
 
@@ -198,4 +198,4 @@ GLB material의 이름은 부품을 구분하는 표식으로 사용된다. 웹�
 | `create_flower.py`, `create_smiley.py` | Blender geometry 생성 |
 | `export_web_models.py` | 웹용 최적화, 검증과 GLB export |
 
-재현 순서는 [꽃웃음 재현 가이드](./rebuild-guide.md)에 정리되어 있다.
+재현 순서는 [웃음꽃 재현 가이드](./rebuild-guide.md)에 정리되어 있다.
