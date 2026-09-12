@@ -14,7 +14,7 @@ test('uses the documented Cursor Cat title typography', () => {
 
   drawSocialImage(context, { naturalWidth: 1200, naturalHeight: 630 });
 
-  expect(context.font).toBe('799 52px "Pretendard Variable"');
+  expect(context.font).toBe('700 52px "Pretendard Variable"');
   expect(context.fillStyle).toBe('#161616');
   expect(context.fillText).toHaveBeenCalledExactlyOnceWith('Cursor Cat', 56, 82);
 });
