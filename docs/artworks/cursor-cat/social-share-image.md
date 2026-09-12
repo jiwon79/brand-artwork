@@ -2,7 +2,7 @@
 
 기존 Chrome에서 실제 작품을 1200×630 PNG로 캡처한 원본은 `pages/cursor-cat/assets/og-artwork.png`에 보존한다. 최종 `og-image.png`는 원본 위 왼쪽 상단에 `Cursor Cat` 제목을 합성한다. 원본의 고양이와 흰 배경은 그대로 유지한다.
 
-제목은 기존 Line Pull 카드와 같은 Pretendard ExtraBold 52px을 사용한다. 왼쪽 여백은 56px, 글자 기준선은 위에서 82px이며 색상은 `#161616`이다. 폰트 파일은 `pages/line-pull/assets/Pretendard-ExtraBold.subset.woff2`를 공유한다.
+제목은 Pretendard Variable 52px, 굵기 799를 사용한다. 왼쪽 여백은 56px, 글자 기준선은 위에서 82px이며 색상은 `#161616`이다. 799가 실제 윤곽에 반영되도록 고정 굵기 ExtraBold 파일 대신 `pages/cursor-cat/assets/PretendardVariable.woff2`를 사용한다. 이 값들은 공통 가이드의 기본 제목 규칙을 따른다.
 
 ## 재생성
 

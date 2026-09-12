@@ -32,7 +32,7 @@
     const status = document.querySelector('#status');
     const download = document.querySelector('#download');
     try {
-      const font = new FontFace('Pretendard', 'url(/pages/line-pull/assets/Pretendard-ExtraBold.subset.woff2)', { weight: '800' });
+      const font = new FontFace('Pretendard Variable', 'url(/pages/cursor-cat/assets/PretendardVariable.woff2)', { weight: '45 920' });
       const source = new Image();
       source.src = '/pages/cursor-cat/assets/og-artwork.png';
       const [loadedFont] = await Promise.all([font.load(), source.decode()]);

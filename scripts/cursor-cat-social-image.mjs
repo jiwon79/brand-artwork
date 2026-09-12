@@ -16,6 +16,6 @@ export function drawSocialImage(context, source) {
   context.textBaseline = 'alphabetic';
   context.textAlign = 'left';
   context.fillStyle = '#161616';
-  context.font = '800 52px "Pretendard"';
+  context.font = '799 52px "Pretendard Variable"';
   context.fillText(title, 56, 82);
 }
