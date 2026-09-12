@@ -39,7 +39,7 @@ docs/
 - [`architecture.md`](./artworks/guseul/architecture.md) - 현재 코드, 입력, SDF, 렌더링 전체 구조
 - [`surface-refraction.md`](./artworks/guseul/surface-refraction.md) - Guseul의 contact SDF, 유리 단면, 굴절 구현
 
-### Smile Flower
+### 꽃웃음 (Smile Flower)
 
 - [`architecture.md`](./artworks/smile-flower/architecture.md) - Blender 모델 생성, GLB 최적화, instancing, 회전·bloom·파동 렌더링 구조
 - [`rebuild-guide.md`](./artworks/smile-flower/rebuild-guide.md) - Blender 원본부터 웹 페이지까지 다시 만드는 단계별 가이드
