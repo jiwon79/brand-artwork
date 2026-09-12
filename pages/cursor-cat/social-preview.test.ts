@@ -29,6 +29,7 @@ test('share descriptions and accessible image text remain consistent', () => {
   expect(meta('twitter:description')).toBe(meta('description'));
   expect(meta('og:image:alt')).toContain('고양이');
   expect(meta('og:image:alt')).toContain('Cursor Cat');
+  expect(meta('og:image:alt')).toContain('왼쪽 위');
   expect(meta('og:image:alt')).not.toMatch(/바이브코딩|4일차/);
   expect(meta('twitter:image:alt')).toBe(meta('og:image:alt'));
 });
