@@ -1,22 +1,27 @@
 import GUI from 'lil-gui';
-import { fragmentSource, vertexSource } from './shader';
+import { fragmentSource, resolveSource, vertexSource } from './shader';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
 const error = document.querySelector<HTMLParagraphElement>('#error')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const settings = {
-  grain: 1,
+  grain: 1.25,
   warmth: 0,
   specular: 1.1,
   rim: 1.25,
+  diffusion: 1,
   saturation: 1.1,
   response: 1,
   reset,
 };
 let gl: WebGL2RenderingContext;
 let program: WebGLProgram;
+let resolveProgram: WebGLProgram;
+let sceneTexture: WebGLTexture;
+let sceneFramebuffer: WebGLFramebuffer;
 let vao: WebGLVertexArrayObject;
 let uniforms: Record<string, WebGLUniformLocation | null>;
+let resolveUniforms: Record<string, WebGLUniformLocation | null>;
 let width = 1, height = 1;
 let x = 0, y = 0, vx = 0, vy = 0, targetX = 0, targetY = 0;
 let lightX = 0, lightY = 0, targetLightX = 0, targetLightY = 0;
@@ -36,24 +41,44 @@ function compile(type: number, source: string): WebGLShader {
   return shader;
 }
 
+function createProgram(source: string) {
+  const vertex = compile(gl.VERTEX_SHADER, vertexSource);
+  const fragment = compile(gl.FRAGMENT_SHADER, source);
+  const nextProgram = gl.createProgram();
+  if (!nextProgram) throw new Error('Cannot allocate program');
+  gl.attachShader(nextProgram, vertex);
+  gl.attachShader(nextProgram, fragment);
+  gl.linkProgram(nextProgram);
+  gl.deleteShader(vertex);
+  gl.deleteShader(fragment);
+  if (!gl.getProgramParameter(nextProgram, gl.LINK_STATUS)) {
+    const message = gl.getProgramInfoLog(nextProgram);
+    gl.deleteProgram(nextProgram);
+    throw new Error(message ?? 'Link failed');
+  }
+  return nextProgram;
+}
+
 function initialize() {
   const context = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, powerPreference: 'low-power' });
   if (!context) throw new Error('WebGL 2 unavailable');
   gl = context;
-  const vertex = compile(gl.VERTEX_SHADER, vertexSource);
-  const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
-  const nextProgram = gl.createProgram();
-  if (!nextProgram) throw new Error('Cannot allocate program');
-  program = nextProgram;
-  gl.attachShader(program, vertex);
-  gl.attachShader(program, fragment);
-  gl.linkProgram(program);
-  gl.deleteShader(vertex);
-  gl.deleteShader(fragment);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'Link failed');
+  program = createProgram(fragmentSource);
+  resolveProgram = createProgram(resolveSource);
+  const texture = gl.createTexture(), framebuffer = gl.createFramebuffer();
+  if (!texture || !framebuffer) throw new Error('Cannot allocate scene buffer');
+  sceneTexture = texture;
+  sceneFramebuffer = framebuffer;
+  gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
   uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uSaturation']
     .map(name => [name, gl.getUniformLocation(program, name)]));
+  resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
+    .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
   error.hidden = true;
   contextLost = false;
   resize();
@@ -66,6 +91,14 @@ function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2, Math.sqrt(3_000_000/(width*height)));
   canvas.width = Math.round(width*dpr);
   canvas.height = Math.round(height*dpr);
+  gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,canvas.width,canvas.height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,sceneTexture,0);
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+    throw new Error('Incomplete scene buffer');
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   wake();
 }
 
@@ -97,6 +130,7 @@ function render(now: number) {
   lightY += (targetLightY-lightY)*ease;
   pressure += ((pointer !== null ? 1 : 0)-pressure)*ease;
   gl.viewport(0,0,canvas.width,canvas.height);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFramebuffer);
   gl.useProgram(program);
   gl.bindVertexArray(vao);
   gl.uniform2f(uniforms.uResolution,canvas.width,canvas.height);
@@ -109,6 +143,15 @@ function render(now: number) {
   gl.uniform1f(uniforms.uSpecular,settings.specular);
   gl.uniform1f(uniforms.uRim,settings.rim);
   gl.uniform1f(uniforms.uSaturation,settings.saturation);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.useProgram(resolveProgram);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D,sceneTexture);
+  gl.uniform1i(resolveUniforms.uScene,0);
+  gl.uniform2f(resolveUniforms.uResolution,canvas.width,canvas.height);
+  gl.uniform1f(resolveUniforms.uReferenceScale,Math.min(width/590,height/1280)*canvas.width/width);
+  gl.uniform1f(resolveUniforms.uDiffusion,settings.diffusion);
   gl.drawArrays(gl.TRIANGLES,0,3);
   const active = Math.abs(targetX-x)+Math.abs(targetY-y)+Math.abs(vx)+Math.abs(vy)
     +Math.abs(targetLightX-lightX)+Math.abs(targetLightY-lightY)
@@ -162,18 +205,29 @@ canvas.addEventListener('webglcontextlost', event => {
   error.hidden = false;
 });
 canvas.addEventListener('webglcontextrestored', start);
+function showError(cause: unknown) {
+  contextLost = true;
+  cancelAnimationFrame(frame); frame = 0;
+  error.hidden = false;
+  console.error(cause);
+}
 function start() {
   try { initialize(); }
-  catch (cause) { contextLost = true; error.hidden = false; console.error(cause); }
+  catch (cause) { showError(cause); }
 }
 start();
-new ResizeObserver(() => { if (!contextLost) resize(); }).observe(canvas);
+new ResizeObserver(() => {
+  if (contextLost) return;
+  try { resize(); }
+  catch (cause) { showError(cause); }
+}).observe(canvas);
 if (new URLSearchParams(location.search).has('debug')) {
   const gui = new GUI({ title: 'Rose Glass' });
   gui.add(settings,'grain',0,2,.01).name('Surface grain').onChange(wake);
   gui.add(settings,'warmth',-1,1,.01).name('Warmth').onChange(wake);
   gui.add(settings,'specular',0,2,.01).name('White reflection').onChange(wake);
   gui.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake);
+  gui.add(settings,'diffusion',0,2,.01).name('Edge diffusion').onChange(wake);
   gui.add(settings,'saturation',.8,1.4,.01).name('Saturation').onChange(wake);
   gui.add(settings,'response',.1,1.5,.01).name('Drag response');
   gui.add(settings,'reset').name('Reset composition');
