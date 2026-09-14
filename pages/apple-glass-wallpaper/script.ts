@@ -4,7 +4,15 @@ import { fragmentSource, vertexSource } from './shader';
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
 const error = document.querySelector<HTMLParagraphElement>('#error')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const settings = { grain: 1, warmth: 0, response: 1, reset };
+const settings = {
+  grain: 1,
+  warmth: 0,
+  specular: 1.1,
+  rim: 1.25,
+  saturation: 1.1,
+  response: 1,
+  reset,
+};
 let gl: WebGL2RenderingContext;
 let program: WebGLProgram;
 let vao: WebGLVertexArrayObject;
@@ -44,7 +52,7 @@ function initialize() {
   gl.deleteShader(fragment);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'Link failed');
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uSaturation']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   error.hidden = true;
   contextLost = false;
@@ -98,6 +106,9 @@ function render(now: number) {
   gl.uniform1f(uniforms.uPress,pressure);
   gl.uniform1f(uniforms.uGrain,settings.grain);
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
+  gl.uniform1f(uniforms.uSpecular,settings.specular);
+  gl.uniform1f(uniforms.uRim,settings.rim);
+  gl.uniform1f(uniforms.uSaturation,settings.saturation);
   gl.drawArrays(gl.TRIANGLES,0,3);
   const active = Math.abs(targetX-x)+Math.abs(targetY-y)+Math.abs(vx)+Math.abs(vy)
     +Math.abs(targetLightX-lightX)+Math.abs(targetLightY-lightY)
@@ -161,6 +172,9 @@ if (new URLSearchParams(location.search).has('debug')) {
   const gui = new GUI({ title: 'Rose Glass' });
   gui.add(settings,'grain',0,2,.01).name('Surface grain').onChange(wake);
   gui.add(settings,'warmth',-1,1,.01).name('Warmth').onChange(wake);
+  gui.add(settings,'specular',0,2,.01).name('White reflection').onChange(wake);
+  gui.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake);
+  gui.add(settings,'saturation',.8,1.4,.01).name('Saturation').onChange(wake);
   gui.add(settings,'response',.1,1.5,.01).name('Drag response');
   gui.add(settings,'reset').name('Reset composition');
 }
