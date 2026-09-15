@@ -122,3 +122,48 @@ def test_media_comments_collect_preview_replies(monkeypatch):
 def test_media_url_uses_reel_route_for_clips():
     media = SimpleNamespace(code="ABC", product_type="clips")
     assert InstagramService._media_url(media) == "https://www.instagram.com/reel/ABC/"
+
+
+def test_full_dm_sync_fetches_every_thread_and_message():
+    thread = SimpleNamespace(id="101", messages=["preview"])
+
+    class FakeClient:
+        def __init__(self):
+            self.thread_calls = []
+            self.message_calls = []
+
+        def direct_threads(self, **kwargs):
+            self.thread_calls.append(kwargs)
+            return [thread]
+
+        def direct_messages(self, thread_id, amount):
+            self.message_calls.append((thread_id, amount))
+            return ["one", "two"]
+
+    client = FakeClient()
+    results = list(InstagramService._direct_thread_messages(client, True, 30))
+    assert results == [(thread, ["one", "two"])]
+    assert client.thread_calls == [
+        {"amount": 0, "thread_message_limit": 1},
+        {"amount": 0, "thread_message_limit": 1, "box": "primary"},
+        {"amount": 0, "thread_message_limit": 1, "box": "general"},
+    ]
+    assert client.message_calls == [(101, 0)]
+
+
+def test_incremental_dm_sync_only_uses_recent_thread_messages():
+    thread = SimpleNamespace(id="101", messages=["recent"])
+
+    class FakeClient:
+        def __init__(self):
+            self.thread_calls = []
+
+        def direct_threads(self, **kwargs):
+            self.thread_calls.append(kwargs)
+            return [thread]
+
+    client = FakeClient()
+    results = list(InstagramService._direct_thread_messages(client, False, 30))
+    assert results == [(thread, ["recent"])]
+    assert all(call["amount"] == 30 for call in client.thread_calls)
+    assert all(call["thread_message_limit"] == 20 for call in client.thread_calls)

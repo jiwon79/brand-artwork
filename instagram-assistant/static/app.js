@@ -1,5 +1,6 @@
 const token = document.querySelector('meta[name="instagram-assistant-token"]').content;
-let currentStatus = "active";
+let currentCommentStatus = "active";
+let currentDmStatus = "active";
 let selectedThreadId = "";
 
 async function api(path, options = {}) {
@@ -49,10 +50,6 @@ function intentLabel(value) {
 
 async function refreshStatus() {
   const data = await api("/api/status");
-  document.querySelector("#pending-count").textContent = data.counts.pending;
-  document.querySelector("#drafted-count").textContent = data.counts.drafted;
-  document.querySelector("#manual-count").textContent = data.counts.manual;
-  document.querySelector("#sent-count").textContent = data.counts.sent_today;
   document.querySelector("#read-only").checked = data.settings.read_only_observation;
   document.querySelector("#auto-send").checked = data.settings.auto_send;
   document.querySelector("#auto-comment").checked = data.settings.auto_comment;
@@ -121,7 +118,7 @@ function commentReplies(event) {
 }
 
 async function refreshComments() {
-  const query = currentStatus ? `&status=${currentStatus}` : "";
+  const query = currentCommentStatus ? `&status=${currentCommentStatus}` : "";
   const events = await api(`/api/events?kind=comment&limit=500${query}`);
   const root = document.querySelector("#events");
   root.innerHTML = events.map((event) => `
@@ -141,7 +138,8 @@ async function refreshComments() {
 }
 
 async function refreshConversations(keepSelection = true) {
-  const conversations = await api("/api/conversations");
+  const query = currentDmStatus ? `?status=${currentDmStatus}` : "";
+  const conversations = await api(`/api/conversations${query}`);
   if (!keepSelection || !conversations.some((item) => item.thread_id === selectedThreadId)) {
     selectedThreadId = conversations[0]?.thread_id || "";
   }
@@ -163,7 +161,11 @@ async function refreshChat() {
   }
   const messages = await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}`);
   const username = [...messages].reverse().find((item) => item.direction === "inbound" && item.author_username)?.author_username || "알 수 없음";
-  const target = [...messages].reverse().find((item) => item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status));
+  const lastOutboundIndex = messages.findLastIndex((item) => item.direction === "outbound");
+  const target = [...messages].reverse().find((item, reverseIndex) => {
+    const index = messages.length - reverseIndex - 1;
+    return index > lastOutboundIndex && item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status);
+  });
   panel.innerHTML = `
     <header class="chat-header"><button class="chat-back" data-action="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></header>
     <div class="chat-messages">
@@ -223,21 +225,22 @@ document.querySelectorAll(".tab").forEach((button) => button.addEventListener("c
   document.querySelectorAll(".tab,.view").forEach((node) => node.classList.remove("active"));
   button.classList.add("active");
   document.querySelector(`#${button.dataset.view}`).classList.add("active");
+  window.scrollTo({ top: 0, behavior: "auto" });
 }));
 
-document.querySelectorAll(".inbox-mode").forEach((button) => button.addEventListener("click", () => {
-  document.querySelectorAll(".inbox-mode").forEach((node) => node.classList.remove("active"));
+document.querySelectorAll(".comment-filter").forEach((button) => button.addEventListener("click", async () => {
+  document.querySelectorAll(".comment-filter").forEach((node) => node.classList.remove("active"));
   button.classList.add("active");
-  const dmMode = button.dataset.mode === "dm";
-  document.querySelector("#dm-inbox").hidden = !dmMode;
-  document.querySelector("#comment-inbox").hidden = dmMode;
-}));
-
-document.querySelectorAll(".filter").forEach((button) => button.addEventListener("click", async () => {
-  document.querySelectorAll(".filter").forEach((node) => node.classList.remove("active"));
-  button.classList.add("active");
-  currentStatus = button.dataset.status;
+  currentCommentStatus = button.dataset.status;
   await refreshComments();
+}));
+
+document.querySelectorAll(".dm-filter").forEach((button) => button.addEventListener("click", async () => {
+  document.querySelectorAll(".dm-filter").forEach((node) => node.classList.remove("active"));
+  button.classList.add("active");
+  currentDmStatus = button.dataset.status;
+  document.querySelector("#dm-inbox").classList.remove("chat-open");
+  await refreshConversations(false);
 }));
 
 document.querySelector("#conversation-list").addEventListener("click", async (event) => {
@@ -256,7 +259,8 @@ document.querySelector("#sync").addEventListener("click", async (event) => {
   button.innerHTML = '<span class="button-spinner" aria-hidden="true"></span><span>동기화 중</span>';
   try {
     const result = await api("/api/sync", { method: "POST" });
-    toast(`새 댓글 ${result.comments} · 새 대댓글 ${result.comment_replies || 0} · 새 DM ${result.dms}`);
+    const dmMode = result.dm_full_sync ? "DM 전체 가져오기 완료" : `새 DM ${result.dms}`;
+    toast(`${dmMode} · 새 댓글 ${result.comments} · 새 대댓글 ${result.comment_replies || 0}`);
     await refreshAll();
   } catch (error) {
     toast(error.message, true);

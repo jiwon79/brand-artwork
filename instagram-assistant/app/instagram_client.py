@@ -6,7 +6,7 @@ import re
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from instagrapi import Client
 from instagrapi.extractors import extract_comment
@@ -102,9 +102,11 @@ class InstagramService:
             paths.session.unlink(missing_ok=True)
             update_settings({"instagram_username": "", "halted_reason": None})
 
-    def sync(self, media_amount: int = 12, comments_per_media: int = 50, threads_amount: int = 30) -> dict[str, int]:
+    def sync(self, media_amount: int = 12, comments_per_media: int = 50, threads_amount: int = 30) -> dict[str, Any]:
         with self._lock:
             client = self.connect_saved_session()
+            settings = get_settings()
+            full_dm_sync = not bool(settings.get("dm_backfill_complete"))
             inserted_comments = 0
             inserted_replies = 0
             inserted_dms = 0
@@ -179,64 +181,98 @@ class InstagramService:
                                 {"status": "sent", "error": None},
                             )
 
-                thread_groups = [client.direct_threads(amount=threads_amount, thread_message_limit=20)]
-                for box in ("primary", "general"):
-                    try:
-                        thread_groups.append(client.direct_threads(
-                            amount=threads_amount,
-                            box=box,
-                            thread_message_limit=20,
-                        ))
-                    except STOP_EXCEPTIONS:
-                        raise
-                    except Exception:
-                        pass
-                seen_threads: set[str] = set()
-                for threads in thread_groups:
-                    for thread in threads:
-                        thread_id = str(thread.id)
-                        if thread_id in seen_threads:
+                for thread, messages in self._direct_thread_messages(
+                    client, full_history=full_dm_sync, threads_amount=threads_amount
+                ):
+                    thread_id = str(thread.id)
+                    usernames = {
+                        str(user.pk): user.username for user in getattr(thread, "users", [])
+                    }
+                    for message in messages:
+                        user_id = str(getattr(message, "user_id", "") or "")
+                        if not user_id:
                             continue
-                        seen_threads.add(thread_id)
-                        usernames = {
-                            str(user.pk): user.username for user in getattr(thread, "users", [])
-                        }
-                        for message in getattr(thread, "messages", []):
-                            user_id = str(getattr(message, "user_id", "") or "")
-                            if not user_id:
-                                continue
-                            outbound = bool(getattr(message, "is_sent_by_viewer", False)) or user_id == str(client.user_id)
-                            shared_url = self._shared_url(message)
-                            has_liked, like_count = self._direct_heart_state(
-                                message, str(client.user_id)
-                            )
-                            inserted_dms += int(upsert_event({
-                                "id": f"dm:{message.id}",
-                                "kind": "dm",
-                                "source_id": str(message.id),
-                                "thread_id": thread_id,
-                                "shared_url": shared_url,
-                                "author_id": user_id,
-                                "author_username": (
-                                    get_settings().get("instagram_username", "")
-                                    if outbound else usernames.get(user_id, "")
-                                ),
-                                "direction": "outbound" if outbound else "inbound",
-                                "has_liked": has_liked,
-                                "like_count": like_count,
-                                "body": getattr(message, "text", "") or ("공유된 게시물" if shared_url else ""),
-                                "received_at": self._timestamp(getattr(message, "timestamp", None)),
-                                "status": "history" if outbound else "pending",
-                            }))
+                        outbound = (
+                            bool(getattr(message, "is_sent_by_viewer", False))
+                            or user_id == str(client.user_id)
+                        )
+                        shared_url = self._shared_url(message)
+                        has_liked, like_count = self._direct_heart_state(
+                            message, str(client.user_id)
+                        )
+                        inserted_dms += int(upsert_event({
+                            "id": f"dm:{message.id}",
+                            "kind": "dm",
+                            "source_id": str(message.id),
+                            "thread_id": thread_id,
+                            "shared_url": shared_url,
+                            "author_id": user_id,
+                            "author_username": (
+                                settings.get("instagram_username", "")
+                                if outbound else usernames.get(user_id, "")
+                            ),
+                            "direction": "outbound" if outbound else "inbound",
+                            "has_liked": has_liked,
+                            "like_count": like_count,
+                            "body": getattr(message, "text", "") or (
+                                "공유된 게시물" if shared_url else ""
+                            ),
+                            "received_at": self._timestamp(
+                                getattr(message, "timestamp", None)
+                            ),
+                            "status": "history" if outbound else "pending",
+                        }))
             except STOP_EXCEPTIONS as exc:
                 self._halt(str(exc))
                 raise InstagramHaltedError(str(exc)) from exc
-            update_settings({"last_sync_at": datetime.now(UTC).isoformat()})
+            update_settings({
+                "last_sync_at": datetime.now(UTC).isoformat(),
+                "dm_backfill_complete": True,
+            })
             return {
                 "comments": inserted_comments,
                 "comment_replies": inserted_replies,
                 "dms": inserted_dms,
+                "dm_full_sync": full_dm_sync,
             }
+
+    @staticmethod
+    def _direct_thread_messages(
+        client: Client,
+        full_history: bool,
+        threads_amount: int,
+    ) -> Iterator[tuple[Any, list[Any]]]:
+        amount = 0 if full_history else threads_amount
+        message_limit = 1 if full_history else 20
+        thread_groups: list[list[Any]] = []
+        for box in (None, "primary", "general"):
+            try:
+                kwargs: dict[str, Any] = {
+                    "amount": amount,
+                    "thread_message_limit": message_limit,
+                }
+                if box:
+                    kwargs["box"] = box
+                thread_groups.append(client.direct_threads(**kwargs))
+            except STOP_EXCEPTIONS:
+                raise
+            except Exception:
+                if box is None:
+                    raise
+
+        seen_threads: set[str] = set()
+        for threads in thread_groups:
+            for thread in threads:
+                thread_id = str(thread.id)
+                if thread_id in seen_threads:
+                    continue
+                seen_threads.add(thread_id)
+                messages = (
+                    client.direct_messages(int(thread.id), amount=0)
+                    if full_history
+                    else list(getattr(thread, "messages", []))
+                )
+                yield thread, messages
 
     @staticmethod
     def _media_comments_with_replies(

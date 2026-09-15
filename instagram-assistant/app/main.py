@@ -120,7 +120,7 @@ def logout(x_instagram_assistant_token: str | None = Header(default=None)) -> di
 
 
 @app.post("/api/sync")
-def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, int]:
+def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
     protect(x_instagram_assistant_token)
     try:
         return instagram_service.sync()
@@ -140,8 +140,8 @@ def events(
 
 
 @app.get("/api/conversations")
-def conversations() -> list[dict[str, Any]]:
-    return list_conversations()
+def conversations(status: str | None = None) -> list[dict[str, Any]]:
+    return list_conversations(status=status)
 
 
 @app.get("/api/conversations/{thread_id}")

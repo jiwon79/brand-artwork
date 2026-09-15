@@ -66,7 +66,9 @@ def test_conversations_group_messages_and_preserve_order(tmp_path: Path, monkeyp
     assert conversations[0]["username"] == "someone"
     assert conversations[0]["message_count"] == 2
     assert conversations[0]["latest_body"] == "여기 있어요"
-    assert "needs_attention" not in conversations[0]
+    assert conversations[0]["has_actionable"] is False
+    assert db.list_conversations(status="active") == []
+    assert db.list_conversations(status="completed")[0]["thread_id"] == "thread-1"
     messages = db.list_conversation_messages("thread-1")
     assert [item["direction"] for item in messages] == ["inbound", "outbound"]
 

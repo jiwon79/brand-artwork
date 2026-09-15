@@ -90,6 +90,7 @@ DEFAULT_SETTINGS = {
     "daily_send_limit": 20,
     "read_only_observation": True,
     "last_sync_at": None,
+    "dm_backfill_complete": False,
     "halted_reason": None,
 }
 
@@ -376,7 +377,7 @@ def get_event(event_id: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def list_conversations() -> list[dict[str, Any]]:
+def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM events WHERE kind='dm' AND thread_id IS NOT NULL "
@@ -392,11 +393,27 @@ def list_conversations() -> list[dict[str, Any]]:
             "latest_body": item["body"],
             "latest_at": item["received_at"],
             "message_count": 0,
+            "has_actionable": False,
+            "_has_newer_outbound": False,
         })
         conversation["message_count"] += 1
+        if item["direction"] == "outbound":
+            conversation["_has_newer_outbound"] = True
+        elif (
+            item["status"] in {"pending", "drafted", "manual"}
+            and not conversation["_has_newer_outbound"]
+        ):
+            conversation["has_actionable"] = True
         if item["direction"] == "inbound" and item["author_username"]:
             conversation["username"] = conversation["username"] or item["author_username"]
-    return list(conversations.values())
+    items = list(conversations.values())
+    for item in items:
+        item.pop("_has_newer_outbound", None)
+    if status == "active":
+        return [item for item in items if item["has_actionable"]]
+    if status == "completed":
+        return [item for item in items if not item["has_actionable"]]
+    return items
 
 
 def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
