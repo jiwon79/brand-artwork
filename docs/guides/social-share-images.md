@@ -86,7 +86,7 @@ PNG 원본을 직접 열어 다음을 별도로 확인한다. 자동 테스트�
 - `canonical`, `og:url`: 확인된 공개 배포 호스트와 작품 경로
 - `og:type`: `website`
 - `og:title`, `og:description`: 작품 제목과 짧은 설명
-- `og:image`: `https://<public-host>/pages/<artwork>/assets/og-image.png` 형태의 절대 URL
+- `og:image`: `https://<public-host>/<artwork>/assets/og-image.png` 형태의 절대 URL
 - `og:image:type`: `image/png`
 - `og:image:width`, `og:image:height`: `1200`, `630`
 - `og:image:alt`: 작품명·회차와 실제 캡처 장면을 설명하는 대체 텍스트

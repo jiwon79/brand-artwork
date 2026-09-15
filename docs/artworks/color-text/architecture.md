@@ -790,7 +790,7 @@ Field target이 half float인 이유는 여러 gain을 합친 1보다 큰 값과
 
 | 모드 | 사용법 | 목적 |
 | --- | --- | --- |
-| 일반 | `/pages/color-text/` | 실제 터치 작품 |
+| 일반 | `/color-text/` | 실제 터치 작품 |
 | Process | `?stage=solver|contact|contour|final` | 특정 중간 단계에서 시작 |
 | 검증 | `?qa=1&qaX=0.37&qaY=0.52` | 고정 synthetic packet으로 재현 가능한 비교 |
 | 3분류 검증 | 검증 주소에 `&qaLabels=1` | 배경·글자·효과 3분류 출력 |

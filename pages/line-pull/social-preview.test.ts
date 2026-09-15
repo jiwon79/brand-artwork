@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-const pageUrl = 'https://brand-artwork.vercel.app/pages/line-pull/';
+const pageUrl = 'https://studio.jiiwon.com/line-pull/';
 const meta = (name: string) => {
   const tags = [...html.matchAll(/<meta\s[^>]*>/g)]
     .map(([tag]) => Object.fromEntries([...tag.matchAll(/([\w:-]+)="([^"]*)"/g)]

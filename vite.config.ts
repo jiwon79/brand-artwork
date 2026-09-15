@@ -6,6 +6,7 @@ import { staticPageAssets } from './scripts/static-page-assets';
 const root = new URL('.', import.meta.url).pathname;
 const pagesDir = resolve(root, 'pages');
 const cursorCatVariantRoute = /^\/pages\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
+const cleanCursorCatVariantRoute = /^\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
 const retiredCursorCatRoute = /^\/pages\/cursor-cat-circle(?:\/|\?|$)/;
 
 type MiddlewareResponse = {
@@ -13,7 +14,8 @@ type MiddlewareResponse = {
   end(body?: string): void;
 };
 
-function cursorCatRouteFallback() {
+function artworkRouteFallback(pageNames: readonly string[]) {
+  const knownPages = new Set(pageNames);
   const rewrite = (
     request: { url?: string },
     response: MiddlewareResponse,
@@ -24,14 +26,20 @@ function cursorCatRouteFallback() {
       response.end('Not Found');
       return;
     }
-    if (request.url && cursorCatVariantRoute.test(request.url)) {
+    if (request.url && (cursorCatVariantRoute.test(request.url) || cleanCursorCatVariantRoute.test(request.url))) {
       request.url = '/pages/cursor-cat/index.html';
+    } else if (request.url) {
+      const url = new URL(request.url, 'http://localhost');
+      const [artwork] = url.pathname.split('/').filter(Boolean);
+      if (knownPages.has(artwork) && !url.pathname.startsWith('/pages/')) {
+        request.url = `/pages${url.pathname}${url.search}`;
+      }
     }
     next();
   };
 
   return {
-    name: 'cursor-cat-route-fallback',
+    name: 'artwork-route-fallback',
     configureServer(server: { middlewares: { use: (handler: typeof rewrite) => void } }) {
       server.middlewares.use(rewrite);
     },
@@ -68,7 +76,7 @@ export default defineConfig({
     ],
   },
   plugins: [
-    cursorCatRouteFallback(),
+    artworkRouteFallback(pageEntries),
     {
       name: 'inject-site-favicon',
       transformIndexHtml() {

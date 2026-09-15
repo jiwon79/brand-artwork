@@ -14,8 +14,8 @@ Cursor Cat은 커서 방향을 120장의 원형 시선 포즈 중 하나로 바�
 
 경로 규칙은 다음과 같다.
 
-- `/pages/cursor-cat/` → R2 pack `main`
-- `/pages/cursor-cat/<10자리 영문 소문자·숫자>/` → 같은 ID의 R2 pack
+- `/cursor-cat/` → R2 pack `main`
+- `/cursor-cat/<10자리 영문 소문자·숫자>/` → 같은 ID의 R2 pack
 - 형식이 다른 ID는 로드하지 않는다.
 
 ## R2 pack
