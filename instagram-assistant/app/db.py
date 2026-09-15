@@ -394,21 +394,23 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
             "latest_at": item["received_at"],
             "message_count": 0,
             "has_actionable": False,
-            "_has_newer_outbound": False,
+            "_has_newer_resolution": False,
         })
         conversation["message_count"] += 1
         if item["direction"] == "outbound":
-            conversation["_has_newer_outbound"] = True
+            conversation["_has_newer_resolution"] = True
+        elif item["has_liked"]:
+            conversation["_has_newer_resolution"] = True
         elif (
             item["status"] in {"pending", "drafted", "manual"}
-            and not conversation["_has_newer_outbound"]
+            and not conversation["_has_newer_resolution"]
         ):
             conversation["has_actionable"] = True
         if item["direction"] == "inbound" and item["author_username"]:
             conversation["username"] = conversation["username"] or item["author_username"]
     items = list(conversations.values())
     for item in items:
-        item.pop("_has_newer_outbound", None)
+        item.pop("_has_newer_resolution", None)
     if status == "active":
         return [item for item in items if item["has_actionable"]]
     if status == "completed":

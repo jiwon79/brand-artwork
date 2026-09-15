@@ -88,6 +88,27 @@ def test_existing_dm_is_enriched_with_heart_state(tmp_path: Path, monkeypatch):
     assert saved["like_count"] == 1
 
 
+def test_viewer_heart_completes_dm_until_a_new_message_arrives(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.upsert_event({
+        "id": "dm:1", "kind": "dm", "source_id": "1", "thread_id": "thread-1",
+        "author_username": "someone", "direction": "inbound", "body": "감사합니다",
+        "has_liked": True, "like_count": 1,
+        "received_at": "2026-09-15T01:00:00+00:00",
+    })
+    assert db.list_conversations(status="active") == []
+    assert db.list_conversations(status="completed")[0]["thread_id"] == "thread-1"
+
+    db.upsert_event({
+        "id": "dm:2", "kind": "dm", "source_id": "2", "thread_id": "thread-1",
+        "author_username": "someone", "direction": "inbound", "body": "하나만 더 물어볼게요",
+        "received_at": "2026-09-15T01:01:00+00:00",
+    })
+    assert db.list_conversations(status="active")[0]["thread_id"] == "thread-1"
+
+
 def test_existing_event_is_enriched_with_shared_url(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

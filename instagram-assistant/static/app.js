@@ -161,10 +161,12 @@ async function refreshChat() {
   }
   const messages = await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}`);
   const username = [...messages].reverse().find((item) => item.direction === "inbound" && item.author_username)?.author_username || "알 수 없음";
-  const lastOutboundIndex = messages.findLastIndex((item) => item.direction === "outbound");
+  const lastResolutionIndex = messages.findLastIndex((item) => (
+    item.direction === "outbound" || (item.direction === "inbound" && item.has_liked)
+  ));
   const target = [...messages].reverse().find((item, reverseIndex) => {
     const index = messages.length - reverseIndex - 1;
-    return index > lastOutboundIndex && item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status);
+    return index > lastResolutionIndex && item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status);
   });
   panel.innerHTML = `
     <header class="chat-header"><button class="chat-back" data-action="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></header>
@@ -312,7 +314,8 @@ document.querySelector("#chat-panel").addEventListener("click", async (event) =>
         body: JSON.stringify({ liked: !liked }),
       });
       toast(liked ? "DM 하트를 취소했습니다." : "DM에 하트를 눌렀습니다.");
-      await refreshChat();
+      document.querySelector("#dm-inbox").classList.remove("chat-open");
+      await refreshConversations(false);
       return;
     }
     if (await runEventAction(event.target.closest(".chat-panel"), event.target)) await refreshAll();
