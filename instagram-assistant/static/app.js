@@ -146,7 +146,7 @@ async function refreshConversations(keepSelection = true) {
   document.querySelector("#conversation-list").innerHTML = conversations.map((item) => `
     <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
       <span class="conversation-name">${escapeHtml(item.username || "알 수 없음")}</span>
-      <span class="conversation-preview">${escapeHtml(item.latest_body || "공유된 콘텐츠")}</span>
+      <span class="conversation-preview">${escapeHtml(item.latest_body || "메시지 내용 없음")}</span>
       <time>${formatTime(item.latest_at, true)}</time>
     </button>
   `).join("") || '<p class="empty compact">아직 DM 대화가 없습니다.</p>';
@@ -175,7 +175,7 @@ async function refreshChat() {
         <div class="message-row ${message.direction}" data-id="${escapeHtml(message.id)}">
           ${message.direction === "outbound" ? dmHeart(message) : ""}
           <div class="message-bubble">
-            ${message.body ? `<p>${escapeHtml(message.body)}</p>` : ""}
+            ${message.body ? `<p>${escapeHtml(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
             ${sharedLink(message)}
             <time>${formatTime(message.received_at, true)}</time>
           </div>

@@ -20,6 +20,21 @@ def test_event_insert_is_idempotent(tmp_path: Path, monkeypatch):
     assert len(db.list_events()) == 1
 
 
+def test_delete_event_removes_only_the_selected_event(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    for source_id in ("1", "2"):
+        db.upsert_event({
+            "id": f"dm:{source_id}", "kind": "dm", "source_id": source_id,
+            "thread_id": "thread-1", "body": "", "received_at": db.now(),
+        })
+    assert db.delete_event("dm:1") is True
+    assert db.get_event("dm:1") is None
+    assert db.get_event("dm:2") is not None
+    assert db.delete_event("dm:missing") is False
+
+
 def test_default_artworks_use_canonical_demo_and_purchase_urls(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

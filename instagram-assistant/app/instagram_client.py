@@ -22,6 +22,7 @@ from instagrapi.exceptions import (
 from .config import paths, prepare_data_dir
 from .db import (
     add_delivery,
+    delete_event,
     get_event,
     get_settings,
     list_artworks,
@@ -39,6 +40,15 @@ STOP_EXCEPTIONS = (
     PleaseWaitFewMinutes,
     RateLimitError,
 )
+
+DIRECT_ITEM_LABELS = {
+    "animated_media": "GIF",
+    "generic_xma": "공유된 콘텐츠",
+    "link": "링크",
+    "media": "사진 또는 동영상",
+    "store_sticker": "스티커",
+    "video_call_event": "영상 통화 기록",
+}
 
 
 class InstagramAssistantError(RuntimeError):
@@ -189,6 +199,9 @@ class InstagramService:
                         str(user.pk): user.username for user in getattr(thread, "users", [])
                     }
                     for message in messages:
+                        if not self._should_store_direct_message(message):
+                            delete_event(f"dm:{message.id}")
+                            continue
                         user_id = str(getattr(message, "user_id", "") or "")
                         if not user_id:
                             continue
@@ -214,9 +227,7 @@ class InstagramService:
                             "direction": "outbound" if outbound else "inbound",
                             "has_liked": has_liked,
                             "like_count": like_count,
-                            "body": getattr(message, "text", "") or (
-                                "공유된 게시물" if shared_url else ""
-                            ),
+                            "body": self._direct_message_body(message, shared_url),
                             "received_at": self._timestamp(
                                 getattr(message, "timestamp", None)
                             ),
@@ -235,6 +246,21 @@ class InstagramService:
                 "dms": inserted_dms,
                 "dm_full_sync": full_dm_sync,
             }
+
+    @staticmethod
+    def _should_store_direct_message(message: Any) -> bool:
+        return getattr(message, "item_type", None) != "action_log"
+
+    @staticmethod
+    def _direct_message_body(message: Any, shared_url: str | None) -> str:
+        text = getattr(message, "text", "") or ""
+        if text:
+            return text
+        if shared_url:
+            return "공유된 게시물"
+        return DIRECT_ITEM_LABELS.get(
+            getattr(message, "item_type", None), "메시지 내용 없음"
+        )
 
     @staticmethod
     def _direct_thread_messages(

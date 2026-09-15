@@ -124,6 +124,27 @@ def test_media_url_uses_reel_route_for_clips():
     assert InstagramService._media_url(media) == "https://www.instagram.com/reel/ABC/"
 
 
+def test_action_logs_are_not_stored_as_direct_messages():
+    assert InstagramService._should_store_direct_message(
+        SimpleNamespace(item_type="action_log")
+    ) is False
+    assert InstagramService._should_store_direct_message(
+        SimpleNamespace(item_type="text")
+    ) is True
+
+
+def test_direct_message_body_labels_non_text_items():
+    assert InstagramService._direct_message_body(
+        SimpleNamespace(text="", item_type="video_call_event"), None
+    ) == "영상 통화 기록"
+    assert InstagramService._direct_message_body(
+        SimpleNamespace(text="", item_type="media"), None
+    ) == "사진 또는 동영상"
+    assert InstagramService._direct_message_body(
+        SimpleNamespace(text="", item_type="clip"), "https://example.com/reel/ABC/"
+    ) == "공유된 게시물"
+
+
 def test_full_dm_sync_fetches_every_thread_and_message():
     thread = SimpleNamespace(id="101", messages=["preview"])
 

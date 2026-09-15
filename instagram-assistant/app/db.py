@@ -377,6 +377,12 @@ def get_event(event_id: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def delete_event(event_id: str) -> bool:
+    with connect() as conn:
+        cursor = conn.execute("DELETE FROM events WHERE id=?", (event_id,))
+    return cursor.rowcount > 0
+
+
 def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute(
