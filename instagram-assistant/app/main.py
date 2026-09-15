@@ -227,6 +227,19 @@ def comment_like(
         raise as_http_error(exc) from exc
 
 
+@app.post("/api/events/{event_id}/dm-like")
+def direct_message_like(
+    event_id: str,
+    body: CommentLikeBody,
+    x_instagram_assistant_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    protect(x_instagram_assistant_token)
+    try:
+        return instagram_service.set_direct_message_like(event_id, body.liked)
+    except Exception as exc:
+        raise as_http_error(exc) from exc
+
+
 @app.get("/api/artworks")
 def artworks() -> list[dict[str, Any]]:
     return list_artworks()

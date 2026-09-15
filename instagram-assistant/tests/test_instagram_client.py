@@ -55,6 +55,46 @@ def test_comment_like_updates_local_state(monkeypatch):
     assert updated["like_count"] == 3
 
 
+def test_direct_message_like_updates_local_state(monkeypatch):
+    event = {
+        "id": "dm:1", "kind": "dm", "source_id": "1", "thread_id": "2",
+        "like_count": 0,
+    }
+    client = SimpleNamespace(
+        direct_message_like=lambda thread_id, message_id: (thread_id, message_id) == (2, 1)
+    )
+    service = InstagramService()
+    service._client = client
+    monkeypatch.setattr(instagram_client, "get_event", lambda event_id: event)
+    monkeypatch.setattr(
+        instagram_client,
+        "get_settings",
+        lambda: {"read_only_observation": False, "halted_reason": None},
+    )
+    monkeypatch.setattr(instagram_client, "add_delivery", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        instagram_client,
+        "update_event",
+        lambda event_id, values: {**event, **values},
+    )
+    updated = service.set_direct_message_like("dm:1", True)
+    assert updated["has_liked"] is True
+    assert updated["like_count"] == 1
+
+
+def test_direct_heart_state_reads_viewer_and_other_reactions():
+    message = SimpleNamespace(reactions=SimpleNamespace(
+        emojis=[
+            SimpleNamespace(sender_id=10, emoji="❤"),
+            SimpleNamespace(sender_id=20, emoji="❤️"),
+            SimpleNamespace(sender_id=30, emoji="😂"),
+        ],
+        likes=[],
+        likes_count=0,
+    ))
+    assert InstagramService._direct_heart_state(message, "10") == (True, 2)
+
+
 def test_media_comments_collect_preview_replies(monkeypatch):
     parent = SimpleNamespace(pk="1")
     reply = SimpleNamespace(pk="2")

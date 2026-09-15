@@ -207,6 +207,9 @@ class InstagramService:
                                 continue
                             outbound = bool(getattr(message, "is_sent_by_viewer", False)) or user_id == str(client.user_id)
                             shared_url = self._shared_url(message)
+                            has_liked, like_count = self._direct_heart_state(
+                                message, str(client.user_id)
+                            )
                             inserted_dms += int(upsert_event({
                                 "id": f"dm:{message.id}",
                                 "kind": "dm",
@@ -219,6 +222,8 @@ class InstagramService:
                                     if outbound else usernames.get(user_id, "")
                                 ),
                                 "direction": "outbound" if outbound else "inbound",
+                                "has_liked": has_liked,
+                                "like_count": like_count,
                                 "body": getattr(message, "text", "") or ("공유된 게시물" if shared_url else ""),
                                 "received_at": self._timestamp(getattr(message, "timestamp", None)),
                                 "status": "history" if outbound else "pending",
@@ -365,6 +370,71 @@ class InstagramService:
                 "like_count": next_count,
                 "error": None,
             }) or event
+
+    def set_direct_message_like(self, event_id: str, liked: bool) -> dict[str, Any]:
+        with self._lock:
+            event = get_event(event_id)
+            if not event or event["kind"] != "dm" or not event.get("thread_id"):
+                raise InstagramAssistantError("DM 메시지를 찾지 못했습니다.")
+            settings = get_settings()
+            if settings.get("read_only_observation"):
+                raise InstagramAssistantError("현재 관찰 모드입니다. 설정에서 먼저 해제하세요.")
+            if settings.get("halted_reason"):
+                raise InstagramHaltedError(str(settings["halted_reason"]))
+            client = self.connect_saved_session()
+            action = "like_direct_message" if liked else "unlike_direct_message"
+            try:
+                success = (
+                    client.direct_message_like(
+                        int(event["thread_id"]), int(event["source_id"])
+                    )
+                    if liked
+                    else client.direct_message_unlike(
+                        int(event["thread_id"]), int(event["source_id"])
+                    )
+                )
+                if not success:
+                    raise InstagramAssistantError("Instagram이 DM 하트 변경을 확인하지 않았습니다.")
+            except STOP_EXCEPTIONS as exc:
+                self._halt(str(exc))
+                add_delivery(event_id, action, "", "halted", error=str(exc))
+                raise InstagramHaltedError(str(exc)) from exc
+            except Exception as exc:
+                add_delivery(event_id, action, "", "failed", error=str(exc))
+                raise
+            current_count = int(event.get("like_count") or 0)
+            next_count = max(0, current_count + (1 if liked else -1))
+            add_delivery(event_id, action, "", "sent")
+            return update_event(event_id, {
+                "has_liked": liked,
+                "like_count": next_count,
+                "error": None,
+            }) or event
+
+    @staticmethod
+    def _direct_heart_state(message: Any, viewer_id: str) -> tuple[bool, int]:
+        reactions = getattr(message, "reactions", None)
+        if not reactions:
+            return False, 0
+
+        def value(item: Any, key: str) -> Any:
+            return item.get(key) if isinstance(item, dict) else getattr(item, key, None)
+
+        heart_emojis = {"❤", "❤️", "♥", "♥️"}
+        emojis = [
+            item for item in (value(reactions, "emojis") or [])
+            if str(value(item, "emoji") or "") in heart_emojis
+        ]
+        legacy_likes = value(reactions, "likes") or []
+        heart_reactions = emojis or legacy_likes
+        has_liked = any(
+            str(value(item, "sender_id") or value(item, "user_id") or "") == viewer_id
+            for item in heart_reactions
+        )
+        count = len(heart_reactions)
+        if not emojis:
+            count = max(count, int(value(reactions, "likes_count") or 0))
+        return has_liked, count
 
     @staticmethod
     def _extract_session_id(settings: dict[str, Any]) -> str | None:

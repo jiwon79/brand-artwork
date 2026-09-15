@@ -352,13 +352,10 @@ def list_conversations() -> list[dict[str, Any]]:
             "latest_body": item["body"],
             "latest_at": item["received_at"],
             "message_count": 0,
-            "needs_attention": 0,
         })
         conversation["message_count"] += 1
         if item["direction"] == "inbound" and item["author_username"]:
             conversation["username"] = conversation["username"] or item["author_username"]
-        if item["status"] in {"pending", "drafted", "manual"}:
-            conversation["needs_attention"] += 1
     return list(conversations.values())
 
 

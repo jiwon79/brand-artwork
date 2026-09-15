@@ -95,6 +95,11 @@ function commentHeart(event, compact = false) {
   return `<button class="comment-heart ${event.has_liked ? "liked" : ""} ${compact ? "compact" : ""}" data-action="comment-heart" data-liked="${event.has_liked ? "true" : "false"}" aria-label="${event.has_liked ? "댓글 하트 취소" : "댓글에 하트"}" aria-pressed="${event.has_liked ? "true" : "false"}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></button>`;
 }
 
+function dmHeart(message) {
+  const hasReaction = Number(message.like_count || 0) > 0;
+  return `<button class="dm-heart ${hasReaction ? "visible" : ""} ${message.has_liked ? "mine" : ""}" data-action="dm-heart" data-liked="${message.has_liked ? "true" : "false"}" aria-label="${message.has_liked ? "DM 하트 취소" : "DM에 하트"}" aria-pressed="${message.has_liked ? "true" : "false"}" title="${message.has_liked ? "하트 취소" : "하트 보내기"}">♥</button>`;
+}
+
 function postReference(event) {
   const fallback = event.post_code ? `https://www.instagram.com/p/${encodeURIComponent(event.post_code)}/` : "";
   const url = safeUrl(event.post_url || fallback);
@@ -140,7 +145,7 @@ async function refreshConversations(keepSelection = true) {
   }
   document.querySelector("#conversation-list").innerHTML = conversations.map((item) => `
     <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
-      <span class="conversation-name">${escapeHtml(item.username || "알 수 없음")}${item.needs_attention ? `<b>${item.needs_attention}</b>` : ""}</span>
+      <span class="conversation-name">${escapeHtml(item.username || "알 수 없음")}</span>
       <span class="conversation-preview">${escapeHtml(item.latest_body || "공유된 콘텐츠")}</span>
       <time>${formatTime(item.latest_at, true)}</time>
     </button>
@@ -161,12 +166,14 @@ async function refreshChat() {
     <header class="chat-header"><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></header>
     <div class="chat-messages">
       ${messages.map((message) => `
-        <div class="message-row ${message.direction}">
+        <div class="message-row ${message.direction}" data-id="${escapeHtml(message.id)}">
+          ${message.direction === "outbound" ? dmHeart(message) : ""}
           <div class="message-bubble">
             ${message.body ? `<p>${escapeHtml(message.body)}</p>` : ""}
             ${sharedLink(message)}
             <time>${formatTime(message.received_at, true)}</time>
           </div>
+          ${message.direction === "inbound" ? dmHeart(message) : ""}
         </div>
       `).join("")}
     </div>
@@ -274,7 +281,21 @@ document.querySelector("#events").addEventListener("click", async (event) => {
 });
 
 document.querySelector("#chat-panel").addEventListener("click", async (event) => {
-  try { if (await runEventAction(event.target.closest(".chat-panel"), event.target)) await refreshAll(); }
+  try {
+    const heart = event.target.closest('[data-action="dm-heart"]');
+    if (heart) {
+      const row = heart.closest(".message-row");
+      const liked = heart.dataset.liked === "true";
+      await api(`/api/events/${encodeURIComponent(row.dataset.id)}/dm-like`, {
+        method: "POST",
+        body: JSON.stringify({ liked: !liked }),
+      });
+      toast(liked ? "DM 하트를 취소했습니다." : "DM에 하트를 눌렀습니다.");
+      await refreshChat();
+      return;
+    }
+    if (await runEventAction(event.target.closest(".chat-panel"), event.target)) await refreshAll();
+  }
   catch (error) { toast(error.message, true); }
 });
 
