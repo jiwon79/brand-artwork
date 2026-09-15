@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS events (
   author_id TEXT,
   author_username TEXT NOT NULL DEFAULT '',
   direction TEXT NOT NULL DEFAULT 'inbound' CHECK(direction IN ('inbound', 'outbound')),
+  has_liked INTEGER,
+  like_count INTEGER,
   body TEXT NOT NULL DEFAULT '',
   received_at TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
@@ -122,6 +124,10 @@ def initialize() -> None:
             conn.execute(
                 "ALTER TABLE events ADD COLUMN direction TEXT NOT NULL DEFAULT 'inbound'"
             )
+        if "has_liked" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN has_liked INTEGER")
+        if "like_count" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN like_count INTEGER")
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
@@ -213,16 +219,17 @@ def upsert_event(event: dict[str, Any]) -> bool:
             """
             INSERT OR IGNORE INTO events(
               id, kind, source_id, thread_id, media_id, post_code, shared_url,
-              author_id, author_username, direction, body, received_at, status,
-              created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              author_id, author_username, direction, has_liked, like_count, body,
+              received_at, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event["id"], event["kind"], event["source_id"],
                 event.get("thread_id"), event.get("media_id"), event.get("post_code"),
                 event.get("shared_url"), event.get("author_id"),
                 event.get("author_username", ""), event.get("direction", "inbound"),
-                event.get("body", ""), event.get("received_at", timestamp),
+                event.get("has_liked"), event.get("like_count"), event.get("body", ""),
+                event.get("received_at", timestamp),
                 event.get("status", "pending"), timestamp, timestamp,
             ),
         )
@@ -233,13 +240,16 @@ def upsert_event(event: dict[str, Any]) -> bool:
                   thread_id=COALESCE(?, thread_id),
                   shared_url=COALESCE(?, shared_url),
                   direction=COALESCE(?, direction),
+                  has_liked=COALESCE(?, has_liked),
+                  like_count=COALESCE(?, like_count),
                   author_username=CASE WHEN ? <> '' THEN ? ELSE author_username END,
                   updated_at=?
                 WHERE id=?
                 """,
                 (
                     event.get("thread_id"), event.get("shared_url"),
-                    event.get("direction"), event.get("author_username", ""),
+                    event.get("direction"), event.get("has_liked"),
+                    event.get("like_count"), event.get("author_username", ""),
                     event.get("author_username", ""), timestamp, event["id"],
                 ),
             )
@@ -322,7 +332,7 @@ def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
 def update_event(event_id: str, values: dict[str, Any]) -> dict[str, Any] | None:
     allowed = {
         "status", "intent", "confidence", "proposed_action", "draft",
-        "artwork_slug", "error",
+        "artwork_slug", "error", "has_liked", "like_count",
     }
     selected = {key: value for key, value in values.items() if key in allowed}
     if not selected:

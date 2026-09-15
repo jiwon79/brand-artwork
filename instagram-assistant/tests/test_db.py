@@ -57,3 +57,18 @@ def test_existing_event_is_enriched_with_shared_url(tmp_path: Path, monkeypatch)
     assert db.upsert_event(item) is True
     assert db.upsert_event({**item, "shared_url": "https://www.instagram.com/reel/ABC/"}) is False
     assert db.get_event("dm:1")["shared_url"] == "https://www.instagram.com/reel/ABC/"
+
+
+def test_existing_comment_is_enriched_with_like_state(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    item = {
+        "id": "comment:1", "kind": "comment", "source_id": "1",
+        "author_username": "someone", "body": "멋져요", "received_at": db.now(),
+    }
+    db.upsert_event(item)
+    db.upsert_event({**item, "has_liked": True, "like_count": 3})
+    saved = db.get_event("comment:1")
+    assert saved["has_liked"] == 1
+    assert saved["like_count"] == 3

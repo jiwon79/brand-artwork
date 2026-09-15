@@ -11,6 +11,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); }
 button, input, textarea { font: inherit; }
 button { border: 0; cursor: pointer; }
@@ -46,6 +47,10 @@ p { color: var(--muted); }
 .event { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 17px 18px; }
 .event-top { display: flex; justify-content: space-between; gap: 12px; }
 .event-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.comment-state { display: flex; align-items: center; gap: 9px; }
+.comment-heart { display: inline-flex; align-items: center; gap: 4px; min-width: 42px; height: 30px; justify-content: center; border-radius: 999px; background: var(--soft); color: var(--muted); }
+.comment-heart.liked { background: #f9e6e8; color: #c83245; }
+.comment-heart > span { font-size: 10px; }
 .badge { padding: 3px 7px; background: var(--soft); border-radius: 999px; color: var(--ink); }
 .event-body { margin: 14px 0; color: var(--ink); line-height: 1.55; white-space: pre-wrap; }
 .draft { width: 100%; min-height: 82px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; padding: 11px; color: var(--ink); background: #fafaf8; line-height: 1.5; }
@@ -73,8 +78,12 @@ p { color: var(--muted); }
 .message-row.outbound .message-bubble { border-color: var(--ink); border-radius: 13px 4px 13px 13px; background: var(--ink); color: white; }
 .message-bubble p { margin: 0 0 5px; color: inherit; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
 .message-bubble time { display: block; margin-top: 5px; color: #999; font-size: 9px; text-align: right; }
-.shared-link { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 200px; margin: 4px 0; padding: 10px; border-radius: 8px; background: var(--soft); color: var(--ink); font-size: 12px; text-decoration: none; }
-.message-row.outbound .shared-link { background: #ffffff18; color: white; }
+.shared-content { display: grid; gap: 4px; min-width: 210px; max-width: 100%; margin: 4px 0; padding: 10px; border-radius: 8px; background: var(--soft); }
+.shared-content > span { color: var(--muted); font-size: 10px; }
+.shared-content > a { overflow-wrap: anywhere; color: var(--ink); font-size: 11px; line-height: 1.4; }
+.message-row.outbound .shared-content { background: #ffffff18; }
+.message-row.outbound .shared-content > span { color: #ffffff99; }
+.message-row.outbound .shared-content > a { color: white; }
 .chat-compose { padding: 14px 16px; border-top: 1px solid var(--line); background: var(--surface); }
 .chat-compose.done { color: var(--muted); font-size: 12px; text-align: center; }
 .compose-context { display: flex; gap: 8px; align-items: center; margin-bottom: 9px; color: var(--muted); font-size: 11px; }

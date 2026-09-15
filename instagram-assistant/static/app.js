@@ -73,7 +73,7 @@ function safeUrl(value) {
 function sharedLink(event) {
   const url = safeUrl(event.shared_url);
   if (!url) return "";
-  return `<a class="shared-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">공유된 콘텐츠 열기 <span>↗</span></a>`;
+  return `<div class="shared-content"><span>공유된 콘텐츠</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
 }
 
 async function refreshComments() {
@@ -84,7 +84,7 @@ async function refreshComments() {
     <article class="event" data-id="${escapeHtml(event.id)}">
       <div class="event-top">
         <div class="event-meta"><span class="badge">댓글</span><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${formatTime(event.received_at)}</span></div>
-        <span class="badge">${escapeHtml(event.intent || event.status)}</span>
+        <div class="comment-state"><span class="badge">${escapeHtml(event.intent || event.status)}</span><button class="comment-heart ${event.has_liked ? "liked" : ""}" data-action="comment-heart" data-liked="${event.has_liked ? "true" : "false"}" aria-label="${event.has_liked ? "댓글 하트 취소" : "댓글에 하트"}" aria-pressed="${event.has_liked ? "true" : "false"}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></button></div>
       </div>
       <p class="event-body">${escapeHtml(event.body)}</p>
       ${event.draft ? `<textarea class="draft">${escapeHtml(event.draft)}</textarea>` : ""}
@@ -217,7 +217,20 @@ document.querySelector("#classify").addEventListener("click", async () => {
 });
 
 document.querySelector("#events").addEventListener("click", async (event) => {
-  try { if (await runEventAction(event.target.closest(".event"), event.target)) await refreshAll(); }
+  try {
+    const card = event.target.closest(".event");
+    const heart = event.target.closest('[data-action="comment-heart"]');
+    if (heart) {
+      await api(`/api/events/${encodeURIComponent(card.dataset.id)}/comment-like`, {
+        method: "POST",
+        body: JSON.stringify({ liked: heart.dataset.liked !== "true" }),
+      });
+      toast(heart.dataset.liked === "true" ? "하트를 취소했습니다." : "댓글에 하트를 눌렀습니다.");
+      await refreshAll();
+      return;
+    }
+    if (await runEventAction(card, event.target)) await refreshAll();
+  }
   catch (error) { toast(error.message, true); }
 });
 

@@ -131,6 +131,8 @@ class InstagramService:
                             "post_code": code,
                             "author_id": user_id,
                             "author_username": getattr(user, "username", "") or "",
+                            "has_liked": getattr(comment, "has_liked", None),
+                            "like_count": getattr(comment, "like_count", None),
                             "body": getattr(comment, "text", "") or "",
                             "received_at": self._timestamp(created_at),
                         }))
@@ -226,6 +228,41 @@ class InstagramService:
                 raise
             add_delivery(event_id, event["proposed_action"], event["draft"], "sent", remote_id)
             return update_event(event_id, {"status": "sent", "error": None}) or event
+
+    def set_comment_like(self, event_id: str, liked: bool) -> dict[str, Any]:
+        with self._lock:
+            event = get_event(event_id)
+            if not event or event["kind"] != "comment":
+                raise InstagramAssistantError("댓글 항목을 찾지 못했습니다.")
+            settings = get_settings()
+            if settings.get("read_only_observation"):
+                raise InstagramAssistantError("현재 관찰 모드입니다. 설정에서 먼저 해제하세요.")
+            if settings.get("halted_reason"):
+                raise InstagramHaltedError(str(settings["halted_reason"]))
+            client = self.connect_saved_session()
+            action = "like_comment" if liked else "unlike_comment"
+            try:
+                success = (
+                    client.comment_like(int(event["source_id"]))
+                    if liked else client.comment_unlike(int(event["source_id"]))
+                )
+                if not success:
+                    raise InstagramAssistantError("Instagram이 하트 변경을 확인하지 않았습니다.")
+            except STOP_EXCEPTIONS as exc:
+                self._halt(str(exc))
+                add_delivery(event_id, action, "", "halted", error=str(exc))
+                raise InstagramHaltedError(str(exc)) from exc
+            except Exception as exc:
+                add_delivery(event_id, action, "", "failed", error=str(exc))
+                raise
+            current_count = int(event.get("like_count") or 0)
+            next_count = max(0, current_count + (1 if liked else -1))
+            add_delivery(event_id, action, "", "sent")
+            return update_event(event_id, {
+                "has_liked": liked,
+                "like_count": next_count,
+                "error": None,
+            }) or event
 
     @staticmethod
     def _extract_session_id(settings: dict[str, Any]) -> str | None:
