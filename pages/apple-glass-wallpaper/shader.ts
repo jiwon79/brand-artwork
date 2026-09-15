@@ -55,10 +55,19 @@ float bell(vec2 p, vec2 c, vec2 r) {
   vec2 q = (p-c)/r;
   return exp(-dot(q,q)*2.0);
 }
+// The upper rear pebble narrows at its cropped crown, rather than keeping the
+// same rounded-rectangle width all the way to the top of the portrait.
+vec2 upperProfile(float y) {
+  float taper = clamp((-y-.30)/.44,0.0,1.5);
+  float width = 245.0*(1.0-.22*taper*taper);
+  float derivative = y > -.96 && y < -.30 ? 245.0*taper : 0.0;
+  return vec2(width,derivative);
+}
 vec2 localPoint(vec2 p, int id) {
   if (id == 0) {
     p -= vec2(321.0, 299.0) - uOffset*.16;
-    return vec2(p.x - p.y*.16, p.y) / vec2(245.0, 408.0);
+    float y = p.y/408.0;
+    return vec2((p.x-p.y*.16)/upperProfile(y).x,y);
   }
   if (id == 1) {
     p -= vec2(274.0, 941.0) - uOffset*.26;
@@ -97,8 +106,12 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     float width = 252.0*(1.0-.11*q.y+uPress*.014);
     sceneGradient = vec2(gradient.x/width,
       gradient.y/height+gradient.x*(-.045+.11*q.x*252.0/height)/width);
+  } else if (id == 0) {
+    vec2 profile = upperProfile(q.y);
+    sceneGradient = vec2(gradient.x/profile.x,
+      gradient.y/408.0+gradient.x*(-.16-q.x*profile.y/408.0)/profile.x);
   } else {
-    sceneGradient.y -= (id == 0 ? .16 : .19)*sceneGradient.x;
+    sceneGradient.y -= .19*sceneGradient.x;
   }
   float contourDistance = (1.0-f)/max(length(sceneGradient),.0001);
   float aa = max(fwidth(contourDistance)*.7,.65);
@@ -109,7 +122,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   // The resolve pass really filters color AND grain, including across the
   // silhouette; merely fading a bright band would leave a hard contour.
   float focusWidth = mix(14.0,52.0,softSide);
-  float localBlur = mix(.55,2.9,softSide)*(id == 2 ? 1.0 : 1.15)
+  float localBlur = mix(.55,2.9,softSide)*(id == 2 ? 1.0 : .80)
     *exp(-pow(max(contourDistance,0.0)/focusWidth,1.35));
   float outsideFalloff = exp(-pow(max(-contourDistance,0.0)/9.0,2.0));
   blurRadius = mix(blurRadius,localBlur,mask);
@@ -117,14 +130,17 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float depth = sqrt(max(0.0,1.0-f));
   // Project material coordinates around the relief so grain compresses on
   // steep sides. Suppress subpixel relief when the portrait is scaled down.
-  vec2 grainUV = vec2(atan(q.x,depth*.72+.48),atan(q.y,depth*.72+.48))*radii;
+  vec2 curvedGrain = vec2(atan(q.x,depth*.72+.48),atan(q.y,depth*.72+.48))*radii;
+  // Rear inclusions lie through a shallower layer: less foreshortening keeps
+  // them readable on the shoulders instead of packing into subpixel noise.
+  vec2 grainUV = mix(q*radii,curvedGrain,id == 2 ? 1.0 : .20);
   float grainFilter = 1.0-smoothstep(1.1,3.5,length(fwidth(grainUV)));
   if (mask <= 0.0) return under;
   vec2 slope = sign(q)*pow(abs(q),vec2(1.45));
   vec3 normal = normalize(vec3(slope.x, slope.y*.62, depth*.70+.03));
   vec3 micro = reliefNoise(grainUV*.76);
   vec3 coarse = reliefNoise(grainUV*.29+17.3);
-  float surfaceRelief = id == 2 ? 1.0 : .40;
+  float surfaceRelief = id == 2 ? 1.0 : .20;
   vec2 reliefSlope = (micro.yz*.030+coarse.yz*.014)*uGrain*grainFilter*surfaceRelief;
   vec3 grainNormal = normalize(normal+vec3(reliefSlope,0));
   vec3 reflected = reflect(vec3(0,0,-1),grainNormal);
@@ -139,31 +155,49 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     color = mix(color,vec3(.958,.812,.786),bell(lightingQ,vec2(-.35,.49),vec2(1.15,.90)));
     color = mix(color,vec3(.990,.616,.538),bell(lightingQ,vec2(.72,.49),vec2(.72,.85))*.85);
     color = mix(color,vec3(.99,.43,.48),bell(q,vec2(-.40,-.66),vec2(.75,.57))*.48);
-    color = mix(color,vec3(.49,.16,.18),bell(q,vec2(-.42,-.94),vec2(.80,.20))*.52);
+    color = mix(color,vec3(.44,.14,.16),bell(q,vec2(-.42,-.94),vec2(.80,.24))*.64);
     // Wide, diagonal internal shadow visible in the reference, softened by
     // scattering. It moves slightly with the virtual light, not with pixels.
     float bandY = q.y + .075 - q.x*.27 - uLight.y*.06;
     float band = exp(-pow(bandY/.19,2.0)) * (.62+.38*smoothstep(-.8,.6,q.x));
     color = mix(color,vec3(.865,.34,.33),band*.85);
-    color -= vec3(.33,.22,.19)*left*(.20+.80*exp(-pow((q.y+.48)/.65,2.0)));
+    color -= vec3(.030,.020,.017)*band;
+    color -= vec3(.39,.29,.265)*left*(.20+.80*exp(-pow((q.y+.48)/.65,2.0)));
     color -= vec3(.19,.23,.21)*right*(.25+.75*(1.0-smoothstep(.2,.75,q.y)));
     color += vec3(.075,.022,.018)*bell(q,vec2(.62,-.28),vec2(.30,.80));
     color -= vec3(.095,.10,.095)*right*exp(-max(contourDistance,0.0)/(opticalWidth*1.5))
       *(.35+.65*(1.0-smoothstep(.35,.9,q.y)));
-    color -= vec3(.095,.045,.035)*bell(q,vec2(.78,.12),vec2(.50,.30));
+    color -= vec3(.125,.065,.050)*bell(q,vec2(.78,.12),vec2(.50,.30));
     color -= vec3(.028,.022,.018)*bell(q,vec2(.26,1.02),vec2(.90,.25));
   } else {
-    color = id == 0 ? vec3(.855,.692,.707) : vec3(.938,.865,.849);
-    color = mix(color, id == 0 ? vec3(.938,.805,.814) : vec3(.989,.948,.934),
-      bell(q,vec2(-.12,-.05),vec2(1.40,1.90))*.80);
-    color -= vec3(.16,.175,.165)*left;
-    color -= vec3(.15,.17,.16)*right*(id == 1 ? .55 : 1.0);
-    color -= vec3(.10,.095,.09)*pow(max(normal.y,0.0),3.0);
+    // Independent rear materials: rose-tinted glass above, milky glass below.
+    // Keep their transmitted centers bright; thickness darkens the shoulders
+    // asymmetrically instead of dimming the entire object or drawing a rim.
+    if (id == 0) {
+      color = mix(vec3(.858,.690,.698),vec3(.940,.802,.805),
+        bell(lightingQ,vec2(-.12,-.05),vec2(1.40,1.90))*.80);
+      color -= vec3(.170,.268,.258)*left;
+      color -= vec3(.15,.18,.18)*right*(.80+.50*smoothstep(-.35,.50,q.y));
+      color -= vec3(.065,.040,.035)*bell(q,vec2(-.64,-.72),vec2(.54,.72));
+      color -= vec3(.095,.075,.070)*pow(max(normal.y,0.0),3.0);
+    } else {
+      color = mix(vec3(.938,.865,.849),vec3(.985,.950,.945),
+        bell(lightingQ,vec2(-.12,-.05),vec2(1.40,1.90))*.80);
+      color -= vec3(.14,.22,.23)*left;
+      color -= vec3(.190,.315,.320)*right;
+      color -= vec3(.035,.065,.065)*pow(max(normal.y,0.0),3.0);
+      color += vec3(.010,.009,.008)*bell(lightingQ,vec2(-.22,.43),vec2(.75,.95));
+    }
     color = mix(color,under,.07*depth);
-    // Blurred colored occlusion from the front pebble, in scene space.
-    vec2 front = localPoint(p-vec2(7,9),2);
-    float occlusion = exp(-max(field(front,2)-1.0,0.0)*10.0);
-    color = mix(color,vec3(.57,.36,.36),occlusion*.22);
+    // Contact darkening and a wider rose-colored transmitted shadow follow
+    // the moving front object. Stronger on the exposed right-hand overlap.
+    vec2 front = localPoint(p-vec2(8,11)-uLight*5.0,2);
+    float separation = max(field(front,2)-1.0,0.0);
+    float overlapSide = smoothstep(-.35,.85,front.x);
+    float contact = exp(-separation*16.0)*(.12+.16*overlapSide);
+    float transmittedShadow = exp(-separation*4.5)*overlapSide;
+    color = mix(color,vec3(.54,.32,.33),contact);
+    color -= vec3(.020,.045,.040)*transmittedShadow;
   }
   // A grazing reflection rolls inward from the surface, rather than peaking
   // at a fixed inset. Its width, absorption and intensity change independently.
@@ -179,7 +213,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float lowerLight = softbox(reflected,vec3(-1.10+lightShift.x,.32+lightShift.y,.48),.55);
   float reflection = upperLight*bell(q,vec2(.55,-.66),vec2(1.4,1.05))*.12
     + lowerLight*bell(q,vec2(-.86,.51),vec2(1.4,1.0))*.15;
-  if (id != 2) reflection *= .30;
+  if (id != 2) reflection *= id == 0 ? .25 : .32;
   float fresnel = .04+.96*pow(1.0-max(normal.z,0.0),5.0);
   float grazing = rimLight*.13*(0.6+fresnel*.4)*uRim;
   float luminance = dot(color,vec3(.2126,.7152,.0722));
@@ -191,19 +225,33 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   // reflective facets. Larger grains survive mobile downscaling.
   float fine = noise(grainUV*2.1)-.5;
   float mottling = noise(grainUV*.34)-.5;
-  vec2 cell = floor(grainUV*.78);
-  vec2 spot = fract(grainUV*.78)-vec2(hash(cell),hash(cell+31.7));
-  float pore = (1.0-smoothstep(.035,.24,length(spot))) * step(.73,hash(cell+72.1));
-  float textureStrength = id == 2 ? .11 : .14;
+  vec2 poreUV = grainUV*(id == 2 ? .78 : .42);
+  vec2 cell = floor(poreUV);
+  vec2 poreCenter = vec2(hash(cell),hash(cell+31.7));
+  if (id != 2) poreCenter = .20+.60*poreCenter;
+  vec2 spot = fract(poreUV)-poreCenter;
+  float poreRadius = id == 2 ? .24 : .16+.14*hash(cell+22.9);
+  float pore = (1.0-smoothstep(.035,poreRadius,length(spot))) * step(.73,hash(cell+72.1));
+  float textureStrength = id == 2 ? .11 : id == 0 ? .14 : .13;
   float facets = smoothstep(.58,.86,micro.x);
   float diagonal = exp(-pow((q.y+.075-q.x*.27)/.34,2.0));
   vec2 grainLight = normalize(vec2(-.65,-.78)+uLight*.55);
   float relief = dot(micro.yz*.018+coarse.yz*.009,grainLight)*grainFilter*surfaceRelief;
-  float sparkle = facets*(.020+reflection*.15+(id == 2 ? diagonal*.045 : 0.0));
+  float sparkle = facets*((id == 2 ? .020 : .010)+reflection*.15+(id == 2 ? diagonal*.045 : 0.0));
   float inclusions = smoothstep(.55,.85,coarse.x)*.020;
-  float frostVisibility = id == 2 ? .65+.35*diagonal : .62;
-  color += (fine*.026*grainFilter + mottling*.025 - pore*textureStrength*grainFilter
+  float frostVisibility = id == 2 ? .65+.35*diagonal : .48+.35*sqrt(edge);
+  color += (fine*.026*grainFilter + mottling*(id == 2 ? .025 : .012) - pore*textureStrength*grainFilter
     -inclusions + relief + sparkle) * uGrain * frostVisibility * (1.0+edge*.35);
+  if (id != 2) {
+    // Sparse inclusions appear inside the glass, distinct from the tiny
+    // surface relief. Warm dark flecks stay legible against the milky center.
+    float flakes = smoothstep(.74,.88,noise(grainUV*.40+41.7))
+      *(.25+.75*noise(grainUV*.23));
+    float broadFlakes = smoothstep(.68,.87,noise(grainUV*.26+21.6))
+      *noise(grainUV*.18+7.0)*right;
+    color -= vec3(.100,.075,.065)*flakes*uGrain*(.30+.70*edge);
+    color -= vec3(.080,.065,.055)*broadFlakes*uGrain;
+  }
   color.r += uWarmth*.015;
   color.b -= uWarmth*.015;
   return mix(under,clamp(color,0.0,1.0),mask);
