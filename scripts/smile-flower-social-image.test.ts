@@ -15,6 +15,6 @@ test('uses the standard Smile Flower title typography and position', () => {
   drawSocialImage(context, { naturalWidth: 1200, naturalHeight: 630 });
 
   expect(context.font).toBe('700 52px "Pretendard Variable"');
-  expect(context.fillStyle).toBe('#f4f2ec');
+  expect(context.fillStyle).toBe('#161616');
   expect(context.fillText).toHaveBeenCalledExactlyOnceWith('Smile Flower', 56, 82);
 });
