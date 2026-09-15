@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="instagram-assistant-token" content="__INSTAGRAM_ASSISTANT_LOCAL_TOKEN__">
+  <title>Instagram assistant</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <p class="eyebrow">jiiwon.studio</p>
+        <h1>Instagram assistant</h1>
+      </div>
+      <div class="status"><span id="status-dot"></span><span id="status-text">확인 중</span></div>
+    </header>
+
+    <section class="metrics" aria-label="요약">
+      <article><strong id="pending-count">0</strong><span>새 항목</span></article>
+      <article><strong id="drafted-count">0</strong><span>답변 준비</span></article>
+      <article><strong id="manual-count">0</strong><span>직접 확인</span></article>
+      <article><strong id="sent-count">0</strong><span>오늘 발송</span></article>
+    </section>
+
+    <nav class="tabs" aria-label="화면 선택">
+      <button class="tab active" data-view="inbox">Inbox</button>
+      <button class="tab" data-view="artworks">Artworks</button>
+      <button class="tab" data-view="settings">Settings</button>
+    </nav>
+
+    <section id="inbox" class="view active">
+      <div class="toolbar">
+        <div class="filters">
+          <button class="filter active" data-status="">전체</button>
+          <button class="filter" data-status="drafted">답변 준비</button>
+          <button class="filter" data-status="manual">직접 확인</button>
+          <button class="filter" data-status="sent">완료</button>
+        </div>
+        <div class="actions">
+          <button id="classify" class="quiet">규칙 분류</button>
+          <button id="sync" class="primary">동기화</button>
+        </div>
+      </div>
+      <div id="events" class="event-list"></div>
+      <p id="empty-events" class="empty">아직 가져온 항목이 없습니다.</p>
+    </section>
+
+    <section id="artworks" class="view">
+      <div class="section-heading">
+        <div><h2>작품 링크</h2><p>게시물과 체험·구매 링크를 연결합니다.</p></div>
+        <button id="add-artwork" class="primary">작품 추가</button>
+      </div>
+      <div id="artwork-list" class="artwork-list"></div>
+    </section>
+
+    <section id="settings" class="view">
+      <div class="settings-grid">
+        <div class="panel">
+          <h2>Instagram</h2>
+          <p>비밀번호는 저장하지 않습니다. 로그인 후 로컬 세션만 보관합니다.</p>
+          <button id="login-open" class="primary">Instagram 연결</button>
+          <button id="logout" class="danger">연결 해제</button>
+        </div>
+        <div class="panel">
+          <h2>안전 설정</h2>
+          <label><span>관찰 모드</span><input id="read-only" type="checkbox"></label>
+          <label><span>자동발송</span><input id="auto-send" type="checkbox"></label>
+          <label><span>댓글 자동답글</span><input id="auto-comment" type="checkbox"></label>
+          <label><span>DM 자동답장</span><input id="auto-dm" type="checkbox"></label>
+          <label><span>하루 발송 한도</span><input id="daily-limit" type="number" min="1" max="50"></label>
+          <label><span>프로필 링크</span><input id="profile-url" type="url"></label>
+          <button id="save-settings" class="primary">저장</button>
+          <p class="notice">자동발송은 관찰 모드를 직접 해제한 뒤 별도로 활성화해야 합니다.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="login-dialog">
+    <form id="login-form" method="dialog">
+      <div class="dialog-head"><h2>Instagram 연결</h2><button type="button" class="icon" data-close>×</button></div>
+      <label>사용자 이름<input name="username" autocomplete="username" required></label>
+      <label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
+      <label>2단계 인증 코드 <span>필요한 경우</span><input name="verification_code" inputmode="numeric" autocomplete="one-time-code"></label>
+      <p id="login-error" class="error"></p>
+      <button class="primary" type="submit">연결</button>
+    </form>
+  </dialog>
+
+  <dialog id="artwork-dialog">
+    <form id="artwork-form" method="dialog">
+      <div class="dialog-head"><h2>작품 추가</h2><button type="button" class="icon" data-close>×</button></div>
+      <div class="two"><label>식별자<input name="slug" placeholder="line-pull" required></label><label>작품명<input name="title" placeholder="Line Pull" required></label></div>
+      <label>Instagram 게시물 코드<input name="post_code" placeholder="Dc8RsObTqfn"></label>
+      <label>체험 링크<input name="demo_url" type="url" placeholder="https://brand.jiiwon.com/..."></label>
+      <label>상품명<input name="product_name" placeholder="Line Pull 제작 자료"></label>
+      <label>구매 링크<input name="purchase_url" type="url" placeholder="https://litt.ly/jiiwon"></label>
+      <button class="primary" type="submit">저장</button>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

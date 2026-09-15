@@ -1,0 +1,281 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from typing import Any, Iterator
+
+from .config import paths, prepare_data_dir
+
+
+SCHEMA = """
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS artworks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  post_code TEXT UNIQUE,
+  media_id TEXT,
+  demo_url TEXT NOT NULL DEFAULT '',
+  product_name TEXT NOT NULL DEFAULT '',
+  purchase_url TEXT NOT NULL DEFAULT '',
+  product_status TEXT NOT NULL DEFAULT 'available',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN ('comment', 'dm')),
+  source_id TEXT NOT NULL,
+  thread_id TEXT,
+  media_id TEXT,
+  post_code TEXT,
+  shared_url TEXT,
+  author_id TEXT,
+  author_username TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  received_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  intent TEXT,
+  confidence REAL,
+  proposed_action TEXT,
+  draft TEXT,
+  artwork_slug TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS events_status_received_idx
+ON events(status, received_at DESC);
+
+CREATE TABLE IF NOT EXISTS deliveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT NOT NULL REFERENCES events(id),
+  action TEXT NOT NULL,
+  body TEXT NOT NULL,
+  remote_id TEXT,
+  status TEXT NOT NULL,
+  error TEXT,
+  created_at TEXT NOT NULL
+);
+"""
+
+
+DEFAULT_SETTINGS = {
+    "instagram_username": "",
+    "profile_url": "https://litt.ly/jiiwon",
+    "auto_send": False,
+    "auto_comment": False,
+    "auto_dm": False,
+    "daily_send_limit": 20,
+    "read_only_observation": True,
+    "last_sync_at": None,
+    "halted_reason": None,
+}
+
+DEFAULT_ARTWORKS = (
+    {
+        "slug": "line-pull",
+        "title": "Line Pull",
+        "post_code": "Dc8RsObTqfn",
+        "demo_url": "https://brand.jiiwon.com/pages/line-pull",
+        "product_name": "Line Pull 제작 자료",
+        "purchase_url": "https://litt.ly/jiiwon",
+        "product_status": "available",
+    },
+)
+
+
+def now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+@contextmanager
+def connect() -> Iterator[sqlite3.Connection]:
+    prepare_data_dir()
+    conn = sqlite3.connect(paths.database)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def initialize() -> None:
+    with connect() as conn:
+        conn.executescript(SCHEMA)
+        for key, value in DEFAULT_SETTINGS.items():
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
+                (key, json.dumps(value, ensure_ascii=False)),
+            )
+        timestamp = now()
+        for item in DEFAULT_ARTWORKS:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO artworks(
+                  slug, title, post_code, demo_url, product_name,
+                  purchase_url, product_status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item["slug"], item["title"], item["post_code"],
+                    item["demo_url"], item["product_name"],
+                    item["purchase_url"], item["product_status"],
+                    timestamp, timestamp,
+                ),
+            )
+
+
+def get_settings() -> dict[str, Any]:
+    with connect() as conn:
+        rows = conn.execute("SELECT key, value FROM settings").fetchall()
+    return {row["key"]: json.loads(row["value"]) for row in rows}
+
+
+def update_settings(values: dict[str, Any]) -> dict[str, Any]:
+    allowed = set(DEFAULT_SETTINGS)
+    with connect() as conn:
+        for key, value in values.items():
+            if key not in allowed:
+                continue
+            conn.execute(
+                "INSERT INTO settings(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, json.dumps(value, ensure_ascii=False)),
+            )
+    return get_settings()
+
+
+def list_artworks() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM artworks ORDER BY title").fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_artwork(item: dict[str, Any]) -> dict[str, Any]:
+    timestamp = now()
+    post_code = item.get("post_code") or None
+    media_id = item.get("media_id") or None
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO artworks(
+              slug, title, post_code, media_id, demo_url, product_name,
+              purchase_url, product_status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(slug) DO UPDATE SET
+              title=excluded.title,
+              post_code=excluded.post_code,
+              media_id=excluded.media_id,
+              demo_url=excluded.demo_url,
+              product_name=excluded.product_name,
+              purchase_url=excluded.purchase_url,
+              product_status=excluded.product_status,
+              updated_at=excluded.updated_at
+            """,
+            (
+                item["slug"], item["title"], post_code,
+                media_id, item.get("demo_url", ""),
+                item.get("product_name", ""), item.get("purchase_url", ""),
+                item.get("product_status", "available"), timestamp, timestamp,
+            ),
+        )
+        row = conn.execute("SELECT * FROM artworks WHERE slug=?", (item["slug"],)).fetchone()
+    return dict(row)
+
+
+def upsert_event(event: dict[str, Any]) -> bool:
+    timestamp = now()
+    with connect() as conn:
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO events(
+              id, kind, source_id, thread_id, media_id, post_code, shared_url,
+              author_id, author_username, body, received_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event["id"], event["kind"], event["source_id"],
+                event.get("thread_id"), event.get("media_id"), event.get("post_code"),
+                event.get("shared_url"), event.get("author_id"),
+                event.get("author_username", ""), event.get("body", ""),
+                event.get("received_at", timestamp), timestamp, timestamp,
+            ),
+        )
+        return cursor.rowcount > 0
+
+
+def list_events(status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    query = "SELECT * FROM events"
+    params: list[Any] = []
+    if status:
+        query += " WHERE status=?"
+        params.append(status)
+    query += " ORDER BY received_at DESC LIMIT ?"
+    params.append(min(max(limit, 1), 500))
+    with connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_event(event_id: str) -> dict[str, Any] | None:
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def update_event(event_id: str, values: dict[str, Any]) -> dict[str, Any] | None:
+    allowed = {
+        "status", "intent", "confidence", "proposed_action", "draft",
+        "artwork_slug", "error",
+    }
+    selected = {key: value for key, value in values.items() if key in allowed}
+    if not selected:
+        return get_event(event_id)
+    selected["updated_at"] = now()
+    assignments = ", ".join(f"{key}=?" for key in selected)
+    with connect() as conn:
+        conn.execute(
+            f"UPDATE events SET {assignments} WHERE id=?",
+            [*selected.values(), event_id],
+        )
+    return get_event(event_id)
+
+
+def add_delivery(
+    event_id: str,
+    action: str,
+    body: str,
+    status: str,
+    remote_id: str | None = None,
+    error: str | None = None,
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO deliveries(event_id, action, body, remote_id, status, error, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (event_id, action, body, remote_id, status, error, now()),
+        )
+
+
+def sent_today_count() -> int:
+    day = datetime.now(UTC).date().isoformat()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS count FROM deliveries WHERE status='sent' AND created_at >= ?",
+            (day,),
+        ).fetchone()
+    return int(row["count"])
