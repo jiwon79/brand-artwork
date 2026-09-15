@@ -26,6 +26,7 @@ from .db import (
     update_settings,
 )
 from .instagram_client import InstagramAssistantError, InstagramService, instagram_service
+from .link_preview import fetch_link_preview
 from .rules import classify
 
 
@@ -142,6 +143,11 @@ def events(
 @app.get("/api/conversations")
 def conversations(status: str | None = None) -> list[dict[str, Any]]:
     return list_conversations(status=status)
+
+
+@app.get("/api/link-preview")
+def link_preview(url: str) -> dict[str, str]:
+    return fetch_link_preview(url)
 
 
 @app.get("/api/conversations/{thread_id}")

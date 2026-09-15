@@ -119,6 +119,54 @@ function sharedLink(event) {
   return `<div class="shared-content"><span>공유된 콘텐츠</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
 }
 
+function urlsInText(value = "") {
+  return [...String(value).matchAll(/https?:\/\/[^\s<>"']+/g)].map((match) => {
+    const trailing = match[0].match(/[.,!?;:)}\]]+$/)?.[0] || "";
+    return { url: trailing ? match[0].slice(0, -trailing.length) : match[0], trailing };
+  }).filter((item) => safeUrl(item.url));
+}
+
+function outboundMessageBody(value) {
+  const text = String(value || "");
+  const links = urlsInText(text);
+  if (!links.length) return escapeHtml(text);
+  let cursor = 0;
+  return links.map(({ url, trailing }) => {
+    const index = text.indexOf(url, cursor);
+    const before = escapeHtml(text.slice(cursor, index));
+    cursor = index + url.length + trailing.length;
+    return `${before}<a class="message-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a>${escapeHtml(trailing)}`;
+  }).join("") + escapeHtml(text.slice(cursor));
+}
+
+function outboundLinkPreviews(value) {
+  const urls = [...new Set(urlsInText(value).map((item) => item.url))];
+  return urls.map((url) => `<a class="link-preview" data-preview-url="${escapeHtml(url)}" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" hidden></a>`).join("");
+}
+
+async function hydrateLinkPreviews(root) {
+  await Promise.all([...root.querySelectorAll("[data-preview-url]")].map(async (preview) => {
+    try {
+      const data = await api(`/api/link-preview?url=${encodeURIComponent(preview.dataset.previewUrl)}`);
+      const imageUrl = safeUrl(data.image_url);
+      if (!imageUrl) return;
+      const image = new Image();
+      image.alt = data.title ? `${data.title} 미리보기` : "링크 미리보기";
+      image.referrerPolicy = "no-referrer";
+      image.src = imageUrl;
+      image.addEventListener("load", () => {
+        const scroll = preview.closest(".chat-messages");
+        const wasAtBottom = scroll && scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop < 40;
+        preview.append(image);
+        preview.hidden = false;
+        if (wasAtBottom) requestAnimationFrame(() => { scroll.scrollTop = scroll.scrollHeight; });
+      }, { once: true });
+    } catch {
+      // The link remains usable when preview metadata is unavailable.
+    }
+  }));
+}
+
 function commentHeart(event, compact = false) {
   return `<button class="comment-heart ${event.has_liked ? "liked" : ""} ${compact ? "compact" : ""}" data-action="comment-heart" data-liked="${event.has_liked ? "true" : "false"}" aria-label="${event.has_liked ? "댓글 하트 취소" : "댓글에 하트"}" aria-pressed="${event.has_liked ? "true" : "false"}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></button>`;
 }
@@ -204,7 +252,8 @@ async function refreshChat() {
         <div class="message-row ${message.direction}" data-id="${escapeHtml(message.id)}">
           ${message.direction === "outbound" ? dmHeart(message) : ""}
           <div class="message-bubble">
-            ${message.body ? `<p>${escapeHtml(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
+            ${message.body ? `<p>${message.direction === "outbound" ? outboundMessageBody(message.body) : escapeHtml(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
+            ${message.direction === "outbound" ? outboundLinkPreviews(message.body) : ""}
             ${sharedLink(message)}
             <time>${formatTime(message.received_at, true)}</time>
           </div>
@@ -222,6 +271,7 @@ async function refreshChat() {
     const scroll = panel.querySelector(".chat-messages");
     if (scroll) scroll.scrollTop = scroll.scrollHeight;
   });
+  hydrateLinkPreviews(panel);
 }
 
 async function refreshArtworks() {
