@@ -109,3 +109,18 @@ def test_answered_comment_can_be_marked_complete(tmp_path: Path, monkeypatch):
     completed = db.update_event("comment:1", {"status": "sent"})
     assert completed["status"] == "sent"
     assert db.list_comment_threads(status="sent")[0]["source_id"] == "1"
+
+
+def test_active_comment_filter_groups_actionable_statuses(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    for index, status in enumerate(("pending", "drafted", "manual", "sent"), start=1):
+        db.upsert_event({
+            "id": f"comment:{index}", "kind": "comment", "source_id": str(index),
+            "author_username": "someone", "body": status, "status": status,
+            "received_at": db.now(),
+        })
+    assert {item["status"] for item in db.list_comment_threads(status="active")} == {
+        "pending", "drafted", "manual",
+    }

@@ -19,8 +19,8 @@
 
     <section class="metrics" aria-label="요약">
       <article><strong id="pending-count">0</strong><span>새 항목</span></article>
-      <article><strong id="drafted-count">0</strong><span>답변 준비</span></article>
-      <article><strong id="manual-count">0</strong><span>직접 확인</span></article>
+      <article><strong id="drafted-count">0</strong><span>준비됨</span></article>
+      <article><strong id="manual-count">0</strong><span>확인 필요</span></article>
       <article><strong id="sent-count">0</strong><span>오늘 발송</span></article>
     </section>
 
@@ -49,10 +49,9 @@
       </div>
       <div id="comment-inbox" hidden>
         <div class="filters">
-          <button class="filter active" data-status="">전체</button>
-          <button class="filter" data-status="drafted">답변 준비</button>
-          <button class="filter" data-status="manual">직접 확인</button>
+          <button class="filter active" data-status="active">처리 필요</button>
           <button class="filter" data-status="sent">완료</button>
+          <button class="filter" data-status="">전체</button>
         </div>
         <div id="events" class="event-list"></div>
         <p id="empty-events" class="empty">아직 가져온 댓글이 없습니다.</p>

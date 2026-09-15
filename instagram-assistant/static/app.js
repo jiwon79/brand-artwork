@@ -1,5 +1,5 @@
 const token = document.querySelector('meta[name="instagram-assistant-token"]').content;
-let currentStatus = "";
+let currentStatus = "active";
 let selectedThreadId = "";
 
 async function api(path, options = {}) {
@@ -30,6 +30,21 @@ function formatTime(value, short = false) {
   return new Date(value).toLocaleString("ko-KR", short ? {
     month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
   } : undefined);
+}
+
+function intentLabel(value) {
+  return ({
+    demo_interest: "체험 요청",
+    build_interest: "제작 문의",
+    purchase_interest: "구매 문의",
+    needs_review: "확인 필요",
+    praise: "칭찬",
+    reaction_or_close: "반응",
+    pending: "새 댓글",
+    drafted: "답변 준비",
+    manual: "확인 필요",
+    sent: "완료",
+  })[value] || value;
 }
 
 async function refreshStatus() {
@@ -81,10 +96,10 @@ function commentHeart(event, compact = false) {
 }
 
 function commentReplies(event) {
-  if (!event.replies?.length) return '<p class="no-replies">아직 대댓글이 없습니다.</p>';
+  if (!event.replies?.length) return "";
   return `<div class="comment-replies">${event.replies.map((reply) => `
     <div class="comment-reply ${reply.direction === "outbound" ? "mine" : ""}" data-id="${escapeHtml(reply.id)}">
-      <div class="reply-meta"><strong>${reply.direction === "outbound" ? "내 답글" : escapeHtml(reply.author_username || "알 수 없음")}</strong><span>${formatTime(reply.received_at)}</span></div>
+      <div class="reply-meta"><strong>${reply.direction === "outbound" ? "내 답글" : escapeHtml(reply.author_username || "알 수 없음")}</strong><span>${formatTime(reply.received_at, true)}</span></div>
       <p>${escapeHtml(reply.body)}</p>
       ${commentHeart(reply, true)}
     </div>`).join("")}</div>`;
@@ -97,8 +112,8 @@ async function refreshComments() {
   root.innerHTML = events.map((event) => `
     <article class="event" data-id="${escapeHtml(event.id)}">
       <div class="event-top">
-        <div class="event-meta"><span class="badge">댓글</span><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${formatTime(event.received_at)}</span></div>
-        <div class="comment-state"><span class="badge">${escapeHtml(event.intent || event.status)}</span>${commentHeart(event)}</div>
+        <div class="event-meta"><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${formatTime(event.received_at, true)}</span><span class="badge">${escapeHtml(intentLabel(event.intent || event.status))}</span></div>
+        <div class="comment-state">${commentHeart(event)}</div>
       </div>
       <p class="event-body">${escapeHtml(event.body)}</p>
       ${commentReplies(event)}

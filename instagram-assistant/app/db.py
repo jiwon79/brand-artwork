@@ -268,7 +268,9 @@ def list_events(
     query = "SELECT * FROM events"
     params: list[Any] = []
     conditions: list[str] = []
-    if status:
+    if status == "active":
+        conditions.append("status IN ('pending', 'drafted', 'manual')")
+    elif status:
         conditions.append("status=?")
         params.append(status)
     if kind:
