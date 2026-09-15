@@ -74,6 +74,25 @@ def test_existing_comment_is_enriched_with_like_state(tmp_path: Path, monkeypatc
     assert saved["like_count"] == 3
 
 
+def test_existing_comment_is_enriched_with_post_reference(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    item = {
+        "id": "comment:1", "kind": "comment", "source_id": "1",
+        "author_username": "someone", "body": "저요", "received_at": db.now(),
+    }
+    db.upsert_event(item)
+    db.upsert_event({
+        **item,
+        "post_url": "https://www.instagram.com/reel/ABC/",
+        "post_caption": "고양이 타이포그래피",
+    })
+    saved = db.get_event("comment:1")
+    assert saved["post_url"].endswith("/reel/ABC/")
+    assert saved["post_caption"] == "고양이 타이포그래피"
+
+
 def test_comment_threads_include_replies_and_identify_own_reply(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

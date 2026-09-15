@@ -115,6 +115,10 @@ class InstagramService:
                 }
                 for media in medias:
                     code = getattr(media, "code", None)
+                    post_caption = re.sub(
+                        r"\s+", " ", getattr(media, "caption_text", "") or ""
+                    ).strip()[:160]
+                    post_url = self._media_url(media)
                     artwork = artwork_by_code.get(code)
                     if artwork and not artwork.get("media_id"):
                         artwork["media_id"] = str(media.id)
@@ -134,6 +138,8 @@ class InstagramService:
                             "source_id": str(comment.pk),
                             "media_id": str(media.id),
                             "post_code": code,
+                            "post_url": post_url,
+                            "post_caption": post_caption,
                             "author_id": user_id,
                             "author_username": getattr(user, "username", "") or "",
                             "has_liked": getattr(comment, "has_liked", None),
@@ -154,6 +160,8 @@ class InstagramService:
                                 "parent_comment_id": str(comment.pk),
                                 "media_id": str(media.id),
                                 "post_code": code,
+                                "post_url": post_url,
+                                "post_caption": post_caption,
                                 "author_id": reply_user_id,
                                 "author_username": getattr(reply_user, "username", "") or "",
                                 "direction": "outbound" if outbound else "inbound",
@@ -272,6 +280,14 @@ class InstagramService:
             else:
                 break
         return results[:amount]
+
+    @staticmethod
+    def _media_url(media: Any) -> str:
+        code = str(getattr(media, "code", "") or "")
+        if not code:
+            return ""
+        route = "reel" if getattr(media, "product_type", "") == "clips" else "p"
+        return f"https://www.instagram.com/{route}/{code}/"
 
     def send_for_event(self, event_id: str) -> dict[str, Any]:
         with self._lock:

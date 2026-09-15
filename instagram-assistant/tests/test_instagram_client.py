@@ -77,3 +77,8 @@ def test_media_comments_collect_preview_replies(monkeypatch):
     monkeypatch.setattr(instagram_client, "extract_comment", lambda item: reply)
     results = InstagramService._media_comments_with_replies(FakeClient(), "media-1", 50)
     assert results == [(parent, [reply])]
+
+
+def test_media_url_uses_reel_route_for_clips():
+    media = SimpleNamespace(code="ABC", product_type="clips")
+    assert InstagramService._media_url(media) == "https://www.instagram.com/reel/ABC/"

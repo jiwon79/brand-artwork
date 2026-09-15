@@ -95,6 +95,14 @@ function commentHeart(event, compact = false) {
   return `<button class="comment-heart ${event.has_liked ? "liked" : ""} ${compact ? "compact" : ""}" data-action="comment-heart" data-liked="${event.has_liked ? "true" : "false"}" aria-label="${event.has_liked ? "댓글 하트 취소" : "댓글에 하트"}" aria-pressed="${event.has_liked ? "true" : "false"}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></button>`;
 }
 
+function postReference(event) {
+  const fallback = event.post_code ? `https://www.instagram.com/p/${encodeURIComponent(event.post_code)}/` : "";
+  const url = safeUrl(event.post_url || fallback);
+  if (!url) return "";
+  const caption = String(event.post_caption || `게시물 ${event.post_code}`).trim();
+  return `<a class="post-reference" href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><span>게시물</span><strong>${escapeHtml(caption)}</strong><span aria-hidden="true">↗</span></a>`;
+}
+
 function commentReplies(event) {
   if (!event.replies?.length) return "";
   return `<div class="comment-replies">${event.replies.map((reply) => `
@@ -115,6 +123,7 @@ async function refreshComments() {
         <div class="event-meta"><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${formatTime(event.received_at, true)}</span><span class="badge">${escapeHtml(intentLabel(event.intent || event.status))}</span></div>
         <div class="comment-state">${commentHeart(event)}</div>
       </div>
+      ${postReference(event)}
       <p class="event-body">${escapeHtml(event.body)}</p>
       ${commentReplies(event)}
       ${event.status === "drafted" && event.draft ? `<textarea class="draft">${escapeHtml(event.draft)}</textarea>` : ""}

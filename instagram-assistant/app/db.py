@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS events (
   thread_id TEXT,
   media_id TEXT,
   post_code TEXT,
+  post_url TEXT,
+  post_caption TEXT,
   shared_url TEXT,
   author_id TEXT,
   author_username TEXT NOT NULL DEFAULT '',
@@ -131,6 +133,10 @@ def initialize() -> None:
             conn.execute("ALTER TABLE events ADD COLUMN like_count INTEGER")
         if "parent_comment_id" not in columns:
             conn.execute("ALTER TABLE events ADD COLUMN parent_comment_id TEXT")
+        if "post_url" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN post_url TEXT")
+        if "post_caption" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN post_caption TEXT")
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
@@ -221,15 +227,17 @@ def upsert_event(event: dict[str, Any]) -> bool:
         cursor = conn.execute(
             """
             INSERT OR IGNORE INTO events(
-              id, kind, source_id, parent_comment_id, thread_id, media_id, post_code, shared_url,
+              id, kind, source_id, parent_comment_id, thread_id, media_id, post_code,
+              post_url, post_caption, shared_url,
               author_id, author_username, direction, has_liked, like_count, body,
               received_at, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event["id"], event["kind"], event["source_id"], event.get("parent_comment_id"),
                 event.get("thread_id"), event.get("media_id"), event.get("post_code"),
-                event.get("shared_url"), event.get("author_id"),
+                event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
+                event.get("author_id"),
                 event.get("author_username", ""), event.get("direction", "inbound"),
                 event.get("has_liked"), event.get("like_count"), event.get("body", ""),
                 event.get("received_at", timestamp),
@@ -242,6 +250,8 @@ def upsert_event(event: dict[str, Any]) -> bool:
                 UPDATE events SET
                   parent_comment_id=COALESCE(?, parent_comment_id),
                   thread_id=COALESCE(?, thread_id),
+                  post_url=COALESCE(?, post_url),
+                  post_caption=COALESCE(?, post_caption),
                   shared_url=COALESCE(?, shared_url),
                   direction=COALESCE(?, direction),
                   has_liked=COALESCE(?, has_liked),
@@ -251,7 +261,8 @@ def upsert_event(event: dict[str, Any]) -> bool:
                 WHERE id=?
                 """,
                 (
-                    event.get("parent_comment_id"), event.get("thread_id"), event.get("shared_url"),
+                    event.get("parent_comment_id"), event.get("thread_id"),
+                    event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
                     event.get("direction"), event.get("has_liked"),
                     event.get("like_count"), event.get("author_username", ""),
                     event.get("author_username", ""), timestamp, event["id"],
