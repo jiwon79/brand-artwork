@@ -7,7 +7,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = Path(os.environ.get("INSTAGRAM_ASSISTANT_DATA", ROOT / ".data")).resolve()
+DEFAULT_DATA_DIR = (
+    Path.home() / "Library" / "Application Support" / "InstagramAssistant"
+)
+DATA_DIR = Path(
+    os.environ.get("INSTAGRAM_ASSISTANT_DATA", DEFAULT_DATA_DIR)
+).resolve()
 
 
 @dataclass

@@ -6,7 +6,9 @@ Local-first assistant for `jiiwon.studio`. It reads recent comments and DMs with
 
 - Binds only to `127.0.0.1`.
 - Does not save the Instagram password.
-- Saves the Instagram session under `.data/` with mode `0600`.
+- Saves SQLite, the Instagram session, and the local token under
+  `~/Library/Application Support/InstagramAssistant/` so Codex worktrees share
+  the same runtime data. The session and token use mode `0600`.
 - Starts in observation mode. Sending is blocked until observation mode is disabled.
 - Stops on challenge, feedback, and rate-limit responses instead of retrying.
 - Limits sends to 20 per UTC day by default.
@@ -32,6 +34,9 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 4318
 ```
 
 Open <http://127.0.0.1:4318>. Connect Instagram from Settings, then register each artwork's slug, title, Instagram post code, and product name. Demo URLs are derived as `https://studio.jiiwon.com/{slug}`, and every purchase link uses `https://litt.ly/jiiwon`.
+
+Set `INSTAGRAM_ASSISTANT_DATA` to override the shared data directory. Run only
+one Instagram Assistant process against a shared data directory at a time.
 
 ## One-shot worker
 
