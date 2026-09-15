@@ -88,9 +88,6 @@ async function refreshStatus() {
   document.querySelector("#auto-dm").checked = data.settings.auto_dm;
   document.querySelector("#daily-limit").value = data.settings.daily_send_limit;
   document.querySelector("#profile-url").value = data.settings.profile_url;
-  const status = document.querySelector(".status");
-  status.className = `status ${data.settings.halted_reason ? "halted" : data.authenticated ? "connected" : ""}`;
-  document.querySelector("#status-text").textContent = data.settings.halted_reason ? "중지됨" : data.authenticated ? "연결됨" : "연결 필요";
   document.querySelector("#settings-account").textContent = data.authenticated ? `@${data.settings.instagram_username || "Instagram"}` : "연결된 계정 없음";
   document.querySelector("#settings-session-note").textContent = data.settings.halted_reason ? "세션이 중지되었습니다." : data.authenticated ? "로컬 세션으로 연결되어 있습니다." : "계정을 연결하면 DM과 댓글을 가져올 수 있습니다.";
   document.querySelector("#login-open").style.display = data.authenticated ? "none" : "inline-flex";
@@ -258,8 +255,9 @@ async function runEventAction(container, clicked) {
 document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => {
   document.querySelectorAll(".tab,.view").forEach((node) => node.classList.remove("active"));
   button.classList.add("active");
-  document.querySelector(`#${button.dataset.view}`).classList.add("active");
-  window.scrollTo({ top: 0, behavior: "auto" });
+  const view = document.querySelector(`#${button.dataset.view}`);
+  view.classList.add("active");
+  view.scrollTop = 0;
 }));
 
 document.querySelectorAll(".comment-filter").forEach((button) => button.addEventListener("click", async () => {

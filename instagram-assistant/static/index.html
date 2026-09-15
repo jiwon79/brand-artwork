@@ -17,23 +17,15 @@
 </head>
 <body>
   <main class="shell">
-    <header class="app-header">
-      <div>
-        <p class="eyebrow">jiiwon.studio</p>
-        <h1>Instagram assistant</h1>
-      </div>
-      <div class="header-actions">
-        <div class="status"><span id="status-dot"></span><span id="status-text">확인 중</span></div>
-        <button id="sync" class="primary">동기화</button>
-      </div>
+    <header class="app-bar">
+      <nav class="tabs" aria-label="화면 선택">
+        <button class="tab active" data-view="dm">DM</button>
+        <button class="tab" data-view="comments">Comment</button>
+        <button class="tab" data-view="artworks">Work</button>
+        <button class="tab" data-view="settings">Setting</button>
+      </nav>
+      <button id="sync" class="primary">동기화</button>
     </header>
-
-    <nav class="tabs" aria-label="화면 선택">
-      <button class="tab active" data-view="dm">DM</button>
-      <button class="tab" data-view="comments">Comment</button>
-      <button class="tab" data-view="artworks">Work</button>
-      <button class="tab" data-view="settings">Setting</button>
-    </nav>
 
     <section id="dm" class="view active">
       <div class="view-toolbar">
