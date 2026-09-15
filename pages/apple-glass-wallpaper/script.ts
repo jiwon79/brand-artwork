@@ -4,17 +4,25 @@ import { fragmentSource, resolveSource, vertexSource } from './shader';
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
 const error = document.querySelector<HTMLParagraphElement>('#error')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const settings = {
+const defaults = {
   grain: 1.25,
   warmth: 0,
   specular: 1.1,
   rim: 1.25,
-  absorption: 1,
+  frontAbsorption: 1,
+  rearAbsorption: 1,
+  absorptionWidth: 1,
   diffusion: 1,
   saturation: 1.1,
   response: 1,
-  reset,
 };
+const settings = {
+  ...defaults,
+  resetLook,
+  resetComposition,
+  resetAll,
+};
+let gui: GUI;
 let gl: WebGL2RenderingContext;
 let program: WebGLProgram;
 let resolveProgram: WebGLProgram;
@@ -76,7 +84,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uAbsorption', 'uSaturation']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -103,12 +111,23 @@ function resize() {
   wake();
 }
 
-function reset() {
+function resetComposition() {
   targetX = targetY = targetLightX = targetLightY = 0;
   if (pointer !== null && canvas.hasPointerCapture(pointer)) canvas.releasePointerCapture(pointer);
   pointer = null;
   canvas.dataset.interaction = 'returning';
   wake();
+}
+
+function resetLook() {
+  Object.assign(settings,defaults);
+  gui.controllersRecursive().forEach(controller => controller.updateDisplay());
+  wake();
+}
+
+function resetAll() {
+  resetLook();
+  resetComposition();
 }
 
 function wake() {
@@ -143,7 +162,9 @@ function render(now: number) {
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
   gl.uniform1f(uniforms.uRim,settings.rim);
-  gl.uniform1f(uniforms.uAbsorption,settings.absorption);
+  gl.uniform1f(uniforms.uFrontAbsorption,settings.frontAbsorption);
+  gl.uniform1f(uniforms.uRearAbsorption,settings.rearAbsorption);
+  gl.uniform1f(uniforms.uAbsorptionWidth,settings.absorptionWidth);
   gl.uniform1f(uniforms.uSaturation,settings.saturation);
   gl.drawArrays(gl.TRIANGLES,0,3);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
@@ -181,11 +202,11 @@ canvas.addEventListener('pointermove', event => {
   wake();
 });
 for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) {
-  canvas.addEventListener(name, event => { if (event.pointerId === pointer) reset(); });
+  canvas.addEventListener(name, event => { if (event.pointerId === pointer) resetComposition(); });
 }
-canvas.addEventListener('pointerleave', () => { if (pointer === null) reset(); });
+canvas.addEventListener('pointerleave', () => { if (pointer === null) resetComposition(); });
 canvas.addEventListener('keydown', event => {
-  if (event.key === 'Escape') { event.preventDefault(); reset(); return; }
+  if (event.key === 'Escape') { event.preventDefault(); resetComposition(); return; }
   const directions: Record<string, [number, number]> = {
     ArrowLeft: [-15,0], ArrowRight: [15,0], ArrowUp: [0,-15], ArrowDown: [0,15],
   };
@@ -196,9 +217,9 @@ canvas.addEventListener('keydown', event => {
   targetY = Math.max(-100, Math.min(100,targetY+direction[1]));
   wake();
 });
-window.addEventListener('blur', reset);
+window.addEventListener('blur', resetComposition);
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { cancelAnimationFrame(frame); frame = 0; reset(); }
+  if (document.hidden) { cancelAnimationFrame(frame); frame = 0; resetComposition(); }
   else { previous = performance.now(); wake(); }
 });
 canvas.addEventListener('webglcontextlost', event => {
@@ -223,15 +244,43 @@ new ResizeObserver(() => {
   try { resize(); }
   catch (cause) { showError(cause); }
 }).observe(canvas);
-if (new URLSearchParams(location.search).has('debug')) {
-  const gui = new GUI({ title: 'Rose Glass' });
-  gui.add(settings,'grain',0,2,.01).name('Surface grain').onChange(wake);
-  gui.add(settings,'warmth',-1,1,.01).name('Warmth').onChange(wake);
-  gui.add(settings,'specular',0,2,.01).name('White reflection').onChange(wake);
-  gui.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake);
-  gui.add(settings,'absorption',0,2,.01).name('Edge absorption').onChange(wake);
-  gui.add(settings,'diffusion',0,2,.01).name('Edge diffusion').onChange(wake);
-  gui.add(settings,'saturation',.8,1.4,.01).name('Saturation').onChange(wake);
-  gui.add(settings,'response',.1,1.5,.01).name('Drag response');
-  gui.add(settings,'reset').name('Reset composition');
+gui = new GUI({ title: 'Rose Glass Controls' });
+function describe<T extends { domElement: HTMLElement }>(controller: T, description: string): T {
+  controller.domElement.title = description;
+  return controller;
 }
+const surfaceFolder = gui.addFolder('Surface');
+describe(surfaceFolder.add(settings,'grain',0,2,.01).name('Frost grain').onChange(wake),
+  '표면의 서리 입자, 작은 요철과 반짝임의 강도');
+describe(surfaceFolder.add(settings,'warmth',-1,1,.01).name('Warmth').onChange(wake),
+  '전체 색감을 차갑게 또는 따뜻하게 이동');
+describe(surfaceFolder.add(settings,'saturation',.8,1.4,.01).name('Saturation').onChange(wake),
+  '장밋빛과 살구빛의 채도');
+
+const lightingFolder = gui.addFolder('Lighting');
+describe(lightingFolder.add(settings,'specular',0,2,.01).name('White reflection').onChange(wake),
+  '곡면을 따라 번지는 넓은 흰 반사광의 밝기');
+describe(lightingFolder.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake),
+  '가장자리를 스치는 밝은 반사광의 강도');
+
+const edgeFolder = gui.addFolder('Progressive edge');
+describe(edgeFolder.add(settings,'frontAbsorption',0,2,.01).name('Front darkness').onChange(wake),
+  '중앙 분홍 조약돌의 두꺼운 외곽이 빛을 흡수하는 정도');
+describe(edgeFolder.add(settings,'rearAbsorption',0,2,.01).name('Rear darkness').onChange(wake),
+  '뒤쪽 두 조약돌의 두꺼운 외곽이 빛을 흡수하는 정도');
+describe(edgeFolder.add(settings,'absorptionWidth',.2,2,.01).name('Darkness width').onChange(wake),
+  '어두운 외곽이 밝은 내부로 풀리는 거리');
+describe(edgeFolder.add(settings,'diffusion',0,2,.01).name('Blur amount').onChange(wake),
+  '외곽 색과 질감이 점진적으로 흐려지는 정도');
+
+const motionFolder = gui.addFolder('Interaction');
+describe(motionFolder.add(settings,'response',.1,1.5,.01).name('Drag response'),
+  '드래그 거리에 대한 조약돌 이동량');
+describe(motionFolder.add(settings,'resetComposition').name('Reset position'),
+  '조약돌과 가상 조명을 초기 위치로 복원');
+
+describe(gui.add(settings,'resetLook').name('Reset appearance'),
+  '표면, 조명, 외곽 파라미터를 기본값으로 복원');
+describe(gui.add(settings,'resetAll').name('Reset everything'),
+  '외형과 조약돌 위치를 모두 기본값으로 복원');
+if (matchMedia('(max-width: 700px)').matches) gui.close();

@@ -27,7 +27,9 @@ uniform float uGrain;
 uniform float uWarmth;
 uniform float uSpecular;
 uniform float uRim;
-uniform float uAbsorption;
+uniform float uFrontAbsorption;
+uniform float uRearAbsorption;
+uniform float uAbsorptionWidth;
 uniform float uSaturation;
 
 float hash(vec2 p) {
@@ -108,14 +110,14 @@ vec2 edgeVolume(vec2 q, int id) {
   float base = smoothstep(.25,.96,q.y);
   if (id == 2) {
     float shoulder = exp(-pow((q.y+.12)/.90,2.0));
-    return vec2(12.0+45.0*leftSide*shoulder+55.0*rightSide+20.0*base,
+    return vec2((12.0+45.0*leftSide*shoulder+55.0*rightSide+20.0*base)*uAbsorptionWidth,
       .22+.45*leftSide*shoulder+.45*rightSide+.18*base);
   }
   if (id == 0) {
-    return vec2(12.0+14.0*leftSide+20.0*rightSide+8.0*base,
+    return vec2((12.0+14.0*leftSide+20.0*rightSide+8.0*base)*uAbsorptionWidth,
       .20+.60*leftSide+.53*rightSide+.12*base);
   }
-  return vec2(14.0+16.0*leftSide+24.0*rightSide+12.0*base,
+  return vec2((14.0+16.0*leftSide+24.0*rightSide+12.0*base)*uAbsorptionWidth,
     .20+.60*leftSide+.64*rightSide+.18*base);
 }
 vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
@@ -245,7 +247,8 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   // inset stripe, the shadow is darkest at the edge and rolls into the face.
   float edgeCore = exp(-pow(inside/volume.x,1.45));
   float edgeTail = exp(-pow(inside/(volume.x*1.8),2.0));
-  float opticalDepth = volume.y*(.78*edgeCore+.22*edgeTail)*uAbsorption;
+  float absorption = id == 2 ? uFrontAbsorption : uRearAbsorption;
+  float opticalDepth = volume.y*(.78*edgeCore+.22*edgeTail)*absorption;
   vec3 extinction = id == 1 ? vec3(.50,.57,.55) : vec3(.44,.48,.46);
   vec3 transmission = exp(-extinction*opticalDepth);
   vec3 litSurface = toLinear(max(color,0.0))
