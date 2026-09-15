@@ -5,5 +5,49 @@ main { height: 100dvh; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; -webkit-tap-highlight-color: transparent; }
 canvas:active { cursor: grabbing; }
 canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
+.rose-cursor {
+  --cursor-x: -100px;
+  --cursor-y: -100px;
+  --cursor-scale: 1;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1001;
+  display: none;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(var(--cursor-x), var(--cursor-y), 0) translate(-50%, -50%);
+  scale: var(--cursor-scale);
+  transition-property: opacity, scale, filter;
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+.rose-cursor--halo {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgb(255 255 255 / 72%);
+  background: radial-gradient(circle at 35% 30%, rgb(255 255 255 / 22%), rgb(255 220 224 / 7%) 55%, transparent 72%);
+  box-shadow: 0 0 0 1px rgb(103 47 59 / 8%), 0 4px 18px rgb(255 244 245 / 36%), inset 0 0 10px rgb(255 255 255 / 24%);
+  backdrop-filter: blur(2px) saturate(1.1);
+}
+.rose-cursor--dot {
+  width: 5px;
+  height: 5px;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 0 9px 3px rgb(255 240 242 / 62%);
+}
+body[data-rose-cursor='visible'] .rose-cursor,
+body[data-rose-cursor='pressed'] .rose-cursor { opacity: 1; }
+body[data-rose-cursor='pressed'] .rose-cursor { --cursor-scale: .96; }
+
+@media (hover: hover) and (pointer: fine) {
+  canvas, canvas:active { cursor: none; }
+  .rose-cursor { display: block; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rose-cursor { transition-duration: 1ms; }
+}
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #error { position: fixed; inset: 40% 10% auto; color: #593d44; font: 16px/1.7 system-ui, sans-serif; text-align: center; }

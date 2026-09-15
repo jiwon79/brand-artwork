@@ -3,7 +3,10 @@ import { fragmentSource, resolveSource, vertexSource } from './shader';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
 const error = document.querySelector<HTMLParagraphElement>('#error')!;
+const cursorHalo = document.querySelector<HTMLElement>('#cursor-halo')!;
+const cursorDot = document.querySelector<HTMLElement>('#cursor-dot')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
 const defaults = {
   grain: 1.25,
   warmth: 0,
@@ -38,6 +41,43 @@ let x = 0, y = 0, vx = 0, vy = 0, targetX = 0, targetY = 0;
 let lightX = 0, lightY = 0, targetLightX = 0, targetLightY = 0;
 let pressure = 0, pointer: number | null = null, startX = 0, startY = 0;
 let frame = 0, previous = 0, contextLost = false;
+let cursorFrame = 0, cursorX = -100, cursorY = -100, cursorTargetX = -100, cursorTargetY = -100;
+
+function positionCursor(element: HTMLElement, nextX: number, nextY: number) {
+  element.style.setProperty('--cursor-x', `${nextX}px`);
+  element.style.setProperty('--cursor-y', `${nextY}px`);
+}
+
+function animateCursor() {
+  cursorFrame = 0;
+  const follow = reducedMotion.matches ? 1 : .24;
+  cursorX += (cursorTargetX-cursorX)*follow;
+  cursorY += (cursorTargetY-cursorY)*follow;
+  positionCursor(cursorHalo,cursorX,cursorY);
+  if (Math.abs(cursorTargetX-cursorX)+Math.abs(cursorTargetY-cursorY) > .1) {
+    cursorFrame = requestAnimationFrame(animateCursor);
+  }
+}
+
+function updateCursor(event: PointerEvent) {
+  if (!finePointer.matches || event.pointerType !== 'mouse') return;
+  cursorTargetX = event.clientX;
+  cursorTargetY = event.clientY;
+  positionCursor(cursorDot,cursorTargetX,cursorTargetY);
+  if (document.body.dataset.roseCursor !== 'visible' && document.body.dataset.roseCursor !== 'pressed') {
+    cursorX = cursorTargetX;
+    cursorY = cursorTargetY;
+    positionCursor(cursorHalo,cursorX,cursorY);
+  }
+  document.body.dataset.roseCursor = pointer === null ? 'visible' : 'pressed';
+  if (!cursorFrame) cursorFrame = requestAnimationFrame(animateCursor);
+}
+
+function hideCursor() {
+  delete document.body.dataset.roseCursor;
+  if (cursorFrame) cancelAnimationFrame(cursorFrame);
+  cursorFrame = 0;
+}
 
 function compile(type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
@@ -191,9 +231,11 @@ canvas.addEventListener('pointerdown', event => {
   pointer = event.pointerId;
   startX = event.clientX; startY = event.clientY;
   canvas.setPointerCapture(pointer);
+  if (event.pointerType === 'mouse') document.body.dataset.roseCursor = 'pressed';
   wake();
 });
 canvas.addEventListener('pointermove', event => {
+  updateCursor(event);
   const bounds = canvas.getBoundingClientRect();
   targetLightX = (event.clientX-bounds.left)/width-.5;
   targetLightY = (event.clientY-bounds.top)/height-.5;
@@ -205,9 +247,14 @@ canvas.addEventListener('pointermove', event => {
   wake();
 });
 for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) {
-  canvas.addEventListener(name, event => { if (event.pointerId === pointer) resetComposition(); });
+  canvas.addEventListener(name, event => {
+    if (event.pointerId !== pointer) return;
+    resetComposition();
+    if (event.pointerType === 'mouse') document.body.dataset.roseCursor = 'visible';
+  });
 }
-canvas.addEventListener('pointerleave', () => { if (pointer === null) resetComposition(); });
+canvas.addEventListener('pointerenter', event => updateCursor(event));
+canvas.addEventListener('pointerleave', () => { hideCursor(); if (pointer === null) resetComposition(); });
 canvas.addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); resetComposition(); return; }
   const directions: Record<string, [number, number]> = {
@@ -220,7 +267,7 @@ canvas.addEventListener('keydown', event => {
   targetY = Math.max(-100, Math.min(100,targetY+direction[1]));
   wake();
 });
-window.addEventListener('blur', resetComposition);
+window.addEventListener('blur', () => { hideCursor(); resetComposition(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { cancelAnimationFrame(frame); frame = 0; resetComposition(); }
   else { previous = performance.now(); wake(); }
