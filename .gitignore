@@ -27,3 +27,7 @@ pages/gentle-monster/scripts/verify_*.png
 
 # Cursor Cat Circle runtime frames are stored in Cloudflare R2
 pages/cursor-cat-circle/assets/
+
+# Local Vercel project state and downloaded environment variables
+.vercel/
+.env.local

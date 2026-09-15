@@ -1,5 +1,46 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "trailingSlash": true,
+  "redirects": [
+    {
+      "source": "/pages/:path*/",
+      "has": [{ "type": "host", "value": "brand.jiiwon.com" }],
+      "destination": "https://studio.jiiwon.com/:path*/",
+      "permanent": true
+    },
+    {
+      "source": "/pages/:path*",
+      "has": [{ "type": "host", "value": "brand.jiiwon.com" }],
+      "destination": "https://studio.jiiwon.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*/",
+      "has": [{ "type": "host", "value": "brand.jiiwon.com" }],
+      "destination": "https://studio.jiiwon.com/:path*/",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "brand.jiiwon.com" }],
+      "destination": "https://studio.jiiwon.com/:path*",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/cursor-cat/:id([a-z0-9]{10})/",
+      "destination": "/pages/cursor-cat/index.html"
+    },
+    {
+      "source": "/:artwork((?!common$|pages$)[a-z0-9-]+)/",
+      "destination": "/pages/:artwork/index.html"
+    },
+    {
+      "source": "/:artwork((?!common$|pages$)[a-z0-9-]+)/:path*",
+      "destination": "/pages/:artwork/:path*"
+    }
+  ],
   "git": {
     "deploymentEnabled": {
       "main": true,

@@ -4,8 +4,8 @@
 
 ## 경로 규칙
 
-- 기본 작품: `/pages/cursor-cat/`
-- 추가 작품: `/pages/cursor-cat/<10자리 랜덤 ID>/`
+- 기본 작품: `https://studio.jiiwon.com/cursor-cat/`
+- 추가 작품: `https://studio.jiiwon.com/cursor-cat/<10자리 랜덤 ID>/`
 - 기본 작품의 R2 ID는 `main`이다.
 - 추가 작품은 등록 스크립트가 영문 소문자와 숫자로 된 10자리 ID를 만든다.
 - 이름, 동물 종류와 순번을 공개 경로에 포함하지 않는다.
@@ -83,7 +83,7 @@ pnpm register:cursor-cat -- \
   --alt "커서를 바라보는 강아지"
 ```
 
-완료 출력의 `id`와 `route`를 기록한다. 예를 들어 ID가 `a1b2c3d4e5`라면 공개 경로는 `/pages/cursor-cat/a1b2c3d4e5/`다.
+완료 출력의 `id`와 `route`를 기록한다. 예를 들어 ID가 `a1b2c3d4e5`라면 공개 주소는 `https://studio.jiiwon.com/cursor-cat/a1b2c3d4e5/`다.
 
 ## R2 결과
 

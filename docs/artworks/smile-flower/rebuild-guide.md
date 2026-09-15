@@ -18,7 +18,7 @@ pnpm install
 pnpm dev --host 0.0.0.0
 ```
 
-브라우저에서 `/pages/smile-flower/`를 연다. 화면에는 UI 없이 작품만 보이며 `D`를 누르면 조정 패널이 열린다.
+브라우저에서 `/smile-flower/`를 연다. 화면에는 UI 없이 작품만 보이며 `D`를 누르면 조정 패널이 열린다.
 
 ## 2. Blender 원본 확인
 
