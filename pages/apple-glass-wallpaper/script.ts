@@ -9,6 +9,7 @@ const settings = {
   warmth: 0,
   specular: 1.1,
   rim: 1.25,
+  absorption: 1,
   diffusion: 1,
   saturation: 1.1,
   response: 1,
@@ -75,7 +76,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uSaturation']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uAbsorption', 'uSaturation']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -142,6 +143,7 @@ function render(now: number) {
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
   gl.uniform1f(uniforms.uRim,settings.rim);
+  gl.uniform1f(uniforms.uAbsorption,settings.absorption);
   gl.uniform1f(uniforms.uSaturation,settings.saturation);
   gl.drawArrays(gl.TRIANGLES,0,3);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
@@ -227,6 +229,7 @@ if (new URLSearchParams(location.search).has('debug')) {
   gui.add(settings,'warmth',-1,1,.01).name('Warmth').onChange(wake);
   gui.add(settings,'specular',0,2,.01).name('White reflection').onChange(wake);
   gui.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake);
+  gui.add(settings,'absorption',0,2,.01).name('Edge absorption').onChange(wake);
   gui.add(settings,'diffusion',0,2,.01).name('Edge diffusion').onChange(wake);
   gui.add(settings,'saturation',.8,1.4,.01).name('Saturation').onChange(wake);
   gui.add(settings,'response',.1,1.5,.01).name('Drag response');
