@@ -67,24 +67,51 @@
     </section>
 
     <section id="settings" class="view">
-      <div class="settings-grid">
-        <div class="panel">
-          <h2>Instagram</h2>
-          <p>비밀번호는 저장하지 않습니다. 로그인 후 로컬 세션만 보관합니다.</p>
-          <button id="login-open" class="primary">Instagram 연결</button>
-          <button id="logout" class="danger">연결 해제</button>
-        </div>
-        <div class="panel">
-          <h2>안전 설정</h2>
-          <label><span>관찰 모드</span><input id="read-only" type="checkbox"></label>
-          <label><span>자동발송</span><input id="auto-send" type="checkbox"></label>
-          <label><span>댓글 자동답글</span><input id="auto-comment" type="checkbox"></label>
-          <label><span>DM 자동답장</span><input id="auto-dm" type="checkbox"></label>
-          <label><span>하루 발송 한도</span><input id="daily-limit" type="number" min="1" max="50"></label>
-          <label><span>프로필 링크</span><input id="profile-url" type="url"></label>
-          <button id="save-settings" class="primary">저장</button>
-          <p class="notice">자동발송은 관찰 모드를 직접 해제한 뒤 별도로 활성화해야 합니다.</p>
-        </div>
+      <div class="section-heading settings-heading">
+        <div><h2>설정</h2><p>연결 상태와 자동화 범위를 관리합니다.</p></div>
+      </div>
+      <div class="settings-card">
+        <section class="settings-section account-section">
+          <div class="settings-section-head"><div><h3>Instagram 계정</h3><p>비밀번호는 저장하지 않고 로컬 세션만 보관합니다.</p></div></div>
+          <div class="account-row">
+            <span class="account-mark" aria-hidden="true">IG</span>
+            <div class="account-copy"><strong id="settings-account">연결 확인 중</strong><span id="settings-session-note">세션 상태를 확인하고 있습니다.</span></div>
+            <div class="account-actions"><button id="login-open" class="primary">연결</button><button id="logout" class="danger">연결 해제</button></div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div class="settings-section-head"><div><h3>안전</h3><p>Instagram에 변경을 보내기 전에 먼저 확인합니다.</p></div></div>
+          <label class="setting-row">
+            <span class="setting-copy"><strong>관찰 모드</strong><small>켜져 있으면 답장과 하트가 Instagram에 반영되지 않습니다.</small></span>
+            <input id="read-only" class="switch" type="checkbox">
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <div class="settings-section-head"><div><h3>자동화</h3><p>자동으로 처리할 범위를 선택합니다.</p></div></div>
+          <label class="setting-row">
+            <span class="setting-copy"><strong>자동발송</strong><small>승인 없이 준비된 답변을 발송합니다.</small></span>
+            <input id="auto-send" class="switch" type="checkbox">
+          </label>
+          <div class="setting-options">
+            <label class="setting-row compact"><span class="setting-copy"><strong>댓글 답글</strong></span><input id="auto-comment" class="switch" type="checkbox"></label>
+            <label class="setting-row compact"><span class="setting-copy"><strong>DM 답장</strong></span><input id="auto-dm" class="switch" type="checkbox"></label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div class="settings-section-head"><div><h3>응답 기본값</h3><p>구매 안내와 일일 발송 제한에 사용합니다.</p></div></div>
+          <div class="settings-fields">
+            <label class="field"><span>프로필 링크</span><input id="profile-url" type="url" placeholder="https://..."></label>
+            <label class="field limit-field"><span>하루 발송 한도</span><input id="daily-limit" type="number" min="1" max="50"></label>
+          </div>
+        </section>
+
+        <footer class="settings-footer">
+          <p>관찰 모드를 해제해야 자동발송을 사용할 수 있습니다.</p>
+          <button id="save-settings" class="primary">변경사항 저장</button>
+        </footer>
       </div>
     </section>
   </main>

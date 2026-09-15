@@ -62,6 +62,8 @@ async function refreshStatus() {
   const status = document.querySelector(".status");
   status.className = `status ${data.settings.halted_reason ? "halted" : data.authenticated ? "connected" : ""}`;
   document.querySelector("#status-text").textContent = data.settings.halted_reason ? "중지됨" : data.authenticated ? "연결됨" : "연결 필요";
+  document.querySelector("#settings-account").textContent = data.authenticated ? `@${data.settings.instagram_username || "Instagram"}` : "연결된 계정 없음";
+  document.querySelector("#settings-session-note").textContent = data.settings.halted_reason ? "세션이 중지되었습니다." : data.authenticated ? "로컬 세션으로 연결되어 있습니다." : "계정을 연결하면 DM과 댓글을 가져올 수 있습니다.";
   document.querySelector("#login-open").style.display = data.authenticated ? "none" : "inline-flex";
   document.querySelector("#logout").style.display = data.authenticated ? "inline-flex" : "none";
 }
@@ -163,7 +165,7 @@ async function refreshChat() {
   const username = [...messages].reverse().find((item) => item.direction === "inbound" && item.author_username)?.author_username || "알 수 없음";
   const target = [...messages].reverse().find((item) => item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status));
   panel.innerHTML = `
-    <header class="chat-header"><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></header>
+    <header class="chat-header"><button class="chat-back" data-action="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></header>
     <div class="chat-messages">
       ${messages.map((message) => `
         <div class="message-row ${message.direction}" data-id="${escapeHtml(message.id)}">
@@ -244,6 +246,7 @@ document.querySelector("#conversation-list").addEventListener("click", async (ev
   selectedThreadId = item.dataset.threadId;
   document.querySelectorAll(".conversation-item").forEach((node) => node.classList.toggle("active", node === item));
   await refreshChat();
+  document.querySelector("#dm-inbox").classList.add("chat-open");
 });
 
 document.querySelector("#sync").addEventListener("click", async () => {
@@ -282,6 +285,10 @@ document.querySelector("#events").addEventListener("click", async (event) => {
 
 document.querySelector("#chat-panel").addEventListener("click", async (event) => {
   try {
+    if (event.target.closest('[data-action="chat-back"]')) {
+      document.querySelector("#dm-inbox").classList.remove("chat-open");
+      return;
+    }
     const heart = event.target.closest('[data-action="dm-heart"]');
     if (heart) {
       const row = heart.closest(".message-row");
