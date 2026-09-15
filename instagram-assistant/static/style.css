@@ -25,6 +25,8 @@ body { margin: 0; background: var(--bg); color: var(--ink); }
 button, input, textarea { font: inherit; }
 button { border: 0; cursor: pointer; }
 button:active { scale: .96; }
+button:disabled { cursor: not-allowed; }
+button:disabled:active { scale: 1; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
@@ -66,7 +68,14 @@ h2 { margin: 0 0 7px; font-size: 17px; font-weight: 650; }
 .filter.active, .inbox-mode.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-border); }
 .quiet:hover { background: var(--surface-subtle); color: var(--ink); }
 .primary { background: var(--ink); color: #fff; }
+.primary:disabled { opacity: .72; }
 .danger { display: none; margin-left: 5px; background: #f7e9e7; color: var(--danger); }
+#sync { display: inline-flex; min-width: 94px; align-items: center; justify-content: center; gap: 6px; }
+.button-spinner { width: 12px; height: 12px; border: 1.5px solid #ffffff55; border-top-color: currentColor; border-radius: 50%; animation: button-spin .7s linear infinite; }
+
+@keyframes button-spin {
+  to { transform: rotate(360deg); }
+}
 
 #comment-inbox .filters { margin-bottom: 12px; }
 .event-list { display: grid; gap: 8px; }
@@ -229,4 +238,5 @@ dialog label span { color: #999; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  .button-spinner { animation: none; }
 }

@@ -249,12 +249,22 @@ document.querySelector("#conversation-list").addEventListener("click", async (ev
   document.querySelector("#dm-inbox").classList.add("chat-open");
 });
 
-document.querySelector("#sync").addEventListener("click", async () => {
+document.querySelector("#sync").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.innerHTML = '<span class="button-spinner" aria-hidden="true"></span><span>동기화 중</span>';
   try {
     const result = await api("/api/sync", { method: "POST" });
     toast(`새 댓글 ${result.comments} · 새 대댓글 ${result.comment_replies || 0} · 새 DM ${result.dms}`);
     await refreshAll();
-  } catch (error) { toast(error.message, true); }
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = "동기화";
+  }
 });
 
 document.querySelector("#classify").addEventListener("click", async () => {
