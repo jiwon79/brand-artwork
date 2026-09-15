@@ -84,7 +84,7 @@ pointer가 들어오면 120개 후보를 모두 비교한다.
 
 ## 렌더 pass
 
-매 animation frame에서 target과 rendered progress의 원형 최단 차이를 구한다. `120 → 001` 경계를 단순 뺄셈하면 거의 한 바퀴를 역주행하므로, 차이를 `[-0.5, 0.5)`에 wrap한다.
+매 animation frame에서 현재 rendered progress부터 target progress까지 원을 따라 가장 짧게 이동할 방향과 거리를 구한다. 진행률 `0`과 `1`은 한 바퀴를 사이에 둔 같은 위치다. 따라서 현재 값이 `0.99`이고 목표가 `0.01`이면 단순 뺄셈의 `-0.98`을 사용하지 않고, `120 → 001` 경계를 앞으로 넘는 `+0.02`를 사용한다. 차이가 반 바퀴 이상이면 한 바퀴에 해당하는 `1`을 더하거나 빼서 이 최단 이동량으로 고친다.
 
 시간 delta를 반영한 response로 rendered progress를 target에 수렴시킨 다음 가장 가까운 정수 frame을 표시한다. 이미지 두 장을 섞거나 video seek를 하지 않는다. 항상 미리 decode된 WebP 한 장만 `<img>`에 표시한다.
 
