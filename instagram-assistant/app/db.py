@@ -434,6 +434,17 @@ def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def complete_conversation(thread_id: str) -> int:
+    with connect() as conn:
+        cursor = conn.execute(
+            "UPDATE events SET status='completed', proposed_action='complete', updated_at=? "
+            "WHERE kind='dm' AND thread_id=? AND direction='inbound' "
+            "AND status IN ('pending', 'drafted', 'manual')",
+            (now(), thread_id),
+        )
+    return cursor.rowcount
+
+
 def update_event(event_id: str, values: dict[str, Any]) -> dict[str, Any] | None:
     allowed = {
         "status", "intent", "confidence", "proposed_action", "draft",

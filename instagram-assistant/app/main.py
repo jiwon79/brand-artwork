@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from .codex_classifier import classify_with_codex
 from .config import ROOT, local_token, paths
 from .db import (
+    complete_conversation,
     count_events_by_status,
     get_event,
     get_settings,
@@ -153,6 +154,15 @@ def link_preview(url: str) -> dict[str, str]:
 @app.get("/api/conversations/{thread_id}")
 def conversation(thread_id: str) -> list[dict[str, Any]]:
     return list_conversation_messages(thread_id)
+
+
+@app.post("/api/conversations/{thread_id}/complete")
+def mark_conversation_complete(
+    thread_id: str,
+    x_instagram_assistant_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    protect(x_instagram_assistant_token)
+    return {"ok": True, "updated": complete_conversation(thread_id)}
 
 
 @app.post("/api/events/classify")

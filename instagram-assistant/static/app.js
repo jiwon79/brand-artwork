@@ -246,7 +246,7 @@ async function refreshChat() {
     return index > lastResolutionIndex && item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status);
   });
   panel.innerHTML = `
-    <header class="chat-header"><button class="chat-back" data-action="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></header>
+    <header class="chat-header"><button class="chat-back" data-action="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><div class="chat-header-actions">${target ? '<button class="complete-conversation" data-action="complete-conversation">완료</button>' : ""}<a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
     <div class="chat-messages">
       ${messages.map((message) => `
         <div class="message-row ${message.direction}" data-id="${escapeHtml(message.id)}">
@@ -383,6 +383,16 @@ document.querySelector("#chat-panel").addEventListener("click", async (event) =>
   try {
     if (event.target.closest('[data-action="chat-back"]')) {
       document.querySelector("#dm-inbox").classList.remove("chat-open");
+      return;
+    }
+    const complete = event.target.closest('[data-action="complete-conversation"]');
+    if (complete) {
+      complete.disabled = true;
+      complete.setAttribute("aria-busy", "true");
+      await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}/complete`, { method: "POST" });
+      toast("대화를 완료로 옮겼습니다.");
+      document.querySelector("#dm-inbox").classList.remove("chat-open");
+      await refreshConversations(false);
       return;
     }
     const heart = event.target.closest('[data-action="dm-heart"]');
