@@ -57,6 +57,7 @@ docs/
 
 - [`architecture.md`](./artworks/smile-flower/architecture.md) - Blender 모델 생성, GLB 최적화, instancing, 회전·bloom·파동 렌더링 구조
 - [`rebuild-guide.md`](./artworks/smile-flower/rebuild-guide.md) - Blender 원본부터 웹 페이지까지 다시 만드는 단계별 가이드
+- [`social-share-image.md`](./artworks/smile-flower/social-share-image.md) - 실제 캡처 왼쪽 위에 Smile Flower 제목만 합성하는 PNG 제작 도구와 재생성 방법
 
 ## Concepts
 

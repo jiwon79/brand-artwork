@@ -1,0 +1,20 @@
+import { expect, test, vi } from 'vitest';
+import { drawSocialImage } from './smile-flower-social-image.mjs';
+
+test('uses the standard Smile Flower title typography and position', () => {
+  const context = {
+    canvas: { width: 0, height: 0 },
+    drawImage: vi.fn(),
+    fillText: vi.fn(),
+    textBaseline: '',
+    textAlign: '',
+    fillStyle: '',
+    font: '',
+  };
+
+  drawSocialImage(context, { naturalWidth: 1200, naturalHeight: 630 });
+
+  expect(context.font).toBe('700 52px "Pretendard Variable"');
+  expect(context.fillStyle).toBe('#f4f2ec');
+  expect(context.fillText).toHaveBeenCalledExactlyOnceWith('Smile Flower', 56, 82);
+});
