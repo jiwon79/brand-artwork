@@ -9,6 +9,8 @@ const defaults = {
   warmth: 0,
   specular: 1.1,
   rim: 1.25,
+  cursorLight: 1.15,
+  lightFollow: 1,
   frontAbsorption: 1,
   rearAbsorption: 1,
   absorptionWidth: 1,
@@ -84,7 +86,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uCursorLight', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -138,7 +140,7 @@ function render(now: number) {
   frame = 0;
   const dt = Math.min((now-previous)/1000 || 1/60, 1/30);
   previous = now;
-  const ease = 1-Math.exp(-dt*9);
+  const ease = 1-Math.exp(-dt*9*settings.lightFollow);
   if (reducedMotion.matches) {
     x = targetX; y = targetY; vx = vy = 0;
   } else {
@@ -162,6 +164,7 @@ function render(now: number) {
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
   gl.uniform1f(uniforms.uRim,settings.rim);
+  gl.uniform1f(uniforms.uCursorLight,settings.cursorLight);
   gl.uniform1f(uniforms.uFrontAbsorption,settings.frontAbsorption);
   gl.uniform1f(uniforms.uRearAbsorption,settings.rearAbsorption);
   gl.uniform1f(uniforms.uAbsorptionWidth,settings.absorptionWidth);
@@ -262,6 +265,10 @@ describe(lightingFolder.add(settings,'specular',0,2,.01).name('White reflection'
   '곡면을 따라 번지는 넓은 흰 반사광의 밝기');
 describe(lightingFolder.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake),
   '가장자리를 스치는 밝은 반사광의 강도');
+describe(lightingFolder.add(settings,'cursorLight',0,2,.01).name('Cursor light').onChange(wake),
+  '커서 위치를 따라 움직이는 넓은 확산광과 작은 반사광의 강도');
+describe(lightingFolder.add(settings,'lightFollow',.15,2.5,.01).name('Light follow').onChange(wake),
+  '가상 조명이 커서 위치를 따라가는 속도');
 
 const edgeFolder = gui.addFolder('Progressive edge');
 describe(edgeFolder.add(settings,'frontAbsorption',0,2,.01).name('Front darkness').onChange(wake),

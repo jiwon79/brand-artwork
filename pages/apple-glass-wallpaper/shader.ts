@@ -27,6 +27,7 @@ uniform float uGrain;
 uniform float uWarmth;
 uniform float uSpecular;
 uniform float uRim;
+uniform float uCursorLight;
 uniform float uFrontAbsorption;
 uniform float uRearAbsorption;
 uniform float uAbsorptionWidth;
@@ -239,6 +240,16 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float reflection = upperLight*bell(q,vec2(.55,-.66),vec2(1.4,1.05))*.12
     + lowerLight*bell(q,vec2(-.86,.51),vec2(1.4,1.0))*.15;
   if (id != 2) reflection *= id == 0 ? .25 : .32;
+  // A broad cursor-driven light sits above the surface. Diffuse energy gives
+  // the response a soft frosted character, while a low-power specular lobe
+  // makes its movement legible without turning into a sharp glossy dot.
+  vec2 cursorAnchor = uLight*vec2(2.15,2.05);
+  vec3 cursorDirection = normalize(vec3(cursorAnchor-q,.72));
+  float cursorFacing = max(dot(grainNormal,cursorDirection),0.0);
+  float cursorPool = bell(q,cursorAnchor,vec2(.88,1.0));
+  float cursorSpecular = pow(max(dot(reflect(-cursorDirection,grainNormal),vec3(0,0,1)),0.0),5.0);
+  float cursorEnergy = (cursorPool*(.040+.065*cursorFacing)+cursorSpecular*.070)
+    *uCursorLight*(id == 2 ? 1.0 : .42);
   float fresnel = .04+.96*pow(1.0-max(normal.z,0.0),5.0);
   float grazing = rimLight*.13*(0.6+fresnel*.4)*uRim;
   float luminance = dot(color,vec3(.2126,.7152,.0722));
@@ -252,7 +263,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec3 extinction = id == 1 ? vec3(.50,.57,.55) : vec3(.44,.48,.46);
   vec3 transmission = exp(-extinction*opticalDepth);
   vec3 litSurface = toLinear(max(color,0.0))
-    +vec3(1.0,.94,.91)*(reflection*uSpecular+grazing);
+    +vec3(1.0,.94,.91)*(reflection*uSpecular+grazing+cursorEnergy);
   // Attenuate the grazing reflection as well, so white light cannot wash the
   // thick edge back to a pale outline. The resolve progressively softens it.
   color = toSrgb(litSurface*transmission);
