@@ -3,6 +3,38 @@ let currentCommentStatus = "active";
 let currentDmStatus = "active";
 let selectedThreadId = "";
 
+const themeToggle = document.querySelector("#theme-toggle");
+const themeMedia = matchMedia("(prefers-color-scheme: dark)");
+
+function updateThemeToggle() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  themeToggle.checked = dark;
+}
+
+function applyTheme(theme) {
+  const style = document.createElement("style");
+  style.textContent = "*,*::before,*::after{transition:none !important}";
+  document.head.append(style);
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  void document.body.offsetHeight;
+  requestAnimationFrame(() => requestAnimationFrame(() => style.remove()));
+  updateThemeToggle();
+}
+
+themeToggle.addEventListener("change", () => {
+  const theme = themeToggle.checked ? "dark" : "light";
+  localStorage.setItem("instagram-assistant-theme", theme);
+  applyTheme(theme);
+});
+
+themeMedia.addEventListener("change", (event) => {
+  if (!localStorage.getItem("instagram-assistant-theme")) {
+    applyTheme(event.matches ? "dark" : "light");
+  }
+});
+updateThemeToggle();
+
 async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if ((options.method || "GET") !== "GET") headers["X-Instagram-Assistant-Token"] = token;
@@ -17,7 +49,7 @@ async function api(path, options = {}) {
 function toast(message, error = false) {
   const node = document.querySelector("#toast");
   node.textContent = message;
-  node.style.background = error ? "#9c3229" : "#171714";
+  node.classList.toggle("error-toast", error);
   node.classList.add("show");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => node.classList.remove("show"), 2600);
