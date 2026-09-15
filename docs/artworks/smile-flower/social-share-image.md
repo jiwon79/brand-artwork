@@ -2,7 +2,7 @@
 
 기존 Chrome에서 실제 작품을 렌더링하고, 모델 비율을 유지한 가운데 구간을 1200×630 비율로 확대·크롭한 원본은 `pages/smile-flower/assets/og-artwork.png`에 보존한다. 최종 `og-image.png`는 화면을 가득 채운 원본 위 왼쪽 상단에 `Smile Flower` 제목만 합성한다.
 
-제목은 Pretendard Variable 52px, 굵기 700(Bold)을 사용한다. 왼쪽 여백은 56px, 글자 기준선은 위에서 82px이며 밝은 꽃 위에서 읽히도록 색상은 `#161616`이다. 정확한 굵기가 실제 윤곽에 반영되도록 `pages/smile-flower/assets/PretendardVariable.woff2`를 사용한다. 이 값들은 공통 가이드의 기본 제목 규칙을 따른다.
+제목은 Pretendard Variable 52px, 굵기 700(Bold)을 사용한다. 왼쪽 여백은 56px, 글자 기준선은 위에서 82px이며 색상은 `#161616`이다. 복잡한 꽃과 스마일 위에서도 읽히도록 제목 뒤에는 `rgba(255, 255, 255, 0.92)` 배경을 두고, 좌우 24px 패딩과 16px radius를 적용한다. 정확한 굵기가 실제 윤곽에 반영되도록 `pages/smile-flower/assets/PretendardVariable.woff2`를 사용한다.
 
 ## 재생성
 
