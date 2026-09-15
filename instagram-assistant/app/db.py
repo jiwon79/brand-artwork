@@ -9,6 +9,10 @@ from typing import Any, Iterator
 from .config import paths, prepare_data_dir
 
 
+STUDIO_URL = "https://studio.jiiwon.com"
+PURCHASE_URL = "https://litt.ly/jiiwon"
+
+
 SCHEMA = """
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
@@ -91,14 +95,39 @@ DEFAULT_SETTINGS = {
 
 DEFAULT_ARTWORKS = (
     {
-        "slug": "line-pull",
-        "title": "Line Pull",
-        "post_code": "Dc8RsObTqfn",
-        "demo_url": "https://brand.jiiwon.com/pages/line-pull",
-        "product_name": "Line Pull 제작 자료",
-        "purchase_url": "https://litt.ly/jiiwon",
-        "product_status": "available",
+        "slug": "guseul", "title": "구슬", "post_code": "DbMzWyMT_10",
+        "product_name": "예쁜 거 첫 번째 · 구슬",
     },
+    {
+        "slug": "color-text", "title": "녹는 글자", "post_code": "Db1_p35TbhR",
+        "product_name": "예쁜 거 두 번째 · 녹는 글자",
+    },
+    {
+        "slug": "body-echo", "title": "잔상", "post_code": "DcTkgu6z53y",
+        "product_name": "예쁜 거 세 번째 · 잔상",
+    },
+    {
+        "slug": "line-pull", "title": "틈", "post_code": "Dc8RsObTqfn",
+        "product_name": "예쁜 거 네 번째 · 틈",
+    },
+    {
+        "slug": "cursor-cat", "title": "고양이", "post_code": "DcsE80uTrM5",
+        "product_name": "귀여운 거 첫 번째 · 고양이",
+    },
+    {
+        "slug": "smile-flower", "title": "웃음꽃", "post_code": "DdL5H0szhCc",
+        "product_name": "예쁜 거 다섯 번째 · 웃음꽃",
+    },
+)
+
+DEFAULT_ARTWORK_VALUES = tuple(
+    {
+        **item,
+        "demo_url": f"{STUDIO_URL}/{item['slug']}",
+        "purchase_url": PURCHASE_URL,
+        "product_status": "available",
+    }
+    for item in DEFAULT_ARTWORKS
 )
 
 
@@ -143,13 +172,21 @@ def initialize() -> None:
                 (key, json.dumps(value, ensure_ascii=False)),
             )
         timestamp = now()
-        for item in DEFAULT_ARTWORKS:
+        for item in DEFAULT_ARTWORK_VALUES:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO artworks(
+                INSERT INTO artworks(
                   slug, title, post_code, demo_url, product_name,
                   purchase_url, product_status, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(slug) DO UPDATE SET
+                  title=excluded.title,
+                  post_code=excluded.post_code,
+                  demo_url=excluded.demo_url,
+                  product_name=excluded.product_name,
+                  purchase_url=excluded.purchase_url,
+                  product_status=excluded.product_status,
+                  updated_at=excluded.updated_at
                 """,
                 (
                     item["slug"], item["title"], item["post_code"],
@@ -188,8 +225,11 @@ def list_artworks() -> list[dict[str, Any]]:
 
 def save_artwork(item: dict[str, Any]) -> dict[str, Any]:
     timestamp = now()
+    slug = item["slug"]
     post_code = item.get("post_code") or None
     media_id = item.get("media_id") or None
+    demo_url = f"{STUDIO_URL}/{slug}"
+    product_name = item.get("product_name") or item["title"]
     with connect() as conn:
         conn.execute(
             """
@@ -208,13 +248,13 @@ def save_artwork(item: dict[str, Any]) -> dict[str, Any]:
               updated_at=excluded.updated_at
             """,
             (
-                item["slug"], item["title"], post_code,
-                media_id, item.get("demo_url", ""),
-                item.get("product_name", ""), item.get("purchase_url", ""),
+                slug, item["title"], post_code,
+                media_id, demo_url,
+                product_name, PURCHASE_URL,
                 item.get("product_status", "available"), timestamp, timestamp,
             ),
         )
-        row = conn.execute("SELECT * FROM artworks WHERE slug=?", (item["slug"],)).fetchone()
+        row = conn.execute("SELECT * FROM artworks WHERE slug=?", (slug,)).fetchone()
     return dict(row)
 
 

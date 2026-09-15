@@ -194,7 +194,7 @@ async function refreshChat() {
 async function refreshArtworks() {
   const artworks = await api("/api/artworks");
   document.querySelector("#artwork-list").innerHTML = artworks.map((item) => `
-    <article class="artwork"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.demo_url || "체험 링크 없음")}</span><span>${escapeHtml(item.purchase_url || "구매 링크 없음")}</span></article>
+    <article class="artwork"><strong>${escapeHtml(item.title)}</strong><a href="${escapeHtml(safeUrl(item.demo_url))}" target="_blank" rel="noreferrer">${escapeHtml(item.demo_url)}</a><span>${escapeHtml(item.product_name)}</span></article>
   `).join("") || '<p class="empty">등록된 작품이 없습니다.</p>';
 }
 

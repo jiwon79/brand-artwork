@@ -20,6 +20,31 @@ def test_event_insert_is_idempotent(tmp_path: Path, monkeypatch):
     assert len(db.list_events()) == 1
 
 
+def test_default_artworks_use_canonical_demo_and_purchase_urls(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    artworks = db.list_artworks()
+    assert len(artworks) == 6
+    assert {item["slug"] for item in artworks} == {
+        "guseul", "color-text", "body-echo", "line-pull", "cursor-cat", "smile-flower",
+    }
+    assert all(
+        item["demo_url"] == f"https://studio.jiiwon.com/{item['slug']}"
+        for item in artworks
+    )
+    assert all(item["purchase_url"] == "https://litt.ly/jiiwon" for item in artworks)
+
+
+def test_saved_artwork_derives_urls_from_slug(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    saved = db.save_artwork({"slug": "new-work", "title": "새 작품"})
+    assert saved["demo_url"] == "https://studio.jiiwon.com/new-work"
+    assert saved["purchase_url"] == "https://litt.ly/jiiwon"
+
+
 def test_conversations_group_messages_and_preserve_order(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

@@ -54,9 +54,7 @@ class ArtworkBody(BaseModel):
     title: str
     post_code: str | None = None
     media_id: str | None = None
-    demo_url: str = ""
     product_name: str = ""
-    purchase_url: str = ""
     product_status: str = "available"
 
 

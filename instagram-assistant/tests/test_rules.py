@@ -6,7 +6,7 @@ ARTWORKS = [{
     "title": "Line Pull",
     "post_code": "Dc8RsObTqfn",
     "media_id": "123_456",
-    "demo_url": "https://brand.jiiwon.com/pages/line-pull",
+    "demo_url": "https://studio.jiiwon.com/line-pull",
     "purchase_url": "https://litt.ly/jiiwon",
     "product_status": "available",
 }]

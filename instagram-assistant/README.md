@@ -31,7 +31,7 @@ uv sync --dev
 uv run uvicorn app.main:app --host 127.0.0.1 --port 4318
 ```
 
-Open <http://127.0.0.1:4318>. Connect Instagram from Settings, then register each artwork's Instagram post code, demo URL, and purchase URL.
+Open <http://127.0.0.1:4318>. Connect Instagram from Settings, then register each artwork's slug, title, Instagram post code, and product name. Demo URLs are derived as `https://studio.jiiwon.com/{slug}`, and every purchase link uses `https://litt.ly/jiiwon`.
 
 ## One-shot worker
 
