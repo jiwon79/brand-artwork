@@ -159,8 +159,9 @@ class InstagramService:
                         }
                         for message in getattr(thread, "messages", []):
                             user_id = str(getattr(message, "user_id", "") or "")
-                            if not user_id or user_id == str(client.user_id):
+                            if not user_id:
                                 continue
+                            outbound = bool(getattr(message, "is_sent_by_viewer", False)) or user_id == str(client.user_id)
                             shared_url = self._shared_url(message)
                             inserted_dms += int(upsert_event({
                                 "id": f"dm:{message.id}",
@@ -169,9 +170,14 @@ class InstagramService:
                                 "thread_id": thread_id,
                                 "shared_url": shared_url,
                                 "author_id": user_id,
-                                "author_username": usernames.get(user_id, ""),
+                                "author_username": (
+                                    get_settings().get("instagram_username", "")
+                                    if outbound else usernames.get(user_id, "")
+                                ),
+                                "direction": "outbound" if outbound else "inbound",
                                 "body": getattr(message, "text", "") or ("공유된 게시물" if shared_url else ""),
                                 "received_at": self._timestamp(getattr(message, "timestamp", None)),
+                                "status": "history" if outbound else "pending",
                             }))
             except STOP_EXCEPTIONS as exc:
                 self._halt(str(exc))
@@ -247,14 +253,41 @@ class InstagramService:
         share = getattr(message, "xma_share", None)
         if share:
             if isinstance(share, dict):
-                return share.get("target_url") or share.get("url")
-            return getattr(share, "target_url", None) or getattr(share, "url", None)
+                url = share.get("target_url") or share.get("url") or share.get("video_url")
+            else:
+                url = (
+                    getattr(share, "target_url", None)
+                    or getattr(share, "url", None)
+                    or getattr(share, "video_url", None)
+                )
+            if url:
+                return InstagramService._canonical_instagram_url(str(url))
+        for item in getattr(message, "generic_xma", None) or []:
+            url = getattr(item, "video_url", None)
+            if url:
+                return InstagramService._canonical_instagram_url(str(url))
         for name in ("media_share", "clip", "reel_share"):
             value = getattr(message, name, None)
-            code = getattr(value, "code", None) if value else None
+            code = (
+                getattr(value, "code", None)
+                if value and not isinstance(value, dict)
+                else (value or {}).get("code")
+            )
             if code:
                 return f"https://www.instagram.com/reel/{code}/"
+        raw = getattr(message, "raw_xma", None) or {}
+        for items in raw.values():
+            for item in items if isinstance(items, list) else []:
+                if isinstance(item, dict) and item.get("target_url"):
+                    return InstagramService._canonical_instagram_url(item["target_url"])
         return None
+
+    @staticmethod
+    def _canonical_instagram_url(url: str) -> str:
+        match = re.search(r"instagram\.com/(reel|p)/([^/?#]+)", url)
+        if match:
+            return f"https://www.instagram.com/{match.group(1)}/{match.group(2)}/"
+        return url
 
     @staticmethod
     def _halt(reason: str) -> None:

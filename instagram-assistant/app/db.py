@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS events (
   shared_url TEXT,
   author_id TEXT,
   author_username TEXT NOT NULL DEFAULT '',
+  direction TEXT NOT NULL DEFAULT 'inbound' CHECK(direction IN ('inbound', 'outbound')),
   body TEXT NOT NULL DEFAULT '',
   received_at TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
@@ -116,6 +117,11 @@ def connect() -> Iterator[sqlite3.Connection]:
 def initialize() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+        if "direction" not in columns:
+            conn.execute(
+                "ALTER TABLE events ADD COLUMN direction TEXT NOT NULL DEFAULT 'inbound'"
+            )
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
@@ -200,30 +206,62 @@ def save_artwork(item: dict[str, Any]) -> dict[str, Any]:
 def upsert_event(event: dict[str, Any]) -> bool:
     timestamp = now()
     with connect() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM events WHERE id=?", (event["id"],)
+        ).fetchone() is not None
         cursor = conn.execute(
             """
             INSERT OR IGNORE INTO events(
               id, kind, source_id, thread_id, media_id, post_code, shared_url,
-              author_id, author_username, body, received_at, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              author_id, author_username, direction, body, received_at, status,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event["id"], event["kind"], event["source_id"],
                 event.get("thread_id"), event.get("media_id"), event.get("post_code"),
                 event.get("shared_url"), event.get("author_id"),
-                event.get("author_username", ""), event.get("body", ""),
-                event.get("received_at", timestamp), timestamp, timestamp,
+                event.get("author_username", ""), event.get("direction", "inbound"),
+                event.get("body", ""), event.get("received_at", timestamp),
+                event.get("status", "pending"), timestamp, timestamp,
             ),
         )
+        if exists:
+            conn.execute(
+                """
+                UPDATE events SET
+                  thread_id=COALESCE(?, thread_id),
+                  shared_url=COALESCE(?, shared_url),
+                  direction=COALESCE(?, direction),
+                  author_username=CASE WHEN ? <> '' THEN ? ELSE author_username END,
+                  updated_at=?
+                WHERE id=?
+                """,
+                (
+                    event.get("thread_id"), event.get("shared_url"),
+                    event.get("direction"), event.get("author_username", ""),
+                    event.get("author_username", ""), timestamp, event["id"],
+                ),
+            )
         return cursor.rowcount > 0
 
 
-def list_events(status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+def list_events(
+    status: str | None = None,
+    kind: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
     query = "SELECT * FROM events"
     params: list[Any] = []
+    conditions: list[str] = []
     if status:
-        query += " WHERE status=?"
+        conditions.append("status=?")
         params.append(status)
+    if kind:
+        conditions.append("kind=?")
+        params.append(kind)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY received_at DESC LIMIT ?"
     params.append(min(max(limit, 1), 500))
     with connect() as conn:
@@ -231,10 +269,54 @@ def list_events(status: str | None = None, limit: int = 100) -> list[dict[str, A
     return [dict(row) for row in rows]
 
 
+def count_events_by_status() -> dict[str, int]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) AS count FROM events GROUP BY status"
+        ).fetchall()
+    return {row["status"]: int(row["count"]) for row in rows}
+
+
 def get_event(event_id: str) -> dict[str, Any] | None:
     with connect() as conn:
         row = conn.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
     return dict(row) if row else None
+
+
+def list_conversations() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM events WHERE kind='dm' AND thread_id IS NOT NULL "
+            "ORDER BY received_at DESC"
+        ).fetchall()
+    conversations: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        item = dict(row)
+        thread_id = str(item["thread_id"])
+        conversation = conversations.setdefault(thread_id, {
+            "thread_id": thread_id,
+            "username": "",
+            "latest_body": item["body"],
+            "latest_at": item["received_at"],
+            "message_count": 0,
+            "needs_attention": 0,
+        })
+        conversation["message_count"] += 1
+        if item["direction"] == "inbound" and item["author_username"]:
+            conversation["username"] = conversation["username"] or item["author_username"]
+        if item["status"] in {"pending", "drafted", "manual"}:
+            conversation["needs_attention"] += 1
+    return list(conversations.values())
+
+
+def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM events WHERE kind='dm' AND thread_id=? "
+            "ORDER BY received_at ASC",
+            (thread_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def update_event(event_id: str, values: dict[str, Any]) -> dict[str, Any] | None:

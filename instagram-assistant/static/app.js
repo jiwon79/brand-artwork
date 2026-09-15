@@ -1,5 +1,6 @@
 const token = document.querySelector('meta[name="instagram-assistant-token"]').content;
 let currentStatus = "";
+let selectedThreadId = "";
 
 async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
@@ -22,7 +23,13 @@ function toast(message, error = false) {
 }
 
 function escapeHtml(value = "") {
-  return value.replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
+  return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
+}
+
+function formatTime(value, short = false) {
+  return new Date(value).toLocaleString("ko-KR", short ? {
+    month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
+  } : undefined);
 }
 
 async function refreshStatus() {
@@ -44,26 +51,96 @@ async function refreshStatus() {
   document.querySelector("#logout").style.display = data.authenticated ? "inline-flex" : "none";
 }
 
-async function refreshEvents() {
-  const query = currentStatus ? `?status=${currentStatus}` : "";
-  const events = await api(`/api/events${query}`);
+function actionButtons(event) {
+  if (!event) return "";
+  return `
+    <div class="event-actions" data-id="${escapeHtml(event.id)}">
+      ${["manual", "pending"].includes(event.status) ? '<button class="quiet" data-action="codex">Codex 판단</button>' : ""}
+      ${event.status === "drafted" ? '<button class="quiet" data-action="save">초안 저장</button><button class="primary" data-action="send">보내기</button>' : ""}
+      ${!["sent", "ignored", "history"].includes(event.status) ? '<button class="quiet" data-action="ignore">무시</button>' : ""}
+    </div>`;
+}
+
+function safeUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function sharedLink(event) {
+  const url = safeUrl(event.shared_url);
+  if (!url) return "";
+  return `<a class="shared-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">공유된 콘텐츠 열기 <span>↗</span></a>`;
+}
+
+async function refreshComments() {
+  const query = currentStatus ? `&status=${currentStatus}` : "";
+  const events = await api(`/api/events?kind=comment&limit=500${query}`);
   const root = document.querySelector("#events");
   root.innerHTML = events.map((event) => `
     <article class="event" data-id="${escapeHtml(event.id)}">
       <div class="event-top">
-        <div class="event-meta"><span class="badge">${event.kind === "comment" ? "댓글" : "DM"}</span><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${new Date(event.received_at).toLocaleString("ko-KR")}</span></div>
+        <div class="event-meta"><span class="badge">댓글</span><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${formatTime(event.received_at)}</span></div>
         <span class="badge">${escapeHtml(event.intent || event.status)}</span>
       </div>
-      <p class="event-body">${escapeHtml(event.body || "공유된 콘텐츠")}</p>
+      <p class="event-body">${escapeHtml(event.body)}</p>
       ${event.draft ? `<textarea class="draft">${escapeHtml(event.draft)}</textarea>` : ""}
-      <div class="event-actions">
-        ${event.status === "manual" || event.status === "pending" ? `<button class="quiet" data-action="codex">Codex 판단</button>` : ""}
-        ${event.status === "drafted" ? `<button class="quiet" data-action="save">초안 저장</button><button class="primary" data-action="send">보내기</button>` : ""}
-        ${!["sent", "ignored"].includes(event.status) ? `<button class="quiet" data-action="ignore">무시</button>` : ""}
-      </div>
+      ${actionButtons(event)}
     </article>
   `).join("");
   document.querySelector("#empty-events").style.display = events.length ? "none" : "block";
+}
+
+async function refreshConversations(keepSelection = true) {
+  const conversations = await api("/api/conversations");
+  if (!keepSelection || !conversations.some((item) => item.thread_id === selectedThreadId)) {
+    selectedThreadId = conversations[0]?.thread_id || "";
+  }
+  document.querySelector("#conversation-list").innerHTML = conversations.map((item) => `
+    <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
+      <span class="conversation-name">${escapeHtml(item.username || "알 수 없음")}${item.needs_attention ? `<b>${item.needs_attention}</b>` : ""}</span>
+      <span class="conversation-preview">${escapeHtml(item.latest_body || "공유된 콘텐츠")}</span>
+      <time>${formatTime(item.latest_at, true)}</time>
+    </button>
+  `).join("") || '<p class="empty compact">아직 DM 대화가 없습니다.</p>';
+  await refreshChat();
+}
+
+async function refreshChat() {
+  const panel = document.querySelector("#chat-panel");
+  if (!selectedThreadId) {
+    panel.innerHTML = '<p class="empty">대화를 선택하세요.</p>';
+    return;
+  }
+  const messages = await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}`);
+  const username = [...messages].reverse().find((item) => item.direction === "inbound" && item.author_username)?.author_username || "알 수 없음";
+  const target = [...messages].reverse().find((item) => item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status));
+  panel.innerHTML = `
+    <header class="chat-header"><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></header>
+    <div class="chat-messages">
+      ${messages.map((message) => `
+        <div class="message-row ${message.direction}">
+          <div class="message-bubble">
+            ${message.body ? `<p>${escapeHtml(message.body)}</p>` : ""}
+            ${sharedLink(message)}
+            <time>${formatTime(message.received_at, true)}</time>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+    ${target ? `<footer class="chat-compose">
+      <div class="compose-context"><span class="badge">${escapeHtml(target.intent || target.status)}</span><span>${escapeHtml(target.body || "공유된 콘텐츠")}</span></div>
+      ${target.draft ? `<textarea class="draft" placeholder="답변 초안">${escapeHtml(target.draft)}</textarea>` : ""}
+      ${actionButtons(target)}
+    </footer>` : '<footer class="chat-compose done">처리할 새 메시지가 없습니다.</footer>'}
+  `;
+  requestAnimationFrame(() => {
+    const scroll = panel.querySelector(".chat-messages");
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  });
 }
 
 async function refreshArtworks() {
@@ -74,7 +151,24 @@ async function refreshArtworks() {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshStatus(), refreshEvents(), refreshArtworks()]);
+  await Promise.all([refreshStatus(), refreshComments(), refreshArtworks(), refreshConversations()]);
+}
+
+async function runEventAction(container, clicked) {
+  const action = clicked.dataset.action;
+  if (!action) return false;
+  const actionRoot = clicked.closest(".event-actions");
+  const id = encodeURIComponent(actionRoot.dataset.id);
+  const draft = container.querySelector(".draft");
+  if (action === "save") await api(`/api/events/${id}/draft`, { method: "PATCH", body: JSON.stringify({ draft: draft.value }) });
+  if (action === "codex") await api(`/api/events/${id}/codex`, { method: "POST" });
+  if (action === "ignore") await api(`/api/events/${id}/ignore`, { method: "POST" });
+  if (action === "send") {
+    await api(`/api/events/${id}/draft`, { method: "PATCH", body: JSON.stringify({ draft: draft.value }) });
+    await api(`/api/events/${id}/send`, { method: "POST" });
+  }
+  toast(action === "send" ? "전송했습니다." : "반영했습니다.");
+  return true;
 }
 
 document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => {
@@ -83,39 +177,53 @@ document.querySelectorAll(".tab").forEach((button) => button.addEventListener("c
   document.querySelector(`#${button.dataset.view}`).classList.add("active");
 }));
 
+document.querySelectorAll(".inbox-mode").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll(".inbox-mode").forEach((node) => node.classList.remove("active"));
+  button.classList.add("active");
+  const dmMode = button.dataset.mode === "dm";
+  document.querySelector("#dm-inbox").hidden = !dmMode;
+  document.querySelector("#comment-inbox").hidden = dmMode;
+}));
+
 document.querySelectorAll(".filter").forEach((button) => button.addEventListener("click", async () => {
   document.querySelectorAll(".filter").forEach((node) => node.classList.remove("active"));
   button.classList.add("active");
   currentStatus = button.dataset.status;
-  await refreshEvents();
+  await refreshComments();
 }));
 
+document.querySelector("#conversation-list").addEventListener("click", async (event) => {
+  const item = event.target.closest(".conversation-item");
+  if (!item) return;
+  selectedThreadId = item.dataset.threadId;
+  document.querySelectorAll(".conversation-item").forEach((node) => node.classList.toggle("active", node === item));
+  await refreshChat();
+});
+
 document.querySelector("#sync").addEventListener("click", async () => {
-  try { const result = await api("/api/sync", { method: "POST" }); toast(`새 댓글 ${result.comments} · 새 DM ${result.dms}`); await refreshAll(); }
-  catch (error) { toast(error.message, true); }
+  try {
+    const result = await api("/api/sync", { method: "POST" });
+    toast(`새 댓글 ${result.comments} · 새 DM ${result.dms}`);
+    await refreshAll();
+  } catch (error) { toast(error.message, true); }
 });
 
 document.querySelector("#classify").addEventListener("click", async () => {
-  try { const result = await api("/api/events/classify", { method: "POST" }); toast(`${result.classified}개 항목을 분류했습니다.`); await refreshAll(); }
-  catch (error) { toast(error.message, true); }
+  try {
+    const result = await api("/api/events/classify", { method: "POST" });
+    toast(`${result.classified}개 항목을 분류했습니다.`);
+    await refreshAll();
+  } catch (error) { toast(error.message, true); }
 });
 
 document.querySelector("#events").addEventListener("click", async (event) => {
-  const action = event.target.dataset.action;
-  if (!action) return;
-  const card = event.target.closest(".event");
-  const id = encodeURIComponent(card.dataset.id);
-  try {
-    if (action === "save") await api(`/api/events/${id}/draft`, { method: "PATCH", body: JSON.stringify({ draft: card.querySelector(".draft").value }) });
-    if (action === "codex") await api(`/api/events/${id}/codex`, { method: "POST" });
-    if (action === "ignore") await api(`/api/events/${id}/ignore`, { method: "POST" });
-    if (action === "send") {
-      await api(`/api/events/${id}/draft`, { method: "PATCH", body: JSON.stringify({ draft: card.querySelector(".draft").value }) });
-      await api(`/api/events/${id}/send`, { method: "POST" });
-    }
-    toast(action === "send" ? "전송했습니다." : "반영했습니다.");
-    await refreshAll();
-  } catch (error) { toast(error.message, true); }
+  try { if (await runEventAction(event.target.closest(".event"), event.target)) await refreshAll(); }
+  catch (error) { toast(error.message, true); }
+});
+
+document.querySelector("#chat-panel").addEventListener("click", async (event) => {
+  try { if (await runEventAction(event.target.closest(".chat-panel"), event.target)) await refreshAll(); }
+  catch (error) { toast(error.message, true); }
 });
 
 const loginDialog = document.querySelector("#login-dialog");

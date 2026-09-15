@@ -11,10 +11,13 @@ from pydantic import BaseModel, Field
 from .codex_classifier import classify_with_codex
 from .config import ROOT, local_token, paths
 from .db import (
+    count_events_by_status,
     get_event,
     get_settings,
     initialize,
     list_artworks,
+    list_conversation_messages,
+    list_conversations,
     list_events,
     save_artwork,
     sent_today_count,
@@ -83,15 +86,15 @@ def index() -> str:
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     settings = get_settings()
-    events = list_events(limit=500)
+    counts = count_events_by_status()
     return {
         "authenticated": paths.session.exists(),
         "connected": instagram_service.connected,
         "settings": settings,
         "counts": {
-            "pending": sum(item["status"] == "pending" for item in events),
-            "drafted": sum(item["status"] == "drafted" for item in events),
-            "manual": sum(item["status"] == "manual" for item in events),
+            "pending": counts.get("pending", 0),
+            "drafted": counts.get("drafted", 0),
+            "manual": counts.get("manual", 0),
             "sent_today": sent_today_count(),
         },
     }
@@ -123,8 +126,22 @@ def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict
 
 
 @app.get("/api/events")
-def events(status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
-    return list_events(status=status, limit=limit)
+def events(
+    status: str | None = None,
+    kind: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    return list_events(status=status, kind=kind, limit=limit)
+
+
+@app.get("/api/conversations")
+def conversations() -> list[dict[str, Any]]:
+    return list_conversations()
+
+
+@app.get("/api/conversations/{thread_id}")
+def conversation(thread_id: str) -> list[dict[str, Any]]:
+    return list_conversation_messages(thread_id)
 
 
 @app.post("/api/events/classify")
