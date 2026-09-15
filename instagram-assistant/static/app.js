@@ -68,16 +68,34 @@ function formatTime(value, short = false) {
 function intentLabel(value) {
   return ({
     demo_interest: "체험 요청",
+    demo_link_request: "체험 링크",
     build_interest: "제작 문의",
-    purchase_interest: "구매 문의",
+    ambiguous_build_interest: "제작 확인",
+    ambiguous_link_request: "링크 확인",
+    purchase_intent: "구매 문의",
     needs_review: "확인 필요",
     praise: "칭찬",
     reaction_or_close: "반응",
-    pending: "새 댓글",
+    pending: "미분류",
     drafted: "답변 준비",
     manual: "확인 필요",
     sent: "완료",
+    completed: "완료",
   })[value] || value;
+}
+
+function intentTone(value) {
+  if (["demo_interest", "demo_link_request", "ambiguous_link_request"].includes(value)) return "demo";
+  if (["build_interest", "ambiguous_build_interest"].includes(value)) return "build";
+  if (value === "purchase_intent") return "purchase";
+  if (["needs_review", "manual"].includes(value)) return "review";
+  if (["reaction_or_close", "praise", "sent", "completed"].includes(value)) return "resolved";
+  return "pending";
+}
+
+function intentBadge(value) {
+  if (!value) return "";
+  return `<span class="intent-badge intent-${intentTone(value)}">${escapeHtml(intentLabel(value))}</span>`;
 }
 
 async function refreshStatus() {
@@ -214,15 +232,19 @@ async function refreshComments() {
   document.querySelector("#empty-events").style.display = events.length ? "none" : "block";
 }
 
-async function refreshConversations(keepSelection = true) {
+async function refreshConversations(keepSelection = true, fallbackIndex = 0, skipThreadId = "") {
   const query = currentDmStatus ? `?status=${currentDmStatus}` : "";
   const conversations = await api(`/api/conversations${query}`);
   if (!keepSelection || !conversations.some((item) => item.thread_id === selectedThreadId)) {
-    selectedThreadId = conversations[0]?.thread_id || "";
+    let index = Math.min(Math.max(fallbackIndex, 0), Math.max(conversations.length - 1, 0));
+    if (conversations[index]?.thread_id === skipThreadId) {
+      index = index + 1 < conversations.length ? index + 1 : Math.max(index - 1, 0);
+    }
+    selectedThreadId = conversations[index]?.thread_id || "";
   }
   document.querySelector("#conversation-list").innerHTML = conversations.map((item) => `
     <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
-      <span class="conversation-name">${escapeHtml(item.username || "알 수 없음")}</span>
+      <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong>${intentBadge(item.classification)}</span>
       <span class="conversation-preview">${escapeHtml(item.latest_body || "메시지 내용 없음")}</span>
       <time>${formatTime(item.latest_at, true)}</time>
     </button>
@@ -246,7 +268,7 @@ async function refreshChat() {
     return index > lastResolutionIndex && item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status);
   });
   panel.innerHTML = `
-    <header class="chat-header"><button class="chat-back" data-action="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><div class="chat-header-actions">${target ? '<button class="complete-conversation" data-action="complete-conversation">완료</button>' : ""}<a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
+    <header class="chat-header"><button class="chat-back" data-action="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div class="chat-identity"><div class="chat-title-row"><strong>${escapeHtml(username)}</strong>${intentBadge(target?.intent || target?.status)}</div><span>${messages.length}개 메시지</span></div><div class="chat-header-actions">${target ? '<button class="complete-conversation" data-action="complete-conversation">완료</button>' : ""}<a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
     <div class="chat-messages">
       ${messages.map((message) => `
         <div class="message-row ${message.direction}" data-id="${escapeHtml(message.id)}">
@@ -261,11 +283,6 @@ async function refreshChat() {
         </div>
       `).join("")}
     </div>
-    ${target ? `<footer class="chat-compose">
-      <div class="compose-context"><span class="badge">${escapeHtml(target.intent || target.status)}</span><span>${escapeHtml(target.body || "공유된 콘텐츠")}</span></div>
-      ${target.draft ? `<textarea class="draft" placeholder="답변 초안">${escapeHtml(target.draft)}</textarea>` : ""}
-      ${actionButtons(target)}
-    </footer>` : '<footer class="chat-compose done">처리할 새 메시지가 없습니다.</footer>'}
   `;
   requestAnimationFrame(() => {
     const scroll = panel.querySelector(".chat-messages");
@@ -387,12 +404,15 @@ document.querySelector("#chat-panel").addEventListener("click", async (event) =>
     }
     const complete = event.target.closest('[data-action="complete-conversation"]');
     if (complete) {
+      const items = [...document.querySelectorAll(".conversation-item")];
+      const currentIndex = Math.max(items.findIndex((item) => item.dataset.threadId === selectedThreadId), 0);
+      const completedThreadId = selectedThreadId;
       complete.disabled = true;
       complete.setAttribute("aria-busy", "true");
       await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}/complete`, { method: "POST" });
       toast("대화를 완료로 옮겼습니다.");
-      document.querySelector("#dm-inbox").classList.remove("chat-open");
-      await refreshConversations(false);
+      await refreshConversations(false, currentIndex, completedThreadId);
+      document.querySelector("#dm-inbox").classList.toggle("chat-open", Boolean(selectedThreadId));
       return;
     }
     const heart = event.target.closest('[data-action="dm-heart"]');

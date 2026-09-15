@@ -77,11 +77,13 @@ def test_conversations_group_messages_and_preserve_order(tmp_path: Path, monkeyp
         },
     ):
         db.upsert_event(item)
+    db.update_event("dm:1", {"intent": "demo_link_request"})
     conversations = db.list_conversations()
     assert conversations[0]["username"] == "someone"
     assert conversations[0]["message_count"] == 2
     assert conversations[0]["latest_body"] == "여기 있어요"
     assert conversations[0]["has_actionable"] is False
+    assert conversations[0]["classification"] == "demo_link_request"
     assert db.list_conversations(status="active") == []
     assert db.list_conversations(status="completed")[0]["thread_id"] == "thread-1"
     messages = db.list_conversation_messages("thread-1")

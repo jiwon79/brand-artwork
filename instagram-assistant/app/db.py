@@ -400,6 +400,8 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
             "latest_at": item["received_at"],
             "message_count": 0,
             "has_actionable": False,
+            "classification": None,
+            "_latest_inbound_classification": None,
             "_has_newer_resolution": False,
         })
         conversation["message_count"] += 1
@@ -411,12 +413,17 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
             item["status"] in {"pending", "drafted", "manual"}
             and not conversation["_has_newer_resolution"]
         ):
+            if not conversation["has_actionable"]:
+                conversation["classification"] = item["intent"] or item["status"]
             conversation["has_actionable"] = True
         if item["direction"] == "inbound" and item["author_username"]:
             conversation["username"] = conversation["username"] or item["author_username"]
+        if item["direction"] == "inbound" and conversation["_latest_inbound_classification"] is None:
+            conversation["_latest_inbound_classification"] = item["intent"] or item["status"]
     items = list(conversations.values())
     for item in items:
         item.pop("_has_newer_resolution", None)
+        item["classification"] = item["classification"] or item.pop("_latest_inbound_classification", None)
     if status == "active":
         return [item for item in items if item["has_actionable"]]
     if status == "completed":
