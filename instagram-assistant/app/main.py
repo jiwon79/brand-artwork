@@ -16,6 +16,7 @@ from .db import (
     get_settings,
     initialize,
     list_artworks,
+    list_comment_threads,
     list_conversation_messages,
     list_conversations,
     list_events,
@@ -135,6 +136,8 @@ def events(
     kind: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
+    if kind == "comment":
+        return list_comment_threads(status=status, limit=limit)
     return list_events(status=status, kind=kind, limit=limit)
 
 

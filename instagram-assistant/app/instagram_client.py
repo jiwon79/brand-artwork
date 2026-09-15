@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from instagrapi import Client
+from instagrapi.extractors import extract_comment
 from instagrapi.exceptions import (
     ChallengeRequired,
     FeedbackRequired,
@@ -105,6 +106,7 @@ class InstagramService:
         with self._lock:
             client = self.connect_saved_session()
             inserted_comments = 0
+            inserted_replies = 0
             inserted_dms = 0
             try:
                 medias = client.user_medias(client.user_id, amount=media_amount)
@@ -117,7 +119,10 @@ class InstagramService:
                     if artwork and not artwork.get("media_id"):
                         artwork["media_id"] = str(media.id)
                         save_artwork(artwork)
-                    for comment in client.media_comments(media.id, amount=comments_per_media):
+                    comments_with_replies = self._media_comments_with_replies(
+                        client, str(media.id), comments_per_media
+                    )
+                    for comment, replies in comments_with_replies:
                         user = getattr(comment, "user", None)
                         user_id = str(getattr(user, "pk", "") or "")
                         if user_id == str(client.user_id):
@@ -136,6 +141,35 @@ class InstagramService:
                             "body": getattr(comment, "text", "") or "",
                             "received_at": self._timestamp(created_at),
                         }))
+                        has_own_reply = False
+                        for reply in replies:
+                            reply_user = getattr(reply, "user", None)
+                            reply_user_id = str(getattr(reply_user, "pk", "") or "")
+                            outbound = reply_user_id == str(client.user_id)
+                            has_own_reply = has_own_reply or outbound
+                            inserted_replies += int(upsert_event({
+                                "id": f"comment:{reply.pk}",
+                                "kind": "comment",
+                                "source_id": str(reply.pk),
+                                "parent_comment_id": str(comment.pk),
+                                "media_id": str(media.id),
+                                "post_code": code,
+                                "author_id": reply_user_id,
+                                "author_username": getattr(reply_user, "username", "") or "",
+                                "direction": "outbound" if outbound else "inbound",
+                                "has_liked": getattr(reply, "has_liked", None),
+                                "like_count": getattr(reply, "like_count", None),
+                                "body": getattr(reply, "text", "") or "",
+                                "received_at": self._timestamp(
+                                    getattr(reply, "created_at_utc", None)
+                                ),
+                                "status": "history",
+                            }))
+                        if has_own_reply:
+                            update_event(
+                                f"comment:{comment.pk}",
+                                {"status": "sent", "error": None},
+                            )
 
                 thread_groups = [client.direct_threads(amount=threads_amount, thread_message_limit=20)]
                 for box in ("primary", "general"):
@@ -185,7 +219,59 @@ class InstagramService:
                 self._halt(str(exc))
                 raise InstagramHaltedError(str(exc)) from exc
             update_settings({"last_sync_at": datetime.now(UTC).isoformat()})
-            return {"comments": inserted_comments, "dms": inserted_dms}
+            return {
+                "comments": inserted_comments,
+                "comment_replies": inserted_replies,
+                "dms": inserted_dms,
+            }
+
+    @staticmethod
+    def _media_comments_with_replies(
+        client: Client,
+        media_id: str,
+        amount: int,
+    ) -> list[tuple[Any, list[Any]]]:
+        results: list[tuple[Any, list[Any]]] = []
+        seen: set[str] = set()
+        min_id = ""
+        max_id = ""
+        while len(results) < amount:
+            comments, next_min_id, next_max_id = client.media_comments_v1_chunk(
+                media_id, min_id=min_id, max_id=max_id
+            )
+            page = getattr(client, "last_json", {}) or {}
+            raw_by_id = {
+                str(item.get("pk")): item
+                for item in page.get("comments", [])
+            }
+            for comment in comments:
+                comment_id = str(comment.pk)
+                if comment_id in seen:
+                    continue
+                seen.add(comment_id)
+                raw = raw_by_id.get(comment_id, {})
+                replies = [
+                    extract_comment(item)
+                    for item in (raw.get("preview_child_comments") or [])
+                ]
+                reply_count = int(raw.get("child_comment_count") or len(replies))
+                if reply_count > len(replies):
+                    replies = client.media_comment_replies(media_id, comment_id, amount=0)
+                results.append((comment, replies))
+                if len(results) >= amount:
+                    break
+
+            if page.get("has_more_comments") and next_max_id and next_max_id != max_id:
+                max_id, min_id = next_max_id, ""
+            elif (
+                page.get("has_more_headload_comments")
+                and next_min_id
+                and next_min_id != min_id
+            ):
+                min_id, max_id = next_min_id, ""
+            else:
+                break
+        return results[:amount]
 
     def send_for_event(self, event_id: str) -> dict[str, Any]:
         with self._lock:

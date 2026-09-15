@@ -72,3 +72,40 @@ def test_existing_comment_is_enriched_with_like_state(tmp_path: Path, monkeypatc
     saved = db.get_event("comment:1")
     assert saved["has_liked"] == 1
     assert saved["like_count"] == 3
+
+
+def test_comment_threads_include_replies_and_identify_own_reply(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    parent = {
+        "id": "comment:1", "kind": "comment", "source_id": "1",
+        "author_username": "someone", "body": "저요", "received_at": db.now(),
+    }
+    reply = {
+        "id": "comment:2", "kind": "comment", "source_id": "2",
+        "parent_comment_id": "1", "author_username": "jiiwon.studio",
+        "direction": "outbound", "has_liked": True, "like_count": 1,
+        "body": "디엠 드렸어요", "status": "history", "received_at": db.now(),
+    }
+    db.upsert_event(parent)
+    db.upsert_event(reply)
+    threads = db.list_comment_threads()
+    assert len(threads) == 1
+    assert threads[0]["replies"][0]["direction"] == "outbound"
+    assert threads[0]["replies"][0]["has_liked"] == 1
+    assert len(db.list_events(kind="comment")) == 1
+
+
+def test_answered_comment_can_be_marked_complete(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.upsert_event({
+        "id": "comment:1", "kind": "comment", "source_id": "1",
+        "author_username": "someone", "body": "저요", "status": "drafted",
+        "received_at": db.now(),
+    })
+    completed = db.update_event("comment:1", {"status": "sent"})
+    assert completed["status"] == "sent"
+    assert db.list_comment_threads(status="sent")[0]["source_id"] == "1"

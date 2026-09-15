@@ -76,6 +76,20 @@ function sharedLink(event) {
   return `<div class="shared-content"><span>공유된 콘텐츠</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
 }
 
+function commentHeart(event, compact = false) {
+  return `<button class="comment-heart ${event.has_liked ? "liked" : ""} ${compact ? "compact" : ""}" data-action="comment-heart" data-liked="${event.has_liked ? "true" : "false"}" aria-label="${event.has_liked ? "댓글 하트 취소" : "댓글에 하트"}" aria-pressed="${event.has_liked ? "true" : "false"}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></button>`;
+}
+
+function commentReplies(event) {
+  if (!event.replies?.length) return '<p class="no-replies">아직 대댓글이 없습니다.</p>';
+  return `<div class="comment-replies">${event.replies.map((reply) => `
+    <div class="comment-reply ${reply.direction === "outbound" ? "mine" : ""}" data-id="${escapeHtml(reply.id)}">
+      <div class="reply-meta"><strong>${reply.direction === "outbound" ? "내 답글" : escapeHtml(reply.author_username || "알 수 없음")}</strong><span>${formatTime(reply.received_at)}</span></div>
+      <p>${escapeHtml(reply.body)}</p>
+      ${commentHeart(reply, true)}
+    </div>`).join("")}</div>`;
+}
+
 async function refreshComments() {
   const query = currentStatus ? `&status=${currentStatus}` : "";
   const events = await api(`/api/events?kind=comment&limit=500${query}`);
@@ -84,10 +98,11 @@ async function refreshComments() {
     <article class="event" data-id="${escapeHtml(event.id)}">
       <div class="event-top">
         <div class="event-meta"><span class="badge">댓글</span><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${formatTime(event.received_at)}</span></div>
-        <div class="comment-state"><span class="badge">${escapeHtml(event.intent || event.status)}</span><button class="comment-heart ${event.has_liked ? "liked" : ""}" data-action="comment-heart" data-liked="${event.has_liked ? "true" : "false"}" aria-label="${event.has_liked ? "댓글 하트 취소" : "댓글에 하트"}" aria-pressed="${event.has_liked ? "true" : "false"}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></button></div>
+        <div class="comment-state"><span class="badge">${escapeHtml(event.intent || event.status)}</span>${commentHeart(event)}</div>
       </div>
       <p class="event-body">${escapeHtml(event.body)}</p>
-      ${event.draft ? `<textarea class="draft">${escapeHtml(event.draft)}</textarea>` : ""}
+      ${commentReplies(event)}
+      ${event.status === "drafted" && event.draft ? `<textarea class="draft">${escapeHtml(event.draft)}</textarea>` : ""}
       ${actionButtons(event)}
     </article>
   `).join("");
@@ -203,7 +218,7 @@ document.querySelector("#conversation-list").addEventListener("click", async (ev
 document.querySelector("#sync").addEventListener("click", async () => {
   try {
     const result = await api("/api/sync", { method: "POST" });
-    toast(`새 댓글 ${result.comments} · 새 DM ${result.dms}`);
+    toast(`새 댓글 ${result.comments} · 새 대댓글 ${result.comment_replies || 0} · 새 DM ${result.dms}`);
     await refreshAll();
   } catch (error) { toast(error.message, true); }
 });
@@ -218,7 +233,7 @@ document.querySelector("#classify").addEventListener("click", async () => {
 
 document.querySelector("#events").addEventListener("click", async (event) => {
   try {
-    const card = event.target.closest(".event");
+    const card = event.target.closest(".comment-reply") || event.target.closest(".event");
     const heart = event.target.closest('[data-action="comment-heart"]');
     if (heart) {
       await api(`/api/events/${encodeURIComponent(card.dataset.id)}/comment-like`, {

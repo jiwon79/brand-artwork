@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
   kind TEXT NOT NULL CHECK(kind IN ('comment', 'dm')),
   source_id TEXT NOT NULL,
+  parent_comment_id TEXT,
   thread_id TEXT,
   media_id TEXT,
   post_code TEXT,
@@ -128,6 +129,8 @@ def initialize() -> None:
             conn.execute("ALTER TABLE events ADD COLUMN has_liked INTEGER")
         if "like_count" not in columns:
             conn.execute("ALTER TABLE events ADD COLUMN like_count INTEGER")
+        if "parent_comment_id" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN parent_comment_id TEXT")
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
@@ -218,13 +221,13 @@ def upsert_event(event: dict[str, Any]) -> bool:
         cursor = conn.execute(
             """
             INSERT OR IGNORE INTO events(
-              id, kind, source_id, thread_id, media_id, post_code, shared_url,
+              id, kind, source_id, parent_comment_id, thread_id, media_id, post_code, shared_url,
               author_id, author_username, direction, has_liked, like_count, body,
               received_at, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                event["id"], event["kind"], event["source_id"],
+                event["id"], event["kind"], event["source_id"], event.get("parent_comment_id"),
                 event.get("thread_id"), event.get("media_id"), event.get("post_code"),
                 event.get("shared_url"), event.get("author_id"),
                 event.get("author_username", ""), event.get("direction", "inbound"),
@@ -237,6 +240,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
             conn.execute(
                 """
                 UPDATE events SET
+                  parent_comment_id=COALESCE(?, parent_comment_id),
                   thread_id=COALESCE(?, thread_id),
                   shared_url=COALESCE(?, shared_url),
                   direction=COALESCE(?, direction),
@@ -247,7 +251,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
                 WHERE id=?
                 """,
                 (
-                    event.get("thread_id"), event.get("shared_url"),
+                    event.get("parent_comment_id"), event.get("thread_id"), event.get("shared_url"),
                     event.get("direction"), event.get("has_liked"),
                     event.get("like_count"), event.get("author_username", ""),
                     event.get("author_username", ""), timestamp, event["id"],
@@ -270,6 +274,8 @@ def list_events(
     if kind:
         conditions.append("kind=?")
         params.append(kind)
+    if kind == "comment":
+        conditions.append("parent_comment_id IS NULL")
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY received_at DESC LIMIT ?"
@@ -277,6 +283,30 @@ def list_events(
     with connect() as conn:
         rows = conn.execute(query, params).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_comment_threads(
+    status: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    comments = list_events(status=status, kind="comment", limit=limit)
+    if not comments:
+        return []
+    parent_ids = [comment["source_id"] for comment in comments]
+    placeholders = ",".join("?" for _ in parent_ids)
+    with connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM events WHERE kind='comment' "
+            f"AND parent_comment_id IN ({placeholders}) ORDER BY received_at ASC",
+            parent_ids,
+        ).fetchall()
+    replies_by_parent: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        reply = dict(row)
+        replies_by_parent.setdefault(str(reply["parent_comment_id"]), []).append(reply)
+    for comment in comments:
+        comment["replies"] = replies_by_parent.get(str(comment["source_id"]), [])
+    return comments
 
 
 def count_events_by_status() -> dict[str, int]:

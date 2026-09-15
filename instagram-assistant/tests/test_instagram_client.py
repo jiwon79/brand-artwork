@@ -53,3 +53,27 @@ def test_comment_like_updates_local_state(monkeypatch):
     updated = service.set_comment_like("comment:1", True)
     assert updated["has_liked"] is True
     assert updated["like_count"] == 3
+
+
+def test_media_comments_collect_preview_replies(monkeypatch):
+    parent = SimpleNamespace(pk="1")
+    reply = SimpleNamespace(pk="2")
+
+    class FakeClient:
+        last_json = {}
+
+        def media_comments_v1_chunk(self, media_id, min_id="", max_id=""):
+            self.last_json = {
+                "comments": [{
+                    "pk": "1",
+                    "child_comment_count": 1,
+                    "preview_child_comments": [{"pk": "2"}],
+                }],
+                "has_more_comments": False,
+                "has_more_headload_comments": False,
+            }
+            return [parent], "", ""
+
+    monkeypatch.setattr(instagram_client, "extract_comment", lambda item: reply)
+    results = InstagramService._media_comments_with_replies(FakeClient(), "media-1", 50)
+    assert results == [(parent, [reply])]
