@@ -14,6 +14,8 @@ Local-first assistant for `jiiwon.studio`. It reads recent comments and DMs with
 
 This uses an unofficial Instagram API. Account restrictions remain possible even with conservative settings.
 
+The `instagrapi` dependency is pinned to the upstream login-profile fix because the latest PyPI build still identifies itself as an obsolete Instagram Android app.
+
 ## Run
 
 On macOS, double-click `start.command`. Or run it manually:

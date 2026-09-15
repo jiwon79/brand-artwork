@@ -5,7 +5,7 @@ description = "Local-first Instagram comment and DM assistant for jiiwon.studio"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.116,<1",
-  "instagrapi>=2.2,<3",
+  "instagrapi @ git+https://github.com/subzeroid/instagrapi.git@6f2bd2316010ed1425b96e583ca35b0fa09c79e7",
   "uvicorn[standard]>=0.35,<1",
 ]
 

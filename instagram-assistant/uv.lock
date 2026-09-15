@@ -56,7 +56,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
-    { name = "instagrapi", specifier = ">=2.2,<3" },
+    { name = "instagrapi", git = "https://github.com/subzeroid/instagrapi.git?rev=6f2bd2316010ed1425b96e583ca35b0fa09c79e7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
 ]
 
@@ -357,17 +357,13 @@ wheels = [
 [[package]]
 name = "instagrapi"
 version = "2.18.20"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/subzeroid/instagrapi.git?rev=6f2bd2316010ed1425b96e583ca35b0fa09c79e7#6f2bd2316010ed1425b96e583ca35b0fa09c79e7" }
 dependencies = [
     { name = "pillow" },
     { name = "pycryptodomex" },
     { name = "pydantic" },
     { name = "pysocks" },
     { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/ba/16da4a78f9cd2491f85ea70709658396007f01915286a77a4a7f30633615/instagrapi-2.18.20.tar.gz", hash = "sha256:5748cc7d545ad2f850683efbd54c39d09a4d21426ee891fda55707ae902e6159", size = 228307, upload-time = "2026-09-12T16:38:36.075Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/bd/e666adc4dfeb21686bae6ba0cb7c253954cff14080693f0e7be0570586b5/instagrapi-2.18.20-py3-none-any.whl", hash = "sha256:402dc0241038c2ce392d919a59e5ee227de22bce762ed07c874c0dc711b2922f", size = 246900, upload-time = "2026-09-12T16:38:34.121Z" },
 ]
 
 [[package]]
