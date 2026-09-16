@@ -4,6 +4,40 @@ from app import instagram_client
 from app.instagram_client import InstagramService
 
 
+def test_login_reuses_saved_device_settings(monkeypatch, tmp_path):
+    session = tmp_path / "instagram-session.json"
+    session.write_text('{"uuids": {"device_id": "stable-device"}}')
+    calls = []
+
+    class FakeClient:
+        user_id = 123
+
+        def load_settings(self, path):
+            calls.append(("load", path))
+
+        def login(self, username, password, verification_code=None):
+            calls.append(("login", username, password, verification_code))
+
+        def get_timeline_feed(self):
+            calls.append(("timeline",))
+
+        def dump_settings(self, path):
+            calls.append(("dump", path))
+            path.write_text("{}")
+
+    monkeypatch.setattr(instagram_client, "Client", FakeClient)
+    monkeypatch.setattr(instagram_client.paths, "session", session)
+    monkeypatch.setattr(instagram_client, "update_settings", lambda values: calls.append(("settings", values)))
+
+    result = InstagramService().login("jiiwon.studio", "secret")
+
+    assert result == {"username": "jiiwon.studio", "user_id": "123"}
+    assert calls[:2] == [
+        ("load", session),
+        ("login", "jiiwon.studio", "secret", None),
+    ]
+
+
 def test_shared_url_reads_current_xma_video_url():
     message = SimpleNamespace(
         xma_share=SimpleNamespace(

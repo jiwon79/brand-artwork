@@ -72,6 +72,8 @@ class InstagramService:
         with self._lock:
             client = Client()
             try:
+                if paths.session.exists():
+                    client.load_settings(paths.session)
                 client.login(username, password, verification_code=verification_code or None)
                 client.get_timeline_feed()
             except TwoFactorRequired as exc:
