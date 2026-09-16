@@ -82,6 +82,10 @@ def as_http_error(exc: Exception) -> HTTPException:
     return HTTPException(400, str(exc))
 
 
+@app.get("/setting", response_class=HTMLResponse)
+@app.get("/work", response_class=HTMLResponse)
+@app.get("/comment", response_class=HTMLResponse)
+@app.get("/dm", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     template = (ROOT / "static" / "index.html").read_text()

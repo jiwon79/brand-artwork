@@ -6,6 +6,56 @@ let dmSearchQuery = "";
 let conversations = [];
 let dmSearchTimer;
 
+const routes = {
+  dm: { path: "/dm", view: "dm", hasStatus: true },
+  comment: { path: "/comment", view: "comments", hasStatus: true },
+  work: { path: "/work", view: "artworks", hasStatus: false },
+  setting: { path: "/setting", view: "settings", hasStatus: false },
+};
+
+function routeFromLocation() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const route = Object.entries(routes).find(([, value]) => value.path === path)?.[0] || "dm";
+  const requestedStatus = new URLSearchParams(window.location.search).get("status");
+  const status = ["active", "completed", "all"].includes(requestedStatus) ? requestedStatus : "active";
+  return { route, status };
+}
+
+function routeUrl(route, status = "active") {
+  const config = routes[route];
+  return `${config.path}${config.hasStatus ? `?status=${status}` : ""}`;
+}
+
+function applyRoute({ canonicalize = false } = {}) {
+  const { route, status } = routeFromLocation();
+  const config = routes[route];
+  if (canonicalize) {
+    const canonical = routeUrl(route, status);
+    if (`${window.location.pathname}${window.location.search}` !== canonical) history.replaceState({}, "", canonical);
+  }
+  currentDmStatus = route === "dm" && status === "all" ? "" : route === "dm" ? status : currentDmStatus;
+  currentCommentStatus = route === "comment" && status === "all" ? "" : route === "comment" && status === "completed" ? "sent" : route === "comment" ? "active" : currentCommentStatus;
+  document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node.dataset.route === route));
+  document.querySelectorAll(".view").forEach((node) => node.classList.toggle("active", node.id === config.view));
+  if (route === "dm") document.querySelectorAll(".dm-filter").forEach((node) => node.classList.toggle("active", node.dataset.status === status));
+  if (route === "comment") document.querySelectorAll(".comment-filter").forEach((node) => node.classList.toggle("active", node.dataset.status === status));
+  return route;
+}
+
+async function refreshRoute(route) {
+  if (route === "dm") await refreshConversations(false);
+  if (route === "comment") await refreshComments();
+  if (route === "work") await refreshArtworks();
+  if (route === "setting") await refreshStatus();
+}
+
+async function navigate(route, status = "active", { replace = false } = {}) {
+  history[replace ? "replaceState" : "pushState"]({}, "", routeUrl(route, status));
+  const activeRoute = applyRoute();
+  document.querySelector(`#${routes[activeRoute].view}`).scrollTop = 0;
+  await refreshRoute(activeRoute);
+}
+
 const themeToggle = document.querySelector("#theme-toggle");
 const themeMedia = matchMedia("(prefers-color-scheme: dark)");
 
@@ -336,28 +386,24 @@ async function runEventAction(container, clicked) {
   return true;
 }
 
-document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => {
-  document.querySelectorAll(".tab,.view").forEach((node) => node.classList.remove("active"));
-  button.classList.add("active");
-  const view = document.querySelector(`#${button.dataset.view}`);
-  view.classList.add("active");
-  view.scrollTop = 0;
+document.querySelectorAll(".tab").forEach((link) => link.addEventListener("click", async (event) => {
+  event.preventDefault();
+  await navigate(link.dataset.route);
 }));
 
 document.querySelectorAll(".comment-filter").forEach((button) => button.addEventListener("click", async () => {
-  document.querySelectorAll(".comment-filter").forEach((node) => node.classList.remove("active"));
-  button.classList.add("active");
-  currentCommentStatus = button.dataset.status;
-  await refreshComments();
+  await navigate("comment", button.dataset.status);
 }));
 
 document.querySelectorAll(".dm-filter").forEach((button) => button.addEventListener("click", async () => {
-  document.querySelectorAll(".dm-filter").forEach((node) => node.classList.remove("active"));
-  button.classList.add("active");
-  currentDmStatus = button.dataset.status;
   document.querySelector("#dm-inbox").classList.remove("chat-open");
-  await refreshConversations(false);
+  await navigate("dm", button.dataset.status);
 }));
+
+window.addEventListener("popstate", async () => {
+  const route = applyRoute({ canonicalize: true });
+  await refreshRoute(route);
+});
 
 document.querySelector("#dm-search").addEventListener("input", (event) => {
   dmSearchQuery = event.currentTarget.value;
@@ -523,4 +569,5 @@ document.querySelector("#save-settings").addEventListener("click", async () => {
   } catch (error) { toast(error.message, true); }
 });
 
+applyRoute({ canonicalize: true });
 refreshAll().catch((error) => toast(error.message, true));
