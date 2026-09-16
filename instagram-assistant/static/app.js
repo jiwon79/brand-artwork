@@ -458,16 +458,39 @@ document.querySelector("#chat-panel").addEventListener("click", async (event) =>
 });
 
 const loginDialog = document.querySelector("#login-dialog");
-document.querySelector("#login-open").addEventListener("click", () => loginDialog.showModal());
+const passwordInput = document.querySelector("#login-password");
+const passwordToggle = document.querySelector("#password-toggle");
+
+document.querySelector("#login-open").addEventListener("click", () => {
+  document.querySelector("#login-error").textContent = "";
+  loginDialog.showModal();
+});
+passwordToggle.addEventListener("click", () => {
+  const visible = passwordInput.type === "text";
+  passwordInput.type = visible ? "password" : "text";
+  passwordToggle.classList.toggle("visible", !visible);
+  passwordToggle.setAttribute("aria-label", visible ? "비밀번호 보기" : "비밀번호 숨기기");
+  passwordToggle.setAttribute("aria-pressed", String(!visible));
+  passwordInput.focus();
+});
 document.querySelector("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(event.target);
   const errorNode = document.querySelector("#login-error");
-  errorNode.textContent = "연결 중…";
+  const submit = document.querySelector("#login-submit");
+  errorNode.textContent = "";
+  submit.disabled = true;
+  submit.setAttribute("aria-busy", "true");
+  submit.innerHTML = '<span class="button-spinner" aria-hidden="true"></span><span>연결 중</span>';
   try {
     await api("/api/login", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) });
     event.target.reset(); loginDialog.close(); toast("Instagram을 연결했습니다."); await refreshAll();
   } catch (error) { errorNode.textContent = error.message; }
+  finally {
+    submit.disabled = false;
+    submit.removeAttribute("aria-busy");
+    submit.textContent = "연결";
+  }
 });
 
 document.querySelector("#logout").addEventListener("click", async () => {
