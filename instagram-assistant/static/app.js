@@ -2,6 +2,9 @@ const token = document.querySelector('meta[name="instagram-assistant-token"]').c
 let currentCommentStatus = "active";
 let currentDmStatus = "active";
 let selectedThreadId = "";
+let dmSearchQuery = "";
+let conversations = [];
+let dmSearchTimer;
 
 const themeToggle = document.querySelector("#theme-toggle");
 const themeMedia = matchMedia("(prefers-color-scheme: dark)");
@@ -232,24 +235,37 @@ async function refreshComments() {
   document.querySelector("#empty-events").style.display = events.length ? "none" : "block";
 }
 
-async function refreshConversations(keepSelection = true, fallbackIndex = 0, skipThreadId = "") {
-  const query = currentDmStatus ? `?status=${currentDmStatus}` : "";
-  const conversations = await api(`/api/conversations${query}`);
-  if (!keepSelection || !conversations.some((item) => item.thread_id === selectedThreadId)) {
-    let index = Math.min(Math.max(fallbackIndex, 0), Math.max(conversations.length - 1, 0));
-    if (conversations[index]?.thread_id === skipThreadId) {
-      index = index + 1 < conversations.length ? index + 1 : Math.max(index - 1, 0);
+function normalizeUsername(value) {
+  return String(value || "").trim().replace(/^@/, "").toLocaleLowerCase();
+}
+
+async function renderConversations(keepSelection = true, fallbackIndex = 0, skipThreadId = "") {
+  const query = normalizeUsername(dmSearchQuery);
+  const visible = query
+    ? conversations.filter((item) => normalizeUsername(item.username).includes(query))
+    : conversations;
+  if (!keepSelection || !visible.some((item) => item.thread_id === selectedThreadId)) {
+    let index = Math.min(Math.max(fallbackIndex, 0), Math.max(visible.length - 1, 0));
+    if (visible[index]?.thread_id === skipThreadId) {
+      index = index + 1 < visible.length ? index + 1 : Math.max(index - 1, 0);
     }
-    selectedThreadId = conversations[index]?.thread_id || "";
+    selectedThreadId = visible[index]?.thread_id || "";
   }
-  document.querySelector("#conversation-list").innerHTML = conversations.map((item) => `
+  const emptyMessage = query ? "일치하는 아이디가 없습니다." : "아직 DM 대화가 없습니다.";
+  document.querySelector("#conversation-list").innerHTML = visible.map((item) => `
     <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
       <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong>${intentBadge(item.classification)}</span>
       <span class="conversation-preview">${escapeHtml(item.latest_body || "메시지 내용 없음")}</span>
       <time>${formatTime(item.latest_at, true)}</time>
     </button>
-  `).join("") || '<p class="empty compact">아직 DM 대화가 없습니다.</p>';
+  `).join("") || `<p class="empty compact">${emptyMessage}</p>`;
   await refreshChat();
+}
+
+async function refreshConversations(keepSelection = true, fallbackIndex = 0, skipThreadId = "") {
+  const query = currentDmStatus ? `?status=${currentDmStatus}` : "";
+  conversations = await api(`/api/conversations${query}`);
+  await renderConversations(keepSelection, fallbackIndex, skipThreadId);
 }
 
 async function refreshChat() {
@@ -341,6 +357,12 @@ document.querySelectorAll(".dm-filter").forEach((button) => button.addEventListe
   document.querySelector("#dm-inbox").classList.remove("chat-open");
   await refreshConversations(false);
 }));
+
+document.querySelector("#dm-search").addEventListener("input", (event) => {
+  dmSearchQuery = event.currentTarget.value;
+  clearTimeout(dmSearchTimer);
+  dmSearchTimer = setTimeout(() => renderConversations(), 100);
+});
 
 document.querySelector("#conversation-list").addEventListener("click", async (event) => {
   const item = event.target.closest(".conversation-item");
