@@ -111,7 +111,8 @@ async function refreshStatus() {
   document.querySelector("#profile-url").value = data.settings.profile_url;
   document.querySelector("#settings-account").textContent = data.authenticated ? `@${data.settings.instagram_username || "Instagram"}` : "연결된 계정 없음";
   document.querySelector("#settings-session-note").textContent = data.settings.halted_reason ? "세션이 중지되었습니다." : data.authenticated ? "로컬 세션으로 연결되어 있습니다." : "계정을 연결하면 DM과 댓글을 가져올 수 있습니다.";
-  document.querySelector("#login-open").style.display = data.authenticated ? "none" : "inline-flex";
+  document.querySelector("#login-open").textContent = data.authenticated ? "재연결" : "연결";
+  document.querySelector("#login-open").style.display = "inline-flex";
   document.querySelector("#logout").style.display = data.authenticated ? "inline-flex" : "none";
 }
 
@@ -381,7 +382,8 @@ document.querySelector("#sync").addEventListener("click", async (event) => {
   try {
     const result = await api("/api/sync", { method: "POST" });
     const dmMode = result.dm_full_sync ? "DM 전체 가져오기 완료" : `새 DM ${result.dms}`;
-    toast(`${dmMode} · 새 댓글 ${result.comments} · 새 대댓글 ${result.comment_replies || 0}`);
+    const requestMode = result.dm_requests_full_sync ? "요청함 전체 가져오기 완료 · " : "";
+    toast(`${requestMode}${dmMode} · 새 댓글 ${result.comments} · 새 대댓글 ${result.comment_replies || 0}`);
     await refreshAll();
   } catch (error) {
     toast(error.message, true);

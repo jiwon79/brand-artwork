@@ -147,11 +147,13 @@ def test_direct_message_body_labels_non_text_items():
 
 def test_full_dm_sync_fetches_every_thread_and_message():
     thread = SimpleNamespace(id="101", messages=["preview"])
+    request_thread = SimpleNamespace(id="202", messages=["request-preview"])
 
     class FakeClient:
         def __init__(self):
             self.thread_calls = []
             self.message_calls = []
+            self.pending_calls = []
 
         def direct_threads(self, **kwargs):
             self.thread_calls.append(kwargs)
@@ -161,30 +163,50 @@ def test_full_dm_sync_fetches_every_thread_and_message():
             self.message_calls.append((thread_id, amount))
             return ["one", "two"]
 
+        def direct_pending_inbox(self, amount):
+            self.pending_calls.append(amount)
+            return [request_thread]
+
     client = FakeClient()
-    results = list(InstagramService._direct_thread_messages(client, True, 30))
-    assert results == [(thread, ["one", "two"])]
+    results = list(InstagramService._direct_thread_messages(
+        client, True, 30, full_request_history=True
+    ))
+    assert results == [
+        (thread, ["one", "two"]),
+        (request_thread, ["one", "two"]),
+    ]
     assert client.thread_calls == [
         {"amount": 0, "thread_message_limit": 1},
         {"amount": 0, "thread_message_limit": 1, "box": "primary"},
         {"amount": 0, "thread_message_limit": 1, "box": "general"},
     ]
-    assert client.message_calls == [(101, 0)]
+    assert client.pending_calls == [0]
+    assert client.message_calls == [(101, 0), (202, 0)]
 
 
 def test_incremental_dm_sync_only_uses_recent_thread_messages():
     thread = SimpleNamespace(id="101", messages=["recent"])
+    request_thread = SimpleNamespace(id="202", messages=["recent-request"])
 
     class FakeClient:
         def __init__(self):
             self.thread_calls = []
+            self.pending_calls = []
 
         def direct_threads(self, **kwargs):
             self.thread_calls.append(kwargs)
             return [thread]
 
+        def direct_pending_inbox(self, amount):
+            self.pending_calls.append(amount)
+            return [request_thread]
+
     client = FakeClient()
     results = list(InstagramService._direct_thread_messages(client, False, 30))
-    assert results == [(thread, ["recent"])]
+    assert results == [
+        (thread, ["recent"]),
+        (request_thread, ["recent-request"]),
+    ]
     assert all(call["amount"] == 30 for call in client.thread_calls)
     assert all(call["thread_message_limit"] == 20 for call in client.thread_calls)
+    assert client.pending_calls == [30]

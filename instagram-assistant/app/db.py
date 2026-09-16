@@ -91,6 +91,7 @@ DEFAULT_SETTINGS = {
     "read_only_observation": True,
     "last_sync_at": None,
     "dm_backfill_complete": False,
+    "dm_requests_backfill_complete": False,
     "halted_reason": None,
 }
 

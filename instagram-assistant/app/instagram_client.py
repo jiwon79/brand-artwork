@@ -117,6 +117,9 @@ class InstagramService:
             client = self.connect_saved_session()
             settings = get_settings()
             full_dm_sync = not bool(settings.get("dm_backfill_complete"))
+            full_dm_requests_sync = not bool(
+                settings.get("dm_requests_backfill_complete")
+            )
             inserted_comments = 0
             inserted_replies = 0
             inserted_dms = 0
@@ -192,7 +195,10 @@ class InstagramService:
                             )
 
                 for thread, messages in self._direct_thread_messages(
-                    client, full_history=full_dm_sync, threads_amount=threads_amount
+                    client,
+                    full_history=full_dm_sync,
+                    threads_amount=threads_amount,
+                    full_request_history=full_dm_requests_sync,
                 ):
                     thread_id = str(thread.id)
                     usernames = {
@@ -239,12 +245,14 @@ class InstagramService:
             update_settings({
                 "last_sync_at": datetime.now(UTC).isoformat(),
                 "dm_backfill_complete": True,
+                "dm_requests_backfill_complete": True,
             })
             return {
                 "comments": inserted_comments,
                 "comment_replies": inserted_replies,
                 "dms": inserted_dms,
                 "dm_full_sync": full_dm_sync,
+                "dm_requests_full_sync": full_dm_requests_sync,
             }
 
     @staticmethod
@@ -267,10 +275,11 @@ class InstagramService:
         client: Client,
         full_history: bool,
         threads_amount: int,
+        full_request_history: bool = False,
     ) -> Iterator[tuple[Any, list[Any]]]:
         amount = 0 if full_history else threads_amount
         message_limit = 1 if full_history else 20
-        thread_groups: list[list[Any]] = []
+        thread_groups: list[tuple[list[Any], bool]] = []
         for box in (None, "primary", "general"):
             try:
                 kwargs: dict[str, Any] = {
@@ -279,15 +288,21 @@ class InstagramService:
                 }
                 if box:
                     kwargs["box"] = box
-                thread_groups.append(client.direct_threads(**kwargs))
+                thread_groups.append((client.direct_threads(**kwargs), full_history))
             except STOP_EXCEPTIONS:
                 raise
             except Exception:
                 if box is None:
                     raise
 
+        request_amount = 0 if full_request_history else threads_amount
+        thread_groups.append((
+            client.direct_pending_inbox(amount=request_amount),
+            full_request_history,
+        ))
+
         seen_threads: set[str] = set()
-        for threads in thread_groups:
+        for threads, load_full_history in thread_groups:
             for thread in threads:
                 thread_id = str(thread.id)
                 if thread_id in seen_threads:
@@ -295,7 +310,7 @@ class InstagramService:
                 seen_threads.add(thread_id)
                 messages = (
                     client.direct_messages(int(thread.id), amount=0)
-                    if full_history
+                    if load_full_history
                     else list(getattr(thread, "messages", []))
                 )
                 yield thread, messages
