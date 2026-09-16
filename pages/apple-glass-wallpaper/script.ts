@@ -20,6 +20,7 @@ const defaults = {
   diffusion: 1,
   saturation: 1.1,
   response: 1,
+  pointerFollow: 1.3,
 };
 const settings = {
   ...defaults,
@@ -41,20 +42,42 @@ let x = 0, y = 0, vx = 0, vy = 0, targetX = 0, targetY = 0;
 let lightX = 0, lightY = 0, targetLightX = 0, targetLightY = 0;
 let pressure = 0, pointer: number | null = null, startX = 0, startY = 0;
 let frame = 0, previous = 0, contextLost = false;
-let cursorFrame = 0, cursorX = -100, cursorY = -100, cursorTargetX = -100, cursorTargetY = -100;
+let cursorFrame = 0, cursorPrevious = 0;
+let cursorX = -100, cursorY = -100, cursorTargetX = -100, cursorTargetY = -100;
+let cursorVX = 0, cursorVY = 0;
 
 function positionCursor(element: HTMLElement, nextX: number, nextY: number) {
   element.style.setProperty('--cursor-x', `${nextX}px`);
   element.style.setProperty('--cursor-y', `${nextY}px`);
 }
 
-function animateCursor() {
+function animateCursor(now: number) {
   cursorFrame = 0;
-  const follow = reducedMotion.matches ? 1 : .24;
-  cursorX += (cursorTargetX-cursorX)*follow;
-  cursorY += (cursorTargetY-cursorY)*follow;
+  const dt = Math.min((now-cursorPrevious)/1000 || 1/60,1/30);
+  cursorPrevious = now;
+  if (reducedMotion.matches) {
+    cursorX = cursorTargetX;
+    cursorY = cursorTargetY;
+    cursorVX = cursorVY = 0;
+  } else {
+    const stiffness = 180*settings.pointerFollow*settings.pointerFollow;
+    const damping = 2*Math.sqrt(stiffness);
+    cursorVX += ((cursorTargetX-cursorX)*stiffness-cursorVX*damping)*dt;
+    cursorVY += ((cursorTargetY-cursorY)*stiffness-cursorVY*damping)*dt;
+    cursorX += cursorVX*dt;
+    cursorY += cursorVY*dt;
+    const distance = Math.hypot(cursorTargetX-cursorX,cursorTargetY-cursorY);
+    if (distance > 14) {
+      const clamp = 14/distance;
+      cursorX = cursorTargetX+(cursorX-cursorTargetX)*clamp;
+      cursorY = cursorTargetY+(cursorY-cursorTargetY)*clamp;
+    }
+  }
+  const speed = Math.hypot(cursorVX,cursorVY);
+  cursorHalo.style.setProperty('--cursor-angle',`${Math.atan2(cursorVY,cursorVX)}rad`);
+  cursorHalo.style.setProperty('--cursor-stretch',`${1+Math.min(speed/2400,.1)}`);
   positionCursor(cursorHalo,cursorX,cursorY);
-  if (Math.abs(cursorTargetX-cursorX)+Math.abs(cursorTargetY-cursorY) > .1) {
+  if (Math.abs(cursorTargetX-cursorX)+Math.abs(cursorTargetY-cursorY)+Math.abs(cursorVX)+Math.abs(cursorVY) > .12) {
     cursorFrame = requestAnimationFrame(animateCursor);
   }
 }
@@ -67,16 +90,22 @@ function updateCursor(event: PointerEvent) {
   if (document.body.dataset.roseCursor !== 'visible' && document.body.dataset.roseCursor !== 'pressed') {
     cursorX = cursorTargetX;
     cursorY = cursorTargetY;
+    cursorVX = cursorVY = 0;
+    cursorPrevious = performance.now();
     positionCursor(cursorHalo,cursorX,cursorY);
   }
   document.body.dataset.roseCursor = pointer === null ? 'visible' : 'pressed';
-  if (!cursorFrame) cursorFrame = requestAnimationFrame(animateCursor);
+  if (!cursorFrame) {
+    cursorPrevious = performance.now();
+    cursorFrame = requestAnimationFrame(animateCursor);
+  }
 }
 
 function hideCursor() {
   delete document.body.dataset.roseCursor;
   if (cursorFrame) cancelAnimationFrame(cursorFrame);
   cursorFrame = 0;
+  cursorVX = cursorVY = 0;
 }
 
 function compile(type: number, source: string): WebGLShader {
@@ -330,6 +359,8 @@ describe(edgeFolder.add(settings,'diffusion',0,2,.01).name('Blur amount').onChan
 const motionFolder = gui.addFolder('Interaction');
 describe(motionFolder.add(settings,'response',.1,1.5,.01).name('Drag response'),
   '드래그 거리에 대한 조약돌 이동량');
+describe(motionFolder.add(settings,'pointerFollow',.4,2.5,.01).name('Pointer follow'),
+  '글래스 포인터가 커서를 따라오는 속도. 높을수록 즉각적이고 낮을수록 부유하듯 움직임');
 describe(motionFolder.add(settings,'resetComposition').name('Reset position'),
   '조약돌과 가상 조명을 초기 위치로 복원');
 

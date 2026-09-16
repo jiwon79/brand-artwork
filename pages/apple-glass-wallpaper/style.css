@@ -24,22 +24,26 @@ canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 .rose-cursor--halo {
-  width: 38px;
-  height: 38px;
-  border: 1px solid rgb(255 255 255 / 72%);
-  background: radial-gradient(circle at 35% 30%, rgb(255 255 255 / 22%), rgb(255 220 224 / 7%) 55%, transparent 72%);
-  box-shadow: 0 0 0 1px rgb(103 47 59 / 8%), 0 4px 18px rgb(255 244 245 / 36%), inset 0 0 10px rgb(255 255 255 / 24%);
-  backdrop-filter: blur(2px) saturate(1.1);
+  --cursor-angle: 0rad;
+  --cursor-stretch: 1;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgb(255 255 255 / 44%);
+  background: radial-gradient(circle at 34% 29%, rgb(255 255 255 / 30%) 0 3%, rgb(255 244 245 / 12%) 24%, rgb(255 220 224 / 5%) 58%, transparent 76%);
+  box-shadow: 0 2px 16px rgb(255 244 245 / 24%), inset 0 0 14px rgb(255 255 255 / 18%);
+  backdrop-filter: blur(2.5px) saturate(1.08);
+  transform: translate3d(var(--cursor-x), var(--cursor-y), 0) translate(-50%, -50%) rotate(var(--cursor-angle)) scaleX(var(--cursor-stretch));
 }
 .rose-cursor--dot {
-  width: 5px;
-  height: 5px;
-  background: rgb(255 255 255 / 92%);
-  box-shadow: 0 0 9px 3px rgb(255 240 242 / 62%);
+  width: 4px;
+  height: 4px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 0 8px 2px rgb(255 240 242 / 52%);
 }
 body[data-rose-cursor='visible'] .rose-cursor,
 body[data-rose-cursor='pressed'] .rose-cursor { opacity: 1; }
 body[data-rose-cursor='pressed'] .rose-cursor { --cursor-scale: .96; }
+body[data-rose-cursor='pressed'] .rose-cursor--halo { filter: brightness(1.18); }
 
 @media (hover: hover) and (pointer: fine) {
   canvas, canvas:active { cursor: none; }
