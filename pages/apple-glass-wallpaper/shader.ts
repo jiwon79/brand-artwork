@@ -1,3 +1,5 @@
+import { front } from './interaction';
+
 // A fixed-camera, analytic relief renderer. Coordinates are in the reference's
 // 590 × 1280 composition. Each pebble has an independent silhouette, material,
 // depth profile and object-space grain; no photograph is used as a texture.
@@ -22,7 +24,7 @@ uniform vec2 uResolution;
 uniform vec2 uView;
 uniform vec2 uOffset;
 uniform vec2 uLight;
-uniform float uPress;
+uniform float uRotation;
 uniform float uGrain;
 uniform float uWarmth;
 uniform float uSpecular;
@@ -63,6 +65,16 @@ float bell(vec2 p, vec2 c, vec2 r) {
   vec2 q = (p-c)/r;
   return exp(-dot(q,q)*2.0);
 }
+vec2 rotate(vec2 p, float angle) {
+  float c = cos(angle), s = sin(angle);
+  return vec2(c*p.x-s*p.y,s*p.x+c*p.y);
+}
+// Shared with CPU picking: the rigid silhouette does not inflate on press.
+const vec2 frontCenter = vec2(${front.x.toFixed(1)},${front.y.toFixed(1)});
+const vec2 frontSize = vec2(${front.width.toFixed(1)},${front.height.toFixed(1)});
+const float frontShear = ${front.shear};
+const float frontExponent = ${front.exponent};
+const float lightHeight = 550.0;
 // The upper rear pebble narrows at its cropped crown, rather than keeping the
 // same rounded-rectangle width all the way to the top of the portrait.
 vec2 upperProfile(float y) {
@@ -77,25 +89,25 @@ vec2 frontProfile(float y) {
   float lower = clamp((y+.10)/.40,0.0,1.0);
   float lowerTaper = lower*lower*(3.0-2.0*lower);
   float lowerSlope = 6.0*lower*(1.0-lower)/.40;
-  return vec2(252.0*(1.0-.11*y-.0325*lowerTaper+uPress*.014),
-    -252.0*(.11+.0325*lowerSlope));
+  return vec2(frontSize.x*(1.0-.11*y-.0325*lowerTaper),
+    -frontSize.x*(.11+.0325*lowerSlope));
 }
 vec2 localPoint(vec2 p, int id) {
   if (id == 0) {
-    p -= vec2(321.0, 299.0) - uOffset*.16;
+    p -= vec2(321.0, 299.0);
     float y = p.y/408.0;
     return vec2((p.x-p.y*.16)/upperProfile(y).x,y);
   }
   if (id == 1) {
-    p -= vec2(274.0, 941.0) - uOffset*.26;
+    p -= vec2(274.0, 941.0);
     return vec2(p.x - p.y*.19, p.y) / vec2(260.0, 366.0);
   }
-  p -= vec2(298.0, 645.0) + uOffset;
-  float y = p.y / (386.0 * (1.0-uPress*.018));
-  return vec2((p.x-p.y*.045)/frontProfile(y).x, y);
+  p = rotate(p-frontCenter-uOffset,-uRotation);
+  float y = p.y/frontSize.y;
+  return vec2((p.x-p.y*frontShear)/frontProfile(y).x,y);
 }
 float field(vec2 q, int id) {
-  float power = id == 2 ? 2.45 : 2.35;
+  float power = id == 2 ? frontExponent : 2.35;
   return pow(abs(q.x),power) + pow(abs(q.y),power);
 }
 vec3 background(vec2 p) {
@@ -104,7 +116,7 @@ vec3 background(vec2 p) {
 }
 ${colorSpaceSource}
 // A large studio light occupies a lobe of the reflected hemisphere. The
-// highlights follow the relief normals and the pointer's virtual light.
+// fixed fill preserves the reference palette while a separate lamp moves.
 float softbox(vec3 reflected, vec3 center, float spread) {
   return exp(-(1.0-dot(reflected,normalize(center)))/spread);
 }
@@ -130,15 +142,15 @@ vec2 edgeVolume(vec2 q, int id) {
 float contourDistance(vec2 q, int id) {
   // Reference-pixel contour distance, including each silhouette's shear and
   // taper. Optical width varies with position; this is not a stroked outline.
-  float exponent = id == 2 ? 2.45 : 2.35;
+  float exponent = id == 2 ? frontExponent : 2.35;
   vec2 gradient = exponent*sign(q)*pow(abs(q),vec2(exponent-1.0));
   vec2 radii = id == 0 ? vec2(245,408) : id == 1 ? vec2(260,366) : vec2(252,386);
   vec2 sceneGradient = gradient/radii;
   if (id == 2) {
-    float height = 386.0*(1.0-uPress*.018);
+    float height = frontSize.y;
     vec2 profile = frontProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
-      gradient.y/height+gradient.x*(-.045-q.x*profile.y/height)/profile.x);
+      gradient.y/height+gradient.x*(-frontShear-q.x*profile.y/height)/profile.x);
   } else if (id == 0) {
     vec2 profile = upperProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
@@ -155,8 +167,14 @@ float shadowCoverage(float distance, float sigma) {
   return .5+.5*sign(t)*sqrt(1.0-exp(-.63662*t*t));
 }
 vec3 castShadow(vec3 under, vec2 p, int id) {
-  vec2 offset = id == 0 ? vec2(-5,9) : id == 1 ? vec2(-8,12) : vec2(7,12);
-  offset -= uLight*vec2(12,10);
+  vec2 center = id == 0 ? vec2(321,299) : id == 1 ? vec2(274,941) : frontCenter+uOffset;
+  float gap = id == 2 ? 37.0 : id == 0 ? 10.0 : 16.0;
+  vec2 fillOffset = id == 0 ? vec2(-5,9) : id == 1 ? vec2(-8,12) : vec2(7,12);
+  vec2 lampOffset = (center-uLight)*gap/(lightHeight-gap);
+  // A very distant cursor contributes little light, so it cannot cast an
+  // enormous shadow. The studio fill remains when the cursor lamp is off.
+  float influence = (1.0-exp(-uCursorLight))*exp(-dot(center-uLight,center-uLight)/900000.0);
+  vec2 offset = mix(fillOffset,lampOffset,influence);
   float contactDistance = contourDistance(localPoint(p-offset*.35,id),id);
   float diffuseDistance = contourDistance(localPoint(p-offset,id),id);
   float spread = id == 0 ? 16.0 : id == 1 ? 27.0 : 17.0;
@@ -204,11 +222,13 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float surfaceRelief = id == 2 ? 1.0 : .20;
   vec2 reliefSlope = (micro.yz*.030+coarse.yz*.014)*uGrain*grainFilter*surfaceRelief;
   vec3 grainNormal = normalize(normal+vec3(reliefSlope,0));
-  vec3 reflected = reflect(vec3(0,0,-1),grainNormal);
+  float objectRotation = id == 2 ? uRotation : 0.0;
+  vec3 sceneNormal = vec3(rotate(grainNormal.xy,objectRotation),grainNormal.z);
+  vec3 reflected = reflect(vec3(0,0,-1),sceneNormal);
   float edge = pow(1.0-depth,1.8);
   float left = pow(max(0.0,-normal.x),2.0);
   float right = pow(max(0.0,normal.x),2.0);
-  vec2 lightingQ = q-uLight*.10;
+  vec2 lightingQ = q;
   vec3 color;
   if (id == 2) {
     color = vec3(.945,.559,.550);
@@ -218,8 +238,8 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     color = mix(color,vec3(.99,.43,.48),bell(q,vec2(-.40,-.66),vec2(.75,.57))*.48);
     color = mix(color,vec3(.44,.14,.16),bell(q,vec2(-.42,-.94),vec2(.80,.24))*.64);
     // Wide, diagonal internal shadow visible in the reference, softened by
-    // scattering. It moves slightly with the virtual light, not with pixels.
-    float bandY = q.y + .075 - q.x*.27 - uLight.y*.06;
+    // scattering. The inclusion belongs to the glass, not to the cursor.
+    float bandY = q.y + .075 - q.x*.27;
     float band = exp(-pow(bandY/.19,2.0)) * (.62+.38*smoothstep(-.8,.6,q.x));
     color = mix(color,vec3(.865,.34,.33),band*.85);
     color -= vec3(.030,.020,.017)*band;
@@ -256,22 +276,23 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     +.28*bell(q,vec2(-.65,.72),vec2(.65,.65));
   float inside = max(distance,0.0);
   float rimLight = exp(-inside/opticalWidth)*sideLight;
-  vec2 lightShift = uLight*.75;
-  float upperLight = softbox(reflected,vec3(.92+lightShift.x,-.48+lightShift.y,.70),.52);
-  float lowerLight = softbox(reflected,vec3(-1.10+lightShift.x,.32+lightShift.y,.48),.55);
+  float upperLight = softbox(reflected,vec3(.92,-.48,.70),.52);
+  float lowerLight = softbox(reflected,vec3(-1.10,.32,.48),.55);
   float reflection = upperLight*bell(q,vec2(.55,-.66),vec2(1.4,1.05))*.12
     + lowerLight*bell(q,vec2(-.86,.51),vec2(1.4,1.0))*.15;
   if (id != 2) reflection *= id == 0 ? .25 : .32;
-  // A broad cursor-driven light sits above the surface. Diffuse energy gives
-  // the response a soft frosted character, while a low-power specular lobe
-  // makes its movement legible without turning into a sharp glossy dot.
-  vec2 cursorAnchor = uLight*vec2(2.15,2.05);
-  vec3 cursorDirection = normalize(vec3(cursorAnchor-q,.72));
-  float cursorFacing = max(dot(grainNormal,cursorDirection),0.0);
-  float cursorPool = bell(q,cursorAnchor,vec2(.88,1.0));
-  float cursorSpecular = pow(max(dot(reflect(-cursorDirection,grainNormal),vec3(0,0,1)),0.0),5.0);
-  float cursorEnergy = (cursorPool*(.040+.065*cursorFacing)+cursorSpecular*.070)
-    *uCursorLight*(id == 2 ? 1.0 : .42);
+  // One scene-space area-light approximation. Surface height, distance and
+  // rotated normals determine where each pebble receives the same lamp.
+  // Broad diffuse + tighter frosted reflection, not three cloned spotlights.
+  float surfaceHeight = id == 2 ? 100.0+depth*125.0 : 15.0+depth*85.0;
+  vec3 toLight = vec3(uLight-p,lightHeight-surfaceHeight);
+  vec3 cursorDirection = normalize(toLight);
+  float cursorFacing = max(dot(sceneNormal,cursorDirection),0.0);
+  vec3 halfVector = normalize(cursorDirection+vec3(0,0,1));
+  float cursorSpecular = pow(max(dot(sceneNormal,halfVector),0.0),14.0);
+  float falloff = 280000.0/(280000.0+dot(toLight,toLight));
+  float cursorEnergy = uCursorLight*falloff*(.09*cursorFacing+.34*cursorSpecular);
+  float lightResponse = 1.0-exp(-cursorEnergy);
   float fresnel = .04+.96*pow(1.0-max(normal.z,0.0),5.0);
   float grazing = rimLight*.13*(0.6+fresnel*.4)*uRim;
   float luminance = dot(color,vec3(.2126,.7152,.0722));
@@ -285,7 +306,9 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec3 extinction = id == 1 ? vec3(.50,.57,.55) : vec3(.44,.48,.46);
   vec3 transmission = exp(-extinction*opticalDepth);
   vec3 litSurface = toLinear(max(color,0.0))
-    +vec3(1.0,.94,.91)*(reflection*uSpecular+grazing+cursorEnergy);
+    +vec3(1.0,.94,.91)*(reflection*uSpecular+grazing);
+  // Approach white without clipping away the rose color or frost relief.
+  litSurface += max(vec3(1.0,.97,.96)-litSurface,0.0)*lightResponse;
   // Attenuate the grazing reflection as well, so white light cannot wash the
   // thick edge back to a pale outline. The resolve progressively softens it.
   color = toSrgb(litSurface*transmission);
@@ -304,9 +327,10 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float textureStrength = id == 2 ? .11 : id == 0 ? .21 : .20;
   float facets = smoothstep(.58,.86,micro.x);
   float diagonal = exp(-pow((q.y+.075-q.x*.27)/.34,2.0));
-  vec2 grainLight = normalize(vec2(-.65,-.78)+uLight*.55);
+  vec2 grainLight = normalize(vec2(-.16,-.20)+rotate(cursorDirection.xy,-objectRotation)*uCursorLight);
   float relief = dot(micro.yz*.018+coarse.yz*.009,grainLight)*grainFilter*surfaceRelief;
-  float sparkle = facets*((id == 2 ? .020 : .010)+reflection*.15+(id == 2 ? diagonal*.045 : 0.0));
+  float sparkle = facets*((id == 2 ? .020 : .010)+reflection*.15
+    +cursorSpecular*falloff*uCursorLight*.030+(id == 2 ? diagonal*.045 : 0.0));
   float inclusions = smoothstep(.55,.85,coarse.x)*.020;
   float frostVisibility = id == 2 ? .65+.35*diagonal : .48+.35*sqrt(edge);
   color += (fine*.026*grainFilter + mottling*(id == 2 ? .025 : .012) - pore*textureStrength*grainFilter

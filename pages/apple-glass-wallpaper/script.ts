@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { damp, PebbleMotion, type Point } from './interaction';
 import { fragmentSource, resolveSource, vertexSource } from './shader';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
@@ -12,8 +13,8 @@ const defaults = {
   warmth: 0,
   specular: 1.1,
   rim: 1.25,
-  cursorLight: 1.15,
-  lightFollow: 1,
+  cursorLight: 1.85,
+  lightFollow: 1.25,
   frontAbsorption: 1,
   rearAbsorption: 1,
   absorptionWidth: 1,
@@ -23,7 +24,9 @@ const defaults = {
   shadowStrength: 1,
   shadowSpread: 1,
   saturation: 1.1,
-  response: 1,
+  dragRange: 85,
+  inertia: .35,
+  gripRotation: 1,
   pointerFollow: 1.3,
 };
 const settings = {
@@ -42,9 +45,12 @@ let vao: WebGLVertexArrayObject;
 let uniforms: Record<string, WebGLUniformLocation | null>;
 let resolveUniforms: Record<string, WebGLUniformLocation | null>;
 let width = 1, height = 1;
-let x = 0, y = 0, vx = 0, vy = 0, targetX = 0, targetY = 0;
-let lightX = 0, lightY = 0, targetLightX = 0, targetLightY = 0;
-let pressure = 0, pointer: number | null = null, startX = 0, startY = 0;
+const motion = new PebbleMotion();
+const homeLight = { x: 410, y: 360 };
+let lightX = homeLight.x, lightY = homeLight.y;
+let targetLightX = lightX, targetLightY = lightY;
+let pointer: number | null = null;
+let hoverPoint: Point | null = null;
 let frame = 0, previous = 0, contextLost = false;
 let cursorFrame = 0, cursorPrevious = 0;
 let cursorX = -100, cursorY = -100, cursorTargetX = -100, cursorTargetY = -100;
@@ -64,12 +70,11 @@ function animateCursor(now: number) {
     cursorY = cursorTargetY;
     cursorVX = cursorVY = 0;
   } else {
-    const stiffness = 180*settings.pointerFollow*settings.pointerFollow;
-    const damping = 2*Math.sqrt(stiffness);
-    cursorVX += ((cursorTargetX-cursorX)*stiffness-cursorVX*damping)*dt;
-    cursorVY += ((cursorTargetY-cursorY)*stiffness-cursorVY*damping)*dt;
-    cursorX += cursorVX*dt;
-    cursorY += cursorVY*dt;
+    const omega = Math.sqrt(180)*settings.pointerFollow;
+    const nextX = damp(cursorX,cursorVX,cursorTargetX,omega,dt);
+    const nextY = damp(cursorY,cursorVY,cursorTargetY,omega,dt);
+    cursorX = nextX.value; cursorVX = nextX.velocity;
+    cursorY = nextY.value; cursorVY = nextY.velocity;
     const distance = Math.hypot(cursorTargetX-cursorX,cursorTargetY-cursorY);
     if (distance > 14) {
       const clamp = 14/distance;
@@ -159,7 +164,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uCursorLight', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uCursorLight', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -187,11 +192,22 @@ function resize() {
 }
 
 function resetComposition() {
-  targetX = targetY = targetLightX = targetLightY = 0;
-  if (pointer !== null && canvas.hasPointerCapture(pointer)) canvas.releasePointerCapture(pointer);
-  pointer = null;
-  canvas.dataset.interaction = 'returning';
+  motion.reset(reducedMotion.matches);
+  clearCapture();
+  updateHover();
   wake();
+}
+
+function clearCapture() {
+  const released = pointer;
+  pointer = null;
+  if (released !== null && canvas.hasPointerCapture(released)) canvas.releasePointerCapture(released);
+  if (document.body.dataset.roseCursor) document.body.dataset.roseCursor = 'visible';
+}
+
+function resetLight() {
+  targetLightX = homeLight.x;
+  targetLightY = homeLight.y;
 }
 
 function resetLook() {
@@ -202,6 +218,7 @@ function resetLook() {
 
 function resetAll() {
   resetLook();
+  resetLight();
   resetComposition();
 }
 
@@ -213,26 +230,19 @@ function render(now: number) {
   frame = 0;
   const dt = Math.min((now-previous)/1000 || 1/60, 1/30);
   previous = now;
-  const ease = 1-Math.exp(-dt*9*settings.lightFollow);
-  if (reducedMotion.matches) {
-    x = targetX; y = targetY; vx = vy = 0;
-  } else {
-    vx += ((targetX-x)*120-vx*17)*dt;
-    vy += ((targetY-y)*120-vy*17)*dt;
-    x += vx*dt; y += vy*dt;
-  }
+  const ease = reducedMotion.matches ? 1 : 1-Math.exp(-dt*9*settings.lightFollow);
+  const moving = motion.step(dt,settings.dragRange,reducedMotion.matches);
   lightX += (targetLightX-lightX)*ease;
   lightY += (targetLightY-lightY)*ease;
-  pressure += ((pointer !== null ? 1 : 0)-pressure)*ease;
   gl.viewport(0,0,canvas.width,canvas.height);
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFramebuffer);
   gl.useProgram(program);
   gl.bindVertexArray(vao);
   gl.uniform2f(uniforms.uResolution,canvas.width,canvas.height);
   gl.uniform2f(uniforms.uView,width,height);
-  gl.uniform2f(uniforms.uOffset,x,y);
+  gl.uniform2f(uniforms.uOffset,motion.x,motion.y);
   gl.uniform2f(uniforms.uLight,lightX,lightY);
-  gl.uniform1f(uniforms.uPress,pressure);
+  gl.uniform1f(uniforms.uRotation,motion.angle);
   gl.uniform1f(uniforms.uGrain,settings.grain);
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
@@ -256,42 +266,68 @@ function render(now: number) {
   gl.uniform1f(resolveUniforms.uReferenceScale,Math.min(width/590,height/1280)*canvas.width/width);
   gl.uniform1f(resolveUniforms.uDiffusion,settings.diffusion);
   gl.drawArrays(gl.TRIANGLES,0,3);
-  const active = Math.abs(targetX-x)+Math.abs(targetY-y)+Math.abs(vx)+Math.abs(vy)
-    +Math.abs(targetLightX-lightX)+Math.abs(targetLightY-lightY)
-    +Math.abs((pointer !== null ? 1 : 0)-pressure) > .001;
-  canvas.dataset.interaction = pointer !== null ? 'dragging' : active ? 'returning' : 'idle';
-  if (active) wake();
+  canvas.dataset.interaction = motion.mode;
+  updateHover();
+  if (moving || Math.abs(targetLightX-lightX)+Math.abs(targetLightY-lightY) > .02) wake();
+}
+
+function scenePoint(event: PointerEvent): Point {
+  const bounds = canvas.getBoundingClientRect();
+  const scale = Math.min(width/590,height/1280);
+  return { x: (event.clientX-bounds.left-width/2)/scale+295,
+    y: (event.clientY-bounds.top-height/2)/scale+640 };
+}
+
+function updateHover() {
+  const grabbable = pointer !== null || (hoverPoint !== null && motion.hitTest(hoverPoint));
+  canvas.dataset.grabbable = String(grabbable);
+  document.body.dataset.roseGrabbable = String(grabbable);
+}
+
+function aimLight(event: PointerEvent) {
+  const point = scenePoint(event);
+  targetLightX = point.x; targetLightY = point.y;
+  hoverPoint = point;
+  updateHover();
+  updateCursor(event);
+  wake();
+  return point;
 }
 
 canvas.addEventListener('pointerdown', event => {
-  if (pointer !== null || event.button !== 0) return;
+  if (pointer !== null || event.button !== 0 || !event.isPrimary) return;
+  const point = aimLight(event);
+  if (!motion.grab(point,event.timeStamp)) return;
   pointer = event.pointerId;
-  startX = event.clientX; startY = event.clientY;
   canvas.setPointerCapture(pointer);
   if (event.pointerType === 'mouse') document.body.dataset.roseCursor = 'pressed';
   wake();
 });
 canvas.addEventListener('pointermove', event => {
-  updateCursor(event);
-  const bounds = canvas.getBoundingClientRect();
-  targetLightX = (event.clientX-bounds.left)/width-.5;
-  targetLightY = (event.clientY-bounds.top)/height-.5;
+  if (!event.isPrimary || (pointer !== null && pointer !== event.pointerId)) return;
+  const point = aimLight(event);
   if (pointer === event.pointerId) {
-    const scale = Math.min(width/590,height/1280);
-    targetX = Math.tanh((event.clientX-startX)/scale/180)*85*settings.response;
-    targetY = Math.tanh((event.clientY-startY)/scale/220)*100*settings.response;
+    motion.move(point,event.timeStamp,settings.dragRange,settings.gripRotation,reducedMotion.matches);
   }
   wake();
 });
 for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) {
   canvas.addEventListener(name, event => {
     if (event.pointerId !== pointer) return;
-    resetComposition();
-    if (event.pointerType === 'mouse') document.body.dataset.roseCursor = 'visible';
+    if (name === 'pointerup') motion.release(event.timeStamp,settings.inertia,reducedMotion.matches);
+    else motion.reset(reducedMotion.matches);
+    clearCapture();
+    if (event.pointerType !== 'mouse') { hoverPoint = null; resetLight(); }
+    updateHover();
+    wake();
   });
 }
-canvas.addEventListener('pointerenter', event => updateCursor(event));
-canvas.addEventListener('pointerleave', () => { hideCursor(); if (pointer === null) resetComposition(); });
+canvas.addEventListener('pointerenter', event => { if (event.isPrimary && pointer === null) aimLight(event); });
+canvas.addEventListener('pointerleave', event => {
+  hideCursor(); hoverPoint = null; updateHover();
+  // Entering the controls should not reset the light; only leaving the view.
+  if (pointer === null && event.relatedTarget === null) { resetLight(); wake(); }
+});
 canvas.addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); resetComposition(); return; }
   const directions: Record<string, [number, number]> = {
@@ -300,13 +336,15 @@ canvas.addEventListener('keydown', event => {
   const direction = directions[event.key];
   if (!direction) return;
   event.preventDefault();
-  targetX = Math.max(-85, Math.min(85,targetX+direction[0]));
-  targetY = Math.max(-100, Math.min(100,targetY+direction[1]));
+  motion.nudge(direction[0],direction[1],settings.dragRange);
   wake();
 });
-window.addEventListener('blur', () => { hideCursor(); resetComposition(); });
+window.addEventListener('blur', () => { hideCursor(); hoverPoint = null; resetLight(); resetComposition(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { cancelAnimationFrame(frame); frame = 0; resetComposition(); }
+  if (document.hidden) {
+    cancelAnimationFrame(frame); frame = 0;
+    hideCursor(); hoverPoint = null; resetLight(); resetComposition();
+  }
   else { previous = performance.now(); wake(); }
 });
 canvas.addEventListener('webglcontextlost', event => {
@@ -349,8 +387,8 @@ describe(lightingFolder.add(settings,'specular',0,2,.01).name('White reflection'
   '곡면을 따라 번지는 넓은 흰 반사광의 밝기');
 describe(lightingFolder.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake),
   '가장자리를 스치는 밝은 반사광의 강도');
-describe(lightingFolder.add(settings,'cursorLight',0,2,.01).name('Cursor light').onChange(wake),
-  '커서 위치를 따라 움직이는 넓은 확산광과 작은 반사광의 강도');
+describe(lightingFolder.add(settings,'cursorLight',0,3,.01).name('Cursor light').onChange(wake),
+  '세 조약돌이 공유하는 조명의 밝기. 표면의 방향과 광원까지의 거리에 따라 반사광과 그림자가 함께 달라짐');
 describe(lightingFolder.add(settings,'lightFollow',.15,2.5,.01).name('Light follow').onChange(wake),
   '가상 조명이 커서 위치를 따라가는 속도');
 
@@ -375,15 +413,19 @@ describe(shadowFolder.add(settings,'shadowSpread',.4,2,.01).name('Shadow spread'
   '실루엣 바깥으로 그림자가 부드럽게 퍼지는 거리');
 
 const motionFolder = gui.addFolder('Interaction');
-describe(motionFolder.add(settings,'response',.1,1.5,.01).name('Drag response'),
-  '드래그 거리에 대한 조약돌 이동량');
+describe(motionFolder.add(settings,'dragRange',40,160,1).name('Drag range').onChange(wake),
+  '잡은 지점이 커서를 그대로 따라가는 이동 범위. 범위를 넘으면 가장자리에서 부드러운 저항이 생김');
+describe(motionFolder.add(settings,'inertia',0,1,.01).name('Release inertia'),
+  '놓는 순간의 속도가 남는 정도. 가만히 잡고 있다 놓으면 관성 없이 복귀');
+describe(motionFolder.add(settings,'gripRotation',0,1.5,.01).name('Grip rotation'),
+  '중심에서 떨어진 곳을 잡고 움직일 때 생기는 미세한 회전. 조약돌의 크기와 형태는 변하지 않음');
 describe(motionFolder.add(settings,'pointerFollow',.4,2.5,.01).name('Pointer follow'),
   '글래스 포인터가 커서를 따라오는 속도. 높을수록 즉각적이고 낮을수록 부유하듯 움직임');
 describe(motionFolder.add(settings,'resetComposition').name('Reset position'),
-  '조약돌과 가상 조명을 초기 위치로 복원');
+  '중앙 조약돌만 원래 구도로 복원. 조명은 현재 커서 위치 유지');
 
 describe(gui.add(settings,'resetLook').name('Reset appearance'),
   '표면, 조명, 외곽 파라미터를 기본값으로 복원');
 describe(gui.add(settings,'resetAll').name('Reset everything'),
-  '외형과 조약돌 위치를 모두 기본값으로 복원');
+  '외형, 조약돌 위치와 조명을 모두 기본값으로 복원');
 if (matchMedia('(max-width: 700px)').matches) gui.close();

@@ -2,8 +2,9 @@
 html, body, main { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 body { background: #dab8be; overscroll-behavior: none; }
 main { height: 100dvh; }
-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; -webkit-tap-highlight-color: transparent; }
-canvas:active { cursor: grabbing; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: default; -webkit-tap-highlight-color: transparent; }
+canvas[data-grabbable='true'] { cursor: grab; }
+canvas[data-interaction='dragging'] { cursor: grabbing; }
 canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
 .rose-cursor {
   --cursor-x: -100px;
@@ -44,9 +45,10 @@ body[data-rose-cursor='visible'] .rose-cursor,
 body[data-rose-cursor='pressed'] .rose-cursor { opacity: 1; }
 body[data-rose-cursor='pressed'] .rose-cursor { --cursor-scale: .96; }
 body[data-rose-cursor='pressed'] .rose-cursor--halo { filter: brightness(1.18); }
+body[data-rose-grabbable='true'] .rose-cursor--halo { border-color: rgb(255 255 255 / 80%); }
 
 @media (hover: hover) and (pointer: fine) {
-  canvas, canvas:active { cursor: none; }
+  canvas, canvas[data-grabbable], canvas[data-interaction] { cursor: none; }
   .rose-cursor { display: block; }
 }
 
