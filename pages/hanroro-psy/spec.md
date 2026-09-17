@@ -5,7 +5,7 @@
 - `index.html` - Main interactive music pad interface
 - `script.ts` - TypeScript module for audio playback and interactions (imports lil-gui for GUI controls)
 - `style.css` - Styling and 3D cube effects for buttons and LP player
-- `/common/touch-cursor.ts` - Shared touch cursor module
+- `/common/touch-pointer.ts` - Shared touch pointer module
 
 ## 컨셉
 

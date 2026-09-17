@@ -8,7 +8,7 @@ ikea/
   script.js    — Three.js 기반 전체 로직
 ```
 
-`/common/touch-cursor.ts` 추가 로드.
+`/common/touch-pointer.ts` 추가 로드.
 
 의존성: `three` (ES 모듈).
 

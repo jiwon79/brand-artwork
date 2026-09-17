@@ -4,7 +4,7 @@
 
 ```
 apple/
-  index.html   — 캔버스, UI 레이어, touch-cursor 로드
+  index.html   — 캔버스, UI 레이어, touch-pointer 로드
   style.css    — 전역 스타일 (cursor: none, UI 텍스트)
   script.ts    — 전체 로직 (TypeScript)
 ```
@@ -167,7 +167,7 @@ requestAnimationFrame(render)
 - **마우스 드래그** / **터치 드래그**: 브러시 적용
 - **clear 버튼**: `cornerN.fill(0)`, `cornerTime.fill(-Infinity)`
 - **리사이즈**: `setupCanvas()` + `initGrid()` 재실행
-- **touch-cursor.ts**: 터치 기기에서 손가락 위치에 dot + ring 표시 (터치 기기 전용)
+- **touch-pointer.ts**: 터치 기기에서 손가락 위치에 화살표 포인터 표시 (터치 기기 전용)
 
 ---
 

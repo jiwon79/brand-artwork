@@ -1,13 +1,10 @@
 import GUI from 'lil-gui';
-import { damp, PebbleMotion, type Point } from './interaction';
+import { PebbleMotion, type Point } from './interaction';
 import { fragmentSource, resolveSource, vertexSource } from './shader';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
 const error = document.querySelector<HTMLParagraphElement>('#error')!;
-const cursorHalo = document.querySelector<HTMLElement>('#cursor-halo')!;
-const cursorDot = document.querySelector<HTMLElement>('#cursor-dot')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
 const defaults = {
   grain: 1.25,
   warmth: 0,
@@ -29,7 +26,6 @@ const defaults = {
   pressDepth: 1,
   recovery: 1,
   gripRotation: 1,
-  pointerFollow: 1.3,
 };
 const settings = {
   ...defaults,
@@ -54,71 +50,6 @@ let targetLightX = lightX, targetLightY = lightY;
 let pointer: number | null = null;
 let hoverPoint: Point | null = null;
 let frame = 0, previous = 0, contextLost = false;
-let cursorFrame = 0, cursorPrevious = 0;
-let cursorX = -100, cursorY = -100, cursorTargetX = -100, cursorTargetY = -100;
-let cursorVX = 0, cursorVY = 0;
-
-function positionCursor(element: HTMLElement, nextX: number, nextY: number) {
-  element.style.setProperty('--cursor-x', `${nextX}px`);
-  element.style.setProperty('--cursor-y', `${nextY}px`);
-}
-
-function animateCursor(now: number) {
-  cursorFrame = 0;
-  const dt = Math.min((now-cursorPrevious)/1000 || 1/60,1/30);
-  cursorPrevious = now;
-  if (reducedMotion.matches) {
-    cursorX = cursorTargetX;
-    cursorY = cursorTargetY;
-    cursorVX = cursorVY = 0;
-  } else {
-    const omega = Math.sqrt(180)*settings.pointerFollow;
-    const nextX = damp(cursorX,cursorVX,cursorTargetX,omega,dt);
-    const nextY = damp(cursorY,cursorVY,cursorTargetY,omega,dt);
-    cursorX = nextX.value; cursorVX = nextX.velocity;
-    cursorY = nextY.value; cursorVY = nextY.velocity;
-    const distance = Math.hypot(cursorTargetX-cursorX,cursorTargetY-cursorY);
-    if (distance > 14) {
-      const clamp = 14/distance;
-      cursorX = cursorTargetX+(cursorX-cursorTargetX)*clamp;
-      cursorY = cursorTargetY+(cursorY-cursorTargetY)*clamp;
-    }
-  }
-  const speed = Math.hypot(cursorVX,cursorVY);
-  cursorHalo.style.setProperty('--cursor-angle',`${Math.atan2(cursorVY,cursorVX)}rad`);
-  cursorHalo.style.setProperty('--cursor-stretch',`${1+Math.min(speed/2400,.1)}`);
-  positionCursor(cursorHalo,cursorX,cursorY);
-  if (Math.abs(cursorTargetX-cursorX)+Math.abs(cursorTargetY-cursorY)+Math.abs(cursorVX)+Math.abs(cursorVY) > .12) {
-    cursorFrame = requestAnimationFrame(animateCursor);
-  }
-}
-
-function updateCursor(event: PointerEvent) {
-  if (!finePointer.matches || event.pointerType !== 'mouse') return;
-  cursorTargetX = event.clientX;
-  cursorTargetY = event.clientY;
-  positionCursor(cursorDot,cursorTargetX,cursorTargetY);
-  if (document.body.dataset.roseCursor !== 'visible' && document.body.dataset.roseCursor !== 'pressed') {
-    cursorX = cursorTargetX;
-    cursorY = cursorTargetY;
-    cursorVX = cursorVY = 0;
-    cursorPrevious = performance.now();
-    positionCursor(cursorHalo,cursorX,cursorY);
-  }
-  document.body.dataset.roseCursor = pointer === null ? 'visible' : 'pressed';
-  if (!cursorFrame) {
-    cursorPrevious = performance.now();
-    cursorFrame = requestAnimationFrame(animateCursor);
-  }
-}
-
-function hideCursor() {
-  delete document.body.dataset.roseCursor;
-  if (cursorFrame) cancelAnimationFrame(cursorFrame);
-  cursorFrame = 0;
-  cursorVX = cursorVY = 0;
-}
-
 function compile(type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) throw new Error('Cannot allocate shader');
@@ -204,7 +135,6 @@ function clearCapture() {
   const released = pointer;
   pointer = null;
   if (released !== null && canvas.hasPointerCapture(released)) canvas.releasePointerCapture(released);
-  if (document.body.dataset.roseCursor) document.body.dataset.roseCursor = 'visible';
 }
 
 function resetLight() {
@@ -286,7 +216,6 @@ function scenePoint(event: PointerEvent): Point {
 function updateHover() {
   const grabbable = pointer !== null || (hoverPoint !== null && motion.hitTest(hoverPoint));
   canvas.dataset.grabbable = String(grabbable);
-  document.body.dataset.roseGrabbable = String(grabbable);
 }
 
 function aimLight(event: PointerEvent) {
@@ -294,7 +223,6 @@ function aimLight(event: PointerEvent) {
   targetLightX = point.x; targetLightY = point.y;
   hoverPoint = point;
   updateHover();
-  updateCursor(event);
   wake();
   return point;
 }
@@ -305,7 +233,6 @@ canvas.addEventListener('pointerdown', event => {
   if (!motion.grab(point,event.pressure)) return;
   pointer = event.pointerId;
   canvas.setPointerCapture(pointer);
-  if (event.pointerType === 'mouse') document.body.dataset.roseCursor = 'pressed';
   wake();
 });
 canvas.addEventListener('pointermove', event => {
@@ -329,7 +256,7 @@ for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) 
 }
 canvas.addEventListener('pointerenter', event => { if (event.isPrimary && pointer === null) aimLight(event); });
 canvas.addEventListener('pointerleave', event => {
-  hideCursor(); hoverPoint = null; updateHover();
+  hoverPoint = null; updateHover();
   // Entering the controls should not reset the light; only leaving the view.
   if (pointer === null && event.relatedTarget === null) { resetLight(); wake(); }
 });
@@ -344,11 +271,11 @@ canvas.addEventListener('keydown', event => {
   motion.nudge(direction[0],direction[1],settings.dragRange);
   wake();
 });
-window.addEventListener('blur', () => { hideCursor(); hoverPoint = null; resetLight(); resetComposition(); });
+window.addEventListener('blur', () => { hoverPoint = null; resetLight(); resetComposition(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     cancelAnimationFrame(frame); frame = 0;
-    hideCursor(); hoverPoint = null; resetLight(); resetComposition();
+    hoverPoint = null; resetLight(); resetComposition();
   }
   else { previous = performance.now(); wake(); }
 });
@@ -428,8 +355,6 @@ describe(motionFolder.add(settings,'dragRange',40,160,1).name('Body travel').onC
   '당길 때 조약돌 전체가 따라오는 작은 이동의 범위. 대부분의 드래그는 위치 이동 대신 형태 변형으로 전달');
 describe(motionFolder.add(settings,'gripRotation',0,1.5,.01).name('Grip rotation'),
   '중심에서 떨어진 곳을 당길 때 전체에 전달되는 작은 회전');
-describe(motionFolder.add(settings,'pointerFollow',.4,2.5,.01).name('Pointer follow'),
-  '글래스 포인터가 커서를 따라오는 속도. 높을수록 즉각적이고 낮을수록 부유하듯 움직임');
 describe(motionFolder.add(settings,'resetComposition').name('Reset position'),
   '중앙 조약돌의 위치와 변형을 복원. 조명은 현재 커서 위치 유지');
 

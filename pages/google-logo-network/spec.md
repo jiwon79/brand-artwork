@@ -9,7 +9,7 @@ google-logo-network/
   script.js    — 전체 로직
 ```
 
-`/common/touch-cursor.ts`를 추가로 로드한다.
+`/common/touch-pointer.ts`를 추가로 로드한다.
 
 ---
 

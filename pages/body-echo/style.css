@@ -124,15 +124,6 @@ artwork-stepper {
   z-index: 10;
 }
 
-.tc-dot {
-  background: rgba(255, 255, 255, 0.82) !important;
-}
-
-.tc-ring,
-.tc-ripple {
-  border-color: rgba(255, 255, 255, 0.38) !important;
-}
-
 @media (hover: hover) and (pointer: fine) {
   #artwork {
     cursor: none;

@@ -8,7 +8,7 @@
   - SVG 필터 정의: `#fx-defs` 요소로 포스트 프로세싱 효과 (크로매틱 수차, 색상 그레이딩)
 - **style.css** - 스타일시트 (외부 파일)
 - **script.ts** - TypeScript 메인 로직 (모듈)
-- **/common/touch-cursor.ts** - 공통 터치 커서 기능 (모듈)
+- **/common/touch-pointer.ts** - 공통 터치 커서 기능 (모듈)
 
 ## 2. 컨셉
 

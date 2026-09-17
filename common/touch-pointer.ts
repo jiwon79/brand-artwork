@@ -1,5 +1,5 @@
 const CURSOR_SELECTOR = '[data-touch-pointer-cursor]';
-const IGNORE_ATTRIBUTE = 'data-touch-cursor-ignore';
+const IGNORE_ATTRIBUTE = 'data-touch-pointer-ignore';
 
 const styles = `
   :root {
@@ -226,8 +226,8 @@ export function createTouchPointer(): TouchPointerController {
   };
 }
 
-// Direct module loading mirrors common/touch-cursor.ts and keeps adoption to a
-// one-line script swap. Tear down an earlier Vite/HMR instance before starting.
+// Direct module loading keeps adoption to one script tag. Tear down an earlier
+// Vite/HMR instance before starting so only one global pointer exists.
 window.__touchPointerController?.destroy();
 document.querySelectorAll(CURSOR_SELECTOR).forEach((element) => element.remove());
 window.__touchPointerController = createTouchPointer();
