@@ -1,105 +1,93 @@
-export type Point = { x: number; y: number };
-export const front = { x: 298, y: 645, width: 252, height: 386, shear: .045, exponent: 2.45 };
+import { deform, undeform, front, rotate, type MaterialState, type Point } from './deformation';
+export type { Point } from './deformation';
 
-export function rotate(point: Point, angle: number): Point {
-  const c = Math.cos(angle), s = Math.sin(angle);
-  return { x: c*point.x-s*point.y, y: s*point.x+c*point.y };
-}
+export type MaterialSettings = { softness: number; pressDepth: number; recovery: number };
 
-// Exact critically damped motion: stable at different refresh rates and after
-// a slow frame, without an overshoot that makes rigid glass feel rubbery.
 export function damp(value: number, velocity: number, target: number, omega: number, dt: number) {
   const delta = value-target, term = velocity+omega*delta, decay = Math.exp(-omega*dt);
   return { value: target+(delta+term*dt)*decay, velocity: (velocity-omega*term*dt)*decay };
 }
 
-function resist(value: number, range: number) {
-  const extra = Math.max(0,Math.abs(value)-range);
-  return extra === 0 ? value : Math.sign(value)*(range+30*(1-Math.exp(-extra/30)));
+// Analytic, slightly underdamped strain: one small rebound, without unstable
+// frame-dependent integration or endless jelly oscillation.
+export function elastic(value: number, velocity: number, target: number, omega: number, dt: number) {
+  const zeta = .78, frequency = omega*Math.sqrt(1-zeta*zeta);
+  const delta = value-target, decay = Math.exp(-zeta*omega*dt);
+  const c = Math.cos(frequency*dt), s = Math.sin(frequency*dt);
+  return { value: target+decay*(delta*c+(velocity+zeta*omega*delta)*s/frequency),
+    velocity: decay*(velocity*c-(zeta*omega*velocity+omega*omega*delta)*s/frequency) };
 }
 
-export class PebbleMotion {
+export class PebbleMotion implements MaterialState {
   x = 0; y = 0; angle = 0;
-  vx = 0; vy = 0; angularVelocity = 0;
-  mode: 'idle' | 'dragging' | 'coasting' | 'returning' | 'keyboard' = 'idle';
+  contact = { x: 0, y: 0 };
+  pull = { x: 0, y: 0 };
+  press = 0;
+  mode: 'idle' | 'dragging' | 'returning' | 'keyboard' = 'idle';
+  private velocity = { x: 0, y: 0 };
+  private pullVelocity = { x: 0, y: 0 };
+  private contactVelocity = { x: 0, y: 0 };
+  private pressVelocity = 0;
+  private angularVelocity = 0;
   private grip: Point = { x: 0, y: 0 };
   private origin: Point = { x: 0, y: 0 };
   private cursor: Point = { x: 0, y: 0 };
-  private initialAngle = 0;
   private initialOffset: Point = { x: 0, y: 0 };
-  private targetAngle = 0;
+  private initialAngle = 0;
   private keyTarget: Point = { x: 0, y: 0 };
-  private sampleTime = 0;
-  private movedAt = 0;
-  private coastRemaining = 0;
+  private inputPressure = 1;
+
+  private materialPoint(point: Point) {
+    return undeform(rotate({ x: point.x-front.x-this.x, y: point.y-front.y-this.y },-this.angle),this);
+  }
 
   hitTest(point: Point) {
-    const p = rotate({ x: point.x-front.x-this.x, y: point.y-front.y-this.y },-this.angle);
-    const y = p.y/front.height;
+    const p = this.materialPoint(point), y = p.y/front.height;
     const lower = Math.max(0,Math.min(1,(y+.10)/.40));
     const width = front.width*(1-.11*y-.0325*lower*lower*(3-2*lower));
     const x = (p.x-p.y*front.shear)/width;
     return Math.abs(x)**front.exponent+Math.abs(y)**front.exponent <= 1;
   }
 
-  grab(point: Point, now: number) {
+  grab(point: Point, pressure = .5) {
     if (!this.hitTest(point) || this.mode === 'dragging') return false;
-    this.grip = rotate({ x: point.x-front.x-this.x, y: point.y-front.y-this.y },-this.angle);
+    this.grip = this.materialPoint(point);
     this.origin = this.cursor = { ...point };
     this.initialOffset = { x: this.x, y: this.y };
-    this.initialAngle = this.targetAngle = this.angle;
-    this.vx = this.vy = this.angularVelocity = 0;
-    this.sampleTime = this.movedAt = now;
+    this.initialAngle = this.angle;
+    if (Math.hypot(this.pull.x,this.pull.y)+this.press < .05) this.contact = { ...this.grip };
+    // Catching during recovery retains the shape; the force center migrates
+    // smoothly to the new grip instead of teleporting the deformation.
+    this.inputPressure = .7+.6*Math.max(0,Math.min(1,pressure));
     this.mode = 'dragging';
     return true;
   }
 
-  move(point: Point, now: number, range: number, rotation: number, reduced: boolean) {
+  move(point: Point, pressure = .5) {
     if (this.mode !== 'dragging') return;
     this.cursor = { ...point };
-    const dx = point.x-this.origin.x, dy = point.y-this.origin.y;
-    const torque = (this.grip.x*dy-this.grip.y*dx)/100_000;
-    this.targetAngle = reduced ? this.initialAngle
-      : this.initialAngle+Math.tanh(torque)*.045*rotation;
-    const oldX = this.x, oldY = this.y;
-    this.placeGrip(range);
-    const dt = (now-this.sampleTime)/1000;
-    if (dt > .001) {
-      const blend = 1-Math.exp(-dt/.045);
-      this.vx += (Math.max(-900,Math.min(900,(this.x-oldX)/dt))-this.vx)*blend;
-      this.vy += (Math.max(-900,Math.min(900,(this.y-oldY)/dt))-this.vy)*blend;
-      this.sampleTime = now;
-      if (Math.hypot(this.x-oldX,this.y-oldY) > .01) this.movedAt = now;
-    }
+    this.inputPressure = .7+.6*Math.max(0,Math.min(1,pressure));
   }
 
-  private placeGrip(range: number) {
-    const grip = rotate(this.grip,this.angle);
-    // Calibrate resistance to the picked pose: catching a returning pebble
-    // outside the free range must not introduce a discontinuity.
-    this.x = resist(this.cursor.x-front.x-grip.x,range)
-      +this.initialOffset.x-resist(this.initialOffset.x,range);
-    this.y = resist(this.cursor.y-front.y-grip.y,range*1.15)
-      +this.initialOffset.y-resist(this.initialOffset.y,range*1.15);
-  }
-
-  release(now: number, inertia: number, reduced: boolean) {
+  release(reduced: boolean) {
     if (this.mode !== 'dragging') return;
-    // Holding still before release must not replay an old flick.
-    const freshness = Math.exp(-Math.max(0,now-this.movedAt-24)/65);
-    this.vx *= inertia*freshness;
-    this.vy *= inertia*freshness;
-    this.angularVelocity = 0;
-    this.coastRemaining = .12;
-    this.mode = Math.hypot(this.vx,this.vy) > 6 ? 'coasting' : 'returning';
+    this.mode = 'returning';
+    // A fast pull retains internal momentum; a held pull has dissipated it.
+    this.pullVelocity.x *= .35; this.pullVelocity.y *= .35;
     if (reduced) this.reset(true);
   }
 
   reset(immediate = false) {
-    this.vx = this.vy = this.angularVelocity = 0;
-    this.targetAngle = 0;
     this.mode = 'returning';
-    if (immediate) { this.x = this.y = this.angle = 0; this.mode = 'idle'; }
+    if (immediate) {
+      this.x = this.y = this.angle = this.press = 0;
+      this.pull = { x: 0, y: 0 };
+      this.velocity = { x: 0, y: 0 };
+      this.pullVelocity = { x: 0, y: 0 };
+      this.contactVelocity = { x: 0, y: 0 };
+      this.pressVelocity = this.angularVelocity = 0;
+      this.mode = 'idle';
+    }
   }
 
   nudge(dx: number, dy: number, range: number) {
@@ -110,46 +98,66 @@ export class PebbleMotion {
     this.mode = 'keyboard';
   }
 
-  step(dt: number, range: number, reduced: boolean): boolean {
+  step(dt: number, range: number, rotation: number, material: MaterialSettings, reduced: boolean) {
     if (this.mode === 'idle') return false;
-    if (this.mode === 'dragging') {
-      const rotation = damp(this.angle,this.angularVelocity,this.targetAngle,16,dt);
-      this.angle = reduced ? this.initialAngle : rotation.value;
-      this.angularVelocity = reduced ? 0 : rotation.velocity;
-      this.placeGrip(range);
-      return Math.abs(this.angle-this.targetAngle)+Math.abs(this.angularVelocity) > .0001;
+    const held = this.mode === 'dragging';
+    const dx = this.cursor.x-this.origin.x, dy = this.cursor.y-this.origin.y;
+    // Most input becomes local strain. Small body displacement conveys weight
+    // while retaining the stacked reference composition.
+    const target = held ? {
+      x: this.initialOffset.x+Math.tanh(dx/range)*range*.16,
+      y: this.initialOffset.y+Math.tanh(dy/range)*range*.16,
+    } : this.mode === 'keyboard' ? this.keyTarget : { x: 0, y: 0 };
+    const torque = (this.grip.x*dy-this.grip.y*dx)/100_000;
+    const targetAngle = held ? this.initialAngle+(reduced ? 0 : Math.tanh(torque)*.02*rotation) : 0;
+    const recovery = 8*material.recovery;
+    let active = false;
+    for (const axis of ['x','y'] as const) {
+      const position = damp(this[axis],this.velocity[axis],target[axis],held ? 16 : recovery,dt);
+      this[axis] = reduced ? target[axis] : position.value;
+      this.velocity[axis] = reduced ? 0 : position.velocity;
+      if (held) {
+        const contact = damp(this.contact[axis],this.contactVelocity[axis],this.grip[axis],20,dt);
+        this.contact[axis] = reduced ? this.grip[axis] : contact.value;
+        this.contactVelocity[axis] = reduced ? 0 : contact.velocity;
+        active ||= Math.abs(this.contact[axis]-this.grip[axis])+Math.abs(this.contactVelocity[axis]) > .01;
+      }
     }
-    if (reduced) {
-      this.x = this.mode === 'keyboard' ? this.keyTarget.x : 0;
-      this.y = this.mode === 'keyboard' ? this.keyTarget.y : 0;
-      this.angle = this.vx = this.vy = this.angularVelocity = 0;
-      if (this.mode !== 'keyboard') this.mode = 'idle';
-      return false;
+    const angle = damp(this.angle,this.angularVelocity,targetAngle,held ? 16 : recovery,dt);
+    this.angle = reduced ? targetAngle : angle.value;
+    this.angularVelocity = reduced ? 0 : angle.velocity;
+    const pressureTarget = held ? Math.min(2,material.softness*material.pressDepth*this.inputPressure) : 0;
+    const pressure = damp(this.press,this.pressVelocity,pressureTarget,held ? 18 : recovery,dt);
+    this.press = reduced ? pressureTarget : pressure.value;
+    this.pressVelocity = reduced ? 0 : pressure.velocity;
+
+    let pullTarget = { x: 0, y: 0 };
+    if (held) {
+      const cursor = rotate({ x: this.cursor.x-front.x-this.x, y: this.cursor.y-front.y-this.y },-this.angle);
+      const withoutPull = deform(this.grip,{ contact: this.contact, pull: { x: 0, y: 0 }, press: this.press });
+      const desired = { x: cursor.x-withoutPull.x, y: cursor.y-withoutPull.y };
+      const length = Math.hypot(desired.x,desired.y);
+      // Bounded strain keeps the Jacobian positive at all GUI settings,
+      // including a pointer dragged far outside the canvas.
+      const limit = 130*material.softness;
+      const gain = length > .001 ? limit*Math.tanh(length/130)/length : material.softness;
+      pullTarget = { x: desired.x*gain, y: desired.y*gain };
     }
-    if (this.mode === 'coasting') {
-      const coastDt = Math.min(dt,this.coastRemaining), decay = Math.exp(-12*coastDt);
-      this.x += this.vx*(1-decay)/12;
-      this.y += this.vy*(1-decay)/12;
-      this.vx *= decay; this.vy *= decay;
-      this.coastRemaining -= coastDt;
-      if (this.coastRemaining > .00001) return true;
-      this.mode = 'returning';
-      dt -= coastDt;
+    for (const axis of ['x','y'] as const) {
+      const strain = elastic(this.pull[axis],this.pullVelocity[axis],pullTarget[axis],held ? 19 : recovery,dt);
+      this.pull[axis] = reduced ? pullTarget[axis] : strain.value;
+      this.pullVelocity[axis] = reduced ? 0 : strain.velocity;
+      active ||= Math.abs(this[axis]-target[axis])+Math.abs(this.velocity[axis])
+        +Math.abs(this.pull[axis]-pullTarget[axis])+Math.abs(this.pullVelocity[axis]) > .02;
     }
-    const target = this.mode === 'keyboard' ? this.keyTarget : { x: 0, y: 0 };
-    const omega = this.mode === 'keyboard' ? 12 : 5.5;
-    const nextX = damp(this.x,this.vx,target.x,omega,dt);
-    const nextY = damp(this.y,this.vy,target.y,omega,dt);
-    const nextAngle = damp(this.angle,this.angularVelocity,0,7,dt);
-    this.x = nextX.value; this.vx = nextX.velocity;
-    this.y = nextY.value; this.vy = nextY.velocity;
-    this.angle = nextAngle.value; this.angularVelocity = nextAngle.velocity;
-    const active = Math.abs(this.x-target.x)+Math.abs(this.y-target.y)+Math.abs(this.vx)
-      +Math.abs(this.vy)+100*(Math.abs(this.angle)+Math.abs(this.angularVelocity)) > .02;
+    active ||= 100*(Math.abs(this.angle-targetAngle)+Math.abs(this.angularVelocity)
+      +Math.abs(this.press-pressureTarget)+Math.abs(this.pressVelocity)) > .02;
     if (!active) {
-      this.x = target.x; this.y = target.y;
-      this.angle = this.vx = this.vy = this.angularVelocity = 0;
-      if (this.mode !== 'keyboard') this.mode = 'idle';
+      this.x = target.x; this.y = target.y; this.angle = targetAngle;
+      this.press = pressureTarget; this.pull = pullTarget;
+      this.velocity = { x: 0, y: 0 }; this.pullVelocity = { x: 0, y: 0 };
+      this.angularVelocity = this.pressVelocity = 0;
+      if (!held && this.mode !== 'keyboard') this.mode = 'idle';
     }
     return active;
   }

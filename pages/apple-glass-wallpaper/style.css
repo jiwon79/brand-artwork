@@ -18,9 +18,8 @@ canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
   border-radius: 50%;
   pointer-events: none;
   opacity: 0;
-  transform: translate3d(var(--cursor-x), var(--cursor-y), 0) translate(-50%, -50%);
-  scale: var(--cursor-scale);
-  transition-property: opacity, scale, filter;
+  transform: translate3d(var(--cursor-x), var(--cursor-y), 0) translate(-50%, -50%) scale(var(--cursor-scale));
+  transition-property: opacity;
   transition-duration: 120ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
@@ -33,7 +32,7 @@ canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
   background: radial-gradient(circle at 34% 29%, rgb(255 255 255 / 30%) 0 3%, rgb(255 244 245 / 12%) 24%, rgb(255 220 224 / 5%) 58%, transparent 76%);
   box-shadow: 0 2px 16px rgb(255 244 245 / 24%), inset 0 0 14px rgb(255 255 255 / 18%);
   backdrop-filter: blur(2.5px) saturate(1.08);
-  transform: translate3d(var(--cursor-x), var(--cursor-y), 0) translate(-50%, -50%) rotate(var(--cursor-angle)) scaleX(var(--cursor-stretch));
+  transform: translate3d(var(--cursor-x), var(--cursor-y), 0) translate(-50%, -50%) rotate(var(--cursor-angle)) scaleX(var(--cursor-stretch)) scale(var(--cursor-scale));
 }
 .rose-cursor--dot {
   width: 4px;
@@ -44,7 +43,7 @@ canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
 body[data-rose-cursor='visible'] .rose-cursor,
 body[data-rose-cursor='pressed'] .rose-cursor { opacity: 1; }
 body[data-rose-cursor='pressed'] .rose-cursor { --cursor-scale: .96; }
-body[data-rose-cursor='pressed'] .rose-cursor--halo { filter: brightness(1.18); }
+body[data-rose-cursor='pressed'] .rose-cursor--halo { border-color: rgb(255 255 255 / 90%); }
 body[data-rose-grabbable='true'] .rose-cursor--halo { border-color: rgb(255 255 255 / 80%); }
 
 @media (hover: hover) and (pointer: fine) {

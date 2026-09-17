@@ -1,4 +1,4 @@
-import { front } from './interaction';
+import { deformationSource, front } from './deformation';
 
 // A fixed-camera, analytic relief renderer. Coordinates are in the reference's
 // 590 × 1280 composition. Each pebble has an independent silhouette, material,
@@ -38,6 +38,7 @@ uniform float uRearBlur;
 uniform float uEdgeRoll;
 uniform float uShadowStrength;
 uniform float uShadowSpread;
+${deformationSource}
 
 float hash(vec2 p) {
   vec3 q = fract(vec3(p.xyx) * .1031);
@@ -69,7 +70,7 @@ vec2 rotate(vec2 p, float angle) {
   float c = cos(angle), s = sin(angle);
   return vec2(c*p.x-s*p.y,s*p.x+c*p.y);
 }
-// Shared with CPU picking: the rigid silhouette does not inflate on press.
+// Shared with CPU picking: the reference silhouette before local strain.
 const vec2 frontCenter = vec2(${front.x.toFixed(1)},${front.y.toFixed(1)});
 const vec2 frontSize = vec2(${front.width.toFixed(1)},${front.height.toFixed(1)});
 const float frontShear = ${front.shear};
@@ -92,6 +93,10 @@ vec2 frontProfile(float y) {
   return vec2(frontSize.x*(1.0-.11*y-.0325*lowerTaper),
     -frontSize.x*(.11+.0325*lowerSlope));
 }
+vec2 frontMaterialPoint(vec2 q) {
+  float y = q.y*frontSize.y;
+  return vec2(q.x*frontProfile(q.y).x+y*frontShear,y);
+}
 vec2 localPoint(vec2 p, int id) {
   if (id == 0) {
     p -= vec2(321.0, 299.0);
@@ -102,7 +107,7 @@ vec2 localPoint(vec2 p, int id) {
     p -= vec2(274.0, 941.0);
     return vec2(p.x - p.y*.19, p.y) / vec2(260.0, 366.0);
   }
-  p = rotate(p-frontCenter-uOffset,-uRotation);
+  p = undeform(rotate(p-frontCenter-uOffset,-uRotation));
   float y = p.y/frontSize.y;
   return vec2((p.x-p.y*frontShear)/frontProfile(y).x,y);
 }
@@ -151,6 +156,7 @@ float contourDistance(vec2 q, int id) {
     vec2 profile = frontProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
       gradient.y/height+gradient.x*(-frontShear-q.x*profile.y/height)/profile.x);
+    sceneGradient = transpose(inverse(deformationGradient(frontMaterialPoint(q))))*sceneGradient;
   } else if (id == 0) {
     vec2 profile = upperProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
@@ -222,6 +228,19 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float surfaceRelief = id == 2 ? 1.0 : .20;
   vec2 reliefSlope = (micro.yz*.030+coarse.yz*.014)*uGrain*grainFilter*surfaceRelief;
   vec3 grainNormal = normalize(normal+vec3(reliefSlope,0));
+  float thickness = 1.0;
+  vec3 dent = vec3(0);
+  if (id == 2) {
+    vec2 materialPoint = frontMaterialPoint(q);
+    mat2 jacobian = deformationGradient(materialPoint);
+    mat2 normalMatrix = transpose(inverse(jacobian));
+    // Local area expansion thins the relief; compression thickens it. This
+    // is an approximate volume response, not a full volumetric simulation.
+    thickness = inversesqrt(clamp(determinant(jacobian),.60,1.55));
+    dent = contactRelief(materialPoint);
+    normal = normalize(vec3(normalMatrix*(normal.xy*thickness-dent.yz*normal.z),normal.z));
+    grainNormal = normalize(vec3(normalMatrix*(grainNormal.xy*thickness-dent.yz*grainNormal.z),grainNormal.z));
+  }
   float objectRotation = id == 2 ? uRotation : 0.0;
   vec3 sceneNormal = vec3(rotate(grainNormal.xy,objectRotation),grainNormal.z);
   vec3 reflected = reflect(vec3(0,0,-1),sceneNormal);
@@ -284,7 +303,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   // One scene-space area-light approximation. Surface height, distance and
   // rotated normals determine where each pebble receives the same lamp.
   // Broad diffuse + tighter frosted reflection, not three cloned spotlights.
-  float surfaceHeight = id == 2 ? 100.0+depth*125.0 : 15.0+depth*85.0;
+  float surfaceHeight = id == 2 ? 100.0+depth*125.0*thickness+dent.x : 15.0+depth*85.0;
   vec3 toLight = vec3(uLight-p,lightHeight-surfaceHeight);
   vec3 cursorDirection = normalize(toLight);
   float cursorFacing = max(dot(sceneNormal,cursorDirection),0.0);
@@ -302,7 +321,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float edgeCore = exp(-pow(inside/volume.x,1.45));
   float edgeTail = exp(-pow(inside/(volume.x*1.8),2.0));
   float absorption = id == 2 ? uFrontAbsorption : uRearAbsorption;
-  float opticalDepth = volume.y*(.78*edgeCore+.22*edgeTail)*absorption;
+  float opticalDepth = volume.y*(.78*edgeCore+.22*edgeTail)*absorption*thickness;
   vec3 extinction = id == 1 ? vec3(.50,.57,.55) : vec3(.44,.48,.46);
   vec3 transmission = exp(-extinction*opticalDepth);
   vec3 litSurface = toLinear(max(color,0.0))

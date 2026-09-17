@@ -25,7 +25,9 @@ const defaults = {
   shadowSpread: 1,
   saturation: 1.1,
   dragRange: 85,
-  inertia: .35,
+  softness: 1.1,
+  pressDepth: 1,
+  recovery: 1,
   gripRotation: 1,
   pointerFollow: 1.3,
 };
@@ -164,7 +166,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uCursorLight', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContact', 'uPull', 'uCompression', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uCursorLight', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -231,7 +233,7 @@ function render(now: number) {
   const dt = Math.min((now-previous)/1000 || 1/60, 1/30);
   previous = now;
   const ease = reducedMotion.matches ? 1 : 1-Math.exp(-dt*9*settings.lightFollow);
-  const moving = motion.step(dt,settings.dragRange,reducedMotion.matches);
+  const moving = motion.step(dt,settings.dragRange,settings.gripRotation,settings,reducedMotion.matches);
   lightX += (targetLightX-lightX)*ease;
   lightY += (targetLightY-lightY)*ease;
   gl.viewport(0,0,canvas.width,canvas.height);
@@ -243,6 +245,9 @@ function render(now: number) {
   gl.uniform2f(uniforms.uOffset,motion.x,motion.y);
   gl.uniform2f(uniforms.uLight,lightX,lightY);
   gl.uniform1f(uniforms.uRotation,motion.angle);
+  gl.uniform2f(uniforms.uContact,motion.contact.x,motion.contact.y);
+  gl.uniform2f(uniforms.uPull,motion.pull.x,motion.pull.y);
+  gl.uniform1f(uniforms.uCompression,motion.press);
   gl.uniform1f(uniforms.uGrain,settings.grain);
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
@@ -297,7 +302,7 @@ function aimLight(event: PointerEvent) {
 canvas.addEventListener('pointerdown', event => {
   if (pointer !== null || event.button !== 0 || !event.isPrimary) return;
   const point = aimLight(event);
-  if (!motion.grab(point,event.timeStamp)) return;
+  if (!motion.grab(point,event.pressure)) return;
   pointer = event.pointerId;
   canvas.setPointerCapture(pointer);
   if (event.pointerType === 'mouse') document.body.dataset.roseCursor = 'pressed';
@@ -307,14 +312,14 @@ canvas.addEventListener('pointermove', event => {
   if (!event.isPrimary || (pointer !== null && pointer !== event.pointerId)) return;
   const point = aimLight(event);
   if (pointer === event.pointerId) {
-    motion.move(point,event.timeStamp,settings.dragRange,settings.gripRotation,reducedMotion.matches);
+    motion.move(point,event.pressure);
   }
   wake();
 });
 for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) {
   canvas.addEventListener(name, event => {
     if (event.pointerId !== pointer) return;
-    if (name === 'pointerup') motion.release(event.timeStamp,settings.inertia,reducedMotion.matches);
+    if (name === 'pointerup') motion.release(reducedMotion.matches);
     else motion.reset(reducedMotion.matches);
     clearCapture();
     if (event.pointerType !== 'mouse') { hoverPoint = null; resetLight(); }
@@ -413,16 +418,20 @@ describe(shadowFolder.add(settings,'shadowSpread',.4,2,.01).name('Shadow spread'
   '실루엣 바깥으로 그림자가 부드럽게 퍼지는 거리');
 
 const motionFolder = gui.addFolder('Interaction');
-describe(motionFolder.add(settings,'dragRange',40,160,1).name('Drag range').onChange(wake),
-  '잡은 지점이 커서를 그대로 따라가는 이동 범위. 범위를 넘으면 가장자리에서 부드러운 저항이 생김');
-describe(motionFolder.add(settings,'inertia',0,1,.01).name('Release inertia'),
-  '놓는 순간의 속도가 남는 정도. 가만히 잡고 있다 놓으면 관성 없이 복귀');
+describe(motionFolder.add(settings,'softness',0,1.5,.01).name('Softness').onChange(wake),
+  '재료의 말랑함. 높이면 잡은 주변이 더 늘어나고 눌림. 0이면 변형되지 않는 단단한 재료');
+describe(motionFolder.add(settings,'pressDepth',0,1.5,.01).name('Press depth').onChange(wake),
+  '가만히 누를 때 생기는 국소적인 홈의 깊이와 주변 부풀음. 반사광과 표면 방향도 함께 변함');
+describe(motionFolder.add(settings,'recovery',.4,2,.01).name('Shape recovery').onChange(wake),
+  '놓은 뒤 원래 형태로 복원되는 속도. 낮으면 점성 있는 레진처럼 느리게, 높으면 탄성 있게 빠르게 복원');
+describe(motionFolder.add(settings,'dragRange',40,160,1).name('Body travel').onChange(wake),
+  '당길 때 조약돌 전체가 따라오는 작은 이동의 범위. 대부분의 드래그는 위치 이동 대신 형태 변형으로 전달');
 describe(motionFolder.add(settings,'gripRotation',0,1.5,.01).name('Grip rotation'),
-  '중심에서 떨어진 곳을 잡고 움직일 때 생기는 미세한 회전. 조약돌의 크기와 형태는 변하지 않음');
+  '중심에서 떨어진 곳을 당길 때 전체에 전달되는 작은 회전');
 describe(motionFolder.add(settings,'pointerFollow',.4,2.5,.01).name('Pointer follow'),
   '글래스 포인터가 커서를 따라오는 속도. 높을수록 즉각적이고 낮을수록 부유하듯 움직임');
 describe(motionFolder.add(settings,'resetComposition').name('Reset position'),
-  '중앙 조약돌만 원래 구도로 복원. 조명은 현재 커서 위치 유지');
+  '중앙 조약돌의 위치와 변형을 복원. 조명은 현재 커서 위치 유지');
 
 describe(gui.add(settings,'resetLook').name('Reset appearance'),
   '표면, 조명, 외곽 파라미터를 기본값으로 복원');
