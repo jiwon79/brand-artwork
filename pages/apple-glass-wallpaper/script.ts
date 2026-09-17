@@ -18,6 +18,10 @@ const defaults = {
   rearAbsorption: 1,
   absorptionWidth: 1,
   diffusion: 1,
+  rearBlur: 1,
+  edgeRoll: 1,
+  shadowStrength: 1,
+  shadowSpread: 1,
   saturation: 1.1,
   response: 1,
   pointerFollow: 1.3,
@@ -155,7 +159,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uCursorLight', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uPress', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uCursorLight', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -237,6 +241,10 @@ function render(now: number) {
   gl.uniform1f(uniforms.uFrontAbsorption,settings.frontAbsorption);
   gl.uniform1f(uniforms.uRearAbsorption,settings.rearAbsorption);
   gl.uniform1f(uniforms.uAbsorptionWidth,settings.absorptionWidth);
+  gl.uniform1f(uniforms.uRearBlur,settings.rearBlur);
+  gl.uniform1f(uniforms.uEdgeRoll,settings.edgeRoll);
+  gl.uniform1f(uniforms.uShadowStrength,settings.shadowStrength);
+  gl.uniform1f(uniforms.uShadowSpread,settings.shadowSpread);
   gl.uniform1f(uniforms.uSaturation,settings.saturation);
   gl.drawArrays(gl.TRIANGLES,0,3);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
@@ -347,6 +355,8 @@ describe(lightingFolder.add(settings,'lightFollow',.15,2.5,.01).name('Light foll
   '가상 조명이 커서 위치를 따라가는 속도');
 
 const edgeFolder = gui.addFolder('Progressive edge');
+describe(edgeFolder.add(settings,'edgeRoll',0,2,.01).name('Edge roll').onChange(wake),
+  '배경이 비치는 얇은 외피에서 짙은 어깨로 전환되는 폭. 높이면 경계가 넓고 부드럽게 풀림');
 describe(edgeFolder.add(settings,'frontAbsorption',0,2,.01).name('Front darkness').onChange(wake),
   '중앙 분홍 조약돌의 두꺼운 외곽이 빛을 흡수하는 정도');
 describe(edgeFolder.add(settings,'rearAbsorption',0,2,.01).name('Rear darkness').onChange(wake),
@@ -355,6 +365,14 @@ describe(edgeFolder.add(settings,'absorptionWidth',.2,2,.01).name('Darkness widt
   '어두운 외곽이 밝은 내부로 풀리는 거리');
 describe(edgeFolder.add(settings,'diffusion',0,2,.01).name('Blur amount').onChange(wake),
   '외곽 색과 질감이 점진적으로 흐려지는 정도');
+describe(edgeFolder.add(settings,'rearBlur',0,2,.01).name('Rear blur').onChange(wake),
+  '뒤쪽 위·아래 형태의 외곽 흐림. Blur amount와 함께 적용되며 내부 질감은 유지');
+
+const shadowFolder = gui.addFolder('Shadows');
+describe(shadowFolder.add(settings,'shadowStrength',0,2,.01).name('Shadow strength').onChange(wake),
+  '각 형태가 배경과 뒤쪽 형태에 드리우는 그림자의 진하기');
+describe(shadowFolder.add(settings,'shadowSpread',.4,2,.01).name('Shadow spread').onChange(wake),
+  '실루엣 바깥으로 그림자가 부드럽게 퍼지는 거리');
 
 const motionFolder = gui.addFolder('Interaction');
 describe(motionFolder.add(settings,'response',.1,1.5,.01).name('Drag response'),

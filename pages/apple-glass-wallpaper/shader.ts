@@ -32,6 +32,10 @@ uniform float uFrontAbsorption;
 uniform float uRearAbsorption;
 uniform float uAbsorptionWidth;
 uniform float uSaturation;
+uniform float uRearBlur;
+uniform float uEdgeRoll;
+uniform float uShadowStrength;
+uniform float uShadowSpread;
 
 float hash(vec2 p) {
   vec3 q = fract(vec3(p.xyx) * .1031);
@@ -62,10 +66,12 @@ float bell(vec2 p, vec2 c, vec2 r) {
 // The upper rear pebble narrows at its cropped crown, rather than keeping the
 // same rounded-rectangle width all the way to the top of the portrait.
 vec2 upperProfile(float y) {
-  float taper = clamp((-y-.30)/.44,0.0,1.5);
-  float width = 245.0*(1.0-.22*taper*taper);
-  float derivative = y > -.96 && y < -.30 ? 245.0*taper : 0.0;
-  return vec2(width,derivative);
+  // A soft positive part keeps curvature continuous through the shoulder.
+  float t = (-y-.30)/.44;
+  float root = sqrt(t*t+.035);
+  float taper = .5*(t+root);
+  return vec2(245.0*(1.0-.22*taper*taper),
+    122.5*taper*(1.0+t/root));
 }
 vec2 frontProfile(float y) {
   float lower = clamp((y+.10)/.40,0.0,1.0);
@@ -111,19 +117,17 @@ vec2 edgeVolume(vec2 q, int id) {
   float base = smoothstep(.25,.96,q.y);
   if (id == 2) {
     float shoulder = exp(-pow((q.y+.12)/.90,2.0));
-    return vec2((12.0+45.0*leftSide*shoulder+55.0*rightSide+20.0*base)*uAbsorptionWidth,
+    return vec2((14.0+45.0*leftSide*shoulder+55.0*rightSide+20.0*base)*uAbsorptionWidth,
       .22+.45*leftSide*shoulder+.45*rightSide+.18*base);
   }
   if (id == 0) {
-    return vec2((12.0+14.0*leftSide+20.0*rightSide+8.0*base)*uAbsorptionWidth,
+    return vec2((12.0+18.0*leftSide+24.0*rightSide+8.0*base)*uAbsorptionWidth,
       .20+.60*leftSide+.53*rightSide+.12*base);
   }
-  return vec2((14.0+16.0*leftSide+24.0*rightSide+12.0*base)*uAbsorptionWidth,
+  return vec2((14.0+22.0*leftSide+24.0*rightSide+12.0*base)*uAbsorptionWidth,
     .20+.60*leftSide+.64*rightSide+.18*base);
 }
-vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
-  vec2 q = localPoint(p,id);
-  float f = field(q,id);
+float contourDistance(vec2 q, int id) {
   // Reference-pixel contour distance, including each silhouette's shear and
   // taper. Optical width varies with position; this is not a stroked outline.
   float exponent = id == 2 ? 2.45 : 2.35;
@@ -142,19 +146,46 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   } else {
     sceneGradient.y -= .19*sceneGradient.x;
   }
-  float contourDistance = (1.0-f)/max(length(sceneGradient),.0001);
-  float aa = max(fwidth(contourDistance)*.7,.65);
-  float mask = smoothstep(-aa,aa,contourDistance);
+  return (1.0-field(q,id))/max(length(sceneGradient),.0001);
+}
+// Gaussian half-plane coverage near the projected contour. Two footprints
+// separate the close contact shadow from the broad, rose-tinted penumbra.
+float shadowCoverage(float distance, float sigma) {
+  float t = distance/max(sigma,.1);
+  return .5+.5*sign(t)*sqrt(1.0-exp(-.63662*t*t));
+}
+vec3 castShadow(vec3 under, vec2 p, int id) {
+  vec2 offset = id == 0 ? vec2(-5,9) : id == 1 ? vec2(-8,12) : vec2(7,12);
+  offset -= uLight*vec2(12,10);
+  float contactDistance = contourDistance(localPoint(p-offset*.35,id),id);
+  float diffuseDistance = contourDistance(localPoint(p-offset,id),id);
+  float spread = id == 0 ? 16.0 : id == 1 ? 27.0 : 17.0;
+  float nearShadow = shadowCoverage(contactDistance,(id == 2 ? 3.5 : 5.0)*uShadowSpread);
+  float farShadow = shadowCoverage(diffuseDistance,spread*uShadowSpread);
+  float density = nearShadow*(id == 2 ? .065 : .04)
+    +farShadow*(id == 0 ? .06 : id == 1 ? .095 : .10);
+  return toSrgb(toLinear(under)*exp(-vec3(.78,1.0,1.04)*density*uShadowStrength));
+}
+vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
+  vec2 q = localPoint(p,id);
+  float f = field(q,id);
+  vec2 radii = id == 0 ? vec2(245,408) : id == 1 ? vec2(260,366) : vec2(252,386);
+  float distance = contourDistance(q,id);
+  float aa = max(fwidth(distance)*.7,.65);
+  float mask = smoothstep(-aa,aa,distance);
   float softSide = .58*smoothstep(-.65,.85,q.x)+.42*smoothstep(-.15,.95,q.y);
   float opticalWidth = mix(9.0,42.0,softSide);
   vec2 volume = edgeVolume(q,id);
   // Store a smoothly varying blur footprint alongside the unblurred color.
   // The resolve pass really filters color AND grain, including across the
   // silhouette; merely fading a bright band would leave a hard contour.
-  float focusWidth = max(mix(14.0,52.0,softSide),volume.x*1.2);
-  float localBlur = mix(.70,3.6,softSide)
-    *exp(-pow(max(contourDistance,0.0)/focusWidth,1.35));
-  float outsideFalloff = exp(-pow(max(-contourDistance,0.0)/9.0,2.0));
+  // Defocus belongs to the silhouette, not the whole dark shoulder: buried
+  // inclusions must remain visible inside the rear objects' thick glass.
+  float focusWidth = id == 2 ? mix(10.0,24.0,softSide) : mix(7.0,15.0,softSide);
+  float edgeBlur = id == 2 ? mix(1.1,2.5,softSide)
+    : (id == 0 ? mix(1.35,2.3,softSide) : mix(1.6,2.8,softSide))*uRearBlur;
+  float localBlur = edgeBlur*exp(-pow(max(distance,0.0)/focusWidth,1.35));
+  float outsideFalloff = exp(-pow(max(-distance,0.0)/max(12.0,edgeBlur*3.0),2.0));
   blurRadius = mix(blurRadius,localBlur,mask);
   blurRadius = max(blurRadius,localBlur*outsideFalloff*(1.0-mask));
   float depth = sqrt(max(0.0,1.0-f));
@@ -195,7 +226,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     color -= vec3(.39,.29,.265)*left*(.20+.80*exp(-pow((q.y+.48)/.65,2.0)));
     color -= vec3(.19,.23,.21)*right*(.25+.75*(1.0-smoothstep(.2,.75,q.y)));
     color += vec3(.075,.022,.018)*bell(q,vec2(.62,-.28),vec2(.30,.80));
-    color -= vec3(.095,.10,.095)*right*exp(-max(contourDistance,0.0)/(opticalWidth*1.5))
+    color -= vec3(.095,.10,.095)*right*exp(-max(distance,0.0)/(opticalWidth*1.5))
       *(.35+.65*(1.0-smoothstep(.35,.9,q.y)));
     color -= vec3(.125,.065,.050)*bell(q,vec2(.78,.12),vec2(.50,.30));
     color -= vec3(.028,.022,.018)*bell(q,vec2(.26,1.02),vec2(.90,.25));
@@ -218,21 +249,12 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
       color += vec3(.010,.009,.008)*bell(lightingQ,vec2(-.22,.43),vec2(.75,.95));
     }
     color = mix(color,under,.07*depth);
-    // Contact darkening and a wider rose-colored transmitted shadow follow
-    // the moving front object. Stronger on the exposed right-hand overlap.
-    vec2 front = localPoint(p-vec2(8,11)-uLight*5.0,2);
-    float separation = max(field(front,2)-1.0,0.0);
-    float overlapSide = smoothstep(-.35,.85,front.x);
-    float contact = exp(-separation*16.0)*(.12+.16*overlapSide);
-    float transmittedShadow = exp(-separation*4.5)*overlapSide;
-    color = mix(color,vec3(.54,.32,.33),contact);
-    color -= vec3(.020,.045,.040)*transmittedShadow;
   }
   // A grazing reflection rolls inward from the surface, rather than peaking
   // at a fixed inset. Its width, absorption and intensity change independently.
   float sideLight = .12+.64*bell(q,vec2(.90,-.45),vec2(.50,.80))
     +.28*bell(q,vec2(-.65,.72),vec2(.65,.65));
-  float inside = max(contourDistance,0.0);
+  float inside = max(distance,0.0);
   float rimLight = exp(-inside/opticalWidth)*sideLight;
   vec2 lightShift = uLight*.75;
   float upperLight = softbox(reflected,vec3(.92+lightShift.x,-.48+lightShift.y,.70),.52);
@@ -254,8 +276,8 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float grazing = rimLight*.13*(0.6+fresnel*.4)*uRim;
   float luminance = dot(color,vec3(.2126,.7152,.0722));
   color = mix(vec3(luminance),color,uSaturation);
-  // A dense outer shoulder and a longer, softer inward tail. Unlike a fixed
-  // inset stripe, the shadow is darkest at the edge and rolls into the face.
+  // A dense shoulder with a longer inward tail. The thin transmitted lip
+  // below softens the outside, placing peak density just inside the glass.
   float edgeCore = exp(-pow(inside/volume.x,1.45));
   float edgeTail = exp(-pow(inside/(volume.x*1.8),2.0));
   float absorption = id == 2 ? uFrontAbsorption : uRearAbsorption;
@@ -279,7 +301,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec2 spot = fract(poreUV)-poreCenter;
   float poreRadius = id == 2 ? .24 : .16+.14*hash(cell+22.9);
   float pore = (1.0-smoothstep(.035,poreRadius,length(spot))) * step(.73,hash(cell+72.1));
-  float textureStrength = id == 2 ? .11 : id == 0 ? .14 : .13;
+  float textureStrength = id == 2 ? .11 : id == 0 ? .21 : .20;
   float facets = smoothstep(.58,.86,micro.x);
   float diagonal = exp(-pow((q.y+.075-q.x*.27)/.34,2.0));
   vec2 grainLight = normalize(vec2(-.65,-.78)+uLight*.55);
@@ -296,11 +318,22 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
       *(.25+.75*noise(grainUV*.23));
     float broadFlakes = smoothstep(.68,.87,noise(grainUV*.26+21.6))
       *noise(grainUV*.18+7.0)*right;
-    color -= vec3(.100,.075,.065)*flakes*uGrain*(.30+.70*edge);
+    color -= vec3(.100,.075,.065)*flakes*uGrain*(.35+.65*edge);
     color -= vec3(.080,.065,.055)*broadFlakes*uGrain;
   }
   color.r += uWarmth*.015;
   color.b -= uWarmth*.015;
+  // The reference's outer skin transmits the backdrop before the optical
+  // path thickens. This asymmetric inward roll is separate from blur and
+  // from the cast shadow; blurring an opaque dark cutout cannot reproduce it.
+  float leftLip = 1.0-smoothstep(-.92,-.22,q.x);
+  float rightLip = smoothstep(.22,.92,q.x);
+  float lowerLip = smoothstep(.25,.96,q.y);
+  float lipWidth = id == 2 ? 3.0+6.0*leftLip+2.0*rightLip+lowerLip
+    : 3.0+1.0*leftLip+2.0*rightLip+lowerLip;
+  float lipStrength = id == 2 ? .40+.22*leftLip : .68;
+  float lipTransmission = uEdgeRoll > .001 ? lipStrength*exp(-inside/(lipWidth*uEdgeRoll)) : 0.0;
+  color = toSrgb(mix(toLinear(clamp(color,0.0,1.0)),toLinear(under),lipTransmission));
   return mix(under,clamp(color,0.0,1.0),mask);
 }
 void main() {
@@ -312,12 +345,13 @@ void main() {
   vec2 p = (uv*uView-uView*.5)/scale+vec2(295,640);
   vec3 color = background(p);
   float blurRadius = 0.0;
-  float shadow = bell(p,vec2(260,1160),vec2(300,135));
-  color -= vec3(.10,.105,.105)*shadow*.50;
+  color = castShadow(color,p,0);
   color = pebble(color,p,0,blurRadius);
+  color = castShadow(color,p,1);
   color = pebble(color,p,1,blurRadius);
+  color = castShadow(color,p,2);
   color = pebble(color,p,2,blurRadius);
-  fragColor = vec4(color,clamp(blurRadius/8.0,0.0,1.0));
+  fragColor = vec4(color,clamp(blurRadius/16.0,0.0,1.0));
 }`;
 
 // Variable-radius, linear-light resolve. Only the grazing/far-side region is
@@ -335,18 +369,20 @@ void main() {
   vec2 uv = gl_FragCoord.xy/uResolution;
   vec4 center = texture(uScene,uv);
   float dither = fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))-.5;
-  float pixelRadius = center.a*8.0*uReferenceScale*uDiffusion;
+  float pixelRadius = center.a*16.0*uReferenceScale*uDiffusion;
   if (pixelRadius < .25) {
     fragColor = vec4(center.rgb+dither/255.0,1);
     return;
   }
   vec2 radius = vec2(pixelRadius)/uResolution;
-  vec3 color = toLinear(center.rgb)*.20;
-  color += (sampleLight(uv+vec2(radius.x,0))+sampleLight(uv-vec2(radius.x,0))
-    +sampleLight(uv+vec2(0,radius.y))+sampleLight(uv-vec2(0,radius.y)))*.12;
-  color += (sampleLight(uv+radius)+sampleLight(uv-radius)
-    +sampleLight(uv+vec2(radius.x,-radius.y))+sampleLight(uv+vec2(-radius.x,radius.y)))*.07;
-  color += (sampleLight(uv+vec2(radius.x*2.2,0))+sampleLight(uv-vec2(radius.x*2.2,0))
-    +sampleLight(uv+vec2(0,radius.y*2.2))+sampleLight(uv-vec2(0,radius.y*2.2)))*.01;
+  // Binomial Gaussian kernel avoids a sharp center or cross-shaped halo at
+  // larger footprints. Its weights sum to one, preserving surface exposure.
+  const float weights[5] = float[5](1.0,4.0,6.0,4.0,1.0);
+  vec3 color = vec3(0);
+  for (int y=0; y<5; y++) {
+    for (int x=0; x<5; x++) {
+      color += sampleLight(uv+vec2(x-2,y-2)*radius)*weights[x]*weights[y]/256.0;
+    }
+  }
   fragColor = vec4(toSrgb(color)+dither/255.0,1);
 }`;
