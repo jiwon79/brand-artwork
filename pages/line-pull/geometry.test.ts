@@ -1,14 +1,14 @@
 import { expect, test } from 'vitest';
-import { boundaryPoint, copyLayout, crossingTime, lensProgress, linePoint, restY, sampleXs } from './geometry';
+import { openingEdgePoint, copyLayout, crossingTime, spreadProgress, bentLinePoint, restingLineY, sampleLineXs } from './geometry';
 
 const surface = {
   width: 720, height: 1280, lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
-  lensStrength: 0.2, horizontalLens: 0.27, boundaryEase: 0.65,
-  boundaryCreep: 0.02, apexSpacing: 0.16,
+  spreadStrength: 0.2, horizontalSpread: 0.27, openingEdgeEase: 0.65,
+  openingEdgeCreep: 0.02, pullPointSpacing: 0.16,
 };
 const near = (a: number, b: number, epsilon = 1e-6) => expect(Math.abs(a - b), `${a} != ${b}`).toBeLessThanOrEqual(epsilon);
-const pullAt = (distance: number, x = 440, originY = 437) => ({
-  originY, apexX: x, apexY: restY(surface, x, originY) + distance,
+const pullAt = (distance: number, x = 440, selectedLineY = 437) => ({
+  selectedLineY, pullX: x, pullY: restingLineY(surface, x, selectedLineY) + distance,
 });
 
 test('upper boundary approaches its neighbor, then creeps with it without crossing', () => {
@@ -16,14 +16,14 @@ test('upper boundary approaches its neighbor, then creeps with it without crossi
     let lastGap = Infinity;
     for (const distance of [0.01, 35, 70, 140, 210, 340, 700, 2100]) {
       const pull = pullAt(direction * distance);
-      const boundary = boundaryPoint(surface, pull, pull.apexX).y;
-      const neighbor = linePoint(surface, pull, pull.originY - direction * surface.lineGap, pull.apexX).y;
+      const boundary = openingEdgePoint(surface, pull, pull.pullX).y;
+      const neighbor = bentLinePoint(surface, pull, pull.selectedLineY - direction * surface.lineGap, pull.pullX).y;
       const gap = direction * (boundary - neighbor);
       expect(gap >= surface.lineWidth - 1e-9 && gap <= lastGap + 1e-9).toBeTruthy();
       lastGap = gap;
     }
-    const a = boundaryPoint(surface, pullAt(direction * 340), 440).y;
-    const b = boundaryPoint(surface, pullAt(direction * 2100), 440).y;
+    const a = openingEdgePoint(surface, pullAt(direction * 340), 440).y;
+    const b = openingEdgePoint(surface, pullAt(direction * 2100), 440).y;
     expect(Math.abs(a - b), 'long pull must not send the upper boundary flying').toBeLessThan(4);
   }
 });
@@ -32,12 +32,12 @@ test('attached strokes touch edge-to-edge and retain twice the painted thickness
   for (const width of [390, 720, 1920]) for (const lineWidth of [0.5, 3, 6]) {
     const model = { ...surface, width, lineWidth };
     for (const direction of [-1, 1]) for (const x of [0, width / 2, width]) {
-      const pull = { originY: 437, apexX: width / 2, apexY: 437 + direction * 5000 };
-      const baseY = pull.originY - direction * model.lineGap;
-      const neighbor = linePoint(model, pull, baseY, x);
-      const boundary = boundaryPoint(model, pull, x);
-      const left = linePoint(model, pull, baseY, x - 0.01);
-      const right = linePoint(model, pull, baseY, x + 0.01);
+      const pull = { selectedLineY: 437, pullX: width / 2, pullY: 437 + direction * 5000 };
+      const rowY = pull.selectedLineY - direction * model.lineGap;
+      const neighbor = bentLinePoint(model, pull, rowY, x);
+      const boundary = openingEdgePoint(model, pull, x);
+      const left = bentLinePoint(model, pull, rowY, x - 0.01);
+      const right = bentLinePoint(model, pull, rowY, x + 0.01);
       const slope = (right.y - left.y) / (right.x - left.x);
       const normalDistance = direction * (boundary.y - neighbor.y) / Math.hypot(1, slope);
       near(normalDistance, lineWidth);
@@ -50,9 +50,9 @@ test('every reached line keeps a distinct, ordered tip in both directions', () =
   for (const direction of [-1, 1]) {
     for (const distance of [70, 210, 340, 700, 2100]) {
       const pull = pullAt(direction * distance);
-      let previous = linePoint(surface, pull, pull.originY, pull.apexX).y;
+      let previous = bentLinePoint(surface, pull, pull.selectedLineY, pull.pullX).y;
       for (let i = 1; i <= 35; i++) {
-        const y = linePoint(surface, pull, pull.originY + direction * i * surface.lineGap, pull.apexX).y;
+        const y = bentLinePoint(surface, pull, pull.selectedLineY + direction * i * surface.lineGap, pull.pullX).y;
         expect(direction * (y - previous), 'tips must not collapse to one point').toBeGreaterThanOrEqual(surface.lineGap * 0.15);
         previous = y;
       }
@@ -64,10 +64,10 @@ test('main tip stays in pointer coordinates at every x and at unlimited heights'
   for (const x of [0, 1, 27, 360, 440, 719, 720]) {
     for (const distance of [-5000, -340, -70, -1, 0, 1, 70, 340, 5000]) {
       const pull = pullAt(distance, x);
-      const tip = linePoint(surface, pull, pull.originY, x);
+      const tip = bentLinePoint(surface, pull, pull.selectedLineY, x);
       near(tip.x, x);
-      near(tip.y, pull.apexY);
-      expect(sampleXs(surface, pull).includes(x)).toBeTruthy();
+      near(tip.y, pull.pullY);
+      expect(sampleLineXs(surface, pull).includes(x)).toBeTruthy();
     }
   }
 });
@@ -75,9 +75,9 @@ test('main tip stays in pointer coordinates at every x and at unlimited heights'
 test('lens strength never decreases as pull distance grows', () => {
   let previous = 0;
   for (let distance = 0; distance <= 5000; distance += 5) {
-    const strength = lensProgress(surface, pullAt(distance));
+    const strength = spreadProgress(surface, pullAt(distance));
     expect(strength >= previous && strength <= 1).toBeTruthy();
-    near(strength, lensProgress(surface, pullAt(-distance)));
+    near(strength, spreadProgress(surface, pullAt(-distance)));
     previous = strength;
   }
 });
@@ -87,8 +87,8 @@ test('neighboring lines acquire and release their bend continuously', () => {
     for (let distance = 0; distance < 600; distance += 0.5) {
       for (let i = 1; i < 6; i++) {
         const y = 437 + direction * i * surface.lineGap;
-        const before = linePoint(surface, pullAt(direction * distance), y, 440).y;
-        const after = linePoint(surface, pullAt(direction * (distance + 0.001)), y, 440).y;
+        const before = bentLinePoint(surface, pullAt(direction * distance), y, 440).y;
+        const after = bentLinePoint(surface, pullAt(direction * (distance + 0.001)), y, 440).y;
         expect(Math.abs(after - before), 'newly reached line jumped').toBeLessThan(0.003);
       }
     }
@@ -108,7 +108,7 @@ test('hit testing finds fast diagonal and horizontal crossings of curved lines',
     const t = crossingTime(surface, from, to, 437);
     if (t === null) throw new Error('Expected a line crossing');
     expect(t > 0 && t <= 1).toBeTruthy();
-    near(from.y + (to.y - from.y) * t, restY(surface, from.x + (to.x - from.x) * t, 437));
+    near(from.y + (to.y - from.y) * t, restingLineY(surface, from.x + (to.x - from.x) * t, 437));
   }
 });
 
@@ -117,11 +117,11 @@ test('copy stays centered and unchanged when only the pointer moves sideways', (
     const model = { ...surface, width };
     for (const distance of [-600, -140, 140, 600]) {
       for (const count of [1, 2]) {
-        const pull = { originY: 437, apexY: 437 + distance, apexX: width / 2 };
+        const pull = { selectedLineY: 437, pullY: 437 + distance, pullX: width / 2 };
         const expected = copyLayout(model, pull, count);
         near(expected.x, width / 2);
         for (const x of [0, width * 0.1, width * 0.9, width]) {
-          expect(copyLayout(model, { ...pull, apexX: x }, count)).toStrictEqual(expected);
+          expect(copyLayout(model, { ...pull, pullX: x }, count)).toStrictEqual(expected);
         }
         near(expected.scaleX, 1);
       }

@@ -5,8 +5,8 @@ import { fitCopyInOpenings, type CopyBounds } from './copy-fit';
 import { themeForInteraction, type RevealTheme } from './palette';
 import { canKeepOpening, isNestedSlot, layerGap, lineRows, messageForSlot, pointInOpening, returnLayerChain } from './layers';
 import {
-  boundaryPoint, copyLayout, crossingTimes, lensProgress, linePoint, pointsPath,
-  pullDelta, restY, sampleXs, type Point, type Pull, type Surface,
+  bentLinePoint, copyLayout, crossingTimes, openingEdgePoint, pointsPath,
+  restingLineY, sampleLineXs, signedPullDistance, spreadProgress, type Point, type Pull, type Surface,
 } from './geometry';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -25,8 +25,8 @@ const defs = required<SVGDefsElement>('#artwork-defs');
 const surfaceGrain = required<HTMLElement>('#surface-grain');
 const params = {
   lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
-  lensStrength: 0.20, horizontalLens: 0.27, boundaryEase: 0.65,
-  boundaryCreep: 0.02, apexSpacing: 0.16, followSpeed: 32,
+  spreadStrength: 0.20, horizontalSpread: 0.27, openingEdgeEase: 0.65,
+  openingEdgeCreep: 0.02, pullPointSpacing: 0.16, followSpeed: 32,
   returnStiffness: 205, returnDamping: 24,
   background: '#050505', lineColor: '#f4f2ec', hoverColor: '#ffffff',
   ...themeForInteraction(0),
@@ -35,25 +35,25 @@ const params = {
 interface View {
   group: SVGGElement; clip: SVGClipPathElement; clipPath: SVGPathElement;
   reveal: SVGGElement; background: SVGRectElement; copy: SVGTextElement;
-  origin: SVGPathElement; field: SVGGElement;
+  pulledEdge: SVGPathElement; field: SVGGElement;
 }
 interface DragState extends Pull {
-  pointerId: number; previousPoint: Point; originIndex: number | null;
-  grabOffsetY: number; targetY: number; velocityY: number;
+  pointerId: number; previousPoint: Point; selectedLineIndex: number | null;
+  pointerOffsetY: number; targetPullY: number; velocityY: number;
   returning: boolean; pinned: boolean;
 }
-type ActiveDrag = DragState & { originIndex: number };
+type ActiveDrag = DragState & { selectedLineIndex: number };
 interface Layer {
   depth: number; parent: Layer | null; child: Layer | null;
   view: View; model: Surface; theme: RevealTheme;
-  lines: { row: number; baseY: number; path: SVGPathElement }[];
+  lines: { row: number; rowY: number; path: SVGPathElement }[];
   pull: DragState | null; polygon: Point[]; copyBounds: CopyBounds | null; dirty: boolean; hoveredIndex: number;
 }
 
 const rootView: View = {
   group: required('#root-surface'), clip: required('#reveal-clip'), clipPath: required('#reveal-path'),
   reveal: required('#reveal'), background: required('#reveal-background'), copy: required('#reveal-copy'),
-  origin: required('#origin-pull-path'), field: required('#line-field'),
+  pulledEdge: required('#pulled-edge-path'), field: required('#line-field'),
 };
 let width = 0, height = 0, viewId = 0, interactionCount = 0;
 let root: Layer;
@@ -63,7 +63,7 @@ let styledLayer: Layer | null = null;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const render = createFrameLoop(animate);
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-const isActive = (pull: DragState): pull is ActiveDrag => pull.originIndex !== null;
+const isActive = (pull: DragState): pull is ActiveDrag => pull.selectedLineIndex !== null;
 const surface = (depth: number): Surface => ({ ...params, width, height, lineGap: layerGap(params.lineGap, depth) });
 
 function createView(parent: Layer): View {
@@ -73,19 +73,19 @@ function createView(parent: Layer): View {
   clip.appendChild(clipPath);
   defs.appendChild(clip);
   const group = svg('g'), reveal = svg('g'), background = svg('rect'), copy = svg('text');
-  const origin = svg('path'), field = svg('g');
+  const pulledEdge = svg('path'), field = svg('g');
   group.setAttribute('data-layer-depth', String(parent.depth + 1));
   reveal.setAttribute('class', 'reveal');
   reveal.setAttribute('clip-path', 'url(#' + clip.id + ')');
   copy.setAttribute('text-anchor', 'middle');
   copy.setAttribute('dominant-baseline', 'middle');
-  origin.setAttribute('class', 'origin-pull-path');
+  pulledEdge.setAttribute('class', 'pulled-edge-path');
   field.setAttribute('class', 'line-field');
   reveal.append(background, copy);
-  group.append(reveal, origin, field);
+  group.append(reveal, pulledEdge, field);
   // Nest the actual group inside the parent's clip, not a rectangular approximation.
   parent.view.reveal.appendChild(group);
-  return { group, clip, clipPath, reveal, background, copy, origin, field };
+  return { group, clip, clipPath, reveal, background, copy, pulledEdge, field };
 }
 
 function createLayer(parent: Layer | null, phase: number): Layer {
@@ -139,8 +139,8 @@ function measureCopy(layer: Layer): void {
 }
 
 function activate(layer: Layer, current: DragState, index: number): void {
-  current.originIndex = index;
-  current.originY = layer.lines[index].baseY;
+  current.selectedLineIndex = index;
+  current.selectedLineY = layer.lines[index].rowY;
   layer.theme = { ...themeForInteraction(interactionCount++) };
   Object.assign(params, layer.theme);
   styledLayer = layer;
@@ -150,7 +150,7 @@ function activate(layer: Layer, current: DragState, index: number): void {
     const span = svg('tspan'); span.textContent = text; return span;
   }));
   if (isNestedSlot(layer.lines[index].row, layer.depth)) {
-    layer.child = createLayer(layer, current.originY + layerGap(params.lineGap, layer.depth + 1) * 0.56);
+    layer.child = createLayer(layer, current.selectedLineY + layerGap(params.lineGap, layer.depth + 1) * 0.56);
   }
   layer.view.reveal.setAttribute('data-content', layer.child ? 'nested' : 'copy');
   layer.view.copy.setAttribute('display', layer.child ? 'none' : 'inline');
@@ -162,7 +162,7 @@ function renderLayer(layer: Layer): void {
   if (layer.dirty) {
     const { view, model, pull } = layer;
     const current = pull && isActive(pull) ? pull : null;
-    const xs = sampleXs(model, current);
+    const xs = sampleLineXs(model, current);
     const ink = layer.parent ? layer.parent.theme.textColor : params.lineColor;
     view.group.setAttribute('data-state', !pull ? 'closed' : pull.pinned ? 'open' : pull.returning ? 'returning' : 'dragging');
     view.background.setAttribute('width', String(width));
@@ -170,22 +170,22 @@ function renderLayer(layer: Layer): void {
     view.background.setAttribute('fill', layer.theme.panelColor);
     view.copy.setAttribute('fill', layer.theme.textColor);
     layer.lines.forEach((line, index) => {
-      const points = xs.map(x => current?.originIndex === index
-        ? boundaryPoint(model, current, x) : linePoint(model, current, line.baseY, x));
+      const points = xs.map(x => current?.selectedLineIndex === index
+        ? openingEdgePoint(model, current, x) : bentLinePoint(model, current, line.rowY, x));
       line.path.setAttribute('d', pointsPath(points));
       line.path.setAttribute('stroke-width', String(model.lineWidth));
       line.path.setAttribute('stroke', index === layer.hoveredIndex && !pull && !layer.parent ? params.hoverColor : ink);
     });
-    if (current && Math.abs(pullDelta(model, current)) >= 0.01) {
-      const upper = xs.map(x => boundaryPoint(model, current, x));
-      const lower = xs.map(x => linePoint(model, current, current.originY, x));
+    if (current && Math.abs(signedPullDistance(model, current)) >= 0.01) {
+      const upper = xs.map(x => openingEdgePoint(model, current, x));
+      const lower = xs.map(x => bentLinePoint(model, current, current.selectedLineY, x));
       layer.polygon = [...upper, ...[...lower].reverse()];
       view.clipPath.setAttribute('d', pointsPath(layer.polygon, true));
       view.reveal.setAttribute('opacity', '1');
-      view.origin.setAttribute('d', pointsPath(lower));
-      view.origin.setAttribute('stroke', ink);
-      view.origin.setAttribute('stroke-width', String(model.lineWidth));
-      view.origin.setAttribute('opacity', '1');
+      view.pulledEdge.setAttribute('d', pointsPath(lower));
+      view.pulledEdge.setAttribute('stroke', ink);
+      view.pulledEdge.setAttribute('stroke-width', String(model.lineWidth));
+      view.pulledEdge.setAttribute('opacity', '1');
       if (!layer.child) {
         const spans = [...view.copy.children];
         let layout = copyLayout(model, current, spans.length);
@@ -210,8 +210,8 @@ function renderLayer(layer: Layer): void {
       layer.polygon = [];
       view.reveal.setAttribute('opacity', '0');
       view.clipPath.setAttribute('d', '');
-      view.origin.setAttribute('opacity', '0');
-      view.origin.setAttribute('d', '');
+      view.pulledEdge.setAttribute('opacity', '0');
+      view.pulledEdge.setAttribute('d', '');
     }
     layer.dirty = false;
   }
@@ -228,9 +228,9 @@ function renderFrame(): void {
   renderLayer(root);
   stage.style.backgroundColor = params.background;
   const current = root.pull && isActive(root.pull) ? root.pull : null;
-  const strength = current ? lensProgress(root.model, current) : 0;
+  const strength = current ? spreadProgress(root.model, current) : 0;
   surfaceGrain.style.transform = 'scale(' + (1 + 0.05 * strength) + ')';
-  surfaceGrain.style.transformOrigin = current ? current.apexX + 'px ' + current.originY + 'px' : '50% 50%';
+  surfaceGrain.style.transformOrigin = current ? current.pullX + 'px ' + current.selectedLineY + 'px' : '50% 50%';
 }
 
 function visibleInLayer(layer: Layer, point: Point): boolean {
@@ -252,7 +252,7 @@ function lineAt(layer: Layer, point: Point): number | null {
   let nearest: number | null = null;
   let distance = Math.max(8, layer.model.lineWidth * 2);
   layer.lines.forEach((line, index) => {
-    const y = restY(layer.model, point.x, line.baseY);
+    const y = restingLineY(layer.model, point.x, line.rowY);
     const next = Math.abs(y - point.y);
     if (next <= distance && visibleInLayer(layer, { x: point.x, y })) { distance = next; nearest = index; }
   });
@@ -262,7 +262,7 @@ function lineAt(layer: Layer, point: Point): number | null {
 function firstCrossing(layer: Layer, from: Point, to: Point): number | null {
   let first: number | null = null, time = Infinity;
   layer.lines.forEach((line, index) => {
-    for (const next of crossingTimes(layer.model, from, to, line.baseY)) {
+    for (const next of crossingTimes(layer.model, from, to, line.rowY)) {
       if (next < time && visibleInLayer(layer, {
         x: from.x + (to.x - from.x) * next, y: from.y + (to.y - from.y) * next,
       })) { first = index; time = next; }
@@ -283,10 +283,10 @@ function releasePointer(normalRelease: boolean, immediate = false): void {
   const clips: Point[][] = [];
   for (let parent = layer.parent; parent; parent = parent.parent) clips.push(parent.polygon);
   // A move and release may arrive in the same frame, especially with reduced motion.
-  const xs = sampleXs(layer.model, current);
+  const xs = sampleLineXs(layer.model, current);
   const polygon = isActive(current) ? [
-    ...xs.map(x => boundaryPoint(layer.model, current, x)),
-    ...[...xs].reverse().map(x => linePoint(layer.model, current, current.originY, x)),
+    ...xs.map(x => openingEdgePoint(layer.model, current, x)),
+    ...[...xs].reverse().map(x => bentLinePoint(layer.model, current, current.selectedLineY, x)),
   ] : [];
   // Detach ownership before lostpointercapture is delivered.
   pointerLayer = null;
@@ -297,7 +297,7 @@ function releasePointer(normalRelease: boolean, immediate = false): void {
     if (reducedMotion.matches) clearPull(root);
     else returnLayerChain(layer);
   } else if (!immediate && normalRelease && layer.child && isActive(current)
-    && canKeepOpening(polygon, current.apexX, height, layer.child.model.lineGap, clips)) {
+    && canKeepOpening(polygon, current.pullX, height, layer.child.model.lineGap, clips)) {
     current.pinned = true;
     current.velocityY = 0;
   } else if (immediate || !isActive(current) || reducedMotion.matches) clearPull(layer);
@@ -316,12 +316,12 @@ function onPointerDown(event: PointerEvent): void {
   // Outside an open pocket, start again on its parent. Returning layers never lock input.
   if (layer.pull) clearPull(layer);
   const index = lineAt(layer, point);
-  const originY = index === null ? point.y : layer.lines[index].baseY;
-  const restingY = index === null ? point.y : restY(layer.model, point.x, originY);
+  const selectedLineY = index === null ? point.y : layer.lines[index].rowY;
+  const restingY = index === null ? point.y : restingLineY(layer.model, point.x, selectedLineY);
   layer.pull = {
-    pointerId: event.pointerId, previousPoint: point, originIndex: null, originY,
-    apexX: point.x, apexY: restingY, grabOffsetY: point.y - restingY,
-    targetY: restingY, velocityY: 0, returning: false, pinned: false,
+    pointerId: event.pointerId, previousPoint: point, selectedLineIndex: null, selectedLineY,
+    pullX: point.x, pullY: restingY, pointerOffsetY: point.y - restingY,
+    targetPullY: restingY, velocityY: 0, returning: false, pinned: false,
   };
   pointerLayer = layer;
   if (index !== null) activate(layer, layer.pull, index);
@@ -340,14 +340,14 @@ function onPointerMove(event: PointerEvent): void {
       const index = firstCrossing(layer, current.previousPoint, point);
       if (index !== null) {
         activate(layer, current, index);
-        current.apexY = restY(layer.model, point.x, current.originY);
-        current.grabOffsetY = 0;
+        current.pullY = restingLineY(layer.model, point.x, current.selectedLineY);
+        current.pointerOffsetY = 0;
       }
     }
     current.previousPoint = point;
-    current.apexX = point.x;
-    current.targetY = point.y - current.grabOffsetY;
-    if (reducedMotion.matches) current.apexY = current.targetY;
+    current.pullX = point.x;
+    current.targetPullY = point.y - current.pointerOffsetY;
+    if (reducedMotion.matches) current.pullY = current.targetPullY;
     layer.dirty = true;
     render();
   } else if (!pointerLayer && event.pointerType !== 'touch') {
@@ -369,24 +369,24 @@ function advanceLayer(layer: Layer, dt: number): boolean {
   let moving = false;
   if (current && isActive(current)) {
     if (current.returning) {
-      const restingY = restY(layer.model, current.apexX, current.originY);
+      const restingY = restingLineY(layer.model, current.pullX, current.selectedLineY);
       const steps = Math.max(1, Math.ceil(dt * 120));
       let closed = reducedMotion.matches;
       for (let i = 0; i < steps && !closed; i++) {
-        const before = current.apexY - restingY;
-        current.velocityY += ((restingY - current.apexY) * params.returnStiffness
+        const before = current.pullY - restingY;
+        current.velocityY += ((restingY - current.pullY) * params.returnStiffness
           - current.velocityY * params.returnDamping) * dt / steps;
-        current.apexY += current.velocityY * dt / steps;
-        if (before * (current.apexY - restingY) <= 0) closed = true;
+        current.pullY += current.velocityY * dt / steps;
+        if (before * (current.pullY - restingY) <= 0) closed = true;
       }
-      if (closed || (Math.abs(restingY - current.apexY) < 0.12 && Math.abs(current.velocityY) < 0.5)) clearPull(layer);
+      if (closed || (Math.abs(restingY - current.pullY) < 0.12 && Math.abs(current.velocityY) < 0.5)) clearPull(layer);
       else moving = true;
       layer.dirty = true;
-    } else if (Math.abs(current.targetY - current.apexY) > 0.001) {
-      current.apexY += (current.targetY - current.apexY)
+    } else if (Math.abs(current.targetPullY - current.pullY) > 0.001) {
+      current.pullY += (current.targetPullY - current.pullY)
         * (reducedMotion.matches ? 1 : -Math.expm1(-params.followSpeed * dt));
       layer.dirty = true;
-      moving = Math.abs(current.targetY - current.apexY) > 0.001;
+      moving = Math.abs(current.targetPullY - current.pullY) > 0.001;
     }
   }
   if (layer.child) moving = advanceLayer(layer.child, dt) || moving;
@@ -449,11 +449,11 @@ const gui = new GUI({ title: 'Line Pull' });
 gui.add(params, 'lineGap', 42, 120, 1).name('line gap').onFinishChange(resize);
 gui.add(params, 'lineWidth', 0.5, 6, 0.1).name('line width').onChange(updateModels);
 gui.add(params, 'surfaceCurvature', 0, 0.06, 0.001).name('surface curve').onChange(updateModels);
-gui.add(params, 'lensStrength', 0, 0.4, 0.005).name('lens strength').onChange(updateModels);
-gui.add(params, 'horizontalLens', 0, 0.4, 0.005).name('horizontal lens').onChange(updateModels);
-gui.add(params, 'boundaryEase', 0.2, 1.5, 0.01).name('boundary approach').onChange(updateModels);
-gui.add(params, 'boundaryCreep', 0, 0.1, 0.001).name('boundary creep').onChange(updateModels);
-gui.add(params, 'apexSpacing', 0.05, 0.4, 0.01).name('tip spacing').onChange(updateModels);
+gui.add(params, 'spreadStrength', 0, 0.4, 0.005).name('spread strength').onChange(updateModels);
+gui.add(params, 'horizontalSpread', 0, 0.4, 0.005).name('horizontal spread').onChange(updateModels);
+gui.add(params, 'openingEdgeEase', 0.2, 1.5, 0.01).name('opening edge approach').onChange(updateModels);
+gui.add(params, 'openingEdgeCreep', 0, 0.1, 0.001).name('opening edge creep').onChange(updateModels);
+gui.add(params, 'pullPointSpacing', 0.05, 0.4, 0.01).name('pull-point spacing').onChange(updateModels);
 gui.add(params, 'followSpeed', 16, 80, 1).name('pull response');
 gui.add(params, 'returnStiffness', 80, 420, 1).name('return stiffness');
 gui.add(params, 'returnDamping', 8, 42, 0.5).name('return damping');
