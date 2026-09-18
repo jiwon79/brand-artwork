@@ -50,7 +50,7 @@ docs/
 
 ### Line Pull
 
-- [`architecture.md`](./artworks/line-pull/architecture.md) - 프레임 갱신, 선 선택, 포인터 추종과 주변 선의 SVG 좌표 계산 구조
+- [`architecture.md`](./artworks/line-pull/architecture.md) - 선택선과 당김점으로 주변 선과 열린 틈의 SVG 좌표를 만드는 흐름
 - [`social-share-image.md`](./artworks/line-pull/social-share-image.md) - 실제 캡처의 왼쪽 위에 작품명만 합성하는 PNG 제작 도구와 재생성 방법
 
 ### 웃음꽃 (Smile Flower)
