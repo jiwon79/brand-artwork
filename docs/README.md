@@ -40,7 +40,7 @@ docs/
 
 ### Cursor Cat
 
-- [`architecture.md`](./artworks/cursor-cat/architecture.md) - R2 manifest, 시선 기준점, 원형 frame 선택과 모바일 출력 구조
+- [`architecture.md`](./artworks/cursor-cat/architecture.md) - 눈 위치와 커서 방향으로 프레임을 고르고 원형 순서에서 부드럽게 전환하는 흐름
 - [`generation.md`](./artworks/cursor-cat/generation.md) - Seedance 생성, 각도 샘플링, 색·배경·크기 보정과 검증 절차
 
 ### Guseul
@@ -55,7 +55,7 @@ docs/
 
 ### 웃음꽃 (Smile Flower)
 
-- [`architecture.md`](./artworks/smile-flower/architecture.md) - Blender 모델 생성, GLB 최적화, instancing, 회전·bloom·파동 렌더링 구조
+- [`architecture.md`](./artworks/smile-flower/architecture.md) - 타일의 드래그 회전, 길게 누른 배치 변화와 회전 파동을 그리는 흐름
 - [`rebuild-guide.md`](./artworks/smile-flower/rebuild-guide.md) - Blender 원본부터 웹 페이지까지 다시 만드는 단계별 가이드
 - [`social-share-image.md`](./artworks/smile-flower/social-share-image.md) - 실제 캡처 왼쪽 위에 Smile Flower 제목만 합성하는 PNG 제작 도구와 재생성 방법
 
