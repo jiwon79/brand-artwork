@@ -1,8 +1,9 @@
 * { box-sizing: border-box; }
-html, body, main { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+html, body, main { margin: 0; width: 100%; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 body { background: #dab8be; overscroll-behavior: none; }
 main { height: 100dvh; }
-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: default; -webkit-tap-highlight-color: transparent; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: default; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent; }
+.lil-gui input { user-select: text; -webkit-user-select: text; }
 canvas[data-grabbable='true'] { cursor: grab; }
 canvas[data-interaction='dragging'] { cursor: grabbing; }
 canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
