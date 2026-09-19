@@ -46,8 +46,9 @@ export function deformationGradient(p: Point, state: MaterialState) {
   return j;
 }
 export function undeform(point: Point, state: MaterialState): Point {
-  for (let k=state.fields.length-1;k>=0;k--) {
-    const field = state.fields[k];
+  const fields = state.fields;
+  for (let k=fields.length-1;k>=0;k--) {
+    const field = fields[k];
     let p = { ...point };
     for (let i=0;i<5;i++) {
       const warped = warp(p,field), j = gradient(p,field);
@@ -63,52 +64,58 @@ export function undeform(point: Point, state: MaterialState): Point {
 export const deformationSource = `
 uniform int uContactCount;
 uniform vec4 uContacts[${maxFields}];
-uniform float uPressures[${maxFields}];
+// x = pressure, y = inverse squared influence radius (constant per field).
+uniform vec2 uFieldMeta[${maxFields}];
 const float pressRadius = ${pressRadius.toFixed(1)};
-vec2 warp(vec2 p, int i) {
+const float inversePressRadius2 = 1.0/(pressRadius*pressRadius);
+vec2 warpGradient(vec2 p, int i, out mat2 j, out float shoulder) {
   vec2 d = p-uContacts[i].xy, pull = uContacts[i].zw;
-  float r = 210.0+.25*length(pull), r2 = dot(d,d);
-  float w = exp(-.5*r2/(r*r));
-  float h = uPressures[i]*${spread}*exp(-.5*r2/(pressRadius*pressRadius));
+  float r2 = dot(d,d), inverseRadius2 = uFieldMeta[i].y;
+  float w = exp(-.5*r2*inverseRadius2);
+  shoulder = exp(-.5*r2*inversePressRadius2);
+  float h = uFieldMeta[i].x*${spread}*shoulder;
+  j = mat2(1.0+h)+outerProduct(pull,-d*w*inverseRadius2)
+    +outerProduct(d,-d*h*inversePressRadius2);
   return p+pull*w+d*h;
-}
-mat2 gradient(vec2 p, int i) {
-  vec2 d = p-uContacts[i].xy, pull = uContacts[i].zw;
-  float r = 210.0+.25*length(pull), r2 = dot(d,d);
-  float w = exp(-.5*r2/(r*r));
-  float h = uPressures[i]*${spread}*exp(-.5*r2/(pressRadius*pressRadius));
-  return mat2(1.0)+outerProduct(pull,-d*w/(r*r))+mat2(h)
-    +outerProduct(d,-d*h/(pressRadius*pressRadius));
 }
 mat2 deformationGradient(vec2 p) {
   mat2 j = mat2(1.0);
-  for (int i=0;i<uContactCount;i++) { j = gradient(p,i)*j; p = warp(p,i); }
+  for (int i=0;i<uContactCount;i++) {
+    mat2 g; float shoulder;
+    p = warpGradient(p,i,g,shoulder);
+    j = g*j;
+  }
   return j;
 }
 vec2 undeform(vec2 point) {
   for (int k=uContactCount-1;k>=0;k--) {
     vec2 p = point;
     for (int i=0;i<5;i++) {
-      vec2 error = warp(p,k)-point;
-      mat2 j = gradient(p,k);
+      mat2 j; float shoulder;
+      vec2 error = warpGradient(p,k,j,shoulder)-point;
+      // Keep all five iterations: early exit error can accumulate through
+      // heavily compressed, overlapping grips.
       p -= mat2(j[1][1],-j[0][1],-j[1][0],j[0][0])*error/max(determinant(j),.05);
     }
     point = p;
   }
   return point;
 }
-vec3 contactRelief(vec2 p) {
-  vec3 result = vec3(0);
-  mat2 j = mat2(1.0);
+// Compute pressure relief and the material Jacobian in a single traversal.
+void materialGeometry(vec2 p, out mat2 j, out vec3 relief) {
+  relief = vec3(0);
+  j = mat2(1.0);
   for (int i=0;i<uContactCount;i++) {
     vec2 d = p-uContacts[i].xy;
-    float r2 = dot(d,d)/(pressRadius*pressRadius);
-    float inner = exp(-r2), shoulder = exp(-.5*r2);
+    mat2 g; float shoulder;
+    vec2 next = warpGradient(p,i,g,shoulder);
+    float r2 = dot(d,d)*inversePressRadius2;
+    float inner = shoulder*shoulder;
     float height = -45.0*inner+8.0*r2*shoulder;
     float derivative = 45.0*inner+8.0*(1.0-.5*r2)*shoulder;
-    result += vec3(height,transpose(j)*(2.0*d*derivative/(pressRadius*pressRadius)))*uPressures[i];
-    j = gradient(p,i)*j;
-    p = warp(p,i);
+    relief += vec3(height,transpose(j)*(2.0*d*derivative*inversePressRadius2))*uFieldMeta[i].x;
+    j = g*j;
+    p = next;
   }
-  return result;
-}`;
+}
+`;

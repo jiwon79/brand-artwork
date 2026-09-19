@@ -25,6 +25,7 @@ type Grip = {
 export class PebbleMotion implements MaterialState {
   x = 0; y = 0; angle = 0;
   private grips: Grip[] = [];
+  private cachedFields: ContactField[] | null = null;
   private velocity = { x: 0, y: 0 };
   private angularVelocity = 0;
   private keyTarget: Point | null = null;
@@ -34,14 +35,19 @@ export class PebbleMotion implements MaterialState {
       : this.grips.length || Math.abs(this.x)+Math.abs(this.y)+Math.abs(this.angle) > .001 ? 'returning' : 'idle';
   }
   get fields(): ContactField[] {
+    if (this.cachedFields) return this.cachedFields;
     const fields: ContactField[] = [];
     for (const grip of this.grips) {
+      let contact = deform(grip.anchor,{ fields });
+      const pull = { x: grip.pull.x/substeps, y: grip.pull.y/substeps };
       for (let i=0;i<substeps;i++) {
-        fields.push({ contact: deform(grip.anchor,{ fields }),
-          pull: { x: grip.pull.x/substeps, y: grip.pull.y/substeps }, press: grip.press/substeps });
+        fields.push({ contact, pull, press: grip.press/substeps });
+        // The anchor is at the center of its own field: weight = 1 and
+        // pressure displacement = 0. No need to replay the preceding maps.
+        contact = { x: contact.x+pull.x, y: contact.y+pull.y };
       }
     }
-    return fields;
+    return this.cachedFields = fields;
   }
   private local(point: Point) {
     return rotate({ x: point.x-front.x-this.x, y: point.y-front.y-this.y },-this.angle);
@@ -59,6 +65,7 @@ export class PebbleMotion implements MaterialState {
       pull: { x: 0, y: 0 }, velocity: { x: 0, y: 0 }, press: 0, pressVelocity: 0,
       pressure: .7+.6*Math.max(0,Math.min(1,pressure)) });
     this.keyTarget = null;
+    this.cachedFields = null;
     return true;
   }
   move(id: number, point: Point, pressure = .5) {
@@ -73,8 +80,10 @@ export class PebbleMotion implements MaterialState {
     grip.id = null;
     grip.velocity.x *= .35; grip.velocity.y *= .35;
     if (reduced) { grip.pull = { x: 0, y: 0 }; grip.press = 0; grip.velocity = { x: 0, y: 0 }; grip.pressVelocity = 0; }
+    if (reduced) this.cachedFields = null;
   }
   reset(immediate = false) {
+    this.cachedFields = null;
     this.keyTarget = null;
     for (const grip of this.grips) grip.id = null;
     if (immediate) {
@@ -136,10 +145,12 @@ export class PebbleMotion implements MaterialState {
       const press = damp(grip.press,grip.pressVelocity,targetPress,held ? 18 : recovery,dt);
       grip.press = reduced ? targetPress : press.value;
       grip.pressVelocity = reduced ? 0 : press.velocity;
+      this.cachedFields = null;
       active ||= held || Math.hypot(grip.pull.x,grip.pull.y,grip.velocity.x,grip.velocity.y,grip.press*100,grip.pressVelocity*100) > .01;
     }
     this.grips = this.grips.filter(g => g.id !== null
       || Math.hypot(g.pull.x,g.pull.y,g.velocity.x,g.velocity.y,g.press*100,g.pressVelocity*100) > .01);
+    this.cachedFields = null;
     return active;
   }
 }

@@ -1,5 +1,5 @@
 import GUI from 'lil-gui';
-import { maxFields } from './deformation';
+import { maxFields, substeps } from './deformation';
 import { createPresentation, layers } from './presentation';
 import { PebbleMotion, type Point } from './interaction';
 import { fragmentSource, resolveSource, vertexSource } from './shader';
@@ -47,13 +47,14 @@ let vao: WebGLVertexArrayObject;
 let uniforms: Record<string, WebGLUniformLocation | null>;
 let resolveUniforms: Record<string, WebGLUniformLocation | null>;
 let width = 1, height = 1;
+let sceneWidth = 0, sceneHeight = 0;
 const motion = new PebbleMotion();
 const homeLight = { x: 410, y: 360 };
 let lightX = homeLight.x, lightY = homeLight.y;
 let lightTime = 0;
 const pointers = new Set<number>();
 const contactData = new Float32Array(maxFields*4);
-const pressureData = new Float32Array(maxFields);
+const fieldMeta = new Float32Array(maxFields*2);
 let hoverPoint: Point | null = null;
 let frame = 0, previous = 0, contextLost = false;
 function compile(type: number, source: string): WebGLShader {
@@ -97,16 +98,17 @@ function initialize() {
   if (!texture || !framebuffer) throw new Error('Cannot allocate scene buffer');
   sceneTexture = texture;
   sceneFramebuffer = framebuffer;
+  sceneWidth = sceneHeight = 0;
   gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContactCount', 'uContacts[0]', 'uPressures[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContactCount', 'uContacts[0]', 'uFieldMeta[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
     .concat(['uUpper','uLower','uFront','uShadows','uMaterial','uEdges','uLighting'])
     .map(name => [name, gl.getUniformLocation(program, name)]));
-  resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
+  resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uOutputResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
   error.hidden = true;
   contextLost = false;
@@ -120,15 +122,27 @@ function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2, Math.sqrt(3_000_000/(width*height)));
   canvas.width = Math.round(width*dpr);
   canvas.height = Math.round(height*dpr);
+  sizeScene(motion.fields.length);
+  wake();
+}
+
+function sizeScene(fieldCount: number) {
+  // Keep UI/output at native resolution. Only the expensive material pass
+  // uses fewer samples while multiple grips (including their release) deform.
+  const grips = fieldCount/substeps;
+  const quality = 1/Math.sqrt(1+Math.max(0,grips-1)*.4);
+  const nextWidth = Math.max(1,Math.round(canvas.width*quality));
+  const nextHeight = Math.max(1,Math.round(canvas.height*quality));
+  if (nextWidth === sceneWidth && nextHeight === sceneHeight) return;
+  sceneWidth = nextWidth; sceneHeight = nextHeight;
   gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,canvas.width,canvas.height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,sceneWidth,sceneHeight,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
   gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
   gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,sceneTexture,0);
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
     throw new Error('Incomplete scene buffer');
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  wake();
 }
 
 function resetComposition() {
@@ -174,23 +188,28 @@ function render(now: number) {
   const orbit = reducedMotion.matches ? 0 : settings.lightOrbit;
   lightX = homeLight.x+Math.sin(lightTime)*310*orbit;
   lightY = homeLight.y+(Math.cos(lightTime*.73)-1)*190*orbit+Math.sin(lightTime*.51)*260*orbit;
-  gl.viewport(0,0,canvas.width,canvas.height);
+  const fields = motion.fields;
+  sizeScene(fields.length);
+  gl.viewport(0,0,sceneWidth,sceneHeight);
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFramebuffer);
   gl.useProgram(program);
   gl.bindVertexArray(vao);
-  gl.uniform2f(uniforms.uResolution,canvas.width,canvas.height);
+  gl.uniform2f(uniforms.uResolution,sceneWidth,sceneHeight);
   gl.uniform2f(uniforms.uView,width,height);
   gl.uniform2f(uniforms.uOffset,motion.x,motion.y);
   gl.uniform2f(uniforms.uLight,lightX,lightY);
   gl.uniform1f(uniforms.uRotation,motion.angle);
-  const fields = motion.fields;
   fields.forEach((field,i) => {
-    contactData.set([field.contact.x,field.contact.y,field.pull.x,field.pull.y],i*4);
-    pressureData[i] = field.press;
+    const index = i*4;
+    contactData[index] = field.contact.x; contactData[index+1] = field.contact.y;
+    contactData[index+2] = field.pull.x; contactData[index+3] = field.pull.y;
+    const radius = 210+.25*Math.hypot(field.pull.x,field.pull.y);
+    fieldMeta[i*2] = field.press;
+    fieldMeta[i*2+1] = 1/(radius*radius);
   });
   gl.uniform1i(uniforms.uContactCount,fields.length);
   gl.uniform4fv(uniforms['uContacts[0]'],contactData);
-  gl.uniform1fv(uniforms['uPressures[0]'],pressureData);
+  gl.uniform2fv(uniforms['uFieldMeta[0]'],fieldMeta);
   gl.uniform1f(uniforms.uGrain,layers.grain ? settings.grain : 0);
   for (const key of ['upper','lower','front','shadows','material','edges','lighting'] as const) {
     gl.uniform1i(uniforms['u'+key[0].toUpperCase()+key.slice(1)],Number(layers[key]));
@@ -209,12 +228,14 @@ function render(now: number) {
   gl.uniform1f(uniforms.uSaturation,settings.saturation);
   gl.drawArrays(gl.TRIANGLES,0,3);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.viewport(0,0,canvas.width,canvas.height);
   gl.useProgram(resolveProgram);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D,sceneTexture);
   gl.uniform1i(resolveUniforms.uScene,0);
-  gl.uniform2f(resolveUniforms.uResolution,canvas.width,canvas.height);
-  gl.uniform1f(resolveUniforms.uReferenceScale,Math.min(width/590,height/1280)*canvas.width/width);
+  gl.uniform2f(resolveUniforms.uResolution,sceneWidth,sceneHeight);
+  gl.uniform2f(resolveUniforms.uOutputResolution,canvas.width,canvas.height);
+  gl.uniform1f(resolveUniforms.uReferenceScale,Math.min(width/590,height/1280)*sceneWidth/width);
   gl.uniform1f(resolveUniforms.uDiffusion,layers.blur ? settings.diffusion : 0);
   gl.drawArrays(gl.TRIANGLES,0,3);
   canvas.dataset.interaction = motion.mode;
@@ -238,7 +259,6 @@ function updateHover() {
 function trackPointer(event: PointerEvent) {
   const point = scenePoint(event);
   hoverPoint = point;
-  updateHover();
   wake();
   return point;
 }

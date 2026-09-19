@@ -151,7 +151,7 @@ vec2 edgeVolume(vec2 q, int id) {
   return vec2((14.0+22.0*leftSide+24.0*rightSide+12.0*base)*uAbsorptionWidth,
     .20+.60*leftSide+.64*rightSide+.18*base);
 }
-float contourDistance(vec2 q, int id) {
+float contourDistance(vec2 q, int id, mat2 jacobian) {
   // Reference-pixel contour distance, including each silhouette's shear and
   // taper. Optical width varies with position; this is not a stroked outline.
   float exponent = id == 2 ? frontExponent : 2.35;
@@ -163,7 +163,7 @@ float contourDistance(vec2 q, int id) {
     vec2 profile = frontProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
       gradient.y/height+gradient.x*(-frontShear-q.x*profile.y/height)/profile.x);
-    sceneGradient = transpose(inverse(deformationGradient(frontMaterialPoint(q))))*sceneGradient;
+    sceneGradient = transpose(inverse(jacobian))*sceneGradient;
   } else if (id == 0) {
     vec2 profile = upperProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
@@ -172,6 +172,9 @@ float contourDistance(vec2 q, int id) {
     sceneGradient.y -= .19*sceneGradient.x;
   }
   return (1.0-field(q,id))/max(length(sceneGradient),.0001);
+}
+float contourDistance(vec2 q, int id) {
+  return contourDistance(q,id,id == 2 ? deformationGradient(frontMaterialPoint(q)) : mat2(1.0));
 }
 // Gaussian half-plane coverage near the projected contour. Two footprints
 // separate the close contact shadow from the broad, rose-tinted penumbra.
@@ -199,9 +202,12 @@ vec3 castShadow(vec3 under, vec2 p, int id) {
 }
 vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec2 q = localPoint(p,id);
+  mat2 jacobian = mat2(1.0);
+  vec3 dent = vec3(0);
+  if (id == 2) materialGeometry(frontMaterialPoint(q),jacobian,dent);
   float f = field(q,id);
   vec2 radii = id == 0 ? vec2(245,408) : id == 1 ? vec2(260,366) : vec2(252,386);
-  float distance = contourDistance(q,id);
+  float distance = contourDistance(q,id,jacobian);
   float aa = max(fwidth(distance)*.7,.65);
   float mask = smoothstep(-aa,aa,distance);
   float softSide = .58*smoothstep(-.65,.85,q.x)+.42*smoothstep(-.15,.95,q.y);
@@ -236,15 +242,11 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec2 reliefSlope = (micro.yz*.030+coarse.yz*.014)*uGrain*grainFilter*surfaceRelief;
   vec3 grainNormal = normalize(normal+vec3(reliefSlope,0));
   float thickness = 1.0;
-  vec3 dent = vec3(0);
   if (id == 2) {
-    vec2 materialPoint = frontMaterialPoint(q);
-    mat2 jacobian = deformationGradient(materialPoint);
     mat2 normalMatrix = transpose(inverse(jacobian));
     // Local area expansion thins the relief; compression thickens it. This
     // is an approximate volume response, not a full volumetric simulation.
     thickness = inversesqrt(clamp(determinant(jacobian),.60,1.55));
-    dent = contactRelief(materialPoint);
     normal = normalize(vec3(normalMatrix*(normal.xy*thickness-dent.yz*normal.z),normal.z));
     grainNormal = normalize(vec3(normalMatrix*(grainNormal.xy*thickness-dent.yz*grainNormal.z),grainNormal.z));
   }
@@ -418,12 +420,13 @@ precision highp float;
 out vec4 fragColor;
 uniform sampler2D uScene;
 uniform vec2 uResolution;
+uniform vec2 uOutputResolution;
 uniform float uReferenceScale;
 uniform float uDiffusion;
 ${colorSpaceSource}
 vec3 sampleLight(vec2 uv) { return toLinear(texture(uScene,uv).rgb); }
 void main() {
-  vec2 uv = gl_FragCoord.xy/uResolution;
+  vec2 uv = gl_FragCoord.xy/uOutputResolution;
   vec4 center = texture(uScene,uv);
   float dither = fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))-.5;
   float pixelRadius = center.a*16.0*uReferenceScale*uDiffusion;
