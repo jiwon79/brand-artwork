@@ -75,7 +75,7 @@ body {
 }
 
 .line-field path,
-.origin-pull-path {
+.pulled-edge-path {
   fill: none;
   vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
