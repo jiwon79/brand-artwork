@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { maxFields } from './deformation';
 import { PebbleMotion, type Point } from './interaction';
 import { fragmentSource, resolveSource, vertexSource } from './shader';
 
@@ -27,6 +28,7 @@ const defaults = {
   pressDepth: 1,
   recovery: 1,
   gripRotation: 1,
+  stretchLimit: 430,
 };
 const settings = {
   ...defaults,
@@ -48,7 +50,9 @@ const motion = new PebbleMotion();
 const homeLight = { x: 410, y: 360 };
 let lightX = homeLight.x, lightY = homeLight.y;
 let lightTime = 0;
-let pointer: number | null = null;
+const pointers = new Set<number>();
+const contactData = new Float32Array(maxFields*4);
+const pressureData = new Float32Array(maxFields);
 let hoverPoint: Point | null = null;
 let frame = 0, previous = 0, contextLost = false;
 function compile(type: number, source: string): WebGLShader {
@@ -98,7 +102,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContact', 'uPull', 'uCompression', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContactCount', 'uContacts[0]', 'uPressures[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -133,9 +137,9 @@ function resetComposition() {
 }
 
 function clearCapture() {
-  const released = pointer;
-  pointer = null;
-  if (released !== null && canvas.hasPointerCapture(released)) canvas.releasePointerCapture(released);
+  const released = [...pointers];
+  pointers.clear();
+  for (const id of released) if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
 }
 
 function resetLight() {
@@ -177,9 +181,14 @@ function render(now: number) {
   gl.uniform2f(uniforms.uOffset,motion.x,motion.y);
   gl.uniform2f(uniforms.uLight,lightX,lightY);
   gl.uniform1f(uniforms.uRotation,motion.angle);
-  gl.uniform2f(uniforms.uContact,motion.contact.x,motion.contact.y);
-  gl.uniform2f(uniforms.uPull,motion.pull.x,motion.pull.y);
-  gl.uniform1f(uniforms.uCompression,motion.press);
+  const fields = motion.fields;
+  fields.forEach((field,i) => {
+    contactData.set([field.contact.x,field.contact.y,field.pull.x,field.pull.y],i*4);
+    pressureData[i] = field.press;
+  });
+  gl.uniform1i(uniforms.uContactCount,fields.length);
+  gl.uniform4fv(uniforms['uContacts[0]'],contactData);
+  gl.uniform1fv(uniforms['uPressures[0]'],pressureData);
   gl.uniform1f(uniforms.uGrain,settings.grain);
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
@@ -205,6 +214,7 @@ function render(now: number) {
   gl.drawArrays(gl.TRIANGLES,0,3);
   canvas.dataset.interaction = motion.mode;
   updateHover();
+  canvas.dataset.activePointers = String(motion.activeCount);
   if (moving || (!reducedMotion.matches && settings.lightSpeed > 0 && settings.lightOrbit > 0)) wake();
 }
 
@@ -216,11 +226,11 @@ function scenePoint(event: PointerEvent): Point {
 }
 
 function updateHover() {
-  const grabbable = pointer !== null || (hoverPoint !== null && motion.hitTest(hoverPoint));
+  const grabbable = pointers.size > 0 || (hoverPoint !== null && motion.hitTest(hoverPoint));
   canvas.dataset.grabbable = String(grabbable);
 }
 
-function aimLight(event: PointerEvent) {
+function trackPointer(event: PointerEvent) {
   const point = scenePoint(event);
   hoverPoint = point;
   updateHover();
@@ -229,36 +239,31 @@ function aimLight(event: PointerEvent) {
 }
 
 canvas.addEventListener('pointerdown', event => {
-  if (pointer !== null || event.button !== 0 || !event.isPrimary) return;
-  const point = aimLight(event);
-  if (!motion.grab(point,event.pressure)) return;
-  pointer = event.pointerId;
-  canvas.setPointerCapture(pointer);
+  if (event.button !== 0) return;
+  const point = trackPointer(event);
+  if (!motion.grab(event.pointerId,point,event.pressure)) return;
+  pointers.add(event.pointerId);
+  canvas.setPointerCapture(event.pointerId);
   wake();
 });
 canvas.addEventListener('pointermove', event => {
-  if (!event.isPrimary || (pointer !== null && pointer !== event.pointerId)) return;
-  const point = aimLight(event);
-  if (pointer === event.pointerId) {
-    motion.move(point,event.pressure);
-  }
+  const point = trackPointer(event);
+  if (pointers.has(event.pointerId)) motion.move(event.pointerId,point,event.pressure);
   wake();
 });
 for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) {
   canvas.addEventListener(name, event => {
-    if (event.pointerId !== pointer) return;
-    if (name === 'pointerup') motion.release(reducedMotion.matches);
-    else motion.reset(reducedMotion.matches);
-    clearCapture();
-    if (event.pointerType !== 'mouse') { hoverPoint = null; }
+    if (!pointers.delete(event.pointerId)) return;
+    motion.release(event.pointerId,reducedMotion.matches);
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    if (event.pointerType !== 'mouse') hoverPoint = null;
     updateHover();
     wake();
   });
 }
-canvas.addEventListener('pointerenter', event => { if (event.isPrimary && pointer === null) aimLight(event); });
-canvas.addEventListener('pointerleave', () => {
-  hoverPoint = null; updateHover();
-});
+canvas.addEventListener('pointerenter', trackPointer);
+canvas.addEventListener('pointerleave', () => { hoverPoint = null; updateHover(); });
+reducedMotion.addEventListener('change', () => { resetComposition(); wake(); });
 canvas.addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); resetComposition(); return; }
   const directions: Record<string, [number, number]> = {
@@ -270,11 +275,11 @@ canvas.addEventListener('keydown', event => {
   motion.nudge(direction[0],direction[1],settings.dragRange);
   wake();
 });
-window.addEventListener('blur', () => { hoverPoint = null; resetLight(); resetComposition(); });
+window.addEventListener('blur', () => { hoverPoint = null; resetComposition(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     cancelAnimationFrame(frame); frame = 0;
-    hoverPoint = null; resetLight(); resetComposition();
+    hoverPoint = null; resetComposition();
   }
   else { previous = performance.now(); wake(); }
 });
@@ -346,6 +351,8 @@ describe(shadowFolder.add(settings,'shadowSpread',.4,2,.01).name('Shadow spread'
   '실루엣 바깥으로 그림자가 부드럽게 퍼지는 거리');
 
 const motionFolder = gui.addFolder('Interaction');
+describe(motionFolder.add(settings,'stretchLimit',150,650,1).name('Stretch limit').onChange(wake),
+  '각 손가락이 재료를 당길 수 있는 최대 거리. 기본 430으로 이전보다 약 3.3배 확대. 최대 다섯 포인터를 동시에 사용');
 describe(motionFolder.add(settings,'softness',0,1.5,.01).name('Softness').onChange(wake),
   '재료의 말랑함. 높이면 잡은 주변이 더 늘어나고 눌림. 0이면 변형되지 않는 단단한 재료');
 describe(motionFolder.add(settings,'pressDepth',0,1.5,.01).name('Press depth').onChange(wake),
@@ -357,7 +364,7 @@ describe(motionFolder.add(settings,'dragRange',40,160,1).name('Body travel').onC
 describe(motionFolder.add(settings,'gripRotation',0,1.5,.01).name('Grip rotation'),
   '중심에서 떨어진 곳을 당길 때 전체에 전달되는 작은 회전');
 describe(motionFolder.add(settings,'resetComposition').name('Reset position'),
-  '중앙 조약돌의 위치와 변형을 복원. 조명은 자동 이동을 유지');
+  '중앙 조약돌의 위치와 변형을 복원. 최대 다섯 손가락의 잡기도 모두 해제');
 
 describe(gui.add(settings,'resetLook').name('Reset appearance'),
   '표면, 조명, 외곽 파라미터를 기본값으로 복원');
