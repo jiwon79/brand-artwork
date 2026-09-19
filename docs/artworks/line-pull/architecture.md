@@ -18,59 +18,179 @@ Line Pull은 매 프레임 가로선의 좌표를 다시 계산해 포인터로 
 
 ### 1. 선을 고른다
 
-선 가까이에서 누르면 `lineAt()`이 포인터와 세로 거리가 가장 가까운 선을 선택한다. 줄 사이에서 누르면 `firstCrossing()`이 직전 포인터 위치부터 현재 위치까지의 경로를 확인해 처음 만난 선을 고른다. 포인터가 빠르게 움직여도 중간의 선을 놓치지 않는다.
+선 가까이에서 누르면 `lineAt()`이 다음 값이 가장 작은 선을 고른다.
+
+```text
+distance_i = abs(pointerY - restingY(pointerX, rowY_i))
+hitRadius  = max(8, lineWidth * 2)
+selected   = argmin_i(distance_i)
+
+accept selected if distance_selected <= hitRadius
+```
+
+줄 사이에서 누른 채 움직이면 `firstCrossing()`이 포인터 경로와 가장 먼저 만나는 선을 고른다.
+
+```text
+P(t) = previousPoint + t * (currentPoint - previousPoint)
+
+crossing = min(t),  0 < t <= 1
+where P_y(t) = restingY(P_x(t), rowY_i)
+```
 
 ### 2. 당김점을 움직인다
 
-선을 고르면 선택선의 원래 위치와 당김점의 좌표를 저장한다. `pullX`는 포인터의 가로 위치를 바로 따라간다. `pullY`는 포인터의 세로 위치를 조금 늦게 따라가고, 포인터를 놓으면 선택선의 원래 위치로 돌아간다.
+```text
+pullX      = pointerX
+targetY    = pointerY - pointerOffsetY
+follow     = 1 - exp(-followSpeed * dt)
+pullY     += (targetY - pullY) * follow
+```
 
-입력 이벤트는 목표 위치만 바꾼다. 실제 선 계산은 브라우저가 다음 화면을 그릴 때 한 번 실행한다. 움직임이 남아 있을 때만 다음 프레임을 요청한다.
+포인터를 놓으면 다음 스프링 계산으로 기준선까지 돌아간다.
 
-### 3. 선을 그릴 점을 고른다
+```text
+restY      = restingY(pullX, selectedLineY)
+velocityY += ((restY - pullY) * returnStiffness
+              - velocityY * returnDamping) * dt
+pullY     += velocityY * dt
+```
+
+### 3. 선을 그릴 x좌표를 만든다
 
 ![선택선을 당겼을 때 틈과 주변 선이 만들어지는 과정](../../assets/line-pull-opening.svg)
 
-`sampleLineXs()`는 선의 위치를 찾는 함수가 아니다. 화면 왼쪽 끝부터 오른쪽 끝까지 선 위에 찍을 x좌표를 만든다. 현재는 약 28px마다 한 점을 찍되 최소 24칸으로 나누고, 화면 양 끝과 당김점의 x좌표를 반드시 포함한다.
+```text
+count = max(24, ceil(width / 28))
+xs    = [i * width / count | i = 0 ... count]
 
-각 가로 지점에서 세로 위치를 계산한 뒤 왼쪽부터 이어 SVG 선을 만든다. 작은 직선 조각을 여러 개 잇기 때문에 기준선의 완만한 곡선과 당겼을 때의 굽은 모양을 함께 그릴 수 있다. 같은 지점들은 열린 틈의 경계, 포인터가 틈 안에 있는지 확인하는 영역, 문구를 배치할 영역을 만드는 데도 쓴다.
+if pull exists: xs += [pullX]
+xs = sort(unique(xs))
+```
 
-### 4. 각 지점의 세로 위치를 계산한다
+각 x좌표에서 y좌표를 구한 뒤 점들을 왼쪽부터 잇는다. 같은 `xs`를 선, 열린 틈, 터치 판정과 문구 배치에 함께 쓴다.
+
+### 4. 각 x좌표의 y좌표를 계산한다
 
 #### 4.1 기준 곡선: `restingLineY()`
 
-역할은 아무것도 당기지 않았을 때 보이는 완만한 곡선을 만드는 것이다. 화면 가운데에서는 각 선의 원래 높이를 그대로 쓴다. 중심에서 좌우로 떨어진 거리를 화면 반쪽 너비로 나눈 뒤 제곱하고, 이 값에 곡률과 세로 중앙까지의 거리를 곱한다. 그만큼 선을 세로 중앙 쪽으로 옮기므로 위쪽 선은 양끝이 조금 내려가고 아래쪽 선은 양끝이 조금 올라간다.
+```text
+nx = (x - width / 2) / max(width / 2, 1)
+
+restingY(x, rowY)
+  = height / 2
+  + (rowY - height / 2) * (1 - surfaceCurvature * nx²)
+```
 
 #### 4.2 전체 간격 벌림: `spreadSurfacePoint()`
 
-역할은 당길수록 장면 전체가 확대된 것처럼 선 사이를 벌리는 것이다. 이 계산은 선택선이 이웃선에 붙는 동작과는 관계없다.
+```text
+pullDistance = pullY - restingY(pullX, selectedLineY)
+direction    = sign(pullDistance)
+strength     = 1 - exp(-abs(pullDistance) / (lineGap * 1.35))
 
-먼저 선택선에서 당기는 방향의 반대쪽으로 두 줄 떨어진 곡선을 기준으로 잡는다. 당긴 거리는 0에서 1 사이의 세기로 바꾼다. 처음에는 빠르게 커지고, 멀리 당길수록 증가 폭은 작아지는 값이다. 각 선이 기준에서 떨어진 세로 거리에 이 세기를 반영해 거리를 늘리고, 가로 위치도 당김점을 중심으로 조금 넓힌다. 모든 x좌표에서 `restingLineY()`로 만든 곡선을 기준으로 계산하므로 간격이 벌어져도 선은 직선이 되지 않고 원래의 완만한 곡선을 유지한다.
+pivotY = restingY(x, selectedLineY - direction * lineGap * 2)
+scale  = 1 + spreadStrength * strength
+
+spreadX(x)
+  = pullX + (x - pullX) * (1 + horizontalSpread * strength)
+
+spreadY(x, rowY)
+  = pivotY + (restingY(x, rowY) - pivotY) * scale
+```
 
 #### 4.3 V자 꺾임: `bentLinePoint()`
 
-역할은 당김점을 꼭짓점으로 하는 V자 모양을 만드는 것이다. 왼쪽 끝에서 당김점까지는 가로 영향을 0에서 1로 늘리고, 당김점에서 오른쪽 끝까지는 다시 1에서 0으로 줄인다. 그래서 당김점이 가장 많이 꺾이고 양 끝으로 갈수록 덜 꺾인다.
+```text
+selectedY = spreadY(pullX, selectedLineY)
+lineY     = spreadY(pullX, rowY)
+distance  = max(0, direction * (pullY - selectedY))
+lineDist  = direction * (lineY - selectedY)
 
-세로 방향에서는 선택선부터 해당 선까지의 거리를 당긴 거리에서 뺀다. 아직 포인터가 그 선까지 지나가지 않았다면 V자 추가 꺾임은 없고, 지나간 뒤에는 남은 거리만큼 꺾인다. 당긴 거리의 일부는 여러 선이 함께 움직이는 거리로 남겨 당김점 부근에서도 선 사이가 한 점으로 겹치지 않게 한다.
+z = distance - lineDist
+r = min(lineGap * 0.16, distance * 0.25)
+
+softPositive(z, r) =
+  max(0, z)          if r <= 0 or z >= r
+  0                  if z <= -r
+  (z + r)² / (4r)    otherwise
+
+bend = (1 - pullPointSpacing) * softPositive(z, r)
+
+horizontalBend =
+  1                                 if x <= pullX and pullX <= 0
+  x / pullX                         if x <= pullX and pullX > 0
+  1                                 if x > pullX and pullX >= width
+  (width - x) / (width - pullX)     otherwise
+
+bentY(x, rowY)
+  = spreadY(x, rowY)
+  + direction * (pullPointSpacing * distance + bend * horizontalBend)
+```
+
+`horizontalBend`는 당김점에서 1이고 좌우 끝에서 0이다. `pullPointSpacing`은 당김점 부근에서도 선 사이에 남길 간격이다.
 
 ### 5. 두 경계로 열린 틈을 만든다
 
-선택선은 당김 경계와 붙는 경계로 나뉜다. 당김 경계는 앞에서 계산한 V자 모양을 그대로 따른다. 붙는 경계는 `openingEdgePoint()`가 별도로 계산한다.
+당김 경계는 `bentY`를 사용한다. 붙는 경계는 이웃선 쪽으로 이동한다.
 
-아래로 당기면 선택선 위의 이웃선을, 위로 당기면 아래의 이웃선을 목표로 삼는다. 당긴 거리가 늘어날수록 붙는 경계를 그 이웃선 쪽으로 빠르게 이동시킨다. 마지막에는 선의 두께와 그 지점의 기울기를 반영해 화면에서 두 선의 가장자리가 맞닿게 한다. 당길 때 위쪽 줄에 붙어 보이는 부분이 이 계산이다. 위로 당길 때는 아래쪽 줄에 붙는다.
+```text
+travel    = abs(pullDistance)
+selectedY = spreadY(x, selectedLineY)
+neighborY = spreadY(x, selectedLineY - direction * lineGap)
 
-#### 5.1 틈은 `clipPath`로 보여 준다
+progress = 1 - exp(-travel / (lineGap * openingEdgeEase))
+creep    = lineGap * openingEdgeCreep * ln(1 + travel / lineGap)
 
-붙는 경계의 점들을 왼쪽에서 오른쪽으로 놓고, 당김 경계의 점들을 오른쪽에서 왼쪽으로 이어 하나의 닫힌 도형을 만든다. `pointsPath()`가 이 도형을 SVG 경로로 바꾸고 `clipPath`에 넣는다.
+slope      = d(neighborY) / d(spreadX)
+separation = lineWidth * sqrt(1 + slope²)
 
-숨겨진 배경과 문구는 이 `clipPath`가 적용된 SVG 그룹 안에 있다. 브라우저는 닫힌 도형 안쪽만 보여 주고 바깥쪽은 잘라 낸다. 선을 그릴 때 쓴 두 경계로 `clipPath`도 만들기 때문에 화면의 선과 틈 사이에 별도의 모양 차이가 생기지 않는다.
+openingY
+  = selectedY
+  + (neighborY + direction * separation - selectedY) * progress
+  - direction * creep
+```
 
-#### 5.2 터치 영역도 같은 도형으로 계산한다
+`direction = 1`이면 위쪽 이웃선, `direction = -1`이면 아래쪽 이웃선을 사용한다.
 
-`clipPath`는 보이는 범위만 정하고 터치 영역을 직접 만들어 주지는 않는다. 포인터 입력은 화면 전체에서 받은 뒤, `pointInOpening()`이 포인터가 열린 틈 안에 있는지 계산한다. 별도의 사각형이나 픽셀 마스크는 사용하지 않는다.
+#### 5.1 틈을 `clipPath`로 보여 준다
 
-먼저 포인터에서 틈을 이루는 각 선분까지의 최단거리를 구한다. 이 거리가 선 두께보다 조금 넓은 범위 안에 있으면 경계 위를 누른 것으로 보고 틈 안쪽 터치에서 제외한다. 그다음 포인터에서 가로로 선을 그었을 때 틈의 경계를 몇 번 지나는지 센다. 홀수 번 지나면 안쪽, 짝수 번 지나면 바깥쪽이다.
+```text
+attachedBoundary = xs.map(x => openingEdgePoint(x))
+pulledBoundary   = xs.map(x => bentLinePoint(selectedLineY, x))
 
-열린 틈 안에 또 다른 선 겹이 있으면 `pickLayer()`가 이 판정을 바깥 틈부터 반복한다. 포인터가 모든 바깥 틈 안에 있을 때만 가장 안쪽 선 겹을 선택한다. 그 뒤 `lineAt()`과 `firstCrossing()`이 그 겹에서 누른 선이나 처음 지나간 선을 고른다. 따라서 화면에 실제로 보이는 틈과 다시 당길 수 있는 영역이 같은 경계를 따른다.
+polygon  = attachedBoundary + reverse(pulledBoundary)
+clipPath = pointsPath(polygon, close = true)
+```
+
+숨겨진 배경과 문구에는 이 `clipPath`를 적용한다. 화면에 그린 두 경계와 `clipPath`가 같은 점을 사용하므로 선과 틈이 어긋나지 않는다.
+
+#### 5.2 같은 도형으로 터치 영역을 계산한다
+
+`clipPath`는 화면만 자른다. 터치 판정은 `pointInOpening()`이 같은 `polygon`으로 계산한다. 포인터 `P`와 각 경계 선분 `AB`의 거리는 다음과 같다.
+
+```text
+t        = clamp(dot(P - A, B - A) / |B - A|², 0, 1)
+closest  = A + t * (B - A)
+edgeDist = |P - closest|
+
+edgeDist <= lineWidth + 1
+  => outside
+```
+
+경계에서 떨어진 점은 가로선과 도형 경계의 교차 횟수로 판정한다.
+
+```text
+crossesY = (Ay > Py) != (By > Py)
+xCross   = Ax + (Bx - Ax) * (Py - Ay) / (By - Ay)
+
+if crossesY and Px < xCross:
+  inside = !inside
+
+inside = true
+  => 열린 틈 안쪽
+```
+
+`pickLayer()`는 이 판정을 바깥 틈부터 반복해 포인터가 들어 있는 가장 안쪽 선 겹을 고른다. 그다음 `lineAt()`과 `firstCrossing()`이 해당 겹의 선을 선택한다.
 
 ## 출력과 검증
 
