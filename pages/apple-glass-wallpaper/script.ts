@@ -10,8 +10,9 @@ const defaults = {
   warmth: 0,
   specular: 1.1,
   rim: 1.25,
-  cursorLight: 1.85,
-  lightFollow: 1.25,
+  lightIntensity: 1.85,
+  lightSpeed: .65,
+  lightOrbit: 1,
   frontAbsorption: 1,
   rearAbsorption: 1,
   absorptionWidth: 1,
@@ -46,7 +47,7 @@ let width = 1, height = 1;
 const motion = new PebbleMotion();
 const homeLight = { x: 410, y: 360 };
 let lightX = homeLight.x, lightY = homeLight.y;
-let targetLightX = lightX, targetLightY = lightY;
+let lightTime = 0;
 let pointer: number | null = null;
 let hoverPoint: Point | null = null;
 let frame = 0, previous = 0, contextLost = false;
@@ -97,7 +98,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContact', 'uPull', 'uCompression', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uCursorLight', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContact', 'uPull', 'uCompression', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -138,8 +139,8 @@ function clearCapture() {
 }
 
 function resetLight() {
-  targetLightX = homeLight.x;
-  targetLightY = homeLight.y;
+  lightTime = 0;
+  lightX = homeLight.x; lightY = homeLight.y;
 }
 
 function resetLook() {
@@ -162,10 +163,11 @@ function render(now: number) {
   frame = 0;
   const dt = Math.min((now-previous)/1000 || 1/60, 1/30);
   previous = now;
-  const ease = reducedMotion.matches ? 1 : 1-Math.exp(-dt*9*settings.lightFollow);
   const moving = motion.step(dt,settings.dragRange,settings.gripRotation,settings,reducedMotion.matches);
-  lightX += (targetLightX-lightX)*ease;
-  lightY += (targetLightY-lightY)*ease;
+  if (!reducedMotion.matches) lightTime += dt*settings.lightSpeed*.35;
+  const orbit = reducedMotion.matches ? 0 : settings.lightOrbit;
+  lightX = homeLight.x+Math.sin(lightTime)*310*orbit;
+  lightY = homeLight.y+(Math.cos(lightTime*.73)-1)*190*orbit+Math.sin(lightTime*.51)*260*orbit;
   gl.viewport(0,0,canvas.width,canvas.height);
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFramebuffer);
   gl.useProgram(program);
@@ -182,7 +184,7 @@ function render(now: number) {
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
   gl.uniform1f(uniforms.uRim,settings.rim);
-  gl.uniform1f(uniforms.uCursorLight,settings.cursorLight);
+  gl.uniform1f(uniforms.uLightIntensity,settings.lightIntensity);
   gl.uniform1f(uniforms.uFrontAbsorption,settings.frontAbsorption);
   gl.uniform1f(uniforms.uRearAbsorption,settings.rearAbsorption);
   gl.uniform1f(uniforms.uAbsorptionWidth,settings.absorptionWidth);
@@ -203,7 +205,7 @@ function render(now: number) {
   gl.drawArrays(gl.TRIANGLES,0,3);
   canvas.dataset.interaction = motion.mode;
   updateHover();
-  if (moving || Math.abs(targetLightX-lightX)+Math.abs(targetLightY-lightY) > .02) wake();
+  if (moving || (!reducedMotion.matches && settings.lightSpeed > 0 && settings.lightOrbit > 0)) wake();
 }
 
 function scenePoint(event: PointerEvent): Point {
@@ -220,7 +222,6 @@ function updateHover() {
 
 function aimLight(event: PointerEvent) {
   const point = scenePoint(event);
-  targetLightX = point.x; targetLightY = point.y;
   hoverPoint = point;
   updateHover();
   wake();
@@ -249,16 +250,14 @@ for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) 
     if (name === 'pointerup') motion.release(reducedMotion.matches);
     else motion.reset(reducedMotion.matches);
     clearCapture();
-    if (event.pointerType !== 'mouse') { hoverPoint = null; resetLight(); }
+    if (event.pointerType !== 'mouse') { hoverPoint = null; }
     updateHover();
     wake();
   });
 }
 canvas.addEventListener('pointerenter', event => { if (event.isPrimary && pointer === null) aimLight(event); });
-canvas.addEventListener('pointerleave', event => {
+canvas.addEventListener('pointerleave', () => {
   hoverPoint = null; updateHover();
-  // Entering the controls should not reset the light; only leaving the view.
-  if (pointer === null && event.relatedTarget === null) { resetLight(); wake(); }
 });
 canvas.addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); resetComposition(); return; }
@@ -319,10 +318,12 @@ describe(lightingFolder.add(settings,'specular',0,2,.01).name('White reflection'
   '곡면을 따라 번지는 넓은 흰 반사광의 밝기');
 describe(lightingFolder.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake),
   '가장자리를 스치는 밝은 반사광의 강도');
-describe(lightingFolder.add(settings,'cursorLight',0,3,.01).name('Cursor light').onChange(wake),
+describe(lightingFolder.add(settings,'lightIntensity',0,3,.01).name('Light intensity').onChange(wake),
   '세 조약돌이 공유하는 조명의 밝기. 표면의 방향과 광원까지의 거리에 따라 반사광과 그림자가 함께 달라짐');
-describe(lightingFolder.add(settings,'lightFollow',.15,2.5,.01).name('Light follow').onChange(wake),
-  '가상 조명이 커서 위치를 따라가는 속도');
+describe(lightingFolder.add(settings,'lightSpeed',0,2,.01).name('Auto light speed').onChange(wake),
+  '조명이 곡선을 따라 자동으로 이동하는 속도. 0이면 현재 위치에서 정지');
+describe(lightingFolder.add(settings,'lightOrbit',0,1.5,.01).name('Light orbit').onChange(wake),
+  '자동 조명의 이동 반경. 0이면 원래 조명 위치로 고정');
 
 const edgeFolder = gui.addFolder('Progressive edge');
 describe(edgeFolder.add(settings,'edgeRoll',0,2,.01).name('Edge roll').onChange(wake),
@@ -356,7 +357,7 @@ describe(motionFolder.add(settings,'dragRange',40,160,1).name('Body travel').onC
 describe(motionFolder.add(settings,'gripRotation',0,1.5,.01).name('Grip rotation'),
   '중심에서 떨어진 곳을 당길 때 전체에 전달되는 작은 회전');
 describe(motionFolder.add(settings,'resetComposition').name('Reset position'),
-  '중앙 조약돌의 위치와 변형을 복원. 조명은 현재 커서 위치 유지');
+  '중앙 조약돌의 위치와 변형을 복원. 조명은 자동 이동을 유지');
 
 describe(gui.add(settings,'resetLook').name('Reset appearance'),
   '표면, 조명, 외곽 파라미터를 기본값으로 복원');

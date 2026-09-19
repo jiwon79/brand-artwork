@@ -29,7 +29,7 @@ uniform float uGrain;
 uniform float uWarmth;
 uniform float uSpecular;
 uniform float uRim;
-uniform float uCursorLight;
+uniform float uLightIntensity;
 uniform float uFrontAbsorption;
 uniform float uRearAbsorption;
 uniform float uAbsorptionWidth;
@@ -179,7 +179,7 @@ vec3 castShadow(vec3 under, vec2 p, int id) {
   vec2 lampOffset = (center-uLight)*gap/(lightHeight-gap);
   // A very distant cursor contributes little light, so it cannot cast an
   // enormous shadow. The studio fill remains when the cursor lamp is off.
-  float influence = (1.0-exp(-uCursorLight))*exp(-dot(center-uLight,center-uLight)/900000.0);
+  float influence = (1.0-exp(-uLightIntensity))*exp(-dot(center-uLight,center-uLight)/900000.0);
   vec2 offset = mix(fillOffset,lampOffset,influence);
   float contactDistance = contourDistance(localPoint(p-offset*.35,id),id);
   float diffuseDistance = contourDistance(localPoint(p-offset,id),id);
@@ -310,7 +310,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec3 halfVector = normalize(cursorDirection+vec3(0,0,1));
   float cursorSpecular = pow(max(dot(sceneNormal,halfVector),0.0),14.0);
   float falloff = 280000.0/(280000.0+dot(toLight,toLight));
-  float cursorEnergy = uCursorLight*falloff*(.09*cursorFacing+.34*cursorSpecular);
+  float cursorEnergy = uLightIntensity*falloff*(.09*cursorFacing+.34*cursorSpecular);
   float lightResponse = 1.0-exp(-cursorEnergy);
   float fresnel = .04+.96*pow(1.0-max(normal.z,0.0),5.0);
   float grazing = rimLight*.13*(0.6+fresnel*.4)*uRim;
@@ -346,10 +346,10 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float textureStrength = id == 2 ? .11 : id == 0 ? .21 : .20;
   float facets = smoothstep(.58,.86,micro.x);
   float diagonal = exp(-pow((q.y+.075-q.x*.27)/.34,2.0));
-  vec2 grainLight = normalize(vec2(-.16,-.20)+rotate(cursorDirection.xy,-objectRotation)*uCursorLight);
+  vec2 grainLight = normalize(vec2(-.16,-.20)+rotate(cursorDirection.xy,-objectRotation)*uLightIntensity);
   float relief = dot(micro.yz*.018+coarse.yz*.009,grainLight)*grainFilter*surfaceRelief;
   float sparkle = facets*((id == 2 ? .020 : .010)+reflection*.15
-    +cursorSpecular*falloff*uCursorLight*.030+(id == 2 ? diagonal*.045 : 0.0));
+    +cursorSpecular*falloff*uLightIntensity*.030+(id == 2 ? diagonal*.045 : 0.0));
   float inclusions = smoothstep(.55,.85,coarse.x)*.020;
   float frostVisibility = id == 2 ? .65+.35*diagonal : .48+.35*sqrt(edge);
   color += (fine*.026*grainFilter + mottling*(id == 2 ? .025 : .012) - pore*textureStrength*grainFilter
