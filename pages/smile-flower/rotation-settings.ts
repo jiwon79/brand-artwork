@@ -1,12 +1,19 @@
 export type RotationSettings = {
-  dragSpeed: number;
-  dragAmount: number;
-  releaseSpeed: number;
-  releaseTurns: number;
-  waveSpeed: number;
-  waveDeceleration: number;
+  motionSpeed: number;
+  dragStrength: number;
+  waveRotationSpeed: number;
+  waveTurns: number;
+  waveTravelSpeed: number;
+  waveSlowdown: number;
 };
 
 export function createRotationSettings(): RotationSettings {
-  return { dragSpeed: 0.5, dragAmount: 0.5, releaseSpeed: 1.6, releaseTurns: 1, waveSpeed: 1.2, waveDeceleration: 1 };
+  return {
+    motionSpeed: 0.5,
+    dragStrength: 0.5,
+    waveRotationSpeed: 1.6,
+    waveTurns: 1,
+    waveTravelSpeed: 1.2,
+    waveSlowdown: 1,
+  };
 }
