@@ -9,3 +9,15 @@ canvas[data-interaction='dragging'] { cursor: grabbing; }
 canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #error { position: fixed; inset: 40% 10% auto; color: #593d44; font: 16px/1.7 system-ui, sans-serif; text-align: center; }
+.build-toolbar { position: fixed; bottom: max(18px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; gap: 5px; padding: 6px; border: 1px solid #ffffff75; border-radius: 16px; background: #fff4f0d9; box-shadow: 0 6px 30px #593d4420; backdrop-filter: blur(18px); z-index: 20; font: 12px/1.5 system-ui, sans-serif; color: #593d44; max-width: calc(100vw - 20px); }
+.build-toolbar button, .build-toolbar select { font: inherit; color: inherit; background: transparent; border: 0; border-radius: 10px; min-height: 36px; padding: 0 9px; cursor: pointer; }
+.build-toolbar select { min-width: 0; flex: 1; }
+.build-toolbar button { flex-shrink: 0; }
+.build-toolbar button:hover { background: #c78d9a22; }
+.build-toolbar button:disabled { opacity: .3; cursor: default; }
+.build-toolbar :focus-visible { outline: 2px solid #895565; outline-offset: 1px; }
+.build-layers { position: absolute; bottom: calc(100% + 10px); right: 0; width: 248px; max-height: 65dvh; overflow: auto; padding: 18px; border: 1px solid #ffffff80; border-radius: 18px; background: #fff4f0f5; box-shadow: 0 8px 32px #593d4425; }
+.build-layers p { margin: 8px 0 12px; opacity: .75; }
+.build-layers label { display: flex; align-items: center; gap: 9px; min-height: 32px; cursor: pointer; }
+.build-layers input { accent-color: #895565; }
+@media (max-width: 480px) { .build-toolbar { width: calc(100vw - 20px); gap: 0; } .build-toolbar button, .build-toolbar select { padding: 0 6px; font-size: 11px; } }

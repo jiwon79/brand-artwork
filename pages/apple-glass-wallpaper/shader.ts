@@ -38,6 +38,13 @@ uniform float uRearBlur;
 uniform float uEdgeRoll;
 uniform float uShadowStrength;
 uniform float uShadowSpread;
+uniform bool uUpper;
+uniform bool uLower;
+uniform bool uFront;
+uniform bool uShadows;
+uniform bool uMaterial;
+uniform bool uEdges;
+uniform bool uLighting;
 ${deformationSource}
 
 float hash(vec2 p) {
@@ -289,6 +296,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     }
     color = mix(color,under,.07*depth);
   }
+  if (!uMaterial) color = id == 2 ? vec3(.945,.559,.550) : id == 0 ? vec3(.858,.690,.698) : vec3(.938,.865,.849);
   // A grazing reflection rolls inward from the surface, rather than peaking
   // at a fixed inset. Its width, absorption and intensity change independently.
   float sideLight = .12+.64*bell(q,vec2(.90,-.45),vec2(.50,.80))
@@ -321,13 +329,13 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float edgeCore = exp(-pow(inside/volume.x,1.45));
   float edgeTail = exp(-pow(inside/(volume.x*1.8),2.0));
   float absorption = id == 2 ? uFrontAbsorption : uRearAbsorption;
-  float opticalDepth = volume.y*(.78*edgeCore+.22*edgeTail)*absorption*thickness;
+  float opticalDepth = (uEdges ? 1.0 : 0.0)*volume.y*(.78*edgeCore+.22*edgeTail)*absorption*thickness;
   vec3 extinction = id == 1 ? vec3(.50,.57,.55) : vec3(.44,.48,.46);
   vec3 transmission = exp(-extinction*opticalDepth);
   vec3 litSurface = toLinear(max(color,0.0))
-    +vec3(1.0,.94,.91)*(reflection*uSpecular+grazing);
+    +vec3(1.0,.94,.91)*(reflection*uSpecular+grazing)*(uLighting ? 1.0 : 0.0);
   // Approach white without clipping away the rose color or frost relief.
-  litSurface += max(vec3(1.0,.97,.96)-litSurface,0.0)*lightResponse;
+  litSurface += max(vec3(1.0,.97,.96)-litSurface,0.0)*lightResponse*(uLighting ? 1.0 : 0.0);
   // Attenuate the grazing reflection as well, so white light cannot wash the
   // thick edge back to a pale outline. The resolve progressively softens it.
   color = toSrgb(litSurface*transmission);
@@ -348,8 +356,8 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float diagonal = exp(-pow((q.y+.075-q.x*.27)/.34,2.0));
   vec2 grainLight = normalize(vec2(-.16,-.20)+rotate(cursorDirection.xy,-objectRotation)*uLightIntensity);
   float relief = dot(micro.yz*.018+coarse.yz*.009,grainLight)*grainFilter*surfaceRelief;
-  float sparkle = facets*((id == 2 ? .020 : .010)+reflection*.15
-    +cursorSpecular*falloff*uLightIntensity*.030+(id == 2 ? diagonal*.045 : 0.0));
+  float sparkle = facets*((id == 2 ? .020 : .010)+(uLighting ? reflection*.15
+    +cursorSpecular*falloff*uLightIntensity*.030 : 0.0)+(id == 2 ? diagonal*.045 : 0.0));
   float inclusions = smoothstep(.55,.85,coarse.x)*.020;
   float frostVisibility = id == 2 ? .65+.35*diagonal : .48+.35*sqrt(edge);
   color += (fine*.026*grainFilter + mottling*(id == 2 ? .025 : .012) - pore*textureStrength*grainFilter
@@ -375,7 +383,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float lipWidth = id == 2 ? 3.0+6.0*leftLip+2.0*rightLip+lowerLip
     : 3.0+1.0*leftLip+2.0*rightLip+lowerLip;
   float lipStrength = id == 2 ? .40+.22*leftLip : .68;
-  float lipTransmission = uEdgeRoll > .001 ? lipStrength*exp(-inside/(lipWidth*uEdgeRoll)) : 0.0;
+  float lipTransmission = uEdges && uEdgeRoll > .001 ? lipStrength*exp(-inside/(lipWidth*uEdgeRoll)) : 0.0;
   color = toSrgb(mix(toLinear(clamp(color,0.0,1.0)),toLinear(under),lipTransmission));
   return mix(under,clamp(color,0.0,1.0),mask);
 }
@@ -388,12 +396,18 @@ void main() {
   vec2 p = (uv*uView-uView*.5)/scale+vec2(295,640);
   vec3 color = background(p);
   float blurRadius = 0.0;
-  color = castShadow(color,p,0);
-  color = pebble(color,p,0,blurRadius);
-  color = castShadow(color,p,1);
-  color = pebble(color,p,1,blurRadius);
-  color = castShadow(color,p,2);
-  color = pebble(color,p,2,blurRadius);
+  if (uUpper) {
+    if (uShadows) color = castShadow(color,p,0);
+    color = pebble(color,p,0,blurRadius);
+  }
+  if (uLower) {
+    if (uShadows) color = castShadow(color,p,1);
+    color = pebble(color,p,1,blurRadius);
+  }
+  if (uFront) {
+    if (uShadows) color = castShadow(color,p,2);
+    color = pebble(color,p,2,blurRadius);
+  }
   fragColor = vec4(color,clamp(blurRadius/16.0,0.0,1.0));
 }`;
 

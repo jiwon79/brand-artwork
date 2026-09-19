@@ -1,5 +1,6 @@
 import GUI from 'lil-gui';
 import { maxFields } from './deformation';
+import { createPresentation, layers } from './presentation';
 import { PebbleMotion, type Point } from './interaction';
 import { fragmentSource, resolveSource, vertexSource } from './shader';
 
@@ -103,6 +104,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
   uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContactCount', 'uContacts[0]', 'uPressures[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+    .concat(['uUpper','uLower','uFront','uShadows','uMaterial','uEdges','uLighting'])
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
@@ -189,7 +191,10 @@ function render(now: number) {
   gl.uniform1i(uniforms.uContactCount,fields.length);
   gl.uniform4fv(uniforms['uContacts[0]'],contactData);
   gl.uniform1fv(uniforms['uPressures[0]'],pressureData);
-  gl.uniform1f(uniforms.uGrain,settings.grain);
+  gl.uniform1f(uniforms.uGrain,layers.grain ? settings.grain : 0);
+  for (const key of ['upper','lower','front','shadows','material','edges','lighting'] as const) {
+    gl.uniform1i(uniforms['u'+key[0].toUpperCase()+key.slice(1)],Number(layers[key]));
+  }
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
   gl.uniform1f(uniforms.uRim,settings.rim);
@@ -210,7 +215,7 @@ function render(now: number) {
   gl.uniform1i(resolveUniforms.uScene,0);
   gl.uniform2f(resolveUniforms.uResolution,canvas.width,canvas.height);
   gl.uniform1f(resolveUniforms.uReferenceScale,Math.min(width/590,height/1280)*canvas.width/width);
-  gl.uniform1f(resolveUniforms.uDiffusion,settings.diffusion);
+  gl.uniform1f(resolveUniforms.uDiffusion,layers.blur ? settings.diffusion : 0);
   gl.drawArrays(gl.TRIANGLES,0,3);
   canvas.dataset.interaction = motion.mode;
   updateHover();
@@ -226,7 +231,7 @@ function scenePoint(event: PointerEvent): Point {
 }
 
 function updateHover() {
-  const grabbable = pointers.size > 0 || (hoverPoint !== null && motion.hitTest(hoverPoint));
+  const grabbable = pointers.size > 0 || (layers.front && hoverPoint !== null && motion.hitTest(hoverPoint));
   canvas.dataset.grabbable = String(grabbable);
 }
 
@@ -241,7 +246,7 @@ function trackPointer(event: PointerEvent) {
 canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
   const point = trackPointer(event);
-  if (!motion.grab(event.pointerId,point,event.pressure)) return;
+  if (!layers.front || !motion.grab(event.pointerId,point,event.pressure)) return;
   pointers.add(event.pointerId);
   canvas.setPointerCapture(event.pointerId);
   wake();
@@ -371,3 +376,4 @@ describe(gui.add(settings,'resetLook').name('Reset appearance'),
 describe(gui.add(settings,'resetAll').name('Reset everything'),
   '외형, 조약돌 위치와 조명을 모두 기본값으로 복원');
 if (matchMedia('(max-width: 700px)').matches) gui.close();
+createPresentation(wake,reducedMotion);
