@@ -4,31 +4,53 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#ffffff">
-  <title>Cursor Animal</title>
-  <link rel="stylesheet" href="/pages/cursor-cat/style.css?v=20260830-19">
+  <title>Cursor Cat</title>
+  <link rel="canonical" href="https://studio.jiiwon.com/cursor-cat/">
+  <meta name="description" content="커서를 따라 시선을 움직이는 고양이 인터랙티브 아트.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://studio.jiiwon.com/cursor-cat/">
+  <meta property="og:title" content="Cursor Cat">
+  <meta property="og:description" content="커서를 따라 시선을 움직이는 고양이 인터랙티브 아트.">
+  <meta property="og:image" content="https://studio.jiiwon.com/cursor-cat/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="왼쪽 위에 Cursor Cat 제목이 있고, 흰 배경 가운데 오른쪽을 바라보는 주황색과 흰색 고양이">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cursor Cat">
+  <meta name="twitter:description" content="커서를 따라 시선을 움직이는 고양이 인터랙티브 아트.">
+  <meta name="twitter:image" content="https://studio.jiiwon.com/cursor-cat/assets/og-image.png">
+  <meta name="twitter:image:alt" content="왼쪽 위에 Cursor Cat 제목이 있고, 흰 배경 가운데 오른쪽을 바라보는 주황색과 흰색 고양이">
+  <link rel="stylesheet" href="/pages/cursor-cat/style.css">
 </head>
 <body>
   <main
     id="cat-stage"
     class="cat-stage"
+    tabindex="0"
     aria-busy="true"
-    aria-label="커서를 따라 시선을 움직이는 동물"
+    aria-label="커서 위치를 따라 원형으로 시선을 움직이는 주황색 고양이"
   >
     <div class="cat-wrap">
       <img
-        id="animal-frame"
+        id="cat-frame"
         class="cat-frame"
         alt=""
         draggable="false"
         decoding="async"
+        fetchpriority="high"
       >
     </div>
 
-    <p id="loading-status" class="loading-status" role="status" aria-live="polite">
-      이미지 로딩 중…
-    </p>
+    <canvas
+      id="debug-canvas"
+      class="debug-canvas"
+      aria-hidden="true"
+    ></canvas>
 
-    <div id="pointer-debug" class="pointer-debug" aria-hidden="true"></div>
+    <p id="loading-status" class="loading-status" role="status" aria-live="polite" aria-atomic="true">
+      Loading 0%
+    </p>
   </main>
 
   <script type="module" src="/common/touch-pointer.ts"></script>

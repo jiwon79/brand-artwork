@@ -1,22 +1,45 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import { readdirSync, existsSync } from 'fs';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
+import { staticPageAssets } from './scripts/static-page-assets';
 
 const root = new URL('.', import.meta.url).pathname;
 const pagesDir = resolve(root, 'pages');
 const cursorCatVariantRoute = /^\/pages\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
+const cleanCursorCatVariantRoute = /^\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
+const retiredCursorCatRoute = /^\/pages\/cursor-cat-circle(?:\/|\?|$)/;
 
-function cursorCatRouteFallback() {
-  const rewrite = (request: { url?: string }, _response: unknown, next: () => void) => {
-    if (request.url && cursorCatVariantRoute.test(request.url)) {
+type MiddlewareResponse = {
+  statusCode: number;
+  end(body?: string): void;
+};
+
+function artworkRouteFallback(pageNames: readonly string[]) {
+  const knownPages = new Set(pageNames);
+  const rewrite = (
+    request: { url?: string },
+    response: MiddlewareResponse,
+    next: () => void,
+  ) => {
+    if (request.url && retiredCursorCatRoute.test(request.url)) {
+      response.statusCode = 404;
+      response.end('Not Found');
+      return;
+    }
+    if (request.url && (cursorCatVariantRoute.test(request.url) || cleanCursorCatVariantRoute.test(request.url))) {
       request.url = '/pages/cursor-cat/index.html';
+    } else if (request.url) {
+      const url = new URL(request.url, 'http://localhost');
+      const [artwork] = url.pathname.split('/').filter(Boolean);
+      if (knownPages.has(artwork) && !url.pathname.startsWith('/pages/')) {
+        request.url = `/pages${url.pathname}${url.search}`;
+      }
     }
     next();
   };
 
   return {
-    name: 'cursor-cat-route-fallback',
+    name: 'artwork-route-fallback',
     configureServer(server: { middlewares: { use: (handler: typeof rewrite) => void } }) {
       server.middlewares.use(rewrite);
     },
@@ -39,16 +62,11 @@ for (const name of pageEntries) {
   input[name] = resolve(pagesDir, name, 'index.html');
 }
 
-// pages/*/assets/ 디렉토리를 dist/pages/*/assets/ 로 복사
-// 참고: vite-plugin-static-copy는 매칭된 파일의 프로젝트 루트 기준 상대 경로를
-// dest에 그대로 덧붙이므로 (src가 pages/<name>/assets 이면 이미 해당 경로가
-// 결과에 포함됨) dest는 '.' 로 두어 중복 중첩을 방지한다.
-const staticCopyTargets = pageEntries
+// 런타임 문자열/OG 경로에 필요한 파일만 원래 경로로 복사한다.
+// Vite가 번들에 포함한 파일은 JS에서도 new URL(..., import.meta.url)로 참조한다.
+const assetDirectories = pageEntries
   .filter(name => existsSync(resolve(pagesDir, name, 'assets')))
-  .map(name => ({
-    src: resolve(pagesDir, name, 'assets'),
-    dest: '.',
-  }));
+  .map(name => resolve(pagesDir, name, 'assets'));
 
 export default defineConfig({
   server: {
@@ -58,7 +76,7 @@ export default defineConfig({
     ],
   },
   plugins: [
-    cursorCatRouteFallback(),
+    artworkRouteFallback(pageEntries),
     {
       name: 'inject-site-favicon',
       transformIndexHtml() {
@@ -73,7 +91,7 @@ export default defineConfig({
         }];
       },
     },
-    viteStaticCopy({ targets: staticCopyTargets }),
+    staticPageAssets(assetDirectories),
   ],
   build: {
     rollupOptions: { input },
