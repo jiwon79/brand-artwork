@@ -22,9 +22,9 @@ precision highp float;
 out vec4 fragColor;
 uniform vec2 uResolution;
 uniform vec2 uView;
-uniform vec2 uOffset;
+uniform vec2 uOffsets[3];
 uniform vec2 uLight;
-uniform float uRotation;
+uniform float uRotations[3];
 uniform float uGrain;
 uniform float uWarmth;
 uniform float uSpecular;
@@ -100,21 +100,20 @@ vec2 frontProfile(float y) {
   return vec2(frontSize.x*(1.0-.11*y-.0325*lowerTaper),
     -frontSize.x*(.11+.0325*lowerSlope));
 }
-vec2 frontMaterialPoint(vec2 q) {
+vec2 centerFor(int id) { return id == 0 ? vec2(321,299) : id == 1 ? vec2(274,941) : frontCenter; }
+vec2 materialPoint(vec2 q, int id) {
+  if (id == 0) { float y = q.y*408.0; return vec2(q.x*upperProfile(q.y).x+y*.16,y); }
+  if (id == 1) { float y = q.y*366.0; return vec2(q.x*260.0+y*.19,y); }
   float y = q.y*frontSize.y;
   return vec2(q.x*frontProfile(q.y).x+y*frontShear,y);
 }
 vec2 localPoint(vec2 p, int id) {
+  p = undeform(rotate(p-centerFor(id)-uOffsets[id],-uRotations[id]),id);
   if (id == 0) {
-    p -= vec2(321.0, 299.0);
     float y = p.y/408.0;
     return vec2((p.x-p.y*.16)/upperProfile(y).x,y);
   }
-  if (id == 1) {
-    p -= vec2(274.0, 941.0);
-    return vec2(p.x - p.y*.19, p.y) / vec2(260.0, 366.0);
-  }
-  p = undeform(rotate(p-frontCenter-uOffset,-uRotation));
+  if (id == 1) return vec2(p.x-p.y*.19,p.y)/vec2(260,366);
   float y = p.y/frontSize.y;
   return vec2((p.x-p.y*frontShear)/frontProfile(y).x,y);
 }
@@ -163,7 +162,6 @@ float contourDistance(vec2 q, int id, mat2 jacobian) {
     vec2 profile = frontProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
       gradient.y/height+gradient.x*(-frontShear-q.x*profile.y/height)/profile.x);
-    sceneGradient = transpose(inverse(jacobian))*sceneGradient;
   } else if (id == 0) {
     vec2 profile = upperProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
@@ -171,10 +169,11 @@ float contourDistance(vec2 q, int id, mat2 jacobian) {
   } else {
     sceneGradient.y -= .19*sceneGradient.x;
   }
+  sceneGradient = transpose(inverse(jacobian))*sceneGradient;
   return (1.0-field(q,id))/max(length(sceneGradient),.0001);
 }
 float contourDistance(vec2 q, int id) {
-  return contourDistance(q,id,id == 2 ? deformationGradient(frontMaterialPoint(q)) : mat2(1.0));
+  return contourDistance(q,id,deformationGradient(materialPoint(q,id),id));
 }
 // Gaussian half-plane coverage near the projected contour. Two footprints
 // separate the close contact shadow from the broad, rose-tinted penumbra.
@@ -183,7 +182,7 @@ float shadowCoverage(float distance, float sigma) {
   return .5+.5*sign(t)*sqrt(1.0-exp(-.63662*t*t));
 }
 vec3 castShadow(vec3 under, vec2 p, int id) {
-  vec2 center = id == 0 ? vec2(321,299) : id == 1 ? vec2(274,941) : frontCenter+uOffset;
+  vec2 center = centerFor(id)+uOffsets[id];
   float gap = id == 2 ? 37.0 : id == 0 ? 10.0 : 16.0;
   vec2 fillOffset = id == 0 ? vec2(-5,9) : id == 1 ? vec2(-8,12) : vec2(7,12);
   vec2 lampOffset = (center-uLight)*gap/(lightHeight-gap);
@@ -204,7 +203,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec2 q = localPoint(p,id);
   mat2 jacobian = mat2(1.0);
   vec3 dent = vec3(0);
-  if (id == 2) materialGeometry(frontMaterialPoint(q),jacobian,dent);
+  materialGeometry(materialPoint(q,id),id,jacobian,dent);
   float f = field(q,id);
   vec2 radii = id == 0 ? vec2(245,408) : id == 1 ? vec2(260,366) : vec2(252,386);
   float distance = contourDistance(q,id,jacobian);
@@ -242,7 +241,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec2 reliefSlope = (micro.yz*.030+coarse.yz*.014)*uGrain*grainFilter*surfaceRelief;
   vec3 grainNormal = normalize(normal+vec3(reliefSlope,0));
   float thickness = 1.0;
-  if (id == 2) {
+  {
     mat2 normalMatrix = transpose(inverse(jacobian));
     // Local area expansion thins the relief; compression thickens it. This
     // is an approximate volume response, not a full volumetric simulation.
@@ -250,7 +249,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     normal = normalize(vec3(normalMatrix*(normal.xy*thickness-dent.yz*normal.z),normal.z));
     grainNormal = normalize(vec3(normalMatrix*(grainNormal.xy*thickness-dent.yz*grainNormal.z),grainNormal.z));
   }
-  float objectRotation = id == 2 ? uRotation : 0.0;
+  float objectRotation = uRotations[id];
   vec3 sceneNormal = vec3(rotate(grainNormal.xy,objectRotation),grainNormal.z);
   vec3 reflected = reflect(vec3(0,0,-1),sceneNormal);
   float edge = pow(1.0-depth,1.8);
@@ -313,7 +312,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   // One scene-space area-light approximation. Surface height, distance and
   // rotated normals determine where each pebble receives the same lamp.
   // Broad diffuse + tighter frosted reflection, not three cloned spotlights.
-  float surfaceHeight = id == 2 ? 100.0+depth*125.0*thickness+dent.x : 15.0+depth*85.0;
+  float surfaceHeight = id == 2 ? 100.0+depth*125.0*thickness+dent.x : 15.0+depth*85.0*thickness+dent.x;
   vec3 toLight = vec3(uLight-p,lightHeight-surfaceHeight);
   vec3 cursorDirection = normalize(toLight);
   float cursorFacing = max(dot(sceneNormal,cursorDirection),0.0);

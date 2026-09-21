@@ -5,6 +5,21 @@ export const maxContacts = 5;
 export const substeps = 4;
 export const maxFields = maxContacts*substeps;
 export const front = { x: 298, y: 645, width: 252, height: 386, shear: .045, exponent: 2.45 };
+export const pebbles = [
+  { x: 321, y: 299, width: 245, height: 408, shear: .16, exponent: 2.35 },
+  { x: 274, y: 941, width: 260, height: 366, shear: .19, exponent: 2.35 },
+  front,
+] as const;
+export function profileWidth(id: number, y: number) {
+  const shape = pebbles[id];
+  if (id === 0) {
+    const t = (-y-.30)/.44, taper = .5*(t+Math.sqrt(t*t+.035));
+    return shape.width*(1-.22*taper*taper);
+  }
+  if (id === 1) return shape.width;
+  const lower = Math.max(0,Math.min(1,(y+.10)/.40));
+  return shape.width*(1-.11*y-.0325*lower*lower*(3-2*lower));
+}
 const pressRadius = 145, spread = .055;
 
 export function rotate(point: Point, angle: number): Point {
@@ -62,7 +77,7 @@ export function undeform(point: Point, state: MaterialState): Point {
 }
 
 export const deformationSource = `
-uniform int uContactCount;
+uniform ivec2 uFieldRanges[3];
 uniform vec4 uContacts[${maxFields}];
 // x = pressure, y = inverse squared influence radius (constant per field).
 uniform vec2 uFieldMeta[${maxFields}];
@@ -78,17 +93,17 @@ vec2 warpGradient(vec2 p, int i, out mat2 j, out float shoulder) {
     +outerProduct(d,-d*h*inversePressRadius2);
   return p+pull*w+d*h;
 }
-mat2 deformationGradient(vec2 p) {
+mat2 deformationGradient(vec2 p, int id) {
   mat2 j = mat2(1.0);
-  for (int i=0;i<uContactCount;i++) {
+  for (int i=uFieldRanges[id].x;i<uFieldRanges[id].y;i++) {
     mat2 g; float shoulder;
     p = warpGradient(p,i,g,shoulder);
     j = g*j;
   }
   return j;
 }
-vec2 undeform(vec2 point) {
-  for (int k=uContactCount-1;k>=0;k--) {
+vec2 undeform(vec2 point, int id) {
+  for (int k=uFieldRanges[id].y-1;k>=uFieldRanges[id].x;k--) {
     vec2 p = point;
     for (int i=0;i<5;i++) {
       mat2 j; float shoulder;
@@ -102,10 +117,10 @@ vec2 undeform(vec2 point) {
   return point;
 }
 // Compute pressure relief and the material Jacobian in a single traversal.
-void materialGeometry(vec2 p, out mat2 j, out vec3 relief) {
+void materialGeometry(vec2 p, int id, out mat2 j, out vec3 relief) {
   relief = vec3(0);
   j = mat2(1.0);
-  for (int i=0;i<uContactCount;i++) {
+  for (int i=uFieldRanges[id].x;i<uFieldRanges[id].y;i++) {
     vec2 d = p-uContacts[i].xy;
     mat2 g; float shoulder;
     vec2 next = warpGradient(p,i,g,shoulder);

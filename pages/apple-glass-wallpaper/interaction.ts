@@ -1,4 +1,4 @@
-import { deform, undeform, front, rotate, maxContacts, substeps, type ContactField, type MaterialState, type Point } from './deformation';
+import { deform, undeform, pebbles, profileWidth, rotate, maxContacts, substeps, type ContactField, type MaterialState, type Point } from './deformation';
 export type { Point } from './deformation';
 export type MaterialSettings = { softness: number; pressDepth: number; recovery: number; stretchLimit: number };
 
@@ -23,6 +23,7 @@ type Grip = {
 };
 
 export class PebbleMotion implements MaterialState {
+  constructor(readonly id = 2) {}
   x = 0; y = 0; angle = 0;
   private grips: Grip[] = [];
   private cachedFields: ContactField[] | null = null;
@@ -50,14 +51,14 @@ export class PebbleMotion implements MaterialState {
     return this.cachedFields = fields;
   }
   private local(point: Point) {
-    return rotate({ x: point.x-front.x-this.x, y: point.y-front.y-this.y },-this.angle);
+    const shape = pebbles[this.id];
+    return rotate({ x: point.x-shape.x-this.x, y: point.y-shape.y-this.y },-this.angle);
   }
   private materialPoint(point: Point) { return undeform(this.local(point),this); }
   hitTest(point: Point) {
-    const p = this.materialPoint(point), y = p.y/front.height;
-    const lower = Math.max(0,Math.min(1,(y+.10)/.40));
-    const width = front.width*(1-.11*y-.0325*lower*lower*(3-2*lower));
-    return Math.abs((p.x-p.y*front.shear)/width)**front.exponent+Math.abs(y)**front.exponent <= 1;
+    const shape = pebbles[this.id], p = this.materialPoint(point), y = p.y/shape.height;
+    const width = profileWidth(this.id,y);
+    return width > 0 && Math.abs((p.x-p.y*shape.shear)/width)**shape.exponent+Math.abs(y)**shape.exponent <= 1;
   }
   grab(id: number, point: Point, pressure = .5) {
     if (this.grips.length >= maxContacts || this.grips.some(g => g.id === id) || !this.hitTest(point)) return false;

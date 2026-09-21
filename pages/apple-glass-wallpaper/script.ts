@@ -48,11 +48,17 @@ let uniforms: Record<string, WebGLUniformLocation | null>;
 let resolveUniforms: Record<string, WebGLUniformLocation | null>;
 let width = 1, height = 1;
 let sceneWidth = 0, sceneHeight = 0;
-const motion = new PebbleMotion();
+const motions = [0,1,2].map(id => new PebbleMotion(id));
+let selectedPebble = 2;
+const visible = (id: number) => layers[(['upper','lower','front'] as const)[id]];
+function pick(point: Point) { return [2,1,0].find(id => visible(id) && motions[id].hitTest(point)); }
+const allFields = () => motions.flatMap(motion => motion.fields);
 const homeLight = { x: 410, y: 360 };
 let lightX = homeLight.x, lightY = homeLight.y;
 let lightTime = 0;
-const pointers = new Set<number>();
+const pointers = new Map<number, number>();
+const offsets = new Float32Array(6), rotations = new Float32Array(3);
+const fieldRanges = new Int32Array(6);
 const contactData = new Float32Array(maxFields*4);
 const fieldMeta = new Float32Array(maxFields*2);
 let hoverPoint: Point | null = null;
@@ -105,7 +111,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffset', 'uLight', 'uRotation', 'uContactCount', 'uContacts[0]', 'uFieldMeta[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffsets[0]', 'uLight', 'uRotations[0]', 'uFieldRanges[0]', 'uContacts[0]', 'uFieldMeta[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
     .concat(['uUpper','uLower','uFront','uShadows','uMaterial','uEdges','uLighting'])
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uOutputResolution', 'uReferenceScale', 'uDiffusion']
@@ -122,7 +128,7 @@ function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2, Math.sqrt(3_000_000/(width*height)));
   canvas.width = Math.round(width*dpr);
   canvas.height = Math.round(height*dpr);
-  sizeScene(motion.fields.length);
+  sizeScene(allFields().length);
   wake();
 }
 
@@ -146,14 +152,14 @@ function sizeScene(fieldCount: number) {
 }
 
 function resetComposition() {
-  motion.reset(reducedMotion.matches);
+  motions.forEach(motion => motion.reset(reducedMotion.matches));
   clearCapture();
   updateHover();
   wake();
 }
 
 function clearCapture() {
-  const released = [...pointers];
+  const released = [...pointers.keys()];
   pointers.clear();
   for (const id of released) if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
 }
@@ -183,12 +189,12 @@ function render(now: number) {
   frame = 0;
   const dt = Math.min((now-previous)/1000 || 1/60, 1/30);
   previous = now;
-  const moving = motion.step(dt,settings.dragRange,settings.gripRotation,settings,reducedMotion.matches);
+  const moving = motions.map(motion => motion.step(dt,settings.dragRange,settings.gripRotation,settings,reducedMotion.matches)).some(Boolean);
   if (!reducedMotion.matches) lightTime += dt*settings.lightSpeed*.35;
   const orbit = reducedMotion.matches ? 0 : settings.lightOrbit;
   lightX = homeLight.x+Math.sin(lightTime)*310*orbit;
   lightY = homeLight.y+(Math.cos(lightTime*.73)-1)*190*orbit+Math.sin(lightTime*.51)*260*orbit;
-  const fields = motion.fields;
+  const fields = allFields();
   sizeScene(fields.length);
   gl.viewport(0,0,sceneWidth,sceneHeight);
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFramebuffer);
@@ -196,9 +202,14 @@ function render(now: number) {
   gl.bindVertexArray(vao);
   gl.uniform2f(uniforms.uResolution,sceneWidth,sceneHeight);
   gl.uniform2f(uniforms.uView,width,height);
-  gl.uniform2f(uniforms.uOffset,motion.x,motion.y);
+  let fieldStart = 0;
+  motions.forEach((motion,id) => {
+    offsets[id*2] = motion.x; offsets[id*2+1] = motion.y; rotations[id] = motion.angle;
+    fieldRanges[id*2] = fieldStart; fieldStart += motion.fields.length; fieldRanges[id*2+1] = fieldStart;
+  });
+  gl.uniform2fv(uniforms['uOffsets[0]'],offsets);
+  gl.uniform1fv(uniforms['uRotations[0]'],rotations);
   gl.uniform2f(uniforms.uLight,lightX,lightY);
-  gl.uniform1f(uniforms.uRotation,motion.angle);
   fields.forEach((field,i) => {
     const index = i*4;
     contactData[index] = field.contact.x; contactData[index+1] = field.contact.y;
@@ -207,7 +218,7 @@ function render(now: number) {
     fieldMeta[i*2] = field.press;
     fieldMeta[i*2+1] = 1/(radius*radius);
   });
-  gl.uniform1i(uniforms.uContactCount,fields.length);
+  gl.uniform2iv(uniforms['uFieldRanges[0]'],fieldRanges);
   gl.uniform4fv(uniforms['uContacts[0]'],contactData);
   gl.uniform2fv(uniforms['uFieldMeta[0]'],fieldMeta);
   gl.uniform1f(uniforms.uGrain,layers.grain ? settings.grain : 0);
@@ -238,9 +249,10 @@ function render(now: number) {
   gl.uniform1f(resolveUniforms.uReferenceScale,Math.min(width/590,height/1280)*sceneWidth/width);
   gl.uniform1f(resolveUniforms.uDiffusion,layers.blur ? settings.diffusion : 0);
   gl.drawArrays(gl.TRIANGLES,0,3);
-  canvas.dataset.interaction = motion.mode;
+  canvas.dataset.interaction = pointers.size ? 'dragging' : motions.some(motion => motion.mode === 'returning') ? 'returning' : 'idle';
+  canvas.dataset.pebblePointers = motions.map(motion => motion.activeCount).join(',');
   updateHover();
-  canvas.dataset.activePointers = String(motion.activeCount);
+  canvas.dataset.activePointers = String(pointers.size);
   if (moving || (!reducedMotion.matches && settings.lightSpeed > 0 && settings.lightOrbit > 0)) wake();
 }
 
@@ -252,7 +264,7 @@ function scenePoint(event: PointerEvent): Point {
 }
 
 function updateHover() {
-  const grabbable = pointers.size > 0 || (layers.front && hoverPoint !== null && motion.hitTest(hoverPoint));
+  const grabbable = pointers.size > 0 || (hoverPoint !== null && pick(hoverPoint) !== undefined);
   canvas.dataset.grabbable = String(grabbable);
 }
 
@@ -266,20 +278,27 @@ function trackPointer(event: PointerEvent) {
 canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
   const point = trackPointer(event);
-  if (!layers.front || !motion.grab(event.pointerId,point,event.pressure)) return;
-  pointers.add(event.pointerId);
+  const id = pick(point);
+  // Share the existing five-contact GPU budget across the three objects.
+  if (id === undefined || allFields().length >= maxFields || pointers.has(event.pointerId)) return;
+  if (!motions[id].grab(event.pointerId,point,event.pressure)) return;
+  selectedPebble = id;
+  pointers.set(event.pointerId,id);
   canvas.setPointerCapture(event.pointerId);
   wake();
 });
 canvas.addEventListener('pointermove', event => {
   const point = trackPointer(event);
-  if (pointers.has(event.pointerId)) motion.move(event.pointerId,point,event.pressure);
+  const id = pointers.get(event.pointerId);
+  if (id !== undefined) motions[id].move(event.pointerId,point,event.pressure);
   wake();
 });
 for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) {
   canvas.addEventListener(name, event => {
-    if (!pointers.delete(event.pointerId)) return;
-    motion.release(event.pointerId,reducedMotion.matches);
+    const id = pointers.get(event.pointerId);
+    if (id === undefined) return;
+    pointers.delete(event.pointerId);
+    motions[id].release(event.pointerId,reducedMotion.matches);
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     if (event.pointerType !== 'mouse') hoverPoint = null;
     updateHover();
@@ -297,7 +316,7 @@ canvas.addEventListener('keydown', event => {
   const direction = directions[event.key];
   if (!direction) return;
   event.preventDefault();
-  motion.nudge(direction[0],direction[1],settings.dragRange);
+  motions[selectedPebble].nudge(direction[0],direction[1],settings.dragRange);
   wake();
 });
 window.addEventListener('blur', () => { hoverPoint = null; resetComposition(); });
@@ -389,7 +408,7 @@ describe(motionFolder.add(settings,'dragRange',40,160,1).name('Body travel').onC
 describe(motionFolder.add(settings,'gripRotation',0,1.5,.01).name('Grip rotation'),
   '중심에서 떨어진 곳을 당길 때 전체에 전달되는 작은 회전');
 describe(motionFolder.add(settings,'resetComposition').name('Reset position'),
-  '중앙 조약돌의 위치와 변형을 복원. 최대 다섯 손가락의 잡기도 모두 해제');
+  '세 유리의 위치와 변형을 모두 복원. 최대 다섯 손가락의 잡기도 모두 해제');
 
 describe(gui.add(settings,'resetLook').name('Reset appearance'),
   '표면, 조명, 외곽 파라미터를 기본값으로 복원');
