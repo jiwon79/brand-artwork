@@ -29,6 +29,14 @@
   ],
   "rewrites": [
     {
+      "source": "/rose-glass/",
+      "destination": "/pages/apple-glass-wallpaper/index.html"
+    },
+    {
+      "source": "/rose-glass/:path*",
+      "destination": "/pages/apple-glass-wallpaper/:path*"
+    },
+    {
       "source": "/cursor-cat/:id([a-z0-9]{10})/",
       "destination": "/pages/cursor-cat/index.html"
     },

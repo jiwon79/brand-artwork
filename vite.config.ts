@@ -8,6 +8,9 @@ const pagesDir = resolve(root, 'pages');
 const cursorCatVariantRoute = /^\/pages\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
 const cleanCursorCatVariantRoute = /^\/cursor-cat\/[a-z0-9]{10}\/?(?:\?.*)?$/;
 const retiredCursorCatRoute = /^\/pages\/cursor-cat-circle(?:\/|\?|$)/;
+const artworkRouteAliases = new Map([
+  ['rose-glass', 'apple-glass-wallpaper'],
+]);
 
 type MiddlewareResponse = {
   statusCode: number;
@@ -31,8 +34,10 @@ function artworkRouteFallback(pageNames: readonly string[]) {
     } else if (request.url) {
       const url = new URL(request.url, 'http://localhost');
       const [artwork] = url.pathname.split('/').filter(Boolean);
-      if (knownPages.has(artwork) && !url.pathname.startsWith('/pages/')) {
-        request.url = `/pages${url.pathname}${url.search}`;
+      const pageName = artworkRouteAliases.get(artwork) ?? artwork;
+      if (knownPages.has(pageName) && !url.pathname.startsWith('/pages/')) {
+        const suffix = url.pathname.slice(`/${artwork}`.length);
+        request.url = `/pages/${pageName}${suffix}${url.search}`;
       }
     }
     next();
