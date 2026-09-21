@@ -85,8 +85,8 @@ Frame_N = composite(M_N, C_N, K_N)
 
 ```text
 common/
-  touch-cursor.ts
-    화면 녹화용 터치 ring과 ripple
+  touch-pointer.ts
+    화면 녹화용 터치 화살표 포인터
 
 pages/color-text/
   index.html
@@ -773,7 +773,7 @@ Field target이 half float인 이유는 여러 gain을 합친 1보다 큰 값과
 
 공통 `artwork-stepper`가 하단에 항상 표시된다. 숫자키 `1…4`, 좌우 방향키, `?stage=solver|contact|contour|final`로 바꿀 수 있다. 첫 손가락이 canvas에 capture된 중에도 두 번째 손가락의 `pointerdown`으로 버튼을 즉시 바꿀 수 있다.
 
-`common/touch-cursor.ts`의 54px ring과 ripple은 `pointer-events: none`인 DOM overlay다. 화면 녹화에서 터치 위치만 보여주며 simulation 좌표에는 참여하지 않는다.
+`common/touch-pointer.ts`의 화살표는 `pointer-events: none`인 DOM overlay다. 화면 녹화에서 터치 위치만 보여주며 simulation 좌표에는 참여하지 않는다.
 
 ## 13. 입력과 화면 품질
 

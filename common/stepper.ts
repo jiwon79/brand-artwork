@@ -133,7 +133,7 @@ export function createStepper<T extends string>(options: StepperOptions<T>): Ste
   const initialStep = options.steps.find((step) => step.id === requestedStep)?.id
     ?? options.initialStep;
   const host = document.createElement('artwork-stepper');
-  if (options.touchIndicator !== true) host.dataset.touchCursorIgnore = 'true';
+  if (options.touchIndicator !== true) host.dataset.touchPointerIgnore = 'true';
   const shadow = host.attachShadow({ mode: 'open' });
   const style = document.createElement('style');
   const nav = document.createElement('nav');

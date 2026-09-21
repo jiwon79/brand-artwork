@@ -9,7 +9,7 @@ netflix/
   contents.json   — SHOWS 데이터 (title, img, …)
 ```
 
-`/common/touch-cursor.ts` 추가 로드.
+`/common/touch-pointer.ts` 추가 로드.
 
 의존성: `three`, `gsap` (ES 모듈).
 

@@ -168,8 +168,8 @@ its [manual](https://scenery.io/plugins/metaball-7w5Tj0PnVJJ/manual), and Cavalr
 - Pointer capture keeps drag updates continuous outside the initial touch point.
   Native selection, callouts, dragging, and the context menu are suppressed on the
   artwork canvas.
-- `/common/touch-cursor.ts` renders a 54 px translucent contact-area ring, center
-  dot, and short start/end ripple for every touch. It is a DOM-only recording aid:
+- `/common/touch-pointer.ts` renders a shared arrow pointer for every touch. It is
+  a DOM-only recording aid:
   `pointer-events: none` keeps it out of pointer capture, liquid simulation, and
   Process View button input.
 - `?og` hides Process View, adds the social-card title treatment, and enlarges

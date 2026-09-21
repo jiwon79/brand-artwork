@@ -12,7 +12,7 @@ mcdonalds/
     top-bun.png, lettuce.png, tomato.png, cheese.png, patty.png, bottom-bun.png
 ```
 
-`/common/touch-cursor.ts` 추가 로드.
+`/common/touch-pointer.ts` 추가 로드.
 
 > NOTE: `script.js`(Fry Matrix)는 현재 index.html 에서 로드하지 않는 과거 프로토타입이며, 실제 배포 로직은 `burst.js`이다.
 

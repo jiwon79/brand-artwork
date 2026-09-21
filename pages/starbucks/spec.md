@@ -13,7 +13,7 @@ starbucks/
     starbucks_logo.png      — (선택) 사용자 로고 이미지
 ```
 
-`/common/touch-cursor.ts` 추가 로드.
+`/common/touch-pointer.ts` 추가 로드.
 
 ---
 

@@ -17,6 +17,7 @@
     "pages/cursor-cat/**/*.ts",
     "pages/color-text/**/*.ts",
     "pages/guseul/**/*.ts",
+    "pages/apple-glass-wallpaper/**/*.ts",
     "pages/line-pull/**/*.ts",
     "pages/smile-flower/**/*.ts",
     "common/**/*.test.ts",

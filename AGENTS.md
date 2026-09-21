@@ -11,7 +11,7 @@ Interactive web implementations of brand artworks.
 
 ## Project Structure
 
-- `common/` — shared modules (touch cursor, etc.)
+- `common/` — shared modules (touch pointer, etc.)
 - `pages/<brand>/` — per-brand artwork (`index.html`, `script.ts(js)`, `style.css`, etc.)
 - `docs/` — architecture, concepts, reusable guides, research, and supporting diagrams
 
