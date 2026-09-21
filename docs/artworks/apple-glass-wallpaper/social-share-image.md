@@ -2,6 +2,8 @@
 
 Rose Glass의 소셜 카드는 생성형 이미지가 아니라 작품 페이지에서 직접 캡처한 WebGL 렌더를 사용한다. 최종 파일은 `pages/apple-glass-wallpaper/assets/og-image.png`이며 1200 × 630 PNG다.
 
+공개 작품 URL은 `https://studio.jiiwon.com/rose-glass/`다. 내부 코드 경로 `pages/apple-glass-wallpaper/`와 공개 이름이 다르므로 로컬 Vite fallback과 Vercel rewrite에서 별칭을 명시한다.
+
 ## 구성
 
 - 원본: `pages/apple-glass-wallpaper/assets/og-artwork.png`

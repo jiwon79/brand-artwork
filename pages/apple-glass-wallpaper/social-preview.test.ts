@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-const pageUrl = 'https://studio.jiiwon.com/apple-glass-wallpaper/';
+const pageUrl = 'https://studio.jiiwon.com/rose-glass/';
 const meta = (name: string) => {
   const tags = [...html.matchAll(/<meta\s[^>]*>/g)]
     .map(([tag]) => Object.fromEntries([...tag.matchAll(/([\w:-]+)="([^"]*)"/g)]
