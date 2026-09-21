@@ -16,7 +16,7 @@ test('social crawlers can read the Rose Glass card without JavaScript', () => {
   expect(html).toContain(`<link rel="canonical" href="${pageUrl}"`);
   expect(meta('og:type')).toBe('website');
   expect(meta('og:url')).toBe(pageUrl);
-  expect(meta('og:title')).toBe('장밋빛 유리');
+  expect(meta('og:title')).toBe('Rose Glass');
   expect(meta('twitter:title')).toBe(meta('og:title'));
   expect(meta('twitter:card')).toBe('summary_large_image');
   expect(meta('og:image')).toBe(`${pageUrl}assets/og-image.png`);
@@ -24,10 +24,10 @@ test('social crawlers can read the Rose Glass card without JavaScript', () => {
 });
 
 test('share descriptions and accessible image text remain consistent', () => {
-  expect(meta('description')).toContain('장밋빛 유리');
+  expect(meta('description')).toContain('Rose Glass');
   expect(meta('og:description')).toBe(meta('description'));
   expect(meta('twitter:description')).toBe(meta('description'));
-  expect(meta('og:image:alt')).toContain('장밋빛 유리');
+  expect(meta('og:image:alt')).toContain('Rose Glass');
   expect(meta('og:image:alt')).toContain('왼쪽 위');
   expect(meta('twitter:image:alt')).toBe(meta('og:image:alt'));
 });

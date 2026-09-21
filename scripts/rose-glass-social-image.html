@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>장밋빛 유리 공유 이미지 합성</title>
+  <title>Rose Glass 공유 이미지 합성</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; padding: 24px; background: #161616; color: #f4f2ec; font-family: system-ui, sans-serif; }
@@ -18,9 +18,9 @@
 </head>
 <body>
   <main>
-    <h1>장밋빛 유리 공유 이미지 합성</h1>
-    <p>실제 WebGL 캡처의 왼쪽 위에 작품명만 합성합니다. 생성형 이미지나 JPEG 중간 파일은 사용하지 않습니다.</p>
-    <canvas id="preview" width="1200" height="630" role="img" aria-label="왼쪽 위에 장밋빛 유리 작품명이 있는 공유 이미지"></canvas>
+    <h1>Rose Glass 공유 이미지 합성</h1>
+    <p>실제 WebGL 캡처를 90도 회전해 화면을 채우고 왼쪽 위에 영문 작품명만 합성합니다. 생성형 이미지나 JPEG 중간 파일은 사용하지 않습니다.</p>
+    <canvas id="preview" width="1200" height="630" role="img" aria-label="가로로 회전한 유리 작품 왼쪽 위에 Rose Glass 작품명이 있는 공유 이미지"></canvas>
     <p id="status" role="status">원본 이미지와 Pretendard를 불러오는 중…</p>
     <button id="download" disabled>PNG 다운로드</button>
     <p>입력: <code>pages/apple-glass-wallpaper/assets/og-artwork.png</code><br>
