@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { exposeGuiInDebugMode } from '../../common/debug';
 import { maxFields, substeps } from './deformation';
 import { createPresentation, layers } from './presentation';
 import { PebbleMotion, type Point } from './interaction';
@@ -349,7 +350,7 @@ new ResizeObserver(() => {
   try { resize(); }
   catch (cause) { showError(cause); }
 }).observe(canvas);
-gui = new GUI({ title: 'Rose Glass Controls' });
+gui = exposeGuiInDebugMode(new GUI({ title: 'Rose Glass Controls' }));
 function describe<T extends { domElement: HTMLElement }>(controller: T, description: string): T {
   controller.domElement.title = description;
   return controller;
