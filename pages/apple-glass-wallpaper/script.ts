@@ -415,4 +415,4 @@ describe(gui.add(settings,'resetLook').name('Reset appearance'),
 describe(gui.add(settings,'resetAll').name('Reset everything'),
   '외형, 조약돌 위치와 조명을 모두 기본값으로 복원');
 if (matchMedia('(max-width: 700px)').matches) gui.close();
-createPresentation(wake,reducedMotion);
+createPresentation(wake);
