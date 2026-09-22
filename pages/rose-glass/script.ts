@@ -1,8 +1,8 @@
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
-import { maxFields, substeps } from './deformation';
-import { createPresentation, layers } from './presentation';
-import { PebbleMotion, type Point } from './interaction';
+import { glassBodyIds, glassBodyOrder, maxDeformationFields, deformationSubsteps, type GlassBodyId } from './deformation';
+import { createPresentation, renderLayers } from './presentation';
+import { GlassBodyMotion, type Point } from './interaction';
 import { fragmentSource, resolveSource, vertexSource } from './shader';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
@@ -16,7 +16,7 @@ const defaults = {
   lightIntensity: 1.85,
   lightSpeed: .65,
   lightOrbit: 1,
-  frontAbsorption: 1,
+  foregroundAbsorption: 1,
   rearAbsorption: 1,
   absorptionWidth: 1,
   diffusion: 1,
@@ -27,7 +27,7 @@ const defaults = {
   saturation: 1.1,
   dragRange: 85,
   softness: 1.1,
-  pressDepth: 1,
+  indentationDepth: 1,
   recovery: 1,
   gripRotation: 1,
   stretchLimit: 430,
@@ -42,26 +42,29 @@ let gui: GUI;
 let gl: WebGL2RenderingContext;
 let program: WebGLProgram;
 let resolveProgram: WebGLProgram;
-let sceneTexture: WebGLTexture;
-let sceneFramebuffer: WebGLFramebuffer;
+let materialTexture: WebGLTexture;
+let materialFramebuffer: WebGLFramebuffer;
 let vao: WebGLVertexArrayObject;
 let uniforms: Record<string, WebGLUniformLocation | null>;
 let resolveUniforms: Record<string, WebGLUniformLocation | null>;
 let width = 1, height = 1;
-let sceneWidth = 0, sceneHeight = 0;
-const motions = [0,1,2].map(id => new PebbleMotion(id));
-let selectedPebble = 2;
-const visible = (id: number) => layers[(['upper','lower','front'] as const)[id]];
-function pick(point: Point) { return [2,1,0].find(id => visible(id) && motions[id].hitTest(point)); }
-const allFields = () => motions.flatMap(motion => motion.fields);
+let materialWidth = 0, materialHeight = 0;
+const bodyMotions = glassBodyOrder.map(id => new GlassBodyMotion(id));
+let selectedBodyId: GlassBodyId = glassBodyIds.foreground;
+const layerKeyByBody = ['upperGlass','lowerGlass','foregroundGlass'] as const;
+const visible = (id: GlassBodyId) => renderLayers[layerKeyByBody[id]];
+function pick(point: Point) {
+  return [...glassBodyOrder].reverse().find(id => visible(id) && bodyMotions[id].hitTest(point));
+}
+const allDeformationFields = () => bodyMotions.flatMap(motion => motion.deformationFields);
 const homeLight = { x: 410, y: 360 };
 let lightX = homeLight.x, lightY = homeLight.y;
 let lightTime = 0;
-const pointers = new Map<number, number>();
-const offsets = new Float32Array(6), rotations = new Float32Array(3);
-const fieldRanges = new Int32Array(6);
-const contactData = new Float32Array(maxFields*4);
-const fieldMeta = new Float32Array(maxFields*2);
+const pointers = new Map<number, GlassBodyId>();
+const bodyOffsets = new Float32Array(6), bodyRotations = new Float32Array(3);
+const deformationRanges = new Int32Array(6);
+const deformationData = new Float32Array(maxDeformationFields*4);
+const deformationMeta = new Float32Array(maxDeformationFields*2);
 let hoverPoint: Point | null = null;
 let frame = 0, previous = 0, contextLost = false;
 function compile(type: number, source: string): WebGLShader {
@@ -102,20 +105,20 @@ function initialize() {
   program = createProgram(fragmentSource);
   resolveProgram = createProgram(resolveSource);
   const texture = gl.createTexture(), framebuffer = gl.createFramebuffer();
-  if (!texture || !framebuffer) throw new Error('Cannot allocate scene buffer');
-  sceneTexture = texture;
-  sceneFramebuffer = framebuffer;
-  sceneWidth = sceneHeight = 0;
-  gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
+  if (!texture || !framebuffer) throw new Error('Cannot allocate material buffer');
+  materialTexture = texture;
+  materialFramebuffer = framebuffer;
+  materialWidth = materialHeight = 0;
+  gl.bindTexture(gl.TEXTURE_2D, materialTexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffsets[0]', 'uLight', 'uRotations[0]', 'uFieldRanges[0]', 'uContacts[0]', 'uFieldMeta[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uFrontAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
-    .concat(['uUpper','uLower','uFront','uShadows','uMaterial','uEdges','uLighting'])
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffsets[0]', 'uLight', 'uRotations[0]', 'uDeformationRanges[0]', 'uDeformationFields[0]', 'uDeformationMeta[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uForegroundAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+    .concat(['uUpperGlass','uLowerGlass','uForegroundGlass','uShadows','uShading','uEdgeOptics','uLighting'])
     .map(name => [name, gl.getUniformLocation(program, name)]));
-  resolveUniforms = Object.fromEntries(['uScene', 'uResolution', 'uOutputResolution', 'uReferenceScale', 'uDiffusion']
+  resolveUniforms = Object.fromEntries(['uMaterialTexture', 'uResolution', 'uOutputResolution', 'uReferenceScale', 'uDiffusion']
     .map(name => [name, gl.getUniformLocation(resolveProgram, name)]));
   error.hidden = true;
   contextLost = false;
@@ -129,31 +132,31 @@ function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2, Math.sqrt(3_000_000/(width*height)));
   canvas.width = Math.round(width*dpr);
   canvas.height = Math.round(height*dpr);
-  sizeScene(allFields().length);
+  resizeMaterialBuffer(allDeformationFields().length);
   wake();
 }
 
-function sizeScene(fieldCount: number) {
+function resizeMaterialBuffer(deformationFieldCount: number) {
   // Keep UI/output at native resolution. Only the expensive material pass
   // uses fewer samples while multiple grips (including their release) deform.
-  const grips = fieldCount/substeps;
+  const grips = deformationFieldCount/deformationSubsteps;
   const quality = 1/Math.sqrt(1+Math.max(0,grips-1)*.4);
   const nextWidth = Math.max(1,Math.round(canvas.width*quality));
   const nextHeight = Math.max(1,Math.round(canvas.height*quality));
-  if (nextWidth === sceneWidth && nextHeight === sceneHeight) return;
-  sceneWidth = nextWidth; sceneHeight = nextHeight;
-  gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,sceneWidth,sceneHeight,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,sceneTexture,0);
+  if (nextWidth === materialWidth && nextHeight === materialHeight) return;
+  materialWidth = nextWidth; materialHeight = nextHeight;
+  gl.bindTexture(gl.TEXTURE_2D, materialTexture);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,materialWidth,materialHeight,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, materialFramebuffer);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,materialTexture,0);
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-    throw new Error('Incomplete scene buffer');
+    throw new Error('Incomplete material buffer');
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
 function resetComposition() {
-  motions.forEach(motion => motion.reset(reducedMotion.matches));
+  bodyMotions.forEach(motion => motion.reset(reducedMotion.matches));
   clearCapture();
   updateHover();
   wake();
@@ -190,47 +193,49 @@ function render(now: number) {
   frame = 0;
   const dt = Math.min((now-previous)/1000 || 1/60, 1/30);
   previous = now;
-  const moving = motions.map(motion => motion.step(dt,settings.dragRange,settings.gripRotation,settings,reducedMotion.matches)).some(Boolean);
+  const moving = bodyMotions.map(motion => motion.step(dt,settings.dragRange,settings.gripRotation,settings,reducedMotion.matches)).some(Boolean);
   if (!reducedMotion.matches) lightTime += dt*settings.lightSpeed*.35;
   const orbit = reducedMotion.matches ? 0 : settings.lightOrbit;
   lightX = homeLight.x+Math.sin(lightTime)*310*orbit;
   lightY = homeLight.y+(Math.cos(lightTime*.73)-1)*190*orbit+Math.sin(lightTime*.51)*260*orbit;
-  const fields = allFields();
-  sizeScene(fields.length);
-  gl.viewport(0,0,sceneWidth,sceneHeight);
-  gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFramebuffer);
+  const deformationFields = allDeformationFields();
+  resizeMaterialBuffer(deformationFields.length);
+  gl.viewport(0,0,materialWidth,materialHeight);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,materialFramebuffer);
   gl.useProgram(program);
   gl.bindVertexArray(vao);
-  gl.uniform2f(uniforms.uResolution,sceneWidth,sceneHeight);
+  gl.uniform2f(uniforms.uResolution,materialWidth,materialHeight);
   gl.uniform2f(uniforms.uView,width,height);
-  let fieldStart = 0;
-  motions.forEach((motion,id) => {
-    offsets[id*2] = motion.x; offsets[id*2+1] = motion.y; rotations[id] = motion.angle;
-    fieldRanges[id*2] = fieldStart; fieldStart += motion.fields.length; fieldRanges[id*2+1] = fieldStart;
+  let deformationStart = 0;
+  bodyMotions.forEach((motion,id) => {
+    bodyOffsets[id*2] = motion.x; bodyOffsets[id*2+1] = motion.y; bodyRotations[id] = motion.angle;
+    deformationRanges[id*2] = deformationStart;
+    deformationStart += motion.deformationFields.length;
+    deformationRanges[id*2+1] = deformationStart;
   });
-  gl.uniform2fv(uniforms['uOffsets[0]'],offsets);
-  gl.uniform1fv(uniforms['uRotations[0]'],rotations);
+  gl.uniform2fv(uniforms['uOffsets[0]'],bodyOffsets);
+  gl.uniform1fv(uniforms['uRotations[0]'],bodyRotations);
   gl.uniform2f(uniforms.uLight,lightX,lightY);
-  fields.forEach((field,i) => {
+  deformationFields.forEach((field,i) => {
     const index = i*4;
-    contactData[index] = field.contact.x; contactData[index+1] = field.contact.y;
-    contactData[index+2] = field.pull.x; contactData[index+3] = field.pull.y;
-    const radius = 210+.25*Math.hypot(field.pull.x,field.pull.y);
-    fieldMeta[i*2] = field.press;
-    fieldMeta[i*2+1] = 1/(radius*radius);
+    deformationData[index] = field.center.x; deformationData[index+1] = field.center.y;
+    deformationData[index+2] = field.displacement.x; deformationData[index+3] = field.displacement.y;
+    const radius = 210+.25*Math.hypot(field.displacement.x,field.displacement.y);
+    deformationMeta[i*2] = field.indentation;
+    deformationMeta[i*2+1] = 1/(radius*radius);
   });
-  gl.uniform2iv(uniforms['uFieldRanges[0]'],fieldRanges);
-  gl.uniform4fv(uniforms['uContacts[0]'],contactData);
-  gl.uniform2fv(uniforms['uFieldMeta[0]'],fieldMeta);
-  gl.uniform1f(uniforms.uGrain,layers.grain ? settings.grain : 0);
-  for (const key of ['upper','lower','front','shadows','material','edges','lighting'] as const) {
-    gl.uniform1i(uniforms['u'+key[0].toUpperCase()+key.slice(1)],Number(layers[key]));
+  gl.uniform2iv(uniforms['uDeformationRanges[0]'],deformationRanges);
+  gl.uniform4fv(uniforms['uDeformationFields[0]'],deformationData);
+  gl.uniform2fv(uniforms['uDeformationMeta[0]'],deformationMeta);
+  gl.uniform1f(uniforms.uGrain,renderLayers.frost ? settings.grain : 0);
+  for (const key of ['upperGlass','lowerGlass','foregroundGlass','shadows','shading','edgeOptics','lighting'] as const) {
+    gl.uniform1i(uniforms['u'+key[0].toUpperCase()+key.slice(1)],Number(renderLayers[key]));
   }
   gl.uniform1f(uniforms.uWarmth,settings.warmth);
   gl.uniform1f(uniforms.uSpecular,settings.specular);
   gl.uniform1f(uniforms.uRim,settings.rim);
   gl.uniform1f(uniforms.uLightIntensity,settings.lightIntensity);
-  gl.uniform1f(uniforms.uFrontAbsorption,settings.frontAbsorption);
+  gl.uniform1f(uniforms.uForegroundAbsorption,settings.foregroundAbsorption);
   gl.uniform1f(uniforms.uRearAbsorption,settings.rearAbsorption);
   gl.uniform1f(uniforms.uAbsorptionWidth,settings.absorptionWidth);
   gl.uniform1f(uniforms.uRearBlur,settings.rearBlur);
@@ -243,15 +248,15 @@ function render(now: number) {
   gl.viewport(0,0,canvas.width,canvas.height);
   gl.useProgram(resolveProgram);
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D,sceneTexture);
-  gl.uniform1i(resolveUniforms.uScene,0);
-  gl.uniform2f(resolveUniforms.uResolution,sceneWidth,sceneHeight);
+  gl.bindTexture(gl.TEXTURE_2D,materialTexture);
+  gl.uniform1i(resolveUniforms.uMaterialTexture,0);
+  gl.uniform2f(resolveUniforms.uResolution,materialWidth,materialHeight);
   gl.uniform2f(resolveUniforms.uOutputResolution,canvas.width,canvas.height);
-  gl.uniform1f(resolveUniforms.uReferenceScale,Math.min(width/590,height/1280)*sceneWidth/width);
-  gl.uniform1f(resolveUniforms.uDiffusion,layers.blur ? settings.diffusion : 0);
+  gl.uniform1f(resolveUniforms.uReferenceScale,Math.min(width/590,height/1280)*materialWidth/width);
+  gl.uniform1f(resolveUniforms.uDiffusion,renderLayers.diffusion ? settings.diffusion : 0);
   gl.drawArrays(gl.TRIANGLES,0,3);
-  canvas.dataset.interaction = pointers.size ? 'dragging' : motions.some(motion => motion.mode === 'returning') ? 'returning' : 'idle';
-  canvas.dataset.pebblePointers = motions.map(motion => motion.activeCount).join(',');
+  canvas.dataset.interaction = pointers.size ? 'dragging' : bodyMotions.some(motion => motion.mode === 'returning') ? 'returning' : 'idle';
+  canvas.dataset.bodyPointers = bodyMotions.map(motion => motion.activeCount).join(',');
   updateHover();
   canvas.dataset.activePointers = String(pointers.size);
   if (moving || (!reducedMotion.matches && settings.lightSpeed > 0 && settings.lightOrbit > 0)) wake();
@@ -280,10 +285,10 @@ canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
   const point = trackPointer(event);
   const id = pick(point);
-  // Share the existing five-contact GPU budget across the three objects.
-  if (id === undefined || allFields().length >= maxFields || pointers.has(event.pointerId)) return;
-  if (!motions[id].grab(event.pointerId,point,event.pressure)) return;
-  selectedPebble = id;
+  // Share the existing five-grip GPU budget across the three glass bodies.
+  if (id === undefined || allDeformationFields().length >= maxDeformationFields || pointers.has(event.pointerId)) return;
+  if (!bodyMotions[id].grab(event.pointerId,point,event.pressure)) return;
+  selectedBodyId = id;
   pointers.set(event.pointerId,id);
   canvas.setPointerCapture(event.pointerId);
   wake();
@@ -291,7 +296,7 @@ canvas.addEventListener('pointerdown', event => {
 canvas.addEventListener('pointermove', event => {
   const point = trackPointer(event);
   const id = pointers.get(event.pointerId);
-  if (id !== undefined) motions[id].move(event.pointerId,point,event.pressure);
+  if (id !== undefined) bodyMotions[id].move(event.pointerId,point,event.pressure);
   wake();
 });
 for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) {
@@ -299,7 +304,7 @@ for (const name of ['pointerup','pointercancel','lostpointercapture'] as const) 
     const id = pointers.get(event.pointerId);
     if (id === undefined) return;
     pointers.delete(event.pointerId);
-    motions[id].release(event.pointerId,reducedMotion.matches);
+    bodyMotions[id].release(event.pointerId,reducedMotion.matches);
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     if (event.pointerType !== 'mouse') hoverPoint = null;
     updateHover();
@@ -317,7 +322,7 @@ canvas.addEventListener('keydown', event => {
   const direction = directions[event.key];
   if (!direction) return;
   event.preventDefault();
-  motions[selectedPebble].nudge(direction[0],direction[1],settings.dragRange);
+  bodyMotions[selectedBodyId].nudge(direction[0],direction[1],settings.dragRange);
   wake();
 });
 window.addEventListener('blur', () => { hoverPoint = null; resetComposition(); });
@@ -369,7 +374,7 @@ describe(lightingFolder.add(settings,'specular',0,2,.01).name('White reflection'
 describe(lightingFolder.add(settings,'rim',0,2,.01).name('Optical rim').onChange(wake),
   '가장자리를 스치는 밝은 반사광의 강도');
 describe(lightingFolder.add(settings,'lightIntensity',0,3,.01).name('Light intensity').onChange(wake),
-  '세 조약돌이 공유하는 조명의 밝기. 표면의 방향과 광원까지의 거리에 따라 반사광과 그림자가 함께 달라짐');
+  '세 유리 몸체가 공유하는 조명의 밝기. 표면의 방향과 광원까지의 거리에 따라 반사광과 그림자가 함께 달라짐');
 describe(lightingFolder.add(settings,'lightSpeed',0,2,.01).name('Auto light speed').onChange(wake),
   '조명이 곡선을 따라 자동으로 이동하는 속도. 0이면 현재 위치에서 정지');
 describe(lightingFolder.add(settings,'lightOrbit',0,1.5,.01).name('Light orbit').onChange(wake),
@@ -378,10 +383,10 @@ describe(lightingFolder.add(settings,'lightOrbit',0,1.5,.01).name('Light orbit')
 const edgeFolder = gui.addFolder('Progressive edge');
 describe(edgeFolder.add(settings,'edgeRoll',0,2,.01).name('Edge roll').onChange(wake),
   '배경이 비치는 얇은 외피에서 짙은 어깨로 전환되는 폭. 높이면 경계가 넓고 부드럽게 풀림');
-describe(edgeFolder.add(settings,'frontAbsorption',0,2,.01).name('Front darkness').onChange(wake),
-  '중앙 분홍 조약돌의 두꺼운 외곽이 빛을 흡수하는 정도');
+describe(edgeFolder.add(settings,'foregroundAbsorption',0,2,.01).name('Foreground darkness').onChange(wake),
+  '전경 유리 몸체의 두꺼운 외곽이 빛을 흡수하는 정도');
 describe(edgeFolder.add(settings,'rearAbsorption',0,2,.01).name('Rear darkness').onChange(wake),
-  '뒤쪽 두 조약돌의 두꺼운 외곽이 빛을 흡수하는 정도');
+  '후경의 위·아래 유리 몸체가 외곽에서 빛을 흡수하는 정도');
 describe(edgeFolder.add(settings,'absorptionWidth',.2,2,.01).name('Darkness width').onChange(wake),
   '어두운 외곽이 밝은 내부로 풀리는 거리');
 describe(edgeFolder.add(settings,'diffusion',0,2,.01).name('Blur amount').onChange(wake),
@@ -400,12 +405,12 @@ describe(motionFolder.add(settings,'stretchLimit',150,650,1).name('Stretch limit
   '각 손가락이 재료를 당길 수 있는 최대 거리. 기본 430으로 이전보다 약 3.3배 확대. 최대 다섯 포인터를 동시에 사용');
 describe(motionFolder.add(settings,'softness',0,1.5,.01).name('Softness').onChange(wake),
   '재료의 말랑함. 높이면 잡은 주변이 더 늘어나고 눌림. 0이면 변형되지 않는 단단한 재료');
-describe(motionFolder.add(settings,'pressDepth',0,1.5,.01).name('Press depth').onChange(wake),
+describe(motionFolder.add(settings,'indentationDepth',0,1.5,.01).name('Indentation depth').onChange(wake),
   '가만히 누를 때 생기는 국소적인 홈의 깊이와 주변 부풀음. 반사광과 표면 방향도 함께 변함');
 describe(motionFolder.add(settings,'recovery',.4,2,.01).name('Shape recovery').onChange(wake),
   '놓은 뒤 원래 형태로 복원되는 속도. 낮으면 점성 있는 레진처럼 느리게, 높으면 탄성 있게 빠르게 복원');
 describe(motionFolder.add(settings,'dragRange',40,160,1).name('Body travel').onChange(wake),
-  '당길 때 조약돌 전체가 따라오는 작은 이동의 범위. 대부분의 드래그는 위치 이동 대신 형태 변형으로 전달');
+  '당길 때 유리 몸체 전체가 따라오는 작은 이동의 범위. 대부분의 드래그는 위치 이동 대신 형태 변형으로 전달');
 describe(motionFolder.add(settings,'gripRotation',0,1.5,.01).name('Grip rotation'),
   '중심에서 떨어진 곳을 당길 때 전체에 전달되는 작은 회전');
 describe(motionFolder.add(settings,'resetComposition').name('Reset position'),

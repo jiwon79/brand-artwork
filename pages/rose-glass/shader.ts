@@ -1,7 +1,7 @@
-import { deformationSource, front } from './deformation';
+import { deformationSource, foregroundGlassShape } from './deformation';
 
 // A fixed-camera, analytic relief renderer. Coordinates are in the reference's
-// 590 × 1280 composition. Each pebble has an independent silhouette, material,
+// 590 × 1280 composition. Each glass body has an independent silhouette, material,
 // depth profile and object-space grain; no photograph is used as a texture.
 export const vertexSource = `#version 300 es
 void main() {
@@ -30,7 +30,7 @@ uniform float uWarmth;
 uniform float uSpecular;
 uniform float uRim;
 uniform float uLightIntensity;
-uniform float uFrontAbsorption;
+uniform float uForegroundAbsorption;
 uniform float uRearAbsorption;
 uniform float uAbsorptionWidth;
 uniform float uSaturation;
@@ -38,12 +38,12 @@ uniform float uRearBlur;
 uniform float uEdgeRoll;
 uniform float uShadowStrength;
 uniform float uShadowSpread;
-uniform bool uUpper;
-uniform bool uLower;
-uniform bool uFront;
+uniform bool uUpperGlass;
+uniform bool uLowerGlass;
+uniform bool uForegroundGlass;
 uniform bool uShadows;
-uniform bool uMaterial;
-uniform bool uEdges;
+uniform bool uShading;
+uniform bool uEdgeOptics;
 uniform bool uLighting;
 ${deformationSource}
 
@@ -78,12 +78,12 @@ vec2 rotate(vec2 p, float angle) {
   return vec2(c*p.x-s*p.y,s*p.x+c*p.y);
 }
 // Shared with CPU picking: the reference silhouette before local strain.
-const vec2 frontCenter = vec2(${front.x.toFixed(1)},${front.y.toFixed(1)});
-const vec2 frontSize = vec2(${front.width.toFixed(1)},${front.height.toFixed(1)});
-const float frontShear = ${front.shear};
-const float frontExponent = ${front.exponent};
+const vec2 foregroundCenter = vec2(${foregroundGlassShape.x.toFixed(1)},${foregroundGlassShape.y.toFixed(1)});
+const vec2 foregroundSize = vec2(${foregroundGlassShape.width.toFixed(1)},${foregroundGlassShape.height.toFixed(1)});
+const float foregroundShear = ${foregroundGlassShape.shear};
+const float foregroundExponent = ${foregroundGlassShape.exponent};
 const float lightHeight = 550.0;
-// The upper rear pebble narrows at its cropped crown, rather than keeping the
+// The upper rear glass body narrows at its cropped crown, rather than keeping the
 // same rounded-rectangle width all the way to the top of the portrait.
 vec2 upperProfile(float y) {
   // A soft positive part keeps curvature continuous through the shoulder.
@@ -93,32 +93,32 @@ vec2 upperProfile(float y) {
   return vec2(245.0*(1.0-.22*taper*taper),
     122.5*taper*(1.0+t/root));
 }
-vec2 frontProfile(float y) {
+vec2 foregroundProfile(float y) {
   float lower = clamp((y+.10)/.40,0.0,1.0);
   float lowerTaper = lower*lower*(3.0-2.0*lower);
   float lowerSlope = 6.0*lower*(1.0-lower)/.40;
-  return vec2(frontSize.x*(1.0-.11*y-.0325*lowerTaper),
-    -frontSize.x*(.11+.0325*lowerSlope));
+  return vec2(foregroundSize.x*(1.0-.11*y-.0325*lowerTaper),
+    -foregroundSize.x*(.11+.0325*lowerSlope));
 }
-vec2 centerFor(int id) { return id == 0 ? vec2(321,299) : id == 1 ? vec2(274,941) : frontCenter; }
-vec2 materialPoint(vec2 q, int id) {
+vec2 centerFor(int id) { return id == 0 ? vec2(321,299) : id == 1 ? vec2(274,941) : foregroundCenter; }
+vec2 canonicalMaterialPoint(vec2 q, int id) {
   if (id == 0) { float y = q.y*408.0; return vec2(q.x*upperProfile(q.y).x+y*.16,y); }
   if (id == 1) { float y = q.y*366.0; return vec2(q.x*260.0+y*.19,y); }
-  float y = q.y*frontSize.y;
-  return vec2(q.x*frontProfile(q.y).x+y*frontShear,y);
+  float y = q.y*foregroundSize.y;
+  return vec2(q.x*foregroundProfile(q.y).x+y*foregroundShear,y);
 }
-vec2 localPoint(vec2 p, int id) {
-  p = undeform(rotate(p-centerFor(id)-uOffsets[id],-uRotations[id]),id);
+vec2 normalizedBodyPoint(vec2 p, int id) {
+  p = invertDeformation(rotate(p-centerFor(id)-uOffsets[id],-uRotations[id]),id);
   if (id == 0) {
     float y = p.y/408.0;
     return vec2((p.x-p.y*.16)/upperProfile(y).x,y);
   }
   if (id == 1) return vec2(p.x-p.y*.19,p.y)/vec2(260,366);
-  float y = p.y/frontSize.y;
-  return vec2((p.x-p.y*frontShear)/frontProfile(y).x,y);
+  float y = p.y/foregroundSize.y;
+  return vec2((p.x-p.y*foregroundShear)/foregroundProfile(y).x,y);
 }
-float field(vec2 q, int id) {
-  float power = id == 2 ? frontExponent : 2.35;
+float superellipseField(vec2 q, int id) {
+  float power = id == 2 ? foregroundExponent : 2.35;
   return pow(abs(q.x),power) + pow(abs(q.y),power);
 }
 vec3 background(vec2 p) {
@@ -153,15 +153,15 @@ vec2 edgeVolume(vec2 q, int id) {
 float contourDistance(vec2 q, int id, mat2 jacobian) {
   // Reference-pixel contour distance, including each silhouette's shear and
   // taper. Optical width varies with position; this is not a stroked outline.
-  float exponent = id == 2 ? frontExponent : 2.35;
+  float exponent = id == 2 ? foregroundExponent : 2.35;
   vec2 gradient = exponent*sign(q)*pow(abs(q),vec2(exponent-1.0));
   vec2 radii = id == 0 ? vec2(245,408) : id == 1 ? vec2(260,366) : vec2(252,386);
   vec2 sceneGradient = gradient/radii;
   if (id == 2) {
-    float height = frontSize.y;
-    vec2 profile = frontProfile(q.y);
+    float height = foregroundSize.y;
+    vec2 profile = foregroundProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
-      gradient.y/height+gradient.x*(-frontShear-q.x*profile.y/height)/profile.x);
+      gradient.y/height+gradient.x*(-foregroundShear-q.x*profile.y/height)/profile.x);
   } else if (id == 0) {
     vec2 profile = upperProfile(q.y);
     sceneGradient = vec2(gradient.x/profile.x,
@@ -170,10 +170,10 @@ float contourDistance(vec2 q, int id, mat2 jacobian) {
     sceneGradient.y -= .19*sceneGradient.x;
   }
   sceneGradient = transpose(inverse(jacobian))*sceneGradient;
-  return (1.0-field(q,id))/max(length(sceneGradient),.0001);
+  return (1.0-superellipseField(q,id))/max(length(sceneGradient),.0001);
 }
 float contourDistance(vec2 q, int id) {
-  return contourDistance(q,id,deformationGradient(materialPoint(q,id),id));
+  return contourDistance(q,id,deformationGradient(canonicalMaterialPoint(q,id),id));
 }
 // Gaussian half-plane coverage near the projected contour. Two footprints
 // separate the close contact shadow from the broad, rose-tinted penumbra.
@@ -190,8 +190,8 @@ vec3 castShadow(vec3 under, vec2 p, int id) {
   // enormous shadow. The studio fill remains when the cursor lamp is off.
   float influence = (1.0-exp(-uLightIntensity))*exp(-dot(center-uLight,center-uLight)/900000.0);
   vec2 offset = mix(fillOffset,lampOffset,influence);
-  float contactDistance = contourDistance(localPoint(p-offset*.35,id),id);
-  float diffuseDistance = contourDistance(localPoint(p-offset,id),id);
+  float contactDistance = contourDistance(normalizedBodyPoint(p-offset*.35,id),id);
+  float diffuseDistance = contourDistance(normalizedBodyPoint(p-offset,id),id);
   float spread = id == 0 ? 16.0 : id == 1 ? 27.0 : 17.0;
   float nearShadow = shadowCoverage(contactDistance,(id == 2 ? 3.5 : 5.0)*uShadowSpread);
   float farShadow = shadowCoverage(diffuseDistance,spread*uShadowSpread);
@@ -199,12 +199,12 @@ vec3 castShadow(vec3 under, vec2 p, int id) {
     +farShadow*(id == 0 ? .06 : id == 1 ? .095 : .10);
   return toSrgb(toLinear(under)*exp(-vec3(.78,1.0,1.04)*density*uShadowStrength));
 }
-vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
-  vec2 q = localPoint(p,id);
+vec3 glassBody(vec3 under, vec2 p, int id, inout float blurRadius) {
+  vec2 q = normalizedBodyPoint(p,id);
   mat2 jacobian = mat2(1.0);
   vec3 dent = vec3(0);
-  materialGeometry(materialPoint(q,id),id,jacobian,dent);
-  float f = field(q,id);
+  deformedSurfaceGeometry(canonicalMaterialPoint(q,id),id,jacobian,dent);
+  float f = superellipseField(q,id);
   vec2 radii = id == 0 ? vec2(245,408) : id == 1 ? vec2(260,366) : vec2(252,386);
   float distance = contourDistance(q,id,jacobian);
   float aa = max(fwidth(distance)*.7,.65);
@@ -297,7 +297,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     }
     color = mix(color,under,.07*depth);
   }
-  if (!uMaterial) color = id == 2 ? vec3(.945,.559,.550) : id == 0 ? vec3(.858,.690,.698) : vec3(.938,.865,.849);
+  if (!uShading) color = id == 2 ? vec3(.945,.559,.550) : id == 0 ? vec3(.858,.690,.698) : vec3(.938,.865,.849);
   // A grazing reflection rolls inward from the surface, rather than peaking
   // at a fixed inset. Its width, absorption and intensity change independently.
   float sideLight = .12+.64*bell(q,vec2(.90,-.45),vec2(.50,.80))
@@ -310,7 +310,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
     + lowerLight*bell(q,vec2(-.86,.51),vec2(1.4,1.0))*.15;
   if (id != 2) reflection *= id == 0 ? .25 : .32;
   // One scene-space area-light approximation. Surface height, distance and
-  // rotated normals determine where each pebble receives the same lamp.
+  // rotated normals determine where each glass body receives the same lamp.
   // Broad diffuse + tighter frosted reflection, not three cloned spotlights.
   float surfaceHeight = id == 2 ? 100.0+depth*125.0*thickness+dent.x : 15.0+depth*85.0*thickness+dent.x;
   vec3 toLight = vec3(uLight-p,lightHeight-surfaceHeight);
@@ -329,8 +329,8 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   // below softens the outside, placing peak density just inside the glass.
   float edgeCore = exp(-pow(inside/volume.x,1.45));
   float edgeTail = exp(-pow(inside/(volume.x*1.8),2.0));
-  float absorption = id == 2 ? uFrontAbsorption : uRearAbsorption;
-  float opticalDepth = (uEdges ? 1.0 : 0.0)*volume.y*(.78*edgeCore+.22*edgeTail)*absorption*thickness;
+  float absorption = id == 2 ? uForegroundAbsorption : uRearAbsorption;
+  float opticalDepth = (uEdgeOptics ? 1.0 : 0.0)*volume.y*(.78*edgeCore+.22*edgeTail)*absorption*thickness;
   vec3 extinction = id == 1 ? vec3(.50,.57,.55) : vec3(.44,.48,.46);
   vec3 transmission = exp(-extinction*opticalDepth);
   vec3 litSurface = toLinear(max(color,0.0))
@@ -384,7 +384,7 @@ vec3 pebble(vec3 under, vec2 p, int id, inout float blurRadius) {
   float lipWidth = id == 2 ? 3.0+6.0*leftLip+2.0*rightLip+lowerLip
     : 3.0+1.0*leftLip+2.0*rightLip+lowerLip;
   float lipStrength = id == 2 ? .40+.22*leftLip : .68;
-  float lipTransmission = uEdges && uEdgeRoll > .001 ? lipStrength*exp(-inside/(lipWidth*uEdgeRoll)) : 0.0;
+  float lipTransmission = uEdgeOptics && uEdgeRoll > .001 ? lipStrength*exp(-inside/(lipWidth*uEdgeRoll)) : 0.0;
   color = toSrgb(mix(toLinear(clamp(color,0.0,1.0)),toLinear(under),lipTransmission));
   return mix(under,clamp(color,0.0,1.0),mask);
 }
@@ -397,17 +397,17 @@ void main() {
   vec2 p = (uv*uView-uView*.5)/scale+vec2(295,640);
   vec3 color = background(p);
   float blurRadius = 0.0;
-  if (uUpper) {
+  if (uUpperGlass) {
     if (uShadows) color = castShadow(color,p,0);
-    color = pebble(color,p,0,blurRadius);
+    color = glassBody(color,p,0,blurRadius);
   }
-  if (uLower) {
+  if (uLowerGlass) {
     if (uShadows) color = castShadow(color,p,1);
-    color = pebble(color,p,1,blurRadius);
+    color = glassBody(color,p,1,blurRadius);
   }
-  if (uFront) {
+  if (uForegroundGlass) {
     if (uShadows) color = castShadow(color,p,2);
-    color = pebble(color,p,2,blurRadius);
+    color = glassBody(color,p,2,blurRadius);
   }
   fragColor = vec4(color,clamp(blurRadius/16.0,0.0,1.0));
 }`;
@@ -417,16 +417,16 @@ void main() {
 export const resolveSource = `#version 300 es
 precision highp float;
 out vec4 fragColor;
-uniform sampler2D uScene;
+uniform sampler2D uMaterialTexture;
 uniform vec2 uResolution;
 uniform vec2 uOutputResolution;
 uniform float uReferenceScale;
 uniform float uDiffusion;
 ${colorSpaceSource}
-vec3 sampleLight(vec2 uv) { return toLinear(texture(uScene,uv).rgb); }
+vec3 sampleLight(vec2 uv) { return toLinear(texture(uMaterialTexture,uv).rgb); }
 void main() {
   vec2 uv = gl_FragCoord.xy/uOutputResolution;
-  vec4 center = texture(uScene,uv);
+  vec4 center = texture(uMaterialTexture,uv);
   float dither = fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))-.5;
   float pixelRadius = center.a*16.0*uReferenceScale*uDiffusion;
   if (pixelRadius < .25) {

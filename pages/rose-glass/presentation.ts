@@ -8,18 +8,19 @@ const stages = [
 ] as const;
 type Stage = typeof stages[number]['id'];
 const definitions = [
-  ['upper', 1], ['lower', 1], ['front', 1],
-  ['material', 2], ['shadows', 2], ['edges', 3],
-  ['lighting', 4], ['grain', 5], ['blur', 6],
+  ['upperGlass', 1], ['lowerGlass', 1], ['foregroundGlass', 1],
+  ['shading', 2], ['shadows', 2], ['edgeOptics', 3],
+  ['lighting', 4], ['frost', 5], ['diffusion', 6],
 ] as const;
-export const layers = { upper: true, lower: true, front: true, material: true,
-  shadows: true, edges: true, lighting: true, grain: true, blur: true };
+export const renderLayers = { upperGlass: true, lowerGlass: true, foregroundGlass: true,
+  shading: true, shadows: true, edgeOptics: true, lighting: true, frost: true,
+  diffusion: true };
 
 // Stage selection, URL state and pointer/keyboard activation belong to the
 // shared stepper. This adapter only applies Rose Glass's shader contributions.
 export function createPresentation(wake: () => void) {
   function apply(id: Stage) {
-    definitions.forEach(([key,from]) => { layers[key] = Number(id) >= from; });
+    definitions.forEach(([key,from]) => { renderLayers[key] = Number(id) >= from; });
     wake();
   }
   createStepper({

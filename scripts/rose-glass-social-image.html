@@ -23,8 +23,8 @@
     <canvas id="preview" width="1200" height="630" role="img" aria-label="가로로 회전한 유리 작품 왼쪽 위에 Rose Glass 작품명이 있는 공유 이미지"></canvas>
     <p id="status" role="status">원본 이미지와 Pretendard를 불러오는 중…</p>
     <button id="download" disabled>PNG 다운로드</button>
-    <p>입력: <code>pages/apple-glass-wallpaper/assets/og-artwork.png</code><br>
-      저장 위치: <code>pages/apple-glass-wallpaper/assets/og-image.png</code></p>
+    <p>입력: <code>pages/rose-glass/assets/og-artwork.png</code><br>
+      저장 위치: <code>pages/rose-glass/assets/og-image.png</code></p>
   </main>
   <script type="module">
     import { drawSocialImage, socialImage } from './rose-glass-social-image.mjs';
@@ -32,9 +32,9 @@
     const status = document.querySelector('#status');
     const download = document.querySelector('#download');
     try {
-      const font = new FontFace('Pretendard Variable', 'url(/pages/apple-glass-wallpaper/assets/PretendardVariable.woff2)', { weight: '45 920' });
+      const font = new FontFace('Pretendard Variable', 'url(/pages/rose-glass/assets/PretendardVariable.woff2)', { weight: '45 920' });
       const source = new Image();
-      source.src = '/pages/apple-glass-wallpaper/assets/og-artwork.png';
+      source.src = '/pages/rose-glass/assets/og-artwork.png';
       const [loadedFont] = await Promise.all([font.load(), source.decode()]);
       document.fonts.add(loadedFont);
       drawSocialImage(canvas.getContext('2d'), source);
