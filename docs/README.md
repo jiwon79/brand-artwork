@@ -55,7 +55,8 @@ docs/
 
 ### Rose Glass
 
-- [`social-share-image.md`](./artworks/apple-glass-wallpaper/social-share-image.md) - 실제 WebGL 캡처를 가로로 회전해 채우고 Rose Glass 제목을 합성하는 PNG 제작 도구와 재생성 방법
+- [`architecture.md`](./artworks/rose-glass/architecture.md) - 세 유리 몸체의 멀티터치 변형, 재질·합성 패스와 성능 조절 구조
+- [`social-share-image.md`](./artworks/rose-glass/social-share-image.md) - 실제 WebGL 캡처를 가로로 회전해 채우고 Rose Glass 제목을 합성하는 PNG 제작 도구와 재생성 방법
 
 ### 웃음꽃 (Smile Flower)
 
