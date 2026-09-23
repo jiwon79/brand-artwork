@@ -1,0 +1,39 @@
+{
+  "name": "Rose Glass Material Kit",
+  "version": "2.0.0",
+  "readOrder": [
+    "rose-glass-layer-contract.json",
+    "rose-glass-plate-base.png",
+    "rose-glass-delta-upper.png",
+    "rose-glass-delta-lower.png",
+    "rose-glass-delta-foreground.png",
+    "rose-glass-texture-compose.glsl",
+    "rose-glass-shape-contract.json",
+    "rose-glass-mask-upper.svg",
+    "rose-glass-mask-lower.svg",
+    "rose-glass-mask-foreground.svg",
+    "rose-glass-spec.json",
+    "rose-glass-palette.json",
+    "rose-glass-material-profile.json",
+    "rose-glass-color-probes.json",
+    "rose-glass-frost-kernel.glsl",
+    "rose-glass-geometry.svg",
+    "rose-glass-shader-notes.glsl",
+    "rose-glass-visual-checks.json",
+    "rose-glass-test-cases.json"
+  ],
+  "references": [
+    { "file": "../reference/rose-glass-01-final-4k.jpg", "role": "comparison-only full-frame appearance target", "size": [2160, 3840] },
+    { "file": "../reference/rose-glass-02-social-preview.png", "role": "comparison-only horizontal identity preview", "size": [1200, 630] },
+    { "file": "../reference/rose-glass-03-foreground-detail.jpg", "role": "comparison-only foreground material, frost and thick-edge target", "size": [2160, 2400] },
+    { "file": "../reference/rose-glass-04-upper-edge-detail.jpg", "role": "comparison-only upper-body dark shoulder and progressive edge target", "size": [2160, 1680] },
+    { "file": "../reference/rose-glass-05-lower-edge-detail.jpg", "role": "comparison-only lower-body milk-glass and mauve edge target", "size": [2160, 1680] }
+  ],
+  "usage": {
+    "shape": ["rose-glass-shape-contract.json", "rose-glass-mask-upper.svg", "rose-glass-mask-lower.svg", "rose-glass-mask-foreground.svg", "rose-glass-spec.json", "rose-glass-geometry.svg"],
+    "color": ["rose-glass-plate-base.png", "rose-glass-delta-upper.png", "rose-glass-delta-lower.png", "rose-glass-delta-foreground.png", "rose-glass-palette.json", "../reference/rose-glass-01-final-4k.jpg"],
+    "material": ["rose-glass-layer-contract.json", "rose-glass-texture-compose.glsl", "rose-glass-material-profile.json", "rose-glass-color-probes.json", "rose-glass-frost-kernel.glsl", "rose-glass-shader-notes.glsl", "../reference/rose-glass-03-foreground-detail.jpg", "../reference/rose-glass-04-upper-edge-detail.jpg", "../reference/rose-glass-05-lower-edge-detail.jpg"],
+    "verification": ["rose-glass-visual-checks.json", "rose-glass-test-cases.json"]
+  },
+  "renderingBoundary": "Use the four supplied signed layer textures for the reference-matched resting appearance. The three SVG masks are for picking and deformation support, not a replacement for the photographed optical edges. Add subtle moving light and material deformation over the texture composition; do not rebuild the resting colors, frost or shoulder from generic gradients."
+}

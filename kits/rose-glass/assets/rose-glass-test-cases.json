@@ -1,0 +1,27 @@
+{
+  "debugObject": "window.__roseGlassDebug",
+  "substepsPerGrip": 4,
+  "cases": [
+    { "name": "idle", "grips": 0, "fields": 0, "materialScale": 1.0 },
+    { "name": "one-foreground-grip", "start": [298, 645], "moveBy": [90, 30], "grips": 1, "byBody": [0, 0, 1], "fields": 4, "materialScale": 1.0 },
+    { "name": "upper-and-lower", "starts": [[321, 180], [274, 1090]], "movesBy": [[-65, 35], [65, -35]], "grips": 2, "byBody": [1, 1, 0], "fields": 8, "materialScale": 0.845154 },
+    { "name": "two-foreground-grips", "starts": [[170, 645], [425, 645]], "movesBy": [[-80, 0], [80, 0]], "grips": 2, "byBody": [0, 0, 2], "fields": 8, "materialScale": 0.845154 },
+    { "name": "five-grips", "starts": [[321, 145], [274, 1120], [155, 600], [298, 700], [435, 610]], "grips": 5, "fields": 20, "materialScale": 0.620174 }
+  ],
+  "release": {
+    "countRecoveringGrips": true,
+    "settledMetric": "hypot(dx, dy, vx, vy, indentation*100, indentationVelocity*100)",
+    "epsilon": 0.01,
+    "expected": "grip and field counts remain until settled, then return to zero"
+  },
+  "framebuffer": {
+    "formula": "round(outputDimension * materialScale)",
+    "minimumDimension": 1,
+    "outputRemainsNative": true
+  },
+  "controls": [
+    { "action": "press D", "expect": "guiVisible toggles" },
+    { "action": "open with ?debug", "expect": "guiVisible is true" },
+    { "action": "drag overlap", "expect": "frontmost visible body is selected" }
+  ]
+}

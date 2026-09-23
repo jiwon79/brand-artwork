@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 590 1280" width="590" height="1280">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e9bdc5"/><stop offset="1" stop-color="#fff7f7"/></linearGradient>
+    <style>.body{fill-opacity:.34;stroke-width:3}.box{fill:none;stroke-dasharray:9 7;stroke-width:1.5}.label{font:18px -apple-system,BlinkMacSystemFont,sans-serif;fill:#5a3038}.meta{font:13px ui-monospace,monospace;fill:#754752}.center{stroke:#7e4d57;stroke-width:2}</style>
+  </defs>
+  <rect width="590" height="1280" fill="url(#bg)"/>
+  <path class="body" fill="#d8a6ad" stroke="#87545e" d="M84,-20 C66,95 62,250 78,390 C92,535 146,664 244,700 C344,737 491,702 548,602 C594,521 588,318 558,158 C536,42 488,-34 410,-58 Z"/>
+  <path class="body" fill="#f1ded8" stroke="#8c6670" d="M13,612 C-15,738 -8,984 42,1137 C74,1238 139,1305 262,1320 C392,1335 507,1288 538,1186 C570,1080 556,829 514,704 C480,600 393,566 271,573 C151,579 42,565 13,612 Z"/>
+  <path class="body" fill="#ec8f8d" stroke="#793d49" d="M101,316 C53,405 38,572 52,707 C68,861 131,992 245,1025 C360,1057 489,997 526,879 C559,772 563,529 515,405 C474,300 386,252 278,260 C193,266 132,260 101,316 Z"/>
+  <rect class="box" stroke="#87545e" x="62" y="0" width="518" height="707"/><rect class="box" stroke="#8c6670" x="0" y="575" width="549" height="705"/><rect class="box" stroke="#793d49" x="44" y="259" width="508" height="772"/>
+  <g class="center"><path d="M311 299h20M321 289v20"/><path d="M264 941h20M274 931v20"/><path d="M288 645h20M298 635v20"/></g>
+  <g class="label"><text x="82" y="42">upper · depth 0</text><text x="18" y="1250">lower · depth 1</text><text x="94" y="344">foreground · depth 2</text></g>
+  <g class="meta"><text x="338" y="295">center 321,299</text><text x="287" y="937">center 274,941</text><text x="311" y="641">center 298,645</text><text x="16" y="24">590 × 1280 · top-left origin</text></g>
+</svg>

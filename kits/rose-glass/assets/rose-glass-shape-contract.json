@@ -1,0 +1,43 @@
+{
+  "name": "Rose Glass interaction shape masks",
+  "version": "2.0.0",
+  "canvas": [590, 1280],
+  "origin": "top-left",
+  "sampling": {
+    "sourceChannel": "alpha",
+    "inside": 1,
+    "outside": 0,
+    "preserveAspectRatio": "none",
+    "textureWrap": "clamp-to-edge",
+    "textureFilter": "linear"
+  },
+  "bodies": [
+    {
+      "id": "upper",
+      "file": "rose-glass-mask-upper.svg",
+      "depthOrder": 0,
+      "visibleBounds": [68, 0, 582, 714],
+      "fullBounds": [68, -58, 582, 714]
+    },
+    {
+      "id": "lower",
+      "file": "rose-glass-mask-lower.svg",
+      "depthOrder": 1,
+      "visibleBounds": [0, 572, 556, 1280],
+      "fullBounds": [-3, 572, 556, 1323]
+    },
+    {
+      "id": "foreground",
+      "file": "rose-glass-mask-foreground.svg",
+      "depthOrder": 2,
+      "visibleBounds": [47, 259, 551, 1034],
+      "fullBounds": [47, 259, 551, 1034]
+    }
+  ],
+  "contract": [
+    "Use the SVG alpha as the stable picking and deformation support region. The signed layer textures preserve the reference's final visible contour, frost and optical edge.",
+    "Keep all three SVGs on the same 590 x 1280 canvas; do not crop each file to its local bounds.",
+    "Apply inverse interaction deformation to the reference-space sample point before reading both the mask and that body's signed delta texture.",
+    "For new dynamic reflections, derive edge distance from the mask or its SDF; do not replace the body with a circle, ellipse, rounded rectangle or generic superellipse."
+  ]
+}

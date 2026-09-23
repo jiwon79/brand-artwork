@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rose Glass layer export</title>
+    <style>
+      body { margin: 20px; font: 16px system-ui; background: #f4e8e9; color: #3a292e; }
+      main { display: grid; gap: 12px; justify-items: start; }
+      canvas { width: 295px; height: 640px; border: 1px solid #b59ca2; }
+      button, select { padding: 8px 12px; font: inherit; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <label>Stage <select id="stage"><option value="0">0 · backdrop</option><option value="1">1 · upper</option><option value="2">2 · lower</option><option value="3">3 · foreground</option></select></label>
+      <label>Light seconds <input id="seconds" type="number" value="0" min="0" step="1" /></label>
+      <button id="save">Save 1080 × 1920 PNG</button>
+      <output id="status" role="status">Preparing WebGL…</output>
+      <canvas id="art" width="1080" height="1920"></canvas>
+    </main>
+    <script type="module" src="./rose-glass-layer-export.ts"></script>
+  </body>
+</html>

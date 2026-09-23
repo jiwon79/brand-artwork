@@ -1,0 +1,33 @@
+{
+  "canvas": { "reference": [590, 1280], "aspect": "9:16", "origin": "top-left" },
+  "silhouetteTolerancePx": 1,
+  "silhouetteSource": "The four signed PNGs define the final resting contour and optical blur. Rasterize SVG masks on the full 590 x 1280 canvas only for picking and deformation support; do not use a fitted primitive.",
+  "restingImageGate": { "reference": "../reference/rose-glass-01-final-4k.jpg", "compareAt": [1080, 1920], "maximumMeanAbsoluteRgbError8bit": 3, "check": "capture the actual 9:16 canvas and compare pixel values; do not use a build pass as visual evidence" },
+  "bodies": {
+    "upper": {
+      "bounds": [68, 0, 582, 714],
+      "landmarks": ["top crop", "dark upper-right shoulder", "soft rose transmitted center"]
+    },
+    "lower": {
+      "bounds": [0, 572, 556, 1280],
+      "landmarks": ["left and bottom crop", "milky cream center", "dark mauve side walls"]
+    },
+    "foreground": {
+      "bounds": [47, 259, 551, 1034],
+      "landmarks": ["near full-width silhouette", "dark diagonal upper band", "peach center", "cream lower-left highlight", "dense right edge"]
+    }
+  },
+  "edgeOptics": [
+    "density grows inward from a thin transmitted lip",
+    "right and lower shoulders are wider than the crown",
+    "blur radius follows local optical thickness",
+    "center frost remains sharper than the silhouette"
+  ],
+  "overlap": [
+    "foreground casts a close dark contact shadow",
+    "a wider rose penumbra continues beyond the contact shadow",
+    "upper, lower and foreground remain visually separate at overlaps"
+  ],
+  "lightCheckSeconds": [0, 4, 8, 12],
+  "comparisonOrder": ["bounds", "overlap order", "dark shoulders", "white reflections", "frost grain", "progressive edge blur"]
+}

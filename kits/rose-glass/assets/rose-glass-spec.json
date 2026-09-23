@@ -1,0 +1,107 @@
+{
+  "name": "Rose Glass",
+  "version": "2.0.0",
+  "coordinateSystem": {
+    "referenceWidth": 590,
+    "referenceHeight": 1280,
+    "displayAspectRatio": "9:16",
+    "origin": "top-left",
+    "units": "reference pixels"
+  },
+  "referenceCoordinateMapping": "With output UV measured from the top-left, map the 9:16 canvas to p = vec2(uv.x * 720 - 65, uv.y * 1280). The 590 x 1280 material space has 65 reference pixels of extra backdrop on each side. PNG layer UV is ((p.x + 65) / 720, p.y / 1280); SVG mask UV is (p.x / 590, p.y / 1280).",
+  "composition": {
+    "background": {
+      "topColorSrgb": [0.865, 0.71, 0.735],
+      "bottomColorSrgb": [1.0, 0.97, 0.972],
+      "verticalExponent": 0.82
+    },
+    "shapeAuthority": "rose-glass-layer-contract.json and its four PNG textures define the resting visible contour and material. The three SVG masks support picking and deformation; analytic parameters describe material coordinates and interaction, not a replacement for the texture appearance.",
+    "sizeSemantics": "halfSize is the distance from center to the analytic material-coordinate boundary. Normalize with q = localPoint / halfSize; never divide halfSize by 2 again.",
+    "glassBodies": [
+      { "id": "upper", "maskFile": "rose-glass-mask-upper.svg", "center": [321, 299], "halfSize": [245, 408], "expectedVisibleBounds": [68, 0, 582, 714], "shear": 0.16, "superellipseExponent": 2.35, "depthOrder": 0 },
+      { "id": "lower", "maskFile": "rose-glass-mask-lower.svg", "center": [274, 941], "halfSize": [260, 366], "expectedVisibleBounds": [0, 572, 556, 1280], "shear": 0.19, "superellipseExponent": 2.35, "depthOrder": 1 },
+      { "id": "foreground", "maskFile": "rose-glass-mask-foreground.svg", "center": [298, 645], "halfSize": [252, 386], "expectedVisibleBounds": [47, 259, 551, 1034], "shear": 0.045, "superellipseExponent": 2.45, "depthOrder": 2 }
+    ]
+  },
+  "appearanceDefaults": {
+    "grain": 1.25,
+    "warmth": 0.0,
+    "saturation": 1.1,
+    "specular": 1.1,
+    "rim": 1.25,
+    "lightIntensity": 1.85,
+    "frontAbsorption": 1.0,
+    "rearAbsorption": 1.0,
+    "absorptionWidth": 1.0,
+    "diffusion": 1.0,
+    "rearBlur": 1.0,
+    "edgeRoll": 1.0,
+    "shadowStrength": 1.0,
+    "shadowSpread": 1.0
+  },
+  "automaticLight": {
+    "home": [410, 360],
+    "height": 550,
+    "speed": 0.65,
+    "orbit": 1.0,
+    "x": "homeX + sin(t) * 310 * orbit",
+    "y": "homeY + (cos(t * 0.73) - 1) * 190 * orbit + sin(t * 0.51) * 260 * orbit",
+    "timeScale": 0.35,
+    "verificationSeconds": [0, 4, 8, 12],
+    "verificationNote": "The mixed frequencies form a non-closed orbit. Compare the four specified times instead of waiting for one loop."
+  },
+  "interactionDefaults": {
+    "maxContacts": 5,
+    "substepsPerContact": 4,
+    "inverseSolverIterations": 5,
+    "stretchLimit": 430,
+    "softness": 1.1,
+    "pressDepth": 1.0,
+    "recovery": 1.0,
+    "bodyTravel": 85,
+    "gripRotation": 1.0,
+    "pressRadius": 145,
+    "deformationSpread": 0.055,
+    "recoverySettledMetric": "hypot(displacementX, displacementY, velocityX, velocityY, indentation * 100, indentationVelocity * 100)",
+    "recoverySettledEpsilon": 0.01
+  },
+  "rendering": {
+    "api": "WebGL2",
+    "mainPass": "compose base plate and three signed color deltas at inverse-deformed material coordinates",
+    "resolvePass": "optional subtle moving reflection and progressive edge response after reference-matched texture composition",
+    "materialFramebufferFormat": "RGBA8",
+    "maximumDevicePixelRatio": 2,
+    "maximumOutputPixels": 3000000,
+    "dynamicMaterialScale": "1 / sqrt(1 + max(0, activeAndRecoveringGrips - 1) * 0.4)",
+    "dynamicMaterialScaleCount": "Count both held grips and released grips whose deformation has not settled. fieldCount / substepsPerContact is an equivalent count.",
+    "materialBufferRounding": "round(outputPixels * dynamicMaterialScale) independently for width and height",
+    "materialBufferResize": "The grip count is an integer and remains unchanged throughout recovery, then drops when the settled metric is at or below its epsilon. Resize immediately when that integer changes; no hysteresis is required. Clamp each dimension to at least 1 pixel.",
+    "layerOrder": ["base plate", "upper signed delta", "lower signed delta", "foreground signed delta", "dynamic lighting"]
+  },
+  "visualTargets": {
+    "foreground": "Nearly fills the width from x 29 to 567. Keep a dark rose shoulder across the upper-left and right edge, a peach center, and a cream highlight toward the lower-left.",
+    "upper": "Cropped by the top edge, darker on the upper/right rim, softly rose-tinted inside.",
+    "lower": "Cropped by the bottom and both side edges, mostly milky cream with a darker mauve rim.",
+    "edgeOptics": "Blur and absorption must vary with local optical thickness; do not draw a constant-width outline or apply one uniform blur radius.",
+    "overlap": "Foreground glass casts a close dark contact shadow and a broader rose penumbra onto both rear bodies."
+  },
+  "debug": {
+    "library": "lil-gui",
+    "defaultVisible": false,
+    "toggleKey": "D",
+    "queryParameter": "debug",
+    "runtimeContract": "Expose window.__roseGlassDebug with activePointers:number, activeAndRecoveringGrips:number, deformationFieldCount:number, byBody:[upperActivePointers,lowerActivePointers,foregroundActivePointers], materialFramebuffer:[w,h], output:[w,h], guiVisible:boolean, and lightSeconds:number measured from the first rendered frame. deformationFieldCount equals activeAndRecoveringGrips * substepsPerContact."
+  },
+  "interactionDynamics": {
+    "heldBodyOmega": 16,
+    "heldGripOmega": 22,
+    "heldIndentationOmega": 18,
+    "releasedOmega": "8 * recovery",
+    "elasticDampingRatio": 0.78,
+    "influenceRadius": "210 + 0.25 * length(substepDisplacement)",
+    "pressureGain": "0.7 + 0.6 * clamp(pointerPressure, 0, 1)",
+    "bodyTargetFraction": 0.12,
+    "maximumBodyRotationRadians": 0.02
+  },
+  "sourceOfTruth": "https://studio.jiiwon.com/rose-glass/"
+}
