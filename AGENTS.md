@@ -13,6 +13,7 @@ Interactive web implementations of brand artworks.
 
 - `common/` — shared modules (touch pointer, etc.)
 - `pages/<brand>/` — per-brand artwork (`index.html`, `script.ts(js)`, `style.css`, etc.)
+- `kits/<brand>/` — tracked buyer-facing material kits; ZIPs are built from these files
 - `docs/` — architecture, concepts, reusable guides, research, and supporting diagrams
 
 ## Documentation
@@ -40,3 +41,4 @@ Interactive web implementations of brand artworks.
 - 사용자가 명시적으로 머지를 요청하기 전에는 PR을 절대 머지하지 않는다. PR 생성이나 리뷰 완료를 머지 승인으로 해석하지 않는다.
 - 사용자가 머지를 명시적으로 요청하면 squash merge를 사용한다.
 - 렌더링 확인은 Playwright로 새 브라우저 창을 띄우지 말고, 기존 Chrome 창을 활용한다.
+- 작품·자료집의 독립 블라인드 재현 테스트는 항상 GPT-6 Luna를 사용한다. 테스트 에이전트에는 기존 구현 코드와 이전 테스트 결과를 보여주지 않는다.
