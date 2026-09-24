@@ -68,7 +68,7 @@
   "rendering": {
     "api": "WebGL2",
     "restingPass": "compose base plate and three signed color deltas at the same unwarped screen coordinate for an exact static reference",
-    "interactiveMainPass": "evaluate each glass body at its own inverse-deformed material coordinate, recomputing material, shadow and blur over the current underlayer",
+    "interactiveMainPass": "sample each body's independent black/white material response and shadow maps at its own inverse-deformed coordinate, then compose over the current underlayer with strain-based light and thickness corrections",
     "resolvePass": "apply progressive edge diffusion after depth-aware material composition",
     "materialFramebufferFormat": "RGBA8",
     "maximumDevicePixelRatio": 2,

@@ -45,6 +45,8 @@ uniform bool uShadows;
 uniform bool uShading;
 uniform bool uEdgeOptics;
 uniform bool uLighting;
+// Export-only isolated body response. Zero is the normal artwork path.
+uniform int uExportMode;
 ${deformationSource}
 
 float hash(vec2 p) {
@@ -395,6 +397,19 @@ void main() {
   float scale = uView.y/1280.0;
   if (uView.x/uView.y < 590.0/1280.0) scale = uView.x/590.0;
   vec2 p = (uv*uView-uView*.5)/scale+vec2(295,640);
+  if (uExportMode != 0) {
+    if (uExportMode >= 7) {
+      vec3 shadow = castShadow(vec3(1.0),p,uExportMode-7);
+      fragColor = vec4(shadow,0.0);
+      return;
+    }
+    int id = (uExportMode-1)%3;
+    vec3 under = uExportMode <= 3 ? vec3(0.0) : vec3(1.0);
+    float isolatedBlur = 0.0;
+    vec3 isolatedColor = glassBody(under,p,id,isolatedBlur);
+    fragColor = vec4(isolatedColor,clamp(isolatedBlur/16.0,0.0,1.0));
+    return;
+  }
   vec3 color = background(p);
   float blurRadius = 0.0;
   if (uUpperGlass) {

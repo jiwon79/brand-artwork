@@ -104,7 +104,10 @@ function motionState() {
 }
 function draw(): void {
   const scenario = scenarioSelect.value;
-  const stage = scenario === 'idle' ? Number(stageSelect.value) : 3;
+  const selectedStage = scenario === 'idle' ? Number(stageSelect.value) : 3;
+  const exportMode = selectedStage >= 30 ? selectedStage - 23
+    : selectedStage >= 20 ? selectedStage - 16 : selectedStage >= 10 ? selectedStage - 9 : 0;
+  const stage = exportMode ? 3 : selectedStage;
   const motion = motionState();
   const seconds = Number(secondsInput.value) || 0;
   const lightTime = seconds * .65 * .35;
@@ -115,6 +118,7 @@ function draw(): void {
   gl!.viewport(0, 0, canvas.width, canvas.height);
   gl!.useProgram(material);
   gl!.uniform2f(uniform('uResolution'), canvas.width, canvas.height);
+  gl!.uniform1i(uniform('uExportMode'), exportMode);
   // A 9:16 viewport shows extra backdrop at the sides of the 590x1280
   // material space, exactly like the live artwork's fit calculation.
   gl!.uniform2f(uniform('uView'), 720, 1280);

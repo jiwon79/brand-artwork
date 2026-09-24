@@ -1,11 +1,11 @@
 {
   "name": "Rose Glass Material Kit",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "stageOrder": {
     "1_shape": ["rose-glass-shape-contract.json", "rose-glass-mask-upper.svg", "rose-glass-mask-lower.svg", "rose-glass-mask-foreground.svg", "../reference/rose-glass-01-final-4k.jpg"],
     "2_resting_material": ["rose-glass-layer-contract.json", "rose-glass-texture-compose.glsl", "rose-glass-plate-base.png", "rose-glass-delta-upper.png", "rose-glass-delta-lower.png", "rose-glass-delta-foreground.png", "../reference/rose-glass-03-foreground-detail.jpg", "../reference/rose-glass-04-upper-edge-detail.jpg", "../reference/rose-glass-05-lower-edge-detail.jpg"],
     "3_auto_light": ["rose-glass-spec.json", "rose-glass-material-profile.json", "rose-glass-frost-kernel.glsl"],
-    "4_drag": ["rose-glass-test-cases.json", "../INTERACTION.md", "../reference/rose-glass-06-drag-contact-sheet.png"]
+    "4_drag": ["rose-glass-response-contract.json", "rose-glass-response-upper-black.png", "rose-glass-response-upper-white.png", "rose-glass-shadow-upper.png", "rose-glass-response-lower-black.png", "rose-glass-response-lower-white.png", "rose-glass-shadow-lower.png", "rose-glass-response-foreground-black.png", "rose-glass-response-foreground-white.png", "rose-glass-shadow-foreground.png", "rose-glass-test-cases.json", "../INTERACTION.md", "../reference/rose-glass-06-drag-contact-sheet.png"]
   },
   "readOrder": [
     "rose-glass-shape-contract.json",
@@ -26,6 +26,16 @@
     "rose-glass-frost-kernel.glsl",
     "rose-glass-shader-notes.glsl",
     "rose-glass-visual-checks.json",
+    "rose-glass-response-contract.json",
+    "rose-glass-response-upper-black.png",
+    "rose-glass-response-upper-white.png",
+    "rose-glass-shadow-upper.png",
+    "rose-glass-response-lower-black.png",
+    "rose-glass-response-lower-white.png",
+    "rose-glass-shadow-lower.png",
+    "rose-glass-response-foreground-black.png",
+    "rose-glass-response-foreground-white.png",
+    "rose-glass-shadow-foreground.png",
     "rose-glass-test-cases.json",
     "../INTERACTION.md"
   ],
@@ -41,7 +51,8 @@
     "shape": ["rose-glass-shape-contract.json", "rose-glass-mask-upper.svg", "rose-glass-mask-lower.svg", "rose-glass-mask-foreground.svg", "rose-glass-spec.json", "rose-glass-geometry.svg"],
     "color": ["rose-glass-plate-base.png", "rose-glass-delta-upper.png", "rose-glass-delta-lower.png", "rose-glass-delta-foreground.png", "rose-glass-palette.json", "../reference/rose-glass-01-final-4k.jpg"],
     "material": ["rose-glass-layer-contract.json", "rose-glass-texture-compose.glsl", "rose-glass-material-profile.json", "rose-glass-color-probes.json", "rose-glass-frost-kernel.glsl", "rose-glass-shader-notes.glsl", "../reference/rose-glass-03-foreground-detail.jpg", "../reference/rose-glass-04-upper-edge-detail.jpg", "../reference/rose-glass-05-lower-edge-detail.jpg"],
+    "interaction": ["rose-glass-response-contract.json", "rose-glass-response-upper-black.png", "rose-glass-response-upper-white.png", "rose-glass-shadow-upper.png", "rose-glass-response-lower-black.png", "rose-glass-response-lower-white.png", "rose-glass-shadow-lower.png", "rose-glass-response-foreground-black.png", "rose-glass-response-foreground-white.png", "rose-glass-shadow-foreground.png", "rose-glass-test-cases.json", "../INTERACTION.md", "../reference/rose-glass-06-drag-contact-sheet.png"],
     "verification": ["rose-glass-visual-checks.json", "rose-glass-test-cases.json", "../INTERACTION.md", "../reference/rose-glass-06-drag-contact-sheet.png"]
   },
-  "renderingBoundary": "Use the four signed layer textures to validate the resting appearance only. They are not independent RGBA bodies and must not be warped for interaction. The three SVG masks define picking and base silhouettes. Follow INTERACTION.md and the ten-frame contact sheet to reconstruct depth-aware material, shadows, blur and deformation without copying the original renderer."
+  "renderingBoundary": "Use the four signed layer textures only for the exact resting appearance. They are not independent bodies and must not be warped. For interaction sample each body's independent black/white response and shadow maps at its own inverse-deformed material coordinate, then composite in depth order using rose-glass-response-contract.json. The three SVG masks define picking and base silhouettes, not a hard clip for the soft optical contour. Compare every dragged state against the ten-frame contact sheet."
 }
