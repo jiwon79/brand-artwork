@@ -1,6 +1,8 @@
 {
   "debugObject": "window.__roseGlassDebug",
   "substepsPerGrip": 4,
+  "visualReference": "../reference/rose-glass-06-drag-contact-sheet.png",
+  "visualReferenceGuide": "../INTERACTION.md",
   "cases": [
     { "name": "idle", "grips": 0, "fields": 0, "materialScale": 1.0 },
     { "name": "one-foreground-grip", "start": [298, 645], "moveBy": [90, 30], "grips": 1, "byBody": [0, 0, 1], "fields": 4, "materialScale": 1.0 },
@@ -22,6 +24,7 @@
   "controls": [
     { "action": "press D", "expect": "guiVisible toggles" },
     { "action": "open with ?debug", "expect": "guiVisible is true" },
-    { "action": "drag overlap", "expect": "frontmost visible body is selected" }
+    { "action": "drag overlap", "expect": "frontmost visible body is selected" },
+    { "action": "drag foreground across rear-body boundary", "expect": "newly uncovered area shows the rear body at its current screen position; no signed-delta seam or old foreground imprint" }
   ]
 }

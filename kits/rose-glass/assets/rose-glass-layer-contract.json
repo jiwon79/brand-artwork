@@ -1,6 +1,6 @@
 {
   "name": "Rose Glass reference-matched signed layer textures",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "size": [
     1080,
     1920
@@ -16,7 +16,7 @@
   ],
   "decode": "base.rgb + (2 * upper.rgb - 255) + (2 * lower.rgb - 255) + (2 * foreground.rgb - 255), where texture RGB is read as 0..255 byte values",
   "shaderDecode": "base + (2.0 * upper - 1.0) + (2.0 * lower - 1.0) + (2.0 * foreground - 1.0); clamp once after all four textures are combined",
-  "warp": "Sample each signed delta at that body's inverse-deformed reference point converted through displayMapping to its PNG UV; sample base at unchanged screen point. Keep upper, lower, foreground in depth order for hit testing and highlight placement.",
+  "warp": "Do not warp the signed deltas for interactive output. They are static scene differences, not independent RGBA glass sprites. See ../INTERACTION.md for depth-aware deformation and material reevaluation.",
   "reference": "rose-glass-01-final-4k.jpg downsampled to 1080x1920",
   "sourceStageCapture": "Original WebGL artwork at 0 light seconds, 1080x1920, stages backdrop/upper/lower/foreground",
   "validation": {
@@ -25,6 +25,6 @@
     "clippedBasePixels": 0
   },
   "limits": [
-    "Signed deltas faithfully reconstruct the static reference but large cross-body overlaps need depth-aware compositing; test a five-pointer drag before shipping."
+    "Signed deltas faithfully reconstruct only the static artwork reference. Warping them creates overlap seams; interactive output must reevaluate each body's material, shadow and blur at its inverse-deformed material coordinate."
   ]
 }

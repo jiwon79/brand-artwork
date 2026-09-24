@@ -9,6 +9,8 @@ ROSE GLASS MATERIAL KIT
 - reference/rose-glass-03-foreground-detail.jpg: 전경 유리의 색·서리·두꺼운 외곽 확대
 - reference/rose-glass-04-upper-edge-detail.jpg: 위쪽 유리의 어두운 가장자리 확대
 - reference/rose-glass-05-lower-edge-detail.jpg: 아래쪽 유리의 유백색 중심과 외곽 확대
+- reference/rose-glass-06-drag-contact-sheet.png: 원본 렌더러의 드래그·멀티터치·복원 결과 10장
+- INTERACTION.md: 결과 시트의 좌표·원리·검수 기준(렌더러 코드 없음)
 - assets/rose-glass-manifest.json: 모든 자료의 역할과 읽는 순서
 - assets/rose-glass-layer-contract.json: 원본과 같은 정지 화면을 만드는 4장 텍스처의 합성 규약
 - assets/rose-glass-plate-base.png: 배경과 레퍼런스 보정이 담긴 기준판
@@ -33,9 +35,10 @@ ROSE GLASS MATERIAL KIT
 2. 이 폴더 전체를 AI 코딩 도구의 작업 폴더로 엽니다.
 3. AI가 assets/rose-glass-manifest.json부터 읽었는지 확인합니다.
 4. Rose Glass Notion 자료집의 0번 프롬프트부터 순서대로 같은 대화에 복사합니다.
-5. 각 단계에서 detail 이미지와 visual-checks.json을 기준으로 실행 화면을 비교합니다.
+5. 정지 화면은 detail 이미지와 visual-checks.json, 드래그는 INTERACTION.md와 10장 결과 시트로 비교합니다.
 
-정지 화면의 색·서리·외곽은 네 장의 PNG 텍스처가 기준입니다. signed delta RGB의 중립값은 약 0.5이며, 일반 사진처럼 한 장씩 표시하면 안 됩니다. layer-contract.json의 식으로 합성하면 레퍼런스와 픽셀 오차 1/255 이내로 맞습니다. 인터랙션은 각 유리의 delta를 역변형 샘플링하고, SVG 마스크는 잡기 영역과 반사광 범위에 사용합니다.
+정지 화면의 색·서리·외곽은 네 장의 PNG 텍스처가 기준입니다. signed delta RGB의 중립값은 약 0.5이며, 일반 사진처럼 한 장씩 표시하면 안 됩니다. layer-contract.json의 식으로 합성하면 자료집의 정지 렌더 레퍼런스와 픽셀 오차 1/255 이내로 맞습니다. 다만 PNG는 독립적인 유리 RGBA가 아닙니다. 화면 전체의 단계별 차이를 저장한 것이므로 각 PNG를 드래그하면 겹침 경계가 나타납니다. PNG 워프 방식은 정식 인터랙션 구현으로 사용하지 마세요.
+드래그가 필요한 작품은 INTERACTION.md와 결과 시트를 따라 새로 구현하세요. 매 프레임 각 유리의 변형된 재질·그림자·겹침을 깊이 순서대로 다시 계산해야 합니다. SVG 마스크는 기본 실루엣과 잡기 영역의 기준입니다. 이 자료집에는 원본 렌더러 코드를 넣지 않았습니다.
 9:16 화면의 x좌표는 590 재질 공간을 억지로 늘리는 게 아닙니다. layer-contract.json의 displayMapping대로 양옆 65px 배경을 포함해 PNG와 SVG에 서로 다른 UV를 사용하세요.
 
 reference 이미지는 결과 비교에 사용합니다. 자동 조명은 합성된 표면 위에 약하게 더하고, 정지 화면을 만드는 핵심 색·질감을 임의의 그라데이션으로 다시 그리지 않습니다.

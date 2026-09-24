@@ -1,6 +1,6 @@
 {
   "name": "Rose Glass",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "coordinateSystem": {
     "referenceWidth": 590,
     "referenceHeight": 1280,
@@ -15,7 +15,7 @@
       "bottomColorSrgb": [1.0, 0.97, 0.972],
       "verticalExponent": 0.82
     },
-    "shapeAuthority": "rose-glass-layer-contract.json and its four PNG textures define the resting visible contour and material. The three SVG masks support picking and deformation; analytic parameters describe material coordinates and interaction, not a replacement for the texture appearance.",
+    "shapeAuthority": "The four PNG textures define the resting visible contour and material only. The three SVG masks support picking and undeformed shape. For interaction, evaluate the selected body's shape, material, shadow and blur at inverse-deformed coordinates in depth order; do not warp the signed scene deltas.",
     "sizeSemantics": "halfSize is the distance from center to the analytic material-coordinate boundary. Normalize with q = localPoint / halfSize; never divide halfSize by 2 again.",
     "glassBodies": [
       { "id": "upper", "maskFile": "rose-glass-mask-upper.svg", "center": [321, 299], "halfSize": [245, 408], "expectedVisibleBounds": [68, 0, 582, 714], "shear": 0.16, "superellipseExponent": 2.35, "depthOrder": 0 },
@@ -67,8 +67,9 @@
   },
   "rendering": {
     "api": "WebGL2",
-    "mainPass": "compose base plate and three signed color deltas at inverse-deformed material coordinates",
-    "resolvePass": "optional subtle moving reflection and progressive edge response after reference-matched texture composition",
+    "restingPass": "compose base plate and three signed color deltas at the same unwarped screen coordinate for an exact static reference",
+    "interactiveMainPass": "evaluate each glass body at its own inverse-deformed material coordinate, recomputing material, shadow and blur over the current underlayer",
+    "resolvePass": "apply progressive edge diffusion after depth-aware material composition",
     "materialFramebufferFormat": "RGBA8",
     "maximumDevicePixelRatio": 2,
     "maximumOutputPixels": 3000000,
@@ -76,7 +77,7 @@
     "dynamicMaterialScaleCount": "Count both held grips and released grips whose deformation has not settled. fieldCount / substepsPerContact is an equivalent count.",
     "materialBufferRounding": "round(outputPixels * dynamicMaterialScale) independently for width and height",
     "materialBufferResize": "The grip count is an integer and remains unchanged throughout recovery, then drops when the settled metric is at or below its epsilon. Resize immediately when that integer changes; no hysteresis is required. Clamp each dimension to at least 1 pixel.",
-    "layerOrder": ["base plate", "upper signed delta", "lower signed delta", "foreground signed delta", "dynamic lighting"]
+    "layerOrder": ["background", "upper shadow and body", "lower shadow and body", "foreground shadow and body", "shared dynamic lighting"]
   },
   "visualTargets": {
     "foreground": "Nearly fills the width from x 29 to 567. Keep a dark rose shoulder across the upper-left and right edge, a peach center, and a cream highlight toward the lower-left.",

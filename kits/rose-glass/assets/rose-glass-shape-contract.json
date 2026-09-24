@@ -37,7 +37,7 @@
   "contract": [
     "Use the SVG alpha as the stable picking and deformation support region. The signed layer textures preserve the reference's final visible contour, frost and optical edge.",
     "Keep all three SVGs on the same 590 x 1280 canvas; do not crop each file to its local bounds.",
-    "Apply inverse interaction deformation to the reference-space sample point before reading both the mask and that body's signed delta texture.",
+    "Apply inverse interaction deformation to the reference-space sample point before reading that body's mask or evaluating its material. Do not warp a signed delta texture; those PNGs are static scene differences.",
     "For new dynamic reflections, derive edge distance from the mask or its SDF; do not replace the body with a circle, ellipse, rounded rectangle or generic superellipse."
   ]
 }

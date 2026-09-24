@@ -3,6 +3,7 @@
   "silhouetteTolerancePx": 1,
   "silhouetteSource": "The four signed PNGs define the final resting contour and optical blur. Rasterize SVG masks on the full 590 x 1280 canvas only for picking and deformation support; do not use a fitted primitive.",
   "restingImageGate": { "reference": "../reference/rose-glass-01-final-4k.jpg", "compareAt": [1080, 1920], "maximumMeanAbsoluteRgbError8bit": 3, "check": "capture the actual 9:16 canvas and compare pixel values; do not use a build pass as visual evidence" },
+  "interactionGate": { "reference": "../reference/rose-glass-06-drag-contact-sheet.png", "guide": "../INTERACTION.md", "check": "compare held upper, lower, foreground, two-grip, five-grip and 10/30/90-frame release results; fail when warping signed deltas exposes overlap seams" },
   "bodies": {
     "upper": {
       "bounds": [68, 0, 582, 714],
