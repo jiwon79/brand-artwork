@@ -1,6 +1,7 @@
 import { fragmentSource, resolveSource, vertexSource } from '../pages/rose-glass/shader';
 import { GlassBodyMotion } from '../pages/rose-glass/interaction';
 import { maxDeformationFields, type GlassBodyId } from '../pages/rose-glass/deformation';
+import { colorways } from '../pages/rose-glass/colorways';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#art')!;
 const stageSelect = document.querySelector<HTMLSelectElement>('#stage')!;
@@ -9,6 +10,13 @@ const secondsInput = document.querySelector<HTMLInputElement>('#seconds')!;
 const saveButton = document.querySelector<HTMLButtonElement>('#save')!;
 const saveSheetButton = document.querySelector<HTMLButtonElement>('#save-sheet')!;
 const status = document.querySelector<HTMLOutputElement>('#status')!;
+const colorSelect = document.querySelector<HTMLSelectElement>('#color')!;
+colorways.forEach((color, index) => colorSelect.add(new Option(color.label,String(index))));
+if (new URLSearchParams(location.search).get('quality') === '4k') {
+  canvas.width = 2160;
+  canvas.height = 3840;
+  saveButton.textContent = 'Save 2160 × 3840 PNG';
+}
 const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: true });
 if (!gl) throw new Error('WebGL2 required for Rose Glass asset export');
 
@@ -119,6 +127,7 @@ function draw(): void {
   gl!.useProgram(material);
   gl!.uniform2f(uniform('uResolution'), canvas.width, canvas.height);
   gl!.uniform1i(uniform('uExportMode'), exportMode);
+  gl!.uniform1i(uniform('uColorway'), Number(colorSelect.value));
   // A 9:16 viewport shows extra backdrop at the sides of the 590x1280
   // material space, exactly like the live artwork's fit calculation.
   gl!.uniform2f(uniform('uView'), 720, 1280);
@@ -158,17 +167,19 @@ function draw(): void {
 }
 
 stageSelect.addEventListener('change', draw);
+colorSelect.addEventListener('change', draw);
 scenarioSelect.addEventListener('change', draw);
 secondsInput.addEventListener('change', draw);
 saveButton.addEventListener('click', () => {
   draw();
   const stage = scenarioSelect.value === 'idle' ? stageSelect.value : scenarioSelect.value;
   const seconds = secondsInput.value;
+  const filename = `rose-glass-${colorways[Number(colorSelect.value)].id}-${canvas.width}x${canvas.height}-stage-${stage}-${seconds}s.png`;
   canvas.toBlob(blob => {
     if (!blob) { status.value = 'PNG export failed'; return; }
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `rose-glass-stage-${stage}-${seconds}s.png`;
+    link.download = filename;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }, 'image/png');
