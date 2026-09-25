@@ -4,10 +4,43 @@ import { glassBodyIds, glassBodyOrder, maxDeformationFields, deformationSubsteps
 import { createPresentation, renderLayers } from './presentation';
 import { GlassBodyMotion, type Point } from './interaction';
 import { fragmentSource, resolveSource, vertexSource } from './shader';
+import { colorwayIndex, colorways } from './colorways';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
 const error = document.querySelector<HTMLParagraphElement>('#error')!;
+const colorwayPicker = document.querySelector<HTMLDivElement>('#colorways')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let activeColorway = colorwayIndex(new URLSearchParams(location.search).get('color'));
+const colorwayControls: HTMLButtonElement[] = [];
+const colorwaySetting = { colorway: activeColorway };
+function selectColorway(index: number, updateUrl = true) {
+  if (!colorways[index]) return;
+  activeColorway = index;
+  colorwaySetting.colorway = index;
+  const selected = colorways[index];
+  document.body.style.setProperty('--colorway-background',selected.background);
+  document.body.style.setProperty('--colorway-ink',selected.ink);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',selected.background);
+  colorwayControls.forEach((button,i) => button.setAttribute('aria-pressed',String(i === index)));
+  if (updateUrl) {
+    const url = new URL(location.href);
+    if (index === 0) url.searchParams.delete('color');
+    else url.searchParams.set('color',selected.id);
+    history.replaceState(history.state,'',url);
+  }
+  if (gl && !contextLost) wake();
+}
+colorways.forEach((colorway,index) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.setAttribute('aria-label',`${colorway.label} 색상`);
+  button.style.setProperty('--swatch',colorway.swatch);
+  button.innerHTML = `<span aria-hidden="true"></span>${colorway.label}`;
+  button.addEventListener('click',() => selectColorway(index));
+  colorwayControls.push(button);
+  colorwayPicker.append(button);
+});
+colorwayPicker.dataset.touchPointerIgnore = 'true';
 const defaults = {
   grain: 1.25,
   warmth: 0,
@@ -67,6 +100,7 @@ const deformationData = new Float32Array(maxDeformationFields*4);
 const deformationMeta = new Float32Array(maxDeformationFields*2);
 let hoverPoint: Point | null = null;
 let frame = 0, previous = 0, contextLost = false;
+selectColorway(activeColorway,false);
 function compile(type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) throw new Error('Cannot allocate shader');
@@ -115,7 +149,7 @@ function initialize() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   vao = gl.createVertexArray()!;
-  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffsets[0]', 'uLight', 'uRotations[0]', 'uDeformationRanges[0]', 'uDeformationFields[0]', 'uDeformationMeta[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uForegroundAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread']
+  uniforms = Object.fromEntries(['uResolution', 'uView', 'uOffsets[0]', 'uLight', 'uRotations[0]', 'uDeformationRanges[0]', 'uDeformationFields[0]', 'uDeformationMeta[0]', 'uGrain', 'uWarmth', 'uSpecular', 'uRim', 'uLightIntensity', 'uForegroundAbsorption', 'uRearAbsorption', 'uAbsorptionWidth', 'uSaturation', 'uRearBlur', 'uEdgeRoll', 'uShadowStrength', 'uShadowSpread', 'uColorway']
     .concat(['uUpperGlass','uLowerGlass','uForegroundGlass','uShadows','uShading','uEdgeOptics','uLighting'])
     .map(name => [name, gl.getUniformLocation(program, name)]));
   resolveUniforms = Object.fromEntries(['uMaterialTexture', 'uResolution', 'uOutputResolution', 'uReferenceScale', 'uDiffusion']
@@ -175,6 +209,7 @@ function resetLight() {
 
 function resetLook() {
   Object.assign(settings,defaults);
+  selectColorway(0);
   gui.controllersRecursive().forEach(controller => controller.updateDisplay());
   wake();
 }
@@ -243,6 +278,7 @@ function render(now: number) {
   gl.uniform1f(uniforms.uShadowStrength,settings.shadowStrength);
   gl.uniform1f(uniforms.uShadowSpread,settings.shadowSpread);
   gl.uniform1f(uniforms.uSaturation,settings.saturation);
+  gl.uniform1i(uniforms.uColorway,activeColorway);
   gl.drawArrays(gl.TRIANGLES,0,3);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   gl.viewport(0,0,canvas.width,canvas.height);
@@ -361,6 +397,8 @@ function describe<T extends { domElement: HTMLElement }>(controller: T, descript
   return controller;
 }
 const surfaceFolder = gui.addFolder('Surface');
+describe(surfaceFolder.add(colorwaySetting,'colorway',Object.fromEntries(colorways.map((colorway,index) => [colorway.label,index]))).name('Colorway').onChange((value: number) => selectColorway(value)),
+  'Rose·Yellow·Green·Blue·Black 색상. 사진의 배경과 세 유리 색을 각각 적용하며 서리와 드래그는 그대로 유지');
 describe(surfaceFolder.add(settings,'grain',0,2,.01).name('Frost grain').onChange(wake),
   '표면의 서리 입자, 작은 요철과 반짝임의 강도');
 describe(surfaceFolder.add(settings,'warmth',-1,1,.01).name('Warmth').onChange(wake),

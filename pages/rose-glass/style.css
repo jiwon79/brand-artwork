@@ -1,9 +1,16 @@
 * { box-sizing: border-box; }
 :root { --stepper-space: calc(64px + env(safe-area-inset-bottom)); }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-body { background: #dab8be; overscroll-behavior: none; }
-main { display: grid; width: 100%; height: calc(100dvh - var(--stepper-space)); place-items: center; }
-canvas { display: block; width: min(100vw, calc(56.25dvh - 36px)); max-width: 100%; aspect-ratio: 9 / 16; touch-action: none; cursor: default; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent; }
+body { background: var(--colorway-background, #dab8be); overscroll-behavior: none; transition: background 260ms ease; }
+main { display: flex; flex-direction: column; width: 100%; height: calc(100dvh - var(--stepper-space)); align-items: center; justify-content: center; gap: 8px; }
+canvas { display: block; width: min(100vw, calc((100dvh - var(--stepper-space) - 64px) * 9 / 16)); max-width: 100%; aspect-ratio: 9 / 16; touch-action: none; cursor: default; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent; }
+.colorways { display: flex; min-height: 44px; align-items: center; justify-content: center; gap: clamp(2px, 1.2vw, 10px); }
+.colorways button { display: flex; min-width: 56px; min-height: 44px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 2px 5px; border: 0; border-radius: 9px; background: transparent; color: var(--colorway-ink, #593d44); font: 600 10px/1 system-ui, sans-serif; cursor: pointer; opacity: .62; transition: opacity 160ms ease, transform 160ms ease; }
+.colorways button:hover, .colorways button[aria-pressed='true'] { opacity: 1; }
+.colorways button:active { transform: scale(.93); }
+.colorways button:focus-visible { outline: 2px solid var(--colorway-ink, #593d44); outline-offset: 2px; }
+.colorways button span { display: block; width: 20px; height: 20px; border: 2px solid #ffffffa6; border-radius: 50%; background: var(--swatch); box-shadow: 0 1px 5px #00000025; }
+.colorways button[aria-pressed='true'] span { outline: 1px solid var(--colorway-ink, #593d44); outline-offset: 2px; }
 .lil-gui input { user-select: text; -webkit-user-select: text; }
 canvas[data-grabbable='true'] { cursor: grab; }
 canvas[data-interaction='dragging'] { cursor: grabbing; }
@@ -11,4 +18,4 @@ canvas:focus-visible { outline: 2px solid #fff9f8; outline-offset: -6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #error { position: fixed; inset: 40% 10% auto; color: #593d44; font: 16px/1.7 system-ui, sans-serif; text-align: center; }
 
-artwork-stepper { --stepper-color: #593d44; --stepper-muted-color: #593d4480; --stepper-focus-color: #895565; --stepper-font: 600 11px/1 system-ui, sans-serif; --stepper-max-width: 520px; }
+artwork-stepper { --stepper-color: var(--colorway-ink, #593d44); --stepper-muted-color: color-mix(in srgb, var(--colorway-ink, #593d44), transparent 50%); --stepper-focus-color: var(--colorway-ink, #593d44); --stepper-font: 600 11px/1 system-ui, sans-serif; --stepper-max-width: 520px; }
