@@ -8,10 +8,8 @@ import { colorwayIndex, colorways } from './colorways';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
 const error = document.querySelector<HTMLParagraphElement>('#error')!;
-const colorwayPicker = document.querySelector<HTMLDivElement>('#colorways')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let activeColorway = colorwayIndex(new URLSearchParams(location.search).get('color'));
-const colorwayControls: HTMLButtonElement[] = [];
 const colorwaySetting = { colorway: activeColorway };
 function selectColorway(index: number, updateUrl = true) {
   if (!colorways[index]) return;
@@ -21,7 +19,6 @@ function selectColorway(index: number, updateUrl = true) {
   document.body.style.setProperty('--colorway-background',selected.background);
   document.body.style.setProperty('--colorway-ink',selected.ink);
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content',selected.background);
-  colorwayControls.forEach((button,i) => button.setAttribute('aria-pressed',String(i === index)));
   if (updateUrl) {
     const url = new URL(location.href);
     if (index === 0) url.searchParams.delete('color');
@@ -30,17 +27,6 @@ function selectColorway(index: number, updateUrl = true) {
   }
   if (gl && !contextLost) wake();
 }
-colorways.forEach((colorway,index) => {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.setAttribute('aria-label',`${colorway.label} 색상`);
-  button.style.setProperty('--swatch',colorway.swatch);
-  button.innerHTML = `<span aria-hidden="true"></span>${colorway.label}`;
-  button.addEventListener('click',() => selectColorway(index));
-  colorwayControls.push(button);
-  colorwayPicker.append(button);
-});
-colorwayPicker.dataset.touchPointerIgnore = 'true';
 const defaults = {
   grain: 1.25,
   warmth: 0,
@@ -391,7 +377,11 @@ new ResizeObserver(() => {
   try { resize(); }
   catch (cause) { showError(cause); }
 }).observe(canvas);
-gui = exposeGuiInDebugMode(new GUI({ title: 'Rose Glass Controls' }));
+const presentation = createPresentation(wake);
+gui = exposeGuiInDebugMode(new GUI({ title: 'Rose Glass Controls' }), visible => {
+  document.documentElement.dataset.debug = String(visible);
+  presentation.setDebug(visible);
+});
 function describe<T extends { domElement: HTMLElement }>(controller: T, description: string): T {
   controller.domElement.title = description;
   return controller;
@@ -459,4 +449,3 @@ describe(gui.add(settings,'resetLook').name('Reset appearance'),
 describe(gui.add(settings,'resetAll').name('Reset everything'),
   '외형, 조약돌 위치와 조명을 모두 기본값으로 복원');
 if (matchMedia('(max-width: 700px)').matches) gui.close();
-createPresentation(wake);
