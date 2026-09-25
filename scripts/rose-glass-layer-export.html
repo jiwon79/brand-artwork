@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rose Glass layer export</title>
+    <style>
+      body { margin: 20px; font: 16px system-ui; background: #f4e8e9; color: #3a292e; }
+      main { display: grid; gap: 12px; justify-items: start; }
+      canvas { width: 295px; height: 640px; border: 1px solid #b59ca2; }
+      button, select { padding: 8px 12px; font: inherit; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <label>Stage <select id="stage"><option value="0">0 · backdrop</option><option value="1">1 · upper</option><option value="2">2 · lower</option><option value="3">3 · foreground</option><option value="10">Upper on black</option><option value="11">Lower on black</option><option value="12">Foreground on black</option><option value="20">Upper on white</option><option value="21">Lower on white</option><option value="22">Foreground on white</option><option value="30">Upper shadow</option><option value="31">Lower shadow</option><option value="32">Foreground shadow</option></select></label>
+      <label>Interaction reference <select id="scenario">
+        <option value="idle">Idle</option>
+        <option value="foreground">Foreground pull</option>
+        <option value="upper">Upper pull</option>
+        <option value="lower">Lower pull</option>
+        <option value="upper-lower">Upper + lower pull</option>
+        <option value="foreground-two">Two foreground grips</option>
+        <option value="five">Five grips</option>
+        <option value="release-10">Release · 10 frames</option>
+        <option value="release-30">Release · 30 frames</option>
+        <option value="release-90">Release · 90 frames</option>
+      </select></label>
+      <label>Light seconds <input id="seconds" type="number" value="0" min="0" step="1" /></label>
+      <button id="save">Save 1080 × 1920 PNG</button>
+      <button id="save-sheet">Save 2 × 5 interaction contact sheet</button>
+      <output id="status" role="status">Preparing WebGL…</output>
+      <canvas id="art" width="1080" height="1920"></canvas>
+    </main>
+    <script type="module" src="./rose-glass-layer-export.ts"></script>
+  </body>
+</html>

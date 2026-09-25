@@ -1,0 +1,62 @@
+{
+  "colorEncoding": "All listed colors are sRGB source colors. Decode to linear before illumination, absorption and blending; encode to sRGB once in the resolve output.",
+  "foreground": {
+    "base": [0.945, 0.559, 0.550],
+    "bellLayers": [
+      { "color": [0.945, 0.738, 0.738], "center": [0.30, -0.51], "radius": [1.40, 1.10], "strength": 1.0 },
+      { "color": [0.958, 0.812, 0.786], "center": [-0.35, 0.49], "radius": [1.15, 0.90], "strength": 1.0 },
+      { "color": [0.990, 0.616, 0.538], "center": [0.72, 0.49], "radius": [0.72, 0.85], "strength": 0.85 },
+      { "color": [0.990, 0.430, 0.480], "center": [-0.40, -0.66], "radius": [0.75, 0.57], "strength": 0.48 },
+      { "color": [0.440, 0.140, 0.160], "center": [-0.42, -0.94], "radius": [0.80, 0.24], "strength": 0.64 }
+    ],
+    "darkDiagonalBand": { "coordinate": "q.y + 0.075 - q.x * 0.27", "width": 0.19, "color": [0.865, 0.340, 0.330], "strength": 0.85 },
+    "shoulderDarkening": { "left": [0.390, 0.290, 0.265], "right": [0.190, 0.230, 0.210] },
+    "frost": { "fineScale": 2.1, "mottleScale": 0.34, "fineStrength": 0.026, "mottleStrength": 0.025, "poreStrength": 0.11 }
+  },
+  "upper": {
+    "base": [0.858, 0.690, 0.698],
+    "light": [0.940, 0.802, 0.805],
+    "leftDarkening": [0.170, 0.268, 0.258],
+    "rightDarkening": [0.150, 0.180, 0.180],
+    "textureStrength": 0.21
+  },
+  "lower": {
+    "base": [0.938, 0.865, 0.849],
+    "light": [0.985, 0.950, 0.945],
+    "leftDarkening": [0.155, 0.235, 0.245],
+    "rightDarkening": [0.190, 0.315, 0.320],
+    "textureStrength": 0.20
+  },
+  "edge": {
+    "coreExponent": 1.45,
+    "tailExponent": 2.0,
+    "tailWidthMultiplier": 1.8,
+    "coreTailMix": [0.78, 0.22],
+    "upperAndForegroundExtinction": [0.44, 0.48, 0.46],
+    "lowerExtinction": [0.50, 0.57, 0.55],
+    "outerLip": "mix linear under-color into the first 3-11 reference pixels, then increase absorption inward"
+  },
+  "reflection": {
+    "white": [1.0, 0.97, 0.96],
+    "upperSoftboxSpread": 0.52,
+    "lowerSoftboxSpread": 0.55,
+    "movingSpecularPower": 14.0,
+    "fresnelF0": 0.04
+  },
+  "shadow": {
+    "contactSigmaForeground": 3.5,
+    "contactSigmaRear": 5.0,
+    "penumbraSigma": { "upper": 16.0, "lower": 27.0, "foreground": 17.0 },
+    "density": { "upper": 0.06, "lower": 0.095, "foreground": 0.10 },
+    "roseExtinction": [0.78, 1.0, 1.04]
+  },
+  "visualPriority": [
+    "foreground dark diagonal shoulder",
+    "dense right and lower rim",
+    "upper dark side walls",
+    "lower mauve side walls with milky center",
+    "broad white reflection",
+    "contact shadow plus rose penumbra",
+    "multiscale frost"
+  ]
+}

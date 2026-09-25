@@ -30,11 +30,11 @@
   "rewrites": [
     {
       "source": "/rose-glass/",
-      "destination": "/pages/apple-glass-wallpaper/index.html"
+      "destination": "/pages/rose-glass/index.html"
     },
     {
       "source": "/rose-glass/:path*",
-      "destination": "/pages/apple-glass-wallpaper/:path*"
+      "destination": "/pages/rose-glass/:path*"
     },
     {
       "source": "/cursor-cat/:id([a-z0-9]{10})/",

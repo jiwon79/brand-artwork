@@ -1,0 +1,30 @@
+{
+  "name": "Rose Glass reference-matched signed layer textures",
+  "version": "2.0.0",
+  "size": [
+    1080,
+    1920
+  ],
+  "origin": "top-left",
+  "displayMapping": "For a 9:16 output UV measured from top-left, material point p = (uv.x * 720 - 65, uv.y * 1280). Sample layer PNGs at ((p.x + 65) / 720, p.y / 1280). Sample SVG masks at (p.x / 590, p.y / 1280).",
+  "colorSpace": "sRGB byte values; decode and composite in sRGB for exact idle reconstruction, then add optional dynamic illumination in linear light",
+  "files": [
+    "rose-glass-plate-base.png",
+    "rose-glass-delta-upper.png",
+    "rose-glass-delta-lower.png",
+    "rose-glass-delta-foreground.png"
+  ],
+  "decode": "base.rgb + (2 * upper.rgb - 255) + (2 * lower.rgb - 255) + (2 * foreground.rgb - 255), where texture RGB is read as 0..255 byte values",
+  "shaderDecode": "base + (2.0 * upper - 1.0) + (2.0 * lower - 1.0) + (2.0 * foreground - 1.0); clamp once after all four textures are combined",
+  "warp": "Do not warp the signed deltas for interactive output. They are static scene differences, not independent RGBA glass sprites. See ../INTERACTION.md for depth-aware deformation and material reevaluation.",
+  "reference": "rose-glass-01-final-4k.jpg downsampled to 1080x1920",
+  "sourceStageCapture": "Original WebGL artwork at 0 light seconds, 1080x1920, stages backdrop/upper/lower/foreground",
+  "validation": {
+    "meanAbsoluteError8bit": 0.0,
+    "maxAbsoluteError8bit": 0,
+    "clippedBasePixels": 0
+  },
+  "limits": [
+    "Signed deltas faithfully reconstruct only the static artwork reference. Warping them creates overlap seams; interactive output must reevaluate each body's material, shadow and blur at its inverse-deformed material coordinate."
+  ]
+}
