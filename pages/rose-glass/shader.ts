@@ -153,14 +153,17 @@ vec3 colorwayGlass(vec3 rose, int id, vec2 q) {
   if (uColorway == 4) {
     float luma = dot(rose,vec3(.2126,.7152,.0722));
     float lowerSoftening = smoothstep(-.05,.78,q.y);
-    float graphite = id == 2 ? .35+.55*luma+.04*lowerSoftening
-      : id == 0 ? pow(luma,.75)*.86 : pow(luma,.82)*.89;
-    float tint = id == 2 ? .020 : .012;
+    float graphite = id == 2 ? .08+.86*pow(luma,.85)+.025*lowerSoftening
+      : id == 0 ? pow(luma,1.02)*.89 : pow(luma,1.0)*.92;
+    float tint = id == 2 ? .025 : id == 0 ? .035 : .018;
     return clamp(vec3(graphite-tint,graphite,graphite-tint*.25),0.0,1.0);
   }
-  float hue = uColorway == 1 ? .145 : uColorway == 2 ? .300 : .540;
-  if (id == 1 && uColorway == 1) hue = .110;
-  if (id == 0 && uColorway == 2) hue = .270;
+  float hue = uColorway == 1 ? .145 : uColorway == 2 ? .285 : .540;
+  if (id == 1 && uColorway == 1) hue = .095;
+  if (id == 0 && uColorway == 2) hue = .250;
+  if (id == 0 && uColorway == 3) hue = .560;
+  if (id == 1 && uColorway == 2) hue = .350;
+  if (id == 1 && uColorway == 3) hue = .505;
   // Keep the peach-vs-rose variation in the existing surface, but place it
   // around the selected color's hue rather than leaving a pink highlight.
   hue += (fract(hsv.x+.5)-.5)*.22;
@@ -170,14 +173,21 @@ vec3 colorwayGlass(vec3 rose, int id, vec2 q) {
     * (1.0-.55*smoothstep(-.1,.85,q.x));
   if (id == 2) hue -= lowerSoftening*(uColorway == 1 ? .025 : .020);
   float saturation = id == 2
-    ? (uColorway == 1 ? 1.66 : uColorway == 2 ? 1.48 : 1.40)
-    : id == 0 ? 1.35 : (uColorway == 2 ? .85 : 1.35);
-  float cap = id == 2 ? (uColorway == 1 ? .80 : uColorway == 2 ? .70 : .64) : .34;
+    ? (uColorway == 1 ? 1.98 : uColorway == 2 ? 1.78 : 1.64)
+    : id == 0 ? 1.55 : 1.60;
+  float cap = id == 2 ? (uColorway == 1 ? .86 : uColorway == 2 ? .78 : .72) : .48;
   hsv.y = min(hsv.y*saturation,cap);
-  if (id == 2) hsv.y *= mix(1.0,uColorway == 3 ? .68 : .44,lowerSoftening);
-  float exposure = id == 2 ? (uColorway == 1 ? .94 : uColorway == 2 ? .93 : .97)
-    : id == 0 ? (uColorway == 3 ? .88 : .83) : .89;
-  hsv.z = min(1.0,pow(hsv.z,id == 2 ? .84 : 1.0)*exposure);
+  if (id == 2) hsv.y *= mix(1.0,uColorway == 3 ? .76 : .57,lowerSoftening);
+  else {
+    // Clear rear glass still has a colored body. Rose's near-neutral rear
+    // highlights need a pigment floor, otherwise hue rotation stays gray.
+    float pigment = id == 0 ? (uColorway == 3 ? .20 : .17)
+      : (uColorway == 1 ? .075 : uColorway == 2 ? .095 : .13);
+    hsv.y = max(hsv.y,pigment);
+  }
+  float exposure = id == 2 ? (uColorway == 1 ? .92 : uColorway == 2 ? .91 : .96)+.03*lowerSoftening
+    : id == 0 ? .84 : .90;
+  hsv.z = min(1.0,pow(hsv.z,id == 2 ? 1.28 : 1.08)*exposure);
   return hsvToRgb(vec3(fract(hue),hsv.y,hsv.z));
 }
 // A large studio light occupies a lobe of the reflected hemisphere. The
