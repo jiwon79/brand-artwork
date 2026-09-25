@@ -38,6 +38,7 @@ uniform float uRearBlur;
 uniform float uEdgeRoll;
 uniform float uShadowStrength;
 uniform float uShadowSpread;
+uniform int uColorway;
 uniform bool uUpperGlass;
 uniform bool uLowerGlass;
 uniform bool uForegroundGlass;
@@ -124,10 +125,71 @@ float superellipseField(vec2 q, int id) {
   return pow(abs(q.x),power) + pow(abs(q.y),power);
 }
 vec3 background(vec2 p) {
-  return mix(vec3(.865,.710,.735), vec3(1.0,.970,.972),
-    pow(clamp(p.y / 1250.0,0.0,1.0),.82));
+  float t = pow(clamp(p.y / 1250.0,0.0,1.0),.82);
+  if (uColorway == 1) return mix(vec3(.776,.749,.667),vec3(1.0,.976,.914),t);
+  if (uColorway == 2) return mix(vec3(.722,.804,.675),vec3(.980,.996,.957),t);
+  if (uColorway == 3) return mix(vec3(.722,.753,.839),vec3(.976,.980,1.0),t);
+  if (uColorway == 4) return mix(vec3(.753),vec3(.976),t);
+  return mix(vec3(.865,.710,.735),vec3(1.0,.970,.972),t);
 }
 ${colorSpaceSource}
+vec3 rgbToHsv(vec3 c) {
+  vec4 k = vec4(0.0,-1.0/3.0,2.0/3.0,-1.0);
+  vec4 p = mix(vec4(c.bg,k.wz),vec4(c.gb,k.xy),step(c.b,c.g));
+  vec4 q = mix(vec4(p.xyw,c.r),vec4(c.r,p.yzx),step(p.x,c.r));
+  float d = q.x-min(q.w,q.y);
+  return vec3(abs(q.z+(q.w-q.y)/(6.0*d+1e-7)),d/(q.x+1e-7),q.x);
+}
+vec3 hsvToRgb(vec3 c) {
+  vec3 p = abs(fract(c.xxx+vec3(0.0,2.0/3.0,1.0/3.0))*6.0-3.0);
+  return c.z*mix(vec3(1.0),clamp(p-1.0,0.0,1.0),c.y);
+}
+// The four iPhone color choices retain the original relief and value pattern.
+// Foreground and the two rear bodies use separate saturation/exposure: the
+// yellow, green, blue and graphite references do not tint all three equally.
+vec3 colorwayGlass(vec3 rose, int id, vec2 q) {
+  if (uColorway == 0) return rose;
+  vec3 hsv = rgbToHsv(clamp(rose,0.0,1.0));
+  if (uColorway == 4) {
+    float luma = dot(rose,vec3(.2126,.7152,.0722));
+    float lowerSoftening = smoothstep(-.05,.78,q.y);
+    float graphite = id == 2 ? .08+.86*pow(luma,.85)+.025*lowerSoftening
+      : id == 0 ? pow(luma,1.02)*.89 : pow(luma,1.0)*.92;
+    float tint = id == 2 ? .025 : id == 0 ? .035 : .018;
+    return clamp(vec3(graphite-tint,graphite,graphite-tint*.25),0.0,1.0);
+  }
+  float hue = uColorway == 1 ? .145 : uColorway == 2 ? .285 : .540;
+  if (id == 1 && uColorway == 1) hue = .095;
+  if (id == 0 && uColorway == 2) hue = .250;
+  if (id == 0 && uColorway == 3) hue = .560;
+  if (id == 1 && uColorway == 2) hue = .350;
+  if (id == 1 && uColorway == 3) hue = .505;
+  // Keep the peach-vs-rose variation in the existing surface, but place it
+  // around the selected color's hue rather than leaving a pink highlight.
+  hue += (fract(hsv.x+.5)-.5)*.22;
+  // The reference keeps a colored, denser right edge even where the lower
+  // left turns milky; do not bleach the whole lower body uniformly.
+  float lowerSoftening = smoothstep(-.05,.78,q.y)
+    * (1.0-.55*smoothstep(-.1,.85,q.x));
+  if (id == 2) hue -= lowerSoftening*(uColorway == 1 ? .025 : .020);
+  float saturation = id == 2
+    ? (uColorway == 1 ? 1.98 : uColorway == 2 ? 1.78 : 1.64)
+    : id == 0 ? 1.55 : 1.60;
+  float cap = id == 2 ? (uColorway == 1 ? .86 : uColorway == 2 ? .78 : .72) : .48;
+  hsv.y = min(hsv.y*saturation,cap);
+  if (id == 2) hsv.y *= mix(1.0,uColorway == 3 ? .76 : .57,lowerSoftening);
+  else {
+    // Clear rear glass still has a colored body. Rose's near-neutral rear
+    // highlights need a pigment floor, otherwise hue rotation stays gray.
+    float pigment = id == 0 ? (uColorway == 3 ? .20 : .17)
+      : (uColorway == 1 ? .075 : uColorway == 2 ? .095 : .13);
+    hsv.y = max(hsv.y,pigment);
+  }
+  float exposure = id == 2 ? (uColorway == 1 ? .92 : uColorway == 2 ? .91 : .96)+.03*lowerSoftening
+    : id == 0 ? .84 : .90;
+  hsv.z = min(1.0,pow(hsv.z,id == 2 ? 1.28 : 1.08)*exposure);
+  return hsvToRgb(vec3(fract(hue),hsv.y,hsv.z));
+}
 // A large studio light occupies a lobe of the reflected hemisphere. The
 // fixed fill preserves the reference palette while a separate lamp moves.
 float softbox(vec3 reflected, vec3 center, float spread) {
@@ -199,7 +261,11 @@ vec3 castShadow(vec3 under, vec2 p, int id) {
   float farShadow = shadowCoverage(diffuseDistance,spread*uShadowSpread);
   float density = nearShadow*(id == 2 ? .065 : .04)
     +farShadow*(id == 0 ? .06 : id == 1 ? .095 : .10);
-  return toSrgb(toLinear(under)*exp(-vec3(.78,1.0,1.04)*density*uShadowStrength));
+  vec3 extinction = uColorway == 3 ? vec3(1.05,.97,.83)
+    : uColorway == 2 ? vec3(1.02,.85,1.08)
+    : uColorway == 4 ? vec3(1.0)
+    : vec3(.78,1.0,1.04);
+  return toSrgb(toLinear(under)*exp(-extinction*density*uShadowStrength));
 }
 vec3 glassBody(vec3 under, vec2 p, int id, inout float blurRadius) {
   vec2 q = normalizedBodyPoint(p,id);
@@ -377,6 +443,7 @@ vec3 glassBody(vec3 under, vec2 p, int id, inout float blurRadius) {
   }
   color.r += uWarmth*.015;
   color.b -= uWarmth*.015;
+  color = colorwayGlass(color,id,q);
   // The reference's outer skin transmits the backdrop before the optical
   // path thickens. This asymmetric inward roll is separate from blur and
   // from the cast shadow; blurring an opaque dark cutout cannot reproduce it.

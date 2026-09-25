@@ -19,12 +19,20 @@ export const renderLayers = { upperGlass: true, lowerGlass: true, foregroundGlas
 // Stage selection, URL state and pointer/keyboard activation belong to the
 // shared stepper. This adapter only applies Rose Glass's shader contributions.
 export function createPresentation(wake: () => void) {
+  let debug = false;
   function apply(id: Stage) {
-    definitions.forEach(([key,from]) => { renderLayers[key] = Number(id) >= from; });
+    definitions.forEach(([key,from]) => { renderLayers[key] = !debug || Number(id) >= from; });
     wake();
   }
-  createStepper({
+  const stepper = createStepper({
     steps: stages, initialStep: '6', onChange: apply,
     ariaLabel: '렌더링 누적 단계', keyboard: false,
   });
+  return {
+    setDebug(visible: boolean) {
+      debug = visible;
+      stepper.element.hidden = !visible;
+      apply(stepper.currentStep);
+    },
+  };
 }
