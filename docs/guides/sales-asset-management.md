@@ -11,7 +11,7 @@
 | 잔상 | [03-Body Echo](https://drive.google.com/drive/folders/1kBx-PO8oWL6fFp1jos-HUSRkVxnQ-t3R) | 배포 ZIP과 시작하기 PDF 확인 |
 | 틈 | [04-Line Pull](https://drive.google.com/drive/folders/1pY6aXhCqG9yrbdGAXJTM1aI-gz_pBKuJ) | 배포 ZIP과 시작하기 PDF 확인 |
 | 고양이 | [05-Cursor Cat](https://drive.google.com/drive/folders/1Qf7x9pCBrqi-NiCCOoG7eNU0oK1K9jTu) | 배포 ZIP과 시작하기 PDF 확인 |
-| 웃음꽃 | [05-Smile Flower](https://drive.google.com/drive/folders/1MbLp2Qxt3SaZ1sCM9DC3gbys5yX6u2sR) | 리틀리의 기존 `smile-flower.zip` 원본 회수 대기. Drive 폴더는 비어 있음 |
+| 웃음꽃 | [05-Smile Flower](https://drive.google.com/drive/folders/1MbLp2Qxt3SaZ1sCM9DC3gbys5yX6u2sR) | 보낸 메일의 `smile-flower.zip` 원본, 관리원본 11개 파일 확인. 리틀리 첨부본과 바이트 단위 동일성은 미확인 |
 | Rose Glass 제작 자료 | [06-Rose Glass](https://drive.google.com/drive/folders/1Oj-eYXYP0MhPlsViMnHw_8wTmGO5cf7Y) | 관리원본 39개 파일, 배포 ZIP 확인. 리틀리 첨부본과 바이트 단위 동일성은 미확인 |
 | Rose Glass 4K 배경화면 5종 | [배경화면 상품](https://drive.google.com/drive/folders/1-ATjsyTmt4nMqlhI5Dyf1YjdC-rqVTLY) | 관리원본 PNG 5개, 배포 ZIP 확인 |
 
