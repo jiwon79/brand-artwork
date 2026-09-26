@@ -15,7 +15,7 @@ void main() {
   vec2 across = length(axis) > 0.001 ? normalize(vec2(-axis.y, axis.x)) : vec2(1.0, 0.0);
   float along = position.y;
   vec4 viewPosition = mix(viewRoot, viewTip, along);
-  viewPosition.xy += across * position.x * instanceWidth * pow(1.0 - along, 0.8);
+  viewPosition.xy += across * position.x * instanceWidth * pow(1.0 - along, 1.4);
 
   vFurColor = peachColor(instanceRoot.xy, uCheek);
   vAlong = along;

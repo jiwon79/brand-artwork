@@ -61,7 +61,7 @@ ${bodyFragment}`,
 character.add(body);
 
 // Thin translucent shells fill the volume between the body and visible fiber tips.
-const SHELL_COUNT = 11;
+const SHELL_COUNT = 13;
 const shells = Array.from({ length: SHELL_COUNT }, (_, index) => {
   const layer = index / (SHELL_COUNT - 1);
   const geometry = shape.clone();
@@ -103,17 +103,21 @@ for (let i = 0; i < FIBER_COUNT; i++) {
   const side = Math.sqrt(1 - z * z);
   const x = Math.cos(angle) * side;
   const y = Math.sin(angle) * side;
-  const length = (4 + Math.pow(random(), 1.4) * 19) * (1 + THREE.MathUtils.smoothstep(y, -0.1, 0.55) * 0.32);
+  const length = (7 + Math.pow(random(), 1.15) * 26) * (1 + THREE.MathUtils.smoothstep(y, -0.1, 0.55) * 0.36);
   const lean = (random() - 0.5) * 0.65;
   fiberSeeds.set([x, y, z, length, lean], i * 5);
   fiberDirections.set([x, y, z], i * 3);
   fiberWidths[i] = 0.58 + random() * 0.34;
 }
 const fiberGeometry = new THREE.InstancedBufferGeometry();
-fiberGeometry.setIndex([0, 1, 2, 2, 1, 3]);
-fiberGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
-  -1, 0, 0, 1, 0, 0, -1, 1, 0, 1, 1, 0,
-], 3));
+const fiberStations = [0, 0.22, 0.48, 0.73, 1];
+const fiberVertices = fiberStations.flatMap((along) => [-1, along, 0, 1, along, 0]);
+const fiberIndices = fiberStations.slice(1).flatMap((_, station) => {
+  const start = station * 2;
+  return [start, start + 1, start + 2, start + 2, start + 1, start + 3];
+});
+fiberGeometry.setIndex(fiberIndices);
+fiberGeometry.setAttribute('position', new THREE.Float32BufferAttribute(fiberVertices, 3));
 const fiberRootAttribute = new THREE.InstancedBufferAttribute(fiberRoots, 3).setUsage(THREE.DynamicDrawUsage);
 const fiberTipAttribute = new THREE.InstancedBufferAttribute(fiberTips, 3).setUsage(THREE.DynamicDrawUsage);
 fiberGeometry.setAttribute('instanceRoot', fiberRootAttribute);
@@ -221,7 +225,7 @@ function updateShape() {
   shapePosition.needsUpdate = true;
   shape.computeVertexNormals();
   for (const shell of shells) {
-    const offset = 2 + 18 * Math.pow(shell.layer, 1.15);
+    const offset = 0.5 + 26 * Math.pow(shell.layer, 1.3);
     const positions = shell.positions.array as Float32Array;
     for (let i = 0; i < original.length; i++) {
       positions[i] = bodyPositions[i] + original[i] * offset;
@@ -233,6 +237,9 @@ function updateShape() {
     const vertex = i * 3;
     const x = fiberSeeds[seed], y = fiberSeeds[seed + 1], z = fiberSeeds[seed + 2];
     surface(x, y, z, fiberRoots, vertex);
+    fiberRoots[vertex] -= x * 1.5;
+    fiberRoots[vertex + 1] -= y * 1.5;
+    fiberRoots[vertex + 2] -= z * 1.5;
     const length = fiberSeeds[seed + 3], lean = fiberSeeds[seed + 4];
     fiberTips[vertex] = fiberRoots[vertex] + x * length + y * lean * length;
     fiberTips[vertex + 1] = fiberRoots[vertex + 1] + y * length - x * lean * length;
