@@ -12,10 +12,10 @@
 | 틈 | [04-Line Pull](https://drive.google.com/drive/folders/1pY6aXhCqG9yrbdGAXJTM1aI-gz_pBKuJ) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일 |
 | 고양이 | [05-Cursor Cat](https://drive.google.com/drive/folders/1Qf7x9pCBrqi-NiCCOoG7eNU0oK1K9jTu) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일 |
 | 웃음꽃 | [05-Smile Flower](https://drive.google.com/drive/folders/1MbLp2Qxt3SaZ1sCM9DC3gbys5yX6u2sR) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일. 관리원본 11개 파일 확인 |
-| Rose Glass 제작 자료 | [06-Rose Glass](https://drive.google.com/drive/folders/1Oj-eYXYP0MhPlsViMnHw_8wTmGO5cf7Y) | `시작하기.pdf`에 Notion 링크를 추가한 뒤 리틀리와 Drive의 배포 ZIP을 바이트 단위로 일치시킴 |
+| Rose Glass 제작 자료 | [06-Rose Glass](https://drive.google.com/drive/folders/1Oj-eYXYP0MhPlsViMnHw_8wTmGO5cf7Y) | Pretendard를 적용하고 안내를 간소화한 `시작하기.pdf`를 포함. 리틀리와 Drive의 `Rose-Glass-Material-Kit-20260926-v2.zip`은 바이트 단위 동일 |
 | Rose Glass 4K 배경화면 5종 | [배경화면 상품](https://drive.google.com/drive/folders/1-ATjsyTmt4nMqlhI5Dyf1YjdC-rqVTLY) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일. 관리원본 PNG 5개 확인 |
 
-2026-09-26에 리틀리 판매자 화면에서 실제 첨부 파일을 받아 Drive 배포본과 SHA-256 및 ZIP 내부 파일별 해시를 비교했다. 이 비교 이후 Rose Glass 판매 ZIP을 갱신했다. 잔상은 리틀리 사본에 `reference/body-echo-05-interaction.mp4`가 빠져 있지만 Drive 배포 ZIP에는 있다.
+2026-09-26에 리틀리 판매자 화면에서 실제 첨부 파일을 받아 Drive 배포본과 SHA-256 및 ZIP 내부 파일별 해시를 비교했다. 이후 Rose Glass PDF를 공개 Notion 가이드 링크 중심으로 다시 만들고, 리틀리와 Drive의 ZIP을 다시 받아 SHA-256이 일치하는지 확인했다. 작품별 Notion 가이드 7개의 다운로드 안내도 구매자용 문구로 정리했다. 잔상은 리틀리 사본에 `reference/body-echo-05-interaction.mp4`가 빠져 있지만 Drive 배포 ZIP에는 있다.
 
 ## 구매자 접근 범위
 
