@@ -31,3 +31,6 @@ pages/cursor-cat-circle/assets/
 # Local Vercel project state and downloaded environment variables
 .vercel/
 .env.local
+
+# Buyer-facing sales assets are managed in Google Drive
+kits/

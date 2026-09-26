@@ -13,12 +13,13 @@ Interactive web implementations of brand artworks.
 
 - `common/` — shared modules (touch pointer, etc.)
 - `pages/<brand>/` — per-brand artwork (`index.html`, `script.ts(js)`, `style.css`, etc.)
-- `kits/<brand>/` — tracked buyer-facing material kits; ZIPs are built from these files
+- `kits/<brand>/` — local, Git-ignored staging copies of buyer-facing materials; Google Drive is the source of truth
 - `docs/` — architecture, concepts, reusable guides, research, and supporting diagrams
 
 ## Documentation
 
 - Instagram DM 요청함을 분류·답변하거나 자동 답변 로직을 수정하기 전에 Notion `Project > Vibe > 내부 운영`의 [Instagram DM 답변 규칙](https://app.notion.com/p/3e7a89f7e31a815b8b60c3ead057bf0a)을 읽고 최신 문구·분기·개별 승인 기준을 따른다. 규칙 본문은 저장소에 복제하지 않는다.
+- 판매 상품의 원본 에셋·제작 자료·배포 ZIP은 [Google Drive 바이브코딩 판매자료](https://drive.google.com/drive/folders/1S7Lre1gpLGEGQNKL0eSpjHyWcsJmRmnM)에서 관리한다. 상품별 위치와 업로드·검증 절차는 `docs/guides/sales-asset-management.md`를 따른다. `kits/`와 판매용 ZIP은 Git에 커밋하지 않는다. 리틀리 첨부 파일은 Drive 배포본의 전달용 사본으로 취급한다.
 - 작품별 소셜 게시 이력, 캡션·초안·번역·문체 분석과 성과 스냅샷은 Notion의 `Project > Vibe > 작품별 기록`에서 관리한다. 전달용 제작 설명서·프롬프트·첨부 자료는 Vibe의 `외부 공유`에서 관리한다. 찾는 경로와 작품별 직접 링크는 `docs/README.md`의 External Records에 유지하고, 운영 기록과 공유 페이지 본문을 로컬에 복제하지 않는다. 공통 조회 조건과 지표 정의는 `docs/guides/social-performance-tracking.md`에 둔다.
 - 아키텍처나 구현 원리 정리 요청의 기본 산출물은 Markdown이다. 사용자가 별도 형식을 명시하지 않으면 DOCX, PDF, HTML, Figma/FigJam 문서를 만들지 않는다.
 - 사용자가 문서 경로를 지정하면 그 경로를 그대로 따른다. 경로가 없으면 기존 `docs/README.md`의 배치 규칙을 따른다.
