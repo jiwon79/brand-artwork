@@ -57,6 +57,8 @@ const HAIR_COUNT = 42000;
 const hairSeeds = new Float32Array(HAIR_COUNT * 5);
 const hairPositions = new Float32Array(HAIR_COUNT * 6);
 const hairColors = new Float32Array(HAIR_COUNT * 6);
+// Interpolated from root to tip so each strand dissolves instead of ending sharply.
+const hairTips = new Float32Array(HAIR_COUNT * 2);
 let randomState = 723981;
 function random() {
   randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
@@ -77,14 +79,39 @@ for (let i = 0; i < HAIR_COUNT; i++) {
   if (x < -0.4 || y < -0.45) color = [0.66, 0.66, 0.96];
   hairColors.set(color, i * 6);
   hairColors.set(color, i * 6 + 3);
+  hairTips[i * 2 + 1] = 1;
 }
 const hairGeometry = new THREE.BufferGeometry();
 hairGeometry.setAttribute('position', new THREE.BufferAttribute(hairPositions, 3).setUsage(THREE.DynamicDrawUsage));
 hairGeometry.setAttribute('color', new THREE.BufferAttribute(hairColors, 3));
-const fur = new THREE.LineSegments(hairGeometry, new THREE.LineBasicMaterial({
-  vertexColors: true,
+hairGeometry.setAttribute('fiberTip', new THREE.BufferAttribute(hairTips, 1));
+const fur = new THREE.LineSegments(hairGeometry, new THREE.ShaderMaterial({
+  vertexShader: `
+    attribute vec3 color;
+    attribute float fiberTip;
+    varying vec3 vFiberColor;
+    varying float vFiberTip;
+    varying float vFiberHeight;
+    void main() {
+      vFiberColor = color;
+      vFiberTip = fiberTip;
+      vFiberHeight = position.y;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    varying vec3 vFiberColor;
+    varying float vFiberTip;
+    varying float vFiberHeight;
+    void main() {
+      float tipFade = pow(1.0 - vFiberTip, 1.7);
+      float crown = smoothstep(-75.0, 95.0, vFiberHeight);
+      float opacity = mix(0.09, 0.27, crown) * tipFade;
+      gl_FragColor = vec4(vFiberColor, opacity);
+    }
+  `,
   transparent: true,
-  opacity: 0.12,
   depthWrite: false,
 }));
 character.add(fur);
@@ -219,6 +246,7 @@ function render(now: number) {
 function resize() {
   const width = Math.max(1, innerWidth), height = Math.max(1, innerHeight);
   const unit = Math.min(width, height) / 720;
+  canvas!.style.setProperty('--artwork-blur', `${(1.8 * unit).toFixed(2)}px`);
   camera.left = -width / (2 * unit);
   camera.right = width / (2 * unit);
   camera.top = height / (2 * unit);

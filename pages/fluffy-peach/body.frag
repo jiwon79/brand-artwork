@@ -35,6 +35,6 @@ void main() {
   color.b -= warm * 0.045;
   float luminance = dot(color, vec3(0.299, 0.587, 0.114));
   color = mix(vec3(luminance), color, 1.16);
-  float alpha = 0.14 + 0.86 * smoothstep(0.015, 0.25, abs(normal.z));
+  float alpha = smoothstep(0.0, 0.38, abs(normal.z));
   gl_FragColor = vec4(clamp(color, 0.0, 1.0), alpha);
 }
