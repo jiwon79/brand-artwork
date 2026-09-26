@@ -210,7 +210,7 @@ class InstagramService:
             try:
                 artworks = {item.get("post_code"): item for item in list_artworks() if item.get("post_code")}
                 for media in client.pages("/me/media", params={
-                    "fields": "id,caption,permalink,media_product_type,timestamp",
+                    "fields": "id,caption,permalink,media_product_type,timestamp,comments_count",
                     "limit": min(media_amount, 100)}, limit=media_amount):
                     if media.get("media_product_type") == "STORY":
                         continue
@@ -222,9 +222,11 @@ class InstagramService:
                     artwork = artworks.get(code)
                     if artwork and artwork.get("media_id") != media_id:
                         save_artwork({**artwork, "media_id": media_id})
+                    seen_comments = 0
                     for comment in client.pages(f"/{media_id}/comments", params={
                         "fields": "id,text,username,timestamp,like_count,replies{id,text,username,timestamp}",
                         "limit": min(comments_per_media, 50)}, limit=comments_per_media):
+                        seen_comments += 1
                         username = str(comment.get("username") or "")
                         if username.casefold() == client.username.casefold():
                             continue
@@ -249,6 +251,10 @@ class InstagramService:
                                 "status": "history"}))
                             if outbound:
                                 update_event(f"comment:{comment_id}", {"status": "sent", "error": None})
+                    if int(media.get("comments_count") or 0) > 0 and not seen_comments:
+                        raise InstagramAssistantError(
+                            "게시물에 댓글이 있지만 공식 API가 빈 목록을 반환했습니다. "
+                            "Meta 앱의 댓글 권한과 게시 상태를 확인하세요.")
                 for conversation in client.pages("/me/conversations", params={
                     "platform": "instagram", "limit": min(threads_amount, 100)}, limit=threads_amount):
                     thread_id = str(conversation["id"])

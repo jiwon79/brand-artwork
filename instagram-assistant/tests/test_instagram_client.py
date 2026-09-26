@@ -147,3 +147,24 @@ def test_graph_sync_records_parent_reply_and_dm_for_connected_account(monkeypatc
     assert db.get_event("comment:reply-1")["parent_comment_id"] == "comment-1"
     assert db.get_event("dm:message-1")["author_id"] == "visitor-id"
     assert db.get_event("dm:message-1")["account_id"] == "ig-1"
+
+
+def test_sync_reports_permission_gap_when_media_has_comments_but_api_returns_none(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+
+        def pages(self, path, *, params, limit):
+            if path == "/me/media":
+                return iter([{"id": "media-1", "permalink": "https://www.instagram.com/reel/ABC/",
+                    "media_product_type": "REELS", "comments_count": 2}])
+            assert path == "/media-1/comments"
+            return iter([])
+
+    service = InstagramService()
+    service._client = FakeGraph()
+    with pytest.raises(InstagramAssistantError, match="Meta 앱의 댓글 권한"):
+        service.sync(media_amount=1)
