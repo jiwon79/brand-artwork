@@ -168,3 +168,33 @@ def test_sync_reports_permission_gap_when_media_has_comments_but_api_returns_non
     service._client = FakeGraph()
     with pytest.raises(InstagramAssistantError, match="Meta 앱의 댓글 권한"):
         service.sync(media_amount=1)
+
+
+def test_sync_uses_from_username_and_scans_past_own_comments(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+
+        def pages(self, path, *, params, limit):
+            if path == "/me/media":
+                return iter([{"id": "media-1", "permalink": "https://www.instagram.com/reel/ABC/",
+                    "comments_count": 4}])
+            if path == "/media-1/comments":
+                assert "from{id,username}" in params["fields"]
+                comments = [
+                    {"id": f"own-{i}", "from": {"username": "studio.jiiwon"}, "text": "DM 주세요"}
+                    for i in range(3)
+                ] + [{"id": "visitor-1", "from": {"username": "visitor"},
+                    "text": "링크 주세요", "timestamp": "2026-09-26T01:00:00+0000"}]
+                return iter(comments[:limit])
+            return iter([])
+
+    service = InstagramService()
+    service._client = FakeGraph()
+    result = service.sync(media_amount=1, comments_per_media=1, threads_amount=0)
+    assert result["comments"] == 1
+    assert db.get_event("comment:visitor-1")["author_username"] == "visitor"
+    assert db.get_event("comment:own-0") is None

@@ -202,6 +202,10 @@ class InstagramService:
         match = re.search(r"instagram\.com/(reel|p)/([^/?#]+)", value)
         return f"https://www.instagram.com/{match.group(1)}/{match.group(2)}/" if match else value
 
+    @staticmethod
+    def _comment_username(comment: dict[str, Any]) -> str:
+        return str(comment.get("username") or (comment.get("from") or {}).get("username") or "")
+
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
              threads_amount: int = 30) -> dict[str, Any]:
         with self._lock:
@@ -222,14 +226,16 @@ class InstagramService:
                     artwork = artworks.get(code)
                     if artwork and artwork.get("media_id") != media_id:
                         save_artwork({**artwork, "media_id": media_id})
-                    seen_comments = 0
+                    seen_comments = imported_comments = 0
                     for comment in client.pages(f"/{media_id}/comments", params={
-                        "fields": "id,text,username,timestamp,like_count,replies{id,text,username,timestamp}",
-                        "limit": min(comments_per_media, 50)}, limit=comments_per_media):
+                        "fields": "id,text,username,from{id,username},timestamp,like_count,"
+                                  "replies{id,text,username,from{id,username},timestamp}",
+                        "limit": min(comments_per_media, 50)}, limit=min(comments_per_media * 4, 500)):
                         seen_comments += 1
-                        username = str(comment.get("username") or "")
-                        if username.casefold() == client.username.casefold():
+                        username = self._comment_username(comment)
+                        if not username or username.casefold() == client.username.casefold():
                             continue
+                        imported_comments += 1
                         comment_id = str(comment["id"])
                         common = {"account_id": client.account_id, "kind": "comment",
                                   "media_id": media_id, "post_code": code,
@@ -240,17 +246,20 @@ class InstagramService:
                             "like_count": comment.get("like_count"),
                             "received_at": self._timestamp(comment.get("timestamp"))}))
                         for reply in (comment.get("replies") or {}).get("data") or []:
-                            outbound = str(reply.get("username") or "").casefold() == client.username.casefold()
+                            reply_username = self._comment_username(reply)
+                            outbound = reply_username.casefold() == client.username.casefold()
                             replies_count += int(upsert_event({**common,
                                 "id": f"comment:{reply['id']}", "source_id": str(reply["id"]),
                                 "parent_comment_id": comment_id,
-                                "author_username": reply.get("username") or "",
+                                "author_username": reply_username,
                                 "direction": "outbound" if outbound else "inbound",
                                 "body": reply.get("text") or "",
                                 "received_at": self._timestamp(reply.get("timestamp")),
                                 "status": "history"}))
                             if outbound:
                                 update_event(f"comment:{comment_id}", {"status": "sent", "error": None})
+                        if imported_comments >= comments_per_media:
+                            break
                     if int(media.get("comments_count") or 0) > 0 and not seen_comments:
                         raise InstagramAssistantError(
                             "게시물에 댓글이 있지만 공식 API가 빈 목록을 반환했습니다. "
