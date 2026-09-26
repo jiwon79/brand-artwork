@@ -109,10 +109,42 @@ const startTime = performance.now();
 const controls = { turnX: 0, turnY: 0, turnZ: 0, paused: false };
 const gui = exposeGuiInDebugMode(new GUI({ title: 'Fluffy Peach · 3D' }));
 const refresh = () => { if (frozenTime !== null || reduceMotion) requestAnimationFrame(render); };
-gui.add(controls, 'turnX', -90, 90, 1).name('위아래 회전').onChange(refresh);
-gui.add(controls, 'turnY', -180, 180, 1).name('좌우 회전').onChange(refresh);
+gui.add(controls, 'turnX', -90, 90, 1).name('위아래 회전').listen().onChange(refresh);
+gui.add(controls, 'turnY', -180, 180, 1).name('좌우 회전').listen().onChange(refresh);
 gui.add(controls, 'turnZ', -180, 180, 1).name('기울기').onChange(refresh);
 gui.add(controls, 'paused').name('정지').onChange(refresh);
+
+let dragging: { pointerId: number; x: number; y: number; pitch: number; yaw: number } | null = null;
+canvas.addEventListener('pointerdown', (event) => {
+  if (dragging || (event.pointerType === 'mouse' && event.button !== 0)) return;
+  dragging = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    pitch: controls.turnX,
+    yaw: controls.turnY,
+  };
+  canvas.setPointerCapture(event.pointerId);
+  canvas.classList.add('dragging');
+});
+canvas.addEventListener('pointermove', (event) => {
+  if (!dragging || event.pointerId !== dragging.pointerId) return;
+  const unit = Math.min(canvas.clientWidth, canvas.clientHeight) / 720;
+  const dx = (event.clientX - dragging.x) / unit;
+  const dy = (event.clientY - dragging.y) / unit;
+  controls.turnX = THREE.MathUtils.clamp(dragging.pitch + dy * 0.38, -90, 90);
+  controls.turnY = ((dragging.yaw + dx * 0.5 + 180) % 360 + 360) % 360 - 180;
+  refresh();
+});
+function stopDragging(event: PointerEvent) {
+  if (!dragging || event.pointerId !== dragging.pointerId) return;
+  dragging = null;
+  canvas!.classList.remove('dragging');
+  if (canvas!.hasPointerCapture(event.pointerId)) canvas!.releasePointerCapture(event.pointerId);
+}
+canvas.addEventListener('pointerup', stopDragging);
+canvas.addEventListener('pointercancel', stopDragging);
+canvas.addEventListener('lostpointercapture', stopDragging);
 
 const currentRadii = new Float32Array(motionFrames[0].radii.length);
 let pausedAt = 0;
