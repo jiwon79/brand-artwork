@@ -58,12 +58,12 @@ function tipMask(angle: number, tip: number) {
 const angularSamples = Float32Array.from(motionFrames[0].radii,
   (_, index) => -(index + 0.5) * Math.PI * 2 / motionFrames[0].radii.length);
 const starMotionMask = angularSamples.map((angle) => [
-  [Math.PI * 0.1, 0.11],
-  [Math.PI * 0.5, 0.14],
-  [Math.PI * 0.9, 0.18],
-  [Math.PI * 1.3, 0.1],
-  [Math.PI * 1.7, 0.13],
-].reduce((sum, [tip, strength]) => sum + strength * tipMask(angle, tip), 0));
+  [Math.PI * 0.1, 0.16],
+  [Math.PI * 0.5, 0.15],
+  [Math.PI * 0.9, 0.16],
+  [Math.PI * 1.3, 0.15],
+  [Math.PI * 1.7, 0.16],
+].reduce((sum, [tip, strength]) => sum + strength * tipMask(angle, tip), -0.055));
 const flowerMotionMask = angularSamples.map((angle) => Math.cos(4 * angle - Math.PI));
 const restingFrame = motionFrames[Math.floor(motionFrames.length / 2)];
 const referenceWidths = motionFrames.map((frame) => frame.radii[0] + frame.radii[frame.radii.length / 2]);
@@ -225,6 +225,7 @@ const eyes = Array.from({ length: 2 }, () => {
   character.add(eye);
   return eye;
 });
+const eyePosition = new Float32Array(3);
 
 const queryTime = Number(params.get('t'));
 const frozenTime = params.has('t') && Number.isFinite(queryTime) ? Math.max(0, queryTime) : null;
@@ -328,10 +329,13 @@ function waveCrest(x: number, y: number) {
 function surface(x: number, y: number, z: number, target: Float32Array, offset: number) {
   const radius = radiusAt(x, y);
   const crest = currentWaveWeight * waveCrest(x, y) * (1 + 0.35 * gesture);
-  target[offset] = (x * radius - 80 * crest) * (1 + 0.16 * variantWeights[1] * gesture);
-  target[offset + 1] = y * radius + currentWaveWeight * waveBend(x) + 50 * crest;
+  const beanStretch = variantWeights[1] * gesture;
+  const starFlex = variantWeights[3] * gesture;
+  target[offset] = (x * radius - 80 * crest) * (1 + 0.16 * beanStretch) + 22 * starFlex * y;
+  target[offset + 1] = y * radius * (1 - 0.08 * beanStretch)
+    + currentWaveWeight * waveBend(x) + 50 * crest + 16 * starFlex * x;
   const lobe = Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2));
-  target[offset + 2] = z * 116 * currentDepth
+  target[offset + 2] = z * 116 * currentDepth * (1 - 0.06 * beanStretch)
     + Math.max(0, z) * lobe * cheekStrength * 44 * currentReferenceDetail;
 }
 function updateShape() {
@@ -446,11 +450,10 @@ function render(now: number) {
     const ey = THREE.MathUtils.lerp(restingFrame.center[1] - restingFrame.eyes[i * 2 + 1], sourceEyeY, motionInfluence)
       - (1 - openness) * 11 + currentEyeShiftY;
     const eyeRadius = radiusAt(ex, ey);
-    const proportion = Math.min(0.98, Math.hypot(ex, ey) / eyeRadius);
-    const depth = Math.sqrt(1 - proportion * proportion) * 116 * currentDepth;
-    const eyeX = ex * (1 + 0.16 * variantWeights[1] * gesture);
-    const eyeY = ey + currentWaveWeight * waveBend(ex / eyeRadius);
-    eyes[i].position.set(eyeX, eyeY, depth + 1);
+    const seedX = ex / eyeRadius, seedY = ey / eyeRadius;
+    const proportion = Math.min(0.98, Math.hypot(seedX, seedY));
+    surface(seedX, seedY, Math.sqrt(1 - proportion * proportion), eyePosition, 0);
+    eyes[i].position.set(eyePosition[0], eyePosition[1], eyePosition[2] + 1);
     eyes[i].scale.set(4.9, Math.max(1.4, 9.3 * openness), 2.1);
   }
   shadowUniforms.uShadow.value.set(cx - 465, -191);
