@@ -9,15 +9,15 @@ const BOTTOM_FRAME = QUARTER_FRAME_COUNT * 3;
 const POINTER_CENTER_Y_RATIO = 0.46;
 const FRAME_RESPONSE = 0.34;
 const MAX_RENDER_DELTA = 64;
-const DEBUG_ARC_SAMPLE_COUNT = 720;
+const FRAME_RING_SAMPLE_COUNT = 720;
 const DEFAULT_ARTWORK_ID = 'main';
 const ARTWORK_ID_PATTERN = /^[a-z0-9]{10}$/;
 
 type Point = { x: number; y: number };
 type Bounds = { left: number; top: number; width: number; height: number };
-type DebugArcSample = Point & { frame: number; angle: number };
-type GazeOriginAnchor = Point & { frame: number };
-type DisplayScaleAnchor = { frame: number; scale: number };
+type FrameRingSample = Point & { frame: number; angle: number };
+type EyePositionAnchor = Point & { frame: number };
+type FrameScaleAnchor = { frame: number; scale: number };
 type ProcessStage = 'angle' | 'frame' | 'final';
 
 const PROCESS_STEPS = [
@@ -35,8 +35,8 @@ interface CursorCatManifest {
   ariaLabel: string;
   frameCount: number;
   framePattern: string;
-  gazeOrigins: GazeOriginAnchor[];
-  displayScales: DisplayScaleAnchor[];
+  gazeOrigins: EyePositionAnchor[];
+  displayScales: FrameScaleAnchor[];
 }
 
 type ElementConstructor<T extends HTMLElement> = new () => T;
@@ -52,19 +52,19 @@ function requiredElement<T extends HTMLElement>(
   return element;
 }
 
-function lerp(start: number, end: number, progress: number): number {
-  return start + (end - start) * progress;
+function lerp(start: number, end: number, ratio: number): number {
+  return start + (end - start) * ratio;
 }
 
-function wrapProgress(progress: number): number {
-  return ((progress % 1) + 1) % 1;
+function wrapFramePosition(position: number): number {
+  return ((position % 1) + 1) % 1;
 }
 
-function wrappedProgressDelta(target: number, current: number): number {
+function shortestFramePositionDelta(target: number, current: number): number {
   return ((target - current + 1.5) % 1) - 0.5;
 }
 
-function anchorPair<T extends { frame: number }>(anchors: T[], frame: number): [T, T] {
+function surroundingAnchors<T extends { frame: number }>(anchors: T[], frame: number): [T, T] {
   const endIndex = anchors.findIndex((anchor) => anchor.frame >= frame);
   const end = anchors[Math.max(endIndex, 0)] ?? anchors[anchors.length - 1];
   const start = anchors[Math.max(endIndex - 1, 0)] ?? anchors[0];
@@ -72,8 +72,8 @@ function anchorPair<T extends { frame: number }>(anchors: T[], frame: number): [
   return [start, end];
 }
 
-function frameGazeOrigin(index: number): Point {
-  const [start, end] = anchorPair(gazeOriginAnchors, index);
+function frameEyePosition(index: number): Point {
+  const [start, end] = surroundingAnchors(eyePositionAnchors, index);
   const range = end.frame - start.frame;
   const localProgress = range === 0 ? 0 : (index - start.frame) / range;
 
@@ -83,22 +83,22 @@ function frameGazeOrigin(index: number): Point {
   };
 }
 
-function frameDisplayScale(index: number): number {
-  const [start, end] = anchorPair(displayScaleAnchors, index);
+function frameScale(index: number): number {
+  const [start, end] = surroundingAnchors(frameScaleAnchors, index);
   const range = end.frame - start.frame;
   const localProgress = range === 0 ? 0 : (index - start.frame) / range;
   return lerp(start.scale, end.scale, localProgress);
 }
 
-function frameGazeAngle(index: number): number {
+function frameLookAngle(index: number): number {
   return -(index / FRAME_COUNT) * Math.PI * 2;
 }
 
-function angularDistance(first: number, second: number): number {
+function shortestAngleDistance(first: number, second: number): number {
   return Math.abs(Math.atan2(Math.sin(first - second), Math.cos(first - second)));
 }
 
-function catLayoutBounds(): Bounds {
+function catImageBounds(): Bounds {
   const transformed = cat.getBoundingClientRect();
   const width = cat.offsetWidth;
   const height = cat.offsetHeight;
@@ -192,22 +192,22 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 let ready = false;
 let debugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
 let processStage: ProcessStage = 'final';
-let targetProgress = 0;
-let renderedProgress = 0;
-let renderedFrame = 0;
+let targetFramePosition = 0;
+let displayFramePosition = 0;
+let displayedFrame = 0;
 let previousRenderTime = 0;
 let pointerPosition: Point | null = null;
-let debugLayoutKey = '';
-let debugArcSamples: DebugArcSample[] = [];
-let gazeOriginAnchors: GazeOriginAnchor[] = [];
-let displayScaleAnchors: DisplayScaleAnchor[] = [];
+let frameRingLayoutKey = '';
+let frameRingSamples: FrameRingSample[] = [];
+let eyePositionAnchors: EyePositionAnchor[] = [];
+let frameScaleAnchors: FrameScaleAnchor[] = [];
 
-function showFrame(index: number): void {
+function displayFrame(index: number): void {
   const nextIndex = ((Math.round(index) % FRAME_COUNT) + FRAME_COUNT) % FRAME_COUNT;
-  if (nextIndex === renderedFrame && cat.src.endsWith(sources[nextIndex] ?? '')) return;
+  if (nextIndex === displayedFrame && cat.src.endsWith(sources[nextIndex] ?? '')) return;
 
-  renderedFrame = nextIndex;
-  const scale = frameDisplayScale(nextIndex);
+  displayedFrame = nextIndex;
+  const scale = frameScale(nextIndex);
   cat.style.setProperty(
     '--frame-scale',
     String(scale),
@@ -215,25 +215,25 @@ function showFrame(index: number): void {
   cat.src = decodedFrames[nextIndex]?.src ?? sources[nextIndex] ?? sources[0];
 }
 
-function pointerFrame(clientX: number, clientY: number): number {
-  const bounds = catLayoutBounds();
+function selectFrameForPointer(clientX: number, clientY: number): number {
+  const bounds = catImageBounds();
   const projectionY = bounds.top + bounds.height * POINTER_CENTER_Y_RATIO;
   const centerX = bounds.left + bounds.width * 0.5;
 
   if (Math.abs(clientX - centerX) + Math.abs(clientY - projectionY) < 1) {
-    return Math.round(targetProgress * FRAME_COUNT) % FRAME_COUNT;
+    return Math.round(targetFramePosition * FRAME_COUNT) % FRAME_COUNT;
   }
 
-  let bestFrame = renderedFrame;
+  let bestFrame = displayedFrame;
   let bestDistance = Number.POSITIVE_INFINITY;
 
   for (let index = 0; index < FRAME_COUNT; index += 1) {
-    const origin = frameGazeOrigin(index);
-    const originX = bounds.left + bounds.width * origin.x;
-    const originY = bounds.top + bounds.height * origin.y;
-    const pointerAngle = Math.atan2(clientY - originY, clientX - originX);
-    const gazeAngle = frameGazeAngle(index);
-    const distance = angularDistance(pointerAngle, gazeAngle);
+    const eyePosition = frameEyePosition(index);
+    const eyeX = bounds.left + bounds.width * eyePosition.x;
+    const eyeY = bounds.top + bounds.height * eyePosition.y;
+    const pointerAngle = Math.atan2(clientY - eyeY, clientX - eyeX);
+    const lookAngle = frameLookAngle(index);
+    const distance = shortestAngleDistance(pointerAngle, lookAngle);
 
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -244,18 +244,18 @@ function pointerFrame(clientX: number, clientY: number): number {
   return bestFrame;
 }
 
-function pointerProgress(clientX: number, clientY: number): number {
-  return pointerFrame(clientX, clientY) / FRAME_COUNT;
+function framePositionForPointer(clientX: number, clientY: number): number {
+  return selectFrameForPointer(clientX, clientY) / FRAME_COUNT;
 }
 
 function updatePointer(event: PointerEvent): void {
   pointerPosition = { x: event.clientX, y: event.clientY };
   if (!ready) return;
-  targetProgress = pointerProgress(event.clientX, event.clientY);
+  targetFramePosition = framePositionForPointer(event.clientX, event.clientY);
 
   if (reducedMotion.matches) {
-    renderedProgress = targetProgress;
-    showFrame(Math.round(renderedProgress * FRAME_COUNT));
+    displayFramePosition = targetFramePosition;
+    displayFrame(Math.round(displayFramePosition * FRAME_COUNT));
   }
 }
 
@@ -293,7 +293,7 @@ function setDebugEnabled(enabled: boolean, updateUrl = false): void {
   }
 }
 
-function debugArcGeometry(bounds: Bounds): { center: Point; radius: number } {
+function frameRingGeometry(bounds: Bounds): { center: Point; radius: number } {
   const stageBounds = stage.getBoundingClientRect();
   const center = {
     x: bounds.left + bounds.width * 0.5,
@@ -309,20 +309,20 @@ function debugArcGeometry(bounds: Bounds): { center: Point; radius: number } {
   };
 }
 
-function rebuildDebugArc(bounds: Bounds): void {
-  const { center, radius } = debugArcGeometry(bounds);
+function rebuildFrameRing(bounds: Bounds): void {
+  const { center, radius } = frameRingGeometry(bounds);
   const layoutKey = [
     center.x.toFixed(2), center.y.toFixed(2), radius.toFixed(2),
     bounds.width.toFixed(2), bounds.height.toFixed(2),
   ].join(':');
 
-  if (layoutKey === debugLayoutKey) return;
-  debugLayoutKey = layoutKey;
-  debugArcSamples = Array.from({ length: DEBUG_ARC_SAMPLE_COUNT + 1 }, (_, index) => {
-    const angle = -(index / DEBUG_ARC_SAMPLE_COUNT) * Math.PI * 2;
+  if (layoutKey === frameRingLayoutKey) return;
+  frameRingLayoutKey = layoutKey;
+  frameRingSamples = Array.from({ length: FRAME_RING_SAMPLE_COUNT + 1 }, (_, index) => {
+    const angle = -(index / FRAME_RING_SAMPLE_COUNT) * Math.PI * 2;
     const x = center.x + Math.cos(angle) * radius;
     const y = center.y + Math.sin(angle) * radius;
-    return { x, y, angle, frame: pointerFrame(x, y) };
+    return { x, y, angle, frame: selectFrameForPointer(x, y) };
   });
 }
 
@@ -336,7 +336,7 @@ function prepareDebugCanvas(): void {
   if (debugCanvas.width !== targetWidth || debugCanvas.height !== targetHeight) {
     debugCanvas.width = targetWidth;
     debugCanvas.height = targetHeight;
-    debugLayoutKey = '';
+    frameRingLayoutKey = '';
   }
 
   debugContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
@@ -356,22 +356,22 @@ function drawCircle(point: Point, radius: number, color: string, fill = true): v
   }
 }
 
-function screenGazeOrigin(frame: number, bounds: Bounds): Point {
-  const origin = frameGazeOrigin(frame);
+function screenEyePosition(frame: number, bounds: Bounds): Point {
+  const eyePosition = frameEyePosition(frame);
   return {
-    x: bounds.left + bounds.width * origin.x,
-    y: bounds.top + bounds.height * origin.y,
+    x: bounds.left + bounds.width * eyePosition.x,
+    y: bounds.top + bounds.height * eyePosition.y,
   };
 }
 
-function drawGazeRay(frame: number, bounds: Bounds, radius: number, color: string): void {
-  const origin = screenGazeOrigin(frame, bounds);
-  const angle = frameGazeAngle(frame);
+function drawLookDirection(frame: number, bounds: Bounds, radius: number, color: string): void {
+  const eyePosition = screenEyePosition(frame, bounds);
+  const angle = frameLookAngle(frame);
   debugContext.beginPath();
-  debugContext.moveTo(origin.x, origin.y);
+  debugContext.moveTo(eyePosition.x, eyePosition.y);
   debugContext.lineTo(
-    origin.x + Math.cos(angle) * radius,
-    origin.y + Math.sin(angle) * radius,
+    eyePosition.x + Math.cos(angle) * radius,
+    eyePosition.y + Math.sin(angle) * radius,
   );
   debugContext.strokeStyle = color;
   debugContext.lineWidth = 1.5;
@@ -380,19 +380,19 @@ function drawGazeRay(frame: number, bounds: Bounds, radius: number, color: strin
 
 function processPointer(frame: number, bounds: Bounds, radius: number): Point {
   if (pointerPosition) return pointerPosition;
-  const origin = screenGazeOrigin(frame, bounds);
-  const angle = frameGazeAngle(frame);
+  const eyePosition = screenEyePosition(frame, bounds);
+  const angle = frameLookAngle(frame);
   return {
-    x: origin.x + Math.cos(angle) * radius,
-    y: origin.y + Math.sin(angle) * radius,
+    x: eyePosition.x + Math.cos(angle) * radius,
+    y: eyePosition.y + Math.sin(angle) * radius,
   };
 }
 
-function drawPointerRay(origin: Point, pointer: Point): void {
+function drawPointerDirection(eyePosition: Point, pointer: Point): void {
   debugContext.save();
   debugContext.setLineDash([5, 5]);
   debugContext.beginPath();
-  debugContext.moveTo(origin.x, origin.y);
+  debugContext.moveTo(eyePosition.x, eyePosition.y);
   debugContext.lineTo(pointer.x, pointer.y);
   debugContext.strokeStyle = 'rgba(13, 153, 255, 0.82)';
   debugContext.lineWidth = 1.5;
@@ -402,50 +402,50 @@ function drawPointerRay(origin: Point, pointer: Point): void {
 }
 
 function drawAngleProcess(targetFrame: number, bounds: Bounds): void {
-  const { radius } = debugArcGeometry(bounds);
-  const origin = screenGazeOrigin(targetFrame, bounds);
+  const { radius } = frameRingGeometry(bounds);
+  const eyePosition = screenEyePosition(targetFrame, bounds);
   const pointer = processPointer(targetFrame, bounds, radius);
-  const pointerAngle = Math.atan2(pointer.y - origin.y, pointer.x - origin.x);
+  const pointerAngle = Math.atan2(pointer.y - eyePosition.y, pointer.x - eyePosition.x);
   const arcRadius = Math.min(42, Math.max(26, Math.hypot(
-    pointer.x - origin.x,
-    pointer.y - origin.y,
+    pointer.x - eyePosition.x,
+    pointer.y - eyePosition.y,
   ) * 0.16));
 
   debugContext.beginPath();
-  debugContext.moveTo(origin.x, origin.y);
-  debugContext.lineTo(origin.x + Math.min(radius, 90), origin.y);
+  debugContext.moveTo(eyePosition.x, eyePosition.y);
+  debugContext.lineTo(eyePosition.x + Math.min(radius, 90), eyePosition.y);
   debugContext.strokeStyle = 'rgba(22, 22, 22, 0.24)';
   debugContext.lineWidth = 1;
   debugContext.stroke();
 
-  drawPointerRay(origin, pointer);
+  drawPointerDirection(eyePosition, pointer);
 
   debugContext.beginPath();
-  debugContext.arc(origin.x, origin.y, arcRadius, 0, pointerAngle, pointerAngle < 0);
+  debugContext.arc(eyePosition.x, eyePosition.y, arcRadius, 0, pointerAngle, pointerAngle < 0);
   debugContext.strokeStyle = '#161616';
   debugContext.lineWidth = 2;
   debugContext.stroke();
 
-  drawCircle(origin, 4, '#161616');
+  drawCircle(eyePosition, 4, '#161616');
 }
 
 function drawFrameProcess(targetFrame: number, bounds: Bounds): void {
-  const { radius } = debugArcGeometry(bounds);
-  const origin = screenGazeOrigin(targetFrame, bounds);
+  const { radius } = frameRingGeometry(bounds);
+  const eyePosition = screenEyePosition(targetFrame, bounds);
   const pointer = processPointer(targetFrame, bounds, radius);
 
-  drawDebugArc(targetFrame, bounds);
-  drawGazeRay(targetFrame, bounds, radius, 'rgba(22, 22, 22, 0.8)');
-  drawPointerRay(origin, pointer);
-  drawCircle(origin, 4, '#0d99ff');
+  drawFrameRing(targetFrame, bounds);
+  drawLookDirection(targetFrame, bounds, radius, 'rgba(22, 22, 22, 0.8)');
+  drawPointerDirection(eyePosition, pointer);
+  drawCircle(eyePosition, 4, '#0d99ff');
 }
 
-function drawDebugArc(targetFrame: number, bounds: Bounds): void {
-  rebuildDebugArc(bounds);
+function drawFrameRing(targetFrame: number, bounds: Bounds): void {
+  rebuildFrameRing(bounds);
 
-  for (let index = 1; index < debugArcSamples.length; index += 1) {
-    const previous = debugArcSamples[index - 1];
-    const current = debugArcSamples[index];
+  for (let index = 1; index < frameRingSamples.length; index += 1) {
+    const previous = frameRingSamples[index - 1];
+    const current = frameRingSamples[index];
     if (!previous || !current) continue;
 
     debugContext.beginPath();
@@ -458,7 +458,7 @@ function drawDebugArc(targetFrame: number, bounds: Bounds): void {
     debugContext.stroke();
 
     if (current.frame !== previous.frame) {
-      const { center, radius } = debugArcGeometry(bounds);
+      const { center, radius } = frameRingGeometry(bounds);
       const innerRadius = radius - 5;
       const outerRadius = radius + 6;
       debugContext.beginPath();
@@ -476,14 +476,14 @@ function drawDebugArc(targetFrame: number, bounds: Bounds): void {
     }
   }
 
-  const { center, radius } = debugArcGeometry(bounds);
+  const { center, radius } = frameRingGeometry(bounds);
   debugContext.fillStyle = 'rgba(34, 42, 51, 0.72)';
   debugContext.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
   debugContext.textAlign = 'center';
   debugContext.textBaseline = 'middle';
 
   for (const frame of [0, 15, 30, 45, 60, 75, 90, 105]) {
-    const angle = frameGazeAngle(frame);
+    const angle = frameLookAngle(frame);
     const x = center.x + Math.cos(angle) * (radius + 18);
     const y = center.y + Math.sin(angle) * (radius + 18);
     debugContext.fillText(String(frame + 1).padStart(3, '0'), x, y);
@@ -492,7 +492,7 @@ function drawDebugArc(targetFrame: number, bounds: Bounds): void {
 
 function drawDebugHud(targetFrame: number): void {
   const targetAngle = (targetFrame / FRAME_COUNT) * 360;
-  const renderedAngle = (renderedFrame / FRAME_COUNT) * 360;
+  const displayedAngle = (displayedFrame / FRAME_COUNT) * 360;
   const direction = targetFrame < TOP_FRAME
     ? 'RIGHT → TOP'
     : targetFrame === TOP_FRAME
@@ -508,7 +508,7 @@ function drawDebugHud(targetFrame: number): void {
               : 'BOTTOM → RIGHT';
   const lines = [
     ['TARGET', `${String(targetFrame + 1).padStart(3, '0')} / 120   ${targetAngle.toFixed(1)}°`],
-    ['RENDERED', `${String(renderedFrame + 1).padStart(3, '0')} / 120   ${renderedAngle.toFixed(1)}°`],
+    ['DISPLAYED', `${String(displayedFrame + 1).padStart(3, '0')} / 120   ${displayedAngle.toFixed(1)}°`],
     ['PATH', direction],
     ['TOGGLE', 'D'],
   ];
@@ -538,8 +538,8 @@ function drawDebug(): void {
   if ((!debugEnabled && processStage === 'final') || !ready) return;
   prepareDebugCanvas();
 
-  const bounds = catLayoutBounds();
-  const targetFrame = Math.round(targetProgress * FRAME_COUNT) % FRAME_COUNT;
+  const bounds = catImageBounds();
+  const targetFrame = Math.round(targetFramePosition * FRAME_COUNT) % FRAME_COUNT;
 
   if (!debugEnabled) {
     if (processStage === 'angle') drawAngleProcess(targetFrame, bounds);
@@ -547,19 +547,19 @@ function drawDebug(): void {
     return;
   }
 
-  const { radius } = debugArcGeometry(bounds);
-  const targetOrigin = screenGazeOrigin(targetFrame, bounds);
-  const renderedOrigin = screenGazeOrigin(renderedFrame, bounds);
+  const { radius } = frameRingGeometry(bounds);
+  const targetEyePosition = screenEyePosition(targetFrame, bounds);
+  const displayedEyePosition = screenEyePosition(displayedFrame, bounds);
 
-  drawDebugArc(targetFrame, bounds);
-  drawGazeRay(renderedFrame, bounds, radius, 'rgba(255, 59, 114, 0.72)');
-  drawGazeRay(targetFrame, bounds, radius, 'rgba(13, 153, 255, 0.9)');
+  drawFrameRing(targetFrame, bounds);
+  drawLookDirection(displayedFrame, bounds, radius, 'rgba(255, 59, 114, 0.72)');
+  drawLookDirection(targetFrame, bounds, radius, 'rgba(13, 153, 255, 0.9)');
 
   if (pointerPosition) {
     debugContext.save();
     debugContext.setLineDash([4, 4]);
     debugContext.beginPath();
-    debugContext.moveTo(targetOrigin.x, targetOrigin.y);
+    debugContext.moveTo(targetEyePosition.x, targetEyePosition.y);
     debugContext.lineTo(pointerPosition.x, pointerPosition.y);
     debugContext.strokeStyle = 'rgba(13, 153, 255, 0.72)';
     debugContext.lineWidth = 1;
@@ -568,8 +568,8 @@ function drawDebug(): void {
     drawCircle(pointerPosition, 5, '#0d99ff', false);
   }
 
-  drawCircle(renderedOrigin, 5, '#ff3b72', false);
-  drawCircle(targetOrigin, 4, '#0d99ff');
+  drawCircle(displayedEyePosition, 5, '#ff3b72', false);
+  drawCircle(targetEyePosition, 4, '#0d99ff');
   drawDebugHud(targetFrame);
 }
 
@@ -581,14 +581,14 @@ function render(time: number): void {
 
   if (ready && !reducedMotion.matches) {
     const response = 1 - Math.pow(1 - FRAME_RESPONSE, delta / 16.67);
-    const progressDelta = wrappedProgressDelta(targetProgress, renderedProgress);
-    renderedProgress = wrapProgress(renderedProgress + progressDelta * response);
+    const framePositionDelta = shortestFramePositionDelta(targetFramePosition, displayFramePosition);
+    displayFramePosition = wrapFramePosition(displayFramePosition + framePositionDelta * response);
 
-    if (Math.abs(progressDelta) < 0.0005) {
-      renderedProgress = targetProgress;
+    if (Math.abs(framePositionDelta) < 0.0005) {
+      displayFramePosition = targetFramePosition;
     }
 
-    showFrame(Math.round(renderedProgress * FRAME_COUNT));
+    displayFrame(Math.round(displayFramePosition * FRAME_COUNT));
   }
 
   drawDebug();
@@ -653,8 +653,8 @@ async function initialize(): Promise<void> {
 
     const manifest: unknown = await response.json();
     validateManifest(manifest, artworkId);
-    gazeOriginAnchors = manifest.gazeOrigins;
-    displayScaleAnchors = manifest.displayScales;
+    eyePositionAnchors = manifest.gazeOrigins;
+    frameScaleAnchors = manifest.displayScales;
     sources = Array.from(
       { length: FRAME_COUNT },
       (_, index) => frameSource(manifest, index),
