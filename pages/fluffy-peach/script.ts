@@ -4,6 +4,7 @@ import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import backgroundFragment from './background.frag?raw';
 import bodyFragment from './body.frag?raw';
+import paletteShader from './palette.glsl?raw';
 import { motionFrames } from './motion-data';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork');
@@ -43,7 +44,9 @@ const body = new THREE.Mesh(
   shape,
   new THREE.ShaderMaterial({
     vertexShader: `varying vec3 vLocal; varying vec3 vNormal; void main() { vLocal = position; vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: bodyFragment,
+    fragmentShader: `precision highp float;
+${paletteShader}
+${bodyFragment}`,
     uniforms: bodyUniforms,
     transparent: true,
     depthWrite: true,
@@ -56,7 +59,6 @@ character.add(body);
 const HAIR_COUNT = 42000;
 const hairSeeds = new Float32Array(HAIR_COUNT * 5);
 const hairPositions = new Float32Array(HAIR_COUNT * 6);
-const hairColors = new Float32Array(HAIR_COUNT * 6);
 // Interpolated from root to tip so each strand dissolves instead of ending sharply.
 const hairTips = new Float32Array(HAIR_COUNT * 2);
 let randomState = 723981;
@@ -70,30 +72,22 @@ for (let i = 0; i < HAIR_COUNT; i++) {
   const side = Math.sqrt(1 - z * z);
   const x = Math.cos(angle) * side;
   const y = Math.sin(angle) * side;
-  const length = (2 + Math.pow(random(), 2.4) * 18) * (y > 0.2 ? 1.3 : 1);
+  const length = (2 + Math.pow(random(), 2.4) * 18) * (1 + THREE.MathUtils.smoothstep(y, -0.05, 0.5) * 0.3);
   const lean = (random() - 0.5) * 0.75;
   hairSeeds.set([x, y, z, length, lean], i * 5);
-  let color: [number, number, number] = [0.86, 0.73, 0.91];
-  if (x > 0.15) color = [1, 0.78, 0.72];
-  if (y > 0.45) color = [1, 0.89, 0.85];
-  if (x < -0.4 || y < -0.45) color = [0.66, 0.66, 0.96];
-  hairColors.set(color, i * 6);
-  hairColors.set(color, i * 6 + 3);
   hairTips[i * 2 + 1] = 1;
 }
 const hairGeometry = new THREE.BufferGeometry();
 hairGeometry.setAttribute('position', new THREE.BufferAttribute(hairPositions, 3).setUsage(THREE.DynamicDrawUsage));
-hairGeometry.setAttribute('color', new THREE.BufferAttribute(hairColors, 3));
 hairGeometry.setAttribute('fiberTip', new THREE.BufferAttribute(hairTips, 1));
 const fur = new THREE.LineSegments(hairGeometry, new THREE.ShaderMaterial({
   vertexShader: `
-    attribute vec3 color;
     attribute float fiberTip;
-    varying vec3 vFiberColor;
+    varying vec2 vFiberPosition;
     varying float vFiberTip;
     varying float vFiberHeight;
     void main() {
-      vFiberColor = color;
+      vFiberPosition = position.xy;
       vFiberTip = fiberTip;
       vFiberHeight = position.y;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -101,16 +95,20 @@ const fur = new THREE.LineSegments(hairGeometry, new THREE.ShaderMaterial({
   `,
   fragmentShader: `
     precision highp float;
-    varying vec3 vFiberColor;
+    ${paletteShader}
+    varying vec2 vFiberPosition;
     varying float vFiberTip;
     varying float vFiberHeight;
+    uniform float uCheek;
     void main() {
       float tipFade = pow(1.0 - vFiberTip, 1.7);
       float crown = smoothstep(-75.0, 95.0, vFiberHeight);
       float opacity = mix(0.09, 0.27, crown) * tipFade;
-      gl_FragColor = vec4(vFiberColor, opacity);
+      vec3 color = peachColor(vFiberPosition, uCheek);
+      gl_FragColor = vec4(clamp(color, 0.0, 1.0), opacity);
     }
   `,
+  uniforms: bodyUniforms,
   transparent: true,
   depthWrite: false,
 }));
