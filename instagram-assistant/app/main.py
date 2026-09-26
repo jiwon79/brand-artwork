@@ -7,12 +7,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .codex_classifier import classify_with_codex
 from .config import ROOT, local_token, paths
 from .db import (
-    complete_conversation,
     count_events_by_status,
-    get_event,
     get_settings,
     initialize,
     list_artworks,
@@ -27,7 +24,6 @@ from .db import (
 )
 from .instagram_client import InstagramAssistantError, instagram_service
 from .link_preview import fetch_link_preview
-from .rules import classify
 
 
 app = FastAPI(title="jiiwon.studio Instagram Assistant", docs_url=None, redoc_url=None)
@@ -77,8 +73,7 @@ def as_http_error(exc: Exception) -> HTTPException:
 @app.get("/dm", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    template = (ROOT / "static" / "index.html").read_text()
-    return template.replace("__INSTAGRAM_ASSISTANT_LOCAL_TOKEN__", TOKEN)
+    return (ROOT / "static" / "index.html").read_text()
 
 
 @app.get("/api/status")
@@ -146,8 +141,8 @@ def events(
 
 
 @app.get("/api/conversations")
-def conversations(status: str | None = None) -> list[dict[str, Any]]:
-    return list_conversations(status=status)
+def conversations() -> list[dict[str, Any]]:
+    return list_conversations()
 
 
 @app.get("/api/link-preview")
@@ -158,51 +153,6 @@ def link_preview(url: str) -> dict[str, str]:
 @app.get("/api/conversations/{thread_id}")
 def conversation(thread_id: str) -> list[dict[str, Any]]:
     return list_conversation_messages(thread_id)
-
-
-@app.post("/api/conversations/{thread_id}/complete")
-def mark_conversation_complete(
-    thread_id: str,
-    x_instagram_assistant_token: str | None = Header(default=None),
-) -> dict[str, Any]:
-    protect(x_instagram_assistant_token)
-    return {"ok": True, "updated": complete_conversation(thread_id)}
-
-
-@app.post("/api/events/classify")
-def classify_events(x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, int]:
-    protect(x_instagram_assistant_token)
-    settings = get_settings()
-    artworks = list_artworks()
-    count = 0
-    for event in list_events(status="pending", limit=200):
-        update_event(event["id"], classify(event, artworks, settings["profile_url"]).as_dict())
-        count += 1
-    return {"classified": count}
-
-
-@app.post("/api/events/{event_id}/codex")
-def codex_event(event_id: str, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
-    protect(x_instagram_assistant_token)
-    event = get_event(event_id)
-    if not event:
-        raise HTTPException(404, "Event not found")
-    try:
-        decision = classify_with_codex(event, list_artworks())
-    except Exception as exc:
-        raise as_http_error(exc) from exc
-    status_value = "ignored" if decision["action"] == "ignore" else (
-        "manual" if decision["action"] == "manual_review" else "drafted"
-    )
-    return update_event(event_id, {
-        "intent": decision["intent"],
-        "proposed_action": decision["action"],
-        "confidence": decision["confidence"],
-        "draft": decision["draft"],
-        "artwork_slug": decision["artwork_slug"],
-        "status": status_value,
-        "error": None,
-    }) or event
 
 
 @app.patch("/api/events/{event_id}/draft")

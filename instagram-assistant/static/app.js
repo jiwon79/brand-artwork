@@ -1,111 +1,49 @@
-const token = document.querySelector('meta[name="instagram-assistant-token"]').content;
-let currentCommentStatus = "active";
-let currentDmStatus = "active";
+const routes = {
+  dm: { path: "/dm", view: "dm" },
+  comment: { path: "/comment", view: "comments" },
+  work: { path: "/work", view: "artworks" },
+  setting: { path: "/setting", view: "settings" },
+};
+
 let selectedThreadId = "";
 let dmSearchQuery = "";
 let conversations = [];
 let dmSearchTimer;
 
-const routes = {
-  dm: { path: "/dm", view: "dm", hasStatus: true },
-  comment: { path: "/comment", view: "comments", hasStatus: true },
-  work: { path: "/work", view: "artworks", hasStatus: false },
-  setting: { path: "/setting", view: "settings", hasStatus: false },
-};
-
 function routeFromLocation() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  const route = Object.entries(routes).find(([, value]) => value.path === path)?.[0] || "dm";
-  const requestedStatus = new URLSearchParams(window.location.search).get("status");
-  const status = ["active", "completed", "all"].includes(requestedStatus) ? requestedStatus : "active";
-  return { route, status };
-}
-
-function routeUrl(route, status = "active") {
-  const config = routes[route];
-  return `${config.path}${config.hasStatus ? `?status=${status}` : ""}`;
+  return Object.entries(routes).find(([, value]) => value.path === path)?.[0] || "dm";
 }
 
 function applyRoute({ canonicalize = false } = {}) {
-  const { route, status } = routeFromLocation();
-  const config = routes[route];
-  if (canonicalize) {
-    const canonical = routeUrl(route, status);
-    if (`${window.location.pathname}${window.location.search}` !== canonical) history.replaceState({}, "", canonical);
+  const route = routeFromLocation();
+  if (canonicalize && `${window.location.pathname}${window.location.search}` !== routes[route].path) {
+    history.replaceState({}, "", routes[route].path);
   }
-  currentDmStatus = route === "dm" && status === "all" ? "" : route === "dm" ? status : currentDmStatus;
-  currentCommentStatus = route === "comment" && status === "all" ? "" : route === "comment" && status === "completed" ? "sent" : route === "comment" ? "active" : currentCommentStatus;
   document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node.dataset.route === route));
-  document.querySelectorAll(".view").forEach((node) => node.classList.toggle("active", node.id === config.view));
-  if (route === "dm") document.querySelectorAll(".dm-filter").forEach((node) => node.classList.toggle("active", node.dataset.status === status));
-  if (route === "comment") document.querySelectorAll(".comment-filter").forEach((node) => node.classList.toggle("active", node.dataset.status === status));
+  document.querySelectorAll(".view").forEach((node) => node.classList.toggle("active", node.id === routes[route].view));
   return route;
 }
 
-async function refreshRoute(route) {
-  if (route === "dm") await refreshConversations(false);
-  if (route === "comment") await refreshComments();
-  if (route === "work") await refreshArtworks();
-  if (route === "setting") await refreshStatus();
+async function navigate(route) {
+  history.pushState({}, "", routes[route].path);
+  applyRoute();
+  document.querySelector(`#${routes[route].view}`).scrollTop = 0;
+  await refreshRoute(route);
 }
 
-async function navigate(route, status = "active", { replace = false } = {}) {
-  history[replace ? "replaceState" : "pushState"]({}, "", routeUrl(route, status));
-  const activeRoute = applyRoute();
-  document.querySelector(`#${routes[activeRoute].view}`).scrollTop = 0;
-  await refreshRoute(activeRoute);
-}
-
-const themeToggle = document.querySelector("#theme-toggle");
-const themeMedia = matchMedia("(prefers-color-scheme: dark)");
-
-function updateThemeToggle() {
-  const dark = document.documentElement.dataset.theme === "dark";
-  themeToggle.checked = dark;
-}
-
-function applyTheme(theme) {
-  const style = document.createElement("style");
-  style.textContent = "*,*::before,*::after{transition:none !important}";
-  document.head.append(style);
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
-  void document.body.offsetHeight;
-  requestAnimationFrame(() => requestAnimationFrame(() => style.remove()));
-  updateThemeToggle();
-}
-
-themeToggle.addEventListener("change", () => {
-  const theme = themeToggle.checked ? "dark" : "light";
-  localStorage.setItem("instagram-assistant-theme", theme);
-  applyTheme(theme);
-});
-
-themeMedia.addEventListener("change", (event) => {
-  if (!localStorage.getItem("instagram-assistant-theme")) {
-    applyTheme(event.matches ? "dark" : "light");
-  }
-});
-updateThemeToggle();
-
-async function api(path, options = {}) {
-  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  if ((options.method || "GET") !== "GET") headers["X-Instagram-Assistant-Token"] = token;
-  const response = await fetch(path, { ...options, headers });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `요청 실패 (${response.status})`);
-  }
+async function api(path) {
+  const response = await fetch(path);
+  if (!response.ok) throw new Error(`조회 실패 (${response.status})`);
   return response.json();
 }
 
-function toast(message, error = false) {
+function showError(error) {
   const node = document.querySelector("#toast");
-  node.textContent = message;
-  node.classList.toggle("error-toast", error);
-  node.classList.add("show");
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => node.classList.remove("show"), 2600);
+  node.textContent = error.message || "기록을 불러오지 못했습니다.";
+  node.classList.add("error-toast", "show");
+  clearTimeout(showError.timer);
+  showError.timer = setTimeout(() => node.classList.remove("show"), 3500);
 }
 
 function escapeHtml(value = "") {
@@ -113,67 +51,10 @@ function escapeHtml(value = "") {
 }
 
 function formatTime(value, short = false) {
+  if (!value) return "기록 없음";
   return new Date(value).toLocaleString("ko-KR", short ? {
     month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
   } : undefined);
-}
-
-function intentLabel(value) {
-  return ({
-    demo_interest: "체험 요청",
-    demo_link_request: "체험 링크",
-    build_interest: "제작 문의",
-    ambiguous_build_interest: "제작 확인",
-    ambiguous_link_request: "링크 확인",
-    purchase_intent: "구매 문의",
-    needs_review: "확인 필요",
-    praise: "칭찬",
-    reaction_or_close: "반응",
-    pending: "미분류",
-    drafted: "답변 준비",
-    manual: "확인 필요",
-    sent: "완료",
-    completed: "완료",
-  })[value] || value;
-}
-
-function intentTone(value) {
-  if (["demo_interest", "demo_link_request", "ambiguous_link_request"].includes(value)) return "demo";
-  if (["build_interest", "ambiguous_build_interest"].includes(value)) return "build";
-  if (value === "purchase_intent") return "purchase";
-  if (["needs_review", "manual"].includes(value)) return "review";
-  if (["reaction_or_close", "praise", "sent", "completed"].includes(value)) return "resolved";
-  return "pending";
-}
-
-function intentBadge(value) {
-  if (!value) return "";
-  return `<span class="intent-badge intent-${intentTone(value)}">${escapeHtml(intentLabel(value))}</span>`;
-}
-
-async function refreshStatus() {
-  const data = await api("/api/status");
-  document.querySelector("#read-only").checked = data.settings.read_only_observation;
-  document.querySelector("#auto-send").checked = data.settings.auto_send;
-  document.querySelector("#auto-comment").checked = data.settings.auto_comment;
-  document.querySelector("#auto-dm").checked = data.settings.auto_dm;
-  document.querySelector("#daily-limit").value = data.settings.daily_send_limit;
-  document.querySelector("#profile-url").value = data.settings.profile_url;
-  document.querySelector("#settings-account").textContent = data.authenticated ? `@${data.settings.instagram_username || "Instagram"}` : "연결된 계정 없음";
-  document.querySelector("#settings-session-note").textContent = data.settings.halted_reason ? "세션이 중지되었습니다." : data.authenticated ? "Meta 공식 API 토큰으로 연결되어 있습니다." : "계정을 연결하면 DM과 댓글을 가져올 수 있습니다.";
-  document.querySelector("#login-open").textContent = data.authenticated ? "재연결" : "연결";
-  document.querySelector("#login-open").style.display = "inline-flex";
-  document.querySelector("#logout").style.display = data.authenticated ? "inline-flex" : "none";
-}
-
-function actionButtons(event) {
-  if (!event) return "";
-  return `
-    <div class="event-actions" data-id="${escapeHtml(event.id)}">
-      ${["manual", "pending"].includes(event.status) ? '<button class="quiet" data-action="codex">Codex 판단</button>' : ""}
-      ${event.status === "drafted" ? '<button class="quiet" data-action="save">초안 저장</button><button class="primary" data-action="send">보내기</button>' : ""}
-      ${!["sent", "ignored", "history"].includes(event.status) ? '<button class="quiet" data-action="ignore">무시</button>' : ""}
-    </div>`;
 }
 
 function safeUrl(value) {
@@ -191,59 +72,20 @@ function sharedLink(event) {
   return `<div class="shared-content"><span>공유된 콘텐츠</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
 }
 
-function urlsInText(value = "") {
-  return [...String(value).matchAll(/https?:\/\/[^\s<>"']+/g)].map((match) => {
-    const trailing = match[0].match(/[.,!?;:)}\]]+$/)?.[0] || "";
-    return { url: trailing ? match[0].slice(0, -trailing.length) : match[0], trailing };
-  }).filter((item) => safeUrl(item.url));
-}
-
-function outboundMessageBody(value) {
+function linkedMessageBody(value) {
   const text = String(value || "");
-  const links = urlsInText(text);
-  if (!links.length) return escapeHtml(text);
-  let cursor = 0;
-  return links.map(({ url, trailing }) => {
-    const index = text.indexOf(url, cursor);
-    const before = escapeHtml(text.slice(cursor, index));
-    cursor = index + url.length + trailing.length;
-    return `${before}<a class="message-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a>${escapeHtml(trailing)}`;
-  }).join("") + escapeHtml(text.slice(cursor));
+  const pattern = /https?:\/\/[^\s<>"']+/g;
+  let result = "";
+  let start = 0;
+  for (const match of text.matchAll(pattern)) {
+    const url = safeUrl(match[0]);
+    if (!url) continue;
+    result += escapeHtml(text.slice(start, match.index));
+    result += `<a class="message-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(match[0])}</a>`;
+    start = match.index + match[0].length;
+  }
+  return result + escapeHtml(text.slice(start));
 }
-
-function outboundLinkPreviews(value) {
-  const urls = [...new Set(urlsInText(value).map((item) => item.url))];
-  return urls.map((url) => `<a class="link-preview" data-preview-url="${escapeHtml(url)}" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" hidden></a>`).join("");
-}
-
-async function hydrateLinkPreviews(root) {
-  await Promise.all([...root.querySelectorAll("[data-preview-url]")].map(async (preview) => {
-    try {
-      const data = await api(`/api/link-preview?url=${encodeURIComponent(preview.dataset.previewUrl)}`);
-      const imageUrl = safeUrl(data.image_url);
-      if (!imageUrl) return;
-      const image = new Image();
-      image.alt = data.title ? `${data.title} 미리보기` : "링크 미리보기";
-      image.referrerPolicy = "no-referrer";
-      image.src = imageUrl;
-      image.addEventListener("load", () => {
-        const scroll = preview.closest(".chat-messages");
-        const wasAtBottom = scroll && scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop < 40;
-        preview.append(image);
-        preview.hidden = false;
-        if (wasAtBottom) requestAnimationFrame(() => { scroll.scrollTop = scroll.scrollHeight; });
-      }, { once: true });
-    } catch {
-      // The link remains usable when preview metadata is unavailable.
-    }
-  }));
-}
-
-function commentHeart(event, compact = false) {
-  return `<span class="comment-heart ${compact ? "compact" : ""}" title="댓글 하트는 Instagram에서 직접 관리하세요">♡<span>${event.like_count ?? 0}</span></span>`;
-}
-
-function dmHeart() { return ""; }
 
 function postReference(event) {
   const fallback = event.post_code ? `https://www.instagram.com/p/${encodeURIComponent(event.post_code)}/` : "";
@@ -253,10 +95,14 @@ function postReference(event) {
   return `<a class="post-reference" href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><span>게시물</span><strong>${escapeHtml(caption)}</strong><span aria-hidden="true">↗</span></a>`;
 }
 
+function commentHeart(event, compact = false) {
+  return `<span class="comment-heart ${compact ? "compact" : ""}" aria-label="좋아요 ${event.like_count ?? 0}개">♡<span>${event.like_count ?? 0}</span></span>`;
+}
+
 function commentReplies(event) {
   if (!event.replies?.length) return "";
   return `<div class="comment-replies">${event.replies.map((reply) => `
-    <div class="comment-reply ${reply.direction === "outbound" ? "mine" : ""}" data-id="${escapeHtml(reply.id)}">
+    <div class="comment-reply ${reply.direction === "outbound" ? "mine" : ""}">
       <div class="reply-meta"><strong>${reply.direction === "outbound" ? "내 답글" : escapeHtml(reply.author_username || "알 수 없음")}</strong><span>${formatTime(reply.received_at, true)}</span></div>
       <p>${escapeHtml(reply.body)}</p>
       ${commentHeart(reply, true)}
@@ -264,22 +110,17 @@ function commentReplies(event) {
 }
 
 async function refreshComments() {
-  const query = currentCommentStatus ? `&status=${currentCommentStatus}` : "";
-  const events = await api(`/api/events?kind=comment&limit=500${query}`);
-  const root = document.querySelector("#events");
-  root.innerHTML = events.map((event) => `
-    <article class="event" data-id="${escapeHtml(event.id)}">
+  const events = await api("/api/events?kind=comment&limit=500");
+  document.querySelector("#events").innerHTML = events.map((event) => `
+    <article class="event">
       <div class="event-top">
-        <div class="event-meta"><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${formatTime(event.received_at, true)}</span><span class="badge">${escapeHtml(intentLabel(event.intent || event.status))}</span></div>
+        <div class="event-meta"><strong>${escapeHtml(event.author_username || "알 수 없음")}</strong><span>${formatTime(event.received_at, true)}</span></div>
         <div class="comment-state">${commentHeart(event)}</div>
       </div>
       ${postReference(event)}
       <p class="event-body">${escapeHtml(event.body)}</p>
       ${commentReplies(event)}
-      ${event.status === "drafted" && event.draft ? `<textarea class="draft">${escapeHtml(event.draft)}</textarea>` : ""}
-      ${actionButtons(event)}
-    </article>
-  `).join("");
+    </article>`).join("");
   document.querySelector("#empty-events").style.display = events.length ? "none" : "block";
 }
 
@@ -287,33 +128,26 @@ function normalizeUsername(value) {
   return String(value || "").trim().replace(/^@/, "").toLocaleLowerCase();
 }
 
-async function renderConversations(keepSelection = true, fallbackIndex = 0, skipThreadId = "") {
+async function renderConversations(keepSelection = true) {
   const query = normalizeUsername(dmSearchQuery);
   const visible = query
     ? conversations.filter((item) => normalizeUsername(item.username).includes(query))
     : conversations;
   if (!keepSelection || !visible.some((item) => item.thread_id === selectedThreadId)) {
-    let index = Math.min(Math.max(fallbackIndex, 0), Math.max(visible.length - 1, 0));
-    if (visible[index]?.thread_id === skipThreadId) {
-      index = index + 1 < visible.length ? index + 1 : Math.max(index - 1, 0);
-    }
-    selectedThreadId = visible[index]?.thread_id || "";
+    selectedThreadId = visible[0]?.thread_id || "";
   }
-  const emptyMessage = query ? "일치하는 아이디가 없습니다." : "아직 DM 대화가 없습니다.";
   document.querySelector("#conversation-list").innerHTML = visible.map((item) => `
     <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
-      <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong>${intentBadge(item.classification)}</span>
+      <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong></span>
       <span class="conversation-preview">${escapeHtml(item.latest_body || "메시지 내용 없음")}</span>
       <time>${formatTime(item.latest_at, true)}</time>
-    </button>
-  `).join("") || `<p class="empty compact">${emptyMessage}</p>`;
+    </button>`).join("") || `<p class="empty compact">${query ? "일치하는 아이디가 없습니다." : "아직 DM 대화가 없습니다."}</p>`;
   await refreshChat();
 }
 
-async function refreshConversations(keepSelection = true, fallbackIndex = 0, skipThreadId = "") {
-  const query = currentDmStatus ? `?status=${currentDmStatus}` : "";
-  conversations = await api(`/api/conversations${query}`);
-  await renderConversations(keepSelection, fallbackIndex, skipThreadId);
+async function refreshConversations(keepSelection = true) {
+  conversations = await api("/api/conversations");
+  await renderConversations(keepSelection);
 }
 
 async function refreshChat() {
@@ -323,36 +157,23 @@ async function refreshChat() {
     return;
   }
   const messages = await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}`);
-  const username = [...messages].reverse().find((item) => item.direction === "inbound" && item.author_username)?.author_username || "알 수 없음";
-  const lastResolutionIndex = messages.findLastIndex((item) => (
-    item.direction === "outbound" || (item.direction === "inbound" && item.has_liked)
-  ));
-  const target = [...messages].reverse().find((item, reverseIndex) => {
-    const index = messages.length - reverseIndex - 1;
-    return index > lastResolutionIndex && item.direction === "inbound" && ["pending", "drafted", "manual"].includes(item.status);
-  });
+  const selected = conversations.find((item) => item.thread_id === selectedThreadId);
+  const username = selected?.username || [...messages].reverse().find((item) => item.direction === "inbound" && item.author_username)?.author_username || "알 수 없음";
+  const profile = `https://www.instagram.com/${encodeURIComponent(username)}/`;
   panel.innerHTML = `
-    <header class="chat-header"><button class="chat-back" data-action="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div class="chat-identity"><div class="chat-title-row"><strong>${escapeHtml(username)}</strong>${intentBadge(target?.intent || target?.status)}</div><span>${messages.length}개 메시지</span></div><div class="chat-header-actions">${target ? '<button class="complete-conversation" data-action="complete-conversation">완료</button>' : ""}<a href="https://www.instagram.com/${escapeHtml(username)}/" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
-    <div class="chat-messages">
-      ${messages.map((message) => `
-        <div class="message-row ${message.direction}" data-id="${escapeHtml(message.id)}">
-          ${message.direction === "outbound" ? dmHeart(message) : ""}
-          <div class="message-bubble">
-            ${message.body ? `<p>${message.direction === "outbound" ? outboundMessageBody(message.body) : escapeHtml(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
-            ${message.direction === "outbound" ? outboundLinkPreviews(message.body) : ""}
-            ${sharedLink(message)}
-            <time>${formatTime(message.received_at, true)}</time>
-          </div>
-          ${message.direction === "inbound" ? dmHeart(message) : ""}
+    <header class="chat-header"><button class="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div class="chat-identity"><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><div class="chat-header-actions"><a href="${profile}" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
+    <div class="chat-messages">${messages.map((message) => `
+      <div class="message-row ${message.direction}">
+        <div class="message-bubble">
+          ${message.body ? `<p>${linkedMessageBody(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
+          ${sharedLink(message)}
+          <time>${formatTime(message.received_at, true)}</time>
         </div>
-      `).join("")}
-    </div>
-  `;
+      </div>`).join("")}</div>`;
   requestAnimationFrame(() => {
     const scroll = panel.querySelector(".chat-messages");
     if (scroll) scroll.scrollTop = scroll.scrollHeight;
   });
-  hydrateLinkPreviews(panel);
 }
 
 async function refreshArtworks() {
@@ -362,157 +183,52 @@ async function refreshArtworks() {
   `).join("") || '<p class="empty">등록된 작품이 없습니다.</p>';
 }
 
-async function refreshAll() {
-  await Promise.all([refreshStatus(), refreshComments(), refreshArtworks(), refreshConversations()]);
+async function refreshStatus() {
+  const data = await api("/api/status");
+  const account = data.settings.instagram_username;
+  document.querySelector("#settings-account").textContent = data.authenticated && account ? `@${account}` : "연결된 계정 없음";
+  document.querySelector("#settings-session-note").textContent = data.authenticated ? "Meta 공식 API 인증 정보가 저장돼 있습니다." : "Codex에서 계정을 연결해야 합니다.";
+  document.querySelector("#last-sync").textContent = formatTime(data.settings.last_sync_at);
 }
 
-async function runEventAction(container, clicked) {
-  const action = clicked.dataset.action;
-  if (!action) return false;
-  const actionRoot = clicked.closest(".event-actions");
-  const id = encodeURIComponent(actionRoot.dataset.id);
-  const draft = container.querySelector(".draft");
-  if (action === "save") await api(`/api/events/${id}/draft`, { method: "PATCH", body: JSON.stringify({ draft: draft.value }) });
-  if (action === "codex") await api(`/api/events/${id}/codex`, { method: "POST" });
-  if (action === "ignore") await api(`/api/events/${id}/ignore`, { method: "POST" });
-  if (action === "send") {
-    await api(`/api/events/${id}/draft`, { method: "PATCH", body: JSON.stringify({ draft: draft.value }) });
-    await api(`/api/events/${id}/send`, { method: "POST" });
-  }
-  toast(action === "send" ? "전송했습니다." : "반영했습니다.");
-  return true;
+async function refreshRoute(route) {
+  if (route === "dm") await refreshConversations();
+  if (route === "comment") await refreshComments();
+  if (route === "work") await refreshArtworks();
+  if (route === "setting") await refreshStatus();
 }
 
-document.querySelectorAll(".tab").forEach((link) => link.addEventListener("click", async (event) => {
-  event.preventDefault();
-  await navigate(link.dataset.route);
-}));
-
-document.querySelectorAll(".comment-filter").forEach((button) => button.addEventListener("click", async () => {
-  await navigate("comment", button.dataset.status);
-}));
-
-document.querySelectorAll(".dm-filter").forEach((button) => button.addEventListener("click", async () => {
-  document.querySelector("#dm-inbox").classList.remove("chat-open");
-  await navigate("dm", button.dataset.status);
-}));
-
-window.addEventListener("popstate", async () => {
-  const route = applyRoute({ canonicalize: true });
-  await refreshRoute(route);
+const themeToggle = document.querySelector("#theme-toggle");
+themeToggle.checked = document.documentElement.dataset.theme === "dark";
+themeToggle.addEventListener("change", () => {
+  const theme = themeToggle.checked ? "dark" : "light";
+  localStorage.setItem("instagram-assistant-theme", theme);
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
 });
 
+document.querySelectorAll(".tab").forEach((link) => link.addEventListener("click", (event) => {
+  event.preventDefault();
+  navigate(link.dataset.route).catch(showError);
+}));
+window.addEventListener("popstate", () => refreshRoute(applyRoute({ canonicalize: true })).catch(showError));
 document.querySelector("#dm-search").addEventListener("input", (event) => {
   dmSearchQuery = event.currentTarget.value;
   clearTimeout(dmSearchTimer);
-  dmSearchTimer = setTimeout(() => renderConversations(), 100);
+  dmSearchTimer = setTimeout(() => renderConversations().catch(showError), 100);
 });
-
-document.querySelector("#conversation-list").addEventListener("click", async (event) => {
+document.querySelector("#conversation-list").addEventListener("click", (event) => {
   const item = event.target.closest(".conversation-item");
   if (!item) return;
   selectedThreadId = item.dataset.threadId;
   document.querySelectorAll(".conversation-item").forEach((node) => node.classList.toggle("active", node === item));
-  await refreshChat();
-  document.querySelector("#dm-inbox").classList.add("chat-open");
+  refreshChat().then(() => document.querySelector("#dm-inbox").classList.add("chat-open")).catch(showError);
+});
+document.querySelector("#chat-panel").addEventListener("click", (event) => {
+  if (event.target.closest(".chat-back")) document.querySelector("#dm-inbox").classList.remove("chat-open");
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshRoute(routeFromLocation()).catch(showError);
 });
 
-document.querySelector("#sync").addEventListener("click", async (event) => {
-  const button = event.currentTarget;
-  button.disabled = true;
-  button.setAttribute("aria-busy", "true");
-  button.innerHTML = '<span class="button-spinner" aria-hidden="true"></span><span>동기화 중</span>';
-  try {
-    const result = await api("/api/sync", { method: "POST" });
-    const dmMode = result.dm_full_sync ? "DM 전체 가져오기 완료" : `새 DM ${result.dms}`;
-    const requestMode = result.dm_requests_full_sync ? "요청함 전체 가져오기 완료 · " : "";
-    toast(`${requestMode}${dmMode} · 새 댓글 ${result.comments} · 새 대댓글 ${result.comment_replies || 0}`);
-    await refreshAll();
-  } catch (error) {
-    toast(error.message, true);
-  } finally {
-    button.disabled = false;
-    button.removeAttribute("aria-busy");
-    button.textContent = "동기화";
-  }
-});
-
-document.querySelector("#classify").addEventListener("click", async () => {
-  try {
-    const result = await api("/api/events/classify", { method: "POST" });
-    toast(`${result.classified}개 항목을 분류했습니다.`);
-    await refreshAll();
-  } catch (error) { toast(error.message, true); }
-});
-
-document.querySelector("#events").addEventListener("click", async (event) => {
-  try {
-    const card = event.target.closest(".comment-reply") || event.target.closest(".event");
-    if (await runEventAction(card, event.target)) await refreshAll();
-  }
-  catch (error) { toast(error.message, true); }
-});
-
-document.querySelector("#chat-panel").addEventListener("click", async (event) => {
-  try {
-    if (event.target.closest('[data-action="chat-back"]')) {
-      document.querySelector("#dm-inbox").classList.remove("chat-open");
-      return;
-    }
-    const complete = event.target.closest('[data-action="complete-conversation"]');
-    if (complete) {
-      const items = [...document.querySelectorAll(".conversation-item")];
-      const currentIndex = Math.max(items.findIndex((item) => item.dataset.threadId === selectedThreadId), 0);
-      const completedThreadId = selectedThreadId;
-      complete.disabled = true;
-      complete.setAttribute("aria-busy", "true");
-      await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}/complete`, { method: "POST" });
-      toast("대화를 완료로 옮겼습니다.");
-      await refreshConversations(false, currentIndex, completedThreadId);
-      document.querySelector("#dm-inbox").classList.toggle("chat-open", Boolean(selectedThreadId));
-      return;
-    }
-    if (await runEventAction(event.target.closest(".chat-panel"), event.target)) await refreshAll();
-  }
-  catch (error) { toast(error.message, true); }
-});
-
-document.querySelector("#login-open").addEventListener("click", async () => {
-  try {
-    const result = await api("/api/auth/url", { method: "POST" });
-    window.location.assign(result.url);
-  } catch (error) { toast(error.message, true); }
-});
-
-document.querySelector("#logout").addEventListener("click", async () => {
-  try { await api("/api/logout", { method: "POST" }); toast("연결을 해제했습니다."); await refreshAll(); }
-  catch (error) { toast(error.message, true); }
-});
-
-const artworkDialog = document.querySelector("#artwork-dialog");
-document.querySelector("#add-artwork").addEventListener("click", () => artworkDialog.showModal());
-document.querySelector("#artwork-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const values = Object.fromEntries(new FormData(event.target));
-  try { await api("/api/artworks", { method: "POST", body: JSON.stringify(values) }); event.target.reset(); artworkDialog.close(); toast("작품을 저장했습니다."); await refreshArtworks(); }
-  catch (error) { toast(error.message, true); }
-});
-
-document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
-
-document.querySelector("#save-settings").addEventListener("click", async () => {
-  try {
-    await api("/api/settings", { method: "PATCH", body: JSON.stringify({
-      profile_url: document.querySelector("#profile-url").value,
-      daily_send_limit: Number(document.querySelector("#daily-limit").value),
-      read_only_observation: document.querySelector("#read-only").checked,
-      auto_send: document.querySelector("#auto-send").checked,
-      auto_comment: document.querySelector("#auto-comment").checked,
-      auto_dm: document.querySelector("#auto-dm").checked,
-    }) });
-    toast("설정을 저장했습니다."); await refreshStatus();
-  } catch (error) { toast(error.message, true); }
-});
-
-applyRoute({ canonicalize: true });
-refreshAll().catch((error) => toast(error.message, true));
+refreshRoute(applyRoute({ canonicalize: true })).catch(showError);

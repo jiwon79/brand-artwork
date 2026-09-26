@@ -414,7 +414,7 @@ def delete_event(event_id: str) -> bool:
     return cursor.rowcount > 0
 
 
-def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
+def list_conversations() -> list[dict[str, Any]]:
     account_id = get_settings().get("instagram_account_id")
     with connect() as conn:
         rows = conn.execute(
@@ -432,36 +432,11 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
             "latest_body": item["body"],
             "latest_at": item["received_at"],
             "message_count": 0,
-            "has_actionable": False,
-            "classification": None,
-            "_latest_inbound_classification": None,
-            "_has_newer_resolution": False,
         })
         conversation["message_count"] += 1
-        if item["direction"] == "outbound":
-            conversation["_has_newer_resolution"] = True
-        elif item["has_liked"]:
-            conversation["_has_newer_resolution"] = True
-        elif (
-            item["status"] in {"pending", "drafted", "manual"}
-            and not conversation["_has_newer_resolution"]
-        ):
-            if not conversation["has_actionable"]:
-                conversation["classification"] = item["intent"] or item["status"]
-            conversation["has_actionable"] = True
         if item["direction"] == "inbound" and item["author_username"]:
             conversation["username"] = conversation["username"] or item["author_username"]
-        if item["direction"] == "inbound" and conversation["_latest_inbound_classification"] is None:
-            conversation["_latest_inbound_classification"] = item["intent"] or item["status"]
-    items = list(conversations.values())
-    for item in items:
-        item.pop("_has_newer_resolution", None)
-        item["classification"] = item["classification"] or item.pop("_latest_inbound_classification", None)
-    if status == "active":
-        return [item for item in items if item["has_actionable"]]
-    if status == "completed":
-        return [item for item in items if not item["has_actionable"]]
-    return items
+    return list(conversations.values())
 
 
 def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
@@ -474,19 +449,6 @@ def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
             (thread_id, account_id, account_id),
         ).fetchall()
     return [dict(row) for row in rows]
-
-
-def complete_conversation(thread_id: str) -> int:
-    account_id = get_settings().get("instagram_account_id")
-    with connect() as conn:
-        cursor = conn.execute(
-            "UPDATE events SET status='completed', proposed_action='complete', updated_at=? "
-            "WHERE kind='dm' AND thread_id=? AND (? = '' OR account_id=?) "
-            "AND direction='inbound' "
-            "AND status IN ('pending', 'drafted', 'manual')",
-            (now(), thread_id, account_id, account_id),
-        )
-    return cursor.rowcount
 
 
 def update_event(event_id: str, values: dict[str, Any]) -> dict[str, Any] | None:

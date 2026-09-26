@@ -77,15 +77,11 @@ def test_conversations_group_messages_and_preserve_order(tmp_path: Path, monkeyp
         },
     ):
         db.upsert_event(item)
-    db.update_event("dm:1", {"intent": "demo_link_request"})
     conversations = db.list_conversations()
     assert conversations[0]["username"] == "someone"
     assert conversations[0]["message_count"] == 2
     assert conversations[0]["latest_body"] == "여기 있어요"
-    assert conversations[0]["has_actionable"] is False
-    assert conversations[0]["classification"] == "demo_link_request"
-    assert db.list_conversations(status="active") == []
-    assert db.list_conversations(status="completed")[0]["thread_id"] == "thread-1"
+    assert "classification" not in conversations[0]
     messages = db.list_conversation_messages("thread-1")
     assert [item["direction"] for item in messages] == ["inbound", "outbound"]
 
@@ -103,45 +99,6 @@ def test_existing_dm_is_enriched_with_heart_state(tmp_path: Path, monkeypatch):
     saved = db.get_event("dm:1")
     assert saved["has_liked"] == 1
     assert saved["like_count"] == 1
-
-
-def test_viewer_heart_completes_dm_until_a_new_message_arrives(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
-    monkeypatch.setattr(config.paths, "data", tmp_path)
-    db.initialize()
-    db.upsert_event({
-        "id": "dm:1", "kind": "dm", "source_id": "1", "thread_id": "thread-1",
-        "author_username": "someone", "direction": "inbound", "body": "감사합니다",
-        "has_liked": True, "like_count": 1,
-        "received_at": "2026-09-15T01:00:00+00:00",
-    })
-    assert db.list_conversations(status="active") == []
-    assert db.list_conversations(status="completed")[0]["thread_id"] == "thread-1"
-
-    db.upsert_event({
-        "id": "dm:2", "kind": "dm", "source_id": "2", "thread_id": "thread-1",
-        "author_username": "someone", "direction": "inbound", "body": "하나만 더 물어볼게요",
-        "received_at": "2026-09-15T01:01:00+00:00",
-    })
-    assert db.list_conversations(status="active")[0]["thread_id"] == "thread-1"
-
-
-def test_conversation_can_be_marked_complete(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
-    monkeypatch.setattr(config.paths, "data", tmp_path)
-    db.initialize()
-    for index, status in enumerate(("pending", "drafted", "manual"), start=1):
-        db.upsert_event({
-            "id": f"dm:{index}", "kind": "dm", "source_id": str(index),
-            "thread_id": "thread-1", "author_username": "someone",
-            "direction": "inbound", "body": status, "status": status,
-            "received_at": f"2026-09-15T01:0{index}:00+00:00",
-        })
-
-    assert db.complete_conversation("thread-1") == 3
-    assert db.list_conversations(status="active") == []
-    assert db.list_conversations(status="completed")[0]["thread_id"] == "thread-1"
-    assert {item["status"] for item in db.list_conversation_messages("thread-1")} == {"completed"}
 
 
 def test_existing_event_is_enriched_with_shared_url(tmp_path: Path, monkeypatch):
