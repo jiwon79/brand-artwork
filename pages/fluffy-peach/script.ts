@@ -86,12 +86,13 @@ ${furShellVertex}`,
 });
 
 // Camera-facing tapered ribbons stay legible at the silhouette while rotating.
-const FIBER_COUNT = 14000;
+const FIBER_COUNT = 20000;
 const fiberSeeds = new Float32Array(FIBER_COUNT * 5);
 const fiberRoots = new Float32Array(FIBER_COUNT * 3);
 const fiberTips = new Float32Array(FIBER_COUNT * 3);
 const fiberDirections = new Float32Array(FIBER_COUNT * 3);
 const fiberWidths = new Float32Array(FIBER_COUNT);
+const fiberBends = new Float32Array(FIBER_COUNT);
 let randomState = 723981;
 function random() {
   randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
@@ -103,11 +104,14 @@ for (let i = 0; i < FIBER_COUNT; i++) {
   const side = Math.sqrt(1 - z * z);
   const x = Math.cos(angle) * side;
   const y = Math.sin(angle) * side;
-  const length = (7 + Math.pow(random(), 1.15) * 26) * (1 + THREE.MathUtils.smoothstep(y, -0.1, 0.55) * 0.36);
-  const lean = (random() - 0.5) * 0.65;
+  const guardHair = random() < 0.17;
+  const length = (guardHair ? 16 + Math.pow(random(), 1.1) * 15 : 7 + Math.pow(random(), 0.7) * 17)
+    * (1 + THREE.MathUtils.smoothstep(y, -0.1, 0.55) * 0.26);
+  const lean = (random() - 0.5) * 0.82;
   fiberSeeds.set([x, y, z, length, lean], i * 5);
   fiberDirections.set([x, y, z], i * 3);
-  fiberWidths[i] = 0.58 + random() * 0.34;
+  fiberWidths[i] = 0.46 + random() * 0.26;
+  fiberBends[i] = (random() - 0.5) * 4.5 * Math.min(1, length / 25);
 }
 const fiberGeometry = new THREE.InstancedBufferGeometry();
 const fiberStations = [0, 0.22, 0.48, 0.73, 1];
@@ -124,6 +128,7 @@ fiberGeometry.setAttribute('instanceRoot', fiberRootAttribute);
 fiberGeometry.setAttribute('instanceTip', fiberTipAttribute);
 fiberGeometry.setAttribute('instanceDirection', new THREE.InstancedBufferAttribute(fiberDirections, 3));
 fiberGeometry.setAttribute('instanceWidth', new THREE.InstancedBufferAttribute(fiberWidths, 1));
+fiberGeometry.setAttribute('instanceBend', new THREE.InstancedBufferAttribute(fiberBends, 1));
 fiberGeometry.instanceCount = FIBER_COUNT;
 fiberGeometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 300);
 const fur = new THREE.Mesh(fiberGeometry, new THREE.ShaderMaterial({
