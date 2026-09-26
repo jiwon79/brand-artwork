@@ -119,9 +119,10 @@ Vibe의 **외부 공유**에는 독자가 직접 따라 만들 수 있는 제작
 | Color Text | [Color Text — 글자에서 액체가 흐르는 포스터 만들기](https://app.notion.com/p/3d6a89f7e31a816d9fd2ca03d39bac36) | 세 단계 제작 프롬프트, 참고 사진과 포스터 문구 |
 | Body Echo | [Body Echo — 몸의 선을 당기고 파동으로 흩뜨리기](https://app.notion.com/p/3d6a89f7e31a8124a56cc44c7e1e3ae4) | 세 단계 제작 프롬프트, 참고 사진과 인체 SVG 에셋 |
 | Line Pull | [Line Pull — 선 사이에 숨겨진 자기소개 만들기](https://app.notion.com/p/3d6a89f7e31a81418657d9a7aeaf1b21) | 세 단계 제작 프롬프트, 참고 사진과 폰트·표면 질감 에셋 |
+| Smile Flower | [웃음꽃 제작 안내](https://app.notion.com/p/3d9a89f7e31a818cb561dc1bf4d8142d) | 시작하기 PDF에서 연결되는 제작 프롬프트와 참고 자료 |
 | Rose Glass | [Rose Glass — 장밋빛 유리 만들기](https://app.notion.com/p/3e3a89f7e31a815c8059faa903ba0630) | 준비·형태·정지 재질·조명·드래그 단계 프롬프트, 4K 렌더·설정 JSON·시작하기 PDF·전체 자료 ZIP |
 
-위 목록은 2026-09-22에 Vibe와 외부 공유 페이지에서 확인했다. 첨부 자료의 준비 상태와 최신 내용은 각 Notion 페이지에서 확인한다. 새 작품은 Vibe 아래 기존 페이지를 먼저 찾고, 확인한 주소만 이 목록에 추가한다.
+위 목록의 페이지 주소는 2026-09-26에 다시 확인했다. 첨부 자료의 준비 상태와 최신 내용은 각 Notion 페이지에서 확인한다. 새 작품은 Vibe 아래 기존 페이지를 먼저 찾고, 확인한 주소만 이 목록에 추가한다.
 
 ## Placement Rules
 
