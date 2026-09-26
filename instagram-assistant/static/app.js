@@ -187,7 +187,6 @@ async function refreshStatus() {
   const data = await api("/api/status");
   const account = data.settings.instagram_username;
   document.querySelector("#settings-account").textContent = data.authenticated && account ? `@${account}` : "연결된 계정 없음";
-  document.querySelector("#settings-session-note").textContent = data.authenticated ? "Meta 공식 API 인증 정보가 저장돼 있습니다." : "Codex에서 계정을 연결해야 합니다.";
   document.querySelector("#last-sync").textContent = formatTime(data.settings.last_sync_at);
 }
 

@@ -23,12 +23,10 @@
         <a class="tab" data-route="work" href="/work">작품</a>
         <a class="tab" data-route="setting" href="/setting">상태</a>
       </nav>
-      <span class="read-only-label">조회 전용</span>
     </header>
 
     <section id="dm" class="view active">
       <div class="view-toolbar">
-        <div class="section-heading"><div><h2>DM 내역</h2><p>공식 API로 가져온 대화를 확인합니다.</p></div></div>
         <label class="dm-search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
           <input id="dm-search" type="search" placeholder="아이디 검색" aria-label="Instagram 아이디 검색" autocomplete="off" autocapitalize="none" spellcheck="false">
@@ -41,31 +39,26 @@
     </section>
 
     <section id="comments" class="view">
-      <div class="section-heading"><h2>댓글 내역</h2><p>원댓글과 확인된 답글을 함께 표시합니다.</p></div>
       <div id="events" class="event-list"></div>
       <p id="empty-events" class="empty">아직 가져온 댓글이 없습니다.</p>
     </section>
 
     <section id="artworks" class="view">
-      <div class="section-heading"><h2>작품 링크</h2><p>저장된 게시물과 체험·구매 링크입니다.</p></div>
       <div id="artwork-list" class="artwork-list"></div>
     </section>
 
     <section id="settings" class="view">
-      <div class="section-heading settings-heading"><h2>연결 상태</h2><p>계정 연결과 마지막 동기화 시각을 확인합니다.</p></div>
       <div class="settings-card">
         <section class="settings-section account-section">
           <div class="account-row">
             <span class="account-mark" aria-hidden="true">IG</span>
-            <div class="account-copy"><strong id="settings-account">연결 확인 중</strong><span id="settings-session-note">상태를 확인하고 있습니다.</span></div>
+            <div class="account-copy"><strong id="settings-account">연결 확인 중</strong></div>
           </div>
         </section>
         <section class="settings-section status-section">
           <div><strong>마지막 동기화</strong><span id="last-sync">확인 중</span></div>
-          <p>새 기록 가져오기와 Instagram 조작은 Codex에서 진행합니다.</p>
         </section>
         <section class="settings-section">
-          <div class="settings-section-head"><div><h3>화면</h3><p>화면 밝기만 이 기기에서 변경합니다.</p></div></div>
           <label class="setting-row">
             <span class="setting-copy"><strong>다크 모드</strong></span>
             <input id="theme-toggle" class="switch" type="checkbox" aria-label="다크 모드">
@@ -76,6 +69,6 @@
   </main>
 
   <div id="toast" role="status"></div>
-  <script src="/static/app.js?v=read-only-1"></script>
+  <script src="/static/app.js?v=viewer-2"></script>
 </body>
 </html>

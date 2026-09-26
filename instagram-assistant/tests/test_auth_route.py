@@ -20,7 +20,9 @@ def test_viewer_does_not_expose_mutation_token_or_controls():
     assert page.status_code == 200
     assert main.TOKEN not in page.text
     assert "instagram-assistant-token" not in page.text
-    assert "조회 전용" in page.text
+    assert "조회 전용" not in page.text
+    assert "DM 내역" not in page.text
+    assert "댓글 내역" not in page.text
     assert "보내기" not in page.text
     assert script.status_code == 200
     assert "X-Instagram-Assistant-Token" not in script.text

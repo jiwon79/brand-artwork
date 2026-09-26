@@ -22,7 +22,7 @@ The app binds to `127.0.0.1:4318`. `INSTAGRAM_ASSISTANT_DATA` overrides the shar
 - Starts in observation mode. New OAuth connections reset automatic sending to off. Codex prepares and sends only the individual replies approved for that batch.
 - Comments are sent with `POST /{comment_id}/replies`, not `POST /{media_id}/comments`. Before sending, the assistant checks the parent's replies for an existing account reply. After sending, it looks for the returned reply ID under that parent. An uncertain result is left for manual review and is never automatically retried.
 - DM replies use the official Send API and require an Instagram-scoped sender ID. Meta only allows supported conversations and messages; historical request-folder messages may not all be available through the API.
-- The official comment API does not expose a comment-like action. Comment hearts remain a manual Instagram action. DM hearts are also disabled in this version.
+- The official comment API does not expose a comment-like action. Comment hearts remain an Instagram UI action. Meta documents an official DM message reaction endpoint, but this service has not connected it yet; DM reactions are currently unavailable here.
 - Legacy events remain in SQLite for history, but can only be sent if their account ID matches the active official connection. Events without a verified account ID cannot be sent.
 - Daily send limit defaults to 20. Meta API limit responses halt sending.
 
@@ -37,4 +37,4 @@ uv run pytest
 
 For a single read-only sync: `uv run python -m app.worker`. This command never classifies or sends replies.
 
-Meta references: [Instagram API with Instagram Login](https://www.postman.com/meta/instagram/folder/6raa77c/instagram-api-with-instagram-login), [comment moderation](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/comment-moderation), [Conversations API](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/conversations-api).
+Meta references: [Instagram API with Instagram Login](https://www.postman.com/meta/instagram/folder/6raa77c/instagram-api-with-instagram-login), [comment moderation](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/comment-moderation), [Conversations API](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/conversations-api), [DM message reactions](https://www.postman.com/meta/instagram/request/baztwvm/react-or-unreact-to-a-message).
