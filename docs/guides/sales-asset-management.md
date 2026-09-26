@@ -6,14 +6,16 @@
 
 | 상품 | Drive 위치 | 현재 확인 상태 |
 | --- | --- | --- |
-| 구슬 | [01-Guseul](https://drive.google.com/drive/folders/1OAjg42UOb9mR4Rd9_Kh_bH3Oni3w3VMY) | 배포 ZIP과 시작하기 PDF 확인 |
-| 녹는 글자 | [02-Color Text](https://drive.google.com/drive/folders/1dH-gP9tTjl7-CZP6ZBEpWQsnHQfpINP0) | 배포 ZIP과 시작하기 PDF 확인 |
-| 잔상 | [03-Body Echo](https://drive.google.com/drive/folders/1kBx-PO8oWL6fFp1jos-HUSRkVxnQ-t3R) | 배포 ZIP과 시작하기 PDF 확인 |
-| 틈 | [04-Line Pull](https://drive.google.com/drive/folders/1pY6aXhCqG9yrbdGAXJTM1aI-gz_pBKuJ) | 배포 ZIP과 시작하기 PDF 확인 |
-| 고양이 | [05-Cursor Cat](https://drive.google.com/drive/folders/1Qf7x9pCBrqi-NiCCOoG7eNU0oK1K9jTu) | 배포 ZIP과 시작하기 PDF 확인 |
-| 웃음꽃 | [05-Smile Flower](https://drive.google.com/drive/folders/1MbLp2Qxt3SaZ1sCM9DC3gbys5yX6u2sR) | 보낸 메일의 `smile-flower.zip` 원본, 관리원본 11개 파일 확인. 리틀리 첨부본과 바이트 단위 동일성은 미확인 |
-| Rose Glass 제작 자료 | [06-Rose Glass](https://drive.google.com/drive/folders/1Oj-eYXYP0MhPlsViMnHw_8wTmGO5cf7Y) | 관리원본 39개 파일, 배포 ZIP 확인. 리틀리 첨부본과 바이트 단위 동일성은 미확인 |
-| Rose Glass 4K 배경화면 5종 | [배경화면 상품](https://drive.google.com/drive/folders/1-ATjsyTmt4nMqlhI5Dyf1YjdC-rqVTLY) | 관리원본 PNG 5개, 배포 ZIP 확인 |
+| 구슬 | [01-Guseul](https://drive.google.com/drive/folders/1OAjg42UOb9mR4Rd9_Kh_bH3Oni3w3VMY) | 리틀리 ZIP과 Drive ZIP의 `시작하기.pdf`만 다름. 본문은 같고 링크는 동일한 Notion 페이지 ID를 다른 도메인으로 가리킴 |
+| 녹는 글자 | [02-Color Text](https://drive.google.com/drive/folders/1dH-gP9tTjl7-CZP6ZBEpWQsnHQfpINP0) | 리틀리 ZIP과 Drive ZIP의 `시작하기.pdf`만 다름. 본문은 같고 링크는 동일한 Notion 페이지 ID를 다른 도메인으로 가리킴 |
+| 잔상 | [03-Body Echo](https://drive.google.com/drive/folders/1kBx-PO8oWL6fFp1jos-HUSRkVxnQ-t3R) | 리틀리 ZIP에는 Drive 배포본의 `reference/body-echo-05-interaction.mp4`가 없음. 나머지 11개 파일은 동일 |
+| 틈 | [04-Line Pull](https://drive.google.com/drive/folders/1pY6aXhCqG9yrbdGAXJTM1aI-gz_pBKuJ) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일 |
+| 고양이 | [05-Cursor Cat](https://drive.google.com/drive/folders/1Qf7x9pCBrqi-NiCCOoG7eNU0oK1K9jTu) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일 |
+| 웃음꽃 | [05-Smile Flower](https://drive.google.com/drive/folders/1MbLp2Qxt3SaZ1sCM9DC3gbys5yX6u2sR) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일. 관리원본 11개 파일 확인 |
+| Rose Glass 제작 자료 | [06-Rose Glass](https://drive.google.com/drive/folders/1Oj-eYXYP0MhPlsViMnHw_8wTmGO5cf7Y) | ZIP 자체의 해시는 다르지만 내부 39개 파일은 모두 동일. 최상위 폴더 구조와 ZIP 파일명 인코딩이 다름 |
+| Rose Glass 4K 배경화면 5종 | [배경화면 상품](https://drive.google.com/drive/folders/1-ATjsyTmt4nMqlhI5Dyf1YjdC-rqVTLY) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일. 관리원본 PNG 5개 확인 |
+
+2026-09-26에 리틀리 판매자 화면에서 실제 첨부 파일을 받아 Drive 배포본과 SHA-256 및 ZIP 내부 파일별 해시를 비교했다. 판매 ZIP은 이때 교체하지 않았다. 잔상은 구매자에게 전달되는 파일이 Drive 기준 배포본보다 1개 적으므로 후속 조치가 필요하다.
 
 ## 작업 절차
 
