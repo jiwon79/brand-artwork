@@ -20,6 +20,7 @@ docs/
 
 ## Guides
 
+- [`sales-asset-management.md`](./guides/sales-asset-management.md) - 판매 자료의 Google Drive 원본 위치, 배포 ZIP과 리틀리 전달 파일의 관리 기준
 - [`social-performance-tracking.md`](./guides/social-performance-tracking.md) - Instagram 성과 조회 조건과 스냅샷 보존 기준
 
 - [`social-share-images.md`](./guides/social-share-images.md) - 실제 작품 화면을 PNG로 캡처하고 제목·회차 합성 및 소셜 공유 메타데이터 연결·검증을 수행하는 공통 절차
