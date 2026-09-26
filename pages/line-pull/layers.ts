@@ -39,7 +39,7 @@ export function lineRows(height: number, gap: number, phase: number) {
   const last = Math.ceil((height + gap * 3 - phase) / gap);
   return Array.from({ length: last - first + 1 }, (_, index) => {
     const row = first + index;
-    return { row, baseY: phase + row * gap };
+    return { row, rowY: phase + row * gap };
   });
 }
 

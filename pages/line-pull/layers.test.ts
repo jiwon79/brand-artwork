@@ -1,11 +1,11 @@
 import { expect, test } from 'vitest';
-import { boundaryPoint, crossingTimes, linePoint, sampleXs, type Point, type Pull, type Surface } from './geometry';
+import { openingEdgePoint, crossingTimes, bentLinePoint, sampleLineXs, type Point, type Pull, type Surface } from './geometry';
 import { canKeepOpening, isNestedSlot, layerGap, lineRows, MAX_LAYERS, messageForSlot, pointInOpening, returnLayerChain, visibleOpeningHeight } from './layers';
 
 type ReturningLayer = Parameters<typeof returnLayerChain>[0];
 const returningLayer = (parent: ReturningLayer | null = null, pinned = true) => ({
   parent, dirty: false,
-  pull: { pinned, returning: false, velocityY: 23, apexX: 360, apexY: 700, targetY: 720 },
+  pull: { pinned, returning: false, velocityY: 23, pullX: 360, pullY: 700, targetPullY: 720 },
 });
 
 test('releasing an inner layer starts both springs together without jumping their geometry', () => {
@@ -14,7 +14,7 @@ test('releasing an inner layer starts both springs together without jumping thei
   for (const layer of [outer, inner]) {
     expect(layer.dirty).toBe(true);
     expect(layer.pull).toStrictEqual({
-      pinned: false, returning: true, velocityY: 0, apexX: 360, apexY: 700, targetY: 720,
+      pinned: false, returning: true, velocityY: 0, pullX: 360, pullY: 700, targetPullY: 720,
     });
   }
 });
@@ -44,15 +44,15 @@ test('returning a chain leaves inactive layers inactive and does not touch other
 
 const model = {
   width: 720, height: 1280, lineGap: 56, lineWidth: 3, surfaceCurvature: 0.022,
-  lensStrength: 0.2, horizontalLens: 0.27, boundaryEase: 0.65, boundaryCreep: 0.02, apexSpacing: 0.16,
+  spreadStrength: 0.2, horizontalSpread: 0.27, openingEdgeEase: 0.65, openingEdgeCreep: 0.02, pullPointSpacing: 0.16,
 };
 const rect = (left: number, top: number, right: number, bottom: number): Point[] => [
   { x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom },
 ];
 const polygonFor = (surface: Surface, pull: Pull): Point[] => {
-  const xs = sampleXs(surface, pull);
-  return [...xs.map(x => boundaryPoint(surface, pull, x)),
-    ...[...xs].reverse().map(x => linePoint(surface, pull, pull.originY, x))];
+  const xs = sampleLineXs(surface, pull);
+  return [...xs.map(x => openingEdgePoint(surface, pull, x)),
+    ...[...xs].reverse().map(x => bentLinePoint(surface, pull, pull.selectedLineY, x))];
 };
 
 test('nested content is deterministic per slot, sparse, and bounded in depth', () => {
@@ -89,10 +89,10 @@ test('each inner grid stays aligned to its own phase and covers the visible scre
     const gap = layerGap(56, depth);
     for (const phase of [-1000, 31.36, 255, 5000]) {
       const rows = lineRows(height, gap, phase);
-      expect(rows[0].baseY).toBeLessThanOrEqual(-gap * 3);
-      expect(rows[rows.length - 1].baseY).toBeGreaterThanOrEqual(height + gap * 3);
+      expect(rows[0].rowY).toBeLessThanOrEqual(-gap * 3);
+      expect(rows[rows.length - 1].rowY).toBeGreaterThanOrEqual(height + gap * 3);
       expect(new Set(rows.map(row => row.row)).size).toBe(rows.length);
-      rows.forEach(row => expect(row.baseY).toBe(phase + row.row * gap));
+      rows.forEach(row => expect(row.rowY).toBe(phase + row.row * gap));
     }
     expect(gap >= 32 && gap <= 56).toBeTruthy();
   }
@@ -121,12 +121,12 @@ test('pinning requires usable space after clipping by every ancestor and the vie
 });
 
 test('curved pull pockets support both directions and edge grabs', () => {
-  for (const direction of [-1, 1]) for (const apexX of [0, 1, 360, 719, 720]) {
-    const pull = { originY: 500, apexX, apexY: 500 + direction * 340 };
+  for (const direction of [-1, 1]) for (const pullX of [0, 1, 360, 719, 720]) {
+    const pull = { selectedLineY: 500, pullX, pullY: 500 + direction * 340 };
     const polygon = polygonFor(model, pull);
-    expect(canKeepOpening(polygon, apexX, 1280, layerGap(56, 1))).toBe(true);
-    const upper = boundaryPoint(model, pull, apexX), lower = linePoint(model, pull, 500, apexX);
-    expect(pointInOpening(polygon, { x: apexX, y: (upper.y + lower.y) / 2 })).toBe(true);
+    expect(canKeepOpening(polygon, pullX, 1280, layerGap(56, 1))).toBe(true);
+    const upper = openingEdgePoint(model, pull, pullX), lower = bentLinePoint(model, pull, 500, pullX);
+    expect(pointInOpening(polygon, { x: pullX, y: (upper.y + lower.y) / 2 })).toBe(true);
   }
 });
 
