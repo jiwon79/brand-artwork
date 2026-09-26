@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { loopFrame, motionPhase } from './motion-loop';
+import { loopFrame, variantGesture } from './motion-loop';
 
 test('motion returns to the first measured pose without a position or speed jump', () => {
   const frameCount = 120;
@@ -13,14 +13,11 @@ test('motion returns to the first measured pose without a position or speed jump
   expect(Math.abs(loopFrame(turnaround, frameCount) - loopFrame(turnaround - step, frameCount))).toBeLessThan(0.001);
 });
 
-test('secondary shape motion has the same pose at each loop boundary', () => {
-  const period = 2 * (120 - 1) / 24;
+test('each variant gesture extends once and releases smoothly', () => {
+  const period = (120 - 1) / 24;
   const step = 0.001;
-  const pulse = (seconds: number) => {
-    const phase = motionPhase(seconds, 120);
-    return Math.max(0, Math.sin(phase)) ** 2;
-  };
-  expect(pulse(0)).toBe(0);
-  expect(pulse(period)).toBe(0);
-  expect(Math.abs(pulse(period - step) - pulse(period + step))).toBeLessThan(0.001);
+  expect(variantGesture(0, 120)).toBe(0);
+  expect(variantGesture(period * 0.38, 120)).toBeCloseTo(1);
+  expect(variantGesture(period, 120)).toBe(0);
+  expect(Math.abs(variantGesture(period - step, 120) - variantGesture(period + step, 120))).toBeLessThan(0.001);
 });

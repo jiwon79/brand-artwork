@@ -15,8 +15,12 @@ export function loopFrame(seconds: number, frameCount: number, fps = 24) {
   return position;
 }
 
-export function motionPhase(seconds: number, frameCount: number, fps = 24) {
-  const period = 2 * (frameCount - 1) / fps;
-  const wrapped = ((seconds % period) + period) % period;
-  return wrapped / period * Math.PI * 2;
+// One quick extension and slower release; the value and speed both meet at zero.
+export function variantGesture(seconds: number, frameCount: number, fps = 24) {
+  const period = (frameCount - 1) / fps;
+  const progress = (((seconds % period) + period) % period) / period;
+  const smooth = (value: number) => value * value * (3 - 2 * value);
+  return progress < 0.38
+    ? smooth(progress / 0.38)
+    : 1 - smooth((progress - 0.38) / 0.62);
 }
