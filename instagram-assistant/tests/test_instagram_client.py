@@ -127,6 +127,45 @@ def test_old_account_event_cannot_be_sent(monkeypatch):
         service.send_for_event(item["id"])
 
 
+def test_dm_heart_uses_official_reaction_and_records_success(monkeypatch):
+    item = event(id="dm:message-1", kind="dm", source_id="message-1", author_id="visitor-1",
+                 proposed_action=None, draft="")
+    service, calls = setup_send(monkeypatch, item)
+    requests = []
+    def request(method, path, **kwargs):
+        requests.append((method, path, kwargs))
+        return {"recipient_id": "visitor-1"}
+    service._client = SimpleNamespace(account_id="ig-1", request=request)
+    result = service.heart_dm(item["id"])
+    assert requests == [("POST", "/ig-1/messages", {"json_body": {
+        "recipient": {"id": "visitor-1"}, "sender_action": "react",
+        "payload": {"message_id": "message-1", "reaction": "love"}}})]
+    assert result["has_liked"] is True
+    assert ("update", {"has_liked": True, "error": None}) in calls
+
+
+def test_dm_heart_rejects_outbound_and_duplicate(monkeypatch):
+    item = event(id="dm:message-1", kind="dm", source_id="message-1", author_id="visitor-1",
+                 direction="outbound", proposed_action=None, draft="")
+    service, _ = setup_send(monkeypatch, item)
+    with pytest.raises(InstagramAssistantError, match="받은 DM"):
+        service.heart_dm(item["id"])
+    item["direction"] = "inbound"
+    item["has_liked"] = True
+    with pytest.raises(InstagramAssistantError, match="이미 하트"):
+        service.heart_dm(item["id"])
+
+
+def test_dm_heart_does_not_mark_unverified_response(monkeypatch):
+    item = event(id="dm:message-1", kind="dm", source_id="message-1", author_id="visitor-1",
+                 proposed_action=None, draft="")
+    service, calls = setup_send(monkeypatch, item)
+    service._client = SimpleNamespace(account_id="ig-1", request=lambda *args, **kwargs: {})
+    with pytest.raises(InstagramAssistantError, match="결과를 확인"):
+        service.heart_dm(item["id"])
+    assert not any(call[0] == "update" for call in calls)
+
+
 def test_graph_sync_records_parent_reply_and_dm_for_connected_account(monkeypatch, tmp_path):
     monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

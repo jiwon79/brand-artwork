@@ -155,6 +155,7 @@ def test_comment_threads_include_replies_and_identify_own_reply(tmp_path: Path, 
     db.initialize()
     parent = {
         "id": "comment:1", "kind": "comment", "source_id": "1",
+        "post_url": "https://www.instagram.com/reel/ABC/",
         "author_username": "someone", "body": "저요", "received_at": db.now(),
     }
     reply = {
@@ -169,6 +170,7 @@ def test_comment_threads_include_replies_and_identify_own_reply(tmp_path: Path, 
     assert len(threads) == 1
     assert threads[0]["replies"][0]["direction"] == "outbound"
     assert threads[0]["replies"][0]["has_liked"] == 1
+    assert threads[0]["comment_url"] == "https://www.instagram.com/reel/ABC/c/1/"
     assert len(db.list_events(kind="comment")) == 1
 
 

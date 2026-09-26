@@ -185,10 +185,7 @@ h2 { margin: 0 0 7px; font-size: 17px; font-weight: 650; }
 .link-preview[hidden] { display: none; }
 .link-preview img { display: block; width: 100%; aspect-ratio: 1200 / 630; object-fit: cover; }
 .message-bubble time { display: block; margin-top: 4px; color: var(--time); font-size: 9px; text-align: right; }
-.dm-heart { display: inline-grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; border-radius: 8px; background: transparent; color: var(--heart); font-size: 13px; opacity: 0; transition: background-color 120ms ease-out, opacity 120ms ease-out, scale 150ms ease-out; }
-.dm-heart:hover { background: var(--heart-bg); }
-.dm-heart.visible, .message-row:hover .dm-heart, .dm-heart:focus-visible { opacity: 1; }
-.dm-heart.mine { color: var(--heart); }
+.dm-heart { flex: 0 0 auto; padding-bottom: 3px; color: var(--heart); font-size: 13px; }
 .shared-content { display: grid; gap: 3px; min-width: 0; max-width: 100%; margin: 3px 0; padding: 9px; border-radius: 7px; background: var(--surface-subtle); }
 .shared-content > span { color: var(--muted); font-size: 9px; }
 .shared-content > a { overflow-wrap: anywhere; color: var(--ink); font-size: 10px; line-height: 1.4; }

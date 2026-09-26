@@ -89,10 +89,10 @@ function linkedMessageBody(value) {
 
 function postReference(event) {
   const fallback = event.post_code ? `https://www.instagram.com/p/${encodeURIComponent(event.post_code)}/` : "";
-  const url = safeUrl(event.post_url || fallback);
+  const url = safeUrl(event.comment_url || event.post_url || fallback);
   if (!url) return "";
   const caption = String(event.post_caption || `게시물 ${event.post_code}`).trim();
-  return `<a class="post-reference" href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><span>게시물</span><strong>${escapeHtml(caption)}</strong><span aria-hidden="true">↗</span></a>`;
+  return `<a class="post-reference" href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><span>원댓글</span><strong>${escapeHtml(caption)}</strong><span aria-hidden="true">↗</span></a>`;
 }
 
 function commentHeart(event, compact = false) {
@@ -169,6 +169,7 @@ async function refreshChat() {
           ${sharedLink(message)}
           <time>${formatTime(message.received_at, true)}</time>
         </div>
+        ${message.direction === "inbound" && message.has_liked ? '<span class="dm-heart" aria-label="하트 표시됨">♥</span>' : ""}
       </div>`).join("")}</div>`;
   requestAnimationFrame(() => {
     const scroll = panel.querySelector(".chat-messages");

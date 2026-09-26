@@ -381,4 +381,30 @@ class InstagramService:
             add_delivery(event_id, action, event["draft"], "sent", remote_id)
             return update_event(event_id, {"status": "sent", "error": None}) or event
 
+    def heart_dm(self, event_id: str) -> dict[str, Any]:
+        with self._lock:
+            event = get_event(event_id)
+            if not event or event.get("kind") != "dm" or event.get("direction") != "inbound":
+                raise InstagramAssistantError("받은 DM 메시지만 하트를 누를 수 있습니다.")
+            if not event.get("source_id") or not event.get("author_id"):
+                raise InstagramAssistantError("DM 메시지 ID와 상대방 ID가 필요합니다.")
+            if event.get("has_liked"):
+                raise InstagramAssistantError("이미 하트를 누른 DM입니다.")
+            settings = get_settings()
+            if settings.get("read_only_observation"):
+                raise InstagramAssistantError("현재 관찰 모드입니다. 설정에서 먼저 해제하세요.")
+            if settings.get("halted_reason"):
+                raise InstagramHaltedError(str(settings["halted_reason"]))
+            client = self.connect_saved_session()
+            if event.get("account_id") != client.account_id:
+                raise InstagramAssistantError("현재 연결 계정에서 수집한 DM이 아닙니다. 다시 동기화하세요.")
+            result = client.request("POST", f"/{client.account_id}/messages", json_body={
+                "recipient": {"id": event["author_id"]},
+                "sender_action": "react",
+                "payload": {"message_id": event["source_id"], "reaction": "love"},
+            })
+            if str(result.get("recipient_id") or "") != str(event["author_id"]):
+                raise InstagramAssistantError("DM 하트 결과를 확인하지 못했습니다. 다시 누르기 전에 Instagram에서 확인하세요.")
+            return update_event(event_id, {"has_liked": True, "error": None}) or event
+
 instagram_service = InstagramService()

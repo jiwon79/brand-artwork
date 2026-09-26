@@ -28,3 +28,14 @@ def test_viewer_does_not_expose_mutation_token_or_controls():
     assert "X-Instagram-Assistant-Token" not in script.text
     assert 'method: "POST"' not in script.text
     assert 'method: "PATCH"' not in script.text
+
+
+def test_dm_heart_requires_local_token(monkeypatch):
+    calls = []
+    monkeypatch.setattr(main.instagram_service, "heart_dm", lambda event_id: calls.append(event_id) or {"has_liked": True})
+    with TestClient(main.app) as client:
+        assert client.post("/api/events/dm:message-1/heart").status_code == 403
+        response = client.post("/api/events/dm:message-1/heart", headers={
+            "X-Instagram-Assistant-Token": main.TOKEN})
+    assert response.status_code == 200
+    assert calls == ["dm:message-1"]

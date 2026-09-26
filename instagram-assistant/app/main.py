@@ -173,6 +173,15 @@ def send_event(event_id: str, x_instagram_assistant_token: str | None = Header(d
         raise as_http_error(exc) from exc
 
 
+@app.post("/api/events/{event_id}/heart")
+def heart_dm(event_id: str, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
+    protect(x_instagram_assistant_token)
+    try:
+        return instagram_service.heart_dm(event_id)
+    except Exception as exc:
+        raise as_http_error(exc) from exc
+
+
 @app.post("/api/events/{event_id}/ignore")
 def ignore_event(event_id: str, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
     protect(x_instagram_assistant_token)

@@ -388,6 +388,10 @@ def list_comment_threads(
         replies_by_parent.setdefault(str(reply["parent_comment_id"]), []).append(reply)
     for comment in comments:
         comment["replies"] = replies_by_parent.get(str(comment["source_id"]), [])
+        if comment.get("post_url") and comment.get("source_id"):
+            comment["comment_url"] = (
+                str(comment["post_url"]).rstrip("/") + "/c/" + str(comment["source_id"]) + "/"
+            )
     return comments
 
 
