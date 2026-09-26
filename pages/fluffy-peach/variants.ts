@@ -1,4 +1,4 @@
-export type VariantId = 'original' | 'bean' | 'drop' | 'star' | 'cloud';
+export type VariantId = 'original' | 'bean' | 'flower' | 'star' | 'wave';
 
 export type VariantColors = {
   base: string;
@@ -19,6 +19,7 @@ export type Variant = {
   id: VariantId;
   label: string;
   referenceDetail: number;
+  flutter: number;
   depth: number;
   eyeShift: readonly [number, number];
   colors: VariantColors;
@@ -26,7 +27,7 @@ export type Variant = {
 
 export const variants: readonly Variant[] = [
   {
-    id: 'original', label: '기존', referenceDetail: 1, depth: 1, eyeShift: [0, 0],
+    id: 'original', label: '기존', referenceDetail: 1, flutter: 1, depth: 1, eyeShift: [0, 0],
     colors: {
       base: '#807de8', cool: '#737deb', blush: '#ff808c', warm: '#ffb8a3',
       highlight: '#ffdee0', bottom: '#7d82eb', detail: '#ef80b5', furTip: '#fadef0',
@@ -34,7 +35,7 @@ export const variants: readonly Variant[] = [
     },
   },
   {
-    id: 'bean', label: '민트 콩', referenceDetail: 0.2, depth: 0.92, eyeShift: [-69, -13],
+    id: 'bean', label: '민트 콩', referenceDetail: 0.2, flutter: 0.7, depth: 0.92, eyeShift: [-69, -13],
     colors: {
       base: '#b4e6bb', cool: '#5bbcb5', blush: '#dcf0a0', warm: '#fff2b0',
       highlight: '#f0f9d7', bottom: '#72bfb2', detail: '#ffc481', furTip: '#ecf9d7',
@@ -42,7 +43,7 @@ export const variants: readonly Variant[] = [
     },
   },
   {
-    id: 'drop', label: '꿀 방울', referenceDetail: 0.18, depth: 0.94, eyeShift: [-63, 6],
+    id: 'flower', label: '꿀 꽃', referenceDetail: 0.18, flutter: 0.75, depth: 0.94, eyeShift: [-63, 6],
     colors: {
       base: '#ffc17d', cool: '#d77994', blush: '#ff987c', warm: '#ffe09d',
       highlight: '#fff3c4', bottom: '#dc8b9a', detail: '#d95381', furTip: '#fff2d7',
@@ -50,7 +51,7 @@ export const variants: readonly Variant[] = [
     },
   },
   {
-    id: 'star', label: '보라 별', referenceDetail: 0.14, depth: 0.82, eyeShift: [-69, -4],
+    id: 'star', label: '보라 별', referenceDetail: 0.14, flutter: 0.55, depth: 0.82, eyeShift: [-69, -4],
     colors: {
       base: '#9aa9f3', cool: '#6578ce', blush: '#c88ee7', warm: '#edb3de',
       highlight: '#ece0ff', bottom: '#6979c4', detail: '#f19dbb', furTip: '#ede6ff',
@@ -58,7 +59,7 @@ export const variants: readonly Variant[] = [
     },
   },
   {
-    id: 'cloud', label: '파도 구름', referenceDetail: 0.17, depth: 0.86, eyeShift: [-67, -10],
+    id: 'wave', label: '파도', referenceDetail: 0.17, flutter: 0.75, depth: 0.86, eyeShift: [-67, -10],
     colors: {
       base: '#a1e2e9', cool: '#57a9c4', blush: '#b6d8f2', warm: '#d8f4e9',
       highlight: '#ecfff7', bottom: '#6fb8d2', detail: '#83d3d4', furTip: '#e7fff9',
@@ -84,18 +85,15 @@ export function shapeFactor(id: VariantId, angle: number) {
       return ellipse(angle, 1.13, 0.9)
         * (0.98 + 0.12 * Math.cos(2 * angle - 0.4) + 0.04 * Math.cos(angle + 0.2) - 0.18 * Math.exp(-notch * notch));
     }
-    case 'drop': {
-      const tip = angularDistance(angle, Math.PI / 2) / 0.3;
-      return ellipse(angle, 0.87, 1.12) * (1.01 - 0.18 * y + 0.18 * Math.exp(-tip * tip));
+    case 'flower': {
+      return ellipse(angle, 1.13, 0.94) * (0.9 + 0.17 * Math.cos(4 * angle - Math.PI) + 0.08 * y);
     }
     case 'star': return ellipse(angle, 1.04, 1.04) * (0.95 + 0.18 * Math.cos(5 * angle - Math.PI / 2));
-    case 'cloud': {
-      const left = angularDistance(angle, 3 * Math.PI / 4) / 0.23;
-      const middle = angularDistance(angle, Math.PI / 2) / 0.25;
-      const right = angularDistance(angle, Math.PI / 4) / 0.23;
-      return ellipse(angle, 1.2, 0.86)
-        * (1 + 0.22 * Math.exp(-left * left) + 0.11 * Math.exp(-middle * middle)
-          + 0.22 * Math.exp(-right * right) - 0.015 * Math.max(0, -y));
+    case 'wave': {
+      const crest = angularDistance(angle, 0.67) / 0.38;
+      const curl = angularDistance(angle, 1.47) / 0.31;
+      return ellipse(angle, 1.22, 0.79)
+        * (1 + 0.34 * Math.exp(-crest * crest) - 0.24 * Math.exp(-curl * curl) - 0.03 * y);
     }
   }
 }

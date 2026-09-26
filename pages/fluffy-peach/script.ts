@@ -10,10 +10,13 @@ import furShellFragment from './fur-shell.frag?raw';
 import furShellVertex from './fur-shell.vert?raw';
 import paletteShader from './palette.glsl?raw';
 import { motionFrames } from './motion-data';
+import { loopFrame } from './motion-loop';
 import { shapeFactor, variants, type VariantColors } from './variants';
 
 const params = new URLSearchParams(location.search);
-const requestedVariant = variants.findIndex((variant) => variant.id === params.get('shape'));
+const shapeAliases: Record<string, string> = { drop: 'flower', cloud: 'wave' };
+const requestedShape = shapeAliases[params.get('shape') ?? ''] ?? params.get('shape');
+const requestedVariant = variants.findIndex((variant) => variant.id === requestedShape);
 let targetVariant = requestedVariant >= 0 ? requestedVariant : 3;
 const variantWeights = variants.map((_, index) => Number(index === targetVariant));
 const colorChannels: readonly (keyof VariantColors)[] = [
@@ -47,6 +50,9 @@ const variantFactors = variants.map((variant) => Float32Array.from(
   (_, index) => shapeFactor(variant.id, -(index + 0.5) * Math.PI * 2 / motionFrames[0].radii.length),
 ));
 const currentFactors = new Float32Array(motionFrames[0].radii.length);
+const baselineRadii = Float32Array.from(motionFrames[0].radii, (_, point) =>
+  motionFrames.reduce((sum, frame) => sum + frame.radii[point], 0) / motionFrames.length);
+const baselineMean = baselineRadii.reduce((sum, radius) => sum + radius, 0) / baselineRadii.length;
 
 function blendColor(target: THREE.Vector3, channel: keyof VariantColors) {
   target.set(0, 0, 0);
@@ -89,7 +95,7 @@ const original = Float32Array.from(shape.getAttribute('position').array as Array
 const shapePosition = shape.getAttribute('position') as THREE.BufferAttribute;
 const shapeNormal = shape.getAttribute('normal') as THREE.BufferAttribute;
 shapePosition.setUsage(THREE.DynamicDrawUsage);
-const bodyUniforms = { uCheek: { value: 0 }, ...paletteUniforms };
+const bodyUniforms = { uCheek: { value: 0 }, uStarSoftness: { value: 0 }, ...paletteUniforms };
 const body = new THREE.Mesh(
   shape,
   new THREE.ShaderMaterial({
@@ -268,12 +274,13 @@ canvas.addEventListener('pointercancel', stopDragging);
 canvas.addEventListener('lostpointercapture', stopDragging);
 
 const currentRadii = new Float32Array(motionFrames[0].radii.length);
-let meanRadius = 135;
-let sideRoundness = 0;
+let meanRadius = baselineMean;
 let pausedAt = 0;
 let cheekStrength = 0;
 let lastRenderTime = performance.now();
 let currentReferenceDetail = 1;
+let currentFlutter = 1;
+let currentWaveWeight = 0;
 let currentDepth = 1;
 let currentEyeShiftX = 0;
 let currentEyeShiftY = 0;
@@ -284,17 +291,31 @@ function radiusAt(x: number, y: number) {
   const leftExpansion = THREE.MathUtils.smoothstep(-x, 0.3, 0.95) * 0.10;
   const fraction = sample - Math.floor(sample);
   const contour = THREE.MathUtils.lerp(currentRadii[first], currentRadii[(first + 1) % currentRadii.length], fraction) * (0.94 + leftExpansion);
-  const animated = THREE.MathUtils.lerp(meanRadius, contour, currentReferenceDetail * (1 - sideRoundness));
+  const baselineContour = THREE.MathUtils.lerp(baselineRadii[first], baselineRadii[(first + 1) % baselineRadii.length], fraction) * (0.94 + leftExpansion);
+  // Fade measured contour variation toward the poles in object space; rotation does not alter the contour.
+  const poleBlend = Math.pow(Math.min(1, Math.hypot(x, y)), 0.7);
+  const globalBreath = currentFlutter * (meanRadius - baselineMean);
+  const localFlutter = currentFlutter * (contour - baselineContour - (meanRadius - baselineMean));
+  const animated = baselineMean + globalBreath
+    + poleBlend * (currentReferenceDetail * (baselineContour - baselineMean) + localFlutter);
   const frontFactor = THREE.MathUtils.lerp(currentFactors[first], currentFactors[(first + 1) % currentFactors.length], fraction);
-  const factor = THREE.MathUtils.lerp(frontFactor, 1, sideRoundness * 0.8);
+  const factor = frontFactor;
   return animated * factor;
+}
+function waveBend(x: number) {
+  return 16 * x + 4 * Math.sin(5.6 * x + 0.7);
+}
+function waveCrest(x: number, y: number) {
+  return Math.exp(-Math.pow((x - 0.59) / 0.26, 2) - Math.pow((y - 0.74) / 0.26, 2));
 }
 function surface(x: number, y: number, z: number, target: Float32Array, offset: number) {
   const radius = radiusAt(x, y);
-  target[offset] = x * radius;
-  target[offset + 1] = y * radius;
+  const crest = currentWaveWeight * waveCrest(x, y);
+  target[offset] = x * radius - 80 * crest;
+  target[offset + 1] = y * radius + currentWaveWeight * waveBend(x) + 50 * crest;
   const lobe = Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2));
-  target[offset + 2] = z * 116 * currentDepth + Math.max(0, z) * lobe * cheekStrength * 44 * currentReferenceDetail;
+  target[offset + 2] = z * 116 * currentDepth
+    + Math.max(0, z) * lobe * cheekStrength * 44 * currentReferenceDetail;
 }
 function updateShape() {
   const bodyPositions = shapePosition.array as Float32Array;
@@ -340,11 +361,14 @@ function render(now: number) {
     else morphing = true;
   }
   currentReferenceDetail = 0;
+  currentFlutter = 0;
+  currentWaveWeight = variantWeights[4];
   currentDepth = 0;
   currentEyeShiftX = 0;
   currentEyeShiftY = 0;
   for (let index = 0; index < variants.length; index++) {
     currentReferenceDetail += variants[index].referenceDetail * variantWeights[index];
+    currentFlutter += variants[index].flutter * variantWeights[index];
     currentDepth += variants[index].depth * variantWeights[index];
     currentEyeShiftX += variants[index].eyeShift[0] * variantWeights[index];
     currentEyeShiftY += variants[index].eyeShift[1] * variantWeights[index];
@@ -368,16 +392,15 @@ function render(now: number) {
   blendColor(paletteUniforms.uEyeColor.value, 'eye');
   if (!controls.paused) pausedAt = now;
   const seconds = frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000);
-  const frame = ((seconds * 24) % motionFrames.length + motionFrames.length) % motionFrames.length;
-  const a = Math.floor(frame), b = (a + 1) % motionFrames.length, fraction = frame - a;
+  const frame = loopFrame(seconds, motionFrames.length);
+  const a = Math.floor(frame), b = Math.min(a + 1, motionFrames.length - 1), fraction = frame - a;
   const first = motionFrames[a], second = motionFrames[b];
   const lerp = (one: number, two: number) => THREE.MathUtils.lerp(one, two, fraction);
   cheekStrength = THREE.MathUtils.smoothstep(frame, 45, 76);
   bodyUniforms.uCheek.value = cheekStrength;
+  bodyUniforms.uStarSoftness.value = variantWeights[3];
   for (let i = 0; i < currentRadii.length; i++) currentRadii[i] = lerp(first.radii[i], second.radii[i]);
   meanRadius = currentRadii.reduce((sum, value) => sum + value, 0) / currentRadii.length;
-  // The clip only defines a front contour; round its hidden side profile during a turn.
-  sideRoundness = THREE.MathUtils.smoothstep(Math.abs(Math.sin(THREE.MathUtils.degToRad(controls.turnY))), 0.15, 0.75) * 0.85;
   updateShape();
 
   const cx = lerp(first.center[0], second.center[0]);
@@ -394,7 +417,7 @@ function render(now: number) {
     const ey = cy - lerp(first.eyes[i * 2 + 1], second.eyes[i * 2 + 1]) - (1 - openness) * 11 + currentEyeShiftY;
     const proportion = Math.min(0.98, Math.hypot(ex, ey) / radiusAt(ex, ey));
     const depth = Math.sqrt(1 - proportion * proportion) * 116 * currentDepth;
-    eyes[i].position.set(ex, ey, depth + 1);
+    eyes[i].position.set(ex, ey + currentWaveWeight * waveBend(ex / radiusAt(ex, ey)), depth + 1);
     eyes[i].scale.set(4.9, Math.max(1.4, 9.3 * openness), 2.1);
   }
   shadowUniforms.uShadow.value.set(cx - 465, -191);
