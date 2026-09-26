@@ -44,19 +44,19 @@ void main() {
     (uResolution.y * 0.5 - gl_FragCoord.y) / unit + 360.0
   );
   vec2 mask = vec2(0.0);
-  vec3 recorded = vec3(0.247, 0.376, 0.882);
+  float first = floor(uFrame);
+  float second = mod(first + 1.0, 120.0);
+  float fraction = fract(uFrame);
+  vec2 recordedP = clamp(p, vec2(0.0), vec2(720.0));
+  vec3 recorded = mix(
+    texture2D(uAppearanceAtlas, appearanceUv(first, recordedP)).rgb,
+    texture2D(uAppearanceAtlas, appearanceUv(second, recordedP)).rgb,
+    fraction
+  );
   if (p.x >= 0.0 && p.x <= 720.0 && p.y >= 0.0 && p.y <= 720.0) {
-    float first = floor(uFrame);
-    float second = mod(first + 1.0, 120.0);
-    float fraction = fract(uFrame);
     vec2 uvFirst = atlasUv(first, p);
     vec2 uvSecond = atlasUv(second, p);
     mask = mix(texture2D(uMotionAtlas, uvFirst).rg, texture2D(uMotionAtlas, uvSecond).rg, fraction);
-    recorded = mix(
-      texture2D(uAppearanceAtlas, appearanceUv(first, p)).rgb,
-      texture2D(uAppearanceAtlas, appearanceUv(second, p)).rgb,
-      fraction
-    );
   }
 
   vec2 local = p - uBody;
