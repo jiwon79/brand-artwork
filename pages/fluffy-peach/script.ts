@@ -4,6 +4,10 @@ import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import backgroundFragment from './background.frag?raw';
 import bodyFragment from './body.frag?raw';
+import furRibbonFragment from './fur-ribbon.frag?raw';
+import furRibbonVertex from './fur-ribbon.vert?raw';
+import furShellFragment from './fur-shell.frag?raw';
+import furShellVertex from './fur-shell.vert?raw';
 import paletteShader from './palette.glsl?raw';
 import { motionFrames } from './motion-data';
 
@@ -38,6 +42,7 @@ scene.add(character);
 const shape = new THREE.SphereGeometry(1, 88, 64);
 const original = Float32Array.from(shape.getAttribute('position').array as ArrayLike<number>);
 const shapePosition = shape.getAttribute('position') as THREE.BufferAttribute;
+const shapeNormal = shape.getAttribute('normal') as THREE.BufferAttribute;
 shapePosition.setUsage(THREE.DynamicDrawUsage);
 const bodyUniforms = { uCheek: { value: 0 } };
 const body = new THREE.Mesh(
@@ -55,63 +60,79 @@ ${bodyFragment}`,
 );
 character.add(body);
 
-// Fibers grow from points on the deforming 3D surface, including its back.
-const HAIR_COUNT = 42000;
-const hairSeeds = new Float32Array(HAIR_COUNT * 5);
-const hairPositions = new Float32Array(HAIR_COUNT * 6);
-// Interpolated from root to tip so each strand dissolves instead of ending sharply.
-const hairTips = new Float32Array(HAIR_COUNT * 2);
+// Thin translucent shells fill the volume between the body and visible fiber tips.
+const SHELL_COUNT = 11;
+const shells = Array.from({ length: SHELL_COUNT }, (_, index) => {
+  const layer = index / (SHELL_COUNT - 1);
+  const geometry = shape.clone();
+  geometry.setAttribute('basePosition', shapePosition);
+  geometry.setAttribute('normal', shapeNormal);
+  const positions = geometry.getAttribute('position') as THREE.BufferAttribute;
+  positions.setUsage(THREE.DynamicDrawUsage);
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 300);
+  const mesh = new THREE.Mesh(geometry, new THREE.ShaderMaterial({
+    vertexShader: `precision highp float;
+${paletteShader}
+${furShellVertex}`,
+    fragmentShader: furShellFragment,
+    uniforms: { uCheek: bodyUniforms.uCheek, uLayer: { value: layer } },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+  }));
+  mesh.renderOrder = index + 1;
+  character.add(mesh);
+  return { positions, layer };
+});
+
+// Camera-facing tapered ribbons stay legible at the silhouette while rotating.
+const FIBER_COUNT = 14000;
+const fiberSeeds = new Float32Array(FIBER_COUNT * 5);
+const fiberRoots = new Float32Array(FIBER_COUNT * 3);
+const fiberTips = new Float32Array(FIBER_COUNT * 3);
+const fiberDirections = new Float32Array(FIBER_COUNT * 3);
+const fiberWidths = new Float32Array(FIBER_COUNT);
 let randomState = 723981;
 function random() {
   randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
   return randomState / 4294967296;
 }
-for (let i = 0; i < HAIR_COUNT; i++) {
+for (let i = 0; i < FIBER_COUNT; i++) {
   const z = random() * 2 - 1;
   const angle = random() * Math.PI * 2;
   const side = Math.sqrt(1 - z * z);
   const x = Math.cos(angle) * side;
   const y = Math.sin(angle) * side;
-  const length = (2 + Math.pow(random(), 2.4) * 18) * (1 + THREE.MathUtils.smoothstep(y, -0.05, 0.5) * 0.3);
-  const lean = (random() - 0.5) * 0.75;
-  hairSeeds.set([x, y, z, length, lean], i * 5);
-  hairTips[i * 2 + 1] = 1;
+  const length = (4 + Math.pow(random(), 1.4) * 19) * (1 + THREE.MathUtils.smoothstep(y, -0.1, 0.55) * 0.32);
+  const lean = (random() - 0.5) * 0.65;
+  fiberSeeds.set([x, y, z, length, lean], i * 5);
+  fiberDirections.set([x, y, z], i * 3);
+  fiberWidths[i] = 0.58 + random() * 0.34;
 }
-const hairGeometry = new THREE.BufferGeometry();
-hairGeometry.setAttribute('position', new THREE.BufferAttribute(hairPositions, 3).setUsage(THREE.DynamicDrawUsage));
-hairGeometry.setAttribute('fiberTip', new THREE.BufferAttribute(hairTips, 1));
-const fur = new THREE.LineSegments(hairGeometry, new THREE.ShaderMaterial({
-  vertexShader: `
-    attribute float fiberTip;
-    varying vec2 vFiberPosition;
-    varying float vFiberTip;
-    varying float vFiberHeight;
-    void main() {
-      vFiberPosition = position.xy;
-      vFiberTip = fiberTip;
-      vFiberHeight = position.y;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    precision highp float;
-    ${paletteShader}
-    varying vec2 vFiberPosition;
-    varying float vFiberTip;
-    varying float vFiberHeight;
-    uniform float uCheek;
-    void main() {
-      float tipFade = pow(1.0 - vFiberTip, 1.7);
-      float crown = smoothstep(-75.0, 95.0, vFiberHeight);
-      float opacity = mix(0.09, 0.27, crown) * tipFade;
-      vec3 color = peachColor(vFiberPosition, uCheek);
-      gl_FragColor = vec4(clamp(color, 0.0, 1.0), opacity);
-    }
-  `,
+const fiberGeometry = new THREE.InstancedBufferGeometry();
+fiberGeometry.setIndex([0, 1, 2, 2, 1, 3]);
+fiberGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
+  -1, 0, 0, 1, 0, 0, -1, 1, 0, 1, 1, 0,
+], 3));
+const fiberRootAttribute = new THREE.InstancedBufferAttribute(fiberRoots, 3).setUsage(THREE.DynamicDrawUsage);
+const fiberTipAttribute = new THREE.InstancedBufferAttribute(fiberTips, 3).setUsage(THREE.DynamicDrawUsage);
+fiberGeometry.setAttribute('instanceRoot', fiberRootAttribute);
+fiberGeometry.setAttribute('instanceTip', fiberTipAttribute);
+fiberGeometry.setAttribute('instanceDirection', new THREE.InstancedBufferAttribute(fiberDirections, 3));
+fiberGeometry.setAttribute('instanceWidth', new THREE.InstancedBufferAttribute(fiberWidths, 1));
+fiberGeometry.instanceCount = FIBER_COUNT;
+fiberGeometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 300);
+const fur = new THREE.Mesh(fiberGeometry, new THREE.ShaderMaterial({
+  vertexShader: `precision highp float;
+${paletteShader}
+${furRibbonVertex}`,
+  fragmentShader: furRibbonFragment,
   uniforms: bodyUniforms,
   transparent: true,
   depthWrite: false,
+  side: THREE.DoubleSide,
 }));
+fur.renderOrder = SHELL_COUNT + 1;
 character.add(fur);
 
 const eyeMaterial = new THREE.ShaderMaterial({
@@ -122,6 +143,7 @@ const eyeMaterial = new THREE.ShaderMaterial({
 });
 const eyes = Array.from({ length: 2 }, () => {
   const eye = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 16), eyeMaterial);
+  eye.renderOrder = SHELL_COUNT + 2;
   character.add(eye);
   return eye;
 });
@@ -172,6 +194,8 @@ canvas.addEventListener('pointercancel', stopDragging);
 canvas.addEventListener('lostpointercapture', stopDragging);
 
 const currentRadii = new Float32Array(motionFrames[0].radii.length);
+let meanRadius = 135;
+let sideRoundness = 0;
 let pausedAt = 0;
 let cheekStrength = 0;
 function radiusAt(x: number, y: number) {
@@ -179,7 +203,8 @@ function radiusAt(x: number, y: number) {
   const sample = theta * currentRadii.length / (Math.PI * 2) - 0.5;
   const first = ((Math.floor(sample) % currentRadii.length) + currentRadii.length) % currentRadii.length;
   const leftExpansion = THREE.MathUtils.smoothstep(-x, 0.3, 0.95) * 0.10;
-  return THREE.MathUtils.lerp(currentRadii[first], currentRadii[(first + 1) % currentRadii.length], sample - Math.floor(sample)) * (0.94 + leftExpansion);
+  const contour = THREE.MathUtils.lerp(currentRadii[first], currentRadii[(first + 1) % currentRadii.length], sample - Math.floor(sample)) * (0.94 + leftExpansion);
+  return THREE.MathUtils.lerp(contour, meanRadius, sideRoundness);
 }
 function surface(x: number, y: number, z: number, target: Float32Array, offset: number) {
   const radius = radiusAt(x, y);
@@ -189,22 +214,32 @@ function surface(x: number, y: number, z: number, target: Float32Array, offset: 
   target[offset + 2] = z * 116 + Math.max(0, z) * lobe * cheekStrength * 44;
 }
 function updateShape() {
+  const bodyPositions = shapePosition.array as Float32Array;
   for (let i = 0; i < original.length; i += 3) {
-    surface(original[i], original[i + 1], original[i + 2], shapePosition.array as Float32Array, i);
+    surface(original[i], original[i + 1], original[i + 2], bodyPositions, i);
   }
   shapePosition.needsUpdate = true;
   shape.computeVertexNormals();
-  for (let i = 0; i < HAIR_COUNT; i++) {
-    const seed = i * 5;
-    const vertex = i * 6;
-    const x = hairSeeds[seed], y = hairSeeds[seed + 1], z = hairSeeds[seed + 2];
-    surface(x, y, z, hairPositions, vertex);
-    const length = hairSeeds[seed + 3], lean = hairSeeds[seed + 4];
-    hairPositions[vertex + 3] = hairPositions[vertex] + x * length + y * lean * length;
-    hairPositions[vertex + 4] = hairPositions[vertex + 1] + y * length - x * lean * length;
-    hairPositions[vertex + 5] = hairPositions[vertex + 2] + z * length;
+  for (const shell of shells) {
+    const offset = 2 + 18 * Math.pow(shell.layer, 1.15);
+    const positions = shell.positions.array as Float32Array;
+    for (let i = 0; i < original.length; i++) {
+      positions[i] = bodyPositions[i] + original[i] * offset;
+    }
+    shell.positions.needsUpdate = true;
   }
-  hairGeometry.attributes.position.needsUpdate = true;
+  for (let i = 0; i < FIBER_COUNT; i++) {
+    const seed = i * 5;
+    const vertex = i * 3;
+    const x = fiberSeeds[seed], y = fiberSeeds[seed + 1], z = fiberSeeds[seed + 2];
+    surface(x, y, z, fiberRoots, vertex);
+    const length = fiberSeeds[seed + 3], lean = fiberSeeds[seed + 4];
+    fiberTips[vertex] = fiberRoots[vertex] + x * length + y * lean * length;
+    fiberTips[vertex + 1] = fiberRoots[vertex + 1] + y * length - x * lean * length;
+    fiberTips[vertex + 2] = fiberRoots[vertex + 2] + z * length;
+  }
+  fiberRootAttribute.needsUpdate = true;
+  fiberTipAttribute.needsUpdate = true;
 }
 
 function render(now: number) {
@@ -217,6 +252,9 @@ function render(now: number) {
   cheekStrength = THREE.MathUtils.smoothstep(frame, 45, 76);
   bodyUniforms.uCheek.value = cheekStrength;
   for (let i = 0; i < currentRadii.length; i++) currentRadii[i] = lerp(first.radii[i], second.radii[i]);
+  meanRadius = currentRadii.reduce((sum, value) => sum + value, 0) / currentRadii.length;
+  // The clip only defines a front contour; round its hidden side profile during a turn.
+  sideRoundness = THREE.MathUtils.smoothstep(Math.abs(Math.sin(THREE.MathUtils.degToRad(controls.turnY))), 0.15, 0.75) * 0.85;
   updateShape();
 
   const cx = lerp(first.center[0], second.center[0]);
@@ -244,7 +282,7 @@ function render(now: number) {
 function resize() {
   const width = Math.max(1, innerWidth), height = Math.max(1, innerHeight);
   const unit = Math.min(width, height) / 720;
-  canvas!.style.setProperty('--artwork-blur', `${(1.8 * unit).toFixed(2)}px`);
+  canvas!.style.setProperty('--artwork-blur', `${(1.6 * unit).toFixed(2)}px`);
   camera.left = -width / (2 * unit);
   camera.right = width / (2 * unit);
   camera.top = height / (2 * unit);
