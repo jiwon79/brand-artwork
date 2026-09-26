@@ -12,6 +12,8 @@ Instagram DM을 분류하거나 답변을 보내기 전에는 Notion `Project �
 4. Copy `.env.example` to `.env.local` and enter the Instagram App ID, Instagram App Secret, and the **exact** registered redirect URI. `.env.local` is gitignored. Keep it private (`chmod 600 .env.local`). Do not put credentials in chat, Git, or Notion.
 5. Start `./start.command`, open Settings, and choose Connect. Sign in and grant access on Instagram's own authorization page. The app stores the resulting long-lived Graph token in `~/Library/Application Support/InstagramAssistant/graph-token.json` with mode `0600`; it refreshes near expiry. Existing `instagram-session.json` files from the old private API are ignored.
 
+Meta's Instagram Login setup says an app must be published to access live data. Direct developers using only their own Instagram business can skip App Review, but publishing still requires a public privacy-policy URL. The site's policy source is `public/instagram-assistant-privacy.html`; use its deployed URL only after confirming the public page loads. An unpublished app can report a nonzero `comments_count` while returning an empty `/{media_id}/comments` list; the assistant treats that mismatch as an error instead of an empty inbox.
+
 The app binds to `127.0.0.1:4318`. `INSTAGRAM_ASSISTANT_DATA` overrides the shared data directory. Run only one assistant process against it at a time. `INSTAGRAM_GRAPH_VERSION` can select the Meta API version after checking its current documentation.
 
 ## Review and sending
