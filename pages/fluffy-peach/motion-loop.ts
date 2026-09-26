@@ -14,3 +14,9 @@ export function loopFrame(seconds: number, frameCount: number, fps = 24) {
   if (position > end - easeFrames) return end - ease(end - position);
   return position;
 }
+
+export function motionPhase(seconds: number, frameCount: number, fps = 24) {
+  const period = 2 * (frameCount - 1) / fps;
+  const wrapped = ((seconds % period) + period) % period;
+  return wrapped / period * Math.PI * 2;
+}

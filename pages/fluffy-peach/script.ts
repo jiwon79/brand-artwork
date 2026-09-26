@@ -10,7 +10,7 @@ import furShellFragment from './fur-shell.frag?raw';
 import furShellVertex from './fur-shell.vert?raw';
 import paletteShader from './palette.glsl?raw';
 import { motionFrames } from './motion-data';
-import { loopFrame } from './motion-loop';
+import { loopFrame, motionPhase } from './motion-loop';
 import { shapeFactor, variants, type VariantColors } from './variants';
 
 const params = new URLSearchParams(location.search);
@@ -50,6 +50,17 @@ const variantFactors = variants.map((variant) => Float32Array.from(
   (_, index) => shapeFactor(variant.id, -(index + 0.5) * Math.PI * 2 / motionFrames[0].radii.length),
 ));
 const currentFactors = new Float32Array(motionFrames[0].radii.length);
+const currentMotionFactors = new Float32Array(currentFactors.length);
+function tipMask(angle: number, tip: number) {
+  const distance = Math.atan2(Math.sin(angle - tip), Math.cos(angle - tip));
+  return Math.exp(-Math.pow(distance / 0.4, 2));
+}
+const angularSamples = Float32Array.from(motionFrames[0].radii,
+  (_, index) => -(index + 0.5) * Math.PI * 2 / motionFrames[0].radii.length);
+const starLeftMask = angularSamples.map((angle) => tipMask(angle, Math.PI * 0.9));
+const starRightMask = angularSamples.map((angle) => tipMask(angle, Math.PI * 1.7));
+const beanMotionMask = angularSamples.map((angle) => Math.cos(2 * angle - 0.4));
+const flowerMotionMask = angularSamples.map((angle) => Math.cos(4 * angle - Math.PI));
 const baselineRadii = Float32Array.from(motionFrames[0].radii, (_, point) =>
   motionFrames.reduce((sum, frame) => sum + frame.radii[point], 0) / motionFrames.length);
 const baselineMean = baselineRadii.reduce((sum, radius) => sum + radius, 0) / baselineRadii.length;
@@ -281,6 +292,10 @@ let lastRenderTime = performance.now();
 let currentReferenceDetail = 1;
 let currentFlutter = 1;
 let currentWaveWeight = 0;
+let motionSquash = 0;
+let motionLean = 0;
+let starLeftReach = 0;
+let starRightReach = 0;
 let currentDepth = 1;
 let currentEyeShiftX = 0;
 let currentEyeShiftY = 0;
@@ -298,8 +313,7 @@ function radiusAt(x: number, y: number) {
   const localFlutter = currentFlutter * (contour - baselineContour - (meanRadius - baselineMean));
   const animated = baselineMean + globalBreath
     + poleBlend * (currentReferenceDetail * (baselineContour - baselineMean) + localFlutter);
-  const frontFactor = THREE.MathUtils.lerp(currentFactors[first], currentFactors[(first + 1) % currentFactors.length], fraction);
-  const factor = frontFactor;
+  const factor = THREE.MathUtils.lerp(currentMotionFactors[first], currentMotionFactors[(first + 1) % currentMotionFactors.length], fraction);
   return animated * factor;
 }
 function waveBend(x: number) {
@@ -310,9 +324,11 @@ function waveCrest(x: number, y: number) {
 }
 function surface(x: number, y: number, z: number, target: Float32Array, offset: number) {
   const radius = radiusAt(x, y);
-  const crest = currentWaveWeight * waveCrest(x, y);
-  target[offset] = x * radius - 80 * crest;
-  target[offset + 1] = y * radius + currentWaveWeight * waveBend(x) + 50 * crest;
+  const crest = currentWaveWeight * waveCrest(x, y) * (1 + 0.35 * motionLean);
+  target[offset] = (x * radius - 80 * crest) * (1 + 0.06 * motionSquash)
+    - 10 * motionLean * Math.max(0, y);
+  target[offset + 1] = (y * radius + currentWaveWeight * waveBend(x) + 50 * crest)
+    * (1 - 0.045 * motionSquash);
   const lobe = Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2));
   target[offset + 2] = z * 116 * currentDepth
     + Math.max(0, z) * lobe * cheekStrength * 44 * currentReferenceDetail;
@@ -392,6 +408,17 @@ function render(now: number) {
   blendColor(paletteUniforms.uEyeColor.value, 'eye');
   if (!controls.paused) pausedAt = now;
   const seconds = frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000);
+  const phase = motionPhase(seconds, motionFrames.length);
+  motionSquash = Math.sin(2 * phase);
+  motionLean = Math.sin(phase);
+  starLeftReach = Math.max(0, motionLean) ** 2;
+  starRightReach = Math.max(0, -motionLean) ** 2;
+  for (let point = 0; point < currentMotionFactors.length; point++) {
+    currentMotionFactors[point] = currentFactors[point]
+      * (1 + variantWeights[3] * (0.42 * starLeftReach * starLeftMask[point] + 0.2 * starRightReach * starRightMask[point]))
+      * (1 + variantWeights[1] * 0.07 * motionSquash * beanMotionMask[point])
+      * (1 + variantWeights[2] * 0.08 * motionSquash * flowerMotionMask[point]);
+  }
   const frame = loopFrame(seconds, motionFrames.length);
   const a = Math.floor(frame), b = Math.min(a + 1, motionFrames.length - 1), fraction = frame - a;
   const first = motionFrames[a], second = motionFrames[b];
@@ -405,7 +432,7 @@ function render(now: number) {
 
   const cx = lerp(first.center[0], second.center[0]);
   const cy = lerp(first.center[1], second.center[1]);
-  character.position.set(cx - 360, 360 - cy, 0);
+  character.position.set(cx - 360, 360 - cy + 8 * motionSquash, 0);
   character.rotation.set(
     THREE.MathUtils.degToRad(controls.turnX),
     THREE.MathUtils.degToRad(controls.turnY),
@@ -415,9 +442,12 @@ function render(now: number) {
     const ex = lerp(first.eyes[i * 2], second.eyes[i * 2]) - cx + currentEyeShiftX;
     const openness = lerp(first.eyes[4], second.eyes[4]);
     const ey = cy - lerp(first.eyes[i * 2 + 1], second.eyes[i * 2 + 1]) - (1 - openness) * 11 + currentEyeShiftY;
-    const proportion = Math.min(0.98, Math.hypot(ex, ey) / radiusAt(ex, ey));
+    const eyeRadius = radiusAt(ex, ey);
+    const proportion = Math.min(0.98, Math.hypot(ex, ey) / eyeRadius);
     const depth = Math.sqrt(1 - proportion * proportion) * 116 * currentDepth;
-    eyes[i].position.set(ex, ey + currentWaveWeight * waveBend(ex / radiusAt(ex, ey)), depth + 1);
+    const eyeX = ex * (1 + 0.06 * motionSquash) - 10 * motionLean * Math.max(0, ey / eyeRadius);
+    const eyeY = (ey + currentWaveWeight * waveBend(ex / eyeRadius)) * (1 - 0.045 * motionSquash);
+    eyes[i].position.set(eyeX, eyeY, depth + 1);
     eyes[i].scale.set(4.9, Math.max(1.4, 9.3 * openness), 2.1);
   }
   shadowUniforms.uShadow.value.set(cx - 465, -191);
