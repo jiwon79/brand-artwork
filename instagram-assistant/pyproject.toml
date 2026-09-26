@@ -5,13 +5,12 @@ description = "Local-first Instagram comment and DM assistant for jiiwon.studio"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.116,<1",
-  "instagrapi @ git+https://github.com/subzeroid/instagrapi.git@a38b575a73f2c5c78f417681b842776abb52415a",
+  "httpx>=0.28,<1",
   "uvicorn[standard]>=0.35,<1",
 ]
 
 [dependency-groups]
 dev = [
-  "httpx>=0.28,<1",
   "pytest>=8.4,<9",
 ]
 
