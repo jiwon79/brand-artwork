@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#4162e2" />
+    <title>Fluffy Peach</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas id="artwork" aria-label="떠 있는 솜털 캐릭터"></canvas>
+    <div id="variant-picker" role="group" aria-label="형태와 색감 선택">
+      <button type="button" data-variant="original" aria-pressed="false" style="--swatch:#ffb8a3"><span class="swatch"></span>기존</button>
+      <button type="button" data-variant="bean" aria-pressed="false" style="--swatch:#b4e6bb"><span class="swatch"></span>민트 콩</button>
+      <button type="button" data-variant="flower" aria-pressed="false" style="--swatch:#ffc17d"><span class="swatch"></span>꿀 꽃</button>
+      <button type="button" data-variant="star" aria-pressed="true" style="--swatch:#9aa9f3"><span class="swatch"></span>보라 별</button>
+      <button type="button" data-variant="wave" aria-pressed="false" style="--swatch:#a1e2e9"><span class="swatch"></span>파도</button>
+    </div>
+    <script type="module" src="./script.ts"></script>
+  </body>
+</html>

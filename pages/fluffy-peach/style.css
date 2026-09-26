@@ -1,0 +1,79 @@
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #172e69;
+}
+
+#artwork {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: blur(var(--artwork-blur, 1.6px));
+  touch-action: none;
+  cursor: grab;
+}
+
+#artwork.dragging {
+  cursor: grabbing;
+}
+
+#variant-picker {
+  position: fixed;
+  z-index: 2;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  display: flex;
+  gap: 5px;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  overflow-x: auto;
+  border: 1px solid rgb(255 255 255 / 27%);
+  border-radius: 999px;
+  background: rgb(18 32 61 / 32%);
+  box-shadow: 0 8px 28px rgb(17 30 65 / 12%);
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+  scrollbar-width: none;
+}
+
+#variant-picker::-webkit-scrollbar {
+  display: none;
+}
+
+#variant-picker button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: white;
+  font: 500 12px/1 system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#variant-picker button[aria-pressed='true'] {
+  background: rgb(255 255 255 / 95%);
+  color: #26334e;
+}
+
+#variant-picker button:focus-visible {
+  outline: 2px solid white;
+  outline-offset: -3px;
+}
+
+#variant-picker .swatch {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 1px solid rgb(255 255 255 / 45%);
+  border-radius: 50%;
+  background: var(--swatch);
+}
