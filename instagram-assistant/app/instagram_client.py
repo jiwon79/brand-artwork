@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 import httpx
 
 from .config import paths, prepare_data_dir
-from .db import (add_delivery, get_event, get_settings, list_artworks, save_artwork,
+from .db import (add_delivery, get_event, get_settings, list_artworks, reconcile_own_dm_messages, save_artwork,
                  sent_today_count, update_event, update_settings, upsert_event)
 
 GRAPH_BASE = "https://graph.instagram.com/" + os.getenv("INSTAGRAM_GRAPH_VERSION", "v25.0")
@@ -273,22 +273,37 @@ class InstagramService:
                     "platform": "instagram", "limit": min(threads_amount, 100)}, limit=threads_amount):
                     thread_id = str(conversation["id"])
                     detail = client.request("GET", f"/{thread_id}", params={
-                        "fields": "messages{id,created_time,from,to,message}"})
+                        "fields": "participants{id,username},messages{id,created_time,from,to,message}"})
+                    participants = (detail.get("participants") or {}).get("data") or []
+                    own_messaging_ids = {
+                        str(person["id"])
+                        for person in participants
+                        if person.get("id") and str(person.get("username") or "").casefold() == client.username.casefold()
+                    }
+                    if len(own_messaging_ids) != 1:
+                        raise InstagramAssistantError(
+                            "DM 대화에서 연결 계정의 발신자 ID를 확인하지 못했습니다. 방향을 추측하지 않고 동기화를 중단합니다.")
+                    own_messaging_id = next(iter(own_messaging_ids))
+                    participant_names = {
+                        str(person["id"]): str(person.get("username") or "")
+                        for person in participants if person.get("id")
+                    }
                     for message in (detail.get("messages") or {}).get("data") or []:
                         sender = message.get("from") or {}
                         sender_id = str(sender.get("id") or "")
                         if not sender_id:
                             continue
-                        outbound = sender_id == client.account_id
+                        outbound = sender_id == own_messaging_id
                         dm_count += int(upsert_event({
                             "id": f"dm:{message['id']}", "account_id": client.account_id,
                             "kind": "dm", "source_id": str(message["id"]), "thread_id": thread_id,
                             "author_id": sender_id,
-                            "author_username": sender.get("username") or (client.username if outbound else ""),
+                            "author_username": sender.get("username") or participant_names.get(sender_id, ""),
                             "direction": "outbound" if outbound else "inbound",
                             "body": message.get("message") or "메시지 내용 없음",
                             "received_at": self._timestamp(message.get("created_time")),
                             "status": "history" if outbound else "pending"}))
+                    reconcile_own_dm_messages(client.account_id, own_messaging_id, client.username)
             except InstagramHaltedError as exc:
                 update_settings({"halted_reason": str(exc)[:500]})
                 raise

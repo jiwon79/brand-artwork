@@ -300,6 +300,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
                   post_url=COALESCE(?, post_url),
                   post_caption=COALESCE(?, post_caption),
                   shared_url=COALESCE(?, shared_url),
+                  author_id=COALESCE(?, author_id),
                   direction=COALESCE(?, direction),
                   has_liked=COALESCE(?, has_liked),
                   like_count=COALESCE(?, like_count),
@@ -310,12 +311,27 @@ def upsert_event(event: dict[str, Any]) -> bool:
                 (
                     event.get("account_id"), event.get("parent_comment_id"), event.get("thread_id"),
                     event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
+                    event.get("author_id"),
                     event.get("direction"), event.get("has_liked"),
                     event.get("like_count"), event.get("author_username", ""),
                     event.get("author_username", ""), timestamp, event["id"],
                 ),
             )
         return cursor.rowcount > 0
+
+
+def reconcile_own_dm_messages(account_id: str, messaging_id: str, username: str) -> int:
+    """Correct stored messages after confirming this account's ID in DM participants."""
+    with connect() as conn:
+        cursor = conn.execute(
+            """UPDATE events SET direction='outbound', status='history',
+               author_username=?, proposed_action=NULL, draft=NULL, intent=NULL,
+               confidence=NULL, artwork_slug=NULL, error=NULL, updated_at=?
+               WHERE kind='dm' AND account_id=? AND author_id=?
+               AND (direction!='outbound' OR status!='history')""",
+            (username, now(), account_id, messaging_id),
+        )
+    return cursor.rowcount
 
 
 def list_events(

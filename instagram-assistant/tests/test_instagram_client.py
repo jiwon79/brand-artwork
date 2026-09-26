@@ -149,17 +149,66 @@ def test_graph_sync_records_parent_reply_and_dm_for_connected_account(monkeypatc
 
         def request(self, method, path, *, params):
             assert method == "GET" and path == "/thread-1"
-            return {"messages": {"data": [{"id": "message-1", "from": {"id": "visitor-id", "username": "visitor"},
-                "message": "안녕하세요", "created_time": "2026-09-26T01:02:00+0000"}]}}
+            return {"participants": {"data": [
+                {"id": "messaging-own-id", "username": "studio.jiiwon"},
+                {"id": "visitor-id", "username": "visitor"},
+            ]}, "messages": {"data": [{"id": "message-1", "from": {"id": "visitor-id", "username": "visitor"},
+                "message": "안녕하세요", "created_time": "2026-09-26T01:02:00+0000"},
+                {"id": "message-2", "from": {"id": "messaging-own-id", "username": "studio.jiiwon"},
+                 "message": "안녕하세요!", "created_time": "2026-09-26T01:03:00+0000"}]}}
 
     service = InstagramService()
     service._client = FakeGraph()
     result = service.sync(media_amount=1, comments_per_media=10, threads_amount=1)
-    assert result["comments"] == 1 and result["comment_replies"] == 1 and result["dms"] == 1
+    assert result["comments"] == 1 and result["comment_replies"] == 1 and result["dms"] == 2
     assert db.get_event("comment:comment-1")["status"] == "sent"
     assert db.get_event("comment:reply-1")["parent_comment_id"] == "comment-1"
     assert db.get_event("dm:message-1")["author_id"] == "visitor-id"
     assert db.get_event("dm:message-1")["account_id"] == "ig-1"
+    assert db.get_event("dm:message-1")["direction"] == "inbound"
+    assert db.get_event("dm:message-2")["direction"] == "outbound"
+    assert db.get_event("dm:message-2")["status"] == "history"
+
+
+def test_dm_resync_corrects_existing_outbound_draft(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.upsert_event({"id": "dm:message-2", "account_id": "ig-1", "kind": "dm",
+        "source_id": "message-2", "thread_id": "thread-1", "author_id": "messaging-own-id",
+        "author_username": "studio.jiiwon", "direction": "inbound", "body": "제가 보낸 답장",
+        "status": "drafted"})
+    db.update_event("dm:message-2", {"draft": "잘못 만든 초안", "proposed_action": "reply_dm"})
+    db.upsert_event({"id": "dm:older", "account_id": "ig-1", "kind": "dm",
+        "source_id": "older", "thread_id": "older-thread", "author_id": "messaging-own-id",
+        "author_username": "studio.jiiwon", "direction": "inbound", "body": "예전에 보낸 답장",
+        "status": "pending"})
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+        def pages(self, path, *, params, limit):
+            if path == "/me/media":
+                return iter([])
+            assert path == "/me/conversations"
+            return iter([{"id": "thread-1"}])
+        def request(self, method, path, *, params):
+            return {"participants": {"data": [
+                {"id": "messaging-own-id", "username": "studio.jiiwon"},
+                {"id": "visitor-id", "username": "visitor"}]},
+                "messages": {"data": [{"id": "message-2", "from": {"id": "messaging-own-id"},
+                    "message": "제가 보낸 답장", "created_time": "2026-09-26T01:03:00+0000"}]}}
+
+    service = InstagramService()
+    service._client = FakeGraph()
+    service.sync(media_amount=0, threads_amount=1)
+    repaired = db.get_event("dm:message-2")
+    assert repaired["direction"] == "outbound"
+    assert repaired["status"] == "history"
+    assert repaired["draft"] is None
+    assert repaired["proposed_action"] is None
+    assert repaired["author_username"] == "studio.jiiwon"
+    assert db.get_event("dm:older")["direction"] == "outbound"
+    assert db.get_event("dm:older")["status"] == "history"
 
 
 def test_sync_reports_permission_gap_when_media_has_comments_but_api_returns_none(monkeypatch, tmp_path):
