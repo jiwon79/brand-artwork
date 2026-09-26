@@ -17,6 +17,7 @@
     "pages/cursor-cat/**/*.ts",
     "pages/color-text/**/*.ts",
     "pages/guseul/**/*.ts",
+    "pages/fluffy-peach/**/*.ts",
     "pages/rose-glass/**/*.ts",
     "pages/line-pull/**/*.ts",
     "pages/smile-flower/**/*.ts",
