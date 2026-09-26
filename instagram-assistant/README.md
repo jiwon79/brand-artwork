@@ -2,6 +2,8 @@
 
 Local-first assistant for `jiiwon.studio`. It reads recent comments and DMs with `instagrapi`, stores only operational state in SQLite, and prepares narrowly scoped replies.
 
+Instagram DM을 분류하거나 답변을 보내기 전에는 Notion `Project → Vibe → 내부 운영`의 [Instagram DM 답변 규칙](https://app.notion.com/p/3e7a89f7e31a815b8b60c3ead057bf0a)을 읽는다. 문구, 분기, 메시지 분할과 대화별 승인 기준은 그 문서에서 관리한다. 현재 `rules.py`의 자동 답변 로직은 이 규칙과 아직 동기화되지 않았다.
+
 ## Safety defaults
 
 - Binds only to `127.0.0.1`.
