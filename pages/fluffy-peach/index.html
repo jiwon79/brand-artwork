@@ -8,7 +8,14 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <canvas id="artwork" aria-label="파란 공간에 떠 있는 복숭아빛 솜털 캐릭터"></canvas>
+    <canvas id="artwork" aria-label="떠 있는 솜털 캐릭터"></canvas>
+    <div id="variant-picker" role="group" aria-label="형태와 색감 선택">
+      <button type="button" data-variant="original" aria-pressed="false" style="--swatch:#ffb8a3"><span class="swatch"></span>기존</button>
+      <button type="button" data-variant="bean" aria-pressed="false" style="--swatch:#b4e6bb"><span class="swatch"></span>민트 콩</button>
+      <button type="button" data-variant="drop" aria-pressed="false" style="--swatch:#ffc17d"><span class="swatch"></span>꿀 방울</button>
+      <button type="button" data-variant="star" aria-pressed="true" style="--swatch:#9aa9f3"><span class="swatch"></span>보라 별</button>
+      <button type="button" data-variant="cloud" aria-pressed="false" style="--swatch:#a1e2e9"><span class="swatch"></span>파도 구름</button>
+    </div>
     <script type="module" src="./script.ts"></script>
   </body>
 </html>

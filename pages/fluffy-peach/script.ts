@@ -10,6 +10,50 @@ import furShellFragment from './fur-shell.frag?raw';
 import furShellVertex from './fur-shell.vert?raw';
 import paletteShader from './palette.glsl?raw';
 import { motionFrames } from './motion-data';
+import { shapeFactor, variants, type VariantColors } from './variants';
+
+const params = new URLSearchParams(location.search);
+const requestedVariant = variants.findIndex((variant) => variant.id === params.get('shape'));
+let targetVariant = requestedVariant >= 0 ? requestedVariant : 3;
+const variantWeights = variants.map((_, index) => Number(index === targetVariant));
+const colorChannels: readonly (keyof VariantColors)[] = [
+  'base', 'cool', 'blush', 'warm', 'highlight', 'bottom', 'detail', 'furTip',
+  'backgroundTop', 'backgroundBottom', 'shadow', 'eye',
+];
+function hexVector(hex: string) {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return new THREE.Vector3((value >> 16) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
+}
+const paletteVectors = variants.map((variant) => Object.fromEntries(
+  colorChannels.map((channel) => [channel, hexVector(variant.colors[channel])]),
+) as Record<keyof VariantColors, THREE.Vector3>);
+const selectedColors = paletteVectors[targetVariant];
+const paletteUniforms = {
+  uBaseColor: { value: selectedColors.base.clone() },
+  uCoolColor: { value: selectedColors.cool.clone() },
+  uBlushColor: { value: selectedColors.blush.clone() },
+  uWarmColor: { value: selectedColors.warm.clone() },
+  uHighlightColor: { value: selectedColors.highlight.clone() },
+  uBottomColor: { value: selectedColors.bottom.clone() },
+  uDetailColor: { value: selectedColors.detail.clone() },
+  uFurTipColor: { value: selectedColors.furTip.clone() },
+  uBackgroundTop: { value: selectedColors.backgroundTop.clone() },
+  uBackgroundBottom: { value: selectedColors.backgroundBottom.clone() },
+  uShadowColor: { value: selectedColors.shadow.clone() },
+  uEyeColor: { value: selectedColors.eye.clone() },
+};
+const variantFactors = variants.map((variant) => Float32Array.from(
+  motionFrames[0].radii,
+  (_, index) => shapeFactor(variant.id, -(index + 0.5) * Math.PI * 2 / motionFrames[0].radii.length),
+));
+const currentFactors = new Float32Array(motionFrames[0].radii.length);
+
+function blendColor(target: THREE.Vector3, channel: keyof VariantColors) {
+  target.set(0, 0, 0);
+  for (let index = 0; index < variants.length; index++) {
+    target.addScaledVector(paletteVectors[index][channel], variantWeights[index]);
+  }
+}
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork');
 if (!canvas) throw new Error('Artwork canvas is missing');
@@ -24,6 +68,7 @@ camera.position.z = 1000;
 const shadowUniforms = {
   uShadow: { value: new THREE.Vector2(-75, -191) },
   uShadowScale: { value: 1 },
+  ...paletteUniforms,
 };
 const background = new THREE.Mesh(
   new THREE.PlaneGeometry(3000, 3000),
@@ -44,7 +89,7 @@ const original = Float32Array.from(shape.getAttribute('position').array as Array
 const shapePosition = shape.getAttribute('position') as THREE.BufferAttribute;
 const shapeNormal = shape.getAttribute('normal') as THREE.BufferAttribute;
 shapePosition.setUsage(THREE.DynamicDrawUsage);
-const bodyUniforms = { uCheek: { value: 0 } };
+const bodyUniforms = { uCheek: { value: 0 }, ...paletteUniforms };
 const body = new THREE.Mesh(
   shape,
   new THREE.ShaderMaterial({
@@ -75,7 +120,7 @@ const shells = Array.from({ length: SHELL_COUNT }, (_, index) => {
 ${paletteShader}
 ${furShellVertex}`,
     fragmentShader: furShellFragment,
-    uniforms: { uCheek: bodyUniforms.uCheek, uLayer: { value: layer } },
+    uniforms: { ...bodyUniforms, uLayer: { value: layer } },
     transparent: true,
     depthWrite: false,
     side: THREE.FrontSide,
@@ -146,7 +191,8 @@ character.add(fur);
 
 const eyeMaterial = new THREE.ShaderMaterial({
   vertexShader: `varying vec3 vNormal; void main() { vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `varying vec3 vNormal; void main() { float edge = smoothstep(0.0, 0.67, abs(normalize(vNormal).z)); gl_FragColor = vec4(0.40, 0.39, 0.88, edge * 0.88); }`,
+  fragmentShader: `uniform vec3 uEyeColor; varying vec3 vNormal; void main() { float edge = smoothstep(0.0, 0.67, abs(normalize(vNormal).z)); gl_FragColor = vec4(uEyeColor, edge * 0.88); }`,
+  uniforms: { uEyeColor: paletteUniforms.uEyeColor },
   transparent: true,
   depthWrite: false,
 });
@@ -157,7 +203,6 @@ const eyes = Array.from({ length: 2 }, () => {
   return eye;
 });
 
-const params = new URLSearchParams(location.search);
 const queryTime = Number(params.get('t'));
 const frozenTime = params.has('t') && Number.isFinite(queryTime) ? Math.max(0, queryTime) : null;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -165,6 +210,26 @@ const startTime = performance.now();
 const controls = { turnX: 0, turnY: 0, turnZ: 0, paused: false };
 const gui = exposeGuiInDebugMode(new GUI({ title: 'Fluffy Peach · 3D' }));
 const refresh = () => { if (frozenTime !== null || reduceMotion) requestAnimationFrame(render); };
+const variantButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('#variant-picker button'));
+function selectVariant(index: number) {
+  targetVariant = index;
+  for (const button of variantButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.variant === variants[index].id));
+  }
+  document.body.style.backgroundColor = variants[index].colors.backgroundTop;
+  const url = new URL(location.href);
+  url.searchParams.set('shape', variants[index].id);
+  history.replaceState(null, '', url);
+  refresh();
+}
+for (const button of variantButtons) {
+  const index = variants.findIndex((variant) => variant.id === button.dataset.variant);
+  if (index >= 0) button.addEventListener('click', () => selectVariant(index));
+}
+for (const button of variantButtons) {
+  button.setAttribute('aria-pressed', String(button.dataset.variant === variants[targetVariant].id));
+}
+document.body.style.backgroundColor = variants[targetVariant].colors.backgroundTop;
 gui.add(controls, 'turnX', -90, 90, 1).name('위아래 회전').listen().onChange(refresh);
 gui.add(controls, 'turnY', -180, 180, 1).name('좌우 회전').listen().onChange(refresh);
 gui.add(controls, 'turnZ', -180, 180, 1).name('기울기').onChange(refresh);
@@ -207,20 +272,29 @@ let meanRadius = 135;
 let sideRoundness = 0;
 let pausedAt = 0;
 let cheekStrength = 0;
+let lastRenderTime = performance.now();
+let currentReferenceDetail = 1;
+let currentDepth = 1;
+let currentEyeShiftX = 0;
+let currentEyeShiftY = 0;
 function radiusAt(x: number, y: number) {
   const theta = (Math.atan2(-y, x) + Math.PI * 2) % (Math.PI * 2);
   const sample = theta * currentRadii.length / (Math.PI * 2) - 0.5;
   const first = ((Math.floor(sample) % currentRadii.length) + currentRadii.length) % currentRadii.length;
   const leftExpansion = THREE.MathUtils.smoothstep(-x, 0.3, 0.95) * 0.10;
-  const contour = THREE.MathUtils.lerp(currentRadii[first], currentRadii[(first + 1) % currentRadii.length], sample - Math.floor(sample)) * (0.94 + leftExpansion);
-  return THREE.MathUtils.lerp(contour, meanRadius, sideRoundness);
+  const fraction = sample - Math.floor(sample);
+  const contour = THREE.MathUtils.lerp(currentRadii[first], currentRadii[(first + 1) % currentRadii.length], fraction) * (0.94 + leftExpansion);
+  const animated = THREE.MathUtils.lerp(meanRadius, contour, currentReferenceDetail * (1 - sideRoundness));
+  const frontFactor = THREE.MathUtils.lerp(currentFactors[first], currentFactors[(first + 1) % currentFactors.length], fraction);
+  const factor = THREE.MathUtils.lerp(frontFactor, 1, sideRoundness * 0.8);
+  return animated * factor;
 }
 function surface(x: number, y: number, z: number, target: Float32Array, offset: number) {
   const radius = radiusAt(x, y);
   target[offset] = x * radius;
   target[offset + 1] = y * radius;
   const lobe = Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2));
-  target[offset + 2] = z * 116 + Math.max(0, z) * lobe * cheekStrength * 44;
+  target[offset + 2] = z * 116 * currentDepth + Math.max(0, z) * lobe * cheekStrength * 44 * currentReferenceDetail;
 }
 function updateShape() {
   const bodyPositions = shapePosition.array as Float32Array;
@@ -255,6 +329,43 @@ function updateShape() {
 }
 
 function render(now: number) {
+  const delta = Math.min(Math.max(now - lastRenderTime, 0) / 1000, 0.05);
+  lastRenderTime = now;
+  const morphStep = reduceMotion ? 1 : 1 - Math.exp(-delta * 7);
+  let morphing = false;
+  for (let index = 0; index < variants.length; index++) {
+    const target = Number(index === targetVariant);
+    variantWeights[index] += (target - variantWeights[index]) * morphStep;
+    if (Math.abs(variantWeights[index] - target) < 0.001) variantWeights[index] = target;
+    else morphing = true;
+  }
+  currentReferenceDetail = 0;
+  currentDepth = 0;
+  currentEyeShiftX = 0;
+  currentEyeShiftY = 0;
+  for (let index = 0; index < variants.length; index++) {
+    currentReferenceDetail += variants[index].referenceDetail * variantWeights[index];
+    currentDepth += variants[index].depth * variantWeights[index];
+    currentEyeShiftX += variants[index].eyeShift[0] * variantWeights[index];
+    currentEyeShiftY += variants[index].eyeShift[1] * variantWeights[index];
+  }
+  for (let point = 0; point < currentFactors.length; point++) {
+    let factor = 0;
+    for (let index = 0; index < variants.length; index++) factor += variantFactors[index][point] * variantWeights[index];
+    currentFactors[point] = factor;
+  }
+  blendColor(paletteUniforms.uBaseColor.value, 'base');
+  blendColor(paletteUniforms.uCoolColor.value, 'cool');
+  blendColor(paletteUniforms.uBlushColor.value, 'blush');
+  blendColor(paletteUniforms.uWarmColor.value, 'warm');
+  blendColor(paletteUniforms.uHighlightColor.value, 'highlight');
+  blendColor(paletteUniforms.uBottomColor.value, 'bottom');
+  blendColor(paletteUniforms.uDetailColor.value, 'detail');
+  blendColor(paletteUniforms.uFurTipColor.value, 'furTip');
+  blendColor(paletteUniforms.uBackgroundTop.value, 'backgroundTop');
+  blendColor(paletteUniforms.uBackgroundBottom.value, 'backgroundBottom');
+  blendColor(paletteUniforms.uShadowColor.value, 'shadow');
+  blendColor(paletteUniforms.uEyeColor.value, 'eye');
   if (!controls.paused) pausedAt = now;
   const seconds = frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000);
   const frame = ((seconds * 24) % motionFrames.length + motionFrames.length) % motionFrames.length;
@@ -278,18 +389,18 @@ function render(now: number) {
     THREE.MathUtils.degToRad(controls.turnZ),
   );
   for (let i = 0; i < 2; i++) {
-    const ex = lerp(first.eyes[i * 2], second.eyes[i * 2]) - cx;
+    const ex = lerp(first.eyes[i * 2], second.eyes[i * 2]) - cx + currentEyeShiftX;
     const openness = lerp(first.eyes[4], second.eyes[4]);
-    const ey = cy - lerp(first.eyes[i * 2 + 1], second.eyes[i * 2 + 1]) - (1 - openness) * 11;
+    const ey = cy - lerp(first.eyes[i * 2 + 1], second.eyes[i * 2 + 1]) - (1 - openness) * 11 + currentEyeShiftY;
     const proportion = Math.min(0.98, Math.hypot(ex, ey) / radiusAt(ex, ey));
-    const depth = Math.sqrt(1 - proportion * proportion) * 116;
+    const depth = Math.sqrt(1 - proportion * proportion) * 116 * currentDepth;
     eyes[i].position.set(ex, ey, depth + 1);
     eyes[i].scale.set(4.9, Math.max(1.4, 9.3 * openness), 2.1);
   }
   shadowUniforms.uShadow.value.set(cx - 465, -191);
   shadowUniforms.uShadowScale.value = 0.94 + Math.max(0, cy - 350) * 0.0012;
   renderer.render(scene, camera);
-  if (frozenTime === null && !reduceMotion) requestAnimationFrame(render);
+  if ((frozenTime === null && !reduceMotion) || morphing) requestAnimationFrame(render);
 }
 function resize() {
   const width = Math.max(1, innerWidth), height = Math.max(1, innerHeight);

@@ -1,5 +1,6 @@
 precision highp float;
 uniform float uLayer;
+uniform vec3 uFurTipColor;
 varying vec3 vFurColor;
 varying vec3 vFurSample;
 varying float vSilhouette;
@@ -29,6 +30,6 @@ void main() {
   float falloff = pow(1.0 - uLayer, 1.05);
   float rim = pow(vSilhouette, 1.35);
   float alpha = (0.055 + 0.17 * rim) * falloff * coverage;
-  vec3 color = mix(vFurColor, vec3(0.98, 0.87, 0.94), 0.14 * uLayer);
+  vec3 color = mix(vFurColor, uFurTipColor, 0.14 * uLayer);
   gl_FragColor = vec4(clamp(color, 0.0, 1.0), alpha);
 }
