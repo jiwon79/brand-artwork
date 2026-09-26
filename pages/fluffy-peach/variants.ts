@@ -35,7 +35,7 @@ export const variants: readonly Variant[] = [
     },
   },
   {
-    id: 'bean', label: '민트 콩', referenceDetail: 0.2, flutter: 0, depth: 0.92, eyeShift: [-69, -13],
+    id: 'bean', label: '민트 콩', referenceDetail: 0.2, flutter: 1.02, depth: 0.92, eyeShift: [-69, -13],
     colors: {
       base: '#b4e6bb', cool: '#5bbcb5', blush: '#dcf0a0', warm: '#fff2b0',
       highlight: '#f0f9d7', bottom: '#72bfb2', detail: '#ffc481', furTip: '#ecf9d7',
@@ -43,7 +43,7 @@ export const variants: readonly Variant[] = [
     },
   },
   {
-    id: 'flower', label: '꿀 꽃', referenceDetail: 0.18, flutter: 0, depth: 0.94, eyeShift: [-63, 6],
+    id: 'flower', label: '꿀 꽃', referenceDetail: 0.18, flutter: 1.03, depth: 0.94, eyeShift: [-63, 6],
     colors: {
       base: '#ffc17d', cool: '#d77994', blush: '#ff987c', warm: '#ffe09d',
       highlight: '#fff3c4', bottom: '#dc8b9a', detail: '#d95381', furTip: '#fff2d7',
@@ -51,7 +51,7 @@ export const variants: readonly Variant[] = [
     },
   },
   {
-    id: 'star', label: '보라 별', referenceDetail: 0.14, flutter: 0, depth: 0.82, eyeShift: [-69, -4],
+    id: 'star', label: '보라 별', referenceDetail: 0.14, flutter: 1.02, depth: 0.82, eyeShift: [-69, -4],
     colors: {
       base: '#9aa9f3', cool: '#6578ce', blush: '#c88ee7', warm: '#edb3de',
       highlight: '#ece0ff', bottom: '#6979c4', detail: '#f19dbb', furTip: '#ede6ff',
@@ -59,7 +59,7 @@ export const variants: readonly Variant[] = [
     },
   },
   {
-    id: 'wave', label: '파도', referenceDetail: 0.17, flutter: 0, depth: 0.86, eyeShift: [-67, -10],
+    id: 'wave', label: '파도', referenceDetail: 0.17, flutter: 1.04, depth: 0.86, eyeShift: [-67, -10],
     colors: {
       base: '#a1e2e9', cool: '#57a9c4', blush: '#b6d8f2', warm: '#d8f4e9',
       highlight: '#ecfff7', bottom: '#6fb8d2', detail: '#83d3d4', furTip: '#e7fff9',

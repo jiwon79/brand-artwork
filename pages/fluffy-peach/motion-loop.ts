@@ -15,12 +15,13 @@ export function loopFrame(seconds: number, frameCount: number, fps = 24) {
   return position;
 }
 
-// One quick extension and slower release; the value and speed both meet at zero.
-export function variantGesture(seconds: number, frameCount: number, fps = 24) {
-  const period = (frameCount - 1) / fps;
-  const progress = (((seconds % period) + period) % period) / period;
-  const smooth = (value: number) => value * value * (3 - 2 * value);
-  return progress < 0.38
-    ? smooth(progress / 0.38)
-    : 1 - smooth((progress - 0.38) / 0.62);
+// Variant accents follow the source silhouette's width at the same measured frame.
+export function variantGesture(frame: number, widths: readonly number[]) {
+  if (widths.length < 2) return 0;
+  const first = Math.max(0, Math.min(Math.floor(frame), widths.length - 1));
+  const second = Math.min(first + 1, widths.length - 1);
+  const width = widths[first] + (widths[second] - widths[first]) * (frame - first);
+  const minimum = Math.min(...widths);
+  const maximum = Math.max(...widths);
+  return maximum > minimum ? (width - minimum) / (maximum - minimum) : 0;
 }

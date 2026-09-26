@@ -57,9 +57,16 @@ function tipMask(angle: number, tip: number) {
 }
 const angularSamples = Float32Array.from(motionFrames[0].radii,
   (_, index) => -(index + 0.5) * Math.PI * 2 / motionFrames[0].radii.length);
-const starLeftMask = angularSamples.map((angle) => tipMask(angle, Math.PI * 0.9));
+const starMotionMask = angularSamples.map((angle) => [
+  [Math.PI * 0.1, 0.11],
+  [Math.PI * 0.5, 0.14],
+  [Math.PI * 0.9, 0.18],
+  [Math.PI * 1.3, 0.1],
+  [Math.PI * 1.7, 0.13],
+].reduce((sum, [tip, strength]) => sum + strength * tipMask(angle, tip), 0));
 const flowerMotionMask = angularSamples.map((angle) => Math.cos(4 * angle - Math.PI));
 const restingFrame = motionFrames[Math.floor(motionFrames.length / 2)];
+const referenceWidths = motionFrames.map((frame) => frame.radii[0] + frame.radii[frame.radii.length / 2]);
 const baselineRadii = Float32Array.from(motionFrames[0].radii, (_, point) =>
   motionFrames.reduce((sum, frame) => sum + frame.radii[point], 0) / motionFrames.length);
 const baselineMean = baselineRadii.reduce((sum, radius) => sum + radius, 0) / baselineRadii.length;
@@ -320,8 +327,8 @@ function waveCrest(x: number, y: number) {
 }
 function surface(x: number, y: number, z: number, target: Float32Array, offset: number) {
   const radius = radiusAt(x, y);
-  const crest = currentWaveWeight * waveCrest(x, y) * (1 + 0.55 * gesture);
-  target[offset] = (x * radius - 80 * crest) * (1 + 0.28 * variantWeights[1] * gesture);
+  const crest = currentWaveWeight * waveCrest(x, y) * (1 + 0.35 * gesture);
+  target[offset] = (x * radius - 80 * crest) * (1 + 0.16 * variantWeights[1] * gesture);
   target[offset + 1] = y * radius + currentWaveWeight * waveBend(x) + 50 * crest;
   const lobe = Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2));
   target[offset + 2] = z * 116 * currentDepth
@@ -402,12 +409,6 @@ function render(now: number) {
   blendColor(paletteUniforms.uEyeColor.value, 'eye');
   if (!controls.paused) pausedAt = now;
   const seconds = frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000);
-  gesture = variantGesture(seconds, motionFrames.length);
-  for (let point = 0; point < currentMotionFactors.length; point++) {
-    currentMotionFactors[point] = currentFactors[point]
-      * (1 + 0.48 * variantWeights[3] * gesture * starLeftMask[point])
-      * (1 + 0.15 * variantWeights[2] * gesture * Math.max(0, flowerMotionMask[point]));
-  }
   const frame = loopFrame(seconds, motionFrames.length);
   const a = Math.floor(frame), b = Math.min(a + 1, motionFrames.length - 1), fraction = frame - a;
   const first = motionFrames[a], second = motionFrames[b];
@@ -418,12 +419,19 @@ function render(now: number) {
   bodyUniforms.uStarSoftness.value = variantWeights[3];
   for (let i = 0; i < currentRadii.length; i++) currentRadii[i] = lerp(first.radii[i], second.radii[i]);
   meanRadius = currentRadii.reduce((sum, value) => sum + value, 0) / currentRadii.length;
+  gesture = variantGesture(frame, referenceWidths);
+  for (let point = 0; point < currentMotionFactors.length; point++) {
+    currentMotionFactors[point] = currentFactors[point]
+      * (1 + variantWeights[3] * gesture * starMotionMask[point])
+      * (1 + 0.1 * variantWeights[2] * gesture * Math.max(0, flowerMotionMask[point]));
+  }
   updateShape();
 
   const sourceCx = lerp(first.center[0], second.center[0]);
   const sourceCy = lerp(first.center[1], second.center[1]);
-  const cx = THREE.MathUtils.lerp(360, sourceCx, referenceWeight);
-  const cy = THREE.MathUtils.lerp(360, sourceCy, referenceWeight);
+  const motionInfluence = 0.48 + 0.52 * referenceWeight;
+  const cx = THREE.MathUtils.lerp(360, sourceCx, motionInfluence);
+  const cy = THREE.MathUtils.lerp(360, sourceCy, motionInfluence);
   character.position.set(cx - 360, 360 - cy, 0);
   character.rotation.set(
     THREE.MathUtils.degToRad(controls.turnX),
@@ -433,14 +441,14 @@ function render(now: number) {
   for (let i = 0; i < 2; i++) {
     const sourceEyeX = lerp(first.eyes[i * 2], second.eyes[i * 2]) - sourceCx;
     const sourceEyeY = sourceCy - lerp(first.eyes[i * 2 + 1], second.eyes[i * 2 + 1]);
-    const ex = THREE.MathUtils.lerp(restingFrame.eyes[i * 2] - restingFrame.center[0], sourceEyeX, referenceWeight) + currentEyeShiftX;
-    const openness = THREE.MathUtils.lerp(restingFrame.eyes[4], lerp(first.eyes[4], second.eyes[4]), referenceWeight);
-    const ey = THREE.MathUtils.lerp(restingFrame.center[1] - restingFrame.eyes[i * 2 + 1], sourceEyeY, referenceWeight)
+    const ex = THREE.MathUtils.lerp(restingFrame.eyes[i * 2] - restingFrame.center[0], sourceEyeX, motionInfluence) + currentEyeShiftX;
+    const openness = lerp(first.eyes[4], second.eyes[4]);
+    const ey = THREE.MathUtils.lerp(restingFrame.center[1] - restingFrame.eyes[i * 2 + 1], sourceEyeY, motionInfluence)
       - (1 - openness) * 11 + currentEyeShiftY;
     const eyeRadius = radiusAt(ex, ey);
     const proportion = Math.min(0.98, Math.hypot(ex, ey) / eyeRadius);
     const depth = Math.sqrt(1 - proportion * proportion) * 116 * currentDepth;
-    const eyeX = ex * (1 + 0.28 * variantWeights[1] * gesture);
+    const eyeX = ex * (1 + 0.16 * variantWeights[1] * gesture);
     const eyeY = ey + currentWaveWeight * waveBend(ex / eyeRadius);
     eyes[i].position.set(eyeX, eyeY, depth + 1);
     eyes[i].scale.set(4.9, Math.max(1.4, 9.3 * openness), 2.1);

@@ -13,11 +13,15 @@ test('motion returns to the first measured pose without a position or speed jump
   expect(Math.abs(loopFrame(turnaround, frameCount) - loopFrame(turnaround - step, frameCount))).toBeLessThan(0.001);
 });
 
-test('each variant gesture extends once and releases smoothly', () => {
-  const period = (120 - 1) / 24;
+test('variant accents follow the measured contour through the same seamless loop', () => {
+  const widths = [100, 150, 120, 180];
+  const period = 2 * (widths.length - 1) / 24;
   const step = 0.001;
-  expect(variantGesture(0, 120)).toBe(0);
-  expect(variantGesture(period * 0.38, 120)).toBeCloseTo(1);
-  expect(variantGesture(period, 120)).toBe(0);
-  expect(Math.abs(variantGesture(period - step, 120) - variantGesture(period + step, 120))).toBeLessThan(0.001);
+  const gesture = (seconds: number) => variantGesture(loopFrame(seconds, widths.length), widths);
+  expect(gesture(0)).toBe(0);
+  expect(gesture(1 / 24)).toBeCloseTo(0.625);
+  expect(gesture(2 / 24)).toBeCloseTo(0.25);
+  expect(gesture(3 / 24)).toBe(1);
+  expect(gesture(period)).toBe(0);
+  expect(Math.abs(gesture(period - step) - gesture(period + step))).toBeLessThan(0.001);
 });
