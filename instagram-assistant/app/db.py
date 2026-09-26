@@ -300,6 +300,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
                   post_url=COALESCE(?, post_url),
                   post_caption=COALESCE(?, post_caption),
                   shared_url=COALESCE(?, shared_url),
+                  author_id=COALESCE(?, author_id),
                   direction=COALESCE(?, direction),
                   has_liked=COALESCE(?, has_liked),
                   like_count=COALESCE(?, like_count),
@@ -310,12 +311,27 @@ def upsert_event(event: dict[str, Any]) -> bool:
                 (
                     event.get("account_id"), event.get("parent_comment_id"), event.get("thread_id"),
                     event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
+                    event.get("author_id"),
                     event.get("direction"), event.get("has_liked"),
                     event.get("like_count"), event.get("author_username", ""),
                     event.get("author_username", ""), timestamp, event["id"],
                 ),
             )
         return cursor.rowcount > 0
+
+
+def reconcile_own_dm_messages(account_id: str, messaging_id: str, username: str) -> int:
+    """Correct stored messages after confirming this account's ID in DM participants."""
+    with connect() as conn:
+        cursor = conn.execute(
+            """UPDATE events SET direction='outbound', status='history',
+               author_username=?, proposed_action=NULL, draft=NULL, intent=NULL,
+               confidence=NULL, artwork_slug=NULL, error=NULL, updated_at=?
+               WHERE kind='dm' AND account_id=? AND author_id=?
+               AND (direction!='outbound' OR status!='history')""",
+            (username, now(), account_id, messaging_id),
+        )
+    return cursor.rowcount
 
 
 def list_events(
@@ -372,6 +388,10 @@ def list_comment_threads(
         replies_by_parent.setdefault(str(reply["parent_comment_id"]), []).append(reply)
     for comment in comments:
         comment["replies"] = replies_by_parent.get(str(comment["source_id"]), [])
+        if comment.get("post_url") and comment.get("source_id"):
+            comment["comment_url"] = (
+                str(comment["post_url"]).rstrip("/") + "/c/" + str(comment["source_id"]) + "/"
+            )
     return comments
 
 
@@ -417,30 +437,19 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
             "latest_at": item["received_at"],
             "message_count": 0,
             "has_actionable": False,
-            "classification": None,
-            "_latest_inbound_classification": None,
             "_has_newer_resolution": False,
         })
         conversation["message_count"] += 1
-        if item["direction"] == "outbound":
+        if item["direction"] == "outbound" or item["has_liked"] or item["status"] in {"sent", "completed", "ignored"}:
             conversation["_has_newer_resolution"] = True
-        elif item["has_liked"]:
-            conversation["_has_newer_resolution"] = True
-        elif (
-            item["status"] in {"pending", "drafted", "manual"}
-            and not conversation["_has_newer_resolution"]
-        ):
-            if not conversation["has_actionable"]:
-                conversation["classification"] = item["intent"] or item["status"]
-            conversation["has_actionable"] = True
+        elif item["direction"] == "inbound" and item["status"] in {"pending", "drafted", "manual"}:
+            if not conversation["_has_newer_resolution"]:
+                conversation["has_actionable"] = True
         if item["direction"] == "inbound" and item["author_username"]:
             conversation["username"] = conversation["username"] or item["author_username"]
-        if item["direction"] == "inbound" and conversation["_latest_inbound_classification"] is None:
-            conversation["_latest_inbound_classification"] = item["intent"] or item["status"]
     items = list(conversations.values())
     for item in items:
-        item.pop("_has_newer_resolution", None)
-        item["classification"] = item["classification"] or item.pop("_latest_inbound_classification", None)
+        item.pop("_has_newer_resolution")
     if status == "active":
         return [item for item in items if item["has_actionable"]]
     if status == "completed":
@@ -458,19 +467,6 @@ def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
             (thread_id, account_id, account_id),
         ).fetchall()
     return [dict(row) for row in rows]
-
-
-def complete_conversation(thread_id: str) -> int:
-    account_id = get_settings().get("instagram_account_id")
-    with connect() as conn:
-        cursor = conn.execute(
-            "UPDATE events SET status='completed', proposed_action='complete', updated_at=? "
-            "WHERE kind='dm' AND thread_id=? AND (? = '' OR account_id=?) "
-            "AND direction='inbound' "
-            "AND status IN ('pending', 'drafted', 'manual')",
-            (now(), thread_id, account_id, account_id),
-        )
-    return cursor.rowcount
 
 
 def update_event(event_id: str, values: dict[str, Any]) -> dict[str, Any] | None:

@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 import httpx
 
 from .config import paths, prepare_data_dir
-from .db import (add_delivery, get_event, get_settings, list_artworks, save_artwork,
+from .db import (add_delivery, get_event, get_settings, list_artworks, reconcile_own_dm_messages, save_artwork,
                  sent_today_count, update_event, update_settings, upsert_event)
 
 GRAPH_BASE = "https://graph.instagram.com/" + os.getenv("INSTAGRAM_GRAPH_VERSION", "v25.0")
@@ -68,8 +68,9 @@ class GraphClient:
                     count += 1
                     if count >= limit:
                         return
-            after = ((result.get("paging") or {}).get("cursors") or {}).get("after")
-            if not after or after in seen:
+            paging = result.get("paging") or {}
+            after = (paging.get("cursors") or {}).get("after")
+            if not paging.get("next") or not after or after in seen:
                 return
             seen.add(after)
             query["after"] = after
@@ -202,6 +203,10 @@ class InstagramService:
         match = re.search(r"instagram\.com/(reel|p)/([^/?#]+)", value)
         return f"https://www.instagram.com/{match.group(1)}/{match.group(2)}/" if match else value
 
+    @staticmethod
+    def _comment_username(comment: dict[str, Any]) -> str:
+        return str(comment.get("username") or (comment.get("from") or {}).get("username") or "")
+
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
              threads_amount: int = 30) -> dict[str, Any]:
         with self._lock:
@@ -222,14 +227,16 @@ class InstagramService:
                     artwork = artworks.get(code)
                     if artwork and artwork.get("media_id") != media_id:
                         save_artwork({**artwork, "media_id": media_id})
-                    seen_comments = 0
+                    seen_comments = imported_comments = 0
                     for comment in client.pages(f"/{media_id}/comments", params={
-                        "fields": "id,text,username,timestamp,like_count,replies{id,text,username,timestamp}",
-                        "limit": min(comments_per_media, 50)}, limit=comments_per_media):
+                        "fields": "id,text,username,from{id,username},timestamp,like_count,"
+                                  "replies{id,text,username,from{id,username},timestamp}",
+                        "limit": min(comments_per_media, 50)}, limit=min(comments_per_media * 4, 500)):
                         seen_comments += 1
-                        username = str(comment.get("username") or "")
-                        if username.casefold() == client.username.casefold():
+                        username = self._comment_username(comment)
+                        if not username or username.casefold() == client.username.casefold():
                             continue
+                        imported_comments += 1
                         comment_id = str(comment["id"])
                         common = {"account_id": client.account_id, "kind": "comment",
                                   "media_id": media_id, "post_code": code,
@@ -240,17 +247,24 @@ class InstagramService:
                             "like_count": comment.get("like_count"),
                             "received_at": self._timestamp(comment.get("timestamp"))}))
                         for reply in (comment.get("replies") or {}).get("data") or []:
-                            outbound = str(reply.get("username") or "").casefold() == client.username.casefold()
+                            reply_username = self._comment_username(reply)
+                            if not reply_username:
+                                detail = client.request("GET", f"/{reply['id']}", params={
+                                    "fields": "id,username,from{id,username}"})
+                                reply_username = self._comment_username(detail)
+                            outbound = reply_username.casefold() == client.username.casefold()
                             replies_count += int(upsert_event({**common,
                                 "id": f"comment:{reply['id']}", "source_id": str(reply["id"]),
                                 "parent_comment_id": comment_id,
-                                "author_username": reply.get("username") or "",
+                                "author_username": reply_username,
                                 "direction": "outbound" if outbound else "inbound",
                                 "body": reply.get("text") or "",
                                 "received_at": self._timestamp(reply.get("timestamp")),
                                 "status": "history"}))
                             if outbound:
                                 update_event(f"comment:{comment_id}", {"status": "sent", "error": None})
+                        if imported_comments >= comments_per_media:
+                            break
                     if int(media.get("comments_count") or 0) > 0 and not seen_comments:
                         raise InstagramAssistantError(
                             "게시물에 댓글이 있지만 공식 API가 빈 목록을 반환했습니다. "
@@ -259,22 +273,37 @@ class InstagramService:
                     "platform": "instagram", "limit": min(threads_amount, 100)}, limit=threads_amount):
                     thread_id = str(conversation["id"])
                     detail = client.request("GET", f"/{thread_id}", params={
-                        "fields": "messages{id,created_time,from,to,message}"})
+                        "fields": "participants{id,username},messages{id,created_time,from,to,message}"})
+                    participants = (detail.get("participants") or {}).get("data") or []
+                    own_messaging_ids = {
+                        str(person["id"])
+                        for person in participants
+                        if person.get("id") and str(person.get("username") or "").casefold() == client.username.casefold()
+                    }
+                    if len(own_messaging_ids) != 1:
+                        raise InstagramAssistantError(
+                            "DM 대화에서 연결 계정의 발신자 ID를 확인하지 못했습니다. 방향을 추측하지 않고 동기화를 중단합니다.")
+                    own_messaging_id = next(iter(own_messaging_ids))
+                    participant_names = {
+                        str(person["id"]): str(person.get("username") or "")
+                        for person in participants if person.get("id")
+                    }
                     for message in (detail.get("messages") or {}).get("data") or []:
                         sender = message.get("from") or {}
                         sender_id = str(sender.get("id") or "")
                         if not sender_id:
                             continue
-                        outbound = sender_id == client.account_id
+                        outbound = sender_id == own_messaging_id
                         dm_count += int(upsert_event({
                             "id": f"dm:{message['id']}", "account_id": client.account_id,
                             "kind": "dm", "source_id": str(message["id"]), "thread_id": thread_id,
                             "author_id": sender_id,
-                            "author_username": sender.get("username") or (client.username if outbound else ""),
+                            "author_username": sender.get("username") or participant_names.get(sender_id, ""),
                             "direction": "outbound" if outbound else "inbound",
                             "body": message.get("message") or "메시지 내용 없음",
                             "received_at": self._timestamp(message.get("created_time")),
                             "status": "history" if outbound else "pending"}))
+                    reconcile_own_dm_messages(client.account_id, own_messaging_id, client.username)
             except InstagramHaltedError as exc:
                 update_settings({"halted_reason": str(exc)[:500]})
                 raise
@@ -351,5 +380,31 @@ class InstagramService:
                 raise InstagramAssistantError("발송 ID가 없어 결과가 불확실합니다. 중복 전송 전에 DM을 확인하세요.")
             add_delivery(event_id, action, event["draft"], "sent", remote_id)
             return update_event(event_id, {"status": "sent", "error": None}) or event
+
+    def heart_dm(self, event_id: str) -> dict[str, Any]:
+        with self._lock:
+            event = get_event(event_id)
+            if not event or event.get("kind") != "dm" or event.get("direction") != "inbound":
+                raise InstagramAssistantError("받은 DM 메시지만 하트를 누를 수 있습니다.")
+            if not event.get("source_id") or not event.get("author_id"):
+                raise InstagramAssistantError("DM 메시지 ID와 상대방 ID가 필요합니다.")
+            if event.get("has_liked"):
+                raise InstagramAssistantError("이미 하트를 누른 DM입니다.")
+            settings = get_settings()
+            if settings.get("read_only_observation"):
+                raise InstagramAssistantError("현재 관찰 모드입니다. 설정에서 먼저 해제하세요.")
+            if settings.get("halted_reason"):
+                raise InstagramHaltedError(str(settings["halted_reason"]))
+            client = self.connect_saved_session()
+            if event.get("account_id") != client.account_id:
+                raise InstagramAssistantError("현재 연결 계정에서 수집한 DM이 아닙니다. 다시 동기화하세요.")
+            result = client.request("POST", f"/{client.account_id}/messages", json_body={
+                "recipient": {"id": event["author_id"]},
+                "sender_action": "react",
+                "payload": {"message_id": event["source_id"], "reaction": "love"},
+            })
+            if str(result.get("recipient_id") or "") != str(event["author_id"]):
+                raise InstagramAssistantError("DM 하트 결과를 확인하지 못했습니다. 다시 누르기 전에 Instagram에서 확인하세요.")
+            return update_event(event_id, {"has_liked": True, "error": None}) or event
 
 instagram_service = InstagramService()

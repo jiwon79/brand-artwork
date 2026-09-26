@@ -22,7 +22,6 @@ class Paths:
     session: Path = DATA_DIR / "graph-token.json"
     oauth_state: Path = DATA_DIR / "oauth-state.json"
     token: Path = DATA_DIR / "local-token"
-    codex_schema: Path = ROOT / "app" / "codex-output-schema.json"
 
 
 paths = Paths()
