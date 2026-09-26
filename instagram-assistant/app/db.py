@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS artworks (
 
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
+  account_id TEXT,
   kind TEXT NOT NULL CHECK(kind IN ('comment', 'dm')),
   source_id TEXT NOT NULL,
   parent_comment_id TEXT,
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS deliveries (
 
 DEFAULT_SETTINGS = {
     "instagram_username": "",
+    "instagram_account_id": "",
     "profile_url": "https://litt.ly/jiiwon",
     "auto_send": False,
     "auto_comment": False,
@@ -158,6 +160,8 @@ def initialize() -> None:
             conn.execute(
                 "ALTER TABLE events ADD COLUMN direction TEXT NOT NULL DEFAULT 'inbound'"
             )
+        if "account_id" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN account_id TEXT")
         if "has_liked" not in columns:
             conn.execute("ALTER TABLE events ADD COLUMN has_liked INTEGER")
         if "like_count" not in columns:
@@ -269,14 +273,14 @@ def upsert_event(event: dict[str, Any]) -> bool:
         cursor = conn.execute(
             """
             INSERT OR IGNORE INTO events(
-              id, kind, source_id, parent_comment_id, thread_id, media_id, post_code,
+              id, account_id, kind, source_id, parent_comment_id, thread_id, media_id, post_code,
               post_url, post_caption, shared_url,
               author_id, author_username, direction, has_liked, like_count, body,
               received_at, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                event["id"], event["kind"], event["source_id"], event.get("parent_comment_id"),
+                event["id"], event.get("account_id"), event["kind"], event["source_id"], event.get("parent_comment_id"),
                 event.get("thread_id"), event.get("media_id"), event.get("post_code"),
                 event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
                 event.get("author_id"),
@@ -290,6 +294,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
             conn.execute(
                 """
                 UPDATE events SET
+                  account_id=COALESCE(account_id, ?),
                   parent_comment_id=COALESCE(?, parent_comment_id),
                   thread_id=COALESCE(?, thread_id),
                   post_url=COALESCE(?, post_url),
@@ -303,7 +308,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
                 WHERE id=?
                 """,
                 (
-                    event.get("parent_comment_id"), event.get("thread_id"),
+                    event.get("account_id"), event.get("parent_comment_id"), event.get("thread_id"),
                     event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
                     event.get("direction"), event.get("has_liked"),
                     event.get("like_count"), event.get("author_username", ""),
@@ -321,6 +326,10 @@ def list_events(
     query = "SELECT * FROM events"
     params: list[Any] = []
     conditions: list[str] = []
+    account_id = get_settings().get("instagram_account_id")
+    if account_id:
+        conditions.append("account_id=?")
+        params.append(account_id)
     if status == "active":
         conditions.append("status IN ('pending', 'drafted', 'manual')")
     elif status:
@@ -349,11 +358,13 @@ def list_comment_threads(
         return []
     parent_ids = [comment["source_id"] for comment in comments]
     placeholders = ",".join("?" for _ in parent_ids)
+    account_id = get_settings().get("instagram_account_id")
     with connect() as conn:
         rows = conn.execute(
             f"SELECT * FROM events WHERE kind='comment' "
-            f"AND parent_comment_id IN ({placeholders}) ORDER BY received_at ASC",
-            parent_ids,
+            f"AND parent_comment_id IN ({placeholders}) "
+            f"AND (? = '' OR account_id=?) ORDER BY received_at ASC",
+            [*parent_ids, account_id, account_id],
         ).fetchall()
     replies_by_parent: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
@@ -365,9 +376,12 @@ def list_comment_threads(
 
 
 def count_events_by_status() -> dict[str, int]:
+    account_id = get_settings().get("instagram_account_id")
     with connect() as conn:
         rows = conn.execute(
-            "SELECT status, COUNT(*) AS count FROM events GROUP BY status"
+            "SELECT status, COUNT(*) AS count FROM events "
+            "WHERE (? = '' OR account_id=?) GROUP BY status",
+            (account_id, account_id),
         ).fetchall()
     return {row["status"]: int(row["count"]) for row in rows}
 
@@ -385,10 +399,12 @@ def delete_event(event_id: str) -> bool:
 
 
 def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
+    account_id = get_settings().get("instagram_account_id")
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM events WHERE kind='dm' AND thread_id IS NOT NULL "
-            "ORDER BY received_at DESC"
+            "AND (? = '' OR account_id=?) ORDER BY received_at DESC",
+            (account_id, account_id),
         ).fetchall()
     conversations: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -433,22 +449,26 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
 
 
 def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
+    account_id = get_settings().get("instagram_account_id")
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM events WHERE kind='dm' AND thread_id=? "
+            "AND (? = '' OR account_id=?) "
             "ORDER BY received_at ASC",
-            (thread_id,),
+            (thread_id, account_id, account_id),
         ).fetchall()
     return [dict(row) for row in rows]
 
 
 def complete_conversation(thread_id: str) -> int:
+    account_id = get_settings().get("instagram_account_id")
     with connect() as conn:
         cursor = conn.execute(
             "UPDATE events SET status='completed', proposed_action='complete', updated_at=? "
-            "WHERE kind='dm' AND thread_id=? AND direction='inbound' "
+            "WHERE kind='dm' AND thread_id=? AND (? = '' OR account_id=?) "
+            "AND direction='inbound' "
             "AND status IN ('pending', 'drafted', 'manual')",
-            (now(), thread_id),
+            (now(), thread_id, account_id, account_id),
         )
     return cursor.rowcount
 

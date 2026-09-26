@@ -160,7 +160,7 @@ async function refreshStatus() {
   document.querySelector("#daily-limit").value = data.settings.daily_send_limit;
   document.querySelector("#profile-url").value = data.settings.profile_url;
   document.querySelector("#settings-account").textContent = data.authenticated ? `@${data.settings.instagram_username || "Instagram"}` : "연결된 계정 없음";
-  document.querySelector("#settings-session-note").textContent = data.settings.halted_reason ? "세션이 중지되었습니다." : data.authenticated ? "로컬 세션으로 연결되어 있습니다." : "계정을 연결하면 DM과 댓글을 가져올 수 있습니다.";
+  document.querySelector("#settings-session-note").textContent = data.settings.halted_reason ? "세션이 중지되었습니다." : data.authenticated ? "Meta 공식 API 토큰으로 연결되어 있습니다." : "계정을 연결하면 DM과 댓글을 가져올 수 있습니다.";
   document.querySelector("#login-open").textContent = data.authenticated ? "재연결" : "연결";
   document.querySelector("#login-open").style.display = "inline-flex";
   document.querySelector("#logout").style.display = data.authenticated ? "inline-flex" : "none";
@@ -240,13 +240,10 @@ async function hydrateLinkPreviews(root) {
 }
 
 function commentHeart(event, compact = false) {
-  return `<button class="comment-heart ${event.has_liked ? "liked" : ""} ${compact ? "compact" : ""}" data-action="comment-heart" data-liked="${event.has_liked ? "true" : "false"}" aria-label="${event.has_liked ? "댓글 하트 취소" : "댓글에 하트"}" aria-pressed="${event.has_liked ? "true" : "false"}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></button>`;
+  return `<span class="comment-heart ${compact ? "compact" : ""}" title="댓글 하트는 Instagram에서 직접 관리하세요">♡<span>${event.like_count ?? 0}</span></span>`;
 }
 
-function dmHeart(message) {
-  const hasReaction = Number(message.like_count || 0) > 0;
-  return `<button class="dm-heart ${hasReaction ? "visible" : ""} ${message.has_liked ? "mine" : ""}" data-action="dm-heart" data-liked="${message.has_liked ? "true" : "false"}" aria-label="${message.has_liked ? "DM 하트 취소" : "DM에 하트"}" aria-pressed="${message.has_liked ? "true" : "false"}" title="${message.has_liked ? "하트 취소" : "하트 보내기"}">♥</button>`;
-}
+function dmHeart() { return ""; }
 
 function postReference(event) {
   const fallback = event.post_code ? `https://www.instagram.com/p/${encodeURIComponent(event.post_code)}/` : "";
@@ -451,16 +448,6 @@ document.querySelector("#classify").addEventListener("click", async () => {
 document.querySelector("#events").addEventListener("click", async (event) => {
   try {
     const card = event.target.closest(".comment-reply") || event.target.closest(".event");
-    const heart = event.target.closest('[data-action="comment-heart"]');
-    if (heart) {
-      await api(`/api/events/${encodeURIComponent(card.dataset.id)}/comment-like`, {
-        method: "POST",
-        body: JSON.stringify({ liked: heart.dataset.liked !== "true" }),
-      });
-      toast(heart.dataset.liked === "true" ? "하트를 취소했습니다." : "댓글에 하트를 눌렀습니다.");
-      await refreshAll();
-      return;
-    }
     if (await runEventAction(card, event.target)) await refreshAll();
   }
   catch (error) { toast(error.message, true); }
@@ -485,58 +472,16 @@ document.querySelector("#chat-panel").addEventListener("click", async (event) =>
       document.querySelector("#dm-inbox").classList.toggle("chat-open", Boolean(selectedThreadId));
       return;
     }
-    const heart = event.target.closest('[data-action="dm-heart"]');
-    if (heart) {
-      const row = heart.closest(".message-row");
-      const liked = heart.dataset.liked === "true";
-      await api(`/api/events/${encodeURIComponent(row.dataset.id)}/dm-like`, {
-        method: "POST",
-        body: JSON.stringify({ liked: !liked }),
-      });
-      toast(liked ? "DM 하트를 취소했습니다." : "DM에 하트를 눌렀습니다.");
-      document.querySelector("#dm-inbox").classList.remove("chat-open");
-      await refreshConversations(false);
-      return;
-    }
     if (await runEventAction(event.target.closest(".chat-panel"), event.target)) await refreshAll();
   }
   catch (error) { toast(error.message, true); }
 });
 
-const loginDialog = document.querySelector("#login-dialog");
-const passwordInput = document.querySelector("#login-password");
-const passwordToggle = document.querySelector("#password-toggle");
-
-document.querySelector("#login-open").addEventListener("click", () => {
-  document.querySelector("#login-error").textContent = "";
-  loginDialog.showModal();
-});
-passwordToggle.addEventListener("click", () => {
-  const visible = passwordInput.type === "text";
-  passwordInput.type = visible ? "password" : "text";
-  passwordToggle.classList.toggle("visible", !visible);
-  passwordToggle.setAttribute("aria-label", visible ? "비밀번호 보기" : "비밀번호 숨기기");
-  passwordToggle.setAttribute("aria-pressed", String(!visible));
-  passwordInput.focus();
-});
-document.querySelector("#login-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const form = new FormData(event.target);
-  const errorNode = document.querySelector("#login-error");
-  const submit = document.querySelector("#login-submit");
-  errorNode.textContent = "";
-  submit.disabled = true;
-  submit.setAttribute("aria-busy", "true");
-  submit.innerHTML = '<span class="button-spinner" aria-hidden="true"></span><span>연결 중</span>';
+document.querySelector("#login-open").addEventListener("click", async () => {
   try {
-    await api("/api/login", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) });
-    event.target.reset(); loginDialog.close(); toast("Instagram을 연결했습니다."); await refreshAll();
-  } catch (error) { errorNode.textContent = error.message; }
-  finally {
-    submit.disabled = false;
-    submit.removeAttribute("aria-busy");
-    submit.textContent = "연결";
-  }
+    const result = await api("/api/auth/url", { method: "POST" });
+    window.location.assign(result.url);
+  } catch (error) { toast(error.message, true); }
 });
 
 document.querySelector("#logout").addEventListener("click", async () => {

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -26,7 +25,7 @@ from .db import (
     update_event,
     update_settings,
 )
-from .instagram_client import InstagramAssistantError, InstagramService, instagram_service
+from .instagram_client import InstagramAssistantError, instagram_service
 from .link_preview import fetch_link_preview
 from .rules import classify
 
@@ -34,12 +33,6 @@ from .rules import classify
 app = FastAPI(title="jiiwon.studio Instagram Assistant", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 TOKEN = local_token()
-
-
-class LoginBody(BaseModel):
-    username: str
-    password: str
-    verification_code: str = ""
 
 
 class SettingsBody(BaseModel):
@@ -62,10 +55,6 @@ class ArtworkBody(BaseModel):
 
 class DraftBody(BaseModel):
     draft: str
-
-
-class CommentLikeBody(BaseModel):
-    liked: bool
 
 
 @app.on_event("startup")
@@ -109,13 +98,24 @@ def status() -> dict[str, Any]:
     }
 
 
-@app.post("/api/login")
-def login(body: LoginBody, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
+@app.post("/api/auth/url")
+def auth_url(x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, str]:
     protect(x_instagram_assistant_token)
     try:
-        return instagram_service.login(body.username.strip(), body.password, body.verification_code.strip())
+        return {"url": instagram_service.authorization_url()}
     except Exception as exc:
         raise as_http_error(exc) from exc
+
+
+@app.get("/api/auth/callback")
+def auth_callback(code: str = "", state: str = "", error: str = "") -> RedirectResponse:
+    if error or not code or not state:
+        raise HTTPException(400, "Instagram 연결이 취소되었습니다.")
+    try:
+        instagram_service.complete_oauth(code, state)
+    except InstagramAssistantError as exc:
+        raise as_http_error(exc) from exc
+    return RedirectResponse("/setting?oauth=connected", status_code=303)
 
 
 @app.post("/api/logout")
@@ -230,32 +230,6 @@ def ignore_event(event_id: str, x_instagram_assistant_token: str | None = Header
     if not event:
         raise HTTPException(404, "Event not found")
     return event
-
-
-@app.post("/api/events/{event_id}/comment-like")
-def comment_like(
-    event_id: str,
-    body: CommentLikeBody,
-    x_instagram_assistant_token: str | None = Header(default=None),
-) -> dict[str, Any]:
-    protect(x_instagram_assistant_token)
-    try:
-        return instagram_service.set_comment_like(event_id, body.liked)
-    except Exception as exc:
-        raise as_http_error(exc) from exc
-
-
-@app.post("/api/events/{event_id}/dm-like")
-def direct_message_like(
-    event_id: str,
-    body: CommentLikeBody,
-    x_instagram_assistant_token: str | None = Header(default=None),
-) -> dict[str, Any]:
-    protect(x_instagram_assistant_token)
-    try:
-        return instagram_service.set_direct_message_like(event_id, body.liked)
-    except Exception as exc:
-        raise as_http_error(exc) from exc
 
 
 @app.get("/api/artworks")
