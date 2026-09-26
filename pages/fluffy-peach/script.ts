@@ -53,7 +53,7 @@ const body = new THREE.Mesh(
 character.add(body);
 
 // Fibers grow from points on the deforming 3D surface, including its back.
-const HAIR_COUNT = 18000;
+const HAIR_COUNT = 42000;
 const hairSeeds = new Float32Array(HAIR_COUNT * 5);
 const hairPositions = new Float32Array(HAIR_COUNT * 6);
 const hairColors = new Float32Array(HAIR_COUNT * 6);
@@ -68,7 +68,7 @@ for (let i = 0; i < HAIR_COUNT; i++) {
   const side = Math.sqrt(1 - z * z);
   const x = Math.cos(angle) * side;
   const y = Math.sin(angle) * side;
-  const length = (3 + Math.pow(random(), 2) * 14) * (y > 0.2 ? 1.2 : 1);
+  const length = (2 + Math.pow(random(), 2.4) * 18) * (y > 0.2 ? 1.3 : 1);
   const lean = (random() - 0.5) * 0.75;
   hairSeeds.set([x, y, z, length, lean], i * 5);
   let color: [number, number, number] = [0.86, 0.73, 0.91];
@@ -84,7 +84,7 @@ hairGeometry.setAttribute('color', new THREE.BufferAttribute(hairColors, 3));
 const fur = new THREE.LineSegments(hairGeometry, new THREE.LineBasicMaterial({
   vertexColors: true,
   transparent: true,
-  opacity: 0.10,
+  opacity: 0.12,
   depthWrite: false,
 }));
 character.add(fur);
