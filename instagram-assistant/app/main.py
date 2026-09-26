@@ -98,7 +98,7 @@ def status() -> dict[str, Any]:
     }
 
 
-@app.get("/api/auth/url")
+@app.post("/api/auth/url")
 def auth_url(x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, str]:
     protect(x_instagram_assistant_token)
     try:

@@ -479,7 +479,7 @@ document.querySelector("#chat-panel").addEventListener("click", async (event) =>
 
 document.querySelector("#login-open").addEventListener("click", async () => {
   try {
-    const result = await api("/api/auth/url");
+    const result = await api("/api/auth/url", { method: "POST" });
     window.location.assign(result.url);
   } catch (error) { toast(error.message, true); }
 });
