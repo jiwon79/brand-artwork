@@ -141,8 +141,8 @@ def events(
 
 
 @app.get("/api/conversations")
-def conversations() -> list[dict[str, Any]]:
-    return list_conversations()
+def conversations(status: str | None = None) -> list[dict[str, Any]]:
+    return list_conversations(status=status)
 
 
 @app.get("/api/link-preview")

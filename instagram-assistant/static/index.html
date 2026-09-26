@@ -27,6 +27,11 @@
 
     <section id="dm" class="view active">
       <div class="view-toolbar">
+        <div class="filters" aria-label="DM 상태">
+          <button class="dm-filter active" data-status="active">확인 필요</button>
+          <button class="dm-filter" data-status="completed">완료</button>
+          <button class="dm-filter" data-status="all">전체</button>
+        </div>
         <label class="dm-search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
           <input id="dm-search" type="search" placeholder="아이디 검색" aria-label="Instagram 아이디 검색" autocomplete="off" autocapitalize="none" spellcheck="false">
@@ -39,6 +44,13 @@
     </section>
 
     <section id="comments" class="view">
+      <div class="view-toolbar">
+        <div class="filters" aria-label="댓글 상태">
+          <button class="comment-filter active" data-status="active">확인 필요</button>
+          <button class="comment-filter" data-status="completed">완료</button>
+          <button class="comment-filter" data-status="all">전체</button>
+        </div>
+      </div>
       <div id="events" class="event-list"></div>
       <p id="empty-events" class="empty">아직 가져온 댓글이 없습니다.</p>
     </section>
@@ -69,6 +81,6 @@
   </main>
 
   <div id="toast" role="status"></div>
-  <script src="/static/app.js?v=viewer-4"></script>
+  <script src="/static/app.js?v=viewer-5"></script>
 </body>
 </html>

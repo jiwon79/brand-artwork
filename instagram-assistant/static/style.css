@@ -97,7 +97,7 @@ h2 { margin: 0 0 7px; font-size: 17px; font-weight: 650; }
 .view.active { display: block; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; -webkit-overflow-scrolling: touch; }
 #dm.view.active { display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
 
-.view-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-bottom: 14px; }
+.view-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .filters, .actions { display: flex; min-width: 0; align-items: center; gap: 4px; }
 .dm-filter, .comment-filter, .quiet, .primary, .danger {
   min-height: 38px;

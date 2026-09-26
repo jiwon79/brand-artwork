@@ -82,8 +82,31 @@ def test_conversations_group_messages_and_preserve_order(tmp_path: Path, monkeyp
     assert conversations[0]["message_count"] == 2
     assert conversations[0]["latest_body"] == "여기 있어요"
     assert "classification" not in conversations[0]
+    assert conversations[0]["has_actionable"] is False
     messages = db.list_conversation_messages("thread-1")
     assert [item["direction"] for item in messages] == ["inbound", "outbound"]
+
+
+def test_dm_review_filter_uses_latest_unresolved_inbound_message(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    for item in (
+        {"id": "dm:1", "kind": "dm", "source_id": "1", "thread_id": "thread-1",
+         "direction": "inbound", "body": "첫 질문", "received_at": "2026-09-15T01:00:00+00:00"},
+        {"id": "dm:2", "kind": "dm", "source_id": "2", "thread_id": "thread-1",
+         "direction": "outbound", "status": "history", "body": "답변",
+         "received_at": "2026-09-15T01:01:00+00:00"},
+        {"id": "dm:3", "kind": "dm", "source_id": "3", "thread_id": "thread-1",
+         "direction": "inbound", "body": "추가 질문", "received_at": "2026-09-15T01:02:00+00:00"},
+        {"id": "dm:4", "kind": "dm", "source_id": "4", "thread_id": "thread-2",
+         "direction": "inbound", "has_liked": True, "body": "좋아요",
+         "received_at": "2026-09-15T01:03:00+00:00"},
+    ):
+        db.upsert_event(item)
+    assert [item["thread_id"] for item in db.list_conversations(status="active")] == ["thread-1"]
+    assert [item["thread_id"] for item in db.list_conversations(status="completed")] == ["thread-2"]
+    assert len(db.list_conversations()) == 2
 
 
 def test_existing_dm_is_enriched_with_heart_state(tmp_path: Path, monkeypatch):

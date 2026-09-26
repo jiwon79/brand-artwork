@@ -4,6 +4,8 @@ const routes = {
   work: { path: "/work", view: "artworks" },
   setting: { path: "/setting", view: "settings" },
 };
+const statusRoutes = new Set(["dm", "comment"]);
+const validStatuses = new Set(["active", "completed", "all"]);
 
 let selectedThreadId = "";
 let dmSearchQuery = "";
@@ -15,18 +17,30 @@ function routeFromLocation() {
   return Object.entries(routes).find(([, value]) => value.path === path)?.[0] || "dm";
 }
 
+function statusFromLocation() {
+  const status = new URLSearchParams(window.location.search).get("status");
+  return validStatuses.has(status) ? status : "active";
+}
+
+function routeUrl(route, status = "active") {
+  return routes[route].path + (statusRoutes.has(route) ? `?status=${status}` : "");
+}
+
 function applyRoute({ canonicalize = false } = {}) {
   const route = routeFromLocation();
-  if (canonicalize && `${window.location.pathname}${window.location.search}` !== routes[route].path) {
-    history.replaceState({}, "", routes[route].path);
+  const canonical = routeUrl(route, statusFromLocation());
+  if (canonicalize && `${window.location.pathname}${window.location.search}` !== canonical) {
+    history.replaceState({}, "", canonical);
   }
   document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node.dataset.route === route));
   document.querySelectorAll(".view").forEach((node) => node.classList.toggle("active", node.id === routes[route].view));
+  document.querySelectorAll(".dm-filter, .comment-filter").forEach((node) =>
+    node.classList.toggle("active", node.dataset.status === statusFromLocation()));
   return route;
 }
 
-async function navigate(route) {
-  history.pushState({}, "", routes[route].path);
+async function navigate(route, status = "active") {
+  history.pushState({}, "", routeUrl(route, status));
   applyRoute();
   document.querySelector(`#${routes[route].view}`).scrollTop = 0;
   await refreshRoute(route);
@@ -110,7 +124,9 @@ function commentReplies(event) {
 }
 
 async function refreshComments() {
-  const events = await api("/api/events?kind=comment&limit=500");
+  const status = statusFromLocation();
+  const query = status === "all" ? "" : `&status=${status === "completed" ? "sent" : "active"}`;
+  const events = await api(`/api/events?kind=comment&limit=500${query}`);
   document.querySelector("#events").innerHTML = events.map((event) => `
     <article class="event">
       <div class="event-top">
@@ -121,7 +137,9 @@ async function refreshComments() {
       <p class="event-body">${escapeHtml(event.body)}</p>
       ${commentReplies(event)}
     </article>`).join("");
-  document.querySelector("#empty-events").style.display = events.length ? "none" : "block";
+  const empty = document.querySelector("#empty-events");
+  empty.textContent = status === "active" ? "확인할 댓글이 없습니다." : status === "completed" ? "완료된 댓글이 없습니다." : "아직 가져온 댓글이 없습니다.";
+  empty.style.display = events.length ? "none" : "block";
 }
 
 function normalizeUsername(value) {
@@ -136,17 +154,21 @@ async function renderConversations(keepSelection = true) {
   if (!keepSelection || !visible.some((item) => item.thread_id === selectedThreadId)) {
     selectedThreadId = visible[0]?.thread_id || "";
   }
+  const emptyMessage = query ? "일치하는 아이디가 없습니다." :
+    statusFromLocation() === "active" ? "확인할 DM이 없습니다." :
+    statusFromLocation() === "completed" ? "완료된 DM이 없습니다." : "아직 DM 대화가 없습니다.";
   document.querySelector("#conversation-list").innerHTML = visible.map((item) => `
     <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
       <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong></span>
       <span class="conversation-preview">${escapeHtml(item.latest_body || "메시지 내용 없음")}</span>
       <time>${formatTime(item.latest_at, true)}</time>
-    </button>`).join("") || `<p class="empty compact">${query ? "일치하는 아이디가 없습니다." : "아직 DM 대화가 없습니다."}</p>`;
+    </button>`).join("") || `<p class="empty compact">${emptyMessage}</p>`;
   await refreshChat();
 }
 
 async function refreshConversations(keepSelection = true) {
-  conversations = await api("/api/conversations");
+  const status = statusFromLocation();
+  conversations = await api(`/api/conversations${status === "all" ? "" : `?status=${status}`}`);
   await renderConversations(keepSelection);
 }
 
@@ -210,6 +232,10 @@ themeToggle.addEventListener("change", () => {
 document.querySelectorAll(".tab").forEach((link) => link.addEventListener("click", (event) => {
   event.preventDefault();
   navigate(link.dataset.route).catch(showError);
+}));
+document.querySelectorAll(".dm-filter, .comment-filter").forEach((button) => button.addEventListener("click", () => {
+  document.querySelector("#dm-inbox").classList.remove("chat-open");
+  navigate(routeFromLocation(), button.dataset.status).catch(showError);
 }));
 window.addEventListener("popstate", () => refreshRoute(applyRoute({ canonicalize: true })).catch(showError));
 document.querySelector("#dm-search").addEventListener("input", (event) => {
