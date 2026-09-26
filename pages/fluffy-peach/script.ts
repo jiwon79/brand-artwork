@@ -86,7 +86,7 @@ ${furShellVertex}`,
 });
 
 // Camera-facing tapered ribbons stay legible at the silhouette while rotating.
-const FIBER_COUNT = 20000;
+const FIBER_COUNT = 23000;
 const fiberSeeds = new Float32Array(FIBER_COUNT * 5);
 const fiberRoots = new Float32Array(FIBER_COUNT * 3);
 const fiberTips = new Float32Array(FIBER_COUNT * 3);
@@ -106,11 +106,11 @@ for (let i = 0; i < FIBER_COUNT; i++) {
   const y = Math.sin(angle) * side;
   const guardHair = random() < 0.17;
   const length = (guardHair ? 16 + Math.pow(random(), 1.1) * 15 : 7 + Math.pow(random(), 0.7) * 17)
-    * (1 + THREE.MathUtils.smoothstep(y, -0.1, 0.55) * 0.26);
+    * (1 + THREE.MathUtils.smoothstep(y, -0.1, 0.55) * 0.26) * 1.09;
   const lean = (random() - 0.5) * 0.82;
   fiberSeeds.set([x, y, z, length, lean], i * 5);
   fiberDirections.set([x, y, z], i * 3);
-  fiberWidths[i] = 0.46 + random() * 0.26;
+  fiberWidths[i] = 0.49 + random() * 0.28;
   fiberBends[i] = (random() - 0.5) * 4.5 * Math.min(1, length / 25);
 }
 const fiberGeometry = new THREE.InstancedBufferGeometry();
@@ -230,7 +230,7 @@ function updateShape() {
   shapePosition.needsUpdate = true;
   shape.computeVertexNormals();
   for (const shell of shells) {
-    const offset = 0.5 + 26 * Math.pow(shell.layer, 1.3);
+    const offset = 0.5 + 29 * Math.pow(shell.layer, 1.3);
     const positions = shell.positions.array as Float32Array;
     for (let i = 0; i < original.length; i++) {
       positions[i] = bodyPositions[i] + original[i] * offset;
