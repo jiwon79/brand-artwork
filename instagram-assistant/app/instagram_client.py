@@ -68,8 +68,9 @@ class GraphClient:
                     count += 1
                     if count >= limit:
                         return
-            after = ((result.get("paging") or {}).get("cursors") or {}).get("after")
-            if not after or after in seen:
+            paging = result.get("paging") or {}
+            after = (paging.get("cursors") or {}).get("after")
+            if not paging.get("next") or not after or after in seen:
                 return
             seen.add(after)
             query["after"] = after
@@ -247,6 +248,10 @@ class InstagramService:
                             "received_at": self._timestamp(comment.get("timestamp"))}))
                         for reply in (comment.get("replies") or {}).get("data") or []:
                             reply_username = self._comment_username(reply)
+                            if not reply_username:
+                                detail = client.request("GET", f"/{reply['id']}", params={
+                                    "fields": "id,username,from{id,username}"})
+                                reply_username = self._comment_username(detail)
                             outbound = reply_username.casefold() == client.username.casefold()
                             replies_count += int(upsert_event({**common,
                                 "id": f"comment:{reply['id']}", "source_id": str(reply["id"]),

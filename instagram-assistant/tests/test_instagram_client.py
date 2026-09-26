@@ -27,6 +27,19 @@ def test_graph_client_uses_official_host_and_bearer_token(monkeypatch):
     assert "message=DM" in requests[0].content.decode()
 
 
+def test_graph_pages_stop_when_meta_has_no_next_page(monkeypatch):
+    client = GraphClient("token", "ig-1", "studio.jiiwon")
+    calls = []
+
+    def request(method, path, *, params):
+        calls.append(dict(params))
+        return {"data": [{"id": "comment-1"}], "paging": {"cursors": {"after": "last"}}}
+
+    monkeypatch.setattr(client, "request", request)
+    assert list(client.pages("/media-1/comments", limit=10)) == [{"id": "comment-1"}]
+    assert len(calls) == 1
+
+
 def test_oauth_url_uses_official_scopes_and_stores_short_lived_state(monkeypatch, tmp_path):
     monkeypatch.setenv("INSTAGRAM_APP_ID", "app-id")
     monkeypatch.setenv("INSTAGRAM_APP_SECRET", "secret")
@@ -198,3 +211,31 @@ def test_sync_uses_from_username_and_scans_past_own_comments(monkeypatch, tmp_pa
     assert result["comments"] == 1
     assert db.get_event("comment:visitor-1")["author_username"] == "visitor"
     assert db.get_event("comment:own-0") is None
+
+
+def test_sync_resolves_reply_author_when_list_omits_it(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+
+        def pages(self, path, *, params, limit):
+            if path == "/me/media":
+                return iter([{"id": "media-1", "permalink": "https://www.instagram.com/reel/ABC/"}])
+            if path == "/media-1/comments":
+                return iter([{"id": "comment-1", "from": {"username": "visitor"},
+                    "text": "링크 주세요", "replies": {"data": [{"id": "reply-1", "text": "DM 주세요"}]}}])
+            return iter([])
+
+        def request(self, method, path, *, params):
+            assert method == "GET" and path == "/reply-1"
+            return {"id": "reply-1", "from": {"username": "studio.jiiwon"}}
+
+    service = InstagramService()
+    service._client = FakeGraph()
+    result = service.sync(media_amount=1, comments_per_media=1, threads_amount=0)
+    assert result["comment_replies"] == 1
+    assert db.get_event("comment:comment-1")["status"] == "sent"
+    assert db.get_event("comment:reply-1")["author_username"] == "studio.jiiwon"
