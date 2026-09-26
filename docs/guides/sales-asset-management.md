@@ -1,6 +1,6 @@
 # 판매 자료 관리
 
-판매 상품의 원본 에셋, 제작 자료, 배포 ZIP은 [Google Drive의 바이브코딩 판매자료](https://drive.google.com/drive/folders/1S7Lre1gpLGEGQNKL0eSpjHyWcsJmRmnM)를 기준으로 관리한다. 리틀리에 첨부된 ZIP은 구매자 전달용 사본이다. 저장소의 `kits/`는 필요할 때 Drive에서 내려받아 사용하는 로컬 작업 폴더이며 Git에서 추적하지 않는다.
+판매 상품의 원본 에셋, 제작 자료, 배포 ZIP은 [Google Drive의 바이브코딩 판매자료](https://drive.google.com/drive/folders/1S7Lre1gpLGEGQNKL0eSpjHyWcsJmRmnM)를 기준으로 관리한다. 리틀리에 첨부된 ZIP은 구매자 전달용 사본이며, Drive 배포본과 같은 버전인지 확인해야 한다. 저장소의 `kits/`는 필요할 때 Drive에서 내려받아 사용하는 로컬 작업 폴더이며 Git에서 추적하지 않는다.
 
 ## 상품별 위치
 
@@ -12,7 +12,7 @@
 | 틈 | [04-Line Pull](https://drive.google.com/drive/folders/1pY6aXhCqG9yrbdGAXJTM1aI-gz_pBKuJ) | 배포 ZIP과 시작하기 PDF 확인 |
 | 고양이 | [05-Cursor Cat](https://drive.google.com/drive/folders/1Qf7x9pCBrqi-NiCCOoG7eNU0oK1K9jTu) | 배포 ZIP과 시작하기 PDF 확인 |
 | 웃음꽃 | [05-Smile Flower](https://drive.google.com/drive/folders/1MbLp2Qxt3SaZ1sCM9DC3gbys5yX6u2sR) | 리틀리의 기존 `smile-flower.zip` 원본 회수 대기. Drive 폴더는 비어 있음 |
-| Rose Glass 제작 자료 | [06-Rose Glass](https://drive.google.com/drive/folders/1Oj-eYXYP0MhPlsViMnHw_8wTmGO5cf7Y) | 관리원본 39개 파일, 배포 ZIP 확인 |
+| Rose Glass 제작 자료 | [06-Rose Glass](https://drive.google.com/drive/folders/1Oj-eYXYP0MhPlsViMnHw_8wTmGO5cf7Y) | 관리원본 39개 파일, 배포 ZIP 확인. 리틀리 첨부본과 바이트 단위 동일성은 미확인 |
 | Rose Glass 4K 배경화면 5종 | [배경화면 상품](https://drive.google.com/drive/folders/1-ATjsyTmt4nMqlhI5Dyf1YjdC-rqVTLY) | 관리원본 PNG 5개, 배포 ZIP 확인 |
 
 ## 작업 절차
