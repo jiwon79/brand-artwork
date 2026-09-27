@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>솜결 · Soft Forms 공유 이미지 합성</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: #171a31; color: #f8f5ff; font-family: system-ui, sans-serif; }
+    main { max-width: 1200px; margin: auto; }
+    h1 { font-size: 22px; margin: 0 0 12px; }
+    p { color: #c9c7d8; line-height: 1.6; }
+    canvas { display: block; width: 100%; height: auto; border: 1px solid #50516d; }
+    button { border: 0; border-radius: 6px; padding: 12px 20px; background: #f8f5ff; color: #171a31; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: wait; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>솜결 · Soft Forms 공유 이미지 합성</h1>
+    <p>실제 작품의 1200 × 630 PNG 캡처에 한글·영어 제목만 합성합니다.</p>
+    <canvas id="preview" width="1200" height="630" role="img" aria-label="별 모양 솜털 캐릭터와 솜결, Soft Forms 제목"></canvas>
+    <p id="status" role="status">원본 이미지와 Pretendard를 불러오는 중…</p>
+    <button id="download" disabled>PNG 다운로드</button>
+  </main>
+  <script type="module">
+    import { drawSocialImage, socialImage } from './soft-forms-social-image.mjs';
+    const canvas = document.querySelector('#preview');
+    const status = document.querySelector('#status');
+    const download = document.querySelector('#download');
+    try {
+      const font = new FontFace('Pretendard Variable', 'url(/pages/rose-glass/assets/PretendardVariable.woff2)', { weight: '45 920' });
+      const source = new Image();
+      source.src = '/pages/soft-forms/assets/og-artwork.png';
+      const [loadedFont] = await Promise.all([font.load(), source.decode()]);
+      document.fonts.add(loadedFont);
+      drawSocialImage(canvas.getContext('2d'), source);
+      status.textContent = `${socialImage.width} × ${socialImage.height} PNG 준비 완료 · ${socialImage.koreanTitle} · ${socialImage.englishTitle}`;
+      download.disabled = false;
+      download.addEventListener('click', () => {
+        canvas.toBlob(blob => {
+          if (!blob) { status.textContent = 'PNG 저장에 실패했습니다.'; return; }
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'soft-forms-og-image.png';
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }, 'image/png');
+      });
+    } catch (error) {
+      status.textContent = `이미지 합성 실패: ${error.message}`;
+    }
+  </script>
+</body>
+</html>
