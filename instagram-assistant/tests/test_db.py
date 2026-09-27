@@ -124,6 +124,21 @@ def test_existing_dm_is_enriched_with_heart_state(tmp_path: Path, monkeypatch):
     assert saved["like_count"] == 1
 
 
+def test_latest_inbound_heart_remains_unknown_until_synced(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.upsert_event({
+        "id": "dm:older", "kind": "dm", "source_id": "older", "thread_id": "thread-1",
+        "has_liked": True, "received_at": "2026-09-15T01:00:00+00:00",
+    })
+    db.upsert_event({
+        "id": "dm:newer", "kind": "dm", "source_id": "newer", "thread_id": "thread-1",
+        "received_at": "2026-09-15T01:01:00+00:00",
+    })
+    assert db.list_conversations()[0]["latest_inbound_hearted"] is None
+
+
 def test_existing_event_is_enriched_with_shared_url(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

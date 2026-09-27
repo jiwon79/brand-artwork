@@ -220,7 +220,7 @@ class InstagramService:
         return False
 
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
-             threads_amount: int = 30) -> dict[str, Any]:
+             threads_amount: int = 100) -> dict[str, Any]:
         with self._lock:
             client = self.connect_saved_session()
             comments_count = replies_count = dm_count = 0

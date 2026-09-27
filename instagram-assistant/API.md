@@ -15,7 +15,7 @@ The API returns normalized JSON from the local SQLite database. Call `POST /api/
 
 Use the returned local event `id` for subsequent actions. Read the complete conversation or comment thread and its post context before drafting. `active` is the UI's **확인 필요** filter. Read endpoints return the last successful local sync, so they do not prove that no newer Instagram activity exists. The official DM API may omit older or unsupported request-folder messages.
 
-DM sync reads each message's `reactions` field. `has_liked` means the connected account has a heart reaction on that inbound message; other people's reactions do not count. A heart on the latest inbound message completes the conversation, and a newer inbound message without a heart returns it to **확인 필요**. The viewer shows both hearted and unhearted states.
+DM sync reads each message's `reactions` field for the latest 100 conversations. `has_liked` means the connected account has a heart reaction on that inbound message; other people's reactions do not count. A heart on the latest inbound message completes the conversation, and a newer inbound message without a heart returns it to **확인 필요**. The viewer shows hearted, unhearted, and not-yet-checked states separately.
 
 ## Protected actions
 
