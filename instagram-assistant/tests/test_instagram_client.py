@@ -250,6 +250,62 @@ def test_dm_resync_corrects_existing_outbound_draft(monkeypatch, tmp_path):
     assert db.get_event("dm:older")["status"] == "history"
 
 
+def test_dm_sync_reads_own_heart_and_reopens_after_new_message(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+        def __init__(self):
+            self.messages = [{
+                "id": "message-1", "from": {"id": "visitor-id", "username": "visitor"},
+                "message": "고마워요", "created_time": "2026-09-26T01:00:00+0000",
+                "reactions": {"data": [{"emoji": "❤", "users": [
+                    {"id": "messaging-own-id", "username": "studio.jiiwon"}]}]},
+            }]
+        def pages(self, path, *, params, limit):
+            if path == "/me/media":
+                return iter([])
+            assert path == "/me/conversations"
+            return iter([{"id": "thread-1"}])
+        def request(self, method, path, *, params):
+            assert "reactions" in params["fields"]
+            return {"participants": {"data": [
+                {"id": "messaging-own-id", "username": "studio.jiiwon"},
+                {"id": "visitor-id", "username": "visitor"},
+            ]}, "messages": {"data": self.messages}}
+
+    graph = FakeGraph()
+    service = InstagramService()
+    service._client = graph
+    service.sync(media_amount=0, threads_amount=1)
+    assert db.get_event("dm:message-1")["has_liked"] == 1
+    assert db.list_conversations(status="active") == []
+    assert db.list_conversations(status="completed")[0]["latest_inbound_hearted"] is True
+
+    graph.messages.insert(0, {
+        "id": "message-2", "from": {"id": "visitor-id", "username": "visitor"},
+        "message": "추가 질문", "created_time": "2026-09-26T01:01:00+0000",
+        "reactions": {"data": [{"emoji": "❤", "users": [
+            {"id": "another-user", "username": "someone_else"}]}]},
+    })
+    service.sync(media_amount=0, threads_amount=1)
+    assert db.get_event("dm:message-2")["has_liked"] == 0
+    assert db.list_conversations(status="active")[0]["latest_inbound_hearted"] is False
+
+    graph.messages[0]["reactions"]["data"][0]["users"].append(
+        {"id": "messaging-own-id", "username": "studio.jiiwon"})
+    service.sync(media_amount=0, threads_amount=1)
+    assert db.get_event("dm:message-2")["has_liked"] == 1
+    assert db.list_conversations(status="active") == []
+
+    graph.messages[0]["reactions"] = {"data": []}
+    service.sync(media_amount=0, threads_amount=1)
+    assert db.get_event("dm:message-2")["has_liked"] == 0
+    assert [item["thread_id"] for item in db.list_conversations(status="active")] == ["thread-1"]
+
+
 def test_sync_reports_permission_gap_when_media_has_comments_but_api_returns_none(monkeypatch, tmp_path):
     monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

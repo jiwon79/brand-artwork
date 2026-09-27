@@ -207,6 +207,18 @@ class InstagramService:
     def _comment_username(comment: dict[str, Any]) -> str:
         return str(comment.get("username") or (comment.get("from") or {}).get("username") or "")
 
+    @staticmethod
+    def _own_dm_heart(message: dict[str, Any], own_id: str, username: str) -> bool:
+        reactions = (message.get("reactions") or {}).get("data") or []
+        for reaction in reactions:
+            if reaction.get("emoji") not in {"❤", "❤️", "♥"}:
+                continue
+            for user in reaction.get("users") or []:
+                if (str(user.get("id") or "") == own_id or
+                        str(user.get("username") or "").casefold() == username.casefold()):
+                    return True
+        return False
+
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
              threads_amount: int = 30) -> dict[str, Any]:
         with self._lock:
@@ -273,7 +285,7 @@ class InstagramService:
                     "platform": "instagram", "limit": min(threads_amount, 100)}, limit=threads_amount):
                     thread_id = str(conversation["id"])
                     detail = client.request("GET", f"/{thread_id}", params={
-                        "fields": "participants{id,username},messages{id,created_time,from,to,message}"})
+                        "fields": "participants{id,username},messages{id,created_time,from,to,message,reactions}"})
                     participants = (detail.get("participants") or {}).get("data") or []
                     own_messaging_ids = {
                         str(person["id"])
@@ -300,6 +312,8 @@ class InstagramService:
                             "author_id": sender_id,
                             "author_username": sender.get("username") or participant_names.get(sender_id, ""),
                             "direction": "outbound" if outbound else "inbound",
+                            "has_liked": 0 if outbound else int(self._own_dm_heart(
+                                message, own_messaging_id, client.username)),
                             "body": message.get("message") or "메시지 내용 없음",
                             "received_at": self._timestamp(message.get("created_time")),
                             "status": "history" if outbound else "pending"}))
