@@ -5,11 +5,14 @@ import {
   type MotionPreset, type MotionTracks, type TrackId,
 } from './motion-editor';
 import { variants, type VariantId } from './variants';
+import { BoneEditorUI } from './bone-editor-ui';
+import { boneDefinitions, type BonePose } from './bone-rig';
 
 type EditorOptions = {
   frameCount: number;
   referenceWidths: readonly number[];
   contourFrames: readonly (readonly number[])[];
+  boneFrames: readonly (readonly BonePose[])[];
   shape: VariantId;
   initialSeconds: number;
   readCurrentSeconds: () => number;
@@ -78,7 +81,8 @@ export class MotionEditor {
   private readonly deleteButton = element<HTMLButtonElement>('[data-action="delete-keyframe"]');
   private readonly fileInput = element<HTMLInputElement>('#editor-file');
   private readonly help = element<HTMLElement>('.editor-help');
-  private readonly defaultHelp = this.help.textContent ?? '';
+  private readonly defaultHelp = this.help.innerHTML;
+  private readonly boneEditor: BoneEditorUI;
 
   constructor(options: EditorOptions) {
     this.options = options;
@@ -89,6 +93,12 @@ export class MotionEditor {
     this.tracks = this.load(options.shape);
     this.frame = Math.min(this.period, Math.max(0, options.initialSeconds * MOTION_FPS));
     this.active = new URLSearchParams(location.search).get('editor') === '1';
+    this.boneEditor = new BoneEditorUI({
+      frames: options.boneFrames, period: this.period,
+      readFrame: () => this.frame,
+      seek: (frame) => this.seek(frame),
+      changed: options.onChange,
+    });
     this.setOpenAppearance();
     this.bindEvents();
     this.drawTimeline();
@@ -117,6 +127,7 @@ export class MotionEditor {
     this.panel.hidden = !this.active;
     document.body.classList.toggle('editor-open', this.active);
     document.body.classList.toggle('mesh-view', this.active && this.meshView);
+    document.body.classList.toggle('bone-editor', this.active && this.showingBones);
     this.contourMeasurement.hidden = !(this.active && this.meshView && !this.showingBones);
     this.boneMeasurement.hidden = !(this.active && this.meshView && this.showingBones);
     this.rigControl.hidden = this.shape !== 'original';
@@ -168,7 +179,7 @@ export class MotionEditor {
   }
 
   sample(id: TrackId) {
-    return this.active && !this.comparing
+    return this.active && !this.comparing && !this.showingBones
       ? sampleTrack(this.tracks[id], this.frame, this.period)
       : trackSpecs[id].initial;
   }
@@ -181,8 +192,18 @@ export class MotionEditor {
     return this.shape === 'original' && this.originalRigMode === 'bones';
   }
 
+  get selectedBoneIndex() { return this.boneEditor.selectedBone; }
+  get showBoneReference() { return this.boneEditor.showReference; }
+  selectBone(index: number) { this.boneEditor.selectBone(index); }
+  sampleBonePose(frame: number) { return this.boneEditor.sample(frame); }
+
   updateDisplay(sourceFrame: number) {
     if (!this.active) return;
+    if (this.showingBones) {
+      this.boneEditor.update(this.frame);
+      this.boneMeasurement.textContent = this.comparing ? '같은 시간의 원본 윤곽 비교'
+        : `관절 ${this.selectedBoneIndex} · ${boneDefinitions[this.selectedBoneIndex].name} / 13개`;
+    }
     this.playhead.style.left = `${this.frame / this.period * 100}%`;
     this.timeOutput.value = timecode(this.frame);
     this.sourceOutput.textContent = `원본 ${String(Math.floor(sourceFrame) + 1).padStart(3, '0')}`;
@@ -371,6 +392,7 @@ export class MotionEditor {
       this.comparing = !this.comparing;
       this.compareButton.setAttribute('aria-pressed', String(this.comparing));
       this.compareButton.textContent = this.comparing ? '편집본 보기' : '원본 비교';
+      this.setOpenAppearance();
       this.options.onChange();
     });
     this.meshButton.addEventListener('click', () => {
@@ -471,7 +493,7 @@ export class MotionEditor {
       this.tracks = defaultTracks(this.period);
       this.selectedTrack = 'response';
       this.selectedFrame = 0;
-      this.help.textContent = this.defaultHelp;
+      this.help.innerHTML = this.defaultHelp;
       this.drawKeys();
       this.updateInspector();
       this.save();

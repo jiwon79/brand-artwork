@@ -513,3 +513,64 @@ body.editor-open #variant-picker {
   .editor-inspector { gap: 5px; padding: 7px; }
   .editor-help { padding: 0 7px 6px; }
 }
+
+.bone-only { display: none; }
+body.bone-editor .bone-only { display: block; }
+body.bone-editor .editor-source-label,
+body.bone-editor .editor-contour-label,
+body.bone-editor [data-label],
+body.bone-editor #editor-source,
+body.bone-editor #editor-contours,
+body.bone-editor .editor-lane,
+body.bone-editor .contour-help,
+body.bone-editor .editor-global-inspector { display: none; }
+body.bone-editor .editor-bone-tools,
+body.bone-editor .editor-bone-inspector { display: flex; }
+
+.editor-bone-tools {
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 7px 14px;
+  border-bottom: 1px solid #3a455b;
+  background: #202a3c;
+}
+.editor-bone-tools label { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.editor-bone-tools button {
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 1px solid #45516a;
+  border-radius: 6px;
+  background: #283247;
+  color: #e7eeff;
+}
+.bone-channel-label { height: 72px; }
+.bone-channel-label[data-bone-label='dx'] { color: #ffaeb6; }
+.bone-channel-label[data-bone-label='dy'] { color: #9fdfbe; }
+.bone-channel-label[data-bone-label='angle'] { color: #b6bdff; }
+.editor-bone-lane {
+  position: relative;
+  box-sizing: border-box;
+  height: 72px;
+  border-bottom: 1px solid #3a455b;
+  background-color: #1e2838;
+  background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(var(--second-width) - 1px), #343d50 calc(var(--second-width) - 1px), #343d50 var(--second-width));
+  cursor: crosshair;
+  touch-action: none;
+}
+.editor-bone-lane.selected { background-color: #29374b; }
+.editor-bone-lane svg { position: absolute; width: 100%; height: 100%; pointer-events: none; }
+.bone-key { width: 8px; height: 8px; border-width: 1px; border-color: #d9e3ee; background: #8ba0ba; }
+.bone-key.selected { width: 11px; height: 11px; }
+.bone-curve-scale { position: absolute; top: 3px; left: 8px; font-size: 9px; color: #91a1b8; pointer-events: none; }
+.editor-bone-inspector input { width: 70px; }
+#editor-bone-status { color: #9bafc8; font-size: 10px; }
+
+@media (max-width: 850px) {
+  body.bone-editor .editor-timeline { flex-basis: 242px; }
+  .bone-channel-label { align-items: flex-start; flex-direction: column; justify-content: center; gap: 5px; }
+  .bone-channel-label output { display: block; }
+  .editor-bone-tools { gap: 5px 8px; padding: 6px 7px; font-size: 11px; }
+  .editor-bone-tools button { font-size: 10px; }
+}

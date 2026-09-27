@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import { boneDefinitions, BoneRig } from './bone-rig';
+import { fitBoneFrames } from './bone-animation';
 import backgroundFragment from './background.frag?raw';
 import bodyFragment from './body.frag?raw';
 import furRibbonFragment from './fur-ribbon.frag?raw';
@@ -73,7 +74,8 @@ const referenceWidths = motionFrames.map((frame) => frame.radii[0] + frame.radii
 const baselineRadii = Float32Array.from(motionFrames[0].radii, (_, point) =>
   motionFrames.reduce((sum, frame) => sum + frame.radii[point], 0) / motionFrames.length);
 const baselineMean = baselineRadii.reduce((sum, radius) => sum + radius, 0) / baselineRadii.length;
-const boneRig = new BoneRig(baselineRadii);
+const boneRig = new BoneRig();
+const boneAnimationFrames = fitBoneFrames(motionFrames.map((frame) => frame.radii));
 let bodyBoneWeights: Float32Array | null = null;
 let fiberBoneWeights: Float32Array | null = null;
 let bodyRestPositions: Float32Array | null = null;
@@ -211,18 +213,44 @@ const boneJoints = boneDefinitions.map((_, index) => {
   boneGuides.add(marker);
   return marker;
 });
+const boneAxes = boneDefinitions.map(() => {
+  const axis = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 22, 6), new THREE.MeshBasicMaterial({
+    color: 0xffc088, depthTest: false, depthWrite: false,
+  }));
+  axis.renderOrder = 23;
+  boneGuides.add(axis);
+  return axis;
+});
 boneGuides.visible = false;
 character.add(boneGuides);
 
+const boneReferencePositions = new Float32Array(64 * 3);
+const boneReferenceGeometry = new THREE.BufferGeometry();
+boneReferenceGeometry.setAttribute('position', new THREE.BufferAttribute(boneReferencePositions, 3).setUsage(THREE.DynamicDrawUsage));
+const boneReference = new THREE.LineLoop(boneReferenceGeometry, new THREE.LineBasicMaterial({
+  color: 0x72ffe1, depthTest: false, depthWrite: false, transparent: true, opacity: 0.95,
+}));
+boneReference.renderOrder = 24;
+boneReference.visible = false;
+character.add(boneReference);
+
 function updateBoneGuides() {
+  const [rootX, rootY] = boneRig.jointPosition(0);
   for (let index = 0; index < boneDefinitions.length; index++) {
     const [x, y] = boneRig.jointPosition(index);
     boneJoints[index].position.set(x, y, 0);
+    const selected = index === editor.selectedBoneIndex;
+    boneJoints[index].material.color.setHex(selected ? 0xffffff : 0xffad81);
+    boneJoints[index].scale.setScalar(selected ? 1.5 : 1);
+    const angle = Math.atan2(boneDefinitions[index].y, boneDefinitions[index].x) + boneRig.poses[index].angle;
+    boneAxes[index].position.set(x + Math.cos(angle) * 11, y + Math.sin(angle) * 11, 0);
+    boneAxes[index].rotation.z = angle - Math.PI / 2;
+    boneAxes[index].material.color.setHex(selected ? 0xffffff : 0xffc088);
     if (index > 0) {
       const link = boneLinks[index - 1];
-      link.position.set(x / 2, y / 2, 0);
-      link.scale.y = Math.hypot(x, y);
-      link.rotation.z = Math.atan2(y, x) - Math.PI / 2;
+      link.position.set((x + rootX) / 2, (y + rootY) / 2, 0);
+      link.scale.y = Math.hypot(x - rootX, y - rootY);
+      link.rotation.z = Math.atan2(y - rootY, x - rootX) - Math.PI / 2;
     }
   }
 }
@@ -387,6 +415,7 @@ editor = new MotionEditor({
   frameCount: motionFrames.length,
   referenceWidths,
   contourFrames: motionFrames.map((frame) => frame.radii),
+  boneFrames: boneAnimationFrames,
   shape: variants[targetVariant].id,
   initialSeconds: frozenTime ?? 0,
   readCurrentSeconds: () => frozenTime ?? Math.max(0, (pausedAt - startTime) / 1000),
@@ -420,8 +449,19 @@ canvas.addEventListener('pointermove', (event) => {
   controls.turnY = ((dragging.yaw + dx * 0.5 + 180) % 360 + 360) % 360 - 180;
   refresh();
 });
+const bonePicker = new THREE.Raycaster();
 function stopDragging(event: PointerEvent) {
   if (!dragging || event.pointerId !== dragging.pointerId) return;
+  if (event.type === 'pointerup' && editor.showingMesh && editor.showingBones && !editor.comparing
+    && Math.hypot(event.clientX - dragging.x, event.clientY - dragging.y) < 5) {
+    const bounds = canvas!.getBoundingClientRect();
+    bonePicker.setFromCamera(new THREE.Vector2(
+      (event.clientX - bounds.left) / bounds.width * 2 - 1,
+      -(event.clientY - bounds.top) / bounds.height * 2 + 1,
+    ), camera);
+    const hit = bonePicker.intersectObjects(boneJoints)[0];
+    if (hit) editor.selectBone(boneJoints.indexOf(hit.object as typeof boneJoints[number]));
+  }
   dragging = null;
   canvas!.classList.remove('dragging');
   if (canvas!.hasPointerCapture(event.pointerId)) canvas!.releasePointerCapture(event.pointerId);
@@ -627,10 +667,10 @@ function render(now: number) {
   bodyUniforms.uCheek.value = cheekStrength;
   bodyUniforms.uStarSoftness.value = variantWeights[3];
   for (let i = 0; i < currentRadii.length; i++) currentRadii[i] = lerp(first.radii[i], second.radii[i]);
-  boneRigActive = editor.showingBones;
+  boneRigActive = editor.showingBones && !editor.comparing;
   if (boneRigActive) {
     ensureBoneWeights();
-    boneRig.poseFromRadii(currentRadii, editedResponse);
+    boneRig.setPose(editor.sampleBonePose(seconds * MOTION_FPS), editedResponse);
   }
   meanRadius = currentRadii.reduce((sum, value) => sum + value, 0) / currentRadii.length;
   gesture = variantGesture(frame, referenceWidths) * editedResponse;
@@ -652,8 +692,17 @@ function render(now: number) {
   meshSurface.visible = meshView;
   contourGuides.visible = meshView && !boneRigActive;
   boneGuides.visible = meshView && boneRigActive;
+  boneReference.visible = boneGuides.visible && editor.showBoneReference;
   if (contourGuides.visible) updateContourGuides(editor.selectedContourIndex);
   if (boneGuides.visible) updateBoneGuides();
+  if (boneReference.visible) {
+    for (let index = 0; index < 64; index++) {
+      const x = Math.cos(angularSamples[index]), y = Math.sin(angularSamples[index]);
+      const radius = radiusAt(x, y);
+      boneReferencePositions.set([x * radius, y * radius, 0], index * 3);
+    }
+    boneReferenceGeometry.getAttribute('position').needsUpdate = true;
+  }
   for (const shell of shells) shell.mesh.visible = !meshView;
   fur.visible = !meshView;
   for (const eye of eyes) eye.visible = !meshView;
