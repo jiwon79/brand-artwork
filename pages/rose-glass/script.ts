@@ -388,7 +388,7 @@ function describe<T extends { domElement: HTMLElement }>(controller: T, descript
 }
 const surfaceFolder = gui.addFolder('Surface');
 describe(surfaceFolder.add(colorwaySetting,'colorway',Object.fromEntries(colorways.map((colorway,index) => [colorway.label,index]))).name('Colorway').onChange((value: number) => selectColorway(value)),
-  'Rose·Yellow·Green·Blue·Black 색상. 사진의 배경과 세 유리 색을 각각 적용하며 서리와 드래그는 그대로 유지');
+  '10가지 색상. 배경과 세 유리의 색을 함께 바꾸며 서리와 드래그는 그대로 유지');
 describe(surfaceFolder.add(settings,'grain',0,2,.01).name('Frost grain').onChange(wake),
   '표면의 서리 입자, 작은 요철과 반짝임의 강도');
 describe(surfaceFolder.add(settings,'warmth',-1,1,.01).name('Warmth').onChange(wake),
