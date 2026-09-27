@@ -279,7 +279,7 @@ canvas.addEventListener('pointerdown', (event) => {
   character.updateMatrixWorld(true);
   const hit = characterPicker.intersectObject(body)[0];
   if (hit?.face) {
-    reaction.begin(character.worldToLocal(hit.point.clone()), hit.face.normal);
+    reaction.begin(character.worldToLocal(hit.point.clone()), hit.face.normal, performance.now());
     refresh();
   }
   dragging = {
@@ -486,8 +486,9 @@ function render(now: number) {
   character.position.set(cx - 360, 360 - cy, 0);
   const squash = reaction.squash;
   const rebound = reaction.rebound;
-  character.scale.set(1 + squash * 0.055 - rebound * 0.035,
-    1 - squash * 0.09 + rebound * 0.065, 1);
+  const surprise = reaction.surprised;
+  character.scale.set(1 + squash * 0.11 - rebound * 0.045 - surprise * 0.035,
+    1 - squash * 0.18 + rebound * 0.08 + surprise * 0.055, 1);
   character.rotation.set(
     THREE.MathUtils.degToRad(controls.turnX) + reaction.dragPitch,
     THREE.MathUtils.degToRad(controls.turnY),

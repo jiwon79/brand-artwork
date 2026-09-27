@@ -17,14 +17,36 @@ test('a second tap adds surprise while a drag cancels the press', () => {
   const reaction = new TouchReaction();
   const point = new THREE.Vector3(0, 0, 100);
   const normal = new THREE.Vector3(0, 0, 1);
-  reaction.begin(point, normal);
+  reaction.begin(point, normal, 0);
   reaction.end(100);
-  reaction.begin(point, normal);
+  reaction.advance(0.12);
+  const firstRebound = reaction.rebound;
+  reaction.begin(point, normal, 260);
   reaction.end(300);
+  expect(reaction.rebound).toBeCloseTo(firstRebound);
   reaction.advance(0.1);
   expect(reaction.surprised).toBeGreaterThan(0);
-  expect(reaction.eyeOpen).toBeLessThan(1);
-  reaction.begin(point, normal);
+  const firstSurprise = reaction.surprised;
+  reaction.begin(point, normal, 400);
+  reaction.end(430);
+  expect(reaction.surprised).toBeCloseTo(firstSurprise);
+  reaction.begin(point, normal, 500);
   reaction.drag(28, 0);
   expect(reaction.dragTilt).toBeLessThan(0);
+});
+
+test('a held touch settles into a visible squash and releases without repeated oscillation', () => {
+  const reaction = new TouchReaction();
+  const point = new THREE.Vector3(0, 0, 100);
+  const normal = new THREE.Vector3(0, 0, 1);
+  reaction.begin(point, normal, 0);
+  for (let i = 0; i < 11; i++) reaction.advance(0.05);
+  expect(reaction.squash).toBeGreaterThan(0.9);
+  expect(reaction.eyeOpen).toBeLessThan(0.7);
+  reaction.end(550);
+  for (let i = 0; i < 20; i++) {
+    reaction.advance(0.05);
+    expect(reaction.rebound).toBeGreaterThanOrEqual(0);
+  }
+  expect(reaction.squash).toBeLessThan(0.01);
 });
