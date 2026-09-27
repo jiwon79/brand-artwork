@@ -1,16 +1,10 @@
 import { BoneRig, boneDefinitions, neutralBonePose, type BonePose } from './bone-rig';
 import { loopFrame } from './motion-loop';
-import { MOTION_FPS, motionPeriod, sampleTrack, type Keyframe } from './motion-editor';
-import type { VariantId } from './variants';
+import { MOTION_FPS, motionPeriod, sampleTrack, type Keyframe } from './motion-track';
 
 export const boneChannels = ['dx', 'dy', 'angle'] as const;
 export type BoneChannel = typeof boneChannels[number];
 export type BoneTracks = Record<BoneChannel, Keyframe[]>[];
-export const boneChannelSpecs = {
-  dx: { label: '좌우 X', unit: 'px', min: -100, max: 100, color: '#ffaeb6' },
-  dy: { label: '높이 Y', unit: 'px', min: -100, max: 100, color: '#9fdfbe' },
-  angle: { label: '회전', unit: '°', min: -45, max: 45, color: '#b6bdff' },
-};
 const RADIANS = Math.PI / 180;
 
 export function referenceRadius(x: number, y: number, radii: ArrayLike<number>, baseline: ArrayLike<number>) {
@@ -134,39 +128,4 @@ export function sampleBoneTracks(tracks: BoneTracks, frame: number, period: numb
     dy: sampleTrack(bone.dy, frame, period),
     angle: sampleTrack(bone.angle, frame, period) * RADIANS,
   }));
-}
-
-export function setBoneKey(tracks: BoneTracks, bone: number, channel: BoneChannel, frame: number, value: number, period: number) {
-  const spec = boneChannelSpecs[channel];
-  const bounded = Math.max(spec.min, Math.min(spec.max, value));
-  const at = Math.max(0, Math.min(period, Math.round(frame)));
-  const keys = tracks[bone][channel];
-  if (at === 0 || at === period) {
-    keys[0].value = keys[keys.length - 1].value = bounded;
-  } else {
-    const key = keys.find((item) => item.frame === at);
-    if (key) key.value = bounded;
-    else keys.push({ frame: at, value: bounded });
-    keys.sort((a, b) => a.frame - b.frame);
-  }
-}
-
-export function parseBoneTracks(input: unknown, period: number, shape?: VariantId): BoneTracks | null {
-  if (!input || typeof input !== 'object') return null;
-  const preset = input as { version?: number; shape?: VariantId; period?: number; bones?: BoneTracks };
-  if ((shape ? preset.version !== 3 || preset.shape !== shape : preset.version !== 2)
-    || preset.period !== period || !Array.isArray(preset.bones)
-    || preset.bones.length !== boneDefinitions.length) return null;
-  for (const bone of preset.bones) for (const channel of boneChannels) {
-    const keys = bone?.[channel], spec = boneChannelSpecs[channel];
-    if (!Array.isArray(keys) || keys.length < 2 || keys.length > period + 1
-      || keys[0]?.frame !== 0 || keys[keys.length - 1]?.frame !== period || keys[0].value !== keys[keys.length - 1]?.value) return null;
-    let previous = -1;
-    for (const key of keys) {
-      if (!key || !Number.isInteger(key.frame) || key.frame <= previous || key.frame > period
-        || !Number.isFinite(key.value) || key.value < spec.min || key.value > spec.max) return null;
-      previous = key.frame;
-    }
-  }
-  return structuredClone(preset.bones);
 }

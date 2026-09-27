@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest';
-import { BoneRig, neutralBonePose } from './bone-rig';
-import { fitBoneFrames, fittedBoneTracks, referenceRadius, sampleBoneTracks, setBoneKey, parseBoneTracks } from './bone-animation';
+import { BoneRig } from './bone-rig';
+import { fitBoneFrames, fittedBoneTracks, referenceRadius, sampleBoneTracks } from './bone-animation';
 import { motionFrames } from './motion-data';
 import { loopFrame } from './motion-loop';
-import { motionPeriod } from './motion-editor';
+import { motionPeriod } from './motion-track';
 
 const contours = motionFrames.map((frame) => frame.radii);
 const fitted = fitBoneFrames(contours);
@@ -45,19 +45,4 @@ test('fitted rig follows the measured surface throughout the loop', () => {
   }
   expect(Math.sqrt(squareError / count)).toBeLessThan(2);
   expect(maximum).toBeLessThan(8);
-});
-
-test('bone keyframe edits remain closed at the loop boundary and presets round-trip', () => {
-  const tracks = structuredClone(defaults);
-  setBoneKey(tracks, 2, 'dy', 0, 20, period);
-  expect(tracks[2].dy[tracks[2].dy.length - 1]?.value).toBe(20);
-  expect(sampleBoneTracks(tracks, 0, period)).toEqual(sampleBoneTracks(tracks, period, period));
-  const parsed = parseBoneTracks({ version: 2, period, bones: tracks }, period);
-  expect(parsed).toEqual(tracks);
-  expect(parseBoneTracks({ version: 2, period, bones: [] }, period)).toBeNull();
-  const rig = new BoneRig();
-  const pose = neutralBonePose();
-  pose[2].dy = 20;
-  rig.setPose(pose);
-  expect(rig.jointPosition(2)[1]).toBeCloseTo(-32.5);
 });

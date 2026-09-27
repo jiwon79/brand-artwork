@@ -16,66 +16,6 @@
       <button type="button" data-variant="star" aria-pressed="true" style="--swatch:#9aa9f3"><span class="swatch"></span>보라 별</button>
       <button type="button" data-variant="wave" aria-pressed="false" style="--swatch:#a1e2e9"><span class="swatch"></span>파도</button>
     </div>
-    <button id="editor-toggle" type="button" aria-controls="motion-editor" aria-expanded="false">모션 편집</button>
-    <div id="bone-measurement" hidden>뼈대 변형 · 관절 13개</div>
-    <section id="motion-editor" aria-label="모션 편집기" hidden>
-      <div class="editor-header">
-        <div class="editor-heading"><strong>MOTION EDITOR</strong><span id="editor-shape">보라 별</span></div>
-        <div class="editor-transport" role="group" aria-label="재생 제어">
-          <button type="button" data-action="previous-frame" aria-label="이전 프레임">‹</button>
-          <button type="button" data-action="play" aria-label="재생">▶</button>
-          <button type="button" data-action="next-frame" aria-label="다음 프레임">›</button>
-          <output id="editor-timecode" aria-live="off">00:00:00</output>
-          <span class="editor-frame-info" id="editor-source-frame">0 / 144f</span>
-        </div>
-        <div class="editor-header-controls">
-          <label>속도 <select id="editor-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
-          <label>확대 <input id="editor-zoom" type="range" min="1" max="4" step="0.25" value="1" /></label>
-          <button type="button" data-action="compare" aria-pressed="false">기본 모션 비교</button>
-          <button type="button" data-action="mesh-view" aria-pressed="false">메시 보기</button>
-        </div>
-      </div>
-      <div class="editor-bone-tools bone-only">
-        <label>관절 <select id="editor-bone-select" aria-label="편집할 관절"></select></label>
-        <label><input id="editor-bone-reference" type="checkbox" checked /> 기본 모션 겹치기</label>
-        <button type="button" data-bone-action="reset-bone">이 관절 복원</button>
-        <button type="button" data-bone-action="reset-all">전체 복원</button>
-      </div>
-      <p id="editor-motion-description"></p>
-      <div class="editor-timeline">
-        <div class="editor-labels" aria-hidden="true">
-          <div class="editor-label editor-ruler-label">시간</div>
-          <div class="bone-only">
-            <div class="editor-label bone-channel-label" data-bone-label="dx">좌우 X <output></output></div>
-            <div class="editor-label bone-channel-label" data-bone-label="dy">높이 Y <output></output></div>
-            <div class="editor-label bone-channel-label" data-bone-label="angle">회전 <output></output></div>
-          </div>
-        </div>
-        <div id="editor-scroll" class="editor-scroll">
-          <div id="editor-content" class="editor-content">
-            <div id="editor-ruler" class="editor-ruler" aria-label="시간축"></div>
-            <div class="bone-only">
-              <div class="editor-bone-lane" data-bone-lane="dx" aria-label="선택 관절 좌우 위치 곡선"></div>
-              <div class="editor-bone-lane" data-bone-lane="dy" aria-label="선택 관절 높이 곡선"></div>
-              <div class="editor-bone-lane" data-bone-lane="angle" aria-label="선택 관절 회전 곡선"></div>
-            </div>
-            <div id="editor-playhead" aria-hidden="true"></div>
-          </div>
-        </div>
-      </div>
-      <div class="editor-inspector editor-bone-inspector bone-only">
-        <label>X <input id="editor-bone-dx" aria-label="관절 X" type="number" step="0.1" /></label>
-        <label>Y <input id="editor-bone-dy" aria-label="관절 Y" type="number" step="0.1" /></label>
-        <label>회전 <input id="editor-bone-angle" aria-label="관절 회전" type="number" step="0.1" /></label>
-        <output id="editor-bone-status"></output>
-        <button type="button" data-bone-action="delete">선택 키 삭제</button>
-        <div class="editor-spacer"></div>
-        <button type="button" data-bone-action="export">뼈대 JSON 저장</button>
-        <button type="button" data-bone-action="import">불러오기</button>
-        <input id="editor-bone-file" type="file" accept="application/json,.json" hidden />
-      </div>
-      <p class="editor-help">메시의 관절이나 목록에서 편집할 관절을 선택하세요. ◆를 상하로 드래그하면 값, 좌우로 드래그하면 시간이 바뀝니다. 숫자를 바꾸면 현재 시간에 키가 추가됩니다. 회색 점선과 청록 외곽선은 이 형태의 기본 모션입니다. 변경은 형태별로 자동 저장됩니다.</p>
-    </section>
     <script type="module" src="./script.ts"></script>
   </body>
 </html>

@@ -1,7 +1,5 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
-import GUI from 'lil-gui';
-import { exposeGuiInDebugMode } from '../../common/debug';
 import { boneDefinitions, BoneRig } from './bone-rig';
 import { createBoneMotion, cycleFrame, forwardFrame, smooth, SOURCE_END, BONE_LOOP_FRAMES, PREVIOUS_BONE_LOOP_FRAMES, sampleDefaultPose } from './bone-motion';
 import { restRadius, restSurface } from './bone-surface';
@@ -14,12 +12,17 @@ import furShellFragment from './fur-shell.frag?raw';
 import furShellVertex from './fur-shell.vert?raw';
 import paletteShader from './palette.glsl?raw';
 import { motionFrames } from './motion-data';
-import { DEFAULT_PLAYBACK_SPEED, MOTION_FPS } from './motion-editor';
-import { MotionEditor } from './motion-editor-ui';
+import { DEFAULT_PLAYBACK_SPEED, MOTION_FPS } from './motion-track';
 import { variants, type VariantColors } from './variants';
 import { TouchReaction } from './touch-reaction';
 
 const params = new URLSearchParams(location.search);
+if (params.has('editor') || params.has('rig')) {
+  const url = new URL(location.href);
+  url.searchParams.delete('editor');
+  url.searchParams.delete('rig');
+  history.replaceState(null, '', url);
+}
 const shapeAliases: Record<string, string> = { drop: 'flower', cloud: 'wave' };
 const requestedShape = shapeAliases[params.get('shape') ?? ''] ?? params.get('shape');
 const requestedVariant = variants.findIndex((variant) => variant.id === requestedShape);
@@ -55,9 +58,8 @@ const restingFrame = motionFrames[Math.floor(motionFrames.length / 2)];
 const baselineRadii = Float32Array.from(motionFrames[0].radii, (_, point) =>
   motionFrames.reduce((sum, frame) => sum + frame.radii[point], 0) / motionFrames.length);
 let boneRig = new BoneRig(variants[targetVariant].id);
-let referenceRig = new BoneRig(variants[targetVariant].id);
 const boneAnimationFrames = fitBoneFrames(motionFrames.map((frame) => frame.radii));
-const { clips: boneClips, previousClips, timeMaps } = createBoneMotion(boneAnimationFrames);
+const { clips: boneClips, timeMaps } = createBoneMotion(boneAnimationFrames);
 let bodyBoneWeights: Float32Array | null = null;
 let fiberBoneWeights: Float32Array | null = null;
 let bodyRestPositions: Float32Array | null = null;
@@ -79,7 +81,6 @@ renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 const scene = new THREE.Scene();
-const meshBackdrop = new THREE.Color('#1b2635');
 const camera = new THREE.OrthographicCamera(-360, 360, 360, -360, 0.1, 3000);
 camera.position.z = 1000;
 scene.add(new THREE.AmbientLight(0xcbd9e9, 1.1));
@@ -126,86 +127,6 @@ ${bodyFragment}`,
   }),
 );
 character.add(body);
-// The inspection view shares the deforming geometry with the finished body.
-const meshSurface = new THREE.Mesh(shape, new THREE.MeshPhongMaterial({
-  color: 0xa7bacb,
-  specular: 0x52677b,
-  shininess: 28,
-  side: THREE.DoubleSide,
-}));
-const meshWire = new THREE.Mesh(shape, new THREE.MeshBasicMaterial({
-  color: 0x284052,
-  wireframe: true,
-  transparent: true,
-  opacity: 0.66,
-  depthWrite: false,
-}));
-meshWire.scale.setScalar(1.003);
-meshSurface.add(meshWire);
-meshSurface.visible = false;
-character.add(meshSurface);
-
-const boneGuides = new THREE.Group();
-const boneLinks = boneDefinitions.slice(1).map(() => {
-  const link = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 1, 8), new THREE.MeshBasicMaterial({
-    color: 0xffd4a6, depthTest: false, depthWrite: false,
-  }));
-  link.renderOrder = 21;
-  boneGuides.add(link);
-  return link;
-});
-const boneJoints = boneDefinitions.map((_, index) => {
-  const marker = new THREE.Mesh(new THREE.SphereGeometry(index === 0 ? 6 : 5, 12, 8), new THREE.MeshBasicMaterial({
-    color: index === 0 ? 0xffefcb : 0xffad81, depthTest: false, depthWrite: false,
-  }));
-  marker.renderOrder = 22;
-  boneGuides.add(marker);
-  return marker;
-});
-const boneAxes = boneDefinitions.map(() => {
-  const axis = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 22, 6), new THREE.MeshBasicMaterial({
-    color: 0xffc088, depthTest: false, depthWrite: false,
-  }));
-  axis.renderOrder = 23;
-  boneGuides.add(axis);
-  return axis;
-});
-boneGuides.visible = false;
-character.add(boneGuides);
-
-const boneReferencePositions = new Float32Array(64 * 3);
-const boneReferenceGeometry = new THREE.BufferGeometry();
-boneReferenceGeometry.setAttribute('position', new THREE.BufferAttribute(boneReferencePositions, 3).setUsage(THREE.DynamicDrawUsage));
-const boneReference = new THREE.LineLoop(boneReferenceGeometry, new THREE.LineBasicMaterial({
-  color: 0x72ffe1, depthTest: false, depthWrite: false, transparent: true, opacity: 0.95,
-}));
-boneReference.renderOrder = 24;
-boneReference.visible = false;
-character.add(boneReference);
-
-function updateBoneGuides() {
-  const [rootX, rootY] = boneRig.jointPosition(0);
-  for (let index = 0; index < boneDefinitions.length; index++) {
-    const [x, y] = boneRig.jointPosition(index);
-    boneJoints[index].position.set(x, y, 0);
-    const selected = index === editor.selectedBoneIndex;
-    boneJoints[index].material.color.setHex(selected ? 0xffffff : 0xffad81);
-    boneJoints[index].scale.setScalar(selected ? 1.5 : 1);
-    const angle = Math.atan2(boneRig.definitions[index].y, boneRig.definitions[index].x) + boneRig.poses[index].angle;
-    boneAxes[index].position.set(x + Math.cos(angle) * 11, y + Math.sin(angle) * 11, 0);
-    boneAxes[index].rotation.z = angle - Math.PI / 2;
-    boneAxes[index].material.color.setHex(selected ? 0xffffff : 0xffc088);
-    if (index > 0) {
-      const link = boneLinks[index - 1];
-      link.position.set((x + rootX) / 2, (y + rootY) / 2, 0);
-      link.scale.y = Math.hypot(x - rootX, y - rootY);
-      link.rotation.z = Math.atan2(y - rootY, x - rootX) - Math.PI / 2;
-    }
-  }
-}
-
-
-
 // Thin translucent shells fill the volume between the body and visible fiber tips.
 const SHELL_COUNT = 13;
 const shells = Array.from({ length: SHELL_COUNT }, (_, index) => {
@@ -308,10 +229,8 @@ const eyePosition = new Float32Array(3);
 const queryTime = Number(params.get('t'));
 const frozenTime = params.has('t') && Number.isFinite(queryTime) ? Math.max(0, queryTime) : null;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-let startTime = performance.now();
-const controls = { turnX: 0, turnY: 0, turnZ: 0, paused: false };
-const gui = exposeGuiInDebugMode(new GUI({ title: 'Fluffy Peach · 3D' }));
-let editor: MotionEditor;
+const startTime = performance.now();
+const controls = { turnX: 0, turnY: 0, turnZ: 0 };
 let frameRequested = false;
 function refresh() {
   if (frameRequested) return;
@@ -328,7 +247,6 @@ function selectVariant(index: number) {
   const url = new URL(location.href);
   url.searchParams.set('shape', variants[index].id);
   history.replaceState(null, '', url);
-  editor?.setShape(variants[index].id);
   refresh();
 }
 for (const button of variantButtons) {
@@ -339,25 +257,6 @@ for (const button of variantButtons) {
   button.setAttribute('aria-pressed', String(button.dataset.variant === variants[targetVariant].id));
 }
 document.body.style.backgroundColor = variants[targetVariant].colors.backgroundTop;
-gui.add(controls, 'turnX', -90, 90, 1).name('위아래 회전').listen().onChange(refresh);
-gui.add(controls, 'turnY', -180, 180, 1).name('좌우 회전').listen().onChange(refresh);
-gui.add(controls, 'turnZ', -180, 180, 1).name('기울기').onChange(refresh);
-gui.add(controls, 'paused').name('정지').onChange(refresh);
-editor = new MotionEditor({
-  clips: boneClips,
-  previousClips,
-  timeMaps,
-  legacyFrames: boneAnimationFrames,
-  shape: variants[targetVariant].id,
-  initialSeconds: frozenTime ?? 0,
-  readCurrentSeconds: () => frozenTime ?? Math.max(0, (pausedAt - startTime) / 1000 * DEFAULT_PLAYBACK_SPEED),
-  onClose: (seconds) => {
-    const now = performance.now();
-    startTime = now - seconds / DEFAULT_PLAYBACK_SPEED * 1000;
-    pausedAt = now;
-  },
-  onChange: refresh,
-});
 
 const reaction = new TouchReaction();
 const characterPicker = new THREE.Raycaster();
@@ -378,7 +277,7 @@ canvas.addEventListener('pointerdown', (event) => {
   if (dragging || (event.pointerType === 'mouse' && event.button !== 0)) return;
   pointRayAt(event);
   character.updateMatrixWorld(true);
-  const hit = !editor.showingMesh ? characterPicker.intersectObject(body)[0] : null;
+  const hit = characterPicker.intersectObject(body)[0];
   if (hit?.face) {
     reaction.begin(character.worldToLocal(hit.point.clone()), hit.face.normal);
     refresh();
@@ -407,7 +306,7 @@ canvas.addEventListener('pointermove', (event) => {
   const dy = (event.clientY - dragging.y) / unit;
   controls.turnX = THREE.MathUtils.clamp(dragging.pitch + dy * 0.38, -90, 90);
   controls.turnY = ((dragging.yaw + dx * 0.5 + 180) % 360 + 360) % 360 - 180;
-  if (dragging.touched && !editor.showingMesh) {
+  if (dragging.touched) {
     reaction.drag(event.clientX - dragging.lastX, event.clientY - dragging.lastY);
   }
   dragging.lastX = event.clientX;
@@ -415,18 +314,8 @@ canvas.addEventListener('pointermove', (event) => {
   canvas.classList.add('dragging');
   refresh();
 });
-const bonePicker = new THREE.Raycaster();
 function stopDragging(event: PointerEvent) {
   if (!dragging || event.pointerId !== dragging.pointerId) return;
-  if (event.type === 'pointerup' && editor.showingMesh && !editor.comparing && !dragging.moved) {
-    const bounds = canvas!.getBoundingClientRect();
-    bonePicker.setFromCamera(new THREE.Vector2(
-      (event.clientX - bounds.left) / bounds.width * 2 - 1,
-      -(event.clientY - bounds.top) / bounds.height * 2 + 1,
-    ), camera);
-    const hit = bonePicker.intersectObjects(boneJoints)[0];
-    if (hit) editor.selectBone(boneJoints.indexOf(hit.object as typeof boneJoints[number]));
-  }
   if (!dragging.moved) reaction.end(performance.now(), event.type !== 'pointerup');
   dragging = null;
   canvas!.classList.remove('dragging');
@@ -437,14 +326,12 @@ canvas.addEventListener('pointerup', stopDragging);
 canvas.addEventListener('pointercancel', stopDragging);
 canvas.addEventListener('lostpointercapture', stopDragging);
 
-let pausedAt = 0;
 let cheekStrength = 0;
 let lastRenderTime = performance.now();
 function ensureBoneWeights() {
   const id = variants[targetVariant].id;
   if (boneRig.shape !== id) {
     boneRig = new BoneRig(id);
-    referenceRig = new BoneRig(id);
     bodyBoneWeights = fiberBoneWeights = null;
   }
   if (bodyBoneWeights && fiberBoneWeights) return;
@@ -479,7 +366,7 @@ function surface(x: number, y: number, z: number, target: Float32Array, offset: 
     * Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2)) * cheekStrength * 44;
   boneRig.skinPoint(surfaceRest[0], surfaceRest[1], surfaceRest[2], boneRig.weightsFor(surfaceRest[0], surfaceRest[1]), target, offset);
 }
-function updateShape(meshOnly: boolean) {
+function updateShape() {
   const bodyPositions = shapePosition.array as Float32Array;
   for (let i = 0; i < original.length; i += 3) {
     if (bodyRestPositions && bodyBoneWeights && bodyCheekWeights) {
@@ -498,7 +385,6 @@ function updateShape(meshOnly: boolean) {
   }
   shapePosition.needsUpdate = true;
   shape.computeVertexNormals();
-  if (meshOnly) return;
   for (const shell of shells) {
     const offset = 0.5 + 29 * Math.pow(shell.layer, 1.3);
     const positions = shell.positions.array as Float32Array;
@@ -552,7 +438,6 @@ function render(now: number) {
   frameRequested = false;
   const delta = Math.min(Math.max(now - lastRenderTime, 0) / 1000, 0.05);
   lastRenderTime = now;
-  editor.advance(delta);
   reaction.advance(delta);
   const morphStep = reduceMotion ? 1 : 1 - Math.exp(-delta * 7);
   let morphing = false;
@@ -574,9 +459,7 @@ function render(now: number) {
   blendColor(paletteUniforms.uBackgroundBottom.value, 'backgroundBottom');
   blendColor(paletteUniforms.uShadowColor.value, 'shadow');
   blendColor(paletteUniforms.uEyeColor.value, 'eye');
-  if (!controls.paused) pausedAt = now;
-  const seconds = editor.active ? editor.frame / MOTION_FPS
-    : frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000 * DEFAULT_PLAYBACK_SPEED);
+  const seconds = frozenTime ?? (reduceMotion ? 2.25 : (now - startTime) / 1000 * DEFAULT_PLAYBACK_SPEED);
   const timelineFrame = cycleFrame(seconds * MOTION_FPS);
   const previousFrame = timeMaps[variants[targetVariant].id].oldAtNew(timelineFrame);
   const forward = previousFrame <= SOURCE_END;
@@ -592,36 +475,8 @@ function render(now: number) {
   bodyUniforms.uCheek.value = cheekStrength;
   bodyUniforms.uStarSoftness.value = variantWeights[3];
   ensureBoneWeights();
-  boneRig.setPose(editor.sampleBonePose(timelineFrame));
-  const meshView = editor.showingMesh;
-  updateShape(meshView);
-  // Leave room below the rig for the shape picker, including the star's tips.
-  const previewZoom = meshView ? (selectedVariant.id === 'original' ? 1.65 : 1.4) : 1;
-  camera.position.y = meshView ? -44 : 0;
-  if (camera.zoom !== previewZoom) {
-    camera.zoom = previewZoom;
-    camera.updateProjectionMatrix();
-  }
-  background.visible = !meshView;
-  scene.background = meshView ? meshBackdrop : null;
-  body.visible = !meshView;
-  meshSurface.visible = meshView;
-  boneGuides.visible = meshView;
-  boneReference.visible = meshView && editor.showBoneReference;
-  if (boneGuides.visible) updateBoneGuides();
-  if (boneReference.visible) {
-    referenceRig.setPose(sampleDefaultPose(boneClips, selectedVariant.id, timelineFrame));
-    for (let index = 0; index < 64; index++) {
-      const angle = -index * Math.PI * 2 / 64;
-      restSurface(selectedVariant.id, Math.cos(angle), Math.sin(angle), 0, baselineRadii, surfaceRest);
-      referenceRig.skinPoint(surfaceRest[0], surfaceRest[1], 0,
-        referenceRig.weightsFor(surfaceRest[0], surfaceRest[1]), boneReferencePositions, index * 3);
-    }
-    boneReferenceGeometry.getAttribute('position').needsUpdate = true;
-  }
-  for (const shell of shells) shell.mesh.visible = !meshView;
-  fur.visible = !meshView;
-  for (const eye of eyes) eye.visible = !meshView;
+  boneRig.setPose(sampleDefaultPose(boneClips, selectedVariant.id, timelineFrame));
+  updateShape();
 
   const sourceCx = lerp(first.center[0], second.center[0]);
   const sourceCy = lerp(first.center[1], second.center[1]);
@@ -662,9 +517,8 @@ function render(now: number) {
   }
   shadowUniforms.uShadow.value.set(cx + boneRig.poses[0].dx * 0.7 - 465, -191);
   shadowUniforms.uShadowScale.value = 0.94 + Math.max(0, cy - 350) * 0.0012;
-  editor.updateDisplay();
   renderer.render(scene, camera);
-  if ((editor.active && editor.playing) || (!editor.active && frozenTime === null && !reduceMotion) || morphing || reaction.active) refresh();
+  if ((frozenTime === null && !reduceMotion) || morphing || reaction.active) refresh();
 }
 function resize() {
   const width = Math.max(1, canvas!.clientWidth), height = Math.max(1, canvas!.clientHeight);
