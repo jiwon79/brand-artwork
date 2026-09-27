@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from .codex_classifier import classify_with_codex
 from .config import ROOT, local_token, paths
 from .db import (
-    complete_conversation,
     count_events_by_status,
     get_event,
     get_settings,
@@ -20,6 +18,7 @@ from .db import (
     list_conversation_messages,
     list_conversations,
     list_events,
+    mark_comment_reviewed,
     save_artwork,
     sent_today_count,
     update_event,
@@ -27,7 +26,6 @@ from .db import (
 )
 from .instagram_client import InstagramAssistantError, instagram_service
 from .link_preview import fetch_link_preview
-from .rules import classify
 
 
 app = FastAPI(title="jiiwon.studio Instagram Assistant", docs_url=None, redoc_url=None)
@@ -36,8 +34,9 @@ TOKEN = local_token()
 
 
 class SettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     profile_url: str | None = None
-    read_only_observation: bool | None = None
     auto_send: bool | None = None
     auto_comment: bool | None = None
     auto_dm: bool | None = None
@@ -77,8 +76,7 @@ def as_http_error(exc: Exception) -> HTTPException:
 @app.get("/dm", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    template = (ROOT / "static" / "index.html").read_text()
-    return template.replace("__INSTAGRAM_ASSISTANT_LOCAL_TOKEN__", TOKEN)
+    return (ROOT / "static" / "index.html").read_text()
 
 
 @app.get("/api/status")
@@ -134,6 +132,20 @@ def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict
         raise as_http_error(exc) from exc
 
 
+@app.post("/api/viewer/sync")
+def viewer_sync(request: Request, x_requested_with: str | None = Header(default=None)) -> dict[str, Any]:
+    origin = request.headers.get("origin", "")
+    host = request.headers.get("host", "")
+    if (x_requested_with != "InstagramAssistant" or
+            origin not in {f"http://{host}", f"https://{host}"} or
+            request.headers.get("sec-fetch-site", "same-origin") != "same-origin"):
+        raise HTTPException(403, "Same-origin viewer request required")
+    try:
+        return instagram_service.sync()
+    except Exception as exc:
+        raise as_http_error(exc) from exc
+
+
 @app.get("/api/events")
 def events(
     status: str | None = None,
@@ -160,58 +172,27 @@ def conversation(thread_id: str) -> list[dict[str, Any]]:
     return list_conversation_messages(thread_id)
 
 
-@app.post("/api/conversations/{thread_id}/complete")
-def mark_conversation_complete(
-    thread_id: str,
-    x_instagram_assistant_token: str | None = Header(default=None),
-) -> dict[str, Any]:
-    protect(x_instagram_assistant_token)
-    return {"ok": True, "updated": complete_conversation(thread_id)}
-
-
-@app.post("/api/events/classify")
-def classify_events(x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, int]:
-    protect(x_instagram_assistant_token)
-    settings = get_settings()
-    artworks = list_artworks()
-    count = 0
-    for event in list_events(status="pending", limit=200):
-        update_event(event["id"], classify(event, artworks, settings["profile_url"]).as_dict())
-        count += 1
-    return {"classified": count}
-
-
-@app.post("/api/events/{event_id}/codex")
-def codex_event(event_id: str, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
+@app.patch("/api/events/{event_id}/draft")
+def edit_draft(event_id: str, body: DraftBody, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
     protect(x_instagram_assistant_token)
     event = get_event(event_id)
     if not event:
         raise HTTPException(404, "Event not found")
-    try:
-        decision = classify_with_codex(event, list_artworks())
-    except Exception as exc:
-        raise as_http_error(exc) from exc
-    status_value = "ignored" if decision["action"] == "ignore" else (
-        "manual" if decision["action"] == "manual_review" else "drafted"
-    )
+    if event["direction"] != "inbound" or event["status"] not in {"pending", "drafted"}:
+        raise HTTPException(400, "Only pending inbound items can be drafted")
+    if event["kind"] == "comment" and not event["parent_comment_id"]:
+        action = "reply_comment"
+    elif event["kind"] == "dm" and event["author_id"]:
+        action = "reply_dm"
+    else:
+        raise HTTPException(400, "This item cannot be replied to through the API")
+    if event["account_id"] != get_settings().get("instagram_account_id"):
+        raise HTTPException(400, "Event does not belong to the connected account")
+    if not body.draft.strip():
+        raise HTTPException(400, "Reply draft is empty")
     return update_event(event_id, {
-        "intent": decision["intent"],
-        "proposed_action": decision["action"],
-        "confidence": decision["confidence"],
-        "draft": decision["draft"],
-        "artwork_slug": decision["artwork_slug"],
-        "status": status_value,
-        "error": None,
+        "draft": body.draft, "status": "drafted", "proposed_action": action,
     }) or event
-
-
-@app.patch("/api/events/{event_id}/draft")
-def edit_draft(event_id: str, body: DraftBody, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
-    protect(x_instagram_assistant_token)
-    event = update_event(event_id, {"draft": body.draft, "status": "drafted"})
-    if not event:
-        raise HTTPException(404, "Event not found")
-    return event
 
 
 @app.post("/api/events/{event_id}/send")
@@ -223,12 +204,42 @@ def send_event(event_id: str, x_instagram_assistant_token: str | None = Header(d
         raise as_http_error(exc) from exc
 
 
+@app.post("/api/events/{event_id}/heart")
+def heart_dm(event_id: str, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
+    protect(x_instagram_assistant_token)
+    try:
+        return instagram_service.heart_dm(event_id)
+    except Exception as exc:
+        raise as_http_error(exc) from exc
+
+
+@app.post("/api/events/{event_id}/heart-observed")
+def heart_observed(event_id: str, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
+    protect(x_instagram_assistant_token)
+    event = get_event(event_id)
+    if not event:
+        raise HTTPException(404, "Event not found")
+    if event["kind"] not in {"comment", "dm"} or event["direction"] != "inbound":
+        raise HTTPException(400, "Only inbound comments and DMs can be marked as hearted")
+    account_id = get_settings().get("instagram_account_id")
+    if account_id and event["account_id"] != account_id:
+        raise HTTPException(400, "Event does not belong to the connected account")
+    if event["has_liked"]:
+        return event
+    update_event(event_id, {"has_liked": True})
+    if event["kind"] == "comment":
+        mark_comment_reviewed(event_id)
+    return get_event(event_id) or event
+
+
 @app.post("/api/events/{event_id}/ignore")
 def ignore_event(event_id: str, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
     protect(x_instagram_assistant_token)
     event = update_event(event_id, {"status": "ignored", "proposed_action": "ignore"})
     if not event:
         raise HTTPException(404, "Event not found")
+    if event["kind"] == "comment":
+        mark_comment_reviewed(event_id)
     return event
 
 
