@@ -20,6 +20,10 @@ body {
   cursor: grabbing;
 }
 
+body.mesh-view #artwork {
+  filter: none;
+}
+
 #variant-picker {
   position: fixed;
   z-index: 2;

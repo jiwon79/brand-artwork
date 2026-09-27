@@ -37,6 +37,7 @@ export class MotionEditor {
   active = false;
   playing = false;
   comparing = false;
+  meshView = false;
   frame = 0;
   private speed = 1;
   private zoom = 1;
@@ -54,12 +55,14 @@ export class MotionEditor {
   private readonly playhead = element<HTMLElement>('#editor-playhead');
   private readonly timeOutput = element<HTMLOutputElement>('#editor-timecode');
   private readonly sourceOutput = element<HTMLElement>('#editor-source-frame');
+  private readonly sourceWidthOutput = element<HTMLOutputElement>('#editor-source-width');
   private readonly shapeOutput = element<HTMLElement>('#editor-shape');
   private readonly trackInput = element<HTMLSelectElement>('#editor-track');
   private readonly frameInput = element<HTMLInputElement>('#editor-keyframe-time');
   private readonly valueInput = element<HTMLInputElement>('#editor-keyframe-value');
   private readonly playButton = element<HTMLButtonElement>('[data-action="play"]');
   private readonly compareButton = element<HTMLButtonElement>('[data-action="compare"]');
+  private readonly meshButton = element<HTMLButtonElement>('[data-action="mesh-view"]');
   private readonly deleteButton = element<HTMLButtonElement>('[data-action="delete-keyframe"]');
   private readonly fileInput = element<HTMLInputElement>('#editor-file');
   private readonly help = element<HTMLElement>('.editor-help');
@@ -99,6 +102,7 @@ export class MotionEditor {
   private setOpenAppearance() {
     this.panel.hidden = !this.active;
     document.body.classList.toggle('editor-open', this.active);
+    document.body.classList.toggle('mesh-view', this.active && this.meshView);
     this.toggle.setAttribute('aria-expanded', String(this.active));
     this.toggle.textContent = this.active ? '편집 닫기' : '모션 편집';
     this.shapeOutput.textContent = variants.find((variant) => variant.id === this.shape)?.label ?? this.shape;
@@ -147,11 +151,16 @@ export class MotionEditor {
       : trackSpecs[id].initial;
   }
 
+  get showingMesh() {
+    return this.active && this.meshView;
+  }
+
   updateDisplay(sourceFrame: number) {
     if (!this.active) return;
     this.playhead.style.left = `${this.frame / this.period * 100}%`;
     this.timeOutput.value = timecode(this.frame);
     this.sourceOutput.textContent = `원본 ${String(Math.floor(sourceFrame) + 1).padStart(3, '0')}`;
+    this.sourceWidthOutput.value = `${Math.round(variantGesture(sourceFrame, this.options.referenceWidths) * 100)}%`;
     for (const id of trackIds) {
       const output = element<HTMLOutputElement>(`[data-label="${id}"] output`);
       output.value = valueLabel(id, this.sample(id));
@@ -287,6 +296,13 @@ export class MotionEditor {
       this.comparing = !this.comparing;
       this.compareButton.setAttribute('aria-pressed', String(this.comparing));
       this.compareButton.textContent = this.comparing ? '편집본 보기' : '원본 비교';
+      this.options.onChange();
+    });
+    this.meshButton.addEventListener('click', () => {
+      this.meshView = !this.meshView;
+      this.meshButton.setAttribute('aria-pressed', String(this.meshView));
+      this.meshButton.textContent = this.meshView ? '결과 보기' : '메시 보기';
+      this.setOpenAppearance();
       this.options.onChange();
     });
     element<HTMLSelectElement>('#editor-speed').addEventListener('change', (event) => {

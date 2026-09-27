@@ -87,8 +87,13 @@ renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 const scene = new THREE.Scene();
+const meshBackdrop = new THREE.Color('#1b2635');
 const camera = new THREE.OrthographicCamera(-360, 360, 360, -360, 0.1, 3000);
 camera.position.z = 1000;
+scene.add(new THREE.AmbientLight(0xcbd9e9, 1.1));
+const meshLight = new THREE.DirectionalLight(0xffffff, 2);
+meshLight.position.set(-260, 300, 700);
+scene.add(meshLight);
 
 const shadowUniforms = {
   uShadow: { value: new THREE.Vector2(-75, -191) },
@@ -129,6 +134,24 @@ ${bodyFragment}`,
   }),
 );
 character.add(body);
+// The inspection view shares the deforming geometry with the finished body.
+const meshSurface = new THREE.Mesh(shape, new THREE.MeshPhongMaterial({
+  color: 0xa7bacb,
+  specular: 0x52677b,
+  shininess: 28,
+  side: THREE.DoubleSide,
+}));
+const meshWire = new THREE.Mesh(shape, new THREE.MeshBasicMaterial({
+  color: 0x284052,
+  wireframe: true,
+  transparent: true,
+  opacity: 0.66,
+  depthWrite: false,
+}));
+meshWire.scale.setScalar(1.003);
+meshSurface.add(meshWire);
+meshSurface.visible = false;
+character.add(meshSurface);
 
 // Thin translucent shells fill the volume between the body and visible fiber tips.
 const SHELL_COUNT = 13;
@@ -152,7 +175,7 @@ ${furShellVertex}`,
   }));
   mesh.renderOrder = index + 1;
   character.add(mesh);
-  return { positions, layer };
+  return { mesh, positions, layer };
 });
 
 // Camera-facing tapered ribbons stay legible at the silhouette while rotating.
@@ -360,13 +383,14 @@ function surface(x: number, y: number, z: number, target: Float32Array, offset: 
   target[offset + 2] = z * 116 * currentDepth * (1 - 0.06 * beanStretch)
     + Math.max(0, z) * lobe * cheekStrength * 44 * currentReferenceDetail;
 }
-function updateShape() {
+function updateShape(meshOnly: boolean) {
   const bodyPositions = shapePosition.array as Float32Array;
   for (let i = 0; i < original.length; i += 3) {
     surface(original[i], original[i + 1], original[i + 2], bodyPositions, i);
   }
   shapePosition.needsUpdate = true;
   shape.computeVertexNormals();
+  if (meshOnly) return;
   for (const shell of shells) {
     const offset = 0.5 + 29 * Math.pow(shell.layer, 1.3);
     const positions = shell.positions.array as Float32Array;
@@ -456,7 +480,20 @@ function render(now: number) {
       * (1 + variantWeights[3] * gesture * starMotionMask[point])
       * (1 + 0.1 * variantWeights[2] * gesture * Math.max(0, flowerMotionMask[point]));
   }
-  updateShape();
+  const meshView = editor.showingMesh;
+  updateShape(meshView);
+  const previewZoom = meshView ? 1.4 : 1;
+  if (camera.zoom !== previewZoom) {
+    camera.zoom = previewZoom;
+    camera.updateProjectionMatrix();
+  }
+  background.visible = !meshView;
+  scene.background = meshView ? meshBackdrop : null;
+  body.visible = !meshView;
+  meshSurface.visible = meshView;
+  for (const shell of shells) shell.mesh.visible = !meshView;
+  fur.visible = !meshView;
+  for (const eye of eyes) eye.visible = !meshView;
 
   const sourceCx = lerp(first.center[0], second.center[0]);
   const sourceCy = lerp(first.center[1], second.center[1]);
