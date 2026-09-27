@@ -85,3 +85,24 @@ body * {
   border-radius: 50%;
   background: var(--swatch);
 }
+
+@media (max-width: 480px) {
+  #variant-picker {
+    box-sizing: border-box;
+    width: calc(100vw - 16px);
+    gap: 1px;
+    padding: 4px;
+    justify-content: space-between;
+  }
+
+  #variant-picker button {
+    gap: 3px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+
+  #variant-picker .swatch {
+    width: 10px;
+    height: 10px;
+  }
+}

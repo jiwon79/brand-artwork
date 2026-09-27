@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#172e69" />
+    <title>솜결 · Soft Forms</title>
+    <link rel="canonical" href="https://studio.jiiwon.com/soft-forms/" />
+    <meta name="description" content="솜털로 덮인 다섯 캐릭터가 숨 쉬듯 움직입니다. 터치하면 반응하고 드래그하면 회전합니다." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://studio.jiiwon.com/soft-forms/" />
+    <meta property="og:title" content="솜결 · Soft Forms" />
+    <meta property="og:description" content="솜털로 덮인 다섯 캐릭터가 숨 쉬듯 움직입니다. 터치하면 반응하고 드래그하면 회전합니다." />
+    <meta property="og:image" content="https://studio.jiiwon.com/soft-forms/assets/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="푸른 배경에 보랏빛 별 모양 솜털 캐릭터가 떠 있고 왼쪽 위에 솜결 · Soft Forms 제목이 있는 공유 이미지" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="솜결 · Soft Forms" />
+    <meta name="twitter:description" content="솜털로 덮인 다섯 캐릭터가 숨 쉬듯 움직입니다. 터치하면 반응하고 드래그하면 회전합니다." />
+    <meta name="twitter:image" content="https://studio.jiiwon.com/soft-forms/assets/og-image.png" />
+    <meta name="twitter:image:alt" content="푸른 배경에 보랏빛 별 모양 솜털 캐릭터가 떠 있고 왼쪽 위에 솜결 · Soft Forms 제목이 있는 공유 이미지" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas id="artwork" aria-label="떠 있는 솜털 캐릭터. 탭하면 반응하고, 길게 누르면 눌리며, 드래그하면 회전합니다."></canvas>
+    <div id="variant-picker" role="group" aria-label="형태와 색감 선택">
+      <button type="button" data-variant="original" aria-pressed="false" style="--swatch:#ffb8a3"><span class="swatch"></span>노을 솜</button>
+      <button type="button" data-variant="bean" aria-pressed="false" style="--swatch:#b4e6bb"><span class="swatch"></span>민트 콩</button>
+      <button type="button" data-variant="flower" aria-pressed="false" style="--swatch:#ffc17d"><span class="swatch"></span>살구 꽃</button>
+      <button type="button" data-variant="star" aria-pressed="true" style="--swatch:#9aa9f3"><span class="swatch"></span>라일락 별</button>
+      <button type="button" data-variant="wave" aria-pressed="false" style="--swatch:#a1e2e9"><span class="swatch"></span>파도 구름</button>
+    </div>
+    <script type="module" src="./script.ts"></script>
+    <script type="module" src="/common/touch-pointer.ts"></script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 """Measure animation curves from a 720x720 reference clip.
 
-Run: python3 pages/fluffy-peach/generate-motion.py /path/to/reference.mp4
+Run: python3 pages/soft-forms/generate-motion.py /path/to/reference.mp4
 Requires ffmpeg and Pillow. Runtime rendering uses only the generated numeric
 measurements, never source video frames or frame textures.
 """
