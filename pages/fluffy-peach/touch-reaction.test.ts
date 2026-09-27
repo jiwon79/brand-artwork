@@ -13,7 +13,7 @@ test('a touch presses locally and releases into a fading rebound', () => {
   expect(Math.abs(reaction.displacement(0, 0, 100))).toBeLessThan(0.01);
 });
 
-test('a second tap adds surprise while a drag cancels the press', () => {
+test('rapid taps do not retrigger the body while a drag cancels the press', () => {
   const reaction = new TouchReaction();
   const point = new THREE.Vector3(0, 0, 100);
   const normal = new THREE.Vector3(0, 0, 1);
@@ -22,14 +22,15 @@ test('a second tap adds surprise while a drag cancels the press', () => {
   reaction.advance(0.12);
   const firstRebound = reaction.rebound;
   reaction.begin(point, normal, 260);
-  reaction.end(300);
-  expect(reaction.rebound).toBeCloseTo(firstRebound);
   reaction.advance(0.1);
-  expect(reaction.surprised).toBeGreaterThan(0);
-  const firstSurprise = reaction.surprised;
+  expect(reaction.squash).toBeLessThan(0.001);
+  const continuingRebound = reaction.rebound;
+  reaction.end(360);
+  expect(reaction.rebound).toBeCloseTo(continuingRebound);
   reaction.begin(point, normal, 400);
   reaction.end(430);
-  expect(reaction.surprised).toBeCloseTo(firstSurprise);
+  expect(reaction.rebound).toBeCloseTo(continuingRebound);
+  expect(reaction.rebound).not.toBeCloseTo(firstRebound);
   reaction.begin(point, normal, 500);
   reaction.drag(28, 0);
   expect(reaction.dragTilt).toBeLessThan(0);

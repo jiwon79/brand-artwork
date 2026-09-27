@@ -3,7 +3,7 @@ import * as THREE from 'three';
 const PRESS_RISE = 9;
 const PRESS_FALL = 7;
 const DRAG_FALL = 5;
-const TAP_GROUP_MS = 450;
+const TAP_COOLDOWN_MS = 450;
 const REBOUND_SECONDS = 0.72;
 
 export class TouchReaction {
@@ -15,16 +15,14 @@ export class TouchReaction {
   private pulseSeconds = Infinity;
   private pulseStrength = 0;
   private blinkSeconds = Infinity;
-  private surpriseSeconds = Infinity;
   private lastTap = -Infinity;
-  private groupedTap = false;
   private followupTouch = false;
   private dragX = 0;
   private dragY = 0;
 
   get active() {
     return this.touching || this.pressure > 0.002 || this.pulseSeconds < 0.95
-      || this.blinkSeconds < 0.55 || this.surpriseSeconds < 0.7
+      || this.blinkSeconds < 0.55
       || Math.abs(this.dragX) + Math.abs(this.dragY) > 0.002;
   }
   get deforming() { return this.pressure > 0.002 || this.pulseSeconds < 0.95; }
@@ -39,13 +37,10 @@ export class TouchReaction {
   }
   get furLagX() { return -this.dragX * 4.5; }
   get furLagY() { return this.dragY * 3; }
-  get surprised() {
-    return this.surpriseSeconds < 0.7 ? Math.sin(Math.PI * this.surpriseSeconds / 0.7) : 0;
-  }
   get eyeOpen() {
     const close = this.blinkSeconds < 0.34
       ? Math.sin(Math.PI * this.blinkSeconds / 0.34) ** 4 : 0;
-    return Math.max(0.12, (1 - close) * (1 - this.pressure * 0.4)) * (1 + this.surprised * 0.5);
+    return Math.max(0.12, (1 - close) * (1 - this.pressure * 0.4));
   }
 
   begin(point: THREE.Vector3, normal: THREE.Vector3, now = performance.now()) {
@@ -53,7 +48,7 @@ export class TouchReaction {
     this.normal.copy(normal).normalize();
     this.touching = true;
     this.heldSeconds = 0;
-    this.followupTouch = now - this.lastTap < TAP_GROUP_MS;
+    this.followupTouch = now - this.lastTap < TAP_COOLDOWN_MS;
   }
 
   drag(dx: number, dy: number) {
@@ -66,26 +61,18 @@ export class TouchReaction {
   end(now: number, cancelled = false) {
     if (!this.touching) return;
     this.touching = false;
+    const ignoreTap = this.followupTouch && this.heldSeconds < 0.35;
+    this.followupTouch = false;
     if (cancelled) return;
-    const repeated = now - this.lastTap < TAP_GROUP_MS;
     const longPress = this.heldSeconds >= 0.35;
-    if (longPress) {
-      this.pulseSeconds = 0;
-      this.pulseStrength = 1.15;
-      this.blinkSeconds = 0;
-      this.lastTap = -Infinity;
-      this.groupedTap = false;
-    } else if (repeated) {
-      if (!this.groupedTap) this.surpriseSeconds = 0;
-      this.groupedTap = true;
+    if (ignoreTap) {
       this.lastTap = now;
-    } else {
-      this.pulseSeconds = 0;
-      this.pulseStrength = 1;
-      this.blinkSeconds = 0;
-      this.lastTap = now;
-      this.groupedTap = false;
+      return;
     }
+    this.pulseSeconds = 0;
+    this.pulseStrength = longPress ? 1.15 : 1;
+    this.blinkSeconds = 0;
+    this.lastTap = longPress ? -Infinity : now;
   }
 
   advance(delta: number) {
@@ -98,7 +85,6 @@ export class TouchReaction {
     this.pressure += (target - this.pressure) * (1 - Math.exp(-delta * (this.touching ? PRESS_RISE : PRESS_FALL)));
     this.pulseSeconds += delta;
     this.blinkSeconds += delta;
-    this.surpriseSeconds += delta;
     const dragDecay = Math.exp(-delta * DRAG_FALL);
     this.dragX *= dragDecay;
     this.dragY *= dragDecay;

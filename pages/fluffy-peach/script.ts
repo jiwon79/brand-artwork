@@ -486,9 +486,8 @@ function render(now: number) {
   character.position.set(cx - 360, 360 - cy, 0);
   const squash = reaction.squash;
   const rebound = reaction.rebound;
-  const surprise = reaction.surprised;
-  character.scale.set(1 + squash * 0.11 - rebound * 0.045 - surprise * 0.035,
-    1 - squash * 0.18 + rebound * 0.08 + surprise * 0.055, 1);
+  character.scale.set(1 + squash * 0.165 - rebound * 0.045,
+    1 - squash * 0.27 + rebound * 0.08, 1);
   character.rotation.set(
     THREE.MathUtils.degToRad(controls.turnX) + reaction.dragPitch,
     THREE.MathUtils.degToRad(controls.turnY),
