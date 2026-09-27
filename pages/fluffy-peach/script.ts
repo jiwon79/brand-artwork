@@ -17,6 +17,7 @@ import { motionFrames } from './motion-data';
 import { DEFAULT_PLAYBACK_SPEED, MOTION_FPS } from './motion-editor';
 import { MotionEditor } from './motion-editor-ui';
 import { variants, type VariantColors } from './variants';
+import { TouchReaction } from './touch-reaction';
 
 const params = new URLSearchParams(location.search);
 const shapeAliases: Record<string, string> = { drop: 'flower', cloud: 'wave' };
@@ -358,33 +359,66 @@ editor = new MotionEditor({
   onChange: refresh,
 });
 
-let dragging: { pointerId: number; x: number; y: number; pitch: number; yaw: number } | null = null;
+const reaction = new TouchReaction();
+const characterPicker = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+function pointRayAt(event: PointerEvent) {
+  const bounds = canvas!.getBoundingClientRect();
+  pointerNdc.set(
+    (event.clientX - bounds.left) / bounds.width * 2 - 1,
+    -(event.clientY - bounds.top) / bounds.height * 2 + 1,
+  );
+  characterPicker.setFromCamera(pointerNdc, camera);
+}
+let dragging: {
+  pointerId: number; x: number; y: number; lastX: number; lastY: number;
+  pitch: number; yaw: number; moved: boolean; touched: boolean;
+} | null = null;
 canvas.addEventListener('pointerdown', (event) => {
   if (dragging || (event.pointerType === 'mouse' && event.button !== 0)) return;
+  pointRayAt(event);
+  character.updateMatrixWorld(true);
+  const hit = !editor.showingMesh ? characterPicker.intersectObject(body)[0] : null;
+  if (hit?.face) {
+    reaction.begin(character.worldToLocal(hit.point.clone()), hit.face.normal);
+    refresh();
+  }
   dragging = {
     pointerId: event.pointerId,
     x: event.clientX,
     y: event.clientY,
+    lastX: event.clientX,
+    lastY: event.clientY,
     pitch: controls.turnX,
     yaw: controls.turnY,
+    moved: false,
+    touched: Boolean(hit),
   };
   canvas.setPointerCapture(event.pointerId);
-  canvas.classList.add('dragging');
 });
 canvas.addEventListener('pointermove', (event) => {
   if (!dragging || event.pointerId !== dragging.pointerId) return;
+  const moved = Math.hypot(event.clientX - dragging.x, event.clientY - dragging.y);
+  if (!dragging.moved && moved < 8) return;
+  if (!dragging.moved) reaction.drag(0, 0);
+  dragging.moved = true;
   const unit = Math.min(canvas.clientWidth, canvas.clientHeight) / 720;
   const dx = (event.clientX - dragging.x) / unit;
   const dy = (event.clientY - dragging.y) / unit;
   controls.turnX = THREE.MathUtils.clamp(dragging.pitch + dy * 0.38, -90, 90);
   controls.turnY = ((dragging.yaw + dx * 0.5 + 180) % 360 + 360) % 360 - 180;
+  if (dragging.touched && !editor.showingMesh) {
+    reaction.drag(event.clientX - dragging.lastX, event.clientY - dragging.lastY);
+  }
+  dragging.lastX = event.clientX;
+  dragging.lastY = event.clientY;
+  canvas.classList.add('dragging');
   refresh();
 });
 const bonePicker = new THREE.Raycaster();
 function stopDragging(event: PointerEvent) {
   if (!dragging || event.pointerId !== dragging.pointerId) return;
-  if (event.type === 'pointerup' && editor.showingMesh && !editor.comparing
-    && Math.hypot(event.clientX - dragging.x, event.clientY - dragging.y) < 5) {
+  if (event.type === 'pointerup' && editor.showingMesh && !editor.comparing && !dragging.moved) {
     const bounds = canvas!.getBoundingClientRect();
     bonePicker.setFromCamera(new THREE.Vector2(
       (event.clientX - bounds.left) / bounds.width * 2 - 1,
@@ -393,9 +427,11 @@ function stopDragging(event: PointerEvent) {
     const hit = bonePicker.intersectObjects(boneJoints)[0];
     if (hit) editor.selectBone(boneJoints.indexOf(hit.object as typeof boneJoints[number]));
   }
+  if (!dragging.moved) reaction.end(performance.now(), event.type !== 'pointerup');
   dragging = null;
   canvas!.classList.remove('dragging');
   if (canvas!.hasPointerCapture(event.pointerId)) canvas!.releasePointerCapture(event.pointerId);
+  refresh();
 }
 canvas.addEventListener('pointerup', stopDragging);
 canvas.addEventListener('pointercancel', stopDragging);
@@ -453,6 +489,12 @@ function updateShape(meshOnly: boolean) {
     } else {
       surface(original[i], original[i + 1], original[i + 2], bodyPositions, i);
     }
+    if (reaction.deforming) {
+      const push = reaction.displacement(bodyPositions[i], bodyPositions[i + 1], bodyPositions[i + 2]);
+      bodyPositions[i] += reaction.normal.x * push;
+      bodyPositions[i + 1] += reaction.normal.y * push;
+      bodyPositions[i + 2] += reaction.normal.z * push;
+    }
   }
   shapePosition.needsUpdate = true;
   shape.computeVertexNormals();
@@ -487,6 +529,20 @@ function updateShape(meshOnly: boolean) {
       fiberTips[vertex + 1] = fiberRoots[vertex + 1] + y * length - x * lean * length;
       fiberTips[vertex + 2] = fiberRoots[vertex + 2] + z * length;
     }
+    if (reaction.deforming) {
+      const push = reaction.displacement(fiberRoots[vertex], fiberRoots[vertex + 1], fiberRoots[vertex + 2]);
+      fiberRoots[vertex] += reaction.normal.x * push;
+      fiberRoots[vertex + 1] += reaction.normal.y * push;
+      fiberRoots[vertex + 2] += reaction.normal.z * push;
+      const tipPush = push * 0.72;
+      fiberTips[vertex] += reaction.normal.x * tipPush;
+      fiberTips[vertex + 1] += reaction.normal.y * tipPush;
+      fiberTips[vertex + 2] += reaction.normal.z * tipPush;
+    }
+    if (reaction.active) {
+      fiberTips[vertex] += reaction.furLagX * Math.max(0, z);
+      fiberTips[vertex + 1] += reaction.furLagY * Math.max(0, z);
+    }
   }
   fiberRootAttribute.needsUpdate = true;
   fiberTipAttribute.needsUpdate = true;
@@ -497,6 +553,7 @@ function render(now: number) {
   const delta = Math.min(Math.max(now - lastRenderTime, 0) / 1000, 0.05);
   lastRenderTime = now;
   editor.advance(delta);
+  reaction.advance(delta);
   const morphStep = reduceMotion ? 1 : 1 - Math.exp(-delta * 7);
   let morphing = false;
   for (let index = 0; index < variants.length; index++) {
@@ -572,10 +629,14 @@ function render(now: number) {
   const cx = isOriginal ? sourceCx : 360;
   const cy = isOriginal ? sourceCy : 355;
   character.position.set(cx - 360, 360 - cy, 0);
+  const squash = reaction.squash;
+  const rebound = reaction.rebound;
+  character.scale.set(1 + squash * 0.055 - rebound * 0.035,
+    1 - squash * 0.09 + rebound * 0.065, 1);
   character.rotation.set(
-    THREE.MathUtils.degToRad(controls.turnX),
+    THREE.MathUtils.degToRad(controls.turnX) + reaction.dragPitch,
     THREE.MathUtils.degToRad(controls.turnY),
-    THREE.MathUtils.degToRad(controls.turnZ),
+    THREE.MathUtils.degToRad(controls.turnZ) + reaction.dragTilt,
   );
   for (let i = 0; i < 2; i++) {
     const sourceEyeX = lerp(first.eyes[i * 2], second.eyes[i * 2]) - sourceCx;
@@ -583,20 +644,27 @@ function render(now: number) {
     const ex = (isOriginal ? sourceEyeX : restingFrame.eyes[i * 2] - restingFrame.center[0]) + selectedVariant.eyeShift[0];
     const openness = isOriginal ? lerp(first.eyes[4], second.eyes[4])
       : 1 - 0.85 * Math.exp(-Math.pow((timelineFrame / BONE_LOOP_FRAMES - 0.64) / 0.023, 2));
+    const reactedOpenness = openness * reaction.eyeOpen;
     const ey = (isOriginal ? sourceEyeY : restingFrame.center[1] - restingFrame.eyes[i * 2 + 1])
-      - (1 - openness) * 11 + selectedVariant.eyeShift[1];
+      - (1 - reactedOpenness) * 11 + selectedVariant.eyeShift[1];
     const eyeRadius = restRadius(selectedVariant.id, ex, ey, baselineRadii);
     const seedX = ex / eyeRadius, seedY = ey / eyeRadius;
     const proportion = Math.min(0.98, Math.hypot(seedX, seedY));
     surface(seedX, seedY, Math.sqrt(1 - proportion * proportion), eyePosition, 0);
+    if (reaction.deforming) {
+      const push = reaction.displacement(eyePosition[0], eyePosition[1], eyePosition[2]);
+      eyePosition[0] += reaction.normal.x * push;
+      eyePosition[1] += reaction.normal.y * push;
+      eyePosition[2] += reaction.normal.z * push;
+    }
     eyes[i].position.set(eyePosition[0], eyePosition[1], eyePosition[2] + 1);
-    eyes[i].scale.set(4.9, Math.max(1.4, 9.3 * openness), 2.1);
+    eyes[i].scale.set(4.9, Math.max(1.1, 9.3 * reactedOpenness), 2.1);
   }
   shadowUniforms.uShadow.value.set(cx + boneRig.poses[0].dx * 0.7 - 465, -191);
   shadowUniforms.uShadowScale.value = 0.94 + Math.max(0, cy - 350) * 0.0012;
   editor.updateDisplay();
   renderer.render(scene, camera);
-  if ((editor.active && editor.playing) || (!editor.active && frozenTime === null && !reduceMotion) || morphing) refresh();
+  if ((editor.active && editor.playing) || (!editor.active && frozenTime === null && !reduceMotion) || morphing || reaction.active) refresh();
 }
 function resize() {
   const width = Math.max(1, canvas!.clientWidth), height = Math.max(1, canvas!.clientHeight);
