@@ -1,4 +1,4 @@
-import { MOTION_FPS } from './motion-editor';
+import { DEFAULT_PLAYBACK_SPEED, MOTION_FPS } from './motion-editor';
 import { variants, type VariantId } from './variants';
 import { BoneEditorUI } from './bone-editor-ui';
 import { boneDefinitionsFor, type BonePose } from './bone-rig';
@@ -27,7 +27,7 @@ export class MotionEditor {
   comparing = false;
   meshView = false;
   frame = 0;
-  private speed = 1;
+  private speed = DEFAULT_PLAYBACK_SPEED;
   private zoom = 1;
   private shape: VariantId;
   private readonly panel = element<HTMLElement>('#motion-editor');

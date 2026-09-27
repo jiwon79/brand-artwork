@@ -14,7 +14,7 @@ import furShellFragment from './fur-shell.frag?raw';
 import furShellVertex from './fur-shell.vert?raw';
 import paletteShader from './palette.glsl?raw';
 import { motionFrames } from './motion-data';
-import { MOTION_FPS } from './motion-editor';
+import { DEFAULT_PLAYBACK_SPEED, MOTION_FPS } from './motion-editor';
 import { MotionEditor } from './motion-editor-ui';
 import { variants, type VariantColors } from './variants';
 
@@ -347,10 +347,10 @@ editor = new MotionEditor({
   legacyFrames: boneAnimationFrames,
   shape: variants[targetVariant].id,
   initialSeconds: frozenTime ?? 0,
-  readCurrentSeconds: () => frozenTime ?? Math.max(0, (pausedAt - startTime) / 1000),
+  readCurrentSeconds: () => frozenTime ?? Math.max(0, (pausedAt - startTime) / 1000 * DEFAULT_PLAYBACK_SPEED),
   onClose: (seconds) => {
     const now = performance.now();
-    startTime = now - seconds * 1000;
+    startTime = now - seconds / DEFAULT_PLAYBACK_SPEED * 1000;
     pausedAt = now;
   },
   onChange: refresh,
@@ -517,7 +517,7 @@ function render(now: number) {
   blendColor(paletteUniforms.uEyeColor.value, 'eye');
   if (!controls.paused) pausedAt = now;
   const seconds = editor.active ? editor.frame / MOTION_FPS
-    : frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000);
+    : frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000 * DEFAULT_PLAYBACK_SPEED);
   const timelineFrame = cycleFrame(seconds * MOTION_FPS);
   const forward = timelineFrame <= SOURCE_END;
   const source = forwardFrame(timelineFrame);
