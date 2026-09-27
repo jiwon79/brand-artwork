@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from app import config, db, instagram_client
-from app.instagram_client import GraphClient, InstagramAssistantError, InstagramService
+from app.instagram_client import GraphClient, InstagramAssistantError, InstagramService, MetaApiError
 
 
 def test_graph_client_uses_official_host_and_bearer_token(monkeypatch):
@@ -25,6 +25,29 @@ def test_graph_client_uses_official_host_and_bearer_token(monkeypatch):
     assert requests[0].url.host == "graph.instagram.com"
     assert requests[0].headers["authorization"] == "Bearer private-token"
     assert "message=DM" in requests[0].content.decode()
+
+
+def test_graph_client_preserves_meta_diagnostics_without_token(monkeypatch):
+    original_client = httpx.Client
+    monkeypatch.setattr(instagram_client.httpx, "Client", lambda **kwargs: original_client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(400, json={"error": {
+            "message": "Outside allowed window", "code": 10, "error_subcode": 2018278,
+            "type": "OAuthException", "fbtrace_id": "trace-1"}})), **kwargs))
+    with pytest.raises(MetaApiError) as caught:
+        GraphClient("private-token", "ig-1", "studio.jiiwon").request(
+            "POST", "/ig-1/messages", json_body={"message": {"text": "hello"}})
+    assert caught.value.status == 400
+    assert caught.value.subcode == 2018278
+    assert "POST /ig-1/messages" in str(caught.value)
+    assert "trace=trace-1" in str(caught.value)
+    assert "private-token" not in str(caught.value)
+
+
+def test_messaging_account_id_uses_professional_user_id(monkeypatch):
+    client = GraphClient("token", "app-scoped-id", "studio.jiiwon")
+    monkeypatch.setattr(client, "request", lambda method, path, *, params: {
+        "id": "app-scoped-id", "user_id": "professional-id"})
+    assert client.messaging_account_id() == "professional-id"
 
 
 def test_graph_pages_stop_when_meta_has_no_next_page(monkeypatch):
@@ -119,6 +142,23 @@ def test_existing_reply_blocks_duplicate_post(monkeypatch):
     assert ("update", {"status": "sent", "error": None}) in calls
 
 
+def test_meta_http_400_is_recorded_as_rejected_not_uncertain(monkeypatch):
+    item = event(id="dm:message-1", kind="dm", source_id="message-1",
+                 author_id="visitor-1", proposed_action="reply_dm", draft="안녕하세요")
+    service, calls = setup_send(monkeypatch, item)
+    def reject(method, path, **kwargs):
+        raise MetaApiError(status=400, code=10, subcode=2018278,
+            error_type="OAuthException", trace_id="trace-1", message="Outside allowed window",
+            method=method, path=path)
+    service._client = SimpleNamespace(account_id="ig-1", messaging_account_id=lambda: "professional-id",
+        request=reject)
+    with pytest.raises(MetaApiError):
+        service.send_for_event(item["id"])
+    assert any(call[0] == "delivery" and call[1][3] == "rejected" for call in calls)
+    assert any(call[0] == "update" and "subcode=2018278" in call[1]["error"] for call in calls)
+    assert any(call[0] == "delivery" and "POST /professional-id/messages" in call[2]["error"] for call in calls)
+
+
 def test_old_account_event_cannot_be_sent(monkeypatch):
     item = event(account_id="different-account")
     service, _ = setup_send(monkeypatch, item)
@@ -135,9 +175,10 @@ def test_dm_heart_uses_official_reaction_and_records_success(monkeypatch):
     def request(method, path, **kwargs):
         requests.append((method, path, kwargs))
         return {"recipient_id": "visitor-1"}
-    service._client = SimpleNamespace(account_id="ig-1", request=request)
+    service._client = SimpleNamespace(account_id="ig-1", messaging_account_id=lambda: "professional-id",
+        request=request)
     result = service.heart_dm(item["id"])
-    assert requests == [("POST", "/ig-1/messages", {"json_body": {
+    assert requests == [("POST", "/professional-id/messages", {"json_body": {
         "recipient": {"id": "visitor-1"}, "sender_action": "react",
         "payload": {"message_id": "message-1", "reaction": "love"}}})]
     assert result["has_liked"] is True
@@ -160,7 +201,8 @@ def test_dm_heart_does_not_mark_unverified_response(monkeypatch):
     item = event(id="dm:message-1", kind="dm", source_id="message-1", author_id="visitor-1",
                  proposed_action=None, draft="")
     service, calls = setup_send(monkeypatch, item)
-    service._client = SimpleNamespace(account_id="ig-1", request=lambda *args, **kwargs: {})
+    service._client = SimpleNamespace(account_id="ig-1", messaging_account_id=lambda: "professional-id",
+        request=lambda *args, **kwargs: {})
     with pytest.raises(InstagramAssistantError, match="결과를 확인"):
         service.heart_dm(item["id"])
     assert not any(call[0] == "update" for call in calls)
