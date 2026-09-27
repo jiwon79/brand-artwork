@@ -10,6 +10,8 @@ import furShellFragment from './fur-shell.frag?raw';
 import furShellVertex from './fur-shell.vert?raw';
 import paletteShader from './palette.glsl?raw';
 import { motionFrames } from './motion-data';
+import { MOTION_FPS } from './motion-editor';
+import { MotionEditor } from './motion-editor-ui';
 import { loopFrame, variantGesture } from './motion-loop';
 import { shapeFactor, variants, type VariantColors } from './variants';
 
@@ -230,10 +232,16 @@ const eyePosition = new Float32Array(3);
 const queryTime = Number(params.get('t'));
 const frozenTime = params.has('t') && Number.isFinite(queryTime) ? Math.max(0, queryTime) : null;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const startTime = performance.now();
+let startTime = performance.now();
 const controls = { turnX: 0, turnY: 0, turnZ: 0, paused: false };
 const gui = exposeGuiInDebugMode(new GUI({ title: 'Fluffy Peach · 3D' }));
-const refresh = () => { if (frozenTime !== null || reduceMotion) requestAnimationFrame(render); };
+let editor: MotionEditor;
+let frameRequested = false;
+function refresh() {
+  if (frameRequested) return;
+  frameRequested = true;
+  requestAnimationFrame(render);
+}
 const variantButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('#variant-picker button'));
 function selectVariant(index: number) {
   targetVariant = index;
@@ -244,6 +252,7 @@ function selectVariant(index: number) {
   const url = new URL(location.href);
   url.searchParams.set('shape', variants[index].id);
   history.replaceState(null, '', url);
+  editor?.setShape(variants[index].id);
   refresh();
 }
 for (const button of variantButtons) {
@@ -258,6 +267,19 @@ gui.add(controls, 'turnX', -90, 90, 1).name('위아래 회전').listen().onChang
 gui.add(controls, 'turnY', -180, 180, 1).name('좌우 회전').listen().onChange(refresh);
 gui.add(controls, 'turnZ', -180, 180, 1).name('기울기').onChange(refresh);
 gui.add(controls, 'paused').name('정지').onChange(refresh);
+editor = new MotionEditor({
+  frameCount: motionFrames.length,
+  referenceWidths,
+  shape: variants[targetVariant].id,
+  initialSeconds: frozenTime ?? 0,
+  readCurrentSeconds: () => frozenTime ?? Math.max(0, (pausedAt - startTime) / 1000),
+  onClose: (seconds) => {
+    const now = performance.now();
+    startTime = now - seconds * 1000;
+    pausedAt = now;
+  },
+  onChange: refresh,
+});
 
 let dragging: { pointerId: number; x: number; y: number; pitch: number; yaw: number } | null = null;
 canvas.addEventListener('pointerdown', (event) => {
@@ -371,8 +393,10 @@ function updateShape() {
 }
 
 function render(now: number) {
+  frameRequested = false;
   const delta = Math.min(Math.max(now - lastRenderTime, 0) / 1000, 0.05);
   lastRenderTime = now;
+  editor.advance(delta);
   const morphStep = reduceMotion ? 1 : 1 - Math.exp(-delta * 7);
   let morphing = false;
   for (let index = 0; index < variants.length; index++) {
@@ -394,6 +418,8 @@ function render(now: number) {
     currentEyeShiftX += variants[index].eyeShift[0] * variantWeights[index];
     currentEyeShiftY += variants[index].eyeShift[1] * variantWeights[index];
   }
+  const editedResponse = editor.sample('response');
+  currentFlutter *= editedResponse;
   for (let point = 0; point < currentFactors.length; point++) {
     let factor = 0;
     for (let index = 0; index < variants.length; index++) factor += variantFactors[index][point] * variantWeights[index];
@@ -412,7 +438,8 @@ function render(now: number) {
   blendColor(paletteUniforms.uShadowColor.value, 'shadow');
   blendColor(paletteUniforms.uEyeColor.value, 'eye');
   if (!controls.paused) pausedAt = now;
-  const seconds = frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000);
+  const seconds = editor.active ? editor.frame / MOTION_FPS
+    : frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000);
   const frame = loopFrame(seconds, motionFrames.length);
   const a = Math.floor(frame), b = Math.min(a + 1, motionFrames.length - 1), fraction = frame - a;
   const first = motionFrames[a], second = motionFrames[b];
@@ -423,7 +450,7 @@ function render(now: number) {
   bodyUniforms.uStarSoftness.value = variantWeights[3];
   for (let i = 0; i < currentRadii.length; i++) currentRadii[i] = lerp(first.radii[i], second.radii[i]);
   meanRadius = currentRadii.reduce((sum, value) => sum + value, 0) / currentRadii.length;
-  gesture = variantGesture(frame, referenceWidths);
+  gesture = variantGesture(frame, referenceWidths) * editedResponse;
   for (let point = 0; point < currentMotionFactors.length; point++) {
     currentMotionFactors[point] = currentFactors[point]
       * (1 + variantWeights[3] * gesture * starMotionMask[point])
@@ -436,11 +463,12 @@ function render(now: number) {
   const motionInfluence = 0.48 + 0.52 * referenceWeight;
   const cx = THREE.MathUtils.lerp(360, sourceCx, motionInfluence);
   const cy = THREE.MathUtils.lerp(360, sourceCy, motionInfluence);
-  character.position.set(cx - 360, 360 - cy, 0);
+  const sway = editor.sample('sway'), lift = editor.sample('lift');
+  character.position.set(cx - 360 + sway, 360 - cy + lift, 0);
   character.rotation.set(
     THREE.MathUtils.degToRad(controls.turnX),
     THREE.MathUtils.degToRad(controls.turnY),
-    THREE.MathUtils.degToRad(controls.turnZ),
+    THREE.MathUtils.degToRad(controls.turnZ + editor.sample('tilt')),
   );
   for (let i = 0; i < 2; i++) {
     const sourceEyeX = lerp(first.eyes[i * 2], second.eyes[i * 2]) - sourceCx;
@@ -456,13 +484,14 @@ function render(now: number) {
     eyes[i].position.set(eyePosition[0], eyePosition[1], eyePosition[2] + 1);
     eyes[i].scale.set(4.9, Math.max(1.4, 9.3 * openness), 2.1);
   }
-  shadowUniforms.uShadow.value.set(cx - 465, -191);
+  shadowUniforms.uShadow.value.set(cx + sway * 0.7 - 465, -191);
   shadowUniforms.uShadowScale.value = 0.94 + Math.max(0, cy - 350) * 0.0012;
+  editor.updateDisplay(frame);
   renderer.render(scene, camera);
-  if ((frozenTime === null && !reduceMotion) || morphing) requestAnimationFrame(render);
+  if ((editor.active && editor.playing) || (!editor.active && frozenTime === null && !reduceMotion) || morphing) refresh();
 }
 function resize() {
-  const width = Math.max(1, innerWidth), height = Math.max(1, innerHeight);
+  const width = Math.max(1, canvas!.clientWidth), height = Math.max(1, canvas!.clientHeight);
   const unit = Math.min(width, height) / 720;
   canvas!.style.setProperty('--artwork-blur', `${(1.6 * unit).toFixed(2)}px`);
   camera.left = -width / (2 * unit);
@@ -471,9 +500,8 @@ function resize() {
   camera.bottom = -height / (2 * unit);
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
-  if (frozenTime !== null || reduceMotion) render(performance.now());
+  refresh();
 }
 addEventListener('resize', resize);
 new ResizeObserver(resize).observe(canvas);
 resize();
-requestAnimationFrame(render);
