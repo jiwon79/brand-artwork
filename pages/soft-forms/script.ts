@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
+import GUI from 'lil-gui';
 import { boneDefinitions, BoneRig } from './bone-rig';
 import { createBoneMotion, cycleFrame, forwardFrame, smooth, SOURCE_END, BONE_LOOP_FRAMES, PREVIOUS_BONE_LOOP_FRAMES, sampleDefaultPose } from './bone-motion';
 import { restRadius, restSurface } from './bone-surface';
@@ -15,6 +16,7 @@ import { motionFrames } from './motion-data';
 import { DEFAULT_PLAYBACK_SPEED, MOTION_FPS } from './motion-track';
 import { variants, type VariantColors } from './variants';
 import { TouchReaction } from './touch-reaction';
+import { pinchDistance, pinchZoom, MIN_ZOOM, MAX_ZOOM } from './zoom';
 
 const params = new URLSearchParams(location.search);
 if (params.has('editor') || params.has('rig')) {
@@ -127,6 +129,37 @@ ${bodyFragment}`,
   }),
 );
 character.add(body);
+// The inspection overlay shares the animated body geometry, so every wire follows the real skin.
+const bodyWire = new THREE.Mesh(shape, new THREE.MeshBasicMaterial({
+  color: 0xf8f5ff, wireframe: true, transparent: true, opacity: 0.36,
+  depthTest: false, depthWrite: false, side: THREE.FrontSide,
+}));
+bodyWire.scale.setScalar(1.003);
+bodyWire.renderOrder = 80;
+bodyWire.visible = false;
+character.add(bodyWire);
+const boneLinesPosition = new Float32Array((boneDefinitions.length - 1) * 4 * 3);
+const boneLineGeometry = new THREE.BufferGeometry();
+boneLineGeometry.setAttribute('position', new THREE.BufferAttribute(boneLinesPosition, 3).setUsage(THREE.DynamicDrawUsage));
+const boneLines = new THREE.LineSegments(boneLineGeometry, new THREE.LineBasicMaterial({
+  color: 0x6b3568, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false,
+}));
+boneLines.frustumCulled = false;
+boneLines.renderOrder = 90;
+const boneMarkerGeometry = new THREE.SphereGeometry(4.6, 10, 8);
+const boneMarkerMaterial = new THREE.MeshBasicMaterial({
+  color: 0xfff2cd, transparent: true, depthTest: false, depthWrite: false,
+});
+const boneMarkers = boneDefinitions.map(() => {
+  const marker = new THREE.Mesh(boneMarkerGeometry, boneMarkerMaterial);
+  marker.frustumCulled = false;
+  marker.renderOrder = 91;
+  return marker;
+});
+const boneDisplay = new THREE.Group();
+boneDisplay.add(boneLines, ...boneMarkers);
+boneDisplay.visible = false;
+character.add(boneDisplay);
 // Thin translucent shells fill the volume between the body and visible fiber tips.
 const SHELL_COUNT = 13;
 const shells = Array.from({ length: SHELL_COUNT }, (_, index) => {
@@ -231,30 +264,45 @@ const frozenTime = params.has('t') && Number.isFinite(queryTime) ? Math.max(0, q
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const startTime = performance.now();
 const controls = { turnX: 0, turnY: 0, turnZ: 0 };
+const view = { shape: variants[targetVariant].id, mesh: false, bones: false, zoom: 1 };
+const guiMount = document.querySelector<HTMLElement>('#gui');
+if (!guiMount) throw new Error('GUI mount is missing');
+const gui = new GUI({ title: '솜결 · 구조 보기', container: guiMount, width: 244 });
+const shapeController = gui.add(view, 'shape', Object.fromEntries(variants.map((variant) => [variant.label, variant.id])))
+  .name('모양').onChange((id: typeof view.shape) => {
+    const index = variants.findIndex((variant) => variant.id === id);
+    if (index >= 0) selectVariant(index);
+  });
+function applyInspection() {
+  bodyWire.visible = view.mesh;
+  boneDisplay.visible = view.bones;
+  for (const shell of shells) shell.mesh.visible = !view.mesh;
+  fur.visible = !view.mesh;
+  canvas!.style.filter = view.mesh || view.bones ? 'none' : '';
+  refresh();
+}
+gui.add(view, 'mesh').name('몸체 메시').onChange(applyInspection);
+gui.add(view, 'bones').name('관절 13개').onChange(applyInspection);
+const zoomController = gui.add(view, 'zoom', MIN_ZOOM, MAX_ZOOM, 0.01).name('확대').onChange((value: number) => {
+  camera.zoom = value;
+  camera.updateProjectionMatrix();
+  refresh();
+});
 let frameRequested = false;
 function refresh() {
   if (frameRequested) return;
   frameRequested = true;
   requestAnimationFrame(render);
 }
-const variantButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('#variant-picker button'));
 function selectVariant(index: number) {
   targetVariant = index;
-  for (const button of variantButtons) {
-    button.setAttribute('aria-pressed', String(button.dataset.variant === variants[index].id));
-  }
+  view.shape = variants[index].id;
+  shapeController.updateDisplay();
   document.body.style.backgroundColor = variants[index].colors.backgroundTop;
   const url = new URL(location.href);
   url.searchParams.set('shape', variants[index].id);
   history.replaceState(null, '', url);
   refresh();
-}
-for (const button of variantButtons) {
-  const index = variants.findIndex((variant) => variant.id === button.dataset.variant);
-  if (index >= 0) button.addEventListener('click', () => selectVariant(index));
-}
-for (const button of variantButtons) {
-  button.setAttribute('aria-pressed', String(button.dataset.variant === variants[targetVariant].id));
 }
 document.body.style.backgroundColor = variants[targetVariant].colors.backgroundTop;
 
@@ -273,7 +321,21 @@ let dragging: {
   pointerId: number; x: number; y: number; lastX: number; lastY: number;
   pitch: number; yaw: number; moved: boolean; touched: boolean;
 } | null = null;
+const touchPoints = new Map<number, [number, number]>();
+let pinch: { distance: number; zoom: number } | null = null;
 canvas.addEventListener('pointerdown', (event) => {
+  if (event.pointerType === 'touch') {
+    touchPoints.set(event.pointerId, [event.clientX, event.clientY]);
+    canvas.setPointerCapture(event.pointerId);
+    if (touchPoints.size >= 2) {
+      reaction.end(performance.now(), true);
+      dragging = null;
+      canvas.classList.remove('dragging');
+      const [first, second] = [...touchPoints.values()];
+      pinch = { distance: pinchDistance(first, second), zoom: camera.zoom };
+      return;
+    }
+  }
   if (dragging || (event.pointerType === 'mouse' && event.button !== 0)) return;
   pointRayAt(event);
   character.updateMatrixWorld(true);
@@ -296,6 +358,16 @@ canvas.addEventListener('pointerdown', (event) => {
   canvas.setPointerCapture(event.pointerId);
 });
 canvas.addEventListener('pointermove', (event) => {
+  if (touchPoints.has(event.pointerId)) touchPoints.set(event.pointerId, [event.clientX, event.clientY]);
+  if (pinch && touchPoints.size >= 2) {
+    const [first, second] = [...touchPoints.values()];
+    camera.zoom = Math.round(pinchZoom(pinch.zoom, pinch.distance, pinchDistance(first, second)) * 100) / 100;
+    camera.updateProjectionMatrix();
+    view.zoom = camera.zoom;
+    zoomController.updateDisplay();
+    refresh();
+    return;
+  }
   if (!dragging || event.pointerId !== dragging.pointerId) return;
   const moved = Math.hypot(event.clientX - dragging.x, event.clientY - dragging.y);
   if (!dragging.moved && moved < 8) return;
@@ -315,10 +387,13 @@ canvas.addEventListener('pointermove', (event) => {
   refresh();
 });
 function stopDragging(event: PointerEvent) {
-  if (!dragging || event.pointerId !== dragging.pointerId) return;
-  if (!dragging.moved) reaction.end(performance.now(), event.type !== 'pointerup');
-  dragging = null;
-  canvas!.classList.remove('dragging');
+  touchPoints.delete(event.pointerId);
+  if (touchPoints.size < 2) pinch = null;
+  if (dragging?.pointerId === event.pointerId) {
+    if (!dragging.moved) reaction.end(performance.now(), event.type !== 'pointerup');
+    dragging = null;
+    canvas!.classList.remove('dragging');
+  }
   if (canvas!.hasPointerCapture(event.pointerId)) canvas!.releasePointerCapture(event.pointerId);
   refresh();
 }
@@ -434,6 +509,21 @@ function updateShape() {
   fiberTipAttribute.needsUpdate = true;
 }
 
+function updateBoneDisplay() {
+  if (!view.bones) return;
+  const center = boneRig.jointPosition(0);
+  const rimCount = boneDefinitions.length - 1;
+  for (let index = 0; index < boneDefinitions.length; index++) {
+    const [x, y] = boneRig.jointPosition(index);
+    boneMarkers[index].position.set(x, y, 155);
+    if (index === 0) continue;
+    const next = boneRig.jointPosition(index === rimCount ? 1 : index + 1);
+    boneLinesPosition.set([center[0], center[1], 155, x, y, 155,
+      x, y, 155, next[0], next[1], 155], (index - 1) * 12);
+  }
+  boneLineGeometry.getAttribute('position').needsUpdate = true;
+}
+
 function render(now: number) {
   frameRequested = false;
   const delta = Math.min(Math.max(now - lastRenderTime, 0) / 1000, 0.05);
@@ -477,6 +567,7 @@ function render(now: number) {
   ensureBoneWeights();
   boneRig.setPose(sampleDefaultPose(boneClips, selectedVariant.id, timelineFrame));
   updateShape();
+  updateBoneDisplay();
 
   const sourceCx = lerp(first.center[0], second.center[0]);
   const sourceCy = lerp(first.center[1], second.center[1]);

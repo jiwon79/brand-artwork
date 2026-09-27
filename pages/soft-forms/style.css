@@ -13,6 +13,7 @@ body * {
   user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-drag: none;
 }
 
 #artwork {
@@ -28,81 +29,56 @@ body * {
   cursor: grabbing;
 }
 
-#variant-picker {
+#controls {
   position: fixed;
-  z-index: 2;
-  left: 50%;
-  bottom: max(20px, env(safe-area-inset-bottom));
-  display: flex;
-  gap: 5px;
-  max-width: calc(100vw - 24px);
-  padding: 6px;
-  overflow-x: auto;
+  z-index: 10;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  width: min(244px, calc(100vw - 24px));
+  overflow: hidden;
   border: 1px solid rgb(255 255 255 / 27%);
-  border-radius: 999px;
-  background: rgb(18 32 61 / 32%);
+  border-radius: 12px;
+  background: rgb(18 32 61 / 68%);
   box-shadow: 0 8px 28px rgb(17 30 65 / 12%);
-  backdrop-filter: blur(18px);
-  transform: translateX(-50%);
-  scrollbar-width: none;
+  backdrop-filter: blur(16px);
 }
 
-#variant-picker::-webkit-scrollbar {
-  display: none;
+#gui .lil-gui.root {
+  --background-color: transparent;
+  --widget-color: #35476b;
+  --hover-color: #4d638d;
+  --focus-color: #647dae;
+  --text-color: #f8f5ff;
+  --title-background-color: rgb(255 255 255 / 9%);
+  --number-color: #ffdbab;
+  --string-color: #ffdbab;
+  --font-size: 12px;
+  --widget-height: 27px;
+  width: 100%;
 }
 
-#variant-picker button {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-  min-height: 38px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: white;
-  font: 500 12px/1 system-ui, -apple-system, sans-serif;
-  white-space: nowrap;
-  cursor: pointer;
+#gui .lil-gui.root > .children {
+  max-height: none;
 }
 
-#variant-picker button[aria-pressed='true'] {
-  background: rgb(255 255 255 / 95%);
-  color: #26334e;
+#gui .lil-gui input,
+#gui .lil-gui select {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
-#variant-picker button:focus-visible {
-  outline: 2px solid white;
-  outline-offset: -3px;
-}
-
-#variant-picker .swatch {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  border: 1px solid rgb(255 255 255 / 45%);
-  border-radius: 50%;
-  background: var(--swatch);
+#controls p {
+  margin: 0;
+  padding: 9px 12px 11px;
+  border-top: 1px solid rgb(255 255 255 / 14%);
+  color: #dce5ff;
+  font: 11px/1.55 system-ui, -apple-system, sans-serif;
 }
 
 @media (max-width: 480px) {
-  #variant-picker {
-    box-sizing: border-box;
-    width: calc(100vw - 16px);
-    gap: 1px;
-    padding: 4px;
-    justify-content: space-between;
-  }
-
-  #variant-picker button {
-    gap: 3px;
-    padding: 0 4px;
-    font-size: 10px;
-  }
-
-  #variant-picker .swatch {
-    width: 10px;
-    height: 10px;
+  #controls {
+    top: max(8px, env(safe-area-inset-top));
+    right: 8px;
+    width: min(210px, calc(100vw - 16px));
   }
 }
