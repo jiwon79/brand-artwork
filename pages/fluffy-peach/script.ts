@@ -598,7 +598,9 @@ function render(now: number) {
 function resize() {
   const width = Math.max(1, canvas!.clientWidth), height = Math.max(1, canvas!.clientHeight);
   const unit = Math.min(width, height) / 720;
-  canvas!.style.setProperty('--artwork-blur', `${(1.6 * unit).toFixed(2)}px`);
+  const largeDisplay = Math.min(1, Math.max(0, (Math.min(innerWidth, innerHeight) - 720) / 160));
+  const blur = THREE.MathUtils.lerp(1.6 * unit, 0.7, largeDisplay);
+  canvas!.style.setProperty('--artwork-blur', `${blur.toFixed(2)}px`);
   camera.left = -width / (2 * unit);
   camera.right = width / (2 * unit);
   camera.top = height / (2 * unit);
