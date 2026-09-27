@@ -1,6 +1,6 @@
 # 솜결 · Soft Forms 공유 이미지
 
-별 캐릭터가 정면으로 떠 있는 실제 WebGL 장면을 1200 × 630 PNG로 캡처한다. 캡처에서는 형태 선택 UI를 숨기고 캔버스의 후처리 흐림을 0px로 낮춘 뒤, 캐릭터가 카드에서 잘 보이도록 캔버스를 1.18배 확대했다. 몸체·색상·그림자·솜털은 작품 렌더링 그대로다. 캡처 원본과 제목이 합성된 최종 카드를 분리한다.
+별 캐릭터가 정면으로 떠 있는 실제 WebGL 장면을 1200 × 630 PNG로 캡처한다. 캡처에서는 형태 선택 UI를 숨기고, 캐릭터가 카드에서 잘 보이도록 캔버스를 1.18배 확대했다. 캔버스의 흐림 효과를 포함해 몸체·색상·그림자·솜털은 작품 렌더링 그대로다. 캡처 원본과 제목이 합성된 최종 카드를 분리한다.
 
 - 원본: `pages/soft-forms/assets/og-artwork.png`
 - 최종 카드: `pages/soft-forms/assets/og-image.png`
@@ -9,4 +9,4 @@
 
 왼쪽 위에 Pretendard Variable로 한글 제목 `솜결`을 700 굵기, 52px, (56, 82)에 놓고 영어 제목 `Soft Forms`를 500 굵기, 28px, (58, 124)에 놓는다. 제목 색은 `#f8f5ff`다. 별의 몸체와 겹치지 않는 어두운 배경 영역이므로 별도 배경 패널은 사용하지 않는다. 폰트 파일은 기존 `pages/rose-glass/assets/PretendardVariable.woff2`를 함께 사용한다.
 
-다시 만들 때는 [공통 제작 절차](../../guides/social-share-images.md)에 따라 기존 Chrome에서 `/soft-forms/?shape=star&t=2`를 1200 × 630, DPR 1로 연다. WebGL 캔버스 내부 버퍼가 2400 × 1260인지 확인하고, 캡처하는 동안에만 `#variant-picker`를 숨기고 `#artwork`에 `filter: blur(0px)`와 `transform: scale(1.18)`을 적용한다. PNG를 직접 캡처해 원본을 교체한 뒤 개발 서버의 `/scripts/soft-forms-social-image.html`에서 최종 이미지를 PNG로 내보낸다. 임시 스타일은 페이지를 다시 열어 해제하며, 페이지에 영구적인 캡처 전용 UI나 스타일을 추가하지 않는다.
+다시 만들 때는 [공통 제작 절차](../../guides/social-share-images.md)에 따라 기존 Chrome에서 `/soft-forms/?shape=star&t=2`를 1200 × 630, DPR 1로 연다. WebGL 캔버스 내부 버퍼가 2400 × 1260이고 CSS `filter`가 작품의 기본값인 `blur(1.4px)`인지 확인한다. 캡처하는 동안에만 `#variant-picker`를 숨기고 `#artwork`에 `transform: scale(1.18)`을 적용한다. PNG를 직접 캡처해 원본을 교체한 뒤 개발 서버의 `/scripts/soft-forms-social-image.html`에서 최종 이미지를 PNG로 내보낸다. 임시 스타일은 페이지를 다시 열어 해제하며, 페이지에 영구적인 캡처 전용 UI나 스타일을 추가하지 않는다.
