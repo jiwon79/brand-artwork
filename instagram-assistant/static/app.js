@@ -71,7 +71,8 @@ async function syncRecords() {
   button.disabled = true;
   button.innerHTML = '<span class="button-spinner" aria-hidden="true"></span>동기화 중';
   try {
-    const response = await fetch("/api/viewer/sync", {
+    const scope = routeFromLocation() === "dm" ? "?scope=dm" : "";
+    const response = await fetch(`/api/viewer/sync${scope}`, {
       method: "POST",
       headers: { "X-Requested-With": "InstagramAssistant" },
     });

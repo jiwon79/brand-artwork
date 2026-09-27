@@ -27,7 +27,7 @@ def test_viewer_only_exposes_sync_action_without_mutation_token():
     assert 'id="sync"' in page.text
     assert script.status_code == 200
     assert "X-Instagram-Assistant-Token" not in script.text
-    assert '"/api/viewer/sync"' in script.text
+    assert '/api/viewer/sync' in script.text
     assert '"/api/events/' not in script.text
     assert 'method: "PATCH"' not in script.text
 
@@ -49,6 +49,20 @@ def test_viewer_sync_requires_same_origin_and_cannot_call_protected_sync(monkeyp
     assert response.status_code == 200
     assert response.json()["comments"] == 1
     assert calls == [True]
+
+
+def test_viewer_dm_sync_skips_comment_fetch(monkeypatch):
+    calls = []
+    monkeypatch.setattr(main.instagram_service, "sync", lambda **kwargs: calls.append(kwargs) or {"dms": 1})
+    headers = {"Origin": "http://testserver", "X-Requested-With": "InstagramAssistant",
+               "Sec-Fetch-Site": "same-origin"}
+    with TestClient(main.app) as client:
+        response = client.post("/api/viewer/sync?scope=dm", headers=headers)
+        invalid = client.post("/api/viewer/sync?scope=other", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["dms"] == 1
+    assert calls == [{"media_amount": 0}]
+    assert invalid.status_code == 422
 
 
 def test_observation_setting_is_absent_and_cannot_be_restored(tmp_path, monkeypatch):

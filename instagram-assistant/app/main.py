@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -133,7 +133,8 @@ def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict
 
 
 @app.post("/api/viewer/sync")
-def viewer_sync(request: Request, x_requested_with: str | None = Header(default=None)) -> dict[str, Any]:
+def viewer_sync(request: Request, scope: Literal["all", "dm"] = "all",
+                x_requested_with: str | None = Header(default=None)) -> dict[str, Any]:
     origin = request.headers.get("origin", "")
     host = request.headers.get("host", "")
     if (x_requested_with != "InstagramAssistant" or
@@ -141,7 +142,7 @@ def viewer_sync(request: Request, x_requested_with: str | None = Header(default=
             request.headers.get("sec-fetch-site", "same-origin") != "same-origin"):
         raise HTTPException(403, "Same-origin viewer request required")
     try:
-        return instagram_service.sync()
+        return instagram_service.sync(media_amount=0) if scope == "dm" else instagram_service.sync()
     except Exception as exc:
         raise as_http_error(exc) from exc
 
