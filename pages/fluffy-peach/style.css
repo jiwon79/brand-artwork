@@ -15,12 +15,6 @@ body * {
   -webkit-tap-highlight-color: transparent;
 }
 
-html:root {
-  --touch-pointer-color: #fff;
-  --touch-pointer-outline: #283c76;
-  --touch-pointer-size: 32px;
-}
-
 #artwork {
   display: block;
   width: 100%;
