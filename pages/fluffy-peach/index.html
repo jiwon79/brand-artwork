@@ -17,6 +17,7 @@
       <button type="button" data-variant="wave" aria-pressed="false" style="--swatch:#a1e2e9"><span class="swatch"></span>파도</button>
     </div>
     <button id="editor-toggle" type="button" aria-controls="motion-editor" aria-expanded="false">모션 편집</button>
+    <div id="contour-measurement" aria-live="off" hidden>원본 윤곽 <span></span></div>
     <section id="motion-editor" aria-label="모션 편집기" hidden>
       <div class="editor-header">
         <div class="editor-heading"><strong>MOTION EDITOR</strong><span id="editor-shape">보라 별</span></div>
@@ -38,6 +39,7 @@
         <div class="editor-labels" aria-hidden="true">
           <div class="editor-label editor-ruler-label">시간</div>
           <div class="editor-label editor-source-label" title="원본 영상에서 측정한 가로 폭. 클립에서 가장 좁은 순간이 0%, 가장 넓은 순간이 100%">원본 가로폭 <output id="editor-source-width">0%</output></div>
+          <div class="editor-label editor-contour-label">윤곽 64 <output id="editor-contour-value">#01 · 0.0px</output></div>
           <div class="editor-label" data-label="response">형태 반응 <output>1.00×</output></div>
           <div class="editor-label" data-label="sway">좌우 이동 <output>0px</output></div>
           <div class="editor-label" data-label="lift">높이 <output>0px</output></div>
@@ -47,6 +49,7 @@
           <div id="editor-content" class="editor-content">
             <div id="editor-ruler" class="editor-ruler" aria-label="시간축"></div>
             <div id="editor-source" class="editor-source" aria-label="원본 영상에서 측정한 가로 폭 변화. 아래로 갈수록 좁고 위로 갈수록 넓음"></div>
+            <div id="editor-contours" class="editor-contours" role="group" aria-label="원본 윤곽의 64방향 거리 변화. 가로는 시간, 세로는 방향 1부터 64까지. 누르거나 드래그하여 방향과 시간을 선택"><canvas id="editor-contour-canvas" aria-hidden="true"></canvas><div id="editor-contour-selection" aria-hidden="true"></div></div>
             <div class="editor-lane" data-lane="response" aria-label="형태 반응 키프레임"></div>
             <div class="editor-lane" data-lane="sway" aria-label="좌우 이동 키프레임"></div>
             <div class="editor-lane" data-lane="lift" aria-label="높이 키프레임"></div>
@@ -56,6 +59,7 @@
         </div>
       </div>
       <div class="editor-inspector">
+        <label>윤곽 방향 <input id="editor-contour-index" type="number" min="1" max="64" step="1" value="1" /></label>
         <label>트랙 <select id="editor-track"><option value="response">형태 반응</option><option value="sway">좌우 이동</option><option value="lift">높이</option><option value="tilt">기울기</option></select></label>
         <label>프레임 <input id="editor-keyframe-time" type="number" min="0" step="1" /></label>
         <label>값 <input id="editor-keyframe-value" type="number" step="0.05" /></label>
@@ -67,7 +71,7 @@
         <button type="button" data-action="import">불러오기</button>
         <input id="editor-file" type="file" accept="application/json,.json" hidden />
       </div>
-      <p class="editor-help">청록선은 원본의 가로 폭입니다. 가장 좁은 순간이 0%, 가장 넓은 순간이 100%입니다. 메시 보기에서는 솜털과 색을 숨기고 변형되는 표면을 볼 수 있습니다.</p>
+      <p class="editor-help">윤곽 64: 세로가 방향 #01–64, 가로가 시간입니다. 짙은 청록은 짧고 밝은 살구는 긴 거리입니다. 값은 원본 영상의 중심에서 잰 720px 기준 거리이며, 메시 보기의 살구색 선도 같은 측정값입니다. 회색 메시에는 형태별 변형이 추가됩니다.</p>
     </section>
     <script type="module" src="./script.ts"></script>
   </body>

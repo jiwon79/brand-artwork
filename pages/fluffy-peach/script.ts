@@ -153,6 +153,57 @@ meshSurface.add(meshWire);
 meshSurface.visible = false;
 character.add(meshSurface);
 
+// The source rays are drawn in a front-facing measurement plane. Their lengths
+// are the original 720px-reference distances, before any variant deformation.
+const contourGuides = new THREE.Group();
+const rayPositions = new Float32Array(64 * 2 * 3);
+const outlinePositions = new Float32Array(64 * 3);
+const rayGeometry = new THREE.BufferGeometry();
+const outlineGeometry = new THREE.BufferGeometry();
+for (const [geometry, positions] of [
+  [rayGeometry, rayPositions], [outlineGeometry, outlinePositions],
+] as const) {
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+}
+const rayGuides = new THREE.LineSegments(rayGeometry, new THREE.LineBasicMaterial({
+  color: 0x81d8d2, transparent: true, opacity: 0.28, depthTest: false, depthWrite: false,
+}));
+const outlineGuide = new THREE.LineLoop(outlineGeometry, new THREE.LineBasicMaterial({
+  color: 0x88e2d9, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false,
+}));
+const selectedRayGuide = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 1, 8), new THREE.MeshBasicMaterial({
+  color: 0xffc392, depthTest: false, depthWrite: false,
+}));
+const selectedEndpoint = new THREE.Mesh(new THREE.SphereGeometry(5.5, 12, 8), selectedRayGuide.material);
+const contourCenter = new THREE.Mesh(new THREE.CircleGeometry(3, 20), new THREE.MeshBasicMaterial({
+  color: 0xffd6ad, depthTest: false, depthWrite: false,
+}));
+for (const guide of [rayGuides, outlineGuide, selectedRayGuide, selectedEndpoint, contourCenter]) {
+  guide.renderOrder = 20;
+  contourGuides.add(guide);
+}
+contourGuides.visible = false;
+character.add(contourGuides);
+
+function updateContourGuides(selected: number) {
+  for (let index = 0; index < currentRadii.length; index++) {
+    const angle = angularSamples[index];
+    const x = Math.cos(angle) * currentRadii[index];
+    const y = Math.sin(angle) * currentRadii[index];
+    rayPositions.set([0, 0, 150, x, y, 150], index * 6);
+    outlinePositions.set([x, y, 150], index * 3);
+  }
+  const angle = angularSamples[selected];
+  const length = currentRadii[selected];
+  const endX = Math.cos(angle) * length, endY = Math.sin(angle) * length;
+  selectedRayGuide.position.set(endX / 2, endY / 2, 155);
+  selectedRayGuide.scale.y = length;
+  selectedRayGuide.rotation.z = angle - Math.PI / 2;
+  selectedEndpoint.position.set(endX, endY, 155);
+  rayGeometry.getAttribute('position').needsUpdate = true;
+  outlineGeometry.getAttribute('position').needsUpdate = true;
+}
+
 // Thin translucent shells fill the volume between the body and visible fiber tips.
 const SHELL_COUNT = 13;
 const shells = Array.from({ length: SHELL_COUNT }, (_, index) => {
@@ -293,6 +344,7 @@ gui.add(controls, 'paused').name('정지').onChange(refresh);
 editor = new MotionEditor({
   frameCount: motionFrames.length,
   referenceWidths,
+  contourFrames: motionFrames.map((frame) => frame.radii),
   shape: variants[targetVariant].id,
   initialSeconds: frozenTime ?? 0,
   readCurrentSeconds: () => frozenTime ?? Math.max(0, (pausedAt - startTime) / 1000),
@@ -482,7 +534,7 @@ function render(now: number) {
   }
   const meshView = editor.showingMesh;
   updateShape(meshView);
-  const previewZoom = meshView ? 1.4 : 1;
+  const previewZoom = meshView ? 1.75 : 1;
   if (camera.zoom !== previewZoom) {
     camera.zoom = previewZoom;
     camera.updateProjectionMatrix();
@@ -491,6 +543,8 @@ function render(now: number) {
   scene.background = meshView ? meshBackdrop : null;
   body.visible = !meshView;
   meshSurface.visible = meshView;
+  contourGuides.visible = meshView;
+  if (meshView) updateContourGuides(editor.selectedContourIndex);
   for (const shell of shells) shell.mesh.visible = !meshView;
   fur.visible = !meshView;
   for (const eye of eyes) eye.visible = !meshView;

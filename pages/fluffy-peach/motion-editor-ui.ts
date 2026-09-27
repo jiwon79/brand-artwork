@@ -9,6 +9,7 @@ import { variants, type VariantId } from './variants';
 type EditorOptions = {
   frameCount: number;
   referenceWidths: readonly number[];
+  contourFrames: readonly (readonly number[])[];
   shape: VariantId;
   initialSeconds: number;
   readCurrentSeconds: () => number;
@@ -39,6 +40,7 @@ export class MotionEditor {
   comparing = false;
   meshView = false;
   frame = 0;
+  selectedContourIndex = 0;
   private speed = 1;
   private zoom = 1;
   private shape: VariantId;
@@ -52,6 +54,12 @@ export class MotionEditor {
   private readonly scroll = element<HTMLElement>('#editor-scroll');
   private readonly ruler = element<HTMLElement>('#editor-ruler');
   private readonly source = element<HTMLElement>('#editor-source');
+  private readonly contours = element<HTMLElement>('#editor-contours');
+  private readonly contourCanvas = element<HTMLCanvasElement>('#editor-contour-canvas');
+  private readonly contourSelection = element<HTMLElement>('#editor-contour-selection');
+  private readonly contourIndexInput = element<HTMLInputElement>('#editor-contour-index');
+  private readonly contourOutput = element<HTMLOutputElement>('#editor-contour-value');
+  private readonly contourMeasurement = element<HTMLElement>('#contour-measurement');
   private readonly playhead = element<HTMLElement>('#editor-playhead');
   private readonly timeOutput = element<HTMLOutputElement>('#editor-timecode');
   private readonly sourceOutput = element<HTMLElement>('#editor-source-frame');
@@ -103,6 +111,7 @@ export class MotionEditor {
     this.panel.hidden = !this.active;
     document.body.classList.toggle('editor-open', this.active);
     document.body.classList.toggle('mesh-view', this.active && this.meshView);
+    this.contourMeasurement.hidden = !(this.active && this.meshView);
     this.toggle.setAttribute('aria-expanded', String(this.active));
     this.toggle.textContent = this.active ? '편집 닫기' : '모션 편집';
     this.shapeOutput.textContent = variants.find((variant) => variant.id === this.shape)?.label ?? this.shape;
@@ -161,12 +170,36 @@ export class MotionEditor {
     this.timeOutput.value = timecode(this.frame);
     this.sourceOutput.textContent = `원본 ${String(Math.floor(sourceFrame) + 1).padStart(3, '0')}`;
     this.sourceWidthOutput.value = `${Math.round(variantGesture(sourceFrame, this.options.referenceWidths) * 100)}%`;
+    const contourValue = this.sampleContour(sourceFrame, this.selectedContourIndex);
+    const contourLabel = `#${String(this.selectedContourIndex + 1).padStart(2, '0')} · ${contourValue.toFixed(1)}px`;
+    this.contourOutput.value = contourLabel;
+    this.contourMeasurement.querySelector('span')!.textContent = contourLabel;
+    this.contourSelection.style.top = `${this.selectedContourIndex / 64 * 100}%`;
     for (const id of trackIds) {
       const output = element<HTMLOutputElement>(`[data-label="${id}"] output`);
       output.value = valueLabel(id, this.sample(id));
     }
     this.playButton.textContent = this.playing ? 'Ⅱ' : '▶';
     this.playButton.setAttribute('aria-label', this.playing ? '일시정지' : '재생');
+  }
+
+  private sampleContour(sourceFrame: number, index: number) {
+    const first = Math.floor(sourceFrame);
+    const second = Math.min(first + 1, this.options.contourFrames.length - 1);
+    const fraction = sourceFrame - first;
+    return this.options.contourFrames[first][index] * (1 - fraction)
+      + this.options.contourFrames[second][index] * fraction;
+  }
+
+  private selectContour(index: number) {
+    if (!Number.isFinite(index)) {
+      this.contourIndexInput.value = String(this.selectedContourIndex + 1);
+      return;
+    }
+    this.selectedContourIndex = Math.min(63, Math.max(0, Math.round(index)));
+    this.contourIndexInput.value = String(this.selectedContourIndex + 1);
+    this.updateDisplay(loopFrame(this.frame / MOTION_FPS, this.options.frameCount));
+    this.options.onChange();
   }
 
   private seek(frame: number, pause = true) {
@@ -212,7 +245,32 @@ export class MotionEditor {
     path.setAttribute('stroke-width', '2');
     svg.append(path);
     this.source.replaceChildren(svg);
+    this.drawContours();
     this.drawKeys();
+  }
+
+  private drawContours() {
+    const canvas = this.contourCanvas;
+    canvas.width = this.period + 1;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const image = context.createImageData(canvas.width, canvas.height);
+    const values = this.options.contourFrames.flat();
+    const minimum = Math.min(...values), maximum = Math.max(...values);
+    for (let x = 0; x < canvas.width; x++) {
+      const sourceFrame = loopFrame(x / MOTION_FPS, this.options.frameCount);
+      for (let y = 0; y < 64; y++) {
+        const value = (this.sampleContour(sourceFrame, y) - minimum) / (maximum - minimum);
+        const color = Math.max(0, Math.min(1, value));
+        const offset = (y * canvas.width + x) * 4;
+        image.data[offset] = Math.round(28 + 235 * color);
+        image.data[offset + 1] = Math.round(99 + 89 * color);
+        image.data[offset + 2] = Math.round(123 + 37 * color);
+        image.data[offset + 3] = 255;
+      }
+    }
+    context.putImageData(image, 0, 0);
   }
 
   private drawKeys() {
@@ -315,6 +373,10 @@ export class MotionEditor {
     let scrubbing: number | null = null;
     this.content.addEventListener('pointerdown', (event) => {
       if ((event.target as HTMLElement).closest('.editor-keyframe')) return;
+      if ((event.target as HTMLElement).closest('#editor-contours')) {
+        const bounds = this.contours.getBoundingClientRect();
+        this.selectContour(Math.floor((event.clientY - bounds.top) / bounds.height * 64));
+      }
       const lane = (event.target as HTMLElement).closest<HTMLElement>('[data-lane]');
       if (lane?.dataset.lane) {
         this.selectedTrack = lane.dataset.lane as TrackId;
@@ -328,11 +390,18 @@ export class MotionEditor {
       this.seek(this.frameAt(event.clientX));
     });
     this.content.addEventListener('pointermove', (event) => {
-      if (scrubbing === event.pointerId) this.seek(this.frameAt(event.clientX));
+      if (scrubbing === event.pointerId) {
+        if (this.contours.contains(document.elementFromPoint(event.clientX, event.clientY))) {
+          const bounds = this.contours.getBoundingClientRect();
+          this.selectContour(Math.floor((event.clientY - bounds.top) / bounds.height * 64));
+        }
+        this.seek(this.frameAt(event.clientX));
+      }
     });
     const stopScrub = () => { scrubbing = null; };
     this.content.addEventListener('pointerup', stopScrub);
     this.content.addEventListener('pointercancel', stopScrub);
+    this.contourIndexInput.addEventListener('change', () => this.selectContour(Number(this.contourIndexInput.value) - 1));
     this.trackInput.addEventListener('change', () => {
       this.selectedTrack = this.trackInput.value as TrackId;
       this.selectedFrame = 0;
