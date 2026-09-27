@@ -18,6 +18,7 @@
     </div>
     <button id="editor-toggle" type="button" aria-controls="motion-editor" aria-expanded="false">모션 편집</button>
     <div id="contour-measurement" aria-live="off" hidden>원본 윤곽 <span></span></div>
+    <div id="bone-measurement" hidden>뼈대 변형 · 관절 5개</div>
     <section id="motion-editor" aria-label="모션 편집기" hidden>
       <div class="editor-header">
         <div class="editor-heading"><strong>MOTION EDITOR</strong><span id="editor-shape">보라 별</span></div>
@@ -32,6 +33,7 @@
           <label>속도 <select id="editor-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
           <label>확대 <input id="editor-zoom" type="range" min="1" max="4" step="0.25" value="1" /></label>
           <button type="button" data-action="compare" aria-pressed="false">원본 비교</button>
+          <label id="editor-rig-control">변형 <select id="editor-rig-mode"><option value="contour">윤곽</option><option value="bones">뼈대</option></select></label>
           <button type="button" data-action="mesh-view" aria-pressed="false">메시 보기</button>
         </div>
       </div>
@@ -71,7 +73,7 @@
         <button type="button" data-action="import">불러오기</button>
         <input id="editor-file" type="file" accept="application/json,.json" hidden />
       </div>
-      <p class="editor-help">윤곽 64: 세로가 방향 #01–64, 가로가 시간입니다. 짙은 청록은 짧고 밝은 살구는 긴 거리입니다. 값은 원본 영상의 중심에서 잰 720px 기준 거리이며, 메시 보기의 살구색 선도 같은 측정값입니다. 회색 메시에는 형태별 변형이 추가됩니다.</p>
+      <p class="editor-help">윤곽 64: 세로가 방향 #01–64, 가로가 시간입니다. 짙은 청록은 짧고 밝은 살구는 긴 거리입니다. 값은 원본 영상의 중심에서 잰 720px 기준 거리입니다. 기존 형태의 뼈대 모드에서는 5개 관절이 표면·솜털·눈을 함께 변형하며, 메시 보기에서 관절을 볼 수 있습니다.</p>
     </section>
     <script type="module" src="./script.ts"></script>
   </body>

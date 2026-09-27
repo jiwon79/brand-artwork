@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
+import { boneDefinitions, BoneRig } from './bone-rig';
 import backgroundFragment from './background.frag?raw';
 import bodyFragment from './body.frag?raw';
 import furRibbonFragment from './fur-ribbon.frag?raw';
@@ -72,6 +73,14 @@ const referenceWidths = motionFrames.map((frame) => frame.radii[0] + frame.radii
 const baselineRadii = Float32Array.from(motionFrames[0].radii, (_, point) =>
   motionFrames.reduce((sum, frame) => sum + frame.radii[point], 0) / motionFrames.length);
 const baselineMean = baselineRadii.reduce((sum, radius) => sum + radius, 0) / baselineRadii.length;
+const boneRig = new BoneRig(baselineRadii);
+let bodyBoneWeights: Float32Array | null = null;
+let fiberBoneWeights: Float32Array | null = null;
+let bodyRestPositions: Float32Array | null = null;
+let fiberRestPositions: Float32Array | null = null;
+let bodyCheekWeights: Float32Array | null = null;
+let fiberCheekWeights: Float32Array | null = null;
+let boneRigActive = false;
 
 function blendColor(target: THREE.Vector3, channel: keyof VariantColors) {
   target.set(0, 0, 0);
@@ -184,6 +193,39 @@ for (const guide of [rayGuides, outlineGuide, selectedRayGuide, selectedEndpoint
 }
 contourGuides.visible = false;
 character.add(contourGuides);
+
+const boneGuides = new THREE.Group();
+const boneLinks = boneDefinitions.slice(1).map(() => {
+  const link = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 1, 8), new THREE.MeshBasicMaterial({
+    color: 0xffd4a6, depthTest: false, depthWrite: false,
+  }));
+  link.renderOrder = 21;
+  boneGuides.add(link);
+  return link;
+});
+const boneJoints = boneDefinitions.map((_, index) => {
+  const marker = new THREE.Mesh(new THREE.SphereGeometry(index === 0 ? 6 : 5, 12, 8), new THREE.MeshBasicMaterial({
+    color: index === 0 ? 0xffefcb : 0xffad81, depthTest: false, depthWrite: false,
+  }));
+  marker.renderOrder = 22;
+  boneGuides.add(marker);
+  return marker;
+});
+boneGuides.visible = false;
+character.add(boneGuides);
+
+function updateBoneGuides() {
+  for (let index = 0; index < boneDefinitions.length; index++) {
+    const [x, y] = boneRig.jointPosition(index);
+    boneJoints[index].position.set(x, y, 0);
+    if (index > 0) {
+      const link = boneLinks[index - 1];
+      link.position.set(x / 2, y / 2, 0);
+      link.scale.y = Math.hypot(x, y);
+      link.rotation.z = Math.atan2(y, x) - Math.PI / 2;
+    }
+  }
+}
 
 function updateContourGuides(selected: number) {
   for (let index = 0; index < currentRadii.length; index++) {
@@ -417,6 +459,42 @@ function radiusAt(x: number, y: number) {
   const factor = THREE.MathUtils.lerp(currentMotionFactors[first], currentMotionFactors[(first + 1) % currentMotionFactors.length], fraction);
   return animated * factor;
 }
+function restRadiusAt(x: number, y: number) {
+  const theta = (Math.atan2(-y, x) + Math.PI * 2) % (Math.PI * 2);
+  const sample = theta * baselineRadii.length / (Math.PI * 2) - 0.5;
+  const first = ((Math.floor(sample) % baselineRadii.length) + baselineRadii.length) % baselineRadii.length;
+  const fraction = sample - Math.floor(sample);
+  const leftExpansion = THREE.MathUtils.smoothstep(-x, 0.3, 0.95) * 0.10;
+  const contour = THREE.MathUtils.lerp(baselineRadii[first], baselineRadii[(first + 1) % baselineRadii.length], fraction)
+    * (0.94 + leftExpansion);
+  const poleBlend = Math.pow(Math.min(1, Math.hypot(x, y)), 0.7);
+  return baselineMean + poleBlend * (contour - baselineMean);
+}
+function ensureBoneWeights() {
+  if (bodyBoneWeights && fiberBoneWeights) return;
+  bodyBoneWeights = new Float32Array(original.length / 3 * boneDefinitions.length);
+  bodyRestPositions = new Float32Array(original.length);
+  bodyCheekWeights = new Float32Array(original.length / 3);
+  for (let vertex = 0; vertex < original.length / 3; vertex++) {
+    const x = original[vertex * 3], y = original[vertex * 3 + 1], z = original[vertex * 3 + 2];
+    const radius = restRadiusAt(x, y);
+    bodyBoneWeights.set(boneRig.weightsFor(x * radius, y * radius), vertex * boneDefinitions.length);
+    bodyRestPositions.set([x * radius, y * radius, z * 116], vertex * 3);
+    bodyCheekWeights[vertex] = Math.max(0, z)
+      * Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2)) * 44;
+  }
+  fiberBoneWeights = new Float32Array(FIBER_COUNT * boneDefinitions.length);
+  fiberRestPositions = new Float32Array(FIBER_COUNT * 3);
+  fiberCheekWeights = new Float32Array(FIBER_COUNT);
+  for (let fiber = 0; fiber < FIBER_COUNT; fiber++) {
+    const x = fiberSeeds[fiber * 5], y = fiberSeeds[fiber * 5 + 1], z = fiberSeeds[fiber * 5 + 2];
+    const radius = restRadiusAt(x, y);
+    fiberBoneWeights.set(boneRig.weightsFor(x * radius, y * radius), fiber * boneDefinitions.length);
+    fiberRestPositions.set([x * (radius - 1.5), y * (radius - 1.5), z * (116 - 1.5)], fiber * 3);
+    fiberCheekWeights[fiber] = Math.max(0, z)
+      * Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2)) * 44;
+  }
+}
 function waveBend(x: number) {
   return 16 * x + 4 * Math.sin(5.6 * x + 0.7);
 }
@@ -424,6 +502,14 @@ function waveCrest(x: number, y: number) {
   return Math.exp(-Math.pow((x - 0.59) / 0.26, 2) - Math.pow((y - 0.74) / 0.26, 2));
 }
 function surface(x: number, y: number, z: number, target: Float32Array, offset: number) {
+  if (boneRigActive) {
+    const radius = restRadiusAt(x, y);
+    const restX = x * radius, restY = y * radius;
+    const lobe = Math.exp(-Math.pow((x - 0.71) / 0.26, 2) - Math.pow((y + 0.38) / 0.38, 2));
+    const restZ = z * 116 + Math.max(0, z) * lobe * cheekStrength * 44;
+    boneRig.skinPoint(restX, restY, restZ, boneRig.weightsFor(restX, restY), target, offset);
+    return;
+  }
   const radius = radiusAt(x, y);
   const crest = currentWaveWeight * waveCrest(x, y) * (1 + 0.35 * gesture);
   const beanStretch = variantWeights[1] * gesture;
@@ -438,7 +524,13 @@ function surface(x: number, y: number, z: number, target: Float32Array, offset: 
 function updateShape(meshOnly: boolean) {
   const bodyPositions = shapePosition.array as Float32Array;
   for (let i = 0; i < original.length; i += 3) {
-    surface(original[i], original[i + 1], original[i + 2], bodyPositions, i);
+    if (boneRigActive && bodyRestPositions && bodyBoneWeights && bodyCheekWeights) {
+      boneRig.skinPoint(bodyRestPositions[i], bodyRestPositions[i + 1],
+        bodyRestPositions[i + 2] + cheekStrength * bodyCheekWeights[i / 3],
+        bodyBoneWeights, bodyPositions, i, i / 3 * boneDefinitions.length);
+    } else {
+      surface(original[i], original[i + 1], original[i + 2], bodyPositions, i);
+    }
   }
   shapePosition.needsUpdate = true;
   shape.computeVertexNormals();
@@ -455,14 +547,24 @@ function updateShape(meshOnly: boolean) {
     const seed = i * 5;
     const vertex = i * 3;
     const x = fiberSeeds[seed], y = fiberSeeds[seed + 1], z = fiberSeeds[seed + 2];
-    surface(x, y, z, fiberRoots, vertex);
-    fiberRoots[vertex] -= x * 1.5;
-    fiberRoots[vertex + 1] -= y * 1.5;
-    fiberRoots[vertex + 2] -= z * 1.5;
     const length = fiberSeeds[seed + 3], lean = fiberSeeds[seed + 4];
-    fiberTips[vertex] = fiberRoots[vertex] + x * length + y * lean * length;
-    fiberTips[vertex + 1] = fiberRoots[vertex + 1] + y * length - x * lean * length;
-    fiberTips[vertex + 2] = fiberRoots[vertex + 2] + z * length;
+    if (boneRigActive && fiberBoneWeights && fiberRestPositions && fiberCheekWeights) {
+      const restX = fiberRestPositions[vertex], restY = fiberRestPositions[vertex + 1];
+      const restZ = fiberRestPositions[vertex + 2] + cheekStrength * fiberCheekWeights[i];
+      const weightOffset = i * boneDefinitions.length;
+      boneRig.skinPoint(restX, restY, restZ, fiberBoneWeights, fiberRoots, vertex, weightOffset);
+      boneRig.skinPoint(restX + x * length + y * lean * length,
+        restY + y * length - x * lean * length, restZ + z * length,
+        fiberBoneWeights, fiberTips, vertex, weightOffset);
+    } else {
+      surface(x, y, z, fiberRoots, vertex);
+      fiberRoots[vertex] -= x * 1.5;
+      fiberRoots[vertex + 1] -= y * 1.5;
+      fiberRoots[vertex + 2] -= z * 1.5;
+      fiberTips[vertex] = fiberRoots[vertex] + x * length + y * lean * length;
+      fiberTips[vertex + 1] = fiberRoots[vertex + 1] + y * length - x * lean * length;
+      fiberTips[vertex + 2] = fiberRoots[vertex + 2] + z * length;
+    }
   }
   fiberRootAttribute.needsUpdate = true;
   fiberTipAttribute.needsUpdate = true;
@@ -525,6 +627,11 @@ function render(now: number) {
   bodyUniforms.uCheek.value = cheekStrength;
   bodyUniforms.uStarSoftness.value = variantWeights[3];
   for (let i = 0; i < currentRadii.length; i++) currentRadii[i] = lerp(first.radii[i], second.radii[i]);
+  boneRigActive = editor.showingBones;
+  if (boneRigActive) {
+    ensureBoneWeights();
+    boneRig.poseFromRadii(currentRadii, editedResponse);
+  }
   meanRadius = currentRadii.reduce((sum, value) => sum + value, 0) / currentRadii.length;
   gesture = variantGesture(frame, referenceWidths) * editedResponse;
   for (let point = 0; point < currentMotionFactors.length; point++) {
@@ -543,8 +650,10 @@ function render(now: number) {
   scene.background = meshView ? meshBackdrop : null;
   body.visible = !meshView;
   meshSurface.visible = meshView;
-  contourGuides.visible = meshView;
-  if (meshView) updateContourGuides(editor.selectedContourIndex);
+  contourGuides.visible = meshView && !boneRigActive;
+  boneGuides.visible = meshView && boneRigActive;
+  if (contourGuides.visible) updateContourGuides(editor.selectedContourIndex);
+  if (boneGuides.visible) updateBoneGuides();
   for (const shell of shells) shell.mesh.visible = !meshView;
   fur.visible = !meshView;
   for (const eye of eyes) eye.visible = !meshView;
@@ -568,7 +677,7 @@ function render(now: number) {
     const openness = lerp(first.eyes[4], second.eyes[4]);
     const ey = THREE.MathUtils.lerp(restingFrame.center[1] - restingFrame.eyes[i * 2 + 1], sourceEyeY, motionInfluence)
       - (1 - openness) * 11 + currentEyeShiftY;
-    const eyeRadius = radiusAt(ex, ey);
+    const eyeRadius = boneRigActive ? restRadiusAt(ex, ey) : radiusAt(ex, ey);
     const seedX = ex / eyeRadius, seedY = ey / eyeRadius;
     const proportion = Math.min(0.98, Math.hypot(seedX, seedY));
     surface(seedX, seedY, Math.sqrt(1 - proportion * proportion), eyePosition, 0);

@@ -39,6 +39,7 @@ export class MotionEditor {
   playing = false;
   comparing = false;
   meshView = false;
+  private originalRigMode: 'contour' | 'bones' = 'contour';
   frame = 0;
   selectedContourIndex = 0;
   private speed = 1;
@@ -60,6 +61,9 @@ export class MotionEditor {
   private readonly contourIndexInput = element<HTMLInputElement>('#editor-contour-index');
   private readonly contourOutput = element<HTMLOutputElement>('#editor-contour-value');
   private readonly contourMeasurement = element<HTMLElement>('#contour-measurement');
+  private readonly boneMeasurement = element<HTMLElement>('#bone-measurement');
+  private readonly rigControl = element<HTMLElement>('#editor-rig-control');
+  private readonly rigInput = element<HTMLSelectElement>('#editor-rig-mode');
   private readonly playhead = element<HTMLElement>('#editor-playhead');
   private readonly timeOutput = element<HTMLOutputElement>('#editor-timecode');
   private readonly sourceOutput = element<HTMLElement>('#editor-source-frame');
@@ -80,6 +84,8 @@ export class MotionEditor {
     this.options = options;
     this.period = motionPeriod(options.frameCount);
     this.shape = options.shape;
+    const requestedRig = new URLSearchParams(location.search).get('rig');
+    this.originalRigMode = requestedRig === 'bones' ? 'bones' : 'contour';
     this.tracks = this.load(options.shape);
     this.frame = Math.min(this.period, Math.max(0, options.initialSeconds * MOTION_FPS));
     this.active = new URLSearchParams(location.search).get('editor') === '1';
@@ -111,7 +117,10 @@ export class MotionEditor {
     this.panel.hidden = !this.active;
     document.body.classList.toggle('editor-open', this.active);
     document.body.classList.toggle('mesh-view', this.active && this.meshView);
-    this.contourMeasurement.hidden = !(this.active && this.meshView);
+    this.contourMeasurement.hidden = !(this.active && this.meshView && !this.showingBones);
+    this.boneMeasurement.hidden = !(this.active && this.meshView && this.showingBones);
+    this.rigControl.hidden = this.shape !== 'original';
+    this.rigInput.value = this.originalRigMode;
     this.toggle.setAttribute('aria-expanded', String(this.active));
     this.toggle.textContent = this.active ? '편집 닫기' : '모션 편집';
     this.shapeOutput.textContent = variants.find((variant) => variant.id === this.shape)?.label ?? this.shape;
@@ -139,6 +148,10 @@ export class MotionEditor {
 
   setShape(shape: VariantId) {
     this.shape = shape;
+    const url = new URL(location.href);
+    if (shape === 'original' && this.originalRigMode === 'bones') url.searchParams.set('rig', 'bones');
+    else url.searchParams.delete('rig');
+    history.replaceState(null, '', url);
     this.tracks = this.load(shape);
     this.selectedTrack = 'response';
     this.selectedFrame = 0;
@@ -162,6 +175,10 @@ export class MotionEditor {
 
   get showingMesh() {
     return this.active && this.meshView;
+  }
+
+  get showingBones() {
+    return this.shape === 'original' && this.originalRigMode === 'bones';
   }
 
   updateDisplay(sourceFrame: number) {
@@ -360,6 +377,15 @@ export class MotionEditor {
       this.meshView = !this.meshView;
       this.meshButton.setAttribute('aria-pressed', String(this.meshView));
       this.meshButton.textContent = this.meshView ? '결과 보기' : '메시 보기';
+      this.setOpenAppearance();
+      this.options.onChange();
+    });
+    this.rigInput.addEventListener('change', () => {
+      this.originalRigMode = this.rigInput.value === 'bones' ? 'bones' : 'contour';
+      const url = new URL(location.href);
+      if (this.originalRigMode === 'bones') url.searchParams.set('rig', 'bones');
+      else url.searchParams.delete('rig');
+      history.replaceState(null, '', url);
       this.setOpenAppearance();
       this.options.onChange();
     });

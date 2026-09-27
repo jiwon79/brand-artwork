@@ -107,7 +107,8 @@ body.editor-open {
   --editor-height: 465px;
 }
 
-#contour-measurement {
+#contour-measurement,
+#bone-measurement {
   position: fixed;
   z-index: 2;
   top: 62px;
@@ -121,7 +122,9 @@ body.editor-open {
   pointer-events: none;
 }
 
-#contour-measurement[hidden] { display: none; }
+#contour-measurement[hidden],
+#bone-measurement[hidden],
+#editor-rig-control[hidden] { display: none; }
 
 body.editor-open #artwork {
   height: calc(100dvh - var(--editor-height));
@@ -500,6 +503,8 @@ body.editor-open #variant-picker {
   .editor-timeline { flex: 0 0 308px; overflow: visible; }
   .editor-header { flex-wrap: wrap; gap: 6px 12px; }
   .editor-heading { width: 100%; }
+  .editor-header-controls { width: 100%; flex-wrap: wrap; gap: 6px; }
+  .editor-header-controls button { flex: 0 0 auto; white-space: nowrap; }
   .editor-frame-info { display: none; }
   .editor-labels { flex-basis: 104px; }
   .editor-label { padding: 0 6px; font-size: 10px; }
