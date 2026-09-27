@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from .config import ROOT, local_token, paths
 from .db import (
     count_events_by_status,
+    get_event,
     get_settings,
     initialize,
     list_artworks,
@@ -181,6 +182,25 @@ def heart_dm(event_id: str, x_instagram_assistant_token: str | None = Header(def
         return instagram_service.heart_dm(event_id)
     except Exception as exc:
         raise as_http_error(exc) from exc
+
+
+@app.post("/api/events/{event_id}/heart-observed")
+def heart_observed(event_id: str, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
+    protect(x_instagram_assistant_token)
+    event = get_event(event_id)
+    if not event:
+        raise HTTPException(404, "Event not found")
+    if event["kind"] not in {"comment", "dm"} or event["direction"] != "inbound":
+        raise HTTPException(400, "Only inbound comments and DMs can be marked as hearted")
+    account_id = get_settings().get("instagram_account_id")
+    if account_id and event["account_id"] != account_id:
+        raise HTTPException(400, "Event does not belong to the connected account")
+    if event["has_liked"]:
+        return event
+    update_event(event_id, {"has_liked": True})
+    if event["kind"] == "comment":
+        mark_comment_reviewed(event_id)
+    return get_event(event_id) or event
 
 
 @app.post("/api/events/{event_id}/ignore")

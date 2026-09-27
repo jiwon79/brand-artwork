@@ -391,7 +391,12 @@ def list_comment_threads(
     for comment in comments:
         replies = replies_by_parent.get(str(comment["source_id"]), [])
         comment["replies"] = replies
-        resolution_times = [reply["received_at"] for reply in replies if reply["direction"] == "outbound"]
+        resolution_times = [
+            reply["received_at"] for reply in replies
+            if reply["direction"] == "outbound" or reply["has_liked"]
+        ]
+        if comment["has_liked"]:
+            resolution_times.append(comment["received_at"])
         if comment.get("reviewed_at"):
             resolution_times.append(comment["reviewed_at"])
         resolved_at = max(resolution_times, default="")

@@ -110,7 +110,7 @@ function postReference(event) {
 }
 
 function commentHeart(event, compact = false) {
-  return `<span class="comment-heart ${compact ? "compact" : ""}" aria-label="좋아요 ${event.like_count ?? 0}개">♡<span>${event.like_count ?? 0}</span></span>`;
+  return `<span class="comment-heart ${compact ? "compact" : ""} ${event.has_liked ? "liked" : ""}" aria-label="좋아요 ${event.like_count ?? 0}개${event.has_liked ? ", 내가 하트 표시함" : ""}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></span>`;
 }
 
 function commentReplies(event) {

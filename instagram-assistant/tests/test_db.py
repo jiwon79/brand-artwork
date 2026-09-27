@@ -278,3 +278,33 @@ def test_recent_reply_to_older_comment_is_first_in_review(tmp_path: Path, monkey
     ):
         db.upsert_event(event)
     assert [item["source_id"] for item in db.list_comment_threads(status="active", limit=1)] == ["old"]
+
+
+def test_comment_heart_completes_review_and_later_reply_reopens_it(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.upsert_event({
+        "id": "comment:root", "kind": "comment", "source_id": "root",
+        "has_liked": True, "received_at": "2026-09-15T01:00:00+00:00",
+    })
+    assert db.list_comment_threads(status="active") == []
+    assert [item["source_id"] for item in db.list_comment_threads(status="completed")] == ["root"]
+    db.upsert_event({
+        "id": "comment:child-1", "kind": "comment", "source_id": "child-1",
+        "parent_comment_id": "root", "direction": "inbound", "status": "history",
+        "received_at": "2026-09-15T01:01:00+00:00",
+    })
+    assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
+    db.upsert_event({
+        "id": "comment:child-1", "kind": "comment", "source_id": "child-1",
+        "parent_comment_id": "root", "direction": "inbound", "status": "history",
+        "has_liked": True, "received_at": "2026-09-15T01:01:00+00:00",
+    })
+    assert db.list_comment_threads(status="active") == []
+    db.upsert_event({
+        "id": "comment:child-2", "kind": "comment", "source_id": "child-2",
+        "parent_comment_id": "root", "direction": "inbound", "status": "history",
+        "received_at": "2026-09-15T01:02:00+00:00",
+    })
+    assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
