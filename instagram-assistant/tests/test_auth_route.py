@@ -13,7 +13,7 @@ def test_oauth_start_requires_local_token_and_uses_post(monkeypatch):
     assert response.json()["url"] == "https://www.instagram.com/oauth/authorize"
 
 
-def test_viewer_does_not_expose_mutation_token_or_controls():
+def test_viewer_only_exposes_sync_action_without_mutation_token():
     with TestClient(main.app) as client:
         page = client.get("/dm")
         script = client.get("/static/app.js")
@@ -24,10 +24,31 @@ def test_viewer_does_not_expose_mutation_token_or_controls():
     assert "DM 내역" not in page.text
     assert "댓글 내역" not in page.text
     assert "보내기" not in page.text
+    assert 'id="sync"' in page.text
     assert script.status_code == 200
     assert "X-Instagram-Assistant-Token" not in script.text
-    assert 'method: "POST"' not in script.text
+    assert '"/api/viewer/sync"' in script.text
+    assert '"/api/events/' not in script.text
     assert 'method: "PATCH"' not in script.text
+
+
+def test_viewer_sync_requires_same_origin_and_cannot_call_protected_sync(monkeypatch):
+    calls = []
+    monkeypatch.setattr(main.instagram_service, "sync", lambda: calls.append(True) or {"comments": 1, "dms": 0})
+    with TestClient(main.app) as client:
+        assert client.get("/api/viewer/sync").status_code == 405
+        assert client.post("/api/viewer/sync").status_code == 403
+        assert client.post("/api/viewer/sync", headers={
+            "Origin": "https://elsewhere.example", "X-Requested-With": "InstagramAssistant",
+        }).status_code == 403
+        assert client.post("/api/sync").status_code == 403
+        response = client.post("/api/viewer/sync", headers={
+            "Origin": "http://testserver", "X-Requested-With": "InstagramAssistant",
+            "Sec-Fetch-Site": "same-origin",
+        })
+    assert response.status_code == 200
+    assert response.json()["comments"] == 1
+    assert calls == [True]
 
 
 def test_dm_heart_requires_local_token(monkeypatch):

@@ -1,6 +1,6 @@
 # Instagram assistant
 
-Local Instagram record viewer and Codex-operated reply service for a Business or Creator account. It uses Meta's **Instagram API with Instagram Login** (`graph.instagram.com`) to read media, comments and supported DM conversations, and to send approved replies. It never uses Instagram's private/mobile endpoints or asks for an Instagram password. The browser UI only reads locally synced data; it does not classify, draft, send, sync, or change Instagram settings.
+Local Instagram record viewer and Codex-operated reply service for a Business or Creator account. It uses Meta's **Instagram API with Instagram Login** (`graph.instagram.com`) to read media, comments and supported DM conversations, and to send approved replies. It never uses Instagram's private/mobile endpoints or asks for an Instagram password. The browser UI can manually sync and view records; it does not classify, draft, send replies, react, or change Instagram settings.
 
 Instagram DM 답변을 준비하거나 보내기 전에는 Notion `Project → Vibe → 내부 운영`의 [Instagram DM 답변 규칙](https://app.notion.com/p/3e7a89f7e31a815b8b60c3ead057bf0a)을 읽는다. 문구, 분기, 메시지 분할과 대화별 승인 기준은 그 문서에서 관리한다. 자동 분류와 자동 발송은 사용하지 않는다.
 
@@ -18,7 +18,7 @@ The app binds to `127.0.0.1:4318`. `INSTAGRAM_ASSISTANT_DATA` overrides the shar
 
 ## Review and sending
 
-- The browser UI exposes no local mutation token and uses GET requests only. Codex can sync through `uv run python -m app.worker` or the protected local API. MCP is optional; Codex can use the existing Python service and local API directly.
+- The browser UI exposes no local mutation token. Its sync button calls a same-origin, sync-only endpoint; all reply and reaction actions remain protected from the browser. Codex can also sync through `uv run python -m app.worker` or the protected local API. MCP is optional; Codex can use the existing Python service and local API directly.
 - Starts in observation mode. New OAuth connections reset automatic sending to off. Codex prepares and sends only the individual replies approved for that batch.
 - Comments are sent with `POST /{comment_id}/replies`, not `POST /{media_id}/comments`. Before sending, the assistant checks the parent's replies for an existing account reply. After sending, it looks for the returned reply ID under that parent. An uncertain result is left for manual review and is never automatically retried.
 - Comment review is computed per parent thread from its stored replies. A new inbound reply after the latest account reply, heart, or review reopens the parent in `확인 필요`; a later reply, heart, or protected ignore action completes it again. Threads sort by their latest activity. The original comment's `sent` history is preserved.

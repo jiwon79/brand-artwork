@@ -53,11 +53,39 @@ async function api(path) {
 }
 
 function showError(error) {
+  showToast(error.message || "기록을 불러오지 못했습니다.", true);
+}
+
+function showToast(message, error = false) {
   const node = document.querySelector("#toast");
-  node.textContent = error.message || "기록을 불러오지 못했습니다.";
-  node.classList.add("error-toast", "show");
+  node.textContent = message;
+  node.classList.toggle("error-toast", error);
+  node.classList.add("show");
   clearTimeout(showError.timer);
   showError.timer = setTimeout(() => node.classList.remove("show"), 3500);
+}
+
+async function syncRecords() {
+  const button = document.querySelector("#sync");
+  if (button.disabled) return;
+  button.disabled = true;
+  button.innerHTML = '<span class="button-spinner" aria-hidden="true"></span>동기화 중';
+  try {
+    const response = await fetch("/api/viewer/sync", {
+      method: "POST",
+      headers: { "X-Requested-With": "InstagramAssistant" },
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.detail || `동기화 실패 (${response.status})`);
+    await refreshRoute(routeFromLocation());
+    const added = (result.comments || 0) + (result.comment_replies || 0) + (result.dms || 0);
+    showToast(added ? `동기화 완료 · 새 기록 ${added}개` : "동기화 완료 · 새 기록 없음");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.disabled = false;
+    button.textContent = "동기화";
+  }
 }
 
 function escapeHtml(value = "") {
@@ -233,6 +261,7 @@ document.querySelectorAll(".tab").forEach((link) => link.addEventListener("click
   event.preventDefault();
   navigate(link.dataset.route).catch(showError);
 }));
+document.querySelector("#sync").addEventListener("click", syncRecords);
 document.querySelectorAll(".dm-filter, .comment-filter").forEach((button) => button.addEventListener("click", () => {
   document.querySelector("#dm-inbox").classList.remove("chat-open");
   navigate(routeFromLocation(), button.dataset.status).catch(showError);

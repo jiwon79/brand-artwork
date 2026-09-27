@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -125,6 +125,20 @@ def logout(x_instagram_assistant_token: str | None = Header(default=None)) -> di
 @app.post("/api/sync")
 def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
     protect(x_instagram_assistant_token)
+    try:
+        return instagram_service.sync()
+    except Exception as exc:
+        raise as_http_error(exc) from exc
+
+
+@app.post("/api/viewer/sync")
+def viewer_sync(request: Request, x_requested_with: str | None = Header(default=None)) -> dict[str, Any]:
+    origin = request.headers.get("origin", "")
+    host = request.headers.get("host", "")
+    if (x_requested_with != "InstagramAssistant" or
+            origin not in {f"http://{host}", f"https://{host}"} or
+            request.headers.get("sec-fetch-site", "same-origin") != "same-origin"):
+        raise HTTPException(403, "Same-origin viewer request required")
     try:
         return instagram_service.sync()
     except Exception as exc:
