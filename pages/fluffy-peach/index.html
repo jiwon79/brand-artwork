@@ -17,7 +17,6 @@
       <button type="button" data-variant="wave" aria-pressed="false" style="--swatch:#a1e2e9"><span class="swatch"></span>파도</button>
     </div>
     <button id="editor-toggle" type="button" aria-controls="motion-editor" aria-expanded="false">모션 편집</button>
-    <div id="contour-measurement" aria-live="off" hidden>원본 윤곽 <span></span></div>
     <div id="bone-measurement" hidden>뼈대 변형 · 관절 13개</div>
     <section id="motion-editor" aria-label="모션 편집기" hidden>
       <div class="editor-header">
@@ -27,51 +26,39 @@
           <button type="button" data-action="play" aria-label="재생">▶</button>
           <button type="button" data-action="next-frame" aria-label="다음 프레임">›</button>
           <output id="editor-timecode" aria-live="off">00:00:00</output>
-          <span class="editor-frame-info" id="editor-source-frame">원본 001</span>
+          <span class="editor-frame-info" id="editor-source-frame">0 / 180f</span>
         </div>
         <div class="editor-header-controls">
           <label>속도 <select id="editor-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
           <label>확대 <input id="editor-zoom" type="range" min="1" max="4" step="0.25" value="1" /></label>
-          <button type="button" data-action="compare" aria-pressed="false">원본 비교</button>
-          <label id="editor-rig-control">변형 <select id="editor-rig-mode"><option value="contour">윤곽</option><option value="bones">뼈대</option></select></label>
+          <button type="button" data-action="compare" aria-pressed="false">기본 모션 비교</button>
           <button type="button" data-action="mesh-view" aria-pressed="false">메시 보기</button>
         </div>
       </div>
       <div class="editor-bone-tools bone-only">
         <label>관절 <select id="editor-bone-select" aria-label="편집할 관절"></select></label>
-        <label><input id="editor-bone-reference" type="checkbox" checked /> 기준 윤곽 겹치기</label>
+        <label><input id="editor-bone-reference" type="checkbox" checked /> 기본 모션 겹치기</label>
         <button type="button" data-bone-action="reset-bone">이 관절 복원</button>
         <button type="button" data-bone-action="reset-all">전체 복원</button>
       </div>
+      <p id="editor-motion-description"></p>
       <div class="editor-timeline">
         <div class="editor-labels" aria-hidden="true">
           <div class="editor-label editor-ruler-label">시간</div>
-          <div class="editor-label editor-source-label" title="원본 영상에서 측정한 가로 폭. 클립에서 가장 좁은 순간이 0%, 가장 넓은 순간이 100%">원본 가로폭 <output id="editor-source-width">0%</output></div>
-          <div class="editor-label editor-contour-label">윤곽 64 <output id="editor-contour-value">#01 · 0.0px</output></div>
           <div class="bone-only">
             <div class="editor-label bone-channel-label" data-bone-label="dx">좌우 X <output></output></div>
             <div class="editor-label bone-channel-label" data-bone-label="dy">높이 Y <output></output></div>
             <div class="editor-label bone-channel-label" data-bone-label="angle">회전 <output></output></div>
           </div>
-          <div class="editor-label" data-label="response">형태 반응 <output>1.00×</output></div>
-          <div class="editor-label" data-label="sway">좌우 이동 <output>0px</output></div>
-          <div class="editor-label" data-label="lift">높이 <output>0px</output></div>
-          <div class="editor-label" data-label="tilt">기울기 <output>0°</output></div>
         </div>
         <div id="editor-scroll" class="editor-scroll">
           <div id="editor-content" class="editor-content">
             <div id="editor-ruler" class="editor-ruler" aria-label="시간축"></div>
-            <div id="editor-source" class="editor-source" aria-label="원본 영상에서 측정한 가로 폭 변화. 아래로 갈수록 좁고 위로 갈수록 넓음"></div>
-            <div id="editor-contours" class="editor-contours" role="group" aria-label="원본 윤곽의 64방향 거리 변화. 가로는 시간, 세로는 방향 1부터 64까지. 누르거나 드래그하여 방향과 시간을 선택"><canvas id="editor-contour-canvas" aria-hidden="true"></canvas><div id="editor-contour-selection" aria-hidden="true"></div></div>
             <div class="bone-only">
               <div class="editor-bone-lane" data-bone-lane="dx" aria-label="선택 관절 좌우 위치 곡선"></div>
               <div class="editor-bone-lane" data-bone-lane="dy" aria-label="선택 관절 높이 곡선"></div>
               <div class="editor-bone-lane" data-bone-lane="angle" aria-label="선택 관절 회전 곡선"></div>
             </div>
-            <div class="editor-lane" data-lane="response" aria-label="형태 반응 키프레임"></div>
-            <div class="editor-lane" data-lane="sway" aria-label="좌우 이동 키프레임"></div>
-            <div class="editor-lane" data-lane="lift" aria-label="높이 키프레임"></div>
-            <div class="editor-lane" data-lane="tilt" aria-label="기울기 키프레임"></div>
             <div id="editor-playhead" aria-hidden="true"></div>
           </div>
         </div>
@@ -87,20 +74,7 @@
         <button type="button" data-bone-action="import">불러오기</button>
         <input id="editor-bone-file" type="file" accept="application/json,.json" hidden />
       </div>
-      <div class="editor-inspector editor-global-inspector">
-        <label>윤곽 방향 <input id="editor-contour-index" type="number" min="1" max="64" step="1" value="1" /></label>
-        <label>트랙 <select id="editor-track"><option value="response">형태 반응</option><option value="sway">좌우 이동</option><option value="lift">높이</option><option value="tilt">기울기</option></select></label>
-        <label>프레임 <input id="editor-keyframe-time" type="number" min="0" step="1" /></label>
-        <label>값 <input id="editor-keyframe-value" type="number" step="0.05" /></label>
-        <button type="button" data-action="add-keyframe">◆ 추가</button>
-        <button type="button" data-action="delete-keyframe">삭제</button>
-        <div class="editor-spacer"></div>
-        <button type="button" data-action="reset">초기화</button>
-        <button type="button" data-action="export">JSON 저장</button>
-        <button type="button" data-action="import">불러오기</button>
-        <input id="editor-file" type="file" accept="application/json,.json" hidden />
-      </div>
-      <p class="editor-help"><span class="contour-help">윤곽 64: 세로가 방향 #01–64, 가로가 시간입니다. 짙은 청록은 짧고 밝은 살구는 긴 거리입니다. 값은 원본 영상의 중심에서 잰 720px 기준 거리입니다.</span><span class="bone-only">메시의 관절이나 위 목록에서 편집할 관절을 선택하세요. ◆를 상하로 드래그하면 값, 좌우로 드래그하면 시간이 바뀝니다. 숫자를 바꾸면 현재 시간에 키가 추가됩니다. X·Y는 기본 위치에서의 이동량(720px 기준), 회전은 각도입니다. 회색 점선은 기본값, 청록 윤곽은 기존 모션입니다. 변경은 이 브라우저에 자동 저장됩니다.</span></p>
+      <p class="editor-help">메시의 관절이나 목록에서 편집할 관절을 선택하세요. ◆를 상하로 드래그하면 값, 좌우로 드래그하면 시간이 바뀝니다. 숫자를 바꾸면 현재 시간에 키가 추가됩니다. 회색 점선과 청록 외곽선은 이 형태의 기본 모션입니다. 변경은 형태별로 자동 저장됩니다.</p>
     </section>
     <script type="module" src="./script.ts"></script>
   </body>

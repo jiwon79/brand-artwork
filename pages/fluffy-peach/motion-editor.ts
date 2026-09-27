@@ -68,7 +68,13 @@ export function moveKeyframe(tracks: MotionTracks, id: TrackId, from: number, to
 
 // Shape-preserving Hermite interpolation passes smoothly through authored keys.
 function tangent(keys: readonly Keyframe[], index: number) {
-  if (index === 0 || index === keys.length - 1) return 0;
+  if (index === 0 || index === keys.length - 1) {
+    if (keys.length < 3) return 0;
+    const last = keys[keys.length - 1], previous = keys[keys.length - 2];
+    const before = (last.value - previous.value) / (last.frame - previous.frame);
+    const after = (keys[1].value - keys[0].value) / (keys[1].frame - keys[0].frame);
+    return before * after <= 0 ? 0 : 2 * before * after / (before + after);
+  }
   const before = (keys[index].value - keys[index - 1].value) / (keys[index].frame - keys[index - 1].frame);
   const after = (keys[index + 1].value - keys[index].value) / (keys[index + 1].frame - keys[index].frame);
   if (before * after <= 0) return 0;

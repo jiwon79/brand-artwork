@@ -1,17 +1,21 @@
-import { boneDefinitions } from './bone-rig';
+import { boneDefinitionsFor } from './bone-rig';
+import { migrateOriginalEdits } from './bone-motion';
+import type { VariantId } from './variants';
 import {
-  boneChannels, boneChannelSpecs, fittedBoneTracks, parseBoneTracks, sampleBoneTracks, setBoneKey,
+  boneChannels, boneChannelSpecs, parseBoneTracks, sampleBoneTracks, setBoneKey,
   type BoneChannel, type BoneTracks,
 } from './bone-animation';
 import { sampleTrack } from './motion-editor';
 import type { BonePose } from './bone-rig';
 
-const STORAGE_KEY = 'fluffy-peach.bone-editor.v2';
+const STORAGE_KEY = 'fluffy-peach.bone-editor.v3';
 const find = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const svgNode = (name: string) => document.createElementNS('http://www.w3.org/2000/svg', name);
 
 type Options = {
-  frames: readonly (readonly BonePose[])[];
+  clips: Record<VariantId, BoneTracks>;
+  legacyFrames: readonly (readonly BonePose[])[];
+  shape: VariantId;
   period: number;
   readFrame: () => number;
   seek: (frame: number) => void;
@@ -22,8 +26,10 @@ export class BoneEditorUI {
   selectedBone = 1;
   showReference = true;
   private selectedChannel: BoneChannel = 'dx';
-  private readonly defaults: BoneTracks;
-  private tracks: BoneTracks;
+  private shape: VariantId;
+  private tracks: BoneTracks = [];
+  private get defaults() { return this.options.clips[this.shape]; }
+  private get definitions() { return boneDefinitionsFor(this.shape); }
   private notice = '';
   private statusFrame = -1;
   private readonly selector = find<HTMLSelectElement>('#editor-bone-select');
@@ -31,18 +37,7 @@ export class BoneEditorUI {
   private readonly deleteButton = find<HTMLButtonElement>('[data-bone-action="delete"]');
 
   constructor(private readonly options: Options) {
-    this.defaults = fittedBoneTracks(options.frames);
-    this.tracks = structuredClone(this.defaults);
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      this.tracks = parseBoneTracks(saved ? JSON.parse(saved) : null, options.period) ?? this.tracks;
-    } catch { /* A fresh fitted clip remains usable when storage is unavailable. */ }
-    this.selector.replaceChildren(...boneDefinitions.map((bone, index) => {
-      const option = document.createElement('option');
-      option.value = String(index);
-      option.textContent = `${String(index).padStart(2, '0')} · ${bone.name}`;
-      return option;
-    }));
+    this.shape = options.shape;
     this.selector.addEventListener('change', () => this.selectBone(Number(this.selector.value)));
     for (const channel of boneChannels) {
       const input = find<HTMLInputElement>(`#editor-bone-${channel}`);
@@ -101,7 +96,7 @@ export class BoneEditorUI {
     });
     find<HTMLButtonElement>('[data-bone-action="export"]').addEventListener('click', () => {
       const url = URL.createObjectURL(new Blob([JSON.stringify(this.preset(), null, 2)], { type: 'application/json' }));
-      const link = document.createElement('a'); link.href = url; link.download = 'fluffy-peach-bones.json'; link.click();
+      const link = document.createElement('a'); link.href = url; link.download = `fluffy-peach-${this.shape}-bones.json`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
     const fileInput = find<HTMLInputElement>('#editor-bone-file');
@@ -111,7 +106,7 @@ export class BoneEditorUI {
       if (!file) return;
       options.seek(Math.round(options.readFrame()));
       try {
-        const parsed = parseBoneTracks(JSON.parse(await file.text()), options.period);
+        const parsed = parseBoneTracks(JSON.parse(await file.text()), options.period, this.shape);
         if (!parsed) throw new Error('invalid bones');
         this.tracks = parsed; this.draw(); this.save();
         this.notice = '뼈대 키프레임을 불러왔습니다.';
@@ -120,25 +115,47 @@ export class BoneEditorUI {
       this.update(options.readFrame());
       fileInput.value = '';
     });
+    this.setShape(options.shape);
+  }
+
+  setShape(shape: VariantId) {
+    this.shape = shape;
+    this.tracks = structuredClone(this.defaults);
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}.${shape}`);
+      const parsed = saved && parseBoneTracks(JSON.parse(saved), this.options.period, shape);
+      if (parsed) this.tracks = parsed;
+      else if (!saved && shape === 'original') {
+        const legacy = localStorage.getItem('fluffy-peach.bone-editor.v2');
+        const old = legacy && parseBoneTracks(JSON.parse(legacy), (this.options.legacyFrames.length - 1) * 2);
+        if (old) this.tracks = migrateOriginalEdits(old, this.options.legacyFrames, this.defaults);
+      }
+    } catch { /* Saved files remain untouched if an old preset is incompatible. */ }
+    this.selector.replaceChildren(...this.definitions.map((bone, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = `${String(index).padStart(2, '0')} · ${bone.name}`;
+      return option;
+    }));
     this.selectBone(this.selectedBone);
   }
 
-  private preset() { return { version: 2, period: this.options.period, bones: this.tracks }; }
+  private preset() { return { version: 3, shape: this.shape, period: this.options.period, bones: this.tracks }; }
   private save() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.preset())); }
+    try { localStorage.setItem(`${STORAGE_KEY}.${this.shape}`, JSON.stringify(this.preset())); }
     catch { this.notice = '자동 저장 불가 · JSON 저장을 사용해 주세요.'; }
     this.options.changed();
   }
 
   selectBone(index: number) {
     this.notice = '';
-    this.selectedBone = Math.max(0, Math.min(boneDefinitions.length - 1, Math.round(index)));
+    this.selectedBone = Math.max(0, Math.min(this.definitions.length - 1, Math.round(index)));
     this.selector.value = String(this.selectedBone);
     this.draw(); this.update(this.options.readFrame());
     this.options.changed();
   }
 
-  sample(frame: number) { return sampleBoneTracks(this.tracks, frame, this.options.period); }
+  sample(frame: number, defaults = false) { return sampleBoneTracks(defaults ? this.defaults : this.tracks, frame, this.options.period); }
 
   update(frame: number) {
     for (const channel of boneChannels) {
@@ -199,7 +216,7 @@ export class BoneEditorUI {
         const button = document.createElement('button'); button.type = 'button';
         button.className = 'editor-keyframe bone-key'; button.dataset.frame = String(key.frame);
         button.style.left = `${key.frame / this.options.period * 100}%`; button.style.top = `${yAt(key.value)}%`;
-        button.setAttribute('aria-label', `${boneDefinitions[this.selectedBone].name} ${boneChannelSpecs[channel].label} ${key.frame}프레임 ${key.value.toFixed(1)}${boneChannelSpecs[channel].unit}`);
+        button.setAttribute('aria-label', `${this.definitions[this.selectedBone].name} ${boneChannelSpecs[channel].label} ${key.frame}프레임 ${key.value.toFixed(1)}${boneChannelSpecs[channel].unit}`);
         button.addEventListener('pointerdown', (event) => {
           event.stopPropagation(); event.preventDefault();
           this.selectedChannel = channel;

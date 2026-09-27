@@ -1,3 +1,5 @@
+import { shapeFactor, type VariantId } from './variants';
+
 // Thirteen planar controls: a central body bone and twelve around the rim.
 // Every surface point blends rigid transforms from nearby controls.
 export const boneDefinitions = [
@@ -8,10 +10,24 @@ export const boneDefinitions = [
     return { name, x: 105 * Math.cos(angle), y: 105 * Math.sin(angle) };
   }),
 ];
+export function boneDefinitionsFor(shape: VariantId) {
+  if (shape === 'original') return boneDefinitions;
+  return boneDefinitions.map((bone, index) => {
+    if (index === 0) return { ...bone };
+    const angle = Math.atan2(bone.y, bone.x);
+    const factor = shapeFactor(shape, angle);
+    const x = bone.x * factor, y = bone.y * factor;
+    return { ...bone, x, y: y + (shape === 'wave' ? x * 0.15 : 0) };
+  });
+}
 export type BonePose = { dx: number; dy: number; angle: number };
 export const neutralBonePose = (): BonePose[] => boneDefinitions.map(() => ({ dx: 0, dy: 0, angle: 0 }));
 
 export class BoneRig {
+  readonly definitions;
+  constructor(readonly shape: VariantId = 'original') {
+    this.definitions = boneDefinitionsFor(shape);
+  }
   readonly poses = neutralBonePose();
   private readonly cosines = new Float32Array(boneDefinitions.length).fill(1);
   private readonly sines = new Float32Array(boneDefinitions.length);
@@ -21,7 +37,7 @@ export class BoneRig {
     weights[0] = 1.8 * Math.exp(-(x * x + y * y) / (2 * 68 ** 2));
     let total = weights[0];
     for (let index = 1; index < boneDefinitions.length; index++) {
-      const bone = boneDefinitions[index];
+      const bone = this.definitions[index];
       const distance = (x - bone.x) ** 2 + (y - bone.y) ** 2;
       const weight = Math.exp(-distance / (2 * 43 ** 2));
       weights[index] = weight;
@@ -43,7 +59,7 @@ export class BoneRig {
   }
 
   jointPosition(index: number): readonly [number, number] {
-    const bone = boneDefinitions[index], pose = this.poses[index];
+    const bone = this.definitions[index], pose = this.poses[index];
     return [bone.x + pose.dx, bone.y + pose.dy];
   }
 
@@ -51,7 +67,7 @@ export class BoneRig {
     let skinnedX = 0, skinnedY = 0;
     for (let index = 0; index < boneDefinitions.length; index++) {
       const weight = weights[weightOffset + index];
-      const bone = boneDefinitions[index], pose = this.poses[index];
+      const bone = this.definitions[index], pose = this.poses[index];
       const localX = x - bone.x, localY = y - bone.y;
       const cos = this.cosines[index], sin = this.sines[index];
       skinnedX += weight * (bone.x + pose.dx + cos * localX - sin * localY);

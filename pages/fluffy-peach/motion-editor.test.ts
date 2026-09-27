@@ -11,8 +11,9 @@ test('edited motion passes smoothly through keys and rejoins at the loop seam', 
   setKeyframe(tracks, 'response', 160, 0.7, period);
   expect(sampleTrack(tracks.response, 60, period)).toBeCloseTo(1.8);
   expect(sampleTrack(tracks.response, 160, period)).toBeCloseTo(0.7);
-  expect(sampleTrack(tracks.response, period - 0.01, period))
-    .toBeCloseTo(sampleTrack(tracks.response, 0.01, period), 4);
+  const incoming = (1 - sampleTrack(tracks.response, period - 0.001, period)) / 0.001;
+  const outgoing = (sampleTrack(tracks.response, 0.001, period) - 1) / 0.001;
+  expect(incoming).toBeCloseTo(outgoing, 5);
   setKeyframe(tracks, 'response', 0, 1.2, period);
   expect(tracks.response[tracks.response.length - 1].value).toBe(1.2);
   expect(sampleTrack(tracks.response, period, period)).toBe(1.2);

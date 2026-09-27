@@ -1,6 +1,7 @@
 import { BoneRig, boneDefinitions, neutralBonePose, type BonePose } from './bone-rig';
 import { loopFrame } from './motion-loop';
 import { MOTION_FPS, motionPeriod, sampleTrack, type Keyframe } from './motion-editor';
+import type { VariantId } from './variants';
 
 export const boneChannels = ['dx', 'dy', 'angle'] as const;
 export type BoneChannel = typeof boneChannels[number];
@@ -150,10 +151,11 @@ export function setBoneKey(tracks: BoneTracks, bone: number, channel: BoneChanne
   }
 }
 
-export function parseBoneTracks(input: unknown, period: number): BoneTracks | null {
+export function parseBoneTracks(input: unknown, period: number, shape?: VariantId): BoneTracks | null {
   if (!input || typeof input !== 'object') return null;
-  const preset = input as { version?: number; period?: number; bones?: BoneTracks };
-  if (preset.version !== 2 || preset.period !== period || !Array.isArray(preset.bones)
+  const preset = input as { version?: number; shape?: VariantId; period?: number; bones?: BoneTracks };
+  if ((shape ? preset.version !== 3 || preset.shape !== shape : preset.version !== 2)
+    || preset.period !== period || !Array.isArray(preset.bones)
     || preset.bones.length !== boneDefinitions.length) return null;
   for (const bone of preset.bones) for (const channel of boneChannels) {
     const keys = bone?.[channel], spec = boneChannelSpecs[channel];
