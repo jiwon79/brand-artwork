@@ -17,6 +17,7 @@ from .db import (
     list_conversation_messages,
     list_conversations,
     list_events,
+    mark_comment_reviewed,
     save_artwork,
     sent_today_count,
     update_event,
@@ -188,6 +189,8 @@ def ignore_event(event_id: str, x_instagram_assistant_token: str | None = Header
     event = update_event(event_id, {"status": "ignored", "proposed_action": "ignore"})
     if not event:
         raise HTTPException(404, "Event not found")
+    if event["kind"] == "comment":
+        mark_comment_reviewed(event_id)
     return event
 
 

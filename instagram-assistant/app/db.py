@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS events (
   body TEXT NOT NULL DEFAULT '',
   received_at TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
+  reviewed_at TEXT,
   intent TEXT,
   confidence REAL,
   proposed_action TEXT,
@@ -172,6 +173,8 @@ def initialize() -> None:
             conn.execute("ALTER TABLE events ADD COLUMN post_url TEXT")
         if "post_caption" not in columns:
             conn.execute("ALTER TABLE events ADD COLUMN post_caption TEXT")
+        if "reviewed_at" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN reviewed_at TEXT")
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
@@ -369,30 +372,72 @@ def list_comment_threads(
     status: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    comments = list_events(status=status, kind="comment", limit=limit)
-    if not comments:
-        return []
-    parent_ids = [comment["source_id"] for comment in comments]
-    placeholders = ",".join("?" for _ in parent_ids)
     account_id = get_settings().get("instagram_account_id")
     with connect() as conn:
+        comments = [dict(row) for row in conn.execute(
+            "SELECT * FROM events WHERE kind='comment' AND parent_comment_id IS NULL "
+            "AND (? = '' OR account_id=?)",
+            (account_id, account_id),
+        )]
         rows = conn.execute(
-            f"SELECT * FROM events WHERE kind='comment' "
-            f"AND parent_comment_id IN ({placeholders}) "
-            f"AND (? = '' OR account_id=?) ORDER BY received_at ASC",
-            [*parent_ids, account_id, account_id],
+            "SELECT * FROM events WHERE kind='comment' AND parent_comment_id IS NOT NULL "
+            "AND (? = '' OR account_id=?) ORDER BY received_at ASC",
+            (account_id, account_id),
         ).fetchall()
     replies_by_parent: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         reply = dict(row)
         replies_by_parent.setdefault(str(reply["parent_comment_id"]), []).append(reply)
     for comment in comments:
-        comment["replies"] = replies_by_parent.get(str(comment["source_id"]), [])
+        replies = replies_by_parent.get(str(comment["source_id"]), [])
+        comment["replies"] = replies
+        resolution_times = [reply["received_at"] for reply in replies if reply["direction"] == "outbound"]
+        if comment.get("reviewed_at"):
+            resolution_times.append(comment["reviewed_at"])
+        resolved_at = max(resolution_times, default="")
+        comment["needs_review"] = (
+            comment["status"] in {"pending", "drafted", "manual"}
+            and comment["received_at"] > resolved_at
+        ) or any(
+            reply["direction"] == "inbound"
+            and reply["status"] not in {"sent", "completed", "ignored"}
+            and reply["received_at"] > resolved_at
+            for reply in replies
+        )
+        comment["latest_activity_at"] = max(
+            [comment["received_at"], *(reply["received_at"] for reply in replies)]
+        )
         if comment.get("post_url") and comment.get("source_id"):
             comment["comment_url"] = (
                 str(comment["post_url"]).rstrip("/") + "/c/" + str(comment["source_id"]) + "/"
             )
-    return comments
+    if status == "active":
+        comments = [comment for comment in comments if comment["needs_review"]]
+    elif status == "completed":
+        comments = [comment for comment in comments if not comment["needs_review"]]
+    elif status == "sent":
+        comments = [comment for comment in comments if comment["status"] == "sent" and not comment["needs_review"]]
+    elif status:
+        comments = [comment for comment in comments if comment["status"] == status]
+    comments.sort(key=lambda comment: (comment["latest_activity_at"], comment["source_id"]), reverse=True)
+    return comments[:min(max(limit, 1), 500)]
+
+
+def mark_comment_reviewed(event_id: str) -> None:
+    with connect() as conn:
+        event = conn.execute(
+            "SELECT account_id, source_id, parent_comment_id FROM events WHERE id=? AND kind='comment'",
+            (event_id,),
+        ).fetchone()
+        if event:
+            parent_id = event["parent_comment_id"] or event["source_id"]
+            timestamp = now()
+            conn.execute(
+                "UPDATE events SET reviewed_at=?, updated_at=? "
+                "WHERE kind='comment' AND parent_comment_id IS NULL "
+                "AND source_id=? AND account_id IS ?",
+                (timestamp, timestamp, parent_id, event["account_id"]),
+            )
 
 
 def count_events_by_status() -> dict[str, int]:

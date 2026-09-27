@@ -12,7 +12,8 @@ from urllib.parse import urlencode
 import httpx
 
 from .config import paths, prepare_data_dir
-from .db import (add_delivery, get_event, get_settings, list_artworks, reconcile_own_dm_messages, save_artwork,
+from .db import (add_delivery, get_event, get_settings, list_artworks, mark_comment_reviewed,
+                 reconcile_own_dm_messages, save_artwork,
                  sent_today_count, update_event, update_settings, upsert_event)
 
 GRAPH_BASE = "https://graph.instagram.com/" + os.getenv("INSTAGRAM_GRAPH_VERSION", "v25.0")
@@ -379,7 +380,10 @@ class InstagramService:
                 update_event(event_id, {"status": "manual", "error": "발송 ID 없음"})
                 raise InstagramAssistantError("발송 ID가 없어 결과가 불확실합니다. 중복 전송 전에 DM을 확인하세요.")
             add_delivery(event_id, action, event["draft"], "sent", remote_id)
-            return update_event(event_id, {"status": "sent", "error": None}) or event
+            sent_event = update_event(event_id, {"status": "sent", "error": None}) or event
+            if action == "reply_comment":
+                mark_comment_reviewed(event_id)
+            return sent_event
 
     def heart_dm(self, event_id: str) -> dict[str, Any]:
         with self._lock:

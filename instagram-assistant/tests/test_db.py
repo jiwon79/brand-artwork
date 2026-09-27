@@ -224,3 +224,57 @@ def test_active_comment_filter_groups_actionable_statuses(tmp_path: Path, monkey
     assert {item["status"] for item in db.list_comment_threads(status="active")} == {
         "pending", "drafted", "manual",
     }
+
+
+def test_new_comment_reply_reopens_review_until_handled(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    events = (
+        {"id": "comment:root", "kind": "comment", "source_id": "root", "status": "sent",
+         "body": "첫 질문", "received_at": "2026-09-15T01:00:00+00:00"},
+        {"id": "comment:reply-1", "kind": "comment", "source_id": "reply-1",
+         "parent_comment_id": "root", "direction": "outbound", "status": "history",
+         "body": "첫 답변", "received_at": "2026-09-15T01:01:00+00:00"},
+        {"id": "comment:reply-2", "kind": "comment", "source_id": "reply-2",
+         "parent_comment_id": "root", "direction": "inbound", "status": "history",
+         "body": "추가 질문", "received_at": "2026-09-15T01:02:00+00:00"},
+    )
+    for event in events[:2]:
+        db.upsert_event(event)
+    assert [item["source_id"] for item in db.list_comment_threads(status="completed")] == ["root"]
+    db.upsert_event(events[2])
+    active = db.list_comment_threads(status="active")
+    assert [item["source_id"] for item in active] == ["root"]
+    assert active[0]["status"] == "sent"
+    assert active[0]["latest_activity_at"] == "2026-09-15T01:02:00+00:00"
+    db.upsert_event(events[2])
+    assert len(db.list_comment_threads(status="active")) == 1
+    db.mark_comment_reviewed("comment:reply-2")
+    assert db.list_comment_threads(status="active") == []
+    db.upsert_event({**events[2], "id": "comment:reply-3", "source_id": "reply-3",
+                     "received_at": "2099-09-15T01:03:00+00:00"})
+    assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
+    db.upsert_event({**events[1], "id": "comment:reply-4", "source_id": "reply-4",
+                     "received_at": "2099-09-15T01:04:00+00:00"})
+    assert [item["source_id"] for item in db.list_comment_threads(status="completed")] == ["root"]
+
+
+def test_recent_reply_to_older_comment_is_first_in_review(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    for event in (
+        {"id": "comment:old", "kind": "comment", "source_id": "old", "status": "sent",
+         "received_at": "2026-09-15T01:00:00+00:00"},
+        {"id": "comment:new", "kind": "comment", "source_id": "new",
+         "received_at": "2026-09-15T01:05:00+00:00"},
+        {"id": "comment:old-out", "kind": "comment", "source_id": "old-out",
+         "parent_comment_id": "old", "direction": "outbound", "status": "history",
+         "received_at": "2026-09-15T01:01:00+00:00"},
+        {"id": "comment:old-in", "kind": "comment", "source_id": "old-in",
+         "parent_comment_id": "old", "direction": "inbound", "status": "history",
+         "received_at": "2026-09-15T01:06:00+00:00"},
+    ):
+        db.upsert_event(event)
+    assert [item["source_id"] for item in db.list_comment_threads(status="active", limit=1)] == ["old"]

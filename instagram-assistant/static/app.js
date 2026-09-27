@@ -125,7 +125,7 @@ function commentReplies(event) {
 
 async function refreshComments() {
   const status = statusFromLocation();
-  const query = status === "all" ? "" : `&status=${status === "completed" ? "sent" : "active"}`;
+  const query = status === "all" ? "" : `&status=${status}`;
   const events = await api(`/api/events?kind=comment&limit=500${query}`);
   document.querySelector("#events").innerHTML = events.map((event) => `
     <article class="event">
