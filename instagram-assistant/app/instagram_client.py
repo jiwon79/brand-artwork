@@ -219,6 +219,14 @@ class InstagramService:
                     return True
         return False
 
+    @classmethod
+    def _shared_post_url(cls, message: dict[str, Any]) -> str:
+        for share in (message.get("shares") or {}).get("data") or []:
+            link = str(share.get("link") or "")
+            if re.match(r"^https://(?:www\.)?instagram\.com/(?:p|reel|stories)/", link):
+                return cls._canonical_url(link)
+        return ""
+
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
              threads_amount: int = 100) -> dict[str, Any]:
         with self._lock:
@@ -285,7 +293,7 @@ class InstagramService:
                     "platform": "instagram", "limit": min(threads_amount, 100)}, limit=threads_amount):
                     thread_id = str(conversation["id"])
                     detail = client.request("GET", f"/{thread_id}", params={
-                        "fields": "participants{id,username},messages{id,created_time,from,to,message,reactions}"})
+                        "fields": "participants{id,username},messages{id,created_time,from,to,message,reactions,shares{link}}"})
                     participants = (detail.get("participants") or {}).get("data") or []
                     own_messaging_ids = {
                         str(person["id"])
@@ -306,6 +314,7 @@ class InstagramService:
                         if not sender_id:
                             continue
                         outbound = sender_id == own_messaging_id
+                        shared_url = self._shared_post_url(message)
                         dm_count += int(upsert_event({
                             "id": f"dm:{message['id']}", "account_id": client.account_id,
                             "kind": "dm", "source_id": str(message["id"]), "thread_id": thread_id,
@@ -314,7 +323,8 @@ class InstagramService:
                             "direction": "outbound" if outbound else "inbound",
                             "has_liked": 0 if outbound else int(self._own_dm_heart(
                                 message, own_messaging_id, client.username)),
-                            "body": message.get("message") or "메시지 내용 없음",
+                            "shared_url": shared_url or None,
+                            "body": message.get("message") or ("" if shared_url else "메시지 내용 없음"),
                             "received_at": self._timestamp(message.get("created_time")),
                             "status": "history" if outbound else "pending"}))
                     reconcile_own_dm_messages(client.account_id, own_messaging_id, client.username)

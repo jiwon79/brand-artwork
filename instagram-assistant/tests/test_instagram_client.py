@@ -188,18 +188,22 @@ def test_graph_sync_records_parent_reply_and_dm_for_connected_account(monkeypatc
 
         def request(self, method, path, *, params):
             assert method == "GET" and path == "/thread-1"
+            assert "shares{link}" in params["fields"]
             return {"participants": {"data": [
                 {"id": "messaging-own-id", "username": "studio.jiiwon"},
                 {"id": "visitor-id", "username": "visitor"},
             ]}, "messages": {"data": [{"id": "message-1", "from": {"id": "visitor-id", "username": "visitor"},
                 "message": "안녕하세요", "created_time": "2026-09-26T01:02:00+0000"},
                 {"id": "message-2", "from": {"id": "messaging-own-id", "username": "studio.jiiwon"},
-                 "message": "안녕하세요!", "created_time": "2026-09-26T01:03:00+0000"}]}}
+                 "message": "안녕하세요!", "created_time": "2026-09-26T01:03:00+0000"},
+                {"id": "message-3", "from": {"id": "visitor-id", "username": "visitor"},
+                 "created_time": "2026-09-26T01:04:00+0000",
+                 "shares": {"data": [{"link": "https://www.instagram.com/reel/ABC/?utm_source=ig"}]}}]}}
 
     service = InstagramService()
     service._client = FakeGraph()
     result = service.sync(media_amount=1, comments_per_media=10, threads_amount=1)
-    assert result["comments"] == 1 and result["comment_replies"] == 1 and result["dms"] == 2
+    assert result["comments"] == 1 and result["comment_replies"] == 1 and result["dms"] == 3
     assert db.get_event("comment:comment-1")["status"] == "sent"
     assert db.get_event("comment:reply-1")["parent_comment_id"] == "comment-1"
     assert db.get_event("dm:message-1")["author_id"] == "visitor-id"
@@ -207,6 +211,9 @@ def test_graph_sync_records_parent_reply_and_dm_for_connected_account(monkeypatc
     assert db.get_event("dm:message-1")["direction"] == "inbound"
     assert db.get_event("dm:message-2")["direction"] == "outbound"
     assert db.get_event("dm:message-2")["status"] == "history"
+    assert db.get_event("dm:message-3")["body"] == ""
+    assert db.get_event("dm:message-3")["shared_url"] == "https://www.instagram.com/reel/ABC/"
+    assert db.list_conversations()[0]["latest_body"] == "https://www.instagram.com/reel/ABC/"
 
 
 def test_dm_resync_corrects_existing_outbound_draft(monkeypatch, tmp_path):

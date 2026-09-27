@@ -10,12 +10,14 @@ The API returns normalized JSON from the local SQLite database. Call `POST /api/
 | --- | --- | --- |
 | Connection and sync time | `GET /api/status` | `connected`, `settings.last_sync_at` |
 | Conversations needing review | `GET /api/conversations?status=active` | `thread_id`, `username`, `latest_body`, `latest_at`, `latest_inbound_hearted`, `has_actionable` |
-| Full locally stored DM conversation | `GET /api/conversations/{thread_id}` | Message `id`, `source_id`, `direction`, `body`, `received_at`, `has_liked`, `status` |
+| Full locally stored DM conversation | `GET /api/conversations/{thread_id}` | Message `id`, `source_id`, `direction`, `body`, `shared_url`, `received_at`, `has_liked`, `status` |
 | Comment threads needing review | `GET /api/events?kind=comment&status=active&limit=100` | Original comment `id`, `body`, `received_at`, `comment_url`, `post_caption`, `replies`, `needs_review` |
 
 Use the returned local event `id` for subsequent actions. Read the complete conversation or comment thread and its post context before drafting. `active` is the UI's **확인 필요** filter. Read endpoints return the last successful local sync, so they do not prove that no newer Instagram activity exists. The official DM API may omit older or unsupported request-folder messages.
 
 DM sync reads each message's `reactions` field for the latest 100 conversations. `has_liked` means the connected account has a heart reaction on that inbound message; other people's reactions do not count. A heart on the latest inbound message completes the conversation, and a newer inbound message without a heart returns it to **확인 필요**. The viewer shows hearted, unhearted, and not-yet-checked states separately.
+
+For shared Instagram posts and reels, DM sync reads `shares.link` into `shared_url`. The viewer shows that link even when the message has no text. If Meta returns neither text nor a share link, it continues to show `메시지 내용 없음`.
 
 ## Protected actions
 

@@ -111,7 +111,7 @@ function safeUrl(value) {
 function sharedLink(event) {
   const url = safeUrl(event.shared_url);
   if (!url) return "";
-  return `<div class="shared-content"><span>공유된 콘텐츠</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
+  return `<div class="shared-content"><span>공유된 게시물</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
 }
 
 function linkedMessageBody(value) {
@@ -215,7 +215,7 @@ async function refreshChat() {
     <div class="chat-messages">${messages.map((message) => `
       <div class="message-row ${message.direction}">
         <div class="message-bubble">
-          ${message.body ? `<p>${linkedMessageBody(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
+          ${message.body && !(message.shared_url && message.body === "메시지 내용 없음") ? `<p>${linkedMessageBody(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
           ${sharedLink(message)}
           <time>${formatTime(message.received_at, true)}</time>
         </div>

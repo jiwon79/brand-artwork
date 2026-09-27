@@ -151,6 +151,19 @@ def test_existing_event_is_enriched_with_shared_url(tmp_path: Path, monkeypatch)
     assert db.upsert_event(item) is True
     assert db.upsert_event({**item, "shared_url": "https://www.instagram.com/reel/ABC/"}) is False
     assert db.get_event("dm:1")["shared_url"] == "https://www.instagram.com/reel/ABC/"
+    assert db.get_event("dm:1")["body"] == "공유된 콘텐츠"
+
+
+def test_shared_post_replaces_old_empty_message_placeholder(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    item = {"id": "dm:1", "kind": "dm", "source_id": "1", "thread_id": "thread-1",
+            "body": "메시지 내용 없음", "received_at": db.now()}
+    db.upsert_event(item)
+    db.upsert_event({**item, "shared_url": "https://www.instagram.com/reel/ABC/", "body": ""})
+    assert db.get_event("dm:1")["body"] == ""
+    assert db.list_conversations()[0]["latest_body"] == "https://www.instagram.com/reel/ABC/"
 
 
 def test_existing_comment_is_enriched_with_like_state(tmp_path: Path, monkeypatch):
