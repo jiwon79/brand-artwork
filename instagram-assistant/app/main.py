@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import ROOT, local_token, paths
 from .db import (
@@ -34,8 +34,9 @@ TOKEN = local_token()
 
 
 class SettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     profile_url: str | None = None
-    read_only_observation: bool | None = None
     auto_send: bool | None = None
     auto_comment: bool | None = None
     auto_dm: bool | None = None

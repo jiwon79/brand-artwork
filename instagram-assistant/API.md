@@ -1,6 +1,6 @@
 # Codex operation API
 
-Codex can use the local HTTP API directly. An MCP server is optional; it would wrap these same endpoints. Use `http://127.0.0.1:4318` on the Mac running the assistant. The browser at the Tailscale URL is for viewing records and starting a sync, not for sending replies or reactions.
+Codex can use the assistant's own local HTTP API directly. These `/api/...` routes are **not** Meta endpoints: the assistant calls Meta's official Instagram API on Codex's behalf. An MCP server is optional; it would wrap these same local endpoints. Use `http://127.0.0.1:4318` on the Mac running the assistant. The browser at the Tailscale URL is for viewing records and starting a sync, not for sending replies or reactions.
 
 The API returns normalized JSON from the local SQLite database. Call `POST /api/sync` before reviewing recent activity, then read the relevant records. A sync reads the connected Instagram account and can take several minutes. It does not send messages.
 
@@ -8,7 +8,7 @@ The API returns normalized JSON from the local SQLite database. Call `POST /api/
 
 | Task | Request | Useful fields |
 | --- | --- | --- |
-| Connection and sync time | `GET /api/status` | `connected`, `settings.last_sync_at`, `settings.read_only_observation` |
+| Connection and sync time | `GET /api/status` | `connected`, `settings.last_sync_at` |
 | Conversations needing review | `GET /api/conversations?status=active` | `thread_id`, `username`, `latest_body`, `latest_at`, `has_actionable` |
 | Full locally stored DM conversation | `GET /api/conversations/{thread_id}` | Message `id`, `source_id`, `direction`, `body`, `received_at`, `has_liked`, `status` |
 | Comment threads needing review | `GET /api/events?kind=comment&status=active&limit=100` | Original comment `id`, `body`, `received_at`, `comment_url`, `post_caption`, `replies`, `needs_review` |
@@ -27,10 +27,9 @@ Every request in this table needs `X-Instagram-Assistant-Token`, read from `~/Li
 | Heart an inbound DM | `POST /api/events/{event_id}/heart` | Sends a DM message reaction through Meta's official API. |
 | Record a verified UI heart | `POST /api/events/{event_id}/heart-observed` | Records a heart already pressed in Instagram; this endpoint does **not** press it. |
 | Mark an item handled without reply | `POST /api/events/{event_id}/ignore` | Changes the local review state. |
-| Change observation mode | `PATCH /api/settings` | JSON `{"read_only_observation":false}` to permit an approved send/reaction; restore `true` after the action. |
 
-Only a connected account's pending inbound DM with a sender ID, or an original inbound comment, can receive an API draft. Send and DM heart calls are blocked while `read_only_observation` is true. Leave automatic sending settings off. The user approves each reply or heart before Codex sends it. For DM wording and approval criteria, read the current [Instagram DM 답변 규칙](https://app.notion.com/p/3e7a89f7e31a815b8b60c3ead057bf0a); this file records API mechanics, not message templates.
+Only a connected account's pending inbound DM with a sender ID, or an original inbound comment, can receive an API draft. Leave automatic sending settings off. The user approves each reply or heart before Codex sends it. For DM wording and approval criteria, read the current [Instagram DM 답변 규칙](https://app.notion.com/p/3e7a89f7e31a815b8b60c3ead057bf0a); this file records API mechanics, not message templates.
 
-For a reply: sync, read the thread, prepare the exact text for user review, save the approved draft, temporarily disable observation mode, send, restore observation mode, then reread the event and conversation or comment thread to verify the result. If a send returns an uncertain result, check Instagram before any retry. The service checks for an existing reply on an original comment before sending another.
+For a reply: sync, read the thread, prepare the exact text for user review, save the approved draft, send, then reread the event and conversation or comment thread to verify the result. If a send returns an uncertain result, check Instagram before any retry. The service checks for an existing reply on an original comment before sending another.
 
 The official API used here cannot press a **comment** heart. Open the returned `comment_url`, verify the original comment in Instagram, press its heart in the Instagram UI, and then call `heart-observed`. A DM heart uses the protected API endpoint above. A later inbound DM or comment reply returns its thread to **확인 필요** after the next sync.

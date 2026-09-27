@@ -78,7 +78,7 @@ def setup_send(monkeypatch, item):
     calls = []
     monkeypatch.setattr(instagram_client, "get_event", lambda _: item)
     monkeypatch.setattr(instagram_client, "get_settings", lambda: {
-        "read_only_observation": False, "halted_reason": None, "daily_send_limit": 20})
+        "halted_reason": None, "daily_send_limit": 20})
     monkeypatch.setattr(instagram_client, "sent_today_count", lambda: 0)
     monkeypatch.setattr(instagram_client, "add_delivery", lambda *args, **kwargs: calls.append(("delivery", args, kwargs)))
     monkeypatch.setattr(instagram_client, "update_event", lambda _, values: calls.append(("update", values)) or {**item, **values})

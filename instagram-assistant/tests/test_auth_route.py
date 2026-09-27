@@ -51,6 +51,21 @@ def test_viewer_sync_requires_same_origin_and_cannot_call_protected_sync(monkeyp
     assert calls == [True]
 
 
+def test_observation_setting_is_absent_and_cannot_be_restored(tmp_path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    with TestClient(main.app) as client:
+        with db.connect() as conn:
+            conn.execute("INSERT INTO settings(key, value) VALUES ('read_only_observation', 'true')")
+        db.initialize()
+        assert "read_only_observation" not in client.get("/api/status").json()["settings"]
+        response = client.patch("/api/settings", headers={
+            "X-Instagram-Assistant-Token": main.TOKEN},
+            json={"read_only_observation": True})
+        assert response.status_code == 422
+        assert "read_only_observation" not in db.get_settings()
+
+
 def test_dm_heart_requires_local_token(monkeypatch):
     calls = []
     monkeypatch.setattr(main.instagram_service, "heart_dm", lambda event_id: calls.append(event_id) or {"has_liked": True})

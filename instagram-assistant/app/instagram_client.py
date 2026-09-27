@@ -140,8 +140,7 @@ class InstagramService:
             self._save_token(token, account_id, username, int(long_token.get("expires_in", 0)))
             self._client = GraphClient(token, account_id, username)
             update_settings({"instagram_account_id": account_id, "instagram_username": username,
-                "read_only_observation": True, "auto_send": False,
-                "auto_comment": False, "auto_dm": False,
+                "auto_send": False, "auto_comment": False, "auto_dm": False,
                 "dm_backfill_complete": False, "dm_requests_backfill_complete": False,
                 "halted_reason": None})
             return {"username": username, "user_id": account_id}
@@ -187,8 +186,8 @@ class InstagramService:
             paths.session.unlink(missing_ok=True)
             paths.oauth_state.unlink(missing_ok=True)
             update_settings({"instagram_account_id": "", "instagram_username": "",
-                "read_only_observation": True, "auto_send": False,
-                "auto_comment": False, "auto_dm": False, "halted_reason": None})
+                "auto_send": False, "auto_comment": False, "auto_dm": False,
+                "halted_reason": None})
 
     @staticmethod
     def _timestamp(value: Any) -> str:
@@ -321,8 +320,6 @@ class InstagramService:
             if event["status"] == "sent":
                 raise InstagramAssistantError("이미 전송한 항목입니다.")
             settings = get_settings()
-            if settings.get("read_only_observation"):
-                raise InstagramAssistantError("현재 관찰 모드입니다. 설정에서 먼저 해제하세요.")
             if settings.get("halted_reason"):
                 raise InstagramHaltedError(str(settings["halted_reason"]))
             if sent_today_count() >= int(settings.get("daily_send_limit", 20)):
@@ -395,8 +392,6 @@ class InstagramService:
             if event.get("has_liked"):
                 raise InstagramAssistantError("이미 하트를 누른 DM입니다.")
             settings = get_settings()
-            if settings.get("read_only_observation"):
-                raise InstagramAssistantError("현재 관찰 모드입니다. 설정에서 먼저 해제하세요.")
             if settings.get("halted_reason"):
                 raise InstagramHaltedError(str(settings["halted_reason"]))
             client = self.connect_saved_session()
