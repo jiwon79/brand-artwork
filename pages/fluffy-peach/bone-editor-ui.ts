@@ -1,5 +1,5 @@
 import { boneDefinitionsFor } from './bone-rig';
-import { migrateOriginalEdits } from './bone-motion';
+import { migrateOriginalEdits, upgradeVariantEdits, VARIANT_MOTION_REVISION } from './bone-motion';
 import type { VariantId } from './variants';
 import {
   boneChannels, boneChannelSpecs, parseBoneTracks, sampleBoneTracks, setBoneKey,
@@ -106,9 +106,10 @@ export class BoneEditorUI {
       if (!file) return;
       options.seek(Math.round(options.readFrame()));
       try {
-        const parsed = parseBoneTracks(JSON.parse(await file.text()), options.period, this.shape);
+        const preset = JSON.parse(await file.text());
+        const parsed = parseBoneTracks(preset, options.period, this.shape);
         if (!parsed) throw new Error('invalid bones');
-        this.tracks = parsed; this.draw(); this.save();
+        this.tracks = upgradeVariantEdits(parsed, this.shape, this.defaults, preset.motionRevision); this.draw(); this.save();
         this.notice = '뼈대 키프레임을 불러왔습니다.';
       } catch { this.notice = '이 뼈대와 길이에 맞는 JSON을 선택해 주세요.'; }
       this.statusFrame = Math.round(options.readFrame());
@@ -123,8 +124,9 @@ export class BoneEditorUI {
     this.tracks = structuredClone(this.defaults);
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}.${shape}`);
-      const parsed = saved && parseBoneTracks(JSON.parse(saved), this.options.period, shape);
-      if (parsed) this.tracks = parsed;
+      const preset = saved && JSON.parse(saved);
+      const parsed = preset && parseBoneTracks(preset, this.options.period, shape);
+      if (parsed) this.tracks = upgradeVariantEdits(parsed, shape, this.defaults, preset.motionRevision);
       else if (!saved && shape === 'original') {
         const legacy = localStorage.getItem('fluffy-peach.bone-editor.v2');
         const old = legacy && parseBoneTracks(JSON.parse(legacy), (this.options.legacyFrames.length - 1) * 2);
@@ -140,7 +142,7 @@ export class BoneEditorUI {
     this.selectBone(this.selectedBone);
   }
 
-  private preset() { return { version: 3, shape: this.shape, period: this.options.period, bones: this.tracks }; }
+  private preset() { return { version: 3, motionRevision: VARIANT_MOTION_REVISION, shape: this.shape, period: this.options.period, bones: this.tracks }; }
   private save() {
     try { localStorage.setItem(`${STORAGE_KEY}.${this.shape}`, JSON.stringify(this.preset())); }
     catch { this.notice = '자동 저장 불가 · JSON 저장을 사용해 주세요.'; }

@@ -56,13 +56,13 @@ function originalPose(frame: number, fitted: readonly (readonly BonePose[])[]) {
 
 export const boneMotionDescriptions: Record<VariantId, string> = {
   original: '측정한 펄럭임 → 시차를 둔 복귀',
-  bean: '몸통이 늘어나며 양 끝이 부드럽게 휘어짐',
-  flower: '꽃잎마다 시차를 두고 오므렸다 펼침',
-  star: '다섯 팔이 함께 휘고 늘어나며 흐르는 펄럭임',
-  wave: '왼쪽에서 오른쪽으로 흐르며 말리는 파도',
+  bean: '몸통을 타고 흐르는 굽힘과 양 끝의 탄성',
+  flower: '꽃잎을 차례로 스치는 바람과 뒤따르는 잔떨림',
+  star: '여러 팔을 타고 흐르는 큰 펄럭임과 탄성',
+  wave: '높낮이가 다른 물결과 늦게 말리는 파도 끝',
 };
 
-function variantPose(shape: Exclude<VariantId, 'original'>, frame: number) {
+function legacyVariantPose(shape: Exclude<VariantId, 'original'>, frame: number) {
   const cycle = frame / BONE_LOOP_FRAMES * TAU;
   const phase = 2 * cycle + 0.2 * Math.sin(cycle);
   const definitions = boneDefinitionsFor(shape);
@@ -101,17 +101,113 @@ function variantPose(shape: Exclude<VariantId, 'original'>, frame: number) {
   });
 }
 
+// Three connected gusts have different lengths and strengths. Every channel
+// follows this same wind field; the rim responds later than the body.
+function wind(time: number) {
+  const pulse = (center: number, width: number) =>
+    Math.exp(-0.5 * (Math.sin(Math.PI * (time - center)) / (Math.PI * width)) ** 2);
+  return 1.1 * pulse(0.12, 0.029) - 0.62 * pulse(0.215, 0.045)
+    + 0.88 * pulse(0.43, 0.054) - 0.48 * pulse(0.565, 0.058)
+    + 1.18 * pulse(0.76, 0.033) - 0.66 * pulse(0.86, 0.052);
+}
+
+function windTarget(shape: Exclude<VariantId, 'original'>, time: number, x: number, y: number, index: number): BonePose {
+  const delay = shape === 'wave' ? 0.10 * x
+    : shape === 'star' ? 0.075 * x - 0.025 * y : 0.06 * x + 0.025 * y;
+  const flow = wind(time - delay), follow = wind(time - delay - 0.035);
+  if (index === 0) return { dx: 5 * flow, dy: 7 * follow, angle: 0.025 * follow };
+  if (shape === 'bean') {
+    const stretch = 0.6 * flow + 0.4 * follow;
+    return { dx: 30 * x * stretch + 10 * y * flow,
+      dy: -13 * y * stretch + 30 * x * flow + 8 * (x * x - 0.5) * follow,
+      angle: 0.20 * x * follow - 0.07 * y * flow };
+  }
+  if (shape === 'flower') {
+    const radial = 23 * flow, curl = 21 * follow;
+    return { dx: x * radial - y * curl + 7 * flow,
+      dy: y * radial + x * curl,
+      angle: 0.27 * Math.sin(2 * Math.atan2(y, x)) * follow };
+  }
+  if (shape === 'star') return {
+    dx: 22 * x * flow + 16 * y * follow,
+    dy: 12 * y * flow + 42 * x * flow + 12 * follow,
+    angle: 0.30 * x * follow - 0.12 * y * flow,
+  };
+  const crest = Math.max(0, y) * Math.max(0, x);
+  return { dx: 10 * x * flow - 35 * crest * follow - 5 * y * follow,
+    dy: 34 * flow + 14 * crest * follow,
+    angle: 0.24 * follow - 0.24 * crest * flow };
+}
+
+function bakeVariantPoses(shape: Exclude<VariantId, 'original'>) {
+  const definitions = boneDefinitionsFor(shape);
+  const positions = neutralBonePose(), velocities = neutralBonePose();
+  const stepsPerFrame = 4, stepsPerLoop = BONE_LOOP_FRAMES * stepsPerFrame;
+  const dt = 1 / (24 * stepsPerFrame);
+  const frames: BonePose[][] = [];
+  // Warm up complete cycles so the saved spring state is already periodic.
+  for (let step = 0; step <= stepsPerLoop * 4; step++) {
+    const time = step / stepsPerLoop;
+    definitions.forEach((bone, index) => {
+      const x = bone.x / 105, y = bone.y / 105;
+      const target = windTarget(shape, time, x, y, index);
+      const strength = index === 0 ? 1.15 : 1.45;
+      const frequency = TAU * (index === 0 ? 1.8 : 2.6 - 0.4 * Math.max(0, y));
+      const damping = index === 0 ? 0.78 : 0.57;
+      for (const channel of boneChannels) {
+        const acceleration = frequency * frequency * (strength * target[channel] - positions[index][channel])
+          - 2 * damping * frequency * velocities[index][channel];
+        velocities[index][channel] += acceleration * dt;
+        positions[index][channel] += velocities[index][channel] * dt;
+      }
+    });
+    if (step >= stepsPerLoop * 3 && step % stepsPerFrame === 0) frames.push(structuredClone(positions));
+  }
+  frames[frames.length - 1] = structuredClone(frames[0]);
+  return frames;
+}
+
+function tracksFromPoses(times: number[], frames: readonly (readonly BonePose[])[]): BoneTracks {
+  return neutralBonePose().map((_, bone) => Object.fromEntries(boneChannels.map((channel) => [channel,
+    times.map((frame, index) => ({ frame, value: frames[index][bone][channel] / (channel === 'angle' ? radians : 1) })),
+  ])) as BoneTracks[number]);
+}
+
+const legacyTimes = () => Array.from({ length: BONE_LOOP_FRAMES / 6 + 1 }, (_, index) => index * 6)
+  .concat(SOURCE_END).sort((a, b) => a - b);
+
+export function legacyVariantClip(shape: Exclude<VariantId, 'original'>): BoneTracks {
+  const times = legacyTimes(), frames = times.map((frame) => legacyVariantPose(shape, frame));
+  frames[frames.length - 1] = structuredClone(frames[0]);
+  return tracksFromPoses(times, frames);
+}
+
 export function createBoneClips(fitted: readonly (readonly BonePose[])[]): Record<VariantId, BoneTracks> {
-  const times = Array.from({ length: BONE_LOOP_FRAMES / 6 + 1 }, (_, index) => index * 6).concat(SOURCE_END).sort((a, b) => a - b);
   return Object.fromEntries(variants.map(({ id }) => {
-    const frames = times.map((frame) => id === 'original' ? originalPose(frame, fitted) : variantPose(id, frame));
-    // Explicit identical endpoints avoid accumulating floating-point seam error.
+    const times = id === 'original' ? legacyTimes()
+      : Array.from({ length: BONE_LOOP_FRAMES / 3 + 1 }, (_, index) => index * 3);
+    const baked = id === 'original' ? null : bakeVariantPoses(id);
+    const frames = times.map((frame) => id === 'original' ? originalPose(frame, fitted) : baked![frame]);
     frames[frames.length - 1] = structuredClone(frames[0]);
-    const tracks = neutralBonePose().map((_, bone) => Object.fromEntries(boneChannels.map((channel) => [channel,
-      times.map((frame, index) => ({ frame, value: frames[index][bone][channel] / (channel === 'angle' ? radians : 1) })),
-    ])) as BoneTracks[number]);
-    return [id, tracks];
+    return [id, tracksFromPoses(times, frames)];
   })) as Record<VariantId, BoneTracks>;
+}
+
+export const VARIANT_MOTION_REVISION = 2;
+export function upgradeVariantEdits(saved: BoneTracks, shape: VariantId, next: BoneTracks, revision?: number) {
+  if (shape === 'original' || revision === VARIANT_MOTION_REVISION) return saved;
+  const previous = legacyVariantClip(shape), result = structuredClone(next);
+  saved.forEach((bone, index) => {
+    for (const channel of boneChannels) {
+      const times = [...new Set(bone[channel].concat(previous[index][channel], next[index][channel]).map((key) => key.frame))];
+      for (const frame of times) {
+        const offset = sampleTrack(bone[channel], frame, BONE_LOOP_FRAMES) - sampleTrack(previous[index][channel], frame, BONE_LOOP_FRAMES);
+        if (Math.abs(offset) < 0.0001) continue;
+        setBoneKey(result, index, channel, frame, sampleTrack(next[index][channel], frame, BONE_LOOP_FRAMES) + offset, BONE_LOOP_FRAMES);
+      }
+    }
+  });
+  return result;
 }
 
 // Keep authored offsets from the previous original rig while replacing its
@@ -140,4 +236,3 @@ export function migrateOriginalEdits(saved: BoneTracks, fitted: readonly (readon
 export function sampleDefaultPose(clips: Record<VariantId, BoneTracks>, shape: VariantId, frame: number) {
   return sampleBoneTracks(clips[shape], frame, BONE_LOOP_FRAMES);
 }
-
