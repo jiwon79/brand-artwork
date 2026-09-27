@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS deliveries (
   error TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS dm_sync_state (
+  account_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  updated_time TEXT NOT NULL,
+  checked_at TEXT NOT NULL,
+  PRIMARY KEY(account_id, thread_id)
+);
 """
 
 
@@ -224,6 +232,25 @@ def update_settings(values: dict[str, Any]) -> dict[str, Any]:
                 (key, json.dumps(value, ensure_ascii=False)),
             )
     return get_settings()
+
+
+def get_dm_sync_state(account_id: str, thread_id: str) -> dict[str, str] | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT updated_time, checked_at FROM dm_sync_state WHERE account_id=? AND thread_id=?",
+            (account_id, thread_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def save_dm_sync_state(account_id: str, thread_id: str, updated_time: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO dm_sync_state(account_id, thread_id, updated_time, checked_at) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(account_id, thread_id) DO UPDATE SET "
+            "updated_time=excluded.updated_time, checked_at=excluded.checked_at",
+            (account_id, thread_id, updated_time, now()),
+        )
 
 
 def list_artworks() -> list[dict[str, Any]]:

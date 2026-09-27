@@ -12,8 +12,8 @@ from urllib.parse import urlencode
 import httpx
 
 from .config import paths, prepare_data_dir
-from .db import (add_delivery, get_event, get_settings, list_artworks, mark_comment_reviewed,
-                 reconcile_own_dm_messages, save_artwork,
+from .db import (add_delivery, get_dm_sync_state, get_event, get_settings, list_artworks, mark_comment_reviewed,
+                 reconcile_own_dm_messages, save_artwork, save_dm_sync_state,
                  sent_today_count, update_event, update_settings, upsert_event)
 
 GRAPH_BASE = "https://graph.instagram.com/" + os.getenv("INSTAGRAM_GRAPH_VERSION", "v25.0")
@@ -208,10 +208,13 @@ class InstagramService:
         return str(comment.get("username") or (comment.get("from") or {}).get("username") or "")
 
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
-             threads_amount: int = 30) -> dict[str, Any]:
+             threads_amount: int = 100, dm_user_id: str | None = None) -> dict[str, Any]:
         with self._lock:
+            if dm_user_id is not None and not re.fullmatch(r"\d+", dm_user_id):
+                raise InstagramAssistantError("대상 Instagram 사용자 ID는 숫자여야 합니다.")
             client = self.connect_saved_session()
             comments_count = replies_count = dm_count = 0
+            dm_threads_checked = dm_threads_skipped = 0
             try:
                 artworks = {item.get("post_code"): item for item in list_artworks() if item.get("post_code")}
                 for media in client.pages("/me/media", params={
@@ -269,9 +272,24 @@ class InstagramService:
                         raise InstagramAssistantError(
                             "게시물에 댓글이 있지만 공식 API가 빈 목록을 반환했습니다. "
                             "Meta 앱의 댓글 권한과 게시 상태를 확인하세요.")
-                for conversation in client.pages("/me/conversations", params={
-                    "platform": "instagram", "limit": min(threads_amount, 100)}, limit=threads_amount):
+                conversation_params = {
+                    "platform": "instagram", "fields": "id,updated_time",
+                    "limit": min(threads_amount, 100)}
+                if dm_user_id is not None:
+                    conversation_params["user_id"] = dm_user_id
+                for conversation in client.pages("/me/conversations", params=conversation_params,
+                                                 limit=1 if dm_user_id is not None else threads_amount):
                     thread_id = str(conversation["id"])
+                    updated_time = str(conversation.get("updated_time") or "")
+                    state = get_dm_sync_state(client.account_id, thread_id)
+                    if dm_user_id is None and updated_time and state and state["updated_time"] == updated_time:
+                        try:
+                            checked_at = datetime.fromisoformat(state["checked_at"])
+                            if datetime.now(UTC) - checked_at < timedelta(hours=24):
+                                dm_threads_skipped += 1
+                                continue
+                        except ValueError:
+                            pass
                     detail = client.request("GET", f"/{thread_id}", params={
                         "fields": "participants{id,username},messages{id,created_time,from,to,message}"})
                     participants = (detail.get("participants") or {}).get("data") or []
@@ -304,12 +322,16 @@ class InstagramService:
                             "received_at": self._timestamp(message.get("created_time")),
                             "status": "history" if outbound else "pending"}))
                     reconcile_own_dm_messages(client.account_id, own_messaging_id, client.username)
+                    dm_threads_checked += 1
+                    if updated_time:
+                        save_dm_sync_state(client.account_id, thread_id, updated_time)
             except InstagramHaltedError as exc:
                 update_settings({"halted_reason": str(exc)[:500]})
                 raise
             update_settings({"last_sync_at": datetime.now(UTC).isoformat()})
             return {"comments": comments_count, "comment_replies": replies_count,
-                "dms": dm_count, "dm_full_sync": False,
+                "dms": dm_count, "dm_threads_checked": dm_threads_checked,
+                "dm_threads_skipped": dm_threads_skipped, "dm_full_sync": False,
                 "dm_requests_full_sync": False}
 
     def send_for_event(self, event_id: str) -> dict[str, Any]:

@@ -134,6 +134,7 @@ def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict
 
 @app.post("/api/viewer/sync")
 def viewer_sync(request: Request, scope: Literal["all", "dm"] = "all",
+                user_id: str | None = None,
                 x_requested_with: str | None = Header(default=None)) -> dict[str, Any]:
     origin = request.headers.get("origin", "")
     host = request.headers.get("host", "")
@@ -141,8 +142,10 @@ def viewer_sync(request: Request, scope: Literal["all", "dm"] = "all",
             origin not in {f"http://{host}", f"https://{host}"} or
             request.headers.get("sec-fetch-site", "same-origin") != "same-origin"):
         raise HTTPException(403, "Same-origin viewer request required")
+    if user_id is not None and scope != "dm":
+        raise HTTPException(400, "user_id requires DM scope")
     try:
-        return instagram_service.sync(media_amount=0) if scope == "dm" else instagram_service.sync()
+        return instagram_service.sync(media_amount=0, dm_user_id=user_id) if scope == "dm" else instagram_service.sync()
     except Exception as exc:
         raise as_http_error(exc) from exc
 

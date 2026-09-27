@@ -210,9 +210,10 @@ async function refreshChat() {
   const messages = await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}`);
   const selected = conversations.find((item) => item.thread_id === selectedThreadId);
   const username = selected?.username || [...messages].reverse().find((item) => item.direction === "inbound" && item.author_username)?.author_username || "알 수 없음";
+  const userId = messages.find((item) => item.direction === "inbound" && /^\d+$/.test(item.author_id || ""))?.author_id;
   const profile = `https://www.instagram.com/${encodeURIComponent(username)}/`;
   panel.innerHTML = `
-    <header class="chat-header"><button class="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div class="chat-identity"><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><div class="chat-header-actions"><a href="${profile}" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
+    <header class="chat-header"><button class="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div class="chat-identity"><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><div class="chat-header-actions">${userId ? `<button class="quiet sync-thread" data-user-id="${escapeHtml(userId)}" type="button">이 대화 동기화</button>` : ""}<a href="${profile}" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
     <div class="chat-messages">${messages.map((message) => `
       <div class="message-row ${message.direction}">
         <div class="message-bubble">
@@ -282,6 +283,21 @@ document.querySelector("#conversation-list").addEventListener("click", (event) =
 });
 document.querySelector("#chat-panel").addEventListener("click", (event) => {
   if (event.target.closest(".chat-back")) document.querySelector("#dm-inbox").classList.remove("chat-open");
+  const button = event.target.closest(".sync-thread");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.textContent = "동기화 중";
+  fetch(`/api/viewer/sync?scope=dm&user_id=${encodeURIComponent(button.dataset.userId)}`, {
+    method: "POST", headers: { "X-Requested-With": "InstagramAssistant" },
+  }).then(async (response) => {
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.detail || `동기화 실패 (${response.status})`);
+    await refreshConversations();
+    showToast(result.dm_threads_checked ? "이 대화 동기화 완료" : "해당 대화를 API에서 찾지 못했습니다.");
+  }).catch(showError).finally(() => {
+    button.disabled = false;
+    button.textContent = "이 대화 동기화";
+  });
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") refreshRoute(routeFromLocation()).catch(showError);

@@ -209,6 +209,47 @@ def test_graph_sync_records_parent_reply_and_dm_for_connected_account(monkeypatc
     assert db.get_event("dm:message-2")["status"] == "history"
 
 
+def test_dm_sync_fetches_changed_threads_and_can_target_one_user(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+        updated = "2026-09-27T01:00:00+0000"
+        detail_calls = 0
+        list_params = None
+
+        def pages(self, path, *, params, limit):
+            if path == "/me/media":
+                return iter([])
+            assert path == "/me/conversations"
+            self.list_params = params
+            return iter([{"id": "thread-1", "updated_time": self.updated}])
+
+        def request(self, method, path, *, params):
+            assert method == "GET" and path == "/thread-1"
+            self.detail_calls += 1
+            return {"participants": {"data": [
+                {"id": "own-id", "username": "studio.jiiwon"},
+                {"id": "visitor-id", "username": "visitor"}]},
+                "messages": {"data": [{"id": "message-1", "from": {"id": "visitor-id"},
+                    "message": "안녕하세요", "created_time": "2026-09-27T01:00:00+0000"}]}}
+
+    service = InstagramService()
+    fake = FakeGraph()
+    service._client = fake
+    assert service.sync(media_amount=0)["dm_threads_checked"] == 1
+    assert service.sync(media_amount=0)["dm_threads_skipped"] == 1
+    assert fake.detail_calls == 1
+    fake.updated = "2026-09-27T01:01:00+0000"
+    assert service.sync(media_amount=0)["dm_threads_checked"] == 1
+    assert fake.detail_calls == 2
+    assert service.sync(media_amount=0, dm_user_id="123")["dm_threads_checked"] == 1
+    assert fake.list_params["user_id"] == "123"
+    assert fake.detail_calls == 3
+
+
 def test_dm_resync_corrects_existing_outbound_draft(monkeypatch, tmp_path):
     monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

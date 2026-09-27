@@ -58,10 +58,13 @@ def test_viewer_dm_sync_skips_comment_fetch(monkeypatch):
                "Sec-Fetch-Site": "same-origin"}
     with TestClient(main.app) as client:
         response = client.post("/api/viewer/sync?scope=dm", headers=headers)
+        targeted = client.post("/api/viewer/sync?scope=dm&user_id=123", headers=headers)
         invalid = client.post("/api/viewer/sync?scope=other", headers=headers)
     assert response.status_code == 200
     assert response.json()["dms"] == 1
-    assert calls == [{"media_amount": 0}]
+    assert targeted.status_code == 200
+    assert calls == [{"media_amount": 0, "dm_user_id": None},
+                     {"media_amount": 0, "dm_user_id": "123"}]
     assert invalid.status_code == 422
 
 
