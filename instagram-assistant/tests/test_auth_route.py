@@ -62,6 +62,32 @@ def test_dm_heart_requires_local_token(monkeypatch):
     assert calls == ["dm:message-1"]
 
 
+def test_draft_api_sets_send_action_for_connected_inbound_items(tmp_path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    headers = {"X-Instagram-Assistant-Token": main.TOKEN}
+    with TestClient(main.app) as client:
+        db.update_settings({"instagram_account_id": "account-1"})
+        for event in (
+            {"id": "comment:root", "kind": "comment", "source_id": "root"},
+            {"id": "dm:one", "kind": "dm", "source_id": "one", "author_id": "sender-1"},
+        ):
+            db.upsert_event({**event, "account_id": "account-1"})
+        assert client.patch("/api/events/dm:one/draft", json={"draft": "안녕하세요"}).status_code == 403
+        for event_id, action in (("comment:root", "reply_comment"), ("dm:one", "reply_dm")):
+            response = client.patch(f"/api/events/{event_id}/draft", headers=headers,
+                                    json={"draft": "안녕하세요"})
+            assert response.status_code == 200
+            assert response.json()["proposed_action"] == action
+            assert response.json()["status"] == "drafted"
+        assert client.patch("/api/events/dm:one/draft", headers=headers,
+                            json={"draft": "  "}).status_code == 400
+        db.upsert_event({"id": "dm:other", "kind": "dm", "source_id": "other",
+                         "author_id": "sender-2", "account_id": "account-2"})
+        assert client.patch("/api/events/dm:other/draft", headers=headers,
+                            json={"draft": "안녕하세요"}).status_code == 400
+
+
 def test_observed_heart_requires_token_and_completes_review(tmp_path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

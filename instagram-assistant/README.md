@@ -18,6 +18,7 @@ The app binds to `127.0.0.1:4318`. `INSTAGRAM_ASSISTANT_DATA` overrides the shar
 
 ## Review and sending
 
+- [Codex operation API](./API.md) lists the normalized read endpoints, protected reply/reaction actions, review flow, and current limits. MCP is optional.
 - The browser UI exposes no local mutation token. Its sync button calls a same-origin, sync-only endpoint; all reply and reaction actions remain protected from the browser. Codex can also sync through `uv run python -m app.worker` or the protected local API. MCP is optional; Codex can use the existing Python service and local API directly.
 - Starts in observation mode. New OAuth connections reset automatic sending to off. Codex prepares and sends only the individual replies approved for that batch.
 - Comments are sent with `POST /{comment_id}/replies`, not `POST /{media_id}/comments`. Before sending, the assistant checks the parent's replies for an existing account reply. After sending, it looks for the returned reply ID under that parent. An uncertain result is left for manual review and is never automatically retried.

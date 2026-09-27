@@ -174,10 +174,24 @@ def conversation(thread_id: str) -> list[dict[str, Any]]:
 @app.patch("/api/events/{event_id}/draft")
 def edit_draft(event_id: str, body: DraftBody, x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
     protect(x_instagram_assistant_token)
-    event = update_event(event_id, {"draft": body.draft, "status": "drafted"})
+    event = get_event(event_id)
     if not event:
         raise HTTPException(404, "Event not found")
-    return event
+    if event["direction"] != "inbound" or event["status"] not in {"pending", "drafted"}:
+        raise HTTPException(400, "Only pending inbound items can be drafted")
+    if event["kind"] == "comment" and not event["parent_comment_id"]:
+        action = "reply_comment"
+    elif event["kind"] == "dm" and event["author_id"]:
+        action = "reply_dm"
+    else:
+        raise HTTPException(400, "This item cannot be replied to through the API")
+    if event["account_id"] != get_settings().get("instagram_account_id"):
+        raise HTTPException(400, "Event does not belong to the connected account")
+    if not body.draft.strip():
+        raise HTTPException(400, "Reply draft is empty")
+    return update_event(event_id, {
+        "draft": body.draft, "status": "drafted", "proposed_action": action,
+    }) or event
 
 
 @app.post("/api/events/{event_id}/send")
