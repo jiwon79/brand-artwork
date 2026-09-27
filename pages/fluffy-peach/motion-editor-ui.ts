@@ -2,11 +2,13 @@ import { DEFAULT_PLAYBACK_SPEED, MOTION_FPS } from './motion-editor';
 import { variants, type VariantId } from './variants';
 import { BoneEditorUI } from './bone-editor-ui';
 import { boneDefinitionsFor, type BonePose } from './bone-rig';
-import { BONE_LOOP_FRAMES, boneMotionDescriptions } from './bone-motion';
+import { BONE_LOOP_FRAMES, boneMotionDescriptions, type BoneTimeMap } from './bone-motion';
 import type { BoneTracks } from './bone-animation';
 
 type EditorOptions = {
   clips: Record<VariantId, BoneTracks>;
+  previousClips: Record<VariantId, BoneTracks>;
+  timeMaps: Record<VariantId, BoneTimeMap>;
   legacyFrames: readonly (readonly BonePose[])[];
   shape: VariantId;
   initialSeconds: number;
@@ -50,7 +52,8 @@ export class MotionEditor {
     this.frame = Math.max(0, options.initialSeconds * MOTION_FPS) % this.period;
     this.active = new URLSearchParams(location.search).get('editor') === '1';
     this.boneEditor = new BoneEditorUI({
-      clips: options.clips, legacyFrames: options.legacyFrames, shape: options.shape, period: this.period,
+      clips: options.clips, previousClips: options.previousClips, timeMaps: options.timeMaps,
+      legacyFrames: options.legacyFrames, shape: options.shape, period: this.period,
       readFrame: () => this.frame, seek: (frame) => this.seek(frame), changed: options.onChange,
     });
     const url = new URL(location.href);

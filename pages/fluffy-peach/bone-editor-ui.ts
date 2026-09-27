@@ -1,5 +1,5 @@
 import { boneDefinitionsFor } from './bone-rig';
-import { migrateOriginalEdits, upgradeVariantEdits, VARIANT_MOTION_REVISION } from './bone-motion';
+import { migrateOriginalEdits, retimeBoneEdits, upgradeVariantEdits, PREVIOUS_BONE_LOOP_FRAMES, VARIANT_MOTION_REVISION, type BoneTimeMap } from './bone-motion';
 import type { VariantId } from './variants';
 import {
   boneChannels, boneChannelSpecs, parseBoneTracks, sampleBoneTracks, setBoneKey,
@@ -14,6 +14,8 @@ const svgNode = (name: string) => document.createElementNS('http://www.w3.org/20
 
 type Options = {
   clips: Record<VariantId, BoneTracks>;
+  previousClips: Record<VariantId, BoneTracks>;
+  timeMaps: Record<VariantId, BoneTimeMap>;
   legacyFrames: readonly (readonly BonePose[])[];
   shape: VariantId;
   period: number;
@@ -107,9 +109,9 @@ export class BoneEditorUI {
       options.seek(Math.round(options.readFrame()));
       try {
         const preset = JSON.parse(await file.text());
-        const parsed = parseBoneTracks(preset, options.period, this.shape);
+        const parsed = this.parsePreset(preset);
         if (!parsed) throw new Error('invalid bones');
-        this.tracks = upgradeVariantEdits(parsed, this.shape, this.defaults, preset.motionRevision); this.draw(); this.save();
+        this.tracks = parsed; this.draw(); this.save();
         this.notice = '뼈대 키프레임을 불러왔습니다.';
       } catch { this.notice = '이 뼈대와 길이에 맞는 JSON을 선택해 주세요.'; }
       this.statusFrame = Math.round(options.readFrame());
@@ -125,12 +127,14 @@ export class BoneEditorUI {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}.${shape}`);
       const preset = saved && JSON.parse(saved);
-      const parsed = preset && parseBoneTracks(preset, this.options.period, shape);
-      if (parsed) this.tracks = upgradeVariantEdits(parsed, shape, this.defaults, preset.motionRevision);
+      const parsed = preset && this.parsePreset(preset);
+      if (parsed) this.tracks = parsed;
       else if (!saved && shape === 'original') {
         const legacy = localStorage.getItem('fluffy-peach.bone-editor.v2');
         const old = legacy && parseBoneTracks(JSON.parse(legacy), (this.options.legacyFrames.length - 1) * 2);
-        if (old) this.tracks = migrateOriginalEdits(old, this.options.legacyFrames, this.defaults);
+        if (old) this.tracks = retimeBoneEdits(
+          migrateOriginalEdits(old, this.options.legacyFrames, this.options.previousClips.original),
+          this.options.previousClips.original, this.defaults, this.options.timeMaps.original);
       }
     } catch { /* Saved files remain untouched if an old preset is incompatible. */ }
     this.selector.replaceChildren(...this.definitions.map((bone, index) => {
@@ -140,6 +144,17 @@ export class BoneEditorUI {
       return option;
     }));
     this.selectBone(this.selectedBone);
+  }
+
+  private parsePreset(preset: unknown): BoneTracks | null {
+    const current = parseBoneTracks(preset, this.options.period, this.shape);
+    if (current) return current;
+    const previous = parseBoneTracks(preset, PREVIOUS_BONE_LOOP_FRAMES, this.shape);
+    if (!previous) return null;
+    const revision = (preset as { motionRevision?: number }).motionRevision;
+    const previousDefaults = this.options.previousClips[this.shape];
+    const edited = upgradeVariantEdits(previous, this.shape, previousDefaults, revision);
+    return retimeBoneEdits(edited, previousDefaults, this.defaults, this.options.timeMaps[this.shape]);
   }
 
   private preset() { return { version: 3, motionRevision: VARIANT_MOTION_REVISION, shape: this.shape, period: this.options.period, bones: this.tracks }; }

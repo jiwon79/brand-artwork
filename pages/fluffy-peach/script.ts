@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import GUI from 'lil-gui';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import { boneDefinitions, BoneRig } from './bone-rig';
-import { createBoneClips, cycleFrame, forwardFrame, smooth, SOURCE_END, BONE_LOOP_FRAMES, sampleDefaultPose } from './bone-motion';
+import { createBoneMotion, cycleFrame, forwardFrame, smooth, SOURCE_END, BONE_LOOP_FRAMES, PREVIOUS_BONE_LOOP_FRAMES, sampleDefaultPose } from './bone-motion';
 import { restRadius, restSurface } from './bone-surface';
 import { fitBoneFrames } from './bone-animation';
 import backgroundFragment from './background.frag?raw';
@@ -56,7 +56,7 @@ const baselineRadii = Float32Array.from(motionFrames[0].radii, (_, point) =>
 let boneRig = new BoneRig(variants[targetVariant].id);
 let referenceRig = new BoneRig(variants[targetVariant].id);
 const boneAnimationFrames = fitBoneFrames(motionFrames.map((frame) => frame.radii));
-const boneClips = createBoneClips(boneAnimationFrames);
+const { clips: boneClips, previousClips, timeMaps } = createBoneMotion(boneAnimationFrames);
 let bodyBoneWeights: Float32Array | null = null;
 let fiberBoneWeights: Float32Array | null = null;
 let bodyRestPositions: Float32Array | null = null;
@@ -344,6 +344,8 @@ gui.add(controls, 'turnZ', -180, 180, 1).name('기울기').onChange(refresh);
 gui.add(controls, 'paused').name('정지').onChange(refresh);
 editor = new MotionEditor({
   clips: boneClips,
+  previousClips,
+  timeMaps,
   legacyFrames: boneAnimationFrames,
   shape: variants[targetVariant].id,
   initialSeconds: frozenTime ?? 0,
@@ -519,11 +521,12 @@ function render(now: number) {
   const seconds = editor.active ? editor.frame / MOTION_FPS
     : frozenTime ?? (reduceMotion ? 2.25 : (pausedAt - startTime) / 1000 * DEFAULT_PLAYBACK_SPEED);
   const timelineFrame = cycleFrame(seconds * MOTION_FPS);
-  const forward = timelineFrame <= SOURCE_END;
-  const source = forwardFrame(timelineFrame);
+  const previousFrame = timeMaps[variants[targetVariant].id].oldAtNew(timelineFrame);
+  const forward = previousFrame <= SOURCE_END;
+  const source = forwardFrame(previousFrame);
   const a = forward ? Math.floor(source) : SOURCE_END;
   const b = forward ? Math.min(a + 1, SOURCE_END) : 0;
-  const fraction = forward ? source - a : smooth((timelineFrame - SOURCE_END) / (BONE_LOOP_FRAMES - SOURCE_END));
+  const fraction = forward ? source - a : smooth((previousFrame - SOURCE_END) / (PREVIOUS_BONE_LOOP_FRAMES - SOURCE_END));
   const first = motionFrames[a], second = motionFrames[b];
   const lerp = (one: number, two: number) => THREE.MathUtils.lerp(one, two, fraction);
   const selectedVariant = variants[targetVariant];

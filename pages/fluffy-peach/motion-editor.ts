@@ -1,7 +1,7 @@
 import type { VariantId } from './variants';
 
 export const MOTION_FPS = 24;
-export const DEFAULT_PLAYBACK_SPEED = 1.5;
+export const DEFAULT_PLAYBACK_SPEED = 1;
 export const EDITOR_STORAGE_KEY = 'fluffy-peach.motion-editor.v1';
 
 export type TrackId = 'response' | 'sway' | 'lift' | 'tilt';

@@ -3,7 +3,8 @@ import { boneChannels, fittedBoneTracks, sampleBoneTracks, setBoneKey, type Bone
 import { sampleTrack } from './motion-editor';
 import { variants, type VariantId } from './variants';
 
-export const BONE_LOOP_FRAMES = 180;
+export const BONE_LOOP_FRAMES = 144;
+export const PREVIOUS_BONE_LOOP_FRAMES = 180;
 export const SOURCE_END = 119;
 const TAU = Math.PI * 2;
 const radians = Math.PI / 180;
@@ -36,7 +37,7 @@ function originalPose(frame: number, fitted: readonly (readonly BonePose[])[]) {
       angle: bone.angle + (fitted[next][index].angle - bone.angle) * fraction,
     }));
   }
-  const u = (frame - SOURCE_END) / (BONE_LOOP_FRAMES - SOURCE_END);
+  const u = (frame - SOURCE_END) / (PREVIOUS_BONE_LOOP_FRAMES - SOURCE_END);
   return fitted[SOURCE_END].map((bone, index) => {
     const definition = boneDefinitionsFor('original')[index];
     const theta = Math.atan2(definition.y, definition.x);
@@ -63,7 +64,7 @@ export const boneMotionDescriptions: Record<VariantId, string> = {
 };
 
 function legacyVariantPose(shape: Exclude<VariantId, 'original'>, frame: number) {
-  const cycle = frame / BONE_LOOP_FRAMES * TAU;
+  const cycle = frame / PREVIOUS_BONE_LOOP_FRAMES * TAU;
   const phase = 2 * cycle + 0.2 * Math.sin(cycle);
   const definitions = boneDefinitionsFor(shape);
   return definitions.map((bone, index) => {
@@ -142,7 +143,7 @@ function windTarget(shape: Exclude<VariantId, 'original'>, time: number, x: numb
 function bakeVariantPoses(shape: Exclude<VariantId, 'original'>) {
   const definitions = boneDefinitionsFor(shape);
   const positions = neutralBonePose(), velocities = neutralBonePose();
-  const stepsPerFrame = 4, stepsPerLoop = BONE_LOOP_FRAMES * stepsPerFrame;
+  const stepsPerFrame = 4, stepsPerLoop = PREVIOUS_BONE_LOOP_FRAMES * stepsPerFrame;
   const dt = 1 / (24 * stepsPerFrame);
   const frames: BonePose[][] = [];
   // Warm up complete cycles so the saved spring state is already periodic.
@@ -173,7 +174,7 @@ function tracksFromPoses(times: number[], frames: readonly (readonly BonePose[])
   ])) as BoneTracks[number]);
 }
 
-const legacyTimes = () => Array.from({ length: BONE_LOOP_FRAMES / 6 + 1 }, (_, index) => index * 6)
+const legacyTimes = () => Array.from({ length: PREVIOUS_BONE_LOOP_FRAMES / 6 + 1 }, (_, index) => index * 6)
   .concat(SOURCE_END).sort((a, b) => a - b);
 
 export function legacyVariantClip(shape: Exclude<VariantId, 'original'>): BoneTracks {
@@ -182,15 +183,91 @@ export function legacyVariantClip(shape: Exclude<VariantId, 'original'>): BoneTr
   return tracksFromPoses(times, frames);
 }
 
-export function createBoneClips(fitted: readonly (readonly BonePose[])[]): Record<VariantId, BoneTracks> {
+function createPreviousClips(fitted: readonly (readonly BonePose[])[]): Record<VariantId, BoneTracks> {
   return Object.fromEntries(variants.map(({ id }) => {
     const times = id === 'original' ? legacyTimes()
-      : Array.from({ length: BONE_LOOP_FRAMES / 3 + 1 }, (_, index) => index * 3);
+      : Array.from({ length: PREVIOUS_BONE_LOOP_FRAMES / 3 + 1 }, (_, index) => index * 3);
     const baked = id === 'original' ? null : bakeVariantPoses(id);
     const frames = times.map((frame) => id === 'original' ? originalPose(frame, fitted) : baked![frame]);
     frames[frames.length - 1] = structuredClone(frames[0]);
     return [id, tracksFromPoses(times, frames)];
   })) as Record<VariantId, BoneTracks>;
+}
+
+export type BoneTimeMap = { oldAtNew: (frame: number) => number; newAtOld: (frame: number) => number };
+
+function originalTimeMap(): BoneTimeMap {
+  // Keep the first 88 recorded frames at their original pace. The late
+  // near-still portion of the forward performance and the settling tail shrink.
+  const old = [0, 88, SOURCE_END, PREVIOUS_BONE_LOOP_FRAMES];
+  const next = [0, 88, 96, BONE_LOOP_FRAMES];
+  const convert = (value: number, from: number[], to: number[]) => {
+    const at = Math.max(0, Math.min(from[from.length - 1], value));
+    const index = Math.min(from.length - 2, from.findIndex((end, index) => index > 0 && at <= end) - 1);
+    return to[index] + (at - from[index]) / (from[index + 1] - from[index]) * (to[index + 1] - to[index]);
+  };
+  return { oldAtNew: (frame) => convert(frame, next, old), newAtOld: (frame) => convert(frame, old, next) };
+}
+
+function variantTimeMap(tracks: BoneTracks): BoneTimeMap {
+  const period = PREVIOUS_BONE_LOOP_FRAMES;
+  const activity = Array.from({ length: period }, (_, frame) => {
+    const first = sampleBoneTracks(tracks, frame, period), second = sampleBoneTracks(tracks, frame + 1, period);
+    return Math.sqrt(first.reduce((sum, bone, index) => sum
+      + (second[index].dx - bone.dx) ** 2 + (second[index].dy - bone.dy) ** 2
+      + ((second[index].angle - bone.angle) * 70) ** 2, 0) / first.length);
+  });
+  // Smooth activity around the seam so the time map does not introduce a beat.
+  const smoothed = activity.map((_, index) => {
+    let total = 0, weight = 0;
+    for (let offset = -4; offset <= 4; offset++) {
+      const influence = 5 - Math.abs(offset);
+      total += activity[(index + offset + period) % period] * influence;
+      weight += influence;
+    }
+    return total / weight;
+  });
+  const duration = (speed: number, threshold: number) => Math.min(1, Math.max(0.28, speed / threshold));
+  let low = 0.000001, high = Math.max(...smoothed) * 5;
+  for (let attempt = 0; attempt < 36; attempt++) {
+    const middle = (low + high) / 2;
+    if (smoothed.reduce((sum, speed) => sum + duration(speed, middle), 0) > BONE_LOOP_FRAMES) low = middle;
+    else high = middle;
+  }
+  const cumulative = [0];
+  for (const speed of smoothed) cumulative.push(cumulative[cumulative.length - 1] + duration(speed, high));
+  const scale = BONE_LOOP_FRAMES / cumulative[period];
+  for (let index = 1; index <= period; index++) cumulative[index] *= scale;
+  cumulative[period] = BONE_LOOP_FRAMES;
+  return {
+    newAtOld: (frame) => {
+      const at = Math.max(0, Math.min(period, frame)), index = Math.min(period - 1, Math.floor(at));
+      return cumulative[index] + (at - index) * (cumulative[index + 1] - cumulative[index]);
+    },
+    oldAtNew: (frame) => {
+      const at = Math.max(0, Math.min(BONE_LOOP_FRAMES, frame));
+      let low = 0, high = period;
+      while (high - low > 1) {
+        const middle = (low + high) >> 1;
+        if (cumulative[middle] < at) low = middle; else high = middle;
+      }
+      return low + (at - cumulative[low]) / (cumulative[low + 1] - cumulative[low]);
+    },
+  };
+}
+
+export function createBoneMotion(fitted: readonly (readonly BonePose[])[]) {
+  const previousClips = createPreviousClips(fitted);
+  const timeMaps = Object.fromEntries(variants.map(({ id }) => [id,
+    id === 'original' ? originalTimeMap() : variantTimeMap(previousClips[id]),
+  ])) as Record<VariantId, BoneTimeMap>;
+  const clips = Object.fromEntries(variants.map(({ id }) => {
+    const times = Array.from({ length: BONE_LOOP_FRAMES / 3 + 1 }, (_, index) => index * 3);
+    const frames = times.map((frame) => sampleBoneTracks(previousClips[id], timeMaps[id].oldAtNew(frame), PREVIOUS_BONE_LOOP_FRAMES));
+    frames[frames.length - 1] = structuredClone(frames[0]);
+    return [id, tracksFromPoses(times, frames)];
+  })) as Record<VariantId, BoneTracks>;
+  return { clips, previousClips, timeMaps };
 }
 
 export const VARIANT_MOTION_REVISION = 2;
@@ -201,9 +278,9 @@ export function upgradeVariantEdits(saved: BoneTracks, shape: VariantId, next: B
     for (const channel of boneChannels) {
       const times = [...new Set(bone[channel].concat(previous[index][channel], next[index][channel]).map((key) => key.frame))];
       for (const frame of times) {
-        const offset = sampleTrack(bone[channel], frame, BONE_LOOP_FRAMES) - sampleTrack(previous[index][channel], frame, BONE_LOOP_FRAMES);
+        const offset = sampleTrack(bone[channel], frame, PREVIOUS_BONE_LOOP_FRAMES) - sampleTrack(previous[index][channel], frame, PREVIOUS_BONE_LOOP_FRAMES);
         if (Math.abs(offset) < 0.0001) continue;
-        setBoneKey(result, index, channel, frame, sampleTrack(next[index][channel], frame, BONE_LOOP_FRAMES) + offset, BONE_LOOP_FRAMES);
+        setBoneKey(result, index, channel, frame, sampleTrack(next[index][channel], frame, PREVIOUS_BONE_LOOP_FRAMES) + offset, PREVIOUS_BONE_LOOP_FRAMES);
       }
     }
   });
@@ -224,7 +301,25 @@ export function migrateOriginalEdits(saved: BoneTracks, fitted: readonly (readon
         const offset = sampleTrack(bone[channel], at, previousPeriod) - previous;
         if (Math.abs(offset) < 0.0001) continue;
         const frame = at <= SOURCE_END ? at : Math.round(SOURCE_END
-          + (at - SOURCE_END) / (previousPeriod - SOURCE_END) * (BONE_LOOP_FRAMES - SOURCE_END));
+          + (at - SOURCE_END) / (previousPeriod - SOURCE_END) * (PREVIOUS_BONE_LOOP_FRAMES - SOURCE_END));
+        const value = sampleTrack(next[index][channel], frame, PREVIOUS_BONE_LOOP_FRAMES) + offset;
+        setBoneKey(result, index, channel, frame, value, PREVIOUS_BONE_LOOP_FRAMES);
+      }
+    }
+  });
+  return result;
+}
+
+export function retimeBoneEdits(saved: BoneTracks, previous: BoneTracks, next: BoneTracks, map: BoneTimeMap): BoneTracks {
+  const result = structuredClone(next);
+  saved.forEach((bone, index) => {
+    for (const channel of boneChannels) {
+      const times = [...new Set(bone[channel].concat(previous[index][channel]).map((key) => key.frame))].sort((a, b) => a - b);
+      for (const oldFrame of times) {
+        const offset = sampleTrack(bone[channel], oldFrame, PREVIOUS_BONE_LOOP_FRAMES)
+          - sampleTrack(previous[index][channel], oldFrame, PREVIOUS_BONE_LOOP_FRAMES);
+        if (Math.abs(offset) < 0.0001) continue;
+        const frame = Math.round(map.newAtOld(oldFrame));
         const value = sampleTrack(next[index][channel], frame, BONE_LOOP_FRAMES) + offset;
         setBoneKey(result, index, channel, frame, value, BONE_LOOP_FRAMES);
       }

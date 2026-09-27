@@ -26,10 +26,10 @@
           <button type="button" data-action="play" aria-label="재생">▶</button>
           <button type="button" data-action="next-frame" aria-label="다음 프레임">›</button>
           <output id="editor-timecode" aria-live="off">00:00:00</output>
-          <span class="editor-frame-info" id="editor-source-frame">0 / 180f</span>
+          <span class="editor-frame-info" id="editor-source-frame">0 / 144f</span>
         </div>
         <div class="editor-header-controls">
-          <label>속도 <select id="editor-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1">1×</option><option value="1.5" selected>1.5×</option><option value="2">2×</option></select></label>
+          <label>속도 <select id="editor-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
           <label>확대 <input id="editor-zoom" type="range" min="1" max="4" step="0.25" value="1" /></label>
           <button type="button" data-action="compare" aria-pressed="false">기본 모션 비교</button>
           <button type="button" data-action="mesh-view" aria-pressed="false">메시 보기</button>
