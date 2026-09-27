@@ -133,7 +133,7 @@ vec3 background(vec2 p) {
   if (uColorway == 5) return mix(vec3(.785,.635,.515),vec3(.999,.946,.872),t);
   if (uColorway == 6) return mix(vec3(.727,.655,.811),vec3(.969,.943,.992),t);
   if (uColorway == 7) return mix(vec3(.562,.746,.718),vec3(.922,.981,.966),t);
-  if (uColorway == 8) return mix(vec3(.645,.493,.626),vec3(.941,.849,.922),t);
+  if (uColorway == 8) return mix(vec3(.710,.695,.662),vec3(.975,.965,.940),t);
   if (uColorway == 9) return mix(vec3(.055,.092,.174),vec3(.235,.310,.445),t);
   return mix(vec3(.865,.710,.735),vec3(1.0,.970,.972),t);
 }
@@ -155,21 +155,30 @@ vec3 hsvToRgb(vec3 c) {
 vec3 colorwayGlass(vec3 rose, int id, vec2 q) {
   if (uColorway == 0) return rose;
   vec3 hsv = rgbToHsv(clamp(rose,0.0,1.0));
+  if (uColorway == 8) {
+    float luma = dot(rose,vec3(.2126,.7152,.0722));
+    vec3 shadow = id == 2 ? vec3(.48,.45,.41)
+      : id == 0 ? vec3(.58,.55,.51) : vec3(.63,.60,.55);
+    vec3 highlight = id == 2 ? vec3(.99,.97,.91)
+      : id == 0 ? vec3(.97,.94,.88) : vec3(1.0,.98,.94);
+    return mix(shadow,highlight,smoothstep(.25,.91,luma));
+  }
   if (uColorway == 9) {
     float luma = dot(rose,vec3(.2126,.7152,.0722));
     float lowerSoftening = smoothstep(-.05,.78,q.y)
       * (1.0-.55*smoothstep(-.1,.85,q.x));
-    vec3 base = id == 2 ? vec3(.012,.035,.090)
-      : id == 0 ? vec3(.065,.105,.175) : vec3(.105,.150,.230);
-    vec3 light = id == 2 ? vec3(.255,.325,.465)
-      : id == 0 ? vec3(.410,.480,.600) : vec3(.475,.545,.655);
-    float value = pow(luma,id == 2 ? 1.35 : 1.15);
-    vec3 navy = mix(base,light,clamp(value+.09*lowerSoftening,0.0,1.0));
+    vec3 base = id == 2 ? vec3(.005,.020,.070)
+      : id == 0 ? vec3(.025,.075,.180) : vec3(.025,.080,.175);
+    vec3 light = id == 2 ? vec3(.255,.435,.720)
+      : id == 0 ? vec3(.265,.495,.795) : vec3(.410,.650,.850);
+    float value = smoothstep(.27,.88,luma);
+    value *= mix(1.0,.72,smoothstep(.35,.98,abs(q.x)));
+    vec3 navy = mix(base,light,clamp(value+.06*lowerSoftening,0.0,1.0));
     return clamp(navy,0.0,1.0);
   }
   if (uColorway >= 5) {
     float hue = uColorway == 5 ? .065 : uColorway == 6 ? .745
-      : uColorway == 7 ? .475 : .885;
+      : .475;
     hue += (id == 0 ? -.018 : id == 1 ? .022 : 0.0)
       + (fract(hsv.x+.5)-.5)*.12;
     float lowerSoftening = smoothstep(-.05,.78,q.y)

@@ -7,7 +7,7 @@ export const colorways = [
   { id: 'orange', label: 'Orange', swatch: '#df865b', background: '#ead0bd', ink: '#624435' },
   { id: 'lilac', label: 'Lilac', swatch: '#a98acb', background: '#d8cbe5', ink: '#504263' },
   { id: 'teal', label: 'Teal', swatch: '#4ba59e', background: '#bcd9d5', ink: '#315956' },
-  { id: 'plum', label: 'Plum', swatch: '#9b5a87', background: '#d9bfd0', ink: '#583b51' },
+  { id: 'pearl', label: 'Pearl', swatch: '#eee8dd', background: '#dfdcd5', ink: '#514b43' },
   { id: 'navy', label: 'Deep Navy', swatch: '#293e65', background: '#25324d', ink: '#e9eef8' },
 ] as const;
 
