@@ -88,6 +88,20 @@ CREATE TABLE IF NOT EXISTS dm_sync_state (
   checked_at TEXT NOT NULL,
   PRIMARY KEY(account_id, thread_id)
 );
+
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id TEXT PRIMARY KEY,
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  processed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS webhook_events_ready_idx
+ON webhook_events(status, next_attempt_at);
 """
 
 
@@ -100,6 +114,7 @@ DEFAULT_SETTINGS = {
     "auto_dm": False,
     "daily_send_limit": 20,
     "last_sync_at": None,
+    "last_full_sync_at": None,
     "dm_backfill_complete": False,
     "dm_requests_backfill_complete": False,
     "halted_reason": None,
@@ -253,6 +268,47 @@ def save_dm_sync_state(account_id: str, thread_id: str, updated_time: str) -> No
         )
 
 
+def enqueue_webhook(event_id: str, payload: dict[str, Any]) -> bool:
+    timestamp = now()
+    with connect() as conn:
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO webhook_events(id,payload,next_attempt_at,created_at) "
+            "VALUES (?,?,?,?)",
+            (event_id, json.dumps(payload, ensure_ascii=False), timestamp, timestamp),
+        )
+    return cursor.rowcount > 0
+
+
+def next_webhook() -> dict[str, Any] | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM webhook_events WHERE status='pending' AND next_attempt_at<=? "
+            "ORDER BY created_at LIMIT 1", (now(),),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def finish_webhook(event_id: str, error: str | None = None) -> None:
+    from datetime import timedelta
+    with connect() as conn:
+        if error is None:
+            conn.execute("UPDATE webhook_events SET status='done',processed_at=?,error=NULL "
+                         "WHERE id=?", (now(), event_id))
+        else:
+            row = conn.execute("SELECT attempts FROM webhook_events WHERE id=?", (event_id,)).fetchone()
+            attempts = int(row["attempts"]) + 1 if row else 1
+            delay = min(3600, 2 ** min(attempts, 10))
+            retry_at = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
+            conn.execute("UPDATE webhook_events SET attempts=?,next_attempt_at=?,error=? "
+                         "WHERE id=?", (attempts, retry_at, error[:500], event_id))
+
+
+def set_dm_shared_url(message_id: str, url: str) -> None:
+    with connect() as conn:
+        conn.execute("UPDATE events SET shared_url=COALESCE(shared_url, ?),updated_at=? "
+                     "WHERE id=? AND kind='dm'", (url, now(), f"dm:{message_id}"))
+
+
 def list_artworks() -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute("SELECT * FROM artworks ORDER BY title").fetchall()
@@ -336,6 +392,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
                   has_liked=COALESCE(?, has_liked),
                   like_count=COALESCE(?, like_count),
                   author_username=CASE WHEN ? <> '' THEN ? ELSE author_username END,
+                  body=CASE WHEN ? <> '' THEN ? ELSE body END,
                   updated_at=?
                 WHERE id=?
                 """,
@@ -346,7 +403,8 @@ def upsert_event(event: dict[str, Any]) -> bool:
                     event.get("author_id"),
                     event.get("direction"), event.get("has_liked"),
                     event.get("like_count"), event.get("author_username", ""),
-                    event.get("author_username", ""), timestamp, event["id"],
+                    event.get("author_username", ""), event.get("body", ""),
+                    event.get("body", ""), timestamp, event["id"],
                 ),
             )
         return cursor.rowcount > 0

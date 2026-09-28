@@ -76,6 +76,21 @@ class GraphClient:
             seen.add(after)
             query["after"] = after
 
+    def nested_pages(self, path: str, nested: dict[str, Any], *, fields: str,
+                     limit: int = 1000000) -> Iterator[dict]:
+        count = 0
+        for item in nested.get("data") or []:
+            if isinstance(item, dict):
+                yield item
+                count += 1
+                if count >= limit:
+                    return
+        paging = nested.get("paging") or {}
+        after = (paging.get("cursors") or {}).get("after")
+        if paging.get("next") and after:
+            yield from self.pages(path, params={"fields": fields, "limit": 50,
+                                                  "after": after}, limit=limit - count)
+
 
 class InstagramService:
     def __init__(self) -> None:
@@ -228,7 +243,8 @@ class InstagramService:
         return ""
 
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
-             threads_amount: int = 100, dm_user_id: str | None = None) -> dict[str, Any]:
+             threads_amount: int = 100, dm_user_id: str | None = None,
+             full: bool = False) -> dict[str, Any]:
         with self._lock:
             if dm_user_id is not None and not re.fullmatch(r"\d+", dm_user_id):
                 raise InstagramAssistantError("대상 Instagram 사용자 ID는 숫자여야 합니다.")
@@ -254,7 +270,8 @@ class InstagramService:
                     for comment in client.pages(f"/{media_id}/comments", params={
                         "fields": "id,text,username,from{id,username},timestamp,like_count,"
                                   "replies{id,text,username,from{id,username},timestamp}",
-                        "limit": min(comments_per_media, 50)}, limit=min(comments_per_media * 4, 500)):
+                        "limit": min(comments_per_media, 50)},
+                        limit=1000000 if full else min(comments_per_media * 4, 500)):
                         seen_comments += 1
                         username = self._comment_username(comment)
                         if not username or username.casefold() == client.username.casefold():
@@ -269,7 +286,11 @@ class InstagramService:
                             "author_username": username, "body": comment.get("text") or "",
                             "like_count": comment.get("like_count"),
                             "received_at": self._timestamp(comment.get("timestamp"))}))
-                        for reply in (comment.get("replies") or {}).get("data") or []:
+                        replies = (client.nested_pages(f"/{comment_id}/replies",
+                            comment.get("replies") or {},
+                            fields="id,text,username,from{id,username},timestamp") if full else
+                            (comment.get("replies") or {}).get("data") or [])
+                        for reply in replies:
                             reply_username = self._comment_username(reply)
                             if not reply_username:
                                 detail = client.request("GET", f"/{reply['id']}", params={
@@ -286,7 +307,7 @@ class InstagramService:
                                 "status": "history"}))
                             if outbound:
                                 update_event(f"comment:{comment_id}", {"status": "sent", "error": None})
-                        if imported_comments >= comments_per_media:
+                        if not full and imported_comments >= comments_per_media:
                             break
                     if int(media.get("comments_count") or 0) > 0 and not seen_comments:
                         raise InstagramAssistantError(
@@ -302,7 +323,7 @@ class InstagramService:
                     thread_id = str(conversation["id"])
                     updated_time = str(conversation.get("updated_time") or "")
                     state = get_dm_sync_state(client.account_id, thread_id)
-                    if dm_user_id is None and updated_time and state and state["updated_time"] == updated_time:
+                    if not full and dm_user_id is None and updated_time and state and state["updated_time"] == updated_time:
                         try:
                             checked_at = datetime.fromisoformat(state["checked_at"])
                             if datetime.now(UTC) - checked_at < timedelta(hours=24):
@@ -326,7 +347,11 @@ class InstagramService:
                         str(person["id"]): str(person.get("username") or "")
                         for person in participants if person.get("id")
                     }
-                    for message in (detail.get("messages") or {}).get("data") or []:
+                    messages = (client.nested_pages(f"/{thread_id}/messages",
+                        detail.get("messages") or {},
+                        fields="id,created_time,from,to,message,reactions,shares{link}") if full else
+                        (detail.get("messages") or {}).get("data") or [])
+                    for message in messages:
                         sender = message.get("from") or {}
                         sender_id = str(sender.get("id") or "")
                         if not sender_id:
@@ -355,8 +380,48 @@ class InstagramService:
             update_settings({"last_sync_at": datetime.now(UTC).isoformat()})
             return {"comments": comments_count, "comment_replies": replies_count,
                 "dms": dm_count, "dm_threads_checked": dm_threads_checked,
-                "dm_threads_skipped": dm_threads_skipped, "dm_full_sync": False,
+                "dm_threads_skipped": dm_threads_skipped, "dm_full_sync": full,
                 "dm_requests_full_sync": False}
+
+    def sync_comment_thread(self, comment_id: str) -> dict[str, int]:
+        if not re.fullmatch(r"\d+", comment_id):
+            raise InstagramAssistantError("댓글 ID는 숫자여야 합니다.")
+        with self._lock:
+            client = self.connect_saved_session()
+            detail = client.request("GET", f"/{comment_id}", params={
+                "fields": "id,text,username,from{id,username},timestamp,like_count,parent_id,"
+                          "media{id,permalink,caption}"})
+            parent_id = str(detail.get("parent_id") or comment_id)
+            parent = (client.request("GET", f"/{parent_id}", params={
+                "fields": "id,text,username,from{id,username},timestamp,like_count,"
+                          "media{id,permalink,caption}"}) if parent_id != comment_id else detail)
+            media = parent.get("media") or detail.get("media") or {}
+            post_url = self._canonical_url(str(media.get("permalink") or ""))
+            match = re.search(r"instagram\.com/(?:reel|p)/([^/?#]+)", post_url)
+            common = {"account_id": client.account_id, "kind": "comment",
+                      "media_id": str(media.get("id") or ""), "post_code": match.group(1) if match else "",
+                      "post_url": post_url, "post_caption": re.sub(r"\s+", " ",
+                      media.get("caption") or "").strip()[:160]}
+            count = 0
+            username = self._comment_username(parent)
+            if username and username.casefold() != client.username.casefold():
+                count += int(upsert_event({**common, "id": f"comment:{parent_id}",
+                    "source_id": parent_id, "author_username": username,
+                    "body": parent.get("text") or "", "like_count": parent.get("like_count"),
+                    "received_at": self._timestamp(parent.get("timestamp"))}))
+            for reply in client.pages(f"/{parent_id}/replies", params={
+                    "fields": "id,text,username,from{id,username},timestamp", "limit": 50}, limit=1000000):
+                reply_username = self._comment_username(reply)
+                outbound = reply_username.casefold() == client.username.casefold()
+                count += int(upsert_event({**common, "id": f"comment:{reply['id']}",
+                    "source_id": str(reply["id"]), "parent_comment_id": parent_id,
+                    "author_username": reply_username,
+                    "direction": "outbound" if outbound else "inbound",
+                    "body": reply.get("text") or "",
+                    "received_at": self._timestamp(reply.get("timestamp")), "status": "history"}))
+                if outbound:
+                    update_event(f"comment:{parent_id}", {"status": "sent", "error": None})
+            return {"comments": count}
 
     def send_for_event(self, event_id: str) -> dict[str, Any]:
         with self._lock:

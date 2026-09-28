@@ -368,3 +368,30 @@ def test_sync_resolves_reply_author_when_list_omits_it(monkeypatch, tmp_path):
     assert result["comment_replies"] == 1
     assert db.get_event("comment:comment-1")["status"] == "sent"
     assert db.get_event("comment:reply-1")["author_username"] == "studio.jiiwon"
+
+
+def test_targeted_comment_fetches_parent_and_all_replies(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+
+        def request(self, method, path, *, params):
+            if path == "/22":
+                return {"id": "22", "parent_id": "11", "username": "visitor2"}
+            assert path == "/11"
+            return {"id": "11", "username": "visitor", "text": "원댓글",
+                "media": {"id": "99", "permalink": "https://www.instagram.com/reel/ABC/"}}
+
+        def pages(self, path, *, params, limit):
+            assert path == "/11/replies" and limit > 50
+            return iter([{"id": "22", "username": "visitor2", "text": "다시 질문"},
+                {"id": "23", "username": "studio.jiiwon", "text": "답장"}])
+
+    service = InstagramService()
+    service._client = FakeGraph()
+    assert service.sync_comment_thread("22") == {"comments": 3}
+    assert db.get_event("comment:22")["parent_comment_id"] == "11"
+    assert db.get_event("comment:11")["status"] == "sent"

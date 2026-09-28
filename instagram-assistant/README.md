@@ -16,6 +16,12 @@ Meta's Instagram Login setup says an app must be published to access live data. 
 
 The app binds to `127.0.0.1:4318`. `INSTAGRAM_ASSISTANT_DATA` overrides the shared data directory. Run only one assistant process against it at a time. `INSTAGRAM_GRAPH_VERSION` can select the Meta API version after checking its current documentation.
 
+## Webhook and daily reconciliation
+
+The separate `app.webhook:app` process binds to `127.0.0.1:4319`. Expose only that process at a public HTTPS `/webhook` URL. Never expose the viewer on port 4318 through the public webhook tunnel. Configure the Meta Instagram webhook callback with that URL and the private `INSTAGRAM_WEBHOOK_VERIFY_TOKEN`; subscribe to `messages`, `message_reactions`, and `comments`. The endpoint checks Meta's SHA-256 signature against `INSTAGRAM_APP_SECRET`, stores the raw notification in SQLite, acknowledges it, then queries only the affected DM conversation or comment thread. Failed lookups are retried; the viewer does not send anything in this flow.
+
+Run `uv run --env-file .env.local python -m app.full_sync` once per day with a local scheduler. The command guards against a repeat less than 24 hours after a successful run. It walks all accessible media, top-level comments and replies, DM conversations, and message pages. API limits still apply; Meta omits request-folder conversations inactive for more than 30 days. The last successful full reconciliation time is stored as `last_full_sync_at` in settings. Existing `app.worker` and viewer manual sync remain partial, on-demand operations.
+
 ## Review and sending
 
 - [Codex operation API](./API.md) lists the normalized read endpoints, protected reply/reaction actions, review flow, and current limits. MCP is optional.
