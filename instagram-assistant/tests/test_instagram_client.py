@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from app import config, db, instagram_client
-from app.instagram_client import GraphClient, InstagramAssistantError, InstagramService
+from app.instagram_client import GraphClient, InstagramAssistantError, InstagramService, MetaApiError
 
 
 def test_graph_client_uses_official_host_and_bearer_token(monkeypatch):
@@ -36,6 +36,22 @@ def test_graph_error_keeps_meta_trace_without_exposing_token(monkeypatch):
     with pytest.raises(InstagramAssistantError, match="transient=True, trace=trace-123") as exc:
         GraphClient("private-token", "ig-1", "studio.jiiwon").request("POST", "/me/messages")
     assert "private-token" not in str(exc.value)
+
+
+def test_graph_client_preserves_meta_status_and_subcode(monkeypatch):
+    original_client = httpx.Client
+    monkeypatch.setattr(instagram_client.httpx, "Client", lambda **kwargs: original_client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(400, json={"error": {
+            "message": "Outside allowed window", "code": 10, "error_subcode": 2018278,
+            "type": "OAuthException", "fbtrace_id": "trace-1"}})), **kwargs))
+    with pytest.raises(MetaApiError) as caught:
+        GraphClient("private-token", "ig-1", "studio.jiiwon").request(
+            "POST", "/ig-1/messages", json_body={"message": {"text": "hello"}})
+    assert caught.value.status == 400
+    assert caught.value.subcode == 2018278
+    assert "POST /ig-1/messages" in str(caught.value)
+    assert "trace=trace-1" in str(caught.value)
+    assert "private-token" not in str(caught.value)
 
 
 def test_expired_meta_halt_does_not_block_new_actions(monkeypatch):
@@ -173,6 +189,24 @@ def test_existing_reply_blocks_duplicate_post(monkeypatch):
     with pytest.raises(InstagramAssistantError, match="이미 답글"):
         service.send_for_event(item["id"])
     assert ("update", {"status": "sent", "error": None}) in calls
+
+
+def test_meta_http_400_is_recorded_as_rejected_not_uncertain(monkeypatch):
+    item = event(id="dm:message-1", kind="dm", source_id="message-1",
+                 author_id="visitor-1", proposed_action="reply_dm", draft="안녕하세요")
+    service, calls = setup_send(monkeypatch, item)
+
+    def reject(method, path, **kwargs):
+        raise MetaApiError(status=400, code=10, subcode=2018278,
+            error_type="OAuthException", trace_id="trace-1", message="Outside allowed window",
+            method=method, path=path)
+
+    service._client = SimpleNamespace(account_id="ig-1", request=reject)
+    with pytest.raises(MetaApiError):
+        service.send_for_event(item["id"])
+    assert any(call[0] == "delivery" and call[1][3] == "rejected" for call in calls)
+    assert any(call[0] == "update" and "subcode=2018278" in call[1]["error"] for call in calls)
+    assert any(call[0] == "delivery" and "POST /ig-1/messages" in call[2]["error"] for call in calls)
 
 
 def test_old_account_event_cannot_be_sent(monkeypatch):

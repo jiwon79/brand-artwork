@@ -31,6 +31,23 @@ class InstagramHaltedError(InstagramAssistantError):
     pass
 
 
+class MetaApiError(InstagramAssistantError):
+    def __init__(self, *, status: int, code: Any, subcode: Any,
+                 error_type: Any, trace_id: Any, message: str, method: str, path: str) -> None:
+        self.status = status
+        self.code = code
+        self.subcode = subcode
+        self.trace_id = trace_id
+        details = [f"HTTP {status}", f"code={code or 'unknown'}"]
+        if subcode is not None:
+            details.append(f"subcode={subcode}")
+        if error_type:
+            details.append(f"type={error_type}")
+        if trace_id:
+            details.append(f"trace={trace_id}")
+        super().__init__(f"Meta API 거절 ({', '.join(details)}; {method} {path}): {message}")
+
+
 class GraphClient:
     def __init__(self, token: str, account_id: str, username: str) -> None:
         self.token, self.account_id, self.username = token, account_id, username
@@ -51,6 +68,8 @@ class GraphClient:
             raise InstagramAssistantError("Meta Graph API 응답 형식이 올바르지 않습니다.")
         if response.is_error or "error" in payload:
             error = payload.get("error") or {}
+            if not isinstance(error, dict):
+                error = {"message": str(error)}
             code = error.get("code")
             message = str(error.get("message") or "요청이 거절되었습니다.")[:300]
             message = message.replace(self.token, "[redacted]") if self.token else message
@@ -61,7 +80,10 @@ class GraphClient:
                 message += f" [{details}]"
             if code in HALT_CODES:
                 raise InstagramHaltedError(f"Meta API 제한 ({code}): {message}")
-            raise InstagramAssistantError(f"Meta API 오류 ({code or response.status_code}): {message}")
+            raise MetaApiError(status=response.status_code, code=code,
+                subcode=error.get("error_subcode"), error_type=error.get("type"),
+                trace_id=error.get("fbtrace_id"), message=message,
+                method=method, path=path)
         return payload
 
     def pages(self, path: str, *, params: dict | None = None, limit: int = 50) -> Iterator[dict]:
@@ -513,6 +535,13 @@ class InstagramService:
             except InstagramHaltedError as exc:
                 self._record_halt(exc)
                 add_delivery(event_id, action, event["draft"], "halted", error=str(exc))
+                raise
+            except MetaApiError as exc:
+                rejected = 400 <= exc.status < 500 and exc.status not in {408, 429}
+                add_delivery(event_id, action, event["draft"],
+                    "rejected" if rejected else "uncertain", error=str(exc))
+                update_event(event_id, {"status": "manual", "error":
+                    ("Meta 거절: " if rejected else "전송 결과 불확실: ") + str(exc)})
                 raise
             except InstagramAssistantError as exc:
                 add_delivery(event_id, action, event["draft"], "uncertain", error=str(exc))
