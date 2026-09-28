@@ -71,7 +71,8 @@ async function syncRecords() {
   button.disabled = true;
   button.innerHTML = '<span class="button-spinner" aria-hidden="true"></span>동기화 중';
   try {
-    const response = await fetch("/api/viewer/sync", {
+    const scope = routeFromLocation() === "dm" ? "?scope=dm" : "";
+    const response = await fetch(`/api/viewer/sync${scope}`, {
       method: "POST",
       headers: { "X-Requested-With": "InstagramAssistant" },
     });
@@ -111,7 +112,7 @@ function safeUrl(value) {
 function sharedLink(event) {
   const url = safeUrl(event.shared_url);
   if (!url) return "";
-  return `<div class="shared-content"><span>공유된 콘텐츠</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
+  return `<div class="shared-content"><span>공유된 게시물</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
 }
 
 function linkedMessageBody(value) {
@@ -187,7 +188,7 @@ async function renderConversations(keepSelection = true) {
     statusFromLocation() === "completed" ? "완료된 DM이 없습니다." : "아직 DM 대화가 없습니다.";
   document.querySelector("#conversation-list").innerHTML = visible.map((item) => `
     <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
-      <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong></span>
+      <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong><span class="dm-heart-state ${item.latest_inbound_hearted ? "liked" : ""}">${item.latest_inbound_hearted === null ? "? 하트 미확인" : item.latest_inbound_hearted ? "♥ 하트함" : "♡ 하트 안 함"}</span></span>
       <span class="conversation-preview">${escapeHtml(item.latest_body || "메시지 내용 없음")}</span>
       <time>${formatTime(item.latest_at, true)}</time>
     </button>`).join("") || `<p class="empty compact">${emptyMessage}</p>`;
@@ -209,17 +210,18 @@ async function refreshChat() {
   const messages = await api(`/api/conversations/${encodeURIComponent(selectedThreadId)}`);
   const selected = conversations.find((item) => item.thread_id === selectedThreadId);
   const username = selected?.username || [...messages].reverse().find((item) => item.direction === "inbound" && item.author_username)?.author_username || "알 수 없음";
+  const userId = messages.find((item) => item.direction === "inbound" && /^\d+$/.test(item.author_id || ""))?.author_id;
   const profile = `https://www.instagram.com/${encodeURIComponent(username)}/`;
   panel.innerHTML = `
-    <header class="chat-header"><button class="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div class="chat-identity"><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><div class="chat-header-actions"><a href="${profile}" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
+    <header class="chat-header"><button class="chat-back" aria-label="대화 목록으로 돌아가기">‹</button><div class="chat-identity"><strong>${escapeHtml(username)}</strong><span>${messages.length}개 메시지</span></div><div class="chat-header-actions">${userId ? `<button class="quiet sync-thread" data-user-id="${escapeHtml(userId)}" type="button">이 대화 동기화</button>` : ""}<a href="${profile}" target="_blank" rel="noreferrer">프로필 ↗</a></div></header>
     <div class="chat-messages">${messages.map((message) => `
       <div class="message-row ${message.direction}">
         <div class="message-bubble">
-          ${message.body ? `<p>${linkedMessageBody(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
+          ${message.body && !(message.shared_url && message.body === "메시지 내용 없음") ? `<p>${linkedMessageBody(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
           ${sharedLink(message)}
           <time>${formatTime(message.received_at, true)}</time>
         </div>
-        ${message.direction === "inbound" && message.has_liked ? '<span class="dm-heart" aria-label="하트 표시됨">♥</span>' : ""}
+        ${message.direction === "inbound" ? `<span class="dm-heart ${message.has_liked ? "liked" : ""}" aria-label="${message.has_liked === null ? "내 하트 상태 미확인" : message.has_liked ? "내가 하트 표시함" : "내가 하트 표시하지 않음"}">${message.has_liked === null ? "?" : message.has_liked ? "♥" : "♡"}</span>` : ""}
       </div>`).join("")}</div>`;
   requestAnimationFrame(() => {
     const scroll = panel.querySelector(".chat-messages");
@@ -239,6 +241,7 @@ async function refreshStatus() {
   const account = data.settings.instagram_username;
   document.querySelector("#settings-account").textContent = data.authenticated && account ? `@${account}` : "연결된 계정 없음";
   document.querySelector("#last-sync").textContent = formatTime(data.settings.last_sync_at);
+  document.querySelector("#admin-logout").hidden = !data.admin_login;
 }
 
 async function refreshRoute(route) {
@@ -281,6 +284,21 @@ document.querySelector("#conversation-list").addEventListener("click", (event) =
 });
 document.querySelector("#chat-panel").addEventListener("click", (event) => {
   if (event.target.closest(".chat-back")) document.querySelector("#dm-inbox").classList.remove("chat-open");
+  const button = event.target.closest(".sync-thread");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.textContent = "동기화 중";
+  fetch(`/api/viewer/sync?scope=dm&user_id=${encodeURIComponent(button.dataset.userId)}`, {
+    method: "POST", headers: { "X-Requested-With": "InstagramAssistant" },
+  }).then(async (response) => {
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.detail || `동기화 실패 (${response.status})`);
+    await refreshConversations();
+    showToast(result.dm_threads_checked ? "이 대화 동기화 완료" : "해당 대화를 API에서 찾지 못했습니다.");
+  }).catch(showError).finally(() => {
+    button.disabled = false;
+    button.textContent = "이 대화 동기화";
+  });
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") refreshRoute(routeFromLocation()).catch(showError);

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
+import os
+from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from .config import ROOT, local_token, paths
+from .config import ROOT, local_token
+from .admin_auth import COOKIE_NAME, configured, require_configuration, sign_session, valid_session, verify_password
 from .db import (
     count_events_by_status,
     get_event,
@@ -26,11 +28,12 @@ from .db import (
 )
 from .instagram_client import InstagramAssistantError, instagram_service
 from .link_preview import fetch_link_preview
+from .token_store import has_token
 
 
 app = FastAPI(title="jiiwon.studio Instagram Assistant", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
-TOKEN = local_token()
+TOKEN = local_token() if not os.getenv("VERCEL") and not configured() else ""
 
 
 class SettingsBody(BaseModel):
@@ -62,8 +65,62 @@ def startup() -> None:
 
 
 def protect(x_instagram_assistant_token: str | None) -> None:
+    if configured():
+        return  # Admin session and same-origin checks are enforced in middleware.
     if x_instagram_assistant_token != TOKEN:
         raise HTTPException(403, "Invalid local token")
+
+
+@app.middleware("http")
+async def admin_gate(request: Request, call_next):
+    if (request.url.path.startswith("/static/") or request.url.path in
+            {"/webhook", "/api/cron/process-webhooks", "/api/cron/full-sync"}):
+        return await call_next(request)
+    try:
+        login_enabled = require_configuration(request)
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    if not login_enabled or request.url.path in {"/login", "/api/admin/login"}:
+        return await call_next(request)
+    if not valid_session(request.cookies.get(COOKIE_NAME)):
+        if request.method == "GET" and not request.url.path.startswith("/api/"):
+            return RedirectResponse("/login", status_code=303)
+        return JSONResponse({"detail": "Administrator login required"}, status_code=401)
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and request.url.path != "/api/auth/callback":
+        origin = request.headers.get("origin", "")
+        host = request.headers.get("host", "")
+        if origin not in {f"https://{host}", f"http://{host}"}:
+            return JSONResponse({"detail": "Same-origin request required"}, status_code=403)
+    return await call_next(request)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def admin_login_page() -> str:
+    return (ROOT / "static" / "login.html").read_text()
+
+
+@app.post("/api/admin/login")
+async def admin_login(request: Request):
+    if not configured():
+        raise HTTPException(503, "Administrator login is not configured")
+    from urllib.parse import parse_qs
+
+    form = parse_qs((await request.body()).decode("utf-8", errors="replace"))
+    if not verify_password((form.get("password") or [""])[0]):
+        raise HTTPException(401, "Invalid administrator password")
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(COOKIE_NAME, sign_session(), max_age=43200,
+                        httponly=True,
+                        secure=(request.url.hostname not in {"localhost", "127.0.0.1", "::1"}),
+                        samesite="lax", path="/")
+    return response
+
+
+@app.post("/api/admin/logout")
+def admin_logout() -> RedirectResponse:
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(COOKIE_NAME, path="/")
+    return response
 
 
 def as_http_error(exc: Exception) -> HTTPException:
@@ -84,7 +141,8 @@ def status() -> dict[str, Any]:
     settings = get_settings()
     counts = count_events_by_status()
     return {
-        "authenticated": paths.session.exists(),
+        "admin_login": configured(),
+        "authenticated": has_token(),
         "connected": instagram_service.connected,
         "settings": settings,
         "counts": {
@@ -133,15 +191,19 @@ def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict
 
 
 @app.post("/api/viewer/sync")
-def viewer_sync(request: Request, x_requested_with: str | None = Header(default=None)) -> dict[str, Any]:
+def viewer_sync(request: Request, scope: Literal["all", "dm"] = "all",
+                user_id: str | None = None,
+                x_requested_with: str | None = Header(default=None)) -> dict[str, Any]:
     origin = request.headers.get("origin", "")
     host = request.headers.get("host", "")
     if (x_requested_with != "InstagramAssistant" or
             origin not in {f"http://{host}", f"https://{host}"} or
             request.headers.get("sec-fetch-site", "same-origin") != "same-origin"):
         raise HTTPException(403, "Same-origin viewer request required")
+    if user_id is not None and scope != "dm":
+        raise HTTPException(400, "user_id requires DM scope")
     try:
-        return instagram_service.sync()
+        return instagram_service.sync(media_amount=0, dm_user_id=user_id) if scope == "dm" else instagram_service.sync()
     except Exception as exc:
         raise as_http_error(exc) from exc
 

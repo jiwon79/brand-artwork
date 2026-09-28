@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, Iterator
 
 from .config import paths, prepare_data_dir
+from .database_backend import open_connection, remote_url
 
 
 STUDIO_URL = "https://studio.jiiwon.com"
@@ -80,18 +81,50 @@ CREATE TABLE IF NOT EXISTS deliveries (
   error TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS dm_sync_state (
+  account_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  updated_time TEXT NOT NULL,
+  checked_at TEXT NOT NULL,
+  PRIMARY KEY(account_id, thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id TEXT PRIMARY KEY,
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  processed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS webhook_events_ready_idx
+ON webhook_events(status, next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS private_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 """
 
 
 DEFAULT_SETTINGS = {
     "instagram_username": "",
     "instagram_account_id": "",
+    "instagram_messaging_account_id": "",
     "profile_url": "https://litt.ly/jiiwon",
     "auto_send": False,
     "auto_comment": False,
     "auto_dm": False,
     "daily_send_limit": 20,
     "last_sync_at": None,
+    "last_full_sync_at": None,
+    "full_sync_progress": None,
+    "full_sync_retry_after": None,
     "dm_backfill_complete": False,
     "dm_requests_backfill_complete": False,
     "halted_reason": None,
@@ -141,10 +174,9 @@ def now() -> str:
 
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
-    prepare_data_dir()
-    conn = sqlite3.connect(paths.database)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
+    if not remote_url():
+        prepare_data_dir()
+    conn = open_connection(paths.database)
     try:
         yield conn
         conn.commit()
@@ -212,6 +244,24 @@ def get_settings() -> dict[str, Any]:
     return {row["key"]: json.loads(row["value"]) for row in rows}
 
 
+def get_private_state(key: str) -> str | None:
+    with connect() as conn:
+        row = conn.execute("SELECT value FROM private_state WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_private_state(key: str, value: str) -> None:
+    with connect() as conn:
+        conn.execute("INSERT INTO private_state(key,value,updated_at) VALUES(?,?,?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+                     (key, value, now()))
+
+
+def delete_private_state(key: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM private_state WHERE key=?", (key,))
+
+
 def update_settings(values: dict[str, Any]) -> dict[str, Any]:
     allowed = set(DEFAULT_SETTINGS)
     with connect() as conn:
@@ -224,6 +274,70 @@ def update_settings(values: dict[str, Any]) -> dict[str, Any]:
                 (key, json.dumps(value, ensure_ascii=False)),
             )
     return get_settings()
+
+
+def get_dm_sync_state(account_id: str, thread_id: str) -> dict[str, str] | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT updated_time, checked_at FROM dm_sync_state WHERE account_id=? AND thread_id=?",
+            (account_id, thread_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def save_dm_sync_state(account_id: str, thread_id: str, updated_time: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO dm_sync_state(account_id, thread_id, updated_time, checked_at) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(account_id, thread_id) DO UPDATE SET "
+            "updated_time=excluded.updated_time, checked_at=excluded.checked_at",
+            (account_id, thread_id, updated_time, now()),
+        )
+
+
+def enqueue_webhook(event_id: str, payload: dict[str, Any]) -> bool:
+    timestamp = now()
+    with connect() as conn:
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO webhook_events(id,payload,next_attempt_at,created_at) "
+            "VALUES (?,?,?,?)",
+            (event_id, json.dumps(payload, ensure_ascii=False), timestamp, timestamp),
+        )
+    return cursor.rowcount > 0
+
+
+def next_webhook() -> dict[str, Any] | None:
+    from datetime import timedelta
+    lease_until = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+    with connect() as conn:
+        row = conn.execute(
+            "UPDATE webhook_events SET status='processing',next_attempt_at=? WHERE id=("
+            "SELECT id FROM webhook_events WHERE status IN ('pending','processing') "
+            "AND next_attempt_at<=? ORDER BY created_at LIMIT 1) RETURNING *",
+            (lease_until, now()),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def finish_webhook(event_id: str, error: str | None = None) -> None:
+    from datetime import timedelta
+    with connect() as conn:
+        if error is None:
+            conn.execute("UPDATE webhook_events SET status='done',processed_at=?,error=NULL "
+                         "WHERE id=?", (now(), event_id))
+        else:
+            row = conn.execute("SELECT attempts FROM webhook_events WHERE id=?", (event_id,)).fetchone()
+            attempts = int(row["attempts"]) + 1 if row else 1
+            delay = min(3600, 2 ** min(attempts, 10))
+            retry_at = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
+            conn.execute("UPDATE webhook_events SET status='pending',attempts=?,next_attempt_at=?,error=? "
+                         "WHERE id=?", (attempts, retry_at, error[:500], event_id))
+
+
+def set_dm_shared_url(message_id: str, url: str) -> None:
+    with connect() as conn:
+        conn.execute("UPDATE events SET shared_url=COALESCE(shared_url, ?),updated_at=? "
+                     "WHERE id=? AND kind='dm'", (url, now(), f"dm:{message_id}"))
 
 
 def list_artworks() -> list[dict[str, Any]]:
@@ -303,21 +417,25 @@ def upsert_event(event: dict[str, Any]) -> bool:
                   post_url=COALESCE(?, post_url),
                   post_caption=COALESCE(?, post_caption),
                   shared_url=COALESCE(?, shared_url),
+                  body=CASE WHEN body='메시지 내용 없음' AND ? IS NOT NULL THEN '' ELSE body END,
                   author_id=COALESCE(?, author_id),
                   direction=COALESCE(?, direction),
                   has_liked=COALESCE(?, has_liked),
                   like_count=COALESCE(?, like_count),
                   author_username=CASE WHEN ? <> '' THEN ? ELSE author_username END,
+                  body=CASE WHEN ? <> '' THEN ? ELSE body END,
                   updated_at=?
                 WHERE id=?
                 """,
                 (
                     event.get("account_id"), event.get("parent_comment_id"), event.get("thread_id"),
                     event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
+                    event.get("shared_url"),
                     event.get("author_id"),
                     event.get("direction"), event.get("has_liked"),
                     event.get("like_count"), event.get("author_username", ""),
-                    event.get("author_username", ""), timestamp, event["id"],
+                    event.get("author_username", ""), event.get("body", ""),
+                    event.get("body", ""), timestamp, event["id"],
                 ),
             )
         return cursor.rowcount > 0
@@ -483,13 +601,20 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
         conversation = conversations.setdefault(thread_id, {
             "thread_id": thread_id,
             "username": "",
-            "latest_body": item["body"],
+            "latest_body": item["body"] or item["shared_url"] or "메시지 내용 없음",
             "latest_at": item["received_at"],
+            "latest_inbound_hearted": None,
+            "_seen_inbound": False,
             "message_count": 0,
             "has_actionable": False,
             "_has_newer_resolution": False,
         })
         conversation["message_count"] += 1
+        if item["direction"] == "inbound" and not conversation["_seen_inbound"]:
+            conversation["latest_inbound_hearted"] = (
+                None if item["has_liked"] is None else bool(item["has_liked"])
+            )
+            conversation["_seen_inbound"] = True
         if item["direction"] == "outbound" or item["has_liked"] or item["status"] in {"sent", "completed", "ignored"}:
             conversation["_has_newer_resolution"] = True
         elif item["direction"] == "inbound" and item["status"] in {"pending", "drafted", "manual"}:
@@ -500,6 +625,7 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
     items = list(conversations.values())
     for item in items:
         item.pop("_has_newer_resolution")
+        item.pop("_seen_inbound")
     if status == "active":
         return [item for item in items if item["has_actionable"]]
     if status == "completed":
