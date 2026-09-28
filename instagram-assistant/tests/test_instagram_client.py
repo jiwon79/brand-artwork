@@ -40,6 +40,23 @@ def test_graph_pages_stop_when_meta_has_no_next_page(monkeypatch):
     assert len(calls) == 1
 
 
+def test_manual_conversation_pages_stop_after_budget_when_meta_returns_empty_pages(monkeypatch):
+    client = GraphClient("token", "ig-1", "studio.jiiwon")
+    calls = []
+
+    def request(method, path, *, params):
+        calls.append(dict(params))
+        return {"data": [], "paging": {"next": "https://example.com/next",
+                                      "cursors": {"after": f"cursor-{len(calls)}"}}}
+
+    monkeypatch.setattr(client, "request", request)
+    assert list(client.pages("/me/conversations", params={"limit": 1}, limit=1)) == []
+    assert len(calls) == 1
+    calls.clear()
+    assert list(client.pages("/me/conversations", params={"limit": 100}, limit=100)) == []
+    assert len(calls) == 10
+
+
 def test_nested_pages_continue_after_initial_dm_page(monkeypatch):
     client = GraphClient("token", "ig-1", "studio.jiiwon")
     calls = []

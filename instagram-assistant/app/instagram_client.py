@@ -63,8 +63,13 @@ class GraphClient:
         query = dict(params or {})
         seen: set[str] = set()
         count = 0
+        pages_checked = 0
+        # Meta can return empty conversation pages with a next cursor. Manual
+        # sync must stay bounded even when no accessible conversation appears.
+        conversation_page_limit = min(limit, 10) if path == "/me/conversations" else None
         while count < limit:
             result = self.request("GET", path, params=query)
+            pages_checked += 1
             for item in result.get("data") or []:
                 if isinstance(item, dict):
                     yield item
@@ -73,7 +78,8 @@ class GraphClient:
                         return
             paging = result.get("paging") or {}
             after = (paging.get("cursors") or {}).get("after")
-            if not paging.get("next") or not after or after in seen:
+            if (not paging.get("next") or not after or after in seen or
+                    (conversation_page_limit is not None and pages_checked >= conversation_page_limit)):
                 return
             seen.add(after)
             query["after"] = after
