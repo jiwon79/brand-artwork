@@ -43,6 +43,23 @@ def test_event_targets_only_connected_account():
     assert webhook.event_targets(payload, "123") == ({"456", "789"}, {"12"})
 
 
+def test_hosted_webhook_processes_queued_event_after_ack(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("INSTAGRAM_APP_SECRET", "test-secret")
+    monkeypatch.setattr(webhook, "get_settings", lambda: {"instagram_account_id": "123"})
+    monkeypatch.setattr(webhook, "initialize", lambda: None)
+    monkeypatch.setattr(webhook, "next_webhook", lambda: None)
+    calls = []
+    monkeypatch.setattr(webhook, "enqueue_webhook", lambda *_: calls.append("queued"))
+    monkeypatch.setattr(webhook, "process_one", lambda: calls.append("processed"))
+    body = b'{"object":"instagram","entry":[{"id":"123"}]}'
+    signature = "sha256=" + hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
+    with TestClient(webhook.app) as client:
+        assert client.post("/webhook", content=body,
+            headers={"x-hub-signature-256": signature}).status_code == 200
+    assert "queued" in calls and "processed" in calls[calls.index("queued") + 1:]
+
+
 def test_messaging_account_id_alias_routes_inbound_and_outbound():
     payload = {"object": "instagram", "entry": [{"id": "1784", "messaging": [
         {"sender": {"id": "456"}, "recipient": {"id": "1784"}},

@@ -1,4 +1,5 @@
 from app import config, db
+from app.database_backend import remote_url
 from app.migrate_to_turso import migrate
 from app.token_store import has_token, load_and_delete_oauth_state, load_token, save_oauth_state, save_token
 from cryptography.fernet import Fernet
@@ -29,6 +30,15 @@ def test_separate_turso_database_urls_must_differ(tmp_path, monkeypatch):
         assert "must differ" in str(exc)
     else:
         raise AssertionError("shared development and production DB must be rejected")
+
+
+def test_vercel_marketplace_prefixed_turso_variables(monkeypatch):
+    monkeypatch.setenv("INSTAGRAM_ENV", "development")
+    monkeypatch.setenv("TURSO_DEV_TURSO_DATABASE_URL", "libsql://development.example")
+    monkeypatch.setenv("TURSO_DEV_TURSO_AUTH_TOKEN", "test-token")
+    monkeypatch.delenv("TURSO_DEV_DATABASE_URL", raising=False)
+    monkeypatch.delenv("TURSO_PROD_DATABASE_URL", raising=False)
+    assert remote_url() == "libsql://development.example"
 
 
 def test_explicit_environment_rejects_generic_database_url(monkeypatch):

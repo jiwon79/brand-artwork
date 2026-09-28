@@ -37,9 +37,11 @@ def test_daily_cron_starts_full_sync_only_with_secret(monkeypatch, tmp_path):
     monkeypatch.setattr(config.paths, "data", tmp_path)
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setenv("CRON_SECRET", "cron-test-secret")
+    monkeypatch.setattr(hosted, "process_one", lambda: False)
     monkeypatch.setattr(hosted, "run_pass", lambda **kwargs: {"complete": True, **kwargs})
     with TestClient(hosted.app, base_url="https://admin.example") as client:
         assert client.get("/api/cron/full-sync").status_code == 403
         assert client.get("/api/cron/full-sync", headers={
             "Authorization": "Bearer cron-test-secret"}).json() == {
-                "complete": True, "max_seconds": 240}
+                "webhooks_processed": 0,
+                "reconciliation": {"complete": True, "max_seconds": 240}}

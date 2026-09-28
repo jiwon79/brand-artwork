@@ -11,7 +11,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from .db import enqueue_webhook, finish_webhook, get_settings, initialize, next_webhook, set_dm_shared_url
@@ -117,7 +117,7 @@ def verify(request: Request) -> str:
 
 
 @app.post("/webhook")
-async def receive(request: Request) -> dict[str, bool]:
+async def receive(request: Request, background_tasks: BackgroundTasks) -> dict[str, bool]:
     secret = get_meta_config().webhook_app_secret
     if not secret:
         raise HTTPException(503)
@@ -144,4 +144,6 @@ async def receive(request: Request) -> dict[str, bool]:
         raise HTTPException(403)
     digest = hashlib.sha256(body).hexdigest()
     enqueue_webhook(digest, payload)
+    if os.getenv("VERCEL"):
+        background_tasks.add_task(process_one)
     return {"ok": True}

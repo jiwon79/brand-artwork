@@ -34,4 +34,7 @@ def full_sync(authorization: str | None = Header(default=None)) -> dict[str, obj
     secret = os.getenv("CRON_SECRET", "")
     if not secret or not hmac.compare_digest(authorization or "", "Bearer " + secret):
         raise HTTPException(403)
-    return run_pass(max_seconds=240)
+    count = 0
+    while count < 20 and process_one():
+        count += 1
+    return {"webhooks_processed": count, "reconciliation": run_pass(max_seconds=240)}
