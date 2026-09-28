@@ -82,11 +82,15 @@ async def admin_gate(request: Request, call_next):
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
     if not login_enabled or request.url.path in {"/login", "/api/admin/login"}:
         return await call_next(request)
+    # Instagram redirects the browser here without the viewer's admin cookie.
+    # complete_oauth validates a short-lived, one-use state stored server-side.
+    if request.method == "GET" and request.url.path == "/api/auth/callback":
+        return await call_next(request)
     if not valid_session(request.cookies.get(COOKIE_NAME)):
         if request.method == "GET" and not request.url.path.startswith("/api/"):
             return RedirectResponse("/login", status_code=303)
         return JSONResponse({"detail": "Administrator login required"}, status_code=401)
-    if request.method not in {"GET", "HEAD", "OPTIONS"} and request.url.path != "/api/auth/callback":
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin", "")
         host = request.headers.get("host", "")
         if origin not in {f"https://{host}", f"http://{host}"}:
@@ -172,6 +176,19 @@ def auth_callback(code: str = "", state: str = "", error: str = "") -> RedirectR
     except InstagramAssistantError as exc:
         raise as_http_error(exc) from exc
     return RedirectResponse("/setting?oauth=connected", status_code=303)
+
+
+@app.post("/api/webhooks/subscribe")
+def subscribe_webhooks(x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, object]:
+    protect(x_instagram_assistant_token)
+    try:
+        client = instagram_service.connect_saved_session()
+        client.request("POST", "/me/subscribed_apps", data={
+            "subscribed_fields": "messages,message_reactions,comments"})
+        subscriptions = client.request("GET", "/me/subscribed_apps").get("data") or []
+    except InstagramAssistantError as exc:
+        raise as_http_error(exc) from exc
+    return {"subscriptions": subscriptions}
 
 
 @app.post("/api/logout")
