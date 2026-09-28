@@ -74,7 +74,7 @@ def protect(x_instagram_assistant_token: str | None) -> None:
 @app.middleware("http")
 async def admin_gate(request: Request, call_next):
     if (request.url.path.startswith("/static/") or request.url.path in
-            {"/webhook", "/api/cron/process-webhooks"}):
+            {"/webhook", "/api/cron/process-webhooks", "/api/cron/full-sync"}):
         return await call_next(request)
     try:
         login_enabled = require_configuration(request)

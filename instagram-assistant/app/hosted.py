@@ -7,7 +7,8 @@ import os
 from fastapi import Header, HTTPException, Request
 
 from .main import app
-from .full_sync import run_if_due
+from .full_sync import run_if_due, run_pass
+from .db import get_settings
 from .webhook import process_one, receive, verify
 
 
@@ -23,4 +24,14 @@ def process_webhooks(authorization: str | None = Header(default=None)) -> dict[s
     count = 0
     while count < 20 and process_one():
         count += 1
-    return {"processed": count, "reconciliation": run_if_due()}
+    # Continue only a pass already started by the daily schedule.
+    progress = get_settings().get("full_sync_progress")
+    return {"processed": count, "reconciliation": run_if_due() if progress else None}
+
+
+@app.get("/api/cron/full-sync")
+def full_sync(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    secret = os.getenv("CRON_SECRET", "")
+    if not secret or not hmac.compare_digest(authorization or "", "Bearer " + secret):
+        raise HTTPException(403)
+    return run_pass(max_seconds=240)

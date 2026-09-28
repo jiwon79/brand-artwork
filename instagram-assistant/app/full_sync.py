@@ -1,7 +1,8 @@
-"""Resumable daily reconciliation; each call processes one media or DM page."""
+"""Resumable daily reconciliation of media comments and DM conversations."""
 from __future__ import annotations
 
 import json
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -83,5 +84,24 @@ def run_if_due() -> dict[str, object]:
     return {"phase": "dm", "processed": len(items), "complete": True, **result}
 
 
+def run_pass(*, max_seconds: float | None = None) -> dict[str, object]:
+    """Continue one scheduled pass until completion, backoff, or a host time limit."""
+    deadline = time.monotonic() + max_seconds if max_seconds is not None else None
+    steps = 0
+    while deadline is None or time.monotonic() < deadline:
+        result = run_if_due()
+        steps += 1
+        if "complete" in result or "skipped" in result:
+            return {**result, "steps": steps}
+        if "deferred" in result:
+            if deadline is not None:
+                return {**result, "steps": steps}
+            retry_at = datetime.fromisoformat(str(result["deferred"]))
+            time.sleep(max(0, (retry_at - datetime.now(UTC)).total_seconds()))
+        else:
+            time.sleep(1)
+    return {"in_progress": True, "steps": steps}
+
+
 if __name__ == "__main__":
-    print(json.dumps(run_if_due(), ensure_ascii=False))
+    print(json.dumps(run_pass(), ensure_ascii=False))

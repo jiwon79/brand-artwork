@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    {"path": "/api/cron/process-webhooks", "schedule": "* * * * *"}
+    {"path": "/api/cron/process-webhooks", "schedule": "* * * * *"},
+    {"path": "/api/cron/full-sync", "schedule": "0 18 * * *"}
   ]
 }

@@ -56,3 +56,11 @@ def test_full_sync_defers_after_meta_rate_limit(monkeypatch):
     assert "deferred" in full_sync.run_if_due()
     assert settings["full_sync_progress"] == {"phase": "media", "cursor": None}
     assert "deferred" in full_sync.run_if_due()
+
+
+def test_run_pass_continues_all_pages(monkeypatch):
+    steps = iter([{"phase": "media", "next": True},
+                  {"phase": "dm", "next": True}, {"complete": True}])
+    monkeypatch.setattr(full_sync, "run_if_due", lambda: next(steps))
+    monkeypatch.setattr(full_sync.time, "sleep", lambda _: None)
+    assert full_sync.run_pass() == {"complete": True, "steps": 3}
