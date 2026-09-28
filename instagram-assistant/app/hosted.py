@@ -8,8 +8,7 @@ from fastapi import Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from .main import app
-from .full_sync import run_if_due, run_pass
-from .db import get_settings
+from .full_sync import run_pass
 from .webhook import process_one, receive, verify
 
 
@@ -25,9 +24,7 @@ def process_webhooks(authorization: str | None = Header(default=None)) -> dict[s
     count = 0
     while count < 20 and process_one():
         count += 1
-    # Continue only a pass already started by the daily schedule.
-    progress = get_settings().get("full_sync_progress")
-    return {"processed": count, "reconciliation": run_if_due() if progress else None}
+    return {"processed": count}
 
 
 @app.get("/api/cron/full-sync")

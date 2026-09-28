@@ -22,6 +22,8 @@ def test_ingress_verification_signature_and_dedup(monkeypatch):
         assert response.text == "hello"
         assert client.get("/webhook", params={"hub.mode": "subscribe",
             "hub.verify_token": "wrong", "hub.challenge": "hello"}).status_code == 403
+        assert client.get("/webhook", params={"hub.mode": "subscribe",
+            "hub.verify_token": "다른 토큰", "hub.challenge": "hello"}).status_code == 403
         body = b'{"object":"instagram","entry":[{"id":"123"}]}'
         assert client.post("/webhook", content=body).status_code == 403
         signature = "sha256=" + hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
