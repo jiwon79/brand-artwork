@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -210,6 +210,7 @@ def sync(x_instagram_assistant_token: str | None = Header(default=None)) -> dict
 @app.post("/api/viewer/sync")
 def viewer_sync(request: Request, scope: Literal["all", "dm"] = "all",
                 user_id: str | None = None,
+                dm_limit: int = Query(default=100, ge=1, le=100),
                 x_requested_with: str | None = Header(default=None)) -> dict[str, Any]:
     origin = request.headers.get("origin", "")
     host = request.headers.get("host", "")
@@ -219,8 +220,11 @@ def viewer_sync(request: Request, scope: Literal["all", "dm"] = "all",
         raise HTTPException(403, "Same-origin viewer request required")
     if user_id is not None and scope != "dm":
         raise HTTPException(400, "user_id requires DM scope")
+    if dm_limit != 100 and scope != "dm":
+        raise HTTPException(400, "dm_limit requires DM scope")
     try:
-        return instagram_service.sync(media_amount=0, dm_user_id=user_id) if scope == "dm" else instagram_service.sync()
+        return (instagram_service.sync(media_amount=0, threads_amount=dm_limit, dm_user_id=user_id)
+                if scope == "dm" else instagram_service.sync())
     except Exception as exc:
         raise as_http_error(exc) from exc
 
