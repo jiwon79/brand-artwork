@@ -152,6 +152,13 @@ const idleControlMaterial = new THREE.MeshBasicMaterial({
 const selectedControlMaterial = new THREE.MeshBasicMaterial({
   color: 0xffa36f, transparent: true, depthTest: false, depthWrite: false,
 });
+const influencePalette = [
+  0xffc27a, 0xff8d91, 0xf7ab6d, 0xe5cf78, 0x9ed99c, 0x73cdb7, 0x76c8df,
+  0x83aaf0, 0xa8a1ef, 0xd3a0df, 0xf0a6c8, 0xed9eab, 0xe8a477,
+].map((value) => new THREE.Color(value));
+const influenceMarkerMaterials = influencePalette.map((color) => new THREE.MeshBasicMaterial({
+  color, transparent: true, depthTest: false, depthWrite: false,
+}));
 const controlMarkers = boneDefinitions.map(() => {
   const marker = new THREE.Mesh(controlMarkerGeometry, idleControlMaterial);
   marker.frustumCulled = false;
@@ -278,7 +285,7 @@ const frozenTime = params.has('t') && Number.isFinite(queryTime) ? Math.max(0, q
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const startTime = performance.now();
 const controls = { turnX: 0, turnY: 0, turnZ: 0 };
-const view = { shape: variants[targetVariant].id, mesh: false, handles: false, control: 0 };
+const view = { shape: variants[targetVariant].id, mesh: false, handles: false, control: -1 };
 const gui = new GUI({ title: '솜결 · 구조 보기' });
 const shapeController = gui.add(view, 'shape', Object.fromEntries(variants.map((variant) => [variant.label, variant.id])))
   .name('모양').onChange((id: typeof view.shape) => {
@@ -299,7 +306,7 @@ function applyInspection() {
 gui.add(view, 'mesh').name('몸체 메시').onChange(applyInspection);
 gui.add(view, 'handles').name('변형 컨트롤').onChange(applyInspection);
 const controlController = gui.add(view, 'control', Object.fromEntries(
-  boneDefinitions.map((definition, index) => [definition.name, index]),
+  [['전체', -1], ...boneDefinitions.map((definition, index) => [definition.name, index])],
 )).name('영향 영역').onChange(() => refresh());
 let frameRequested = false;
 function refresh() {
@@ -550,6 +557,26 @@ function updateInfluenceColors() {
   const key = `${boneRig.shape}:${view.control}`;
   if (key === influenceKey) return;
   influenceKey = key;
+  if (view.control < 0) {
+    for (let index = 0; index < original.length / 3; index++) {
+      let total = 0;
+      let red = 0, green = 0, blue = 0;
+      for (let control = 0; control < boneDefinitions.length; control++) {
+        const weight = bodyBoneWeights[index * boneDefinitions.length + control] ** 4;
+        const color = influencePalette[control];
+        red += color.r * weight;
+        green += color.g * weight;
+        blue += color.b * weight;
+        total += weight;
+      }
+      const offset = index * 3;
+      influenceColors[offset] = red / total;
+      influenceColors[offset + 1] = green / total;
+      influenceColors[offset + 2] = blue / total;
+    }
+    influenceColorAttribute.needsUpdate = true;
+    return;
+  }
   let maximum = 0;
   for (let index = 0; index < original.length / 3; index++) {
     maximum = Math.max(maximum, bodyBoneWeights[index * boneDefinitions.length + view.control]);
@@ -570,8 +597,12 @@ function updateControlDisplay() {
   for (let index = 0; index < boneDefinitions.length; index++) {
     const [x, y] = boneRig.jointPosition(index);
     controlMarkers[index].position.set(x, y, 160);
-    controlMarkers[index].material = index === view.control ? selectedControlMaterial : idleControlMaterial;
+    controlMarkers[index].material = view.control < 0 ? influenceMarkerMaterials[index]
+      : index === view.control ? selectedControlMaterial : idleControlMaterial;
   }
+  restMarker.visible = view.control >= 0;
+  displacementLine.visible = view.control >= 0;
+  if (view.control < 0) return;
   const rest = boneRig.definitions[view.control];
   const current = boneRig.jointPosition(view.control);
   restMarker.position.set(rest.x, rest.y, 159);
