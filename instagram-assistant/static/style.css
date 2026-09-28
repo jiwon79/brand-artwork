@@ -149,6 +149,9 @@ h2 { margin: 0 0 7px; font-size: 17px; font-weight: 650; }
 .reply-meta strong { color: var(--ink); font-size: 10px; }
 .comment-reply p { margin: 4px 0 0; color: var(--ink); font-size: 12px; line-height: 1.4; white-space: pre-wrap; }
 .comment-reply .comment-heart { position: absolute; top: 50%; right: 7px; transform: translateY(-50%); }
+.observe-comment-heart { margin: 0 0 10px; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; background: var(--surface-subtle); color: var(--muted); font-size: 10px; }
+.observe-comment-heart:hover { color: var(--ink); }
+.comment-reply .observe-comment-heart { margin: 7px 0 0; font-size: 9px; }
 .draft { width: 100%; min-height: 70px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; padding: 10px 11px; background: var(--input); color: var(--ink); font-size: 13px; line-height: 1.45; }
 .event-actions { display: flex; justify-content: flex-end; gap: 4px; margin-top: 8px; }
 

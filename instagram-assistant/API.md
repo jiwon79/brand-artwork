@@ -1,6 +1,6 @@
 # Codex operation API
 
-Codex can use the assistant's own local HTTP API directly. These `/api/...` routes are **not** Meta endpoints: the assistant calls Meta's official Instagram API on Codex's behalf. An MCP server is optional; it would wrap these same local endpoints. Use `http://127.0.0.1:4318` on the Mac running the assistant. The browser at the Tailscale URL is for viewing records and starting a sync, not for sending replies or reactions.
+Codex can use the assistant's HTTP API. These `/api/...` routes are **not** Meta endpoints: the assistant calls Meta's official Instagram API on Codex's behalf. An MCP server is optional. Local service: `http://127.0.0.1:4318`. Hosted service: `https://instagram-assistant-prod.vercel.app`, with administrator login in Chrome. The browser viewer reads records and starts syncs; it does not press Instagram hearts or send replies.
 
 The API returns normalized JSON from the local SQLite database. Call `POST /api/sync` before reviewing recent activity, then read the relevant records. A sync reads the connected Instagram account and can take several minutes. It does not send messages.
 
@@ -17,14 +17,13 @@ Use the returned local event `id` for subsequent actions. Read the complete conv
 
 ## Protected actions
 
-Every request in this table needs `X-Instagram-Assistant-Token`, read from `~/Library/Application Support/InstagramAssistant/local-token` on the same Mac. Keep the token out of the browser, chat, Git, and Notion. The browser's sync-only endpoint is separate.
+On the loopback service, these requests need `X-Instagram-Assistant-Token` from `~/Library/Application Support/InstagramAssistant/local-token`. Keep it out of the browser, chat, Git, and Notion. The hosted service instead requires the administrator session cookie; mutation requests must be same-origin. A local token header alone cannot authorize a hosted request. Use the signed-in viewer controls for the heart workflow below.
 
 | Task | Request | Body / effect |
 | --- | --- | --- |
 | Sync from Codex | `POST /api/sync` | Fetches supported Instagram comments and DMs. |
 | Save approved reply | `PATCH /api/events/{event_id}/draft` | JSON `{"draft":"답변"}`. Sets `reply_dm` or `reply_comment` from the event type. |
 | Send approved reply | `POST /api/events/{event_id}/send` | Sends the saved draft through Meta's official API. |
-| Heart an inbound DM | `POST /api/events/{event_id}/heart` | Sends a DM message reaction through Meta's official API. |
 | Record a verified UI heart | `POST /api/events/{event_id}/heart-observed` | Records a heart already pressed in Instagram; this endpoint does **not** press it. |
 | Mark an item handled without reply | `POST /api/events/{event_id}/ignore` | Changes the local review state. |
 
@@ -32,4 +31,11 @@ Only a connected account's pending inbound DM with a sender ID, or an original i
 
 For a reply: sync, read the thread, prepare the exact text for user review, save the approved draft, send, then reread the event and conversation or comment thread to verify the result. If a send returns an uncertain result, check Instagram before any retry. The service checks for an existing reply on an original comment before sending another.
 
-The official API used here cannot press a **comment** heart. Open the returned `comment_url`, verify the original comment in Instagram, press its heart in the Instagram UI, and then call `heart-observed`. A DM heart uses the protected API endpoint above. A later inbound DM or comment reply returns its thread to **확인 필요** after the next sync.
+## Chrome heart workflow
+
+For every approved heart, first match the account, original text, and exact message or comment. Check whether the heart is already present; clicking it again can remove it. Use the existing Chrome Instagram session for **both DM and comment hearts**. Reload the Instagram conversation or post and confirm the reaction remains on the same item before updating the assistant.
+
+- **DM:** In the signed-in viewer, open that conversation and click `이 대화 동기화`. Confirm the same inbound message now has `own_reaction` / `has_liked` and the visible `내가 ❤ 반응함` marker. This targets one conversation through `POST /api/viewer/sync?scope=dm&user_id={IGSID}`; `user_id` is the other participant's numeric Instagram-scoped ID, not their username. The viewer obtains it from the selected conversation. If the target is not found or the read fails, leave it unconfirmed.
+- **Comment or reply:** The Graph comment response supplies `like_count` but not whether this account liked the comment. A Graph refresh alone cannot confirm the Chrome heart. After reloading Instagram and confirming the exact comment's heart, use that comment's `Chrome 하트 확인 후 기록` button in the signed-in viewer. It calls `POST /api/events/{event_id}/heart-observed` for that one `comment:{id}` and rereads the comment list. Confirm `has_liked` and the updated review state. This is an observation record, not a remote reaction send or Graph verification.
+
+The legacy protected `POST /api/events/{event_id}/heart` DM reaction route remains in the code, but the current operating rule does not use it: Meta returned HTTP 500/code 2 in the live test without creating a heart. Never mark an API error or a mere click as sent. A later inbound DM or comment reply returns its thread to **확인 필요** after the next sync. The current wording and per-item approval rules live in [Instagram DM 답변 규칙](https://app.notion.com/p/3e7a89f7e31a815b8b60c3ead057bf0a) and [Instagram 댓글 답변 규칙](https://app.notion.com/p/3e7a89f7e31a80d2b15aee2e02963e42).
