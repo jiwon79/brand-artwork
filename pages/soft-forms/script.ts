@@ -146,12 +146,6 @@ bodyWire.visible = false;
 character.add(bodyWire);
 // The real rig uses independent weighted controls, so no connection is drawn between them.
 const controlMarkerGeometry = new THREE.SphereGeometry(6, 14, 10);
-const idleControlMaterial = new THREE.MeshBasicMaterial({
-  color: 0xd8e1ed, transparent: true, depthTest: false, depthWrite: false,
-});
-const selectedControlMaterial = new THREE.MeshBasicMaterial({
-  color: 0xffa36f, transparent: true, depthTest: false, depthWrite: false,
-});
 const influencePalette = [
   0xffc27a, 0xff8d91, 0xf7ab6d, 0xe5cf78, 0x9ed99c, 0x73cdb7, 0x76c8df,
   0x83aaf0, 0xa8a1ef, 0xd3a0df, 0xf0a6c8, 0xed9eab, 0xe8a477,
@@ -159,26 +153,14 @@ const influencePalette = [
 const influenceMarkerMaterials = influencePalette.map((color) => new THREE.MeshBasicMaterial({
   color, transparent: true, depthTest: false, depthWrite: false,
 }));
-const controlMarkers = boneDefinitions.map(() => {
-  const marker = new THREE.Mesh(controlMarkerGeometry, idleControlMaterial);
+const controlMarkers = boneDefinitions.map((_, index) => {
+  const marker = new THREE.Mesh(controlMarkerGeometry, influenceMarkerMaterials[index]);
   marker.frustumCulled = false;
   marker.renderOrder = 91;
   return marker;
 });
-const restMarker = new THREE.Mesh(new THREE.RingGeometry(8, 10, 28), new THREE.MeshBasicMaterial({
-  color: 0xffa36f, transparent: true, opacity: 0.75, depthTest: false, depthWrite: false,
-  side: THREE.DoubleSide,
-}));
-restMarker.renderOrder = 90;
-const displacementGeometry = new THREE.BufferGeometry();
-displacementGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3).setUsage(THREE.DynamicDrawUsage));
-const displacementLine = new THREE.Line(displacementGeometry, new THREE.LineBasicMaterial({
-  color: 0xffa36f, transparent: true, depthTest: false, depthWrite: false,
-}));
-displacementLine.frustumCulled = false;
-displacementLine.renderOrder = 90;
 const controlDisplay = new THREE.Group();
-controlDisplay.add(...controlMarkers, restMarker, displacementLine);
+controlDisplay.add(...controlMarkers);
 controlDisplay.visible = false;
 character.add(controlDisplay);
 // Thin translucent shells fill the volume between the body and visible fiber tips.
@@ -285,7 +267,7 @@ const frozenTime = params.has('t') && Number.isFinite(queryTime) ? Math.max(0, q
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const startTime = performance.now();
 const controls = { turnX: 0, turnY: 0, turnZ: 0 };
-const view = { shape: variants[targetVariant].id, mesh: false, handles: false, control: -1 };
+const view = { shape: variants[targetVariant].id, mesh: false, handles: false };
 const gui = new GUI({ title: '솜결 · 구조 보기' });
 const shapeController = gui.add(view, 'shape', Object.fromEntries(variants.map((variant) => [variant.label, variant.id])))
   .name('모양').onChange((id: typeof view.shape) => {
@@ -305,9 +287,6 @@ function applyInspection() {
 }
 gui.add(view, 'mesh').name('몸체 메시').onChange(applyInspection);
 gui.add(view, 'handles').name('변형 컨트롤').onChange(applyInspection);
-const controlController = gui.add(view, 'control', Object.fromEntries(
-  [['전체', -1], ...boneDefinitions.map((definition, index) => [definition.name, index])],
-)).name('영향 영역').onChange(() => refresh());
 let frameRequested = false;
 function refresh() {
   if (frameRequested) return;
@@ -357,30 +336,6 @@ canvas.addEventListener('pointerdown', (event) => {
     }
   }
   if (dragging || (event.pointerType === 'mouse' && event.button !== 0)) return;
-  if (view.handles) {
-    character.updateMatrixWorld(true);
-    camera.updateMatrixWorld();
-    const bounds = canvas.getBoundingClientRect();
-    const projected = new THREE.Vector3();
-    let nearest = -1;
-    let nearestDistance = 24;
-    for (let index = 0; index < controlMarkers.length; index++) {
-      controlMarkers[index].getWorldPosition(projected).project(camera);
-      const x = bounds.left + (projected.x + 1) * bounds.width / 2;
-      const y = bounds.top + (1 - projected.y) * bounds.height / 2;
-      const distance = Math.hypot(event.clientX - x, event.clientY - y);
-      if (distance < nearestDistance) {
-        nearest = index;
-        nearestDistance = distance;
-      }
-    }
-    if (nearest >= 0) {
-      view.control = nearest;
-      controlController.updateDisplay();
-      refresh();
-      return;
-    }
-  }
   pointRayAt(event);
   character.updateMatrixWorld(true);
   const hit = characterPicker.intersectObject(body)[0];
@@ -554,40 +509,24 @@ function updateShape() {
 let influenceKey = '';
 function updateInfluenceColors() {
   if (!view.handles || !bodyBoneWeights) return;
-  const key = `${boneRig.shape}:${view.control}`;
+  const key = boneRig.shape;
   if (key === influenceKey) return;
   influenceKey = key;
-  if (view.control < 0) {
-    for (let index = 0; index < original.length / 3; index++) {
-      let total = 0;
-      let red = 0, green = 0, blue = 0;
-      for (let control = 0; control < boneDefinitions.length; control++) {
-        const weight = bodyBoneWeights[index * boneDefinitions.length + control] ** 4;
-        const color = influencePalette[control];
-        red += color.r * weight;
-        green += color.g * weight;
-        blue += color.b * weight;
-        total += weight;
-      }
-      const offset = index * 3;
-      influenceColors[offset] = red / total;
-      influenceColors[offset + 1] = green / total;
-      influenceColors[offset + 2] = blue / total;
+  for (let index = 0; index < original.length / 3; index++) {
+    let total = 0;
+    let red = 0, green = 0, blue = 0;
+    for (let control = 0; control < boneDefinitions.length; control++) {
+      const weight = bodyBoneWeights[index * boneDefinitions.length + control] ** 4;
+      const color = influencePalette[control];
+      red += color.r * weight;
+      green += color.g * weight;
+      blue += color.b * weight;
+      total += weight;
     }
-    influenceColorAttribute.needsUpdate = true;
-    return;
-  }
-  let maximum = 0;
-  for (let index = 0; index < original.length / 3; index++) {
-    maximum = Math.max(maximum, bodyBoneWeights[index * boneDefinitions.length + view.control]);
-  }
-  for (let index = 0; index < original.length / 3; index++) {
-    const weight = bodyBoneWeights[index * boneDefinitions.length + view.control] / Math.max(maximum, 0.001);
-    const heat = THREE.MathUtils.smoothstep(weight, 0.02, 0.85);
     const offset = index * 3;
-    influenceColors[offset] = THREE.MathUtils.lerp(0.48, 1, heat);
-    influenceColors[offset + 1] = THREE.MathUtils.lerp(0.53, 0.32, heat);
-    influenceColors[offset + 2] = THREE.MathUtils.lerp(0.59, 0.12, heat);
+    influenceColors[offset] = red / total;
+    influenceColors[offset + 1] = green / total;
+    influenceColors[offset + 2] = blue / total;
   }
   influenceColorAttribute.needsUpdate = true;
 }
@@ -599,19 +538,7 @@ function updateControlDisplay() {
     // The rig is planar: its controls live inside the body on the local XY plane.
     // A fixed front-facing Z offset makes them orbit outside the body when it rotates.
     controlMarkers[index].position.set(x, y, 0);
-    controlMarkers[index].material = view.control < 0 ? influenceMarkerMaterials[index]
-      : index === view.control ? selectedControlMaterial : idleControlMaterial;
   }
-  restMarker.visible = view.control >= 0;
-  displacementLine.visible = view.control >= 0;
-  if (view.control < 0) return;
-  const rest = boneRig.definitions[view.control];
-  const current = boneRig.jointPosition(view.control);
-  restMarker.position.set(rest.x, rest.y, 0);
-  const linePosition = displacementGeometry.getAttribute('position') as THREE.BufferAttribute;
-  linePosition.setXYZ(0, rest.x, rest.y, 0);
-  linePosition.setXYZ(1, current[0], current[1], 0);
-  linePosition.needsUpdate = true;
 }
 
 function render(now: number) {
