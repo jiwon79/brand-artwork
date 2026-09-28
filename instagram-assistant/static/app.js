@@ -142,6 +142,11 @@ function commentHeart(event, compact = false) {
   return `<span class="comment-heart ${compact ? "compact" : ""} ${event.has_liked ? "liked" : ""}" aria-label="좋아요 ${event.like_count ?? 0}개${event.has_liked ? ", 내가 하트 표시함" : ""}">${event.has_liked ? "♥" : "♡"}<span>${event.like_count ?? 0}</span></span>`;
 }
 
+function observedCommentHeartButton(event) {
+  if (event.direction !== "inbound" || event.has_liked) return "";
+  return `<button class="observe-comment-heart" data-event-id="${escapeHtml(event.id)}" type="button">Chrome 하트 확인 후 기록</button>`;
+}
+
 function commentReplies(event) {
   if (!event.replies?.length) return "";
   return `<div class="comment-replies">${event.replies.map((reply) => `
@@ -149,6 +154,7 @@ function commentReplies(event) {
       <div class="reply-meta"><strong>${reply.direction === "outbound" ? "내 답글" : escapeHtml(reply.author_username || "알 수 없음")}</strong><span>${formatTime(reply.received_at, true)}</span></div>
       <p>${escapeHtml(reply.body)}</p>
       ${commentHeart(reply, true)}
+      ${observedCommentHeartButton(reply)}
     </div>`).join("")}</div>`;
 }
 
@@ -164,6 +170,7 @@ async function refreshComments() {
       </div>
       ${postReference(event)}
       <p class="event-body">${escapeHtml(event.body)}</p>
+      ${observedCommentHeartButton(event)}
       ${commentReplies(event)}
     </article>`).join("");
   const empty = document.querySelector("#empty-events");
@@ -266,6 +273,23 @@ document.querySelectorAll(".tab").forEach((link) => link.addEventListener("click
   navigate(link.dataset.route).catch(showError);
 }));
 document.querySelector("#sync").addEventListener("click", syncRecords);
+document.querySelector("#events").addEventListener("click", async (event) => {
+  const button = event.target.closest(".observe-comment-heart");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/events/${encodeURIComponent(button.dataset.eventId)}/heart-observed`, {
+      method: "POST",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.detail || `하트 기록 실패 (${response.status})`);
+    await refreshComments();
+    showToast("확인한 댓글 하트를 기록했습니다.");
+  } catch (error) {
+    button.disabled = false;
+    showError(error);
+  }
+});
 document.querySelectorAll(".dm-filter, .comment-filter").forEach((button) => button.addEventListener("click", () => {
   document.querySelector("#dm-inbox").classList.remove("chat-open");
   navigate(routeFromLocation(), button.dataset.status).catch(showError);
