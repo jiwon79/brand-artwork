@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import threading
@@ -15,21 +16,27 @@ from fastapi.responses import PlainTextResponse
 
 from .db import enqueue_webhook, finish_webhook, get_settings, initialize, next_webhook, set_dm_shared_url
 from .instagram_client import instagram_service
+from .meta_config import get_meta_config
 
 
-def event_targets(payload: dict[str, Any], account_id: str) -> tuple[set[str], set[str]]:
+logger = logging.getLogger(__name__)
+
+
+def event_targets(payload: dict[str, Any], account_id: str,
+                  messaging_account_id: str = "") -> tuple[set[str], set[str]]:
     users: set[str] = set()
     comments: set[str] = set()
     if payload.get("object") != "instagram":
         return users, comments
     for entry in payload.get("entry") or []:
-        if str(entry.get("id") or "") != account_id:
+        own_id = str(entry.get("id") or "")
+        if own_id not in {account_id, messaging_account_id}:
             continue
         for item in entry.get("messaging") or []:
             sender = str((item.get("sender") or {}).get("id") or "")
             recipient = str((item.get("recipient") or {}).get("id") or "")
-            user_id = recipient if sender == account_id else sender
-            if user_id == account_id or not user_id.isdigit():
+            user_id = recipient if sender == own_id else sender
+            if user_id in {account_id, messaging_account_id} or not user_id.isdigit():
                 continue
             users.add(user_id)
         for change in entry.get("changes") or []:
@@ -48,12 +55,14 @@ def process_one() -> bool:
         return False
     try:
         payload = json.loads(queued["payload"])
-        account_id = str(get_settings().get("instagram_account_id") or "")
-        users, comments = event_targets(payload, account_id)
+        settings = get_settings()
+        account_id = str(settings.get("instagram_account_id") or "")
+        messaging_id = str(settings.get("instagram_messaging_account_id") or "")
+        users, comments = event_targets(payload, account_id, messaging_id)
         for user_id in users:
             instagram_service.sync(media_amount=0, threads_amount=1, dm_user_id=user_id)
         for entry in payload.get("entry") or []:
-            if str(entry.get("id") or "") != account_id:
+            if str(entry.get("id") or "") not in {account_id, messaging_id}:
                 continue
             for item in entry.get("messaging") or []:
                 message = item.get("message") or {}
@@ -99,7 +108,7 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
 
 @app.get("/webhook", response_class=PlainTextResponse)
 def verify(request: Request) -> str:
-    token = os.getenv("INSTAGRAM_WEBHOOK_VERIFY_TOKEN", "")
+    token = get_meta_config().webhook_verify_token
     query = request.query_params
     if (not token or query.get("hub.mode") != "subscribe" or
             not hmac.compare_digest(query.get("hub.verify_token", ""), token)):
@@ -109,7 +118,7 @@ def verify(request: Request) -> str:
 
 @app.post("/webhook")
 async def receive(request: Request) -> dict[str, bool]:
-    secret = os.getenv("INSTAGRAM_APP_SECRET", "")
+    secret = get_meta_config().webhook_app_secret
     if not secret:
         raise HTTPException(503)
     body = await request.body()
@@ -118,6 +127,7 @@ async def receive(request: Request) -> dict[str, bool]:
     signature = request.headers.get("x-hub-signature-256", "")
     expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature, expected):
+        logger.warning("Meta webhook rejected: signature mismatch or missing signature")
         raise HTTPException(403)
     try:
         payload = json.loads(body)
@@ -125,9 +135,12 @@ async def receive(request: Request) -> dict[str, bool]:
         raise HTTPException(400) from None
     if not isinstance(payload, dict) or payload.get("object") != "instagram":
         raise HTTPException(400)
-    account_id = str(get_settings().get("instagram_account_id") or "")
-    if not account_id or not any(str(entry.get("id") or "") == account_id
+    settings = get_settings()
+    account_id = str(settings.get("instagram_account_id") or "")
+    messaging_id = str(settings.get("instagram_messaging_account_id") or "")
+    if not account_id or not any(str(entry.get("id") or "") in {account_id, messaging_id}
                                  for entry in payload.get("entry") or []):
+        logger.warning("Meta webhook rejected: entry account does not match connected account")
         raise HTTPException(403)
     digest = hashlib.sha256(body).hexdigest()
     enqueue_webhook(digest, payload)

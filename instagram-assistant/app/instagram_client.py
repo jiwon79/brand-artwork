@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 import secrets
@@ -12,6 +11,9 @@ from urllib.parse import urlencode
 import httpx
 
 from .config import paths, prepare_data_dir
+from .meta_config import get_meta_config
+from .token_store import (delete_oauth_state, delete_token, load_and_delete_oauth_state,
+                          load_token, save_oauth_state, save_token)
 from .db import (add_delivery, get_dm_sync_state, get_event, get_settings, list_artworks, mark_comment_reviewed,
                  reconcile_own_dm_messages, save_artwork, save_dm_sync_state,
                  sent_today_count, update_event, update_settings, upsert_event)
@@ -103,20 +105,16 @@ class InstagramService:
 
     @staticmethod
     def _oauth_config() -> tuple[str, str, str]:
-        values = (os.getenv("INSTAGRAM_APP_ID", ""),
-                  os.getenv("INSTAGRAM_APP_SECRET", ""),
-                  os.getenv("INSTAGRAM_REDIRECT_URI", ""))
+        config = get_meta_config()
+        values = (config.app_id, config.app_secret, config.redirect_uri)
         if not all(values):
             raise InstagramAssistantError("Meta 앱의 INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, INSTAGRAM_REDIRECT_URI를 설정하세요.")
         return values
 
     def authorization_url(self) -> str:
         app_id, _, redirect_uri = self._oauth_config()
-        prepare_data_dir()
         state = secrets.token_urlsafe(32)
-        paths.oauth_state.write_text(json.dumps({"state": state,
-            "created_at": datetime.now(UTC).isoformat()}))
-        paths.oauth_state.chmod(0o600)
+        save_oauth_state({"state": state, "created_at": datetime.now(UTC).isoformat()})
         return "https://www.instagram.com/oauth/authorize?" + urlencode({
             "client_id": app_id, "redirect_uri": redirect_uri,
             "response_type": "code", "scope": SCOPES,
@@ -126,11 +124,10 @@ class InstagramService:
         with self._lock:
             app_id, secret, redirect_uri = self._oauth_config()
             try:
-                saved = json.loads(paths.oauth_state.read_text())
+                saved = load_and_delete_oauth_state()
                 created = datetime.fromisoformat(saved["created_at"])
             except (OSError, ValueError, KeyError) as exc:
                 raise InstagramAssistantError("Instagram 연결 요청이 만료되었습니다.") from exc
-            paths.oauth_state.unlink(missing_ok=True)
             if (not secrets.compare_digest(str(saved["state"]), state)
                     or datetime.now(UTC) - created > timedelta(minutes=10)):
                 raise InstagramAssistantError("Instagram 연결 요청이 만료되었습니다.")
@@ -155,6 +152,7 @@ class InstagramService:
             self._save_token(token, account_id, username, int(long_token.get("expires_in", 0)))
             self._client = GraphClient(token, account_id, username)
             update_settings({"instagram_account_id": account_id, "instagram_username": username,
+                "instagram_messaging_account_id": "",
                 "auto_send": False, "auto_comment": False, "auto_dm": False,
                 "dm_backfill_complete": False, "dm_requests_backfill_complete": False,
                 "halted_reason": None})
@@ -162,11 +160,9 @@ class InstagramService:
 
     @staticmethod
     def _save_token(token: str, account_id: str, username: str, expires_in: int) -> None:
-        prepare_data_dir()
-        paths.session.write_text(json.dumps({"access_token": token,
+        save_token({"access_token": token,
             "account_id": account_id, "username": username,
-            "expires_at": (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat()}))
-        paths.session.chmod(0o600)
+            "expires_at": (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat()})
 
     def connect_saved_session(self) -> GraphClient:
         with self._lock:
@@ -174,13 +170,13 @@ class InstagramService:
                 if not isinstance(self._client, GraphClient):
                     return self._client
                 try:
-                    saved_expiry = json.loads(paths.session.read_text())["expires_at"]
+                    saved_expiry = load_token()["expires_at"]
                     if datetime.fromisoformat(saved_expiry) > datetime.now(UTC) + timedelta(days=7):
                         return self._client
                 except (OSError, ValueError, KeyError):
                     self._client = None
             try:
-                saved = json.loads(paths.session.read_text())
+                saved = load_token()
                 if datetime.fromisoformat(saved["expires_at"]) <= datetime.now(UTC) + timedelta(days=7):
                     with httpx.Client(timeout=20) as http:
                         response = http.get("https://graph.instagram.com/refresh_access_token", params={
@@ -198,9 +194,10 @@ class InstagramService:
     def logout(self) -> None:
         with self._lock:
             self._client = None
-            paths.session.unlink(missing_ok=True)
-            paths.oauth_state.unlink(missing_ok=True)
+            delete_token()
+            delete_oauth_state()
             update_settings({"instagram_account_id": "", "instagram_username": "",
+                "instagram_messaging_account_id": "",
                 "auto_send": False, "auto_comment": False, "auto_dm": False,
                 "halted_reason": None})
 
@@ -244,7 +241,8 @@ class InstagramService:
 
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
              threads_amount: int = 100, dm_user_id: str | None = None,
-             full: bool = False) -> dict[str, Any]:
+             full: bool = False, media_items: list[dict] | None = None,
+             conversation_items: list[dict] | None = None) -> dict[str, Any]:
         with self._lock:
             if dm_user_id is not None and not re.fullmatch(r"\d+", dm_user_id):
                 raise InstagramAssistantError("대상 Instagram 사용자 ID는 숫자여야 합니다.")
@@ -253,9 +251,10 @@ class InstagramService:
             dm_threads_checked = dm_threads_skipped = 0
             try:
                 artworks = {item.get("post_code"): item for item in list_artworks() if item.get("post_code")}
-                for media in client.pages("/me/media", params={
+                media_source = media_items if media_items is not None else client.pages("/me/media", params={
                     "fields": "id,caption,permalink,media_product_type,timestamp,comments_count",
-                    "limit": min(media_amount, 100)}, limit=media_amount):
+                    "limit": min(media_amount, 100)}, limit=media_amount)
+                for media in media_source:
                     if media.get("media_product_type") == "STORY":
                         continue
                     media_id = str(media["id"])
@@ -318,8 +317,10 @@ class InstagramService:
                     "limit": min(threads_amount, 100)}
                 if dm_user_id is not None:
                     conversation_params["user_id"] = dm_user_id
-                for conversation in client.pages("/me/conversations", params=conversation_params,
-                                                 limit=1 if dm_user_id is not None else threads_amount):
+                conversation_source = (conversation_items if conversation_items is not None else
+                    client.pages("/me/conversations", params=conversation_params,
+                                 limit=1 if dm_user_id is not None else threads_amount))
+                for conversation in conversation_source:
                     thread_id = str(conversation["id"])
                     updated_time = str(conversation.get("updated_time") or "")
                     state = get_dm_sync_state(client.account_id, thread_id)
@@ -343,6 +344,8 @@ class InstagramService:
                         raise InstagramAssistantError(
                             "DM 대화에서 연결 계정의 발신자 ID를 확인하지 못했습니다. 방향을 추측하지 않고 동기화를 중단합니다.")
                     own_messaging_id = next(iter(own_messaging_ids))
+                    if get_settings().get("instagram_messaging_account_id") != own_messaging_id:
+                        update_settings({"instagram_messaging_account_id": own_messaging_id})
                     participant_names = {
                         str(person["id"]): str(person.get("username") or "")
                         for person in participants if person.get("id")

@@ -41,3 +41,12 @@ def test_event_targets_only_connected_account():
     assert webhook.event_targets(payload, "123") == ({"456", "789"}, {"11"})
     payload["entry"][0]["changes"][0]["value"].pop("parent_id")
     assert webhook.event_targets(payload, "123") == ({"456", "789"}, {"12"})
+
+
+def test_messaging_account_id_alias_routes_inbound_and_outbound():
+    payload = {"object": "instagram", "entry": [{"id": "1784", "messaging": [
+        {"sender": {"id": "456"}, "recipient": {"id": "1784"}},
+        {"sender": {"id": "1784"}, "recipient": {"id": "789"}},
+    ]}]}
+    assert webhook.event_targets(payload, "2911", "1784") == ({"456", "789"}, set())
+    assert webhook.event_targets(payload, "2911") == (set(), set())

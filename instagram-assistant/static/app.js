@@ -241,6 +241,7 @@ async function refreshStatus() {
   const account = data.settings.instagram_username;
   document.querySelector("#settings-account").textContent = data.authenticated && account ? `@${account}` : "연결된 계정 없음";
   document.querySelector("#last-sync").textContent = formatTime(data.settings.last_sync_at);
+  document.querySelector("#admin-logout").hidden = !data.admin_login;
 }
 
 async function refreshRoute(route) {

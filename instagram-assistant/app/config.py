@@ -13,14 +13,15 @@ DEFAULT_DATA_DIR = (
 DATA_DIR = Path(
     os.environ.get("INSTAGRAM_ASSISTANT_DATA", DEFAULT_DATA_DIR)
 ).resolve()
+ENV_SUFFIX = "-" + os.environ["INSTAGRAM_ENV"] if os.environ.get("INSTAGRAM_ENV") in {"development", "production"} else ""
 
 
 @dataclass
 class Paths:
     data: Path = DATA_DIR
-    database: Path = DATA_DIR / "assistant.sqlite3"
-    session: Path = DATA_DIR / "graph-token.json"
-    oauth_state: Path = DATA_DIR / "oauth-state.json"
+    database: Path = DATA_DIR / f"assistant{ENV_SUFFIX}.sqlite3"
+    session: Path = DATA_DIR / f"graph-token{ENV_SUFFIX}.json"
+    oauth_state: Path = DATA_DIR / f"oauth-state{ENV_SUFFIX}.json"
     token: Path = DATA_DIR / "local-token"
 
 

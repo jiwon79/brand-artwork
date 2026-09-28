@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, Iterator
 
 from .config import paths, prepare_data_dir
+from .database_backend import open_connection, remote_url
 
 
 STUDIO_URL = "https://studio.jiiwon.com"
@@ -102,12 +103,19 @@ CREATE TABLE IF NOT EXISTS webhook_events (
 
 CREATE INDEX IF NOT EXISTS webhook_events_ready_idx
 ON webhook_events(status, next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS private_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 """
 
 
 DEFAULT_SETTINGS = {
     "instagram_username": "",
     "instagram_account_id": "",
+    "instagram_messaging_account_id": "",
     "profile_url": "https://litt.ly/jiiwon",
     "auto_send": False,
     "auto_comment": False,
@@ -115,6 +123,8 @@ DEFAULT_SETTINGS = {
     "daily_send_limit": 20,
     "last_sync_at": None,
     "last_full_sync_at": None,
+    "full_sync_progress": None,
+    "full_sync_retry_after": None,
     "dm_backfill_complete": False,
     "dm_requests_backfill_complete": False,
     "halted_reason": None,
@@ -164,10 +174,9 @@ def now() -> str:
 
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
-    prepare_data_dir()
-    conn = sqlite3.connect(paths.database)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
+    if not remote_url():
+        prepare_data_dir()
+    conn = open_connection(paths.database)
     try:
         yield conn
         conn.commit()
@@ -235,6 +244,24 @@ def get_settings() -> dict[str, Any]:
     return {row["key"]: json.loads(row["value"]) for row in rows}
 
 
+def get_private_state(key: str) -> str | None:
+    with connect() as conn:
+        row = conn.execute("SELECT value FROM private_state WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_private_state(key: str, value: str) -> None:
+    with connect() as conn:
+        conn.execute("INSERT INTO private_state(key,value,updated_at) VALUES(?,?,?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+                     (key, value, now()))
+
+
+def delete_private_state(key: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM private_state WHERE key=?", (key,))
+
+
 def update_settings(values: dict[str, Any]) -> dict[str, Any]:
     allowed = set(DEFAULT_SETTINGS)
     with connect() as conn:
@@ -280,10 +307,14 @@ def enqueue_webhook(event_id: str, payload: dict[str, Any]) -> bool:
 
 
 def next_webhook() -> dict[str, Any] | None:
+    from datetime import timedelta
+    lease_until = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
     with connect() as conn:
         row = conn.execute(
-            "SELECT * FROM webhook_events WHERE status='pending' AND next_attempt_at<=? "
-            "ORDER BY created_at LIMIT 1", (now(),),
+            "UPDATE webhook_events SET status='processing',next_attempt_at=? WHERE id=("
+            "SELECT id FROM webhook_events WHERE status IN ('pending','processing') "
+            "AND next_attempt_at<=? ORDER BY created_at LIMIT 1) RETURNING *",
+            (lease_until, now()),
         ).fetchone()
     return dict(row) if row else None
 
@@ -299,7 +330,7 @@ def finish_webhook(event_id: str, error: str | None = None) -> None:
             attempts = int(row["attempts"]) + 1 if row else 1
             delay = min(3600, 2 ** min(attempts, 10))
             retry_at = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
-            conn.execute("UPDATE webhook_events SET attempts=?,next_attempt_at=?,error=? "
+            conn.execute("UPDATE webhook_events SET status='pending',attempts=?,next_attempt_at=?,error=? "
                          "WHERE id=?", (attempts, retry_at, error[:500], event_id))
 
 
