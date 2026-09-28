@@ -112,7 +112,7 @@ function safeUrl(value) {
 function sharedLink(event) {
   const url = safeUrl(event.shared_url);
   if (!url) return "";
-  return `<div class="shared-content"><span>공유된 콘텐츠</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
+  return `<div class="shared-content"><span>공유된 게시물</span><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></div>`;
 }
 
 function linkedMessageBody(value) {
@@ -188,7 +188,7 @@ async function renderConversations(keepSelection = true) {
     statusFromLocation() === "completed" ? "완료된 DM이 없습니다." : "아직 DM 대화가 없습니다.";
   document.querySelector("#conversation-list").innerHTML = visible.map((item) => `
     <button class="conversation-item ${item.thread_id === selectedThreadId ? "active" : ""}" data-thread-id="${escapeHtml(item.thread_id)}">
-      <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong></span>
+      <span class="conversation-name"><strong>${escapeHtml(item.username || "알 수 없음")}</strong><span class="dm-heart-state ${item.latest_inbound_hearted ? "liked" : ""}">${item.latest_inbound_hearted === null ? "? 하트 미확인" : item.latest_inbound_hearted ? "♥ 하트함" : "♡ 하트 안 함"}</span></span>
       <span class="conversation-preview">${escapeHtml(item.latest_body || "메시지 내용 없음")}</span>
       <time>${formatTime(item.latest_at, true)}</time>
     </button>`).join("") || `<p class="empty compact">${emptyMessage}</p>`;
@@ -217,11 +217,11 @@ async function refreshChat() {
     <div class="chat-messages">${messages.map((message) => `
       <div class="message-row ${message.direction}">
         <div class="message-bubble">
-          ${message.body ? `<p>${linkedMessageBody(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
+          ${message.body && !(message.shared_url && message.body === "메시지 내용 없음") ? `<p>${linkedMessageBody(message.body)}</p>` : (!message.shared_url ? "<p>메시지 내용 없음</p>" : "")}
           ${sharedLink(message)}
           <time>${formatTime(message.received_at, true)}</time>
         </div>
-        ${message.direction === "inbound" && message.has_liked ? '<span class="dm-heart" aria-label="하트 표시됨">♥</span>' : ""}
+        ${message.direction === "inbound" ? `<span class="dm-heart ${message.has_liked ? "liked" : ""}" aria-label="${message.has_liked === null ? "내 하트 상태 미확인" : message.has_liked ? "내가 하트 표시함" : "내가 하트 표시하지 않음"}">${message.has_liked === null ? "?" : message.has_liked ? "♥" : "♡"}</span>` : ""}
       </div>`).join("")}</div>`;
   requestAnimationFrame(() => {
     const scroll = panel.querySelector(".chat-messages");

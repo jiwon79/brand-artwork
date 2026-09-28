@@ -330,6 +330,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
                   post_url=COALESCE(?, post_url),
                   post_caption=COALESCE(?, post_caption),
                   shared_url=COALESCE(?, shared_url),
+                  body=CASE WHEN body='메시지 내용 없음' AND ? IS NOT NULL THEN '' ELSE body END,
                   author_id=COALESCE(?, author_id),
                   direction=COALESCE(?, direction),
                   has_liked=COALESCE(?, has_liked),
@@ -341,6 +342,7 @@ def upsert_event(event: dict[str, Any]) -> bool:
                 (
                     event.get("account_id"), event.get("parent_comment_id"), event.get("thread_id"),
                     event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
+                    event.get("shared_url"),
                     event.get("author_id"),
                     event.get("direction"), event.get("has_liked"),
                     event.get("like_count"), event.get("author_username", ""),
@@ -510,13 +512,20 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
         conversation = conversations.setdefault(thread_id, {
             "thread_id": thread_id,
             "username": "",
-            "latest_body": item["body"],
+            "latest_body": item["body"] or item["shared_url"] or "메시지 내용 없음",
             "latest_at": item["received_at"],
+            "latest_inbound_hearted": None,
+            "_seen_inbound": False,
             "message_count": 0,
             "has_actionable": False,
             "_has_newer_resolution": False,
         })
         conversation["message_count"] += 1
+        if item["direction"] == "inbound" and not conversation["_seen_inbound"]:
+            conversation["latest_inbound_hearted"] = (
+                None if item["has_liked"] is None else bool(item["has_liked"])
+            )
+            conversation["_seen_inbound"] = True
         if item["direction"] == "outbound" or item["has_liked"] or item["status"] in {"sent", "completed", "ignored"}:
             conversation["_has_newer_resolution"] = True
         elif item["direction"] == "inbound" and item["status"] in {"pending", "drafted", "manual"}:
@@ -527,6 +536,7 @@ def list_conversations(status: str | None = None) -> list[dict[str, Any]]:
     items = list(conversations.values())
     for item in items:
         item.pop("_has_newer_resolution")
+        item.pop("_seen_inbound")
     if status == "active":
         return [item for item in items if item["has_actionable"]]
     if status == "completed":
