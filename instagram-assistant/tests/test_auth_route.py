@@ -99,12 +99,15 @@ def test_viewer_dm_sync_skips_comment_fetch(monkeypatch):
     with TestClient(main.app) as client:
         response = client.post("/api/viewer/sync?scope=dm", headers=headers)
         targeted = client.post("/api/viewer/sync?scope=dm&user_id=123", headers=headers)
+        limited = client.post("/api/viewer/sync?scope=dm&dm_limit=1", headers=headers)
         invalid = client.post("/api/viewer/sync?scope=other", headers=headers)
     assert response.status_code == 200
     assert response.json()["dms"] == 1
     assert targeted.status_code == 200
-    assert calls == [{"media_amount": 0, "dm_user_id": None},
-                     {"media_amount": 0, "dm_user_id": "123"}]
+    assert limited.status_code == 200
+    assert calls == [{"media_amount": 0, "threads_amount": 100, "dm_user_id": None},
+                     {"media_amount": 0, "threads_amount": 100, "dm_user_id": "123"},
+                     {"media_amount": 0, "threads_amount": 1, "dm_user_id": None}]
     assert invalid.status_code == 422
 
 
