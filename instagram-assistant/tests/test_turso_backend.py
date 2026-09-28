@@ -1,6 +1,6 @@
 from app import config, db
 from app.database_backend import remote_url
-from app.migrate_to_turso import migrate
+from app.migrate_to_turso import migrate, reconcile_recent
 from app.token_store import has_token, load_and_delete_oauth_state, load_token, save_oauth_state, save_token
 from cryptography.fernet import Fernet
 
@@ -67,6 +67,25 @@ def test_migrate_snapshot_into_empty_turso_database(tmp_path, monkeypatch):
     counts = migrate(source)
     assert counts["events"] == 1
     assert db.get_event("dm:migrate")["body"] == "preserve"
+
+
+def test_reconcile_local_changes_after_initial_copy(tmp_path, monkeypatch):
+    source = tmp_path / "source.sqlite3"
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    monkeypatch.setattr(config.paths, "database", source)
+    monkeypatch.delenv("TURSO_DATABASE_URL", raising=False)
+    monkeypatch.delenv("INSTAGRAM_ENV", raising=False)
+    db.initialize()
+    db.upsert_event({"id": "dm:before", "kind": "dm", "source_id": "before", "body": "old"})
+    monkeypatch.setenv("TURSO_DATABASE_URL", str(tmp_path / "destination.db"))
+    monkeypatch.setenv("TURSO_AUTH_TOKEN", "local-test-token")
+    migrate(source)
+    monkeypatch.delenv("TURSO_DATABASE_URL")
+    db.upsert_event({"id": "dm:after", "kind": "dm", "source_id": "after", "body": "new"})
+    monkeypatch.setenv("TURSO_DATABASE_URL", str(tmp_path / "destination.db"))
+    result = reconcile_recent(source, "2000-01-01T00:00:00")
+    assert result["events"] == 2
+    assert db.get_event("dm:after")["body"] == "new"
 
 
 def test_meta_token_is_encrypted_in_turso_and_oauth_state_survives_process(tmp_path, monkeypatch):

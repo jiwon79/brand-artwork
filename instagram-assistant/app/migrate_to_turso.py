@@ -16,6 +16,10 @@ from .db import SCHEMA
 
 
 TABLES = ("settings", "artworks", "events", "deliveries", "dm_sync_state", "webhook_events", "private_state")
+CHANGE_TIMESTAMPS = {
+    "artworks": "updated_at", "events": "updated_at", "deliveries": "created_at",
+    "dm_sync_state": "checked_at", "webhook_events": "created_at", "private_state": "updated_at",
+}
 
 
 def migrate(source_path: Path = paths.database) -> dict[str, int]:
@@ -58,6 +62,38 @@ def migrate(source_path: Path = paths.database) -> dict[str, int]:
         finally:
             destination.close()
             snapshot.close()
+
+
+def reconcile_recent(source_path: Path, since: str) -> dict[str, int]:
+    """Copy local changes made during the initial snapshot before switching webhooks."""
+    source = sqlite3.connect(source_path)
+    destination = open_connection(source_path)
+    if isinstance(destination, sqlite3.Connection):
+        destination.close()
+        source.close()
+        raise RuntimeError("Configure a Turso destination before reconciliation")
+    try:
+        counts: dict[str, int] = {}
+        for table in TABLES:
+            columns = [row[1] for row in source.execute(f"PRAGMA table_info({table})")]
+            column_list = ",".join(columns)
+            timestamp = CHANGE_TIMESTAMPS.get(table)
+            if timestamp == "created_at" and table == "webhook_events":
+                rows = source.execute(f"SELECT {column_list} FROM {table} WHERE created_at >= ? OR processed_at >= ?", (since, since))
+            elif timestamp:
+                rows = source.execute(f"SELECT {column_list} FROM {table} WHERE {timestamp} >= ?", (since,))
+            else:
+                rows = source.execute(f"SELECT {column_list} FROM {table}")
+            insert = f"INSERT OR REPLACE INTO {table} ({column_list}) VALUES ({','.join('?' for _ in columns)})"
+            counts[table] = 0
+            for row in rows:
+                destination.execute(insert, tuple(row))
+                counts[table] += 1
+            destination.commit()
+        return counts
+    finally:
+        destination.close()
+        source.close()
 
 
 if __name__ == "__main__":
