@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS artworks (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS post_labels (
+  post_code TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
   account_id TEXT,
@@ -360,6 +366,24 @@ def list_artworks() -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute("SELECT * FROM artworks ORDER BY title").fetchall()
     return [dict(row) for row in rows]
+
+
+def list_post_labels() -> dict[str, str]:
+    with connect() as conn:
+        artworks = conn.execute("SELECT post_code, title FROM artworks WHERE post_code IS NOT NULL").fetchall()
+        custom = conn.execute("SELECT post_code, label FROM post_labels").fetchall()
+    return {**{row["post_code"]: row["title"] for row in artworks},
+            **{row["post_code"]: row["label"] for row in custom}}
+
+
+def save_post_label(post_code: str, label: str) -> dict[str, str]:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO post_labels(post_code, label, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(post_code) DO UPDATE SET label=excluded.label, updated_at=excluded.updated_at",
+            (post_code, label, now()),
+        )
+    return {"post_code": post_code, "label": label}
 
 
 def save_artwork(item: dict[str, Any]) -> dict[str, Any]:

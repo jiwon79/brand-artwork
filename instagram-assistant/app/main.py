@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -20,8 +21,10 @@ from .db import (
     list_conversation_messages,
     list_conversations,
     list_events,
+    list_post_labels,
     mark_comment_reviewed,
     save_artwork,
+    save_post_label,
     sent_today_count,
     update_event,
     update_settings,
@@ -57,6 +60,12 @@ class ArtworkBody(BaseModel):
 
 class DraftBody(BaseModel):
     draft: str
+
+
+class PostLabelBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=40)
 
 
 @app.on_event("startup")
@@ -343,6 +352,23 @@ def ignore_event(event_id: str, x_instagram_assistant_token: str | None = Header
 @app.get("/api/artworks")
 def artworks() -> list[dict[str, Any]]:
     return list_artworks()
+
+
+@app.get("/api/post-labels")
+def post_labels() -> dict[str, str]:
+    return list_post_labels()
+
+
+@app.put("/api/post-labels/{post_code}")
+def put_post_label(post_code: str, body: PostLabelBody,
+                   x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, str]:
+    protect(x_instagram_assistant_token)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{5,30}", post_code):
+        raise HTTPException(400, "Invalid Instagram post code")
+    label = body.label.strip()
+    if not label:
+        raise HTTPException(400, "Post label cannot be blank")
+    return save_post_label(post_code, label)
 
 
 @app.post("/api/artworks")

@@ -12,7 +12,7 @@
       document.documentElement.style.colorScheme = theme;
     })();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=dm-hearts-2">
+  <link rel="stylesheet" href="/static/style.css?v=post-labels-1">
 </head>
 <body>
   <main class="shell">
@@ -85,6 +85,13 @@
   </main>
 
   <div id="toast" role="status"></div>
-  <script src="/static/app.js?v=selective-sync-1"></script>
+  <dialog id="post-label-dialog" aria-labelledby="post-label-title">
+    <form>
+      <h2 id="post-label-title">게시물 별명</h2>
+      <label>댓글 목록에서 사용할 짧은 이름<input name="label" maxlength="40" required autocomplete="off"></label>
+      <div class="post-label-actions"><button class="quiet" type="button" id="cancel-post-label">취소</button><button class="primary" type="submit">저장</button></div>
+    </form>
+  </dialog>
+  <script src="/static/app.js?v=post-labels-1"></script>
 </body>
 </html>
