@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 import secrets
@@ -12,9 +11,12 @@ from urllib.parse import urlencode
 import httpx
 
 from .config import paths, prepare_data_dir
-from .db import (add_delivery, get_event, get_settings, list_artworks, mark_comment_reviewed,
-                 reconcile_own_dm_messages, save_artwork,
-                 sent_today_count, update_event, update_settings, upsert_event)
+from .meta_config import get_meta_config
+from .token_store import (delete_oauth_state, delete_token, load_and_delete_oauth_state,
+                          load_token, save_oauth_state, save_token)
+from .db import (add_delivery, get_dm_sync_state, get_event, get_settings, list_artworks, mark_comment_reviewed,
+                 reconcile_own_dm_messages, reconcile_pending_dm_reactions, save_artwork, save_dm_sync_state,
+                 sent_today_count, set_dm_reactions, update_event, update_settings, upsert_event)
 
 GRAPH_BASE = "https://graph.instagram.com/" + os.getenv("INSTAGRAM_GRAPH_VERSION", "v25.0")
 SCOPES = "instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages"
@@ -71,6 +73,11 @@ class GraphClient:
             code = error.get("code")
             message = str(error.get("message") or "요청이 거절되었습니다.")[:300]
             message = message.replace(self.token, "[redacted]") if self.token else message
+            details = ", ".join(f"{label}={error[key]}" for key, label in (
+                ("error_subcode", "subcode"), ("is_transient", "transient"),
+                ("fbtrace_id", "trace")) if error.get(key) is not None)
+            if details:
+                message += f" [{details}]"
             if code in HALT_CODES:
                 raise InstagramHaltedError(f"Meta API 제한 ({code}): {message}")
             raise MetaApiError(status=response.status_code, code=code,
@@ -83,8 +90,13 @@ class GraphClient:
         query = dict(params or {})
         seen: set[str] = set()
         count = 0
+        pages_checked = 0
+        # Meta can return empty conversation pages with a next cursor. Manual
+        # sync must stay bounded even when no accessible conversation appears.
+        conversation_page_limit = min(limit, 10) if path == "/me/conversations" else None
         while count < limit:
             result = self.request("GET", path, params=query)
+            pages_checked += 1
             for item in result.get("data") or []:
                 if isinstance(item, dict):
                     yield item
@@ -93,18 +105,26 @@ class GraphClient:
                         return
             paging = result.get("paging") or {}
             after = (paging.get("cursors") or {}).get("after")
-            if not paging.get("next") or not after or after in seen:
+            if (not paging.get("next") or not after or after in seen or
+                    (conversation_page_limit is not None and pages_checked >= conversation_page_limit)):
                 return
             seen.add(after)
             query["after"] = after
 
-    def messaging_account_id(self) -> str:
-        # /me.id can be app-scoped; conversation participants use the IG professional user_id.
-        profile = self.request("GET", "/me", params={"fields": "user_id"})
-        user_id = str(profile.get("user_id") or "")
-        if not user_id:
-            raise InstagramAssistantError("Meta 계정의 Instagram user_id를 확인하지 못했습니다.")
-        return user_id
+    def nested_pages(self, path: str, nested: dict[str, Any], *, fields: str,
+                     limit: int = 1000000) -> Iterator[dict]:
+        count = 0
+        for item in nested.get("data") or []:
+            if isinstance(item, dict):
+                yield item
+                count += 1
+                if count >= limit:
+                    return
+        paging = nested.get("paging") or {}
+        after = (paging.get("cursors") or {}).get("after")
+        if paging.get("next") and after:
+            yield from self.pages(path, params={"fields": fields, "limit": 50,
+                                                  "after": after}, limit=limit - count)
 
 
 class InstagramService:
@@ -117,21 +137,37 @@ class InstagramService:
         return self._client is not None
 
     @staticmethod
+    def _check_halt(settings: dict[str, Any]) -> None:
+        reason = settings.get("halted_reason")
+        if not reason:
+            return
+        retry_after = settings.get("full_sync_retry_after")
+        if retry_after:
+            try:
+                if datetime.now(UTC) >= datetime.fromisoformat(str(retry_after)):
+                    update_settings({"halted_reason": None})
+                    return
+            except ValueError:
+                pass
+        raise InstagramHaltedError(str(reason))
+
+    @staticmethod
+    def _record_halt(exc: InstagramHaltedError) -> None:
+        update_settings({"halted_reason": str(exc)[:500],
+                         "full_sync_retry_after": (datetime.now(UTC) + timedelta(hours=1)).isoformat()})
+
+    @staticmethod
     def _oauth_config() -> tuple[str, str, str]:
-        values = (os.getenv("INSTAGRAM_APP_ID", ""),
-                  os.getenv("INSTAGRAM_APP_SECRET", ""),
-                  os.getenv("INSTAGRAM_REDIRECT_URI", ""))
+        config = get_meta_config()
+        values = (config.app_id, config.app_secret, config.redirect_uri)
         if not all(values):
             raise InstagramAssistantError("Meta 앱의 INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, INSTAGRAM_REDIRECT_URI를 설정하세요.")
         return values
 
     def authorization_url(self) -> str:
         app_id, _, redirect_uri = self._oauth_config()
-        prepare_data_dir()
         state = secrets.token_urlsafe(32)
-        paths.oauth_state.write_text(json.dumps({"state": state,
-            "created_at": datetime.now(UTC).isoformat()}))
-        paths.oauth_state.chmod(0o600)
+        save_oauth_state({"state": state, "created_at": datetime.now(UTC).isoformat()})
         return "https://www.instagram.com/oauth/authorize?" + urlencode({
             "client_id": app_id, "redirect_uri": redirect_uri,
             "response_type": "code", "scope": SCOPES,
@@ -141,11 +177,10 @@ class InstagramService:
         with self._lock:
             app_id, secret, redirect_uri = self._oauth_config()
             try:
-                saved = json.loads(paths.oauth_state.read_text())
+                saved = load_and_delete_oauth_state()
                 created = datetime.fromisoformat(saved["created_at"])
             except (OSError, ValueError, KeyError) as exc:
                 raise InstagramAssistantError("Instagram 연결 요청이 만료되었습니다.") from exc
-            paths.oauth_state.unlink(missing_ok=True)
             if (not secrets.compare_digest(str(saved["state"]), state)
                     or datetime.now(UTC) - created > timedelta(minutes=10)):
                 raise InstagramAssistantError("Instagram 연결 요청이 만료되었습니다.")
@@ -170,6 +205,7 @@ class InstagramService:
             self._save_token(token, account_id, username, int(long_token.get("expires_in", 0)))
             self._client = GraphClient(token, account_id, username)
             update_settings({"instagram_account_id": account_id, "instagram_username": username,
+                "instagram_messaging_account_id": "",
                 "auto_send": False, "auto_comment": False, "auto_dm": False,
                 "dm_backfill_complete": False, "dm_requests_backfill_complete": False,
                 "halted_reason": None})
@@ -177,11 +213,9 @@ class InstagramService:
 
     @staticmethod
     def _save_token(token: str, account_id: str, username: str, expires_in: int) -> None:
-        prepare_data_dir()
-        paths.session.write_text(json.dumps({"access_token": token,
+        save_token({"access_token": token,
             "account_id": account_id, "username": username,
-            "expires_at": (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat()}))
-        paths.session.chmod(0o600)
+            "expires_at": (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat()})
 
     def connect_saved_session(self) -> GraphClient:
         with self._lock:
@@ -189,13 +223,13 @@ class InstagramService:
                 if not isinstance(self._client, GraphClient):
                     return self._client
                 try:
-                    saved_expiry = json.loads(paths.session.read_text())["expires_at"]
+                    saved_expiry = load_token()["expires_at"]
                     if datetime.fromisoformat(saved_expiry) > datetime.now(UTC) + timedelta(days=7):
                         return self._client
                 except (OSError, ValueError, KeyError):
                     self._client = None
             try:
-                saved = json.loads(paths.session.read_text())
+                saved = load_token()
                 if datetime.fromisoformat(saved["expires_at"]) <= datetime.now(UTC) + timedelta(days=7):
                     with httpx.Client(timeout=20) as http:
                         response = http.get("https://graph.instagram.com/refresh_access_token", params={
@@ -213,9 +247,10 @@ class InstagramService:
     def logout(self) -> None:
         with self._lock:
             self._client = None
-            paths.session.unlink(missing_ok=True)
-            paths.oauth_state.unlink(missing_ok=True)
+            delete_token()
+            delete_oauth_state()
             update_settings({"instagram_account_id": "", "instagram_username": "",
+                "instagram_messaging_account_id": "",
                 "auto_send": False, "auto_comment": False, "auto_dm": False,
                 "halted_reason": None})
 
@@ -237,16 +272,49 @@ class InstagramService:
     def _comment_username(comment: dict[str, Any]) -> str:
         return str(comment.get("username") or (comment.get("from") or {}).get("username") or "")
 
+    @staticmethod
+    def _dm_reactions(message: dict[str, Any], own_id: str,
+                      username: str) -> tuple[str | None, str | None]:
+        """Return the business and other participant's current reaction."""
+        own: str | None = None
+        peer: str | None = None
+        reactions = (message.get("reactions") or {}).get("data") or []
+        for reaction in reactions:
+            emoji = str(reaction.get("emoji") or "")
+            if not emoji:
+                continue
+            for user in reaction.get("users") or []:
+                if (str(user.get("id") or "") == own_id or
+                        str(user.get("username") or "").casefold() == username.casefold()):
+                    own = emoji
+                else:
+                    peer = emoji
+        return own, peer
+
+    @classmethod
+    def _shared_post_url(cls, message: dict[str, Any]) -> str:
+        for share in (message.get("shares") or {}).get("data") or []:
+            link = str(share.get("link") or "")
+            if re.match(r"^https://(?:www\.)?instagram\.com/(?:p|reel|stories)/", link):
+                return cls._canonical_url(link)
+        return ""
+
     def sync(self, media_amount: int = 12, comments_per_media: int = 50,
-             threads_amount: int = 30) -> dict[str, Any]:
+             threads_amount: int = 100, dm_user_id: str | None = None,
+             full: bool = False, media_items: list[dict] | None = None,
+             conversation_items: list[dict] | None = None) -> dict[str, Any]:
         with self._lock:
+            if dm_user_id is not None and not re.fullmatch(r"\d+", dm_user_id):
+                raise InstagramAssistantError("대상 Instagram 사용자 ID는 숫자여야 합니다.")
             client = self.connect_saved_session()
             comments_count = replies_count = dm_count = 0
+            dm_threads_checked = dm_threads_skipped = 0
             try:
                 artworks = {item.get("post_code"): item for item in list_artworks() if item.get("post_code")}
-                for media in client.pages("/me/media", params={
+                media_source = media_items if media_items is not None else client.pages("/me/media", params={
                     "fields": "id,caption,permalink,media_product_type,timestamp,comments_count",
-                    "limit": min(media_amount, 100)}, limit=media_amount):
+                    "limit": min(media_amount, 100)}, limit=media_amount)
+                for media in media_source:
                     if media.get("media_product_type") == "STORY":
                         continue
                     media_id = str(media["id"])
@@ -261,7 +329,8 @@ class InstagramService:
                     for comment in client.pages(f"/{media_id}/comments", params={
                         "fields": "id,text,username,from{id,username},timestamp,like_count,"
                                   "replies{id,text,username,from{id,username},timestamp}",
-                        "limit": min(comments_per_media, 50)}, limit=min(comments_per_media * 4, 500)):
+                        "limit": min(comments_per_media, 50)},
+                        limit=1000000 if full else min(comments_per_media * 4, 500)):
                         seen_comments += 1
                         username = self._comment_username(comment)
                         if not username or username.casefold() == client.username.casefold():
@@ -276,7 +345,11 @@ class InstagramService:
                             "author_username": username, "body": comment.get("text") or "",
                             "like_count": comment.get("like_count"),
                             "received_at": self._timestamp(comment.get("timestamp"))}))
-                        for reply in (comment.get("replies") or {}).get("data") or []:
+                        replies = (client.nested_pages(f"/{comment_id}/replies",
+                            comment.get("replies") or {},
+                            fields="id,text,username,from{id,username},timestamp") if full else
+                            (comment.get("replies") or {}).get("data") or [])
+                        for reply in replies:
                             reply_username = self._comment_username(reply)
                             if not reply_username:
                                 detail = client.request("GET", f"/{reply['id']}", params={
@@ -293,17 +366,34 @@ class InstagramService:
                                 "status": "history"}))
                             if outbound:
                                 update_event(f"comment:{comment_id}", {"status": "sent", "error": None})
-                        if imported_comments >= comments_per_media:
+                        if not full and imported_comments >= comments_per_media:
                             break
                     if int(media.get("comments_count") or 0) > 0 and not seen_comments:
                         raise InstagramAssistantError(
                             "게시물에 댓글이 있지만 공식 API가 빈 목록을 반환했습니다. "
                             "Meta 앱의 댓글 권한과 게시 상태를 확인하세요.")
-                for conversation in client.pages("/me/conversations", params={
-                    "platform": "instagram", "limit": min(threads_amount, 100)}, limit=threads_amount):
+                conversation_params = {
+                    "platform": "instagram", "fields": "id,updated_time",
+                    "limit": min(threads_amount, 100)}
+                if dm_user_id is not None:
+                    conversation_params["user_id"] = dm_user_id
+                conversation_source = (conversation_items if conversation_items is not None else
+                    client.pages("/me/conversations", params=conversation_params,
+                                 limit=1 if dm_user_id is not None else threads_amount))
+                for conversation in conversation_source:
                     thread_id = str(conversation["id"])
+                    updated_time = str(conversation.get("updated_time") or "")
+                    state = get_dm_sync_state(client.account_id, thread_id)
+                    if not full and dm_user_id is None and updated_time and state and state["updated_time"] == updated_time:
+                        try:
+                            checked_at = datetime.fromisoformat(state["checked_at"])
+                            if datetime.now(UTC) - checked_at < timedelta(hours=24):
+                                dm_threads_skipped += 1
+                                continue
+                        except ValueError:
+                            pass
                     detail = client.request("GET", f"/{thread_id}", params={
-                        "fields": "participants{id,username},messages{id,created_time,from,to,message}"})
+                        "fields": "participants{id,username},messages{id,created_time,from,to,message,reactions,shares{link}}"})
                     participants = (detail.get("participants") or {}).get("data") or []
                     own_messaging_ids = {
                         str(person["id"])
@@ -314,33 +404,94 @@ class InstagramService:
                         raise InstagramAssistantError(
                             "DM 대화에서 연결 계정의 발신자 ID를 확인하지 못했습니다. 방향을 추측하지 않고 동기화를 중단합니다.")
                     own_messaging_id = next(iter(own_messaging_ids))
+                    if get_settings().get("instagram_messaging_account_id") != own_messaging_id:
+                        update_settings({"instagram_messaging_account_id": own_messaging_id})
                     participant_names = {
                         str(person["id"]): str(person.get("username") or "")
                         for person in participants if person.get("id")
                     }
-                    for message in (detail.get("messages") or {}).get("data") or []:
+                    messages = (client.nested_pages(f"/{thread_id}/messages",
+                        detail.get("messages") or {},
+                        fields="id,created_time,from,to,message,reactions,shares{link}") if full else
+                        (detail.get("messages") or {}).get("data") or [])
+                    for message in messages:
                         sender = message.get("from") or {}
                         sender_id = str(sender.get("id") or "")
                         if not sender_id:
                             continue
                         outbound = sender_id == own_messaging_id
+                        shared_url = self._shared_post_url(message)
+                        own_reaction, peer_reaction = self._dm_reactions(
+                            message, own_messaging_id, client.username)
                         dm_count += int(upsert_event({
                             "id": f"dm:{message['id']}", "account_id": client.account_id,
                             "kind": "dm", "source_id": str(message["id"]), "thread_id": thread_id,
                             "author_id": sender_id,
                             "author_username": sender.get("username") or participant_names.get(sender_id, ""),
                             "direction": "outbound" if outbound else "inbound",
-                            "body": message.get("message") or "메시지 내용 없음",
+                            "has_liked": int(own_reaction in {"❤", "❤️", "♥"}),
+                            "own_reaction": own_reaction, "peer_reaction": peer_reaction,
+                            "shared_url": shared_url or None,
+                            "body": message.get("message") or ("" if shared_url else "메시지 내용 없음"),
                             "received_at": self._timestamp(message.get("created_time")),
                             "status": "history" if outbound else "pending"}))
+                        # Graph omits `reactions` when a message has no reactions.
+                        # A successful message fetch is a complete current snapshot.
+                        set_dm_reactions(f"dm:{message['id']}", own_reaction, peer_reaction)
+                        reconcile_pending_dm_reactions(client.account_id, str(message["id"]),
+                                                       {client.account_id, own_messaging_id})
                     reconcile_own_dm_messages(client.account_id, own_messaging_id, client.username)
+                    dm_threads_checked += 1
+                    if updated_time:
+                        save_dm_sync_state(client.account_id, thread_id, updated_time)
             except InstagramHaltedError as exc:
-                update_settings({"halted_reason": str(exc)[:500]})
+                self._record_halt(exc)
                 raise
             update_settings({"last_sync_at": datetime.now(UTC).isoformat()})
             return {"comments": comments_count, "comment_replies": replies_count,
-                "dms": dm_count, "dm_full_sync": False,
+                "dms": dm_count, "dm_threads_checked": dm_threads_checked,
+                "dm_threads_skipped": dm_threads_skipped, "dm_full_sync": full,
                 "dm_requests_full_sync": False}
+
+    def sync_comment_thread(self, comment_id: str) -> dict[str, int]:
+        if not re.fullmatch(r"\d+", comment_id):
+            raise InstagramAssistantError("댓글 ID는 숫자여야 합니다.")
+        with self._lock:
+            client = self.connect_saved_session()
+            detail = client.request("GET", f"/{comment_id}", params={
+                "fields": "id,text,username,from{id,username},timestamp,like_count,parent_id,"
+                          "media{id,permalink,caption}"})
+            parent_id = str(detail.get("parent_id") or comment_id)
+            parent = (client.request("GET", f"/{parent_id}", params={
+                "fields": "id,text,username,from{id,username},timestamp,like_count,"
+                          "media{id,permalink,caption}"}) if parent_id != comment_id else detail)
+            media = parent.get("media") or detail.get("media") or {}
+            post_url = self._canonical_url(str(media.get("permalink") or ""))
+            match = re.search(r"instagram\.com/(?:reel|p)/([^/?#]+)", post_url)
+            common = {"account_id": client.account_id, "kind": "comment",
+                      "media_id": str(media.get("id") or ""), "post_code": match.group(1) if match else "",
+                      "post_url": post_url, "post_caption": re.sub(r"\s+", " ",
+                      media.get("caption") or "").strip()[:160]}
+            count = 0
+            username = self._comment_username(parent)
+            if username and username.casefold() != client.username.casefold():
+                count += int(upsert_event({**common, "id": f"comment:{parent_id}",
+                    "source_id": parent_id, "author_username": username,
+                    "body": parent.get("text") or "", "like_count": parent.get("like_count"),
+                    "received_at": self._timestamp(parent.get("timestamp"))}))
+            for reply in client.pages(f"/{parent_id}/replies", params={
+                    "fields": "id,text,username,from{id,username},timestamp", "limit": 50}, limit=1000000):
+                reply_username = self._comment_username(reply)
+                outbound = reply_username.casefold() == client.username.casefold()
+                count += int(upsert_event({**common, "id": f"comment:{reply['id']}",
+                    "source_id": str(reply["id"]), "parent_comment_id": parent_id,
+                    "author_username": reply_username,
+                    "direction": "outbound" if outbound else "inbound",
+                    "body": reply.get("text") or "",
+                    "received_at": self._timestamp(reply.get("timestamp")), "status": "history"}))
+                if outbound:
+                    update_event(f"comment:{parent_id}", {"status": "sent", "error": None})
+            return {"comments": count}
 
     def send_for_event(self, event_id: str) -> dict[str, Any]:
         with self._lock:
@@ -350,8 +501,7 @@ class InstagramService:
             if event["status"] == "sent":
                 raise InstagramAssistantError("이미 전송한 항목입니다.")
             settings = get_settings()
-            if settings.get("halted_reason"):
-                raise InstagramHaltedError(str(settings["halted_reason"]))
+            self._check_halt(settings)
             if sent_today_count() >= int(settings.get("daily_send_limit", 20)):
                 raise InstagramAssistantError("오늘의 발송 한도에 도달했습니다.")
             if not event.get("draft"):
@@ -365,7 +515,7 @@ class InstagramService:
                 path, payload = f"/{event['source_id']}/replies", {"message": event["draft"]}
             elif (action == "reply_dm" and event.get("kind") == "dm"
                   and event.get("direction") == "inbound" and event.get("author_id")):
-                path = f"/{client.messaging_account_id()}/messages"
+                path = f"/{client.account_id}/messages"
                 payload = {"recipient": {"id": event["author_id"]},
                            "message": {"text": event["draft"]}}
             else:
@@ -383,7 +533,7 @@ class InstagramService:
                 else:
                     result = client.request("POST", path, json_body=payload)
             except InstagramHaltedError as exc:
-                update_settings({"halted_reason": str(exc)[:500]})
+                self._record_halt(exc)
                 add_delivery(event_id, action, event["draft"], "halted", error=str(exc))
                 raise
             except MetaApiError as exc:
@@ -429,18 +579,22 @@ class InstagramService:
             if event.get("has_liked"):
                 raise InstagramAssistantError("이미 하트를 누른 DM입니다.")
             settings = get_settings()
-            if settings.get("halted_reason"):
-                raise InstagramHaltedError(str(settings["halted_reason"]))
+            self._check_halt(settings)
             client = self.connect_saved_session()
             if event.get("account_id") != client.account_id:
                 raise InstagramAssistantError("현재 연결 계정에서 수집한 DM이 아닙니다. 다시 동기화하세요.")
-            result = client.request("POST", f"/{client.messaging_account_id()}/messages", json_body={
-                "recipient": {"id": event["author_id"]},
-                "sender_action": "react",
-                "payload": {"message_id": event["source_id"], "reaction": "love"},
-            })
+            try:
+                result = client.request("POST", f"/{client.account_id}/messages", json_body={
+                    "recipient": {"id": event["author_id"]},
+                    "sender_action": "react",
+                    "payload": {"message_id": event["source_id"], "reaction": "love"},
+                })
+            except InstagramHaltedError as exc:
+                self._record_halt(exc)
+                raise
             if str(result.get("recipient_id") or "") != str(event["author_id"]):
                 raise InstagramAssistantError("DM 하트 결과를 확인하지 못했습니다. 다시 누르기 전에 Instagram에서 확인하세요.")
-            return update_event(event_id, {"has_liked": True, "error": None}) or event
+            return update_event(event_id, {"has_liked": True, "own_reaction": "❤",
+                                           "error": None}) or event
 
 instagram_service = InstagramService()

@@ -1,0 +1,84 @@
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #172e69;
+}
+
+body,
+body * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-drag: none;
+}
+
+#artwork {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: blur(var(--artwork-blur, 1.6px));
+  touch-action: none;
+  cursor: grab;
+}
+
+#artwork.dragging {
+  cursor: grabbing;
+}
+
+#controls {
+  position: fixed;
+  z-index: 10;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  width: min(244px, calc(100vw - 24px));
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 27%);
+  border-radius: 12px;
+  background: rgb(18 32 61 / 68%);
+  box-shadow: 0 8px 28px rgb(17 30 65 / 12%);
+  backdrop-filter: blur(16px);
+}
+
+#gui .lil-gui.root {
+  --background-color: transparent;
+  --widget-color: #35476b;
+  --hover-color: #4d638d;
+  --focus-color: #647dae;
+  --text-color: #f8f5ff;
+  --title-background-color: rgb(255 255 255 / 9%);
+  --number-color: #ffdbab;
+  --string-color: #ffdbab;
+  --font-size: 12px;
+  --widget-height: 27px;
+  width: 100%;
+}
+
+#gui .lil-gui.root > .children {
+  max-height: none;
+}
+
+#gui .lil-gui input,
+#gui .lil-gui select {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#controls p {
+  margin: 0;
+  padding: 9px 12px 11px;
+  border-top: 1px solid rgb(255 255 255 / 14%);
+  color: #dce5ff;
+  font: 11px/1.55 system-ui, -apple-system, sans-serif;
+}
+
+@media (max-width: 480px) {
+  #controls {
+    top: max(8px, env(safe-area-inset-top));
+    right: 8px;
+    width: min(210px, calc(100vw - 16px));
+  }
+}

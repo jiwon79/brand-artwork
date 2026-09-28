@@ -59,6 +59,10 @@ docs/
 - [`architecture.md`](./artworks/rose-glass/architecture.md) - 세 유리 몸체의 멀티터치 변형, 재질·합성 패스와 성능 조절 구조
 - [`social-share-image.md`](./artworks/rose-glass/social-share-image.md) - 실제 WebGL 캡처를 가로로 회전해 채우고 Rose Glass 제목을 합성하는 PNG 제작 도구와 재생성 방법
 
+### 솜결 (Soft Forms)
+
+- [`social-share-image.md`](./artworks/soft-forms/social-share-image.md) - 실제 별 캐릭터 캡처에 한글·영어 제목을 합성하는 공유 PNG 제작 방법
+
 ### 웃음꽃 (Smile Flower)
 
 - [`architecture.md`](./artworks/smile-flower/architecture.md) - Blender 모델 생성, GLB 최적화, instancing, 회전·bloom·파동 렌더링 구조

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "trailingSlash": false,
+  "regions": ["hnd1"],
+  "crons": [
+    {"path": "/api/cron/process-webhooks", "schedule": "0 17 * * *"}
+  ]
+}

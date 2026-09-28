@@ -1,0 +1,34 @@
+name: Instagram assistant daily full sync
+
+on:
+  schedule:
+    - cron: '0 18,6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: instagram-assistant-full-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    defaults:
+      run:
+        working-directory: instagram-assistant
+    env:
+      INSTAGRAM_ENV: production
+      TURSO_PROD_TURSO_DATABASE_URL: ${{ secrets.INSTAGRAM_TURSO_PROD_URL }}
+      TURSO_PROD_TURSO_AUTH_TOKEN: ${{ secrets.INSTAGRAM_TURSO_PROD_TOKEN }}
+      INSTAGRAM_TOKEN_ENCRYPTION_KEY: ${{ secrets.INSTAGRAM_TOKEN_ENCRYPTION_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.10.11'
+      - run: uv sync --frozen
+      - name: Reconcile all media and conversations
+        run: uv run --no-sync python -c 'from app.full_sync import run_pass; print(run_pass(max_seconds=20700))'
