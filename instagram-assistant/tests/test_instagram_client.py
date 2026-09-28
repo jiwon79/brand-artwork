@@ -40,6 +40,23 @@ def test_graph_pages_stop_when_meta_has_no_next_page(monkeypatch):
     assert len(calls) == 1
 
 
+def test_nested_pages_continue_after_initial_dm_page(monkeypatch):
+    client = GraphClient("token", "ig-1", "studio.jiiwon")
+    calls = []
+
+    def request(method, path, *, params):
+        calls.append((path, dict(params)))
+        return {"data": [{"id": "older"}], "paging": {}}
+
+    monkeypatch.setattr(client, "request", request)
+    initial = {"data": [{"id": "newest"}],
+               "paging": {"next": "https://example.com/next", "cursors": {"after": "cursor"}}}
+    assert [item["id"] for item in client.nested_pages(
+        "/thread/messages", initial, fields="id,created_time")] == ["newest", "older"]
+    assert calls == [("/thread/messages", {"fields": "id,created_time", "limit": 50,
+                                           "after": "cursor"})]
+
+
 def test_oauth_url_uses_official_scopes_and_stores_short_lived_state(monkeypatch, tmp_path):
     monkeypatch.setenv("INSTAGRAM_APP_ID", "app-id")
     monkeypatch.setenv("INSTAGRAM_APP_SECRET", "secret")
