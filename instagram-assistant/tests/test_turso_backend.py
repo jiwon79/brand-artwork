@@ -31,6 +31,18 @@ def test_separate_turso_database_urls_must_differ(tmp_path, monkeypatch):
         raise AssertionError("shared development and production DB must be rejected")
 
 
+def test_explicit_environment_rejects_generic_database_url(monkeypatch):
+    monkeypatch.setenv("INSTAGRAM_ENV", "production")
+    monkeypatch.setenv("TURSO_DATABASE_URL", "libsql://generic.example")
+    try:
+        with db.connect():
+            pass
+    except RuntimeError as exc:
+        assert "environment-specific" in str(exc)
+    else:
+        raise AssertionError("generic URL must not be used by explicit environment")
+
+
 def test_migrate_snapshot_into_empty_turso_database(tmp_path, monkeypatch):
     source = tmp_path / "source.sqlite3"
     monkeypatch.setattr(config.paths, "data", tmp_path)

@@ -73,8 +73,9 @@ def remote_url() -> str:
     if (os.getenv("TURSO_DEV_DATABASE_URL") and
             os.getenv("TURSO_DEV_DATABASE_URL") == os.getenv("TURSO_PROD_DATABASE_URL")):
         raise RuntimeError("Development and production Turso URLs must differ")
-    return ((os.getenv(prefix + "DATABASE_URL") if prefix else None) or
-            os.getenv("TURSO_DATABASE_URL", "")).strip()
+    if prefix and os.getenv("TURSO_DATABASE_URL"):
+        raise RuntimeError("Use environment-specific Turso URLs when INSTAGRAM_ENV is set")
+    return os.getenv(prefix + "DATABASE_URL" if prefix else "TURSO_DATABASE_URL", "").strip()
 
 
 def open_connection(local_path: Path) -> sqlite3.Connection | RemoteConnection:
@@ -87,8 +88,7 @@ def open_connection(local_path: Path) -> sqlite3.Connection | RemoteConnection:
 
     environment = os.getenv("INSTAGRAM_ENV", "").strip()
     prefix = {"development": "TURSO_DEV_", "production": "TURSO_PROD_"}.get(environment, "")
-    token = ((os.getenv(prefix + "AUTH_TOKEN") if prefix else None) or
-             os.getenv("TURSO_AUTH_TOKEN", "")).strip()
+    token = os.getenv(prefix + "AUTH_TOKEN" if prefix else "TURSO_AUTH_TOKEN", "").strip()
     if not token:
         raise RuntimeError("TURSO_AUTH_TOKEN is required when TURSO_DATABASE_URL is set")
     driver = os.getenv("TURSO_DRIVER", "libsql").strip()

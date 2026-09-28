@@ -110,7 +110,8 @@ async def admin_login(request: Request):
         raise HTTPException(401, "Invalid administrator password")
     response = RedirectResponse("/", status_code=303)
     response.set_cookie(COOKIE_NAME, sign_session(), max_age=43200,
-                        httponly=True, secure=request.url.scheme == "https",
+                        httponly=True,
+                        secure=(request.url.hostname not in {"localhost", "127.0.0.1", "::1"}),
                         samesite="lax", path="/")
     return response
 
