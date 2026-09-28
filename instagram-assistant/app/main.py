@@ -309,7 +309,8 @@ def heart_observed(event_id: str, x_instagram_assistant_token: str | None = Head
         raise HTTPException(400, "Event does not belong to the connected account")
     if event["has_liked"]:
         return event
-    update_event(event_id, {"has_liked": True})
+    update_event(event_id, {"has_liked": True,
+                            **({"own_reaction": "❤"} if event["kind"] == "dm" else {})})
     if event["kind"] == "comment":
         mark_comment_reviewed(event_id)
     return get_event(event_id) or event
