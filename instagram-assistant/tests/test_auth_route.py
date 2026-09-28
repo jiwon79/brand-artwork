@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app import config, db, main
+from app.admin_auth import hash_password
 
 
 def test_oauth_start_requires_local_token_and_uses_post(monkeypatch):
@@ -11,6 +12,45 @@ def test_oauth_start_requires_local_token_and_uses_post(monkeypatch):
         response = client.post("/api/auth/url", headers={"X-Instagram-Assistant-Token": main.TOKEN})
     assert response.status_code == 200
     assert response.json()["url"] == "https://www.instagram.com/oauth/authorize"
+
+
+def test_hosted_oauth_callback_uses_one_time_state_without_admin_cookie(monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", hash_password("test-admin-password-long"))
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret")
+    calls = []
+    monkeypatch.setattr(main.instagram_service, "complete_oauth",
+                        lambda code, state: calls.append((code, state)))
+    with TestClient(main.app, base_url="https://admin.example") as client:
+        assert client.get("/api/status").status_code == 401
+        assert client.get("/api/auth/callback").status_code == 400
+        response = client.get("/api/auth/callback?code=test-code&state=test-state",
+                              follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/setting?oauth=connected"
+    assert calls == [("test-code", "test-state")]
+
+
+def test_webhook_subscription_requires_auth_and_confirms_fields(monkeypatch):
+    calls = []
+
+    class StubClient:
+        def request(self, method, path, **kwargs):
+            calls.append((method, path, kwargs))
+            return {"data": [{"subscribed_fields": ["messages", "message_reactions", "comments"]}]}
+
+    monkeypatch.setattr(main.instagram_service, "connect_saved_session", lambda: StubClient())
+    with TestClient(main.app) as client:
+        assert client.post("/api/webhooks/subscribe").status_code == 403
+        response = client.post("/api/webhooks/subscribe", headers={
+            "X-Instagram-Assistant-Token": main.TOKEN})
+    assert response.status_code == 200
+    assert response.json()["subscriptions"][0]["subscribed_fields"] == [
+        "messages", "message_reactions", "comments"]
+    assert calls == [
+        ("POST", "/me/subscribed_apps", {"data": {
+            "subscribed_fields": "messages,message_reactions,comments"}}),
+        ("GET", "/me/subscribed_apps", {}),
+    ]
 
 
 def test_viewer_only_exposes_sync_action_without_mutation_token():
