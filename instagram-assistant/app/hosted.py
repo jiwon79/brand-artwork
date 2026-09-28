@@ -5,6 +5,7 @@ import hmac
 import os
 
 from fastapi import Header, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 
 from .main import app
 from .full_sync import run_if_due, run_pass
@@ -12,7 +13,7 @@ from .db import get_settings
 from .webhook import process_one, receive, verify
 
 
-app.add_api_route("/webhook", verify, methods=["GET"])
+app.add_api_route("/webhook", verify, methods=["GET"], response_class=PlainTextResponse)
 app.add_api_route("/webhook", receive, methods=["POST"])
 
 

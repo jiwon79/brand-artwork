@@ -45,3 +45,17 @@ def test_daily_cron_starts_full_sync_only_with_secret(monkeypatch, tmp_path):
             "Authorization": "Bearer cron-test-secret"}).json() == {
                 "webhooks_processed": 0,
                 "reconciliation": {"complete": True, "max_seconds": 240}}
+
+
+def test_hosted_webhook_challenge_is_plain_text(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.delenv("INSTAGRAM_ENV", raising=False)
+    monkeypatch.setenv("INSTAGRAM_WEBHOOK_VERIFY_TOKEN", "verify-test")
+    with TestClient(hosted.app) as client:
+        response = client.get("/webhook", params={
+            "hub.mode": "subscribe", "hub.verify_token": "verify-test",
+            "hub.challenge": "exact-challenge"})
+    assert response.status_code == 200
+    assert response.text == "exact-challenge"
+    assert response.headers["content-type"].startswith("text/plain")
