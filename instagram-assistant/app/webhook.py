@@ -111,7 +111,7 @@ def verify(request: Request) -> str:
     token = get_meta_config().webhook_verify_token
     query = request.query_params
     if (not token or query.get("hub.mode") != "subscribe" or
-            not hmac.compare_digest(query.get("hub.verify_token", ""), token)):
+            not hmac.compare_digest(query.get("hub.verify_token", "").encode(), token.encode())):
         raise HTTPException(403)
     return query.get("hub.challenge", "")
 
