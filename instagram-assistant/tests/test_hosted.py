@@ -23,14 +23,12 @@ def test_hosted_webhook_drain_requires_cron_secret(monkeypatch, tmp_path):
     monkeypatch.setenv("CRON_SECRET", "cron-test-secret")
     calls = []
     monkeypatch.setattr(hosted, "process_one", lambda: calls.append(True) or len(calls) < 3)
-    monkeypatch.setattr(hosted, "get_settings", lambda: {"full_sync_progress": None})
-    monkeypatch.setattr(hosted, "run_if_due", lambda: 1 / 0)
     with TestClient(hosted.app, base_url="https://admin.example") as client:
         assert client.get("/api/cron/process-webhooks").status_code == 403
         assert client.get("/api/cron/process-webhooks", headers={"Authorization": "Bearer wrong"}).status_code == 403
         assert client.get("/api/cron/process-webhooks", headers={
             "Authorization": "Bearer cron-test-secret"}).json() == {
-                "processed": 2, "reconciliation": None}
+                "processed": 2}
 
 
 def test_daily_cron_starts_full_sync_only_with_secret(monkeypatch, tmp_path):
