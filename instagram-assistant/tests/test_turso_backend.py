@@ -80,12 +80,18 @@ def test_reconcile_local_changes_after_initial_copy(tmp_path, monkeypatch):
     monkeypatch.setenv("TURSO_DATABASE_URL", str(tmp_path / "destination.db"))
     monkeypatch.setenv("TURSO_AUTH_TOKEN", "local-test-token")
     migrate(source)
+    db.update_settings({"full_sync_progress": {"phase": "dm", "cursor": "hosted-cursor"}})
+    db.set_private_state("graph-token", "hosted-encrypted-token")
     monkeypatch.delenv("TURSO_DATABASE_URL")
     db.upsert_event({"id": "dm:after", "kind": "dm", "source_id": "after", "body": "new"})
+    db.update_settings({"full_sync_progress": None})
+    db.set_private_state("graph-token", "local-token")
     monkeypatch.setenv("TURSO_DATABASE_URL", str(tmp_path / "destination.db"))
     result = reconcile_recent(source, "2000-01-01T00:00:00")
     assert result["events"] == 2
     assert db.get_event("dm:after")["body"] == "new"
+    assert db.get_settings()["full_sync_progress"] == {"phase": "dm", "cursor": "hosted-cursor"}
+    assert db.get_private_state("graph-token") == "hosted-encrypted-token"
 
 
 def test_meta_token_is_encrypted_in_turso_and_oauth_state_survives_process(tmp_path, monkeypatch):

@@ -20,6 +20,7 @@ CHANGE_TIMESTAMPS = {
     "artworks": "updated_at", "events": "updated_at", "deliveries": "created_at",
     "dm_sync_state": "checked_at", "webhook_events": "created_at", "private_state": "updated_at",
 }
+RECONCILE_TABLES = ("artworks", "events", "deliveries", "dm_sync_state", "webhook_events")
 
 
 def migrate(source_path: Path = paths.database) -> dict[str, int]:
@@ -74,7 +75,10 @@ def reconcile_recent(source_path: Path, since: str) -> dict[str, int]:
         raise RuntimeError("Configure a Turso destination before reconciliation")
     try:
         counts: dict[str, int] = {}
-        for table in TABLES:
+        # Hosted settings contain the active full-sync cursor, and private_state
+        # contains the hosted encrypted Meta token. Neither belongs to the
+        # local record delta after the initial snapshot.
+        for table in RECONCILE_TABLES:
             columns = [row[1] for row in source.execute(f"PRAGMA table_info({table})")]
             column_list = ",".join(columns)
             timestamp = CHANGE_TIMESTAMPS.get(table)
@@ -84,7 +88,8 @@ def reconcile_recent(source_path: Path, since: str) -> dict[str, int]:
                 rows = source.execute(f"SELECT {column_list} FROM {table} WHERE {timestamp} >= ?", (since,))
             else:
                 rows = source.execute(f"SELECT {column_list} FROM {table}")
-            insert = f"INSERT OR REPLACE INTO {table} ({column_list}) VALUES ({','.join('?' for _ in columns)})"
+            conflict = "IGNORE" if table == "webhook_events" else "REPLACE"
+            insert = f"INSERT OR {conflict} INTO {table} ({column_list}) VALUES ({','.join('?' for _ in columns)})"
             counts[table] = 0
             for row in rows:
                 destination.execute(insert, tuple(row))
