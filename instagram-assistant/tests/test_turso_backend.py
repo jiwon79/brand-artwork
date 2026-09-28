@@ -63,6 +63,7 @@ def test_migrate_snapshot_into_empty_turso_database(tmp_path, monkeypatch):
     db.upsert_event({"id": "dm:migrate", "kind": "dm", "source_id": "migrate", "body": "preserve"})
     monkeypatch.setenv("TURSO_DATABASE_URL", str(tmp_path / "destination.db"))
     monkeypatch.setenv("TURSO_AUTH_TOKEN", "local-test-token")
+    db.initialize()  # Hosted app may have created its default rows before migration.
     counts = migrate(source)
     assert counts["events"] == 1
     assert db.get_event("dm:migrate")["body"] == "preserve"

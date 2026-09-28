@@ -1,6 +1,7 @@
-"""Copy a consistent local SQLite snapshot to an empty Turso database.
+"""Copy a consistent local SQLite snapshot to a new Turso database.
 
-Run only after stopping local writers, with the destination Turso environment set.
+The destination may contain only automatically initialized settings and artworks.
+Run with the destination Turso environment set; reconcile changes after cutover.
 The source file is never modified.
 """
 from __future__ import annotations
@@ -37,21 +38,21 @@ def migrate(source_path: Path = paths.database) -> dict[str, int]:
             counts: dict[str, int] = {}
             for table in TABLES:
                 existing = destination.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                if existing:
+                if existing and table not in {"settings", "artworks"}:
                     raise RuntimeError(f"Destination table {table} is not empty")
                 columns = [row[1] for row in snapshot.execute(f"PRAGMA table_info({table})")]
                 if not columns:
                     counts[table] = 0
                     continue
                 query = f"SELECT {','.join(columns)} FROM {table}"
-                insert = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})"
+                insert = f"INSERT OR REPLACE INTO {table} ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})"
                 counts[table] = 0
                 for values in snapshot.execute(query):
                     destination.execute(insert, tuple(values))
                     counts[table] += 1
                 destination.commit()
                 actual = destination.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                if actual != counts[table]:
+                if actual != counts[table] and table not in {"settings", "artworks"}:
                     raise RuntimeError(f"Migration count mismatch for {table}: {counts[table]} != {actual}")
             return counts
         finally:
