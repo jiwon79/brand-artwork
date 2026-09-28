@@ -596,7 +596,9 @@ function updateControlDisplay() {
   if (!view.handles) return;
   for (let index = 0; index < boneDefinitions.length; index++) {
     const [x, y] = boneRig.jointPosition(index);
-    controlMarkers[index].position.set(x, y, 160);
+    // The rig is planar: its controls live inside the body on the local XY plane.
+    // A fixed front-facing Z offset makes them orbit outside the body when it rotates.
+    controlMarkers[index].position.set(x, y, 0);
     controlMarkers[index].material = view.control < 0 ? influenceMarkerMaterials[index]
       : index === view.control ? selectedControlMaterial : idleControlMaterial;
   }
@@ -605,10 +607,10 @@ function updateControlDisplay() {
   if (view.control < 0) return;
   const rest = boneRig.definitions[view.control];
   const current = boneRig.jointPosition(view.control);
-  restMarker.position.set(rest.x, rest.y, 159);
+  restMarker.position.set(rest.x, rest.y, 0);
   const linePosition = displacementGeometry.getAttribute('position') as THREE.BufferAttribute;
-  linePosition.setXYZ(0, rest.x, rest.y, 159);
-  linePosition.setXYZ(1, current[0], current[1], 159);
+  linePosition.setXYZ(0, rest.x, rest.y, 0);
+  linePosition.setXYZ(1, current[0], current[1], 0);
   linePosition.needsUpdate = true;
 }
 
