@@ -240,6 +240,14 @@ def events(
     return list_events(status=status, kind=kind, limit=limit)
 
 
+@app.get("/api/events/{event_id}")
+def event_detail(event_id: str) -> dict[str, Any]:
+    event = get_event(event_id)
+    if not event:
+        raise HTTPException(404, "Event not found")
+    return event
+
+
 @app.get("/api/conversations")
 def conversations(status: str | None = None) -> list[dict[str, Any]]:
     return list_conversations(status=status)

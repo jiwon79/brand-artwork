@@ -1,8 +1,28 @@
 # Codex operation API
 
-Codex can use the assistant's own local HTTP API directly. These `/api/...` routes are **not** Meta endpoints: the assistant calls Meta's official Instagram API on Codex's behalf. An MCP server is optional; it would wrap these same local endpoints. Use `http://127.0.0.1:4318` on the Mac running the assistant. The browser at the Tailscale URL is for viewing records and starting a sync, not for sending replies or reactions.
+Codex can use the assistant's HTTP API through [`./assistant`](./assistant). These `/api/...` routes are **not** Meta endpoints: the assistant calls Meta's official Instagram API on Codex's behalf. Select `--env dev` or `--env prod` for the two hosted backends, or `--env local` for `http://127.0.0.1:4318`. The browser viewer only reads records and starts a sync.
 
-The API returns normalized JSON from the local SQLite database. Call `POST /api/sync` before reviewing recent activity, then read the relevant records. A sync reads the connected Instagram account and can take several minutes. It does not send messages.
+The API returns normalized JSON from the selected Turso or local SQLite database. A sync reads the connected Instagram account and can take several minutes. It does not send messages.
+
+## Codex CLI
+
+From this directory, run:
+
+```bash
+./assistant --env dev status
+./assistant --env prod conversations --status active
+./assistant --env prod conversation 'THREAD_ID'
+./assistant --env prod events --kind comment --status active --limit 10
+./assistant --env dev event 'dm:MESSAGE_ID'
+./assistant --env dev sync --scope dm --user-id 'INSTAGRAM_SCOPED_USER_ID'
+./assistant --env dev draft 'dm:MESSAGE_ID' --text '승인된 답장'
+./assistant --env dev send 'dm:MESSAGE_ID' --expect-draft '승인된 답장' --yes
+./assistant --env dev heart 'dm:MESSAGE_ID' --yes
+```
+
+`--pretty` formats JSON. `draft --text-stdin` reads an exact multiline draft. The CLI authenticates every invocation with an administrator password from `INSTAGRAM_ASSISTANT_ADMIN_PASSWORD`, macOS Keychain service `Instagram Assistant Dev Admin` or `Instagram Assistant Prod Admin` (account `jiwon`), or an interactive password prompt. `--password-stdin` also works for scripts. It keeps the session cookie in memory only. A custom `--base-url` requires an explicitly supplied password; HTTPS is required except for localhost. Local mode reads the existing local token file. Never pass the password as a command-line argument.
+
+`send` compares the saved draft with `--expect-draft` and requires `--yes`; it does not create a draft implicitly. `heart`, `heart-observed`, and `ignore` also require `--yes`. Codex must still obtain the user's item-specific approval before a reply or heart. `heart-observed` only records an Instagram UI action; it does not add a heart. A failed or uncertain send must be checked in Instagram before retrying.
 
 ## Read records
 
@@ -12,12 +32,13 @@ The API returns normalized JSON from the local SQLite database. Call `POST /api/
 | Conversations needing review | `GET /api/conversations?status=active` | `thread_id`, `username`, `latest_body`, `latest_at`, `has_actionable` |
 | Full locally stored DM conversation | `GET /api/conversations/{thread_id}` | Message `id`, `source_id`, `direction`, `body`, `received_at`, `has_liked`, `status` |
 | Comment threads needing review | `GET /api/events?kind=comment&status=active&limit=100` | Original comment `id`, `body`, `received_at`, `comment_url`, `post_caption`, `replies`, `needs_review` |
+| One stored event | `GET /api/events/{event_id}` | Exact draft, status, source ID, author, and timestamps |
 
 Use the returned local event `id` for subsequent actions. Read the complete conversation or comment thread and its post context before drafting. `active` is the UI's **확인 필요** filter. Read endpoints return the last successful local sync, so they do not prove that no newer Instagram activity exists. The official DM API may omit older or unsupported request-folder messages.
 
 ## Protected actions
 
-Every request in this table needs `X-Instagram-Assistant-Token`, read from `~/Library/Application Support/InstagramAssistant/local-token` on the same Mac. Keep the token out of the browser, chat, Git, and Notion. The browser's sync-only endpoint is separate.
+Hosted requests need an administrator session cookie; mutations also need a matching `Origin` header. The CLI supplies both. Local requests need `X-Instagram-Assistant-Token`, read from `~/Library/Application Support/InstagramAssistant/local-token` on the same Mac. Keep credentials out of the browser, chat, Git, and Notion. The viewer's sync-only endpoint is separate.
 
 | Task | Request | Body / effect |
 | --- | --- | --- |
