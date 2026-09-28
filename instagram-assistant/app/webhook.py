@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
 from typing import Any
@@ -35,7 +36,7 @@ def event_targets(payload: dict[str, Any], account_id: str) -> tuple[set[str], s
             if change.get("field") not in {"comments", "live_comments"}:
                 continue
             value = change.get("value") or {}
-            comment_id = str(value.get("parent_id") or value.get("id") or "")
+            comment_id = str(value.get("parent_id") or value.get("comment_id") or value.get("id") or "")
             if comment_id.isdigit():
                 comments.add(comment_id)
     return users, comments
@@ -56,9 +57,14 @@ def process_one() -> bool:
                 continue
             for item in entry.get("messaging") or []:
                 message = item.get("message") or {}
-                url = str((message.get("share") or {}).get("link") or "")
+                attachments = message.get("attachments") or []
+                url = next((str((item.get("payload") or {}).get("url") or "")
+                            for item in attachments
+                            if item.get("type") in {"share", "ig_post", "ig_reel", "reel", "story"}
+                            and re.match(r"^https://(?:www\.)?instagram\.com/",
+                                str((item.get("payload") or {}).get("url") or ""))), "")
                 message_id = str(message.get("mid") or "")
-                if message_id and url.startswith("https://www.instagram.com/"):
+                if message_id and url:
                     set_dm_shared_url(message_id, url)
         for comment_id in comments:
             instagram_service.sync_comment_thread(comment_id)

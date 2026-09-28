@@ -35,7 +35,9 @@ def test_event_targets_only_connected_account():
         {"id": "123", "messaging": [{"sender": {"id": "456"},
             "recipient": {"id": "123"}}, {"sender": {"id": "123"},
             "recipient": {"id": "789"}}],
-            "changes": [{"field": "comments", "value": {"id": "12", "parent_id": "11"}}]},
+            "changes": [{"field": "comments", "value": {"comment_id": "12", "parent_id": "11"}}]},
         {"id": "999", "messaging": [{"sender": {"id": "999"},
             "recipient": {"id": "888"}}]}]}
     assert webhook.event_targets(payload, "123") == ({"456", "789"}, {"11"})
+    payload["entry"][0]["changes"][0]["value"].pop("parent_id")
+    assert webhook.event_targets(payload, "123") == ({"456", "789"}, {"12"})
