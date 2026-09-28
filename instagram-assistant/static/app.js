@@ -221,7 +221,8 @@ async function refreshChat() {
           ${sharedLink(message)}
           <time>${formatTime(message.received_at, true)}</time>
         </div>
-        ${message.direction === "inbound" ? `<span class="dm-heart ${message.has_liked ? "liked" : ""}" aria-label="${message.has_liked === null ? "내 하트 상태 미확인" : message.has_liked ? "내가 하트 표시함" : "내가 하트 표시하지 않음"}">${message.has_liked === null ? "?" : message.has_liked ? "♥" : "♡"}</span>` : ""}
+        ${message.direction === "inbound" ? `<span class="dm-heart ${message.has_liked ? "liked" : ""}" aria-label="${message.own_reaction ? `내가 ${escapeHtml(message.own_reaction)} 반응함` : message.has_liked === null ? "내 반응 상태 미확인" : "내가 반응하지 않음"}">${message.own_reaction ? escapeHtml(message.own_reaction) : message.has_liked === null ? "?" : "♡"}</span>` : ""}
+        ${message.peer_reaction ? `<span class="dm-heart liked" aria-label="상대가 ${escapeHtml(message.peer_reaction)} 반응함">${escapeHtml(message.peer_reaction)}</span>` : ""}
       </div>`).join("")}</div>`;
   requestAnimationFrame(() => {
     const scroll = panel.querySelector(".chat-messages");
