@@ -143,7 +143,7 @@ function commentHeart(event, compact = false) {
 }
 
 function observedCommentHeartButton(event) {
-  if (event.direction !== "inbound" || event.has_liked) return "";
+  if (event.direction !== "inbound" || event.has_liked || !event.author_username) return "";
   return `<button class="observe-comment-heart" data-event-id="${escapeHtml(event.id)}" type="button">Chrome 하트 확인 후 기록</button>`;
 }
 

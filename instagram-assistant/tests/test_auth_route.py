@@ -169,6 +169,7 @@ def test_observed_heart_requires_token_and_completes_review(tmp_path, monkeypatc
     with TestClient(main.app) as client:
         db.upsert_event({
             "id": "comment:root", "kind": "comment", "source_id": "root",
+            "author_username": "someone_else",
             "received_at": "2026-09-15T01:00:00+00:00",
         })
         path = "/api/events/comment:root/heart-observed"
@@ -178,6 +179,20 @@ def test_observed_heart_requires_token_and_completes_review(tmp_path, monkeypatc
     assert response.json()["has_liked"] == 1
     assert db.get_event("comment:root")["reviewed_at"] is not None
     assert db.list_comment_threads(status="active") == []
+
+
+def test_observed_comment_heart_rejects_unknown_or_own_author(tmp_path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    headers = {"X-Instagram-Assistant-Token": main.TOKEN}
+    with TestClient(main.app) as client:
+        db.update_settings({"instagram_username": "studio.jiiwon"})
+        for event_id, username in (("comment:unknown", ""), ("comment:own", "studio.jiiwon")):
+            db.upsert_event({"id": event_id, "kind": "comment", "source_id": event_id,
+                             "author_username": username})
+            response = client.post(f"/api/events/{event_id}/heart-observed", headers=headers)
+            assert response.status_code == 400
+            assert not db.get_event(event_id)["has_liked"]
 
 
 def test_observed_dm_heart_completes_conversation(tmp_path, monkeypatch):
