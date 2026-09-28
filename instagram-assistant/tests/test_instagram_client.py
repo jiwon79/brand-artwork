@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from app import config, db, instagram_client
-from app.instagram_client import GraphClient, InstagramAssistantError, InstagramService
+from app.instagram_client import GraphClient, InstagramAssistantError, InstagramService, MetaApiError
 
 
 def test_graph_client_uses_official_host_and_bearer_token(monkeypatch):
@@ -25,6 +25,44 @@ def test_graph_client_uses_official_host_and_bearer_token(monkeypatch):
     assert requests[0].url.host == "graph.instagram.com"
     assert requests[0].headers["authorization"] == "Bearer private-token"
     assert "message=DM" in requests[0].content.decode()
+
+
+def test_graph_error_keeps_meta_trace_without_exposing_token(monkeypatch):
+    original_client = httpx.Client
+    monkeypatch.setattr(instagram_client.httpx, "Client", lambda **kwargs: original_client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(500, json={"error": {
+            "code": 2, "message": "private-token failed", "is_transient": True,
+            "fbtrace_id": "trace-123"}})), **kwargs))
+    with pytest.raises(InstagramAssistantError, match="transient=True, trace=trace-123") as exc:
+        GraphClient("private-token", "ig-1", "studio.jiiwon").request("POST", "/me/messages")
+    assert "private-token" not in str(exc.value)
+
+
+def test_graph_client_preserves_meta_status_and_subcode(monkeypatch):
+    original_client = httpx.Client
+    monkeypatch.setattr(instagram_client.httpx, "Client", lambda **kwargs: original_client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(400, json={"error": {
+            "message": "Outside allowed window", "code": 10, "error_subcode": 2018278,
+            "type": "OAuthException", "fbtrace_id": "trace-1"}})), **kwargs))
+    with pytest.raises(MetaApiError) as caught:
+        GraphClient("private-token", "ig-1", "studio.jiiwon").request(
+            "POST", "/ig-1/messages", json_body={"message": {"text": "hello"}})
+    assert caught.value.status == 400
+    assert caught.value.subcode == 2018278
+    assert "POST /ig-1/messages" in str(caught.value)
+    assert "trace=trace-1" in str(caught.value)
+    assert "private-token" not in str(caught.value)
+
+
+def test_expired_meta_halt_does_not_block_new_actions(monkeypatch):
+    updates = []
+    monkeypatch.setattr(instagram_client, "update_settings", lambda values: updates.append(values))
+    InstagramService._check_halt({"halted_reason": "rate limit",
+                                  "full_sync_retry_after": "2020-01-01T00:00:00+00:00"})
+    assert updates == [{"halted_reason": None}]
+    with pytest.raises(instagram_client.InstagramHaltedError, match="rate limit"):
+        InstagramService._check_halt({"halted_reason": "rate limit",
+                                      "full_sync_retry_after": "2099-01-01T00:00:00+00:00"})
 
 
 def test_graph_pages_stop_when_meta_has_no_next_page(monkeypatch):
@@ -153,6 +191,24 @@ def test_existing_reply_blocks_duplicate_post(monkeypatch):
     assert ("update", {"status": "sent", "error": None}) in calls
 
 
+def test_meta_http_400_is_recorded_as_rejected_not_uncertain(monkeypatch):
+    item = event(id="dm:message-1", kind="dm", source_id="message-1",
+                 author_id="visitor-1", proposed_action="reply_dm", draft="안녕하세요")
+    service, calls = setup_send(monkeypatch, item)
+
+    def reject(method, path, **kwargs):
+        raise MetaApiError(status=400, code=10, subcode=2018278,
+            error_type="OAuthException", trace_id="trace-1", message="Outside allowed window",
+            method=method, path=path)
+
+    service._client = SimpleNamespace(account_id="ig-1", request=reject)
+    with pytest.raises(MetaApiError):
+        service.send_for_event(item["id"])
+    assert any(call[0] == "delivery" and call[1][3] == "rejected" for call in calls)
+    assert any(call[0] == "update" and "subcode=2018278" in call[1]["error"] for call in calls)
+    assert any(call[0] == "delivery" and "POST /ig-1/messages" in call[2]["error"] for call in calls)
+
+
 def test_old_account_event_cannot_be_sent(monkeypatch):
     item = event(account_id="different-account")
     service, _ = setup_send(monkeypatch, item)
@@ -175,7 +231,7 @@ def test_dm_heart_uses_official_reaction_and_records_success(monkeypatch):
         "recipient": {"id": "visitor-1"}, "sender_action": "react",
         "payload": {"message_id": "message-1", "reaction": "love"}}})]
     assert result["has_liked"] is True
-    assert ("update", {"has_liked": True, "error": None}) in calls
+    assert ("update", {"has_liked": True, "own_reaction": "❤", "error": None}) in calls
 
 
 def test_dm_heart_rejects_outbound_and_duplicate(monkeypatch):
@@ -198,6 +254,44 @@ def test_dm_heart_does_not_mark_unverified_response(monkeypatch):
     with pytest.raises(InstagramAssistantError, match="결과를 확인"):
         service.heart_dm(item["id"])
     assert not any(call[0] == "update" for call in calls)
+
+
+def test_graph_message_reactions_identify_both_participants():
+    message = {"reactions": {"data": [
+        {"emoji": "❤", "users": [{"id": "visitor-1", "username": "visitor"}]},
+        {"emoji": "👍", "users": [{"id": "own-1", "username": "studio.jiiwon"}]},
+    ]}}
+    assert InstagramService._dm_reactions(message, "own-1", "studio.jiiwon") == ("👍", "❤")
+    assert InstagramService._dm_reactions({}, "own-1", "studio.jiiwon") == (None, None)
+
+
+def test_dm_sync_clears_reaction_when_graph_omits_empty_collection(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.upsert_event({"id": "dm:message-1", "account_id": "ig-1", "kind": "dm",
+                     "source_id": "message-1", "thread_id": "thread-1",
+                     "author_id": "visitor-id", "body": "test"})
+    db.set_dm_reactions("dm:message-1", "❤", None)
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+
+        def pages(self, path, *, params, limit):
+            return iter([{"id": "thread-1"}]) if path == "/me/conversations" else iter([])
+
+        def request(self, method, path, *, params):
+            return {"participants": {"data": [
+                {"id": "own-id", "username": "studio.jiiwon"},
+                {"id": "visitor-id", "username": "visitor"}]},
+                "messages": {"data": [{"id": "message-1", "from": {"id": "visitor-id"},
+                    "message": "test", "created_time": "2026-09-28T01:00:00+0000"}]}}
+
+    service = InstagramService()
+    service._client = FakeGraph()
+    service.sync(media_amount=0, threads_amount=1)
+    assert db.get_event("dm:message-1")["own_reaction"] is None
+    assert db.get_event("dm:message-1")["has_liked"] == 0
 
 
 def test_graph_sync_records_parent_reply_and_dm_for_connected_account(monkeypatch, tmp_path):

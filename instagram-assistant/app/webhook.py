@@ -14,7 +14,8 @@ from typing import Any
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
-from .db import enqueue_webhook, finish_webhook, get_settings, initialize, next_webhook, set_dm_shared_url
+from .db import (apply_dm_reaction, enqueue_webhook, finish_webhook, get_settings,
+                 initialize, next_webhook, set_dm_shared_url)
 from .instagram_client import instagram_service
 from .meta_config import get_meta_config
 
@@ -59,8 +60,40 @@ def process_one() -> bool:
         account_id = str(settings.get("instagram_account_id") or "")
         messaging_id = str(settings.get("instagram_messaging_account_id") or "")
         users, comments = event_targets(payload, account_id, messaging_id)
+        reaction_items: list[tuple[str, dict[str, Any], str]] = []
+        known_reaction_users: set[str] = set()
+        unknown_reaction_users: set[str] = set()
+        other_activity_users: set[str] = set()
+        for entry in payload.get("entry") or []:
+            own_id = str(entry.get("id") or "")
+            if own_id not in {account_id, messaging_id}:
+                continue
+            for item in entry.get("messaging") or []:
+                sender = str((item.get("sender") or {}).get("id") or "")
+                recipient = str((item.get("recipient") or {}).get("id") or "")
+                user_id = recipient if sender in {account_id, messaging_id} else sender
+                reaction = item.get("reaction") or {}
+                if not reaction:
+                    other_activity_users.add(user_id)
+                    continue
+                message_id = str(reaction.get("mid") or "")
+                action = str(reaction.get("action") or "")
+                emoji = str(reaction.get("emoji") or "") or None
+                reaction_items.append((sender, reaction, user_id))
+                if apply_dm_reaction(account_id, message_id, sender,
+                                     {account_id, messaging_id}, action, emoji):
+                    known_reaction_users.add(user_id)
+                else:
+                    unknown_reaction_users.add(user_id)
+        # A known reaction is complete in the signed payload; no Graph request
+        # is needed unless the same webhook also contains other activity.
+        users.difference_update(known_reaction_users - other_activity_users - unknown_reaction_users)
         for user_id in users:
             instagram_service.sync(media_amount=0, threads_amount=1, dm_user_id=user_id)
+        for sender, reaction, _ in reaction_items:
+            apply_dm_reaction(account_id, str(reaction.get("mid") or ""), sender,
+                              {account_id, messaging_id}, str(reaction.get("action") or ""),
+                              str(reaction.get("emoji") or "") or None)
         for entry in payload.get("entry") or []:
             if str(entry.get("id") or "") not in {account_id, messaging_id}:
                 continue

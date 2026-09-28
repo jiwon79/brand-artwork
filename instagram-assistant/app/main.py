@@ -315,9 +315,15 @@ def heart_observed(event_id: str, x_instagram_assistant_token: str | None = Head
     account_id = get_settings().get("instagram_account_id")
     if account_id and event["account_id"] != account_id:
         raise HTTPException(400, "Event does not belong to the connected account")
+    if event["kind"] == "comment":
+        author = str(event.get("author_username") or "").strip().removeprefix("@").casefold()
+        own_username = str(get_settings().get("instagram_username") or "").casefold()
+        if not author or (own_username and author == own_username):
+            raise HTTPException(400, "Comment author must be a known other account")
     if event["has_liked"]:
         return event
-    update_event(event_id, {"has_liked": True})
+    update_event(event_id, {"has_liked": True,
+                            **({"own_reaction": "❤"} if event["kind"] == "dm" else {})})
     if event["kind"] == "comment":
         mark_comment_reviewed(event_id)
     return get_event(event_id) or event

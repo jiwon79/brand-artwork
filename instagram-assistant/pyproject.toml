@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Local-first Instagram comment and DM assistant for jiiwon.studio"
 requires-python = ">=3.11"
 dependencies = [
-  "cryptography>=45,<47",
+  "cryptography>=45,<51",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "libsql>=0.1,<1",
@@ -14,7 +14,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "pytest>=8.4,<9",
+  "pytest>=8.4,<10",
 ]
 
 [tool.pytest.ini_options]

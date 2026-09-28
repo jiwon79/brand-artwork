@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS events (
   author_username TEXT NOT NULL DEFAULT '',
   direction TEXT NOT NULL DEFAULT 'inbound' CHECK(direction IN ('inbound', 'outbound')),
   has_liked INTEGER,
+  own_reaction TEXT,
+  peer_reaction TEXT,
   like_count INTEGER,
   body TEXT NOT NULL DEFAULT '',
   received_at TEXT NOT NULL,
@@ -103,6 +105,16 @@ CREATE TABLE IF NOT EXISTS webhook_events (
 
 CREATE INDEX IF NOT EXISTS webhook_events_ready_idx
 ON webhook_events(status, next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS pending_dm_reactions (
+  account_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  emoji TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(account_id, message_id, actor_id)
+);
 
 CREATE TABLE IF NOT EXISTS private_state (
   key TEXT PRIMARY KEY,
@@ -196,6 +208,10 @@ def initialize() -> None:
             conn.execute("ALTER TABLE events ADD COLUMN account_id TEXT")
         if "has_liked" not in columns:
             conn.execute("ALTER TABLE events ADD COLUMN has_liked INTEGER")
+        if "own_reaction" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN own_reaction TEXT")
+        if "peer_reaction" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN peer_reaction TEXT")
         if "like_count" not in columns:
             conn.execute("ALTER TABLE events ADD COLUMN like_count INTEGER")
         if "parent_comment_id" not in columns:
@@ -392,9 +408,9 @@ def upsert_event(event: dict[str, Any]) -> bool:
             INSERT OR IGNORE INTO events(
               id, account_id, kind, source_id, parent_comment_id, thread_id, media_id, post_code,
               post_url, post_caption, shared_url,
-              author_id, author_username, direction, has_liked, like_count, body,
+              author_id, author_username, direction, has_liked, own_reaction, peer_reaction, like_count, body,
               received_at, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event["id"], event.get("account_id"), event["kind"], event["source_id"], event.get("parent_comment_id"),
@@ -402,7 +418,8 @@ def upsert_event(event: dict[str, Any]) -> bool:
                 event.get("post_url"), event.get("post_caption"), event.get("shared_url"),
                 event.get("author_id"),
                 event.get("author_username", ""), event.get("direction", "inbound"),
-                event.get("has_liked"), event.get("like_count"), event.get("body", ""),
+                event.get("has_liked"), event.get("own_reaction"), event.get("peer_reaction"),
+                event.get("like_count"), event.get("body", ""),
                 event.get("received_at", timestamp),
                 event.get("status", "pending"), timestamp, timestamp,
             ),
@@ -421,6 +438,8 @@ def upsert_event(event: dict[str, Any]) -> bool:
                   author_id=COALESCE(?, author_id),
                   direction=COALESCE(?, direction),
                   has_liked=COALESCE(?, has_liked),
+                  own_reaction=COALESCE(?, own_reaction),
+                  peer_reaction=COALESCE(?, peer_reaction),
                   like_count=COALESCE(?, like_count),
                   author_username=CASE WHEN ? <> '' THEN ? ELSE author_username END,
                   body=CASE WHEN ? <> '' THEN ? ELSE body END,
@@ -433,12 +452,73 @@ def upsert_event(event: dict[str, Any]) -> bool:
                     event.get("shared_url"),
                     event.get("author_id"),
                     event.get("direction"), event.get("has_liked"),
+                    event.get("own_reaction"), event.get("peer_reaction"),
                     event.get("like_count"), event.get("author_username", ""),
                     event.get("author_username", ""), event.get("body", ""),
                     event.get("body", ""), timestamp, event["id"],
                 ),
             )
         return cursor.rowcount > 0
+
+
+def set_dm_reactions(event_id: str, own_reaction: str | None,
+                     peer_reaction: str | None) -> bool:
+    """Replace the complete reaction snapshot returned by Graph for one DM."""
+    with connect() as conn:
+        cursor = conn.execute(
+            "UPDATE events SET own_reaction=?, peer_reaction=?, has_liked=?, updated_at=? "
+            "WHERE id=? AND kind='dm'",
+            (own_reaction, peer_reaction, int(own_reaction in {"❤", "❤️", "♥"}), now(), event_id),
+        )
+    return cursor.rowcount > 0
+
+
+def apply_dm_reaction(account_id: str, message_id: str, actor_id: str,
+                      own_ids: set[str], action: str, emoji: str | None) -> bool:
+    """Apply a signed Meta reaction webhook, including unreact, to a known DM."""
+    if action not in {"react", "unreact"} or not actor_id or not message_id:
+        return False
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT id,author_id,direction FROM events WHERE kind='dm' AND account_id=? "
+            "AND source_id=?", (account_id, message_id),
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT INTO pending_dm_reactions(account_id,message_id,actor_id,action,emoji,updated_at) "
+                "VALUES (?,?,?,?,?,?) ON CONFLICT(account_id,message_id,actor_id) DO UPDATE SET "
+                "action=excluded.action,emoji=excluded.emoji,updated_at=excluded.updated_at",
+                (account_id, message_id, actor_id, action, emoji, now()),
+            )
+            return False
+        is_own = actor_id in own_ids
+        if not is_own and row["direction"] == "inbound" and actor_id != row["author_id"]:
+            return False
+        field = "own_reaction" if is_own else "peer_reaction"
+        value = emoji if action == "react" else None
+        if is_own:
+            conn.execute(
+                f"UPDATE events SET {field}=?, has_liked=?, updated_at=? WHERE id=?",
+                (value, int(value in {"❤", "❤️", "♥"}), now(), row["id"]),
+            )
+        else:
+            conn.execute(f"UPDATE events SET {field}=?, updated_at=? WHERE id=?",
+                         (value, now(), row["id"]))
+        conn.execute("DELETE FROM pending_dm_reactions WHERE account_id=? AND message_id=? AND actor_id=?",
+                     (account_id, message_id, actor_id))
+    return True
+
+
+def reconcile_pending_dm_reactions(account_id: str, message_id: str,
+                                   own_ids: set[str]) -> int:
+    """Apply reaction webhooks received before their message became available."""
+    with connect() as conn:
+        pending = conn.execute(
+            "SELECT actor_id,action,emoji FROM pending_dm_reactions WHERE account_id=? AND message_id=? "
+            "ORDER BY updated_at,actor_id", (account_id, message_id),
+        ).fetchall()
+    return sum(apply_dm_reaction(account_id, message_id, row["actor_id"], own_ids,
+                                 row["action"], row["emoji"]) for row in pending)
 
 
 def reconcile_own_dm_messages(account_id: str, messaging_id: str, username: str) -> int:
@@ -648,7 +728,7 @@ def list_conversation_messages(thread_id: str) -> list[dict[str, Any]]:
 def update_event(event_id: str, values: dict[str, Any]) -> dict[str, Any] | None:
     allowed = {
         "status", "intent", "confidence", "proposed_action", "draft",
-        "artwork_slug", "error", "has_liked", "like_count",
+        "artwork_slug", "error", "has_liked", "own_reaction", "peer_reaction", "like_count",
     }
     selected = {key: value for key, value in values.items() if key in allowed}
     if not selected:

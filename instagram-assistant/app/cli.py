@@ -121,7 +121,7 @@ def parser() -> argparse.ArgumentParser:
     send.add_argument("event_id")
     send.add_argument("--expect-draft", required=True, help="Must exactly match the saved draft")
     send.add_argument("--yes", action="store_true", required=True, help="Actually send the reply")
-    for name in ("heart", "heart-observed", "ignore"):
+    for name in ("heart-observed", "ignore"):
         action = commands.add_parser(name)
         action.add_argument("event_id")
         action.add_argument("--yes", action="store_true", required=True, help="Actually apply this action")

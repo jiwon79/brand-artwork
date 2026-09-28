@@ -5,7 +5,7 @@ import hmac
 
 from fastapi.testclient import TestClient
 
-from app import webhook
+from app import config, db, webhook
 
 
 def test_ingress_verification_signature_and_dedup(monkeypatch):
@@ -69,3 +69,27 @@ def test_messaging_account_id_alias_routes_inbound_and_outbound():
     ]}]}
     assert webhook.event_targets(payload, "2911", "1784") == ({"456", "789"}, set())
     assert webhook.event_targets(payload, "2911") == (set(), set())
+
+
+def test_known_message_reaction_webhook_updates_heart_without_graph(tmp_path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "records.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.update_settings({"instagram_account_id": "account-1",
+                        "instagram_messaging_account_id": "own-1"})
+    db.upsert_event({"id": "dm:message-1", "account_id": "account-1", "kind": "dm",
+                     "source_id": "message-1", "thread_id": "thread-1", "author_id": "own-1",
+                     "direction": "outbound", "body": "hello"})
+    payload = {"object": "instagram", "entry": [{"id": "own-1", "messaging": [{
+        "sender": {"id": "visitor-1"}, "recipient": {"id": "own-1"},
+        "reaction": {"mid": "message-1", "action": "react", "reaction": "other", "emoji": "❤"}}]}]}
+    db.enqueue_webhook("reaction-1", payload)
+    monkeypatch.setattr(webhook.instagram_service, "sync", lambda **_: (_ for _ in ()).throw(
+        AssertionError("known reactions must not spend a Graph request")))
+    assert webhook.process_one()
+    assert db.get_event("dm:message-1")["peer_reaction"] == "❤"
+    payload["entry"][0]["messaging"][0]["reaction"] = {
+        "mid": "message-1", "action": "unreact", "reaction": "other", "emoji": "❤"}
+    db.enqueue_webhook("reaction-2", payload)
+    assert webhook.process_one()
+    assert db.get_event("dm:message-1")["peer_reaction"] is None
