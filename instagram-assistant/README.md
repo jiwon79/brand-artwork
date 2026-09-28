@@ -37,6 +37,7 @@ Run `uv run --env-file .env.local python -m app.full_sync` once daily from the l
 ## Review and sending
 
 - [Codex operation API](./API.md) lists the normalized read endpoints, protected reply/reaction actions, review flow, and current limits. MCP is optional.
+- [`./assistant`](./assistant) is the Codex-friendly CLI wrapper for the development, production, and local APIs. It supports filtered lists, a single event or conversation, targeted DM sync, draft saving, approved sends, and recording Chrome-verified comment hearts. See [CLI examples](./API.md#codex-cli).
 - The browser UI exposes no local mutation token. Its sync button calls a same-origin, sync-only endpoint; all reply and reaction actions remain protected from the browser. Codex can also sync through `uv run python -m app.worker` or the protected local API. MCP is optional; Codex can use the existing Python service and local API directly.
 - New OAuth connections reset automatic sending to off. Codex prepares and sends only the individual replies approved for that batch.
 - Comments are sent with `POST /{comment_id}/replies`, not `POST /{media_id}/comments`. Before sending, the assistant checks the parent's replies for an existing account reply. After sending, it looks for the returned reply ID under that parent. An uncertain result is left for manual review and is never automatically retried.
