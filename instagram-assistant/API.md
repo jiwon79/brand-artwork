@@ -1,6 +1,6 @@
-# Codex operation API
+# Backend API reference
 
-Codex can use the assistant's HTTP API through [`./assistant`](./assistant). These `/api/...` routes are **not** Meta endpoints: the assistant calls Meta's official Instagram API on Codex's behalf. Select `--env dev` or `--env prod` for the two hosted backends, or `--env local` for `http://127.0.0.1:4318`. The browser viewer reads records and starts syncs; it does not press Instagram hearts or send replies.
+Routine Codex operations use the [`./assistant`](./assistant) script; see [README](./README.md#review-and-sending) and `./assistant --env prod --help`. This file documents the backend contract for implementation and troubleshooting. These `/api/...` routes are **not** Meta endpoints: the assistant calls Meta's official Instagram API on Codex's behalf. Select `--env dev` or `--env prod` for the two hosted backends, or `--env local` for `http://127.0.0.1:4318`. The browser viewer reads records and starts syncs; it does not press Instagram hearts or send replies.
 
 The API returns normalized JSON from the selected Turso or local SQLite database. A sync reads the connected Instagram account and can take several minutes. It does not send messages.
 

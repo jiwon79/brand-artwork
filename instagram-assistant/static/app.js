@@ -11,6 +11,7 @@ let selectedThreadId = "";
 let dmSearchQuery = "";
 let conversations = [];
 let dmSearchTimer;
+let postLabels = {};
 
 function routeFromLocation() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
@@ -132,10 +133,15 @@ function linkedMessageBody(value) {
 
 function postReference(event) {
   const fallback = event.post_code ? `https://www.instagram.com/p/${encodeURIComponent(event.post_code)}/` : "";
-  const url = safeUrl(event.comment_url || event.post_url || fallback);
-  if (!url) return "";
-  const caption = String(event.post_caption || `게시물 ${event.post_code}`).trim();
-  return `<a class="post-reference" href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><span>원댓글</span><strong>${escapeHtml(caption)}</strong><span aria-hidden="true">↗</span></a>`;
+  const postUrl = safeUrl(event.post_url || fallback);
+  const commentUrl = safeUrl(event.comment_url);
+  if (!postUrl && !commentUrl) return "";
+  const label = postLabels[event.post_code] || (event.post_code ? `게시물 ${event.post_code}` : "게시물");
+  return `<div class="post-reference">
+    <a class="post-name" href="${escapeHtml(postUrl || commentUrl)}" target="_blank" rel="noreferrer" title="게시물 열기">${escapeHtml(label)} <span aria-hidden="true">↗</span></a>
+    ${commentUrl ? `<a class="comment-link" href="${escapeHtml(commentUrl)}" target="_blank" rel="noreferrer">원댓글 ↗</a>` : ""}
+    ${event.post_code ? `<button class="edit-post-label" data-post-code="${escapeHtml(event.post_code)}" type="button" aria-label="${escapeHtml(label)} 별명 수정">별명 수정</button>` : ""}
+  </div>`;
 }
 
 function commentHeart(event, compact = false) {
@@ -161,7 +167,10 @@ function commentReplies(event) {
 async function refreshComments() {
   const status = statusFromLocation();
   const query = status === "all" ? "" : `&status=${status}`;
-  const events = await api(`/api/events?kind=comment&limit=500${query}`);
+  const [events, labels] = await Promise.all([
+    api(`/api/events?kind=comment&limit=500${query}`), api("/api/post-labels"),
+  ]);
+  postLabels = labels;
   document.querySelector("#events").innerHTML = events.map((event) => `
     <article class="event">
       <div class="event-top">
@@ -274,6 +283,17 @@ document.querySelectorAll(".tab").forEach((link) => link.addEventListener("click
 }));
 document.querySelector("#sync").addEventListener("click", syncRecords);
 document.querySelector("#events").addEventListener("click", async (event) => {
+  const labelButton = event.target.closest(".edit-post-label");
+  if (labelButton) {
+    const dialog = document.querySelector("#post-label-dialog");
+    const input = dialog.querySelector("input");
+    dialog.dataset.postCode = labelButton.dataset.postCode;
+    input.value = postLabels[labelButton.dataset.postCode] || "";
+    dialog.showModal();
+    input.focus();
+    input.select();
+    return;
+  }
   const button = event.target.closest(".observe-comment-heart");
   if (!button || button.disabled) return;
   button.disabled = true;
@@ -290,6 +310,30 @@ document.querySelector("#events").addEventListener("click", async (event) => {
     showError(error);
   }
 });
+document.querySelector("#post-label-dialog form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const dialog = document.querySelector("#post-label-dialog");
+  const submit = dialog.querySelector("button[type=submit]");
+  const label = dialog.querySelector("input").value.trim();
+  if (!label || submit.disabled) return;
+  submit.disabled = true;
+  try {
+    const response = await fetch(`/api/post-labels/${encodeURIComponent(dialog.dataset.postCode)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.detail || `별명 저장 실패 (${response.status})`);
+    dialog.close();
+    await refreshComments();
+    showToast("게시물 별명을 저장했습니다.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    submit.disabled = false;
+  }
+});
+document.querySelector("#cancel-post-label").addEventListener("click", () =>
+  document.querySelector("#post-label-dialog").close());
 document.querySelectorAll(".dm-filter, .comment-filter").forEach((button) => button.addEventListener("click", () => {
   document.querySelector("#dm-inbox").classList.remove("chat-open");
   navigate(routeFromLocation(), button.dataset.status).catch(showError);

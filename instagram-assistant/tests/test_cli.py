@@ -54,6 +54,27 @@ def test_custom_url_cannot_receive_automatic_keychain_password(monkeypatch):
     assert cli.main(["--env", "dev", "--base-url", "https://example.com", "status"]) == 1
 
 
+def test_prod_uses_legacy_keychain_service_when_named_entry_is_missing(monkeypatch):
+    services = []
+
+    class FakeClient:
+        def __init__(self, base_url, token):
+            pass
+
+        def login(self, password):
+            assert password == "stored password"
+
+        def request(self, method, path, **kwargs):
+            return {"ok": True}
+
+    monkeypatch.delenv("INSTAGRAM_ASSISTANT_ADMIN_PASSWORD", raising=False)
+    monkeypatch.setattr(cli, "Client", FakeClient)
+    monkeypatch.setattr(cli, "secret_from_keychain", lambda service, account:
+                        services.append(service) or ("stored password" if service == "Instagram Assistant Admin" else None))
+    assert cli.main(["--env", "prod", "status"]) == 0
+    assert services == ["Instagram Assistant Prod Admin", "Instagram Assistant Admin"]
+
+
 def test_viewer_sync_sets_required_header(monkeypatch):
     observed = {}
 

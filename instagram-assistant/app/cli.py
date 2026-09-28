@@ -146,9 +146,13 @@ def run(args: argparse.Namespace) -> Any:
         if args.password_stdin:
             password = sys.stdin.readline().rstrip("\r\n")
         else:
-            password = os.getenv("INSTAGRAM_ASSISTANT_ADMIN_PASSWORD") or secret_from_keychain(
-                args.keychain_service or f"Instagram Assistant {'Dev' if args.env == 'dev' else 'Prod'} Admin",
-                args.keychain_account)
+            password = os.getenv("INSTAGRAM_ASSISTANT_ADMIN_PASSWORD")
+            if not password:
+                services = ([args.keychain_service] if args.keychain_service else
+                            [f"Instagram Assistant {'Dev' if args.env == 'dev' else 'Prod'} Admin",
+                             *(["Instagram Assistant Admin"] if args.env == "prod" else [])])
+                password = next((secret for service in services
+                                 if (secret := secret_from_keychain(service, args.keychain_account))), None)
             if not password and sys.stdin.isatty():
                 password = getpass.getpass("Administrator password: ")
         if not password:
