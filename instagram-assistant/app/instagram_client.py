@@ -407,18 +407,15 @@ class InstagramService:
                             "author_id": sender_id,
                             "author_username": sender.get("username") or participant_names.get(sender_id, ""),
                             "direction": "outbound" if outbound else "inbound",
-                            "has_liked": (int(own_reaction in {"❤", "❤️", "♥"})
-                                          if "reactions" in message else None),
+                            "has_liked": int(own_reaction in {"❤", "❤️", "♥"}),
                             "own_reaction": own_reaction, "peer_reaction": peer_reaction,
                             "shared_url": shared_url or None,
                             "body": message.get("message") or ("" if shared_url else "메시지 내용 없음"),
                             "received_at": self._timestamp(message.get("created_time")),
                             "status": "history" if outbound else "pending"}))
-                        # A present reaction collection is an authoritative snapshot.
-                        # Missing collections may be omitted by Meta and cannot clear
-                        # a reaction previously delivered by webhook.
-                        if "reactions" in message:
-                            set_dm_reactions(f"dm:{message['id']}", own_reaction, peer_reaction)
+                        # Graph omits `reactions` when a message has no reactions.
+                        # A successful message fetch is a complete current snapshot.
+                        set_dm_reactions(f"dm:{message['id']}", own_reaction, peer_reaction)
                         reconcile_pending_dm_reactions(client.account_id, str(message["id"]),
                                                        {client.account_id, own_messaging_id})
                     reconcile_own_dm_messages(client.account_id, own_messaging_id, client.username)

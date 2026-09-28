@@ -231,6 +231,35 @@ def test_graph_message_reactions_identify_both_participants():
     assert InstagramService._dm_reactions({}, "own-1", "studio.jiiwon") == (None, None)
 
 
+def test_dm_sync_clears_reaction_when_graph_omits_empty_collection(monkeypatch, tmp_path):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.upsert_event({"id": "dm:message-1", "account_id": "ig-1", "kind": "dm",
+                     "source_id": "message-1", "thread_id": "thread-1",
+                     "author_id": "visitor-id", "body": "test"})
+    db.set_dm_reactions("dm:message-1", "❤", None)
+
+    class FakeGraph:
+        account_id, username = "ig-1", "studio.jiiwon"
+
+        def pages(self, path, *, params, limit):
+            return iter([{"id": "thread-1"}]) if path == "/me/conversations" else iter([])
+
+        def request(self, method, path, *, params):
+            return {"participants": {"data": [
+                {"id": "own-id", "username": "studio.jiiwon"},
+                {"id": "visitor-id", "username": "visitor"}]},
+                "messages": {"data": [{"id": "message-1", "from": {"id": "visitor-id"},
+                    "message": "test", "created_time": "2026-09-28T01:00:00+0000"}]}}
+
+    service = InstagramService()
+    service._client = FakeGraph()
+    service.sync(media_amount=0, threads_amount=1)
+    assert db.get_event("dm:message-1")["own_reaction"] is None
+    assert db.get_event("dm:message-1")["has_liked"] == 0
+
+
 def test_graph_sync_records_parent_reply_and_dm_for_connected_account(monkeypatch, tmp_path):
     monkeypatch.setattr(config.paths, "database", tmp_path / "assistant.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)
