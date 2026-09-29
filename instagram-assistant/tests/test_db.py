@@ -3,6 +3,16 @@ from pathlib import Path
 from app import config, db
 
 
+def test_initialize_removes_legacy_daily_send_limit(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    with db.connect() as conn:
+        conn.execute("INSERT INTO settings(key, value) VALUES ('daily_send_limit', '20')")
+    db.initialize()
+    assert "daily_send_limit" not in db.get_settings()
+
+
 def test_dm_reactions_track_both_people_and_unreact(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

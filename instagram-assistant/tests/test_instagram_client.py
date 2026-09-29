@@ -150,8 +150,7 @@ def setup_send(monkeypatch, item):
     calls = []
     monkeypatch.setattr(instagram_client, "get_event", lambda _: item)
     monkeypatch.setattr(instagram_client, "get_settings", lambda: {
-        "halted_reason": None, "daily_send_limit": 20})
-    monkeypatch.setattr(instagram_client, "sent_today_count", lambda: 0)
+        "halted_reason": None, "daily_send_limit": 0})
     monkeypatch.setattr(instagram_client, "add_delivery", lambda *args, **kwargs: calls.append(("delivery", args, kwargs)))
     monkeypatch.setattr(instagram_client, "update_event", lambda _, values: calls.append(("update", values)) or {**item, **values})
     service = InstagramService()
@@ -221,11 +220,13 @@ def test_dm_sequence_sends_exact_messages_once(tmp_path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "records.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)
     db.initialize()
-    db.update_settings({"instagram_account_id": "ig-1", "daily_send_limit": 20})
+    db.update_settings({"instagram_account_id": "ig-1"})
     db.upsert_event({"id": "dm:in-1", "account_id": "ig-1", "kind": "dm",
                      "source_id": "in-1", "thread_id": "thread-1", "author_id": "visitor-1",
                      "author_username": "recipient", "direction": "inbound", "body": "안녕하세요",
                      "received_at": "2026-09-28T00:00:00Z", "status": "pending"})
+    for index in range(20):
+        db.add_delivery("dm:in-1", "reply_dm", f"earlier-{index}", "sent", f"old-{index}")
     sent = []
 
     def post(method, path, **kwargs):
