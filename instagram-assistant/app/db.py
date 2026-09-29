@@ -613,24 +613,19 @@ def list_comment_threads(
     for comment in comments:
         replies = replies_by_parent.get(str(comment["source_id"]), [])
         comment["replies"] = replies
-        resolution_times = [
-            reply["received_at"] for reply in replies
-            if reply["direction"] == "outbound" or reply["has_liked"]
-        ]
-        if comment["has_liked"]:
-            resolution_times.append(comment["received_at"])
-        if comment.get("reviewed_at"):
-            resolution_times.append(comment["reviewed_at"])
-        resolved_at = max(resolution_times, default="")
-        comment["needs_review"] = (
-            comment["status"] in {"pending", "drafted", "manual"}
-            and comment["received_at"] > resolved_at
-        ) or any(
-            reply["direction"] == "inbound"
-            and reply["status"] not in {"sent", "completed", "ignored"}
-            and reply["received_at"] > resolved_at
-            for reply in replies
+        messages = [comment, *replies]
+        latest_inbound_at = max(
+            (item["received_at"] for item in messages if item["direction"] == "inbound"),
+            default="",
         )
+        resolution_times = [item["reviewed_at"] for item in messages if item.get("reviewed_at")]
+        resolution_times.extend(
+            item["received_at"] for item in messages
+            if item["direction"] == "outbound"
+            or item["has_liked"]
+            or item["status"] in {"sent", "completed", "ignored"}
+        )
+        comment["needs_review"] = latest_inbound_at > max(resolution_times, default="")
         comment["latest_activity_at"] = max(
             [comment["received_at"], *(reply["received_at"] for reply in replies)]
         )
@@ -659,6 +654,10 @@ def mark_comment_reviewed(event_id: str) -> None:
         if event:
             parent_id = event["parent_comment_id"] or event["source_id"]
             timestamp = now()
+            conn.execute(
+                "UPDATE events SET reviewed_at=?, updated_at=? WHERE id=?",
+                (timestamp, timestamp, event_id),
+            )
             conn.execute(
                 "UPDATE events SET reviewed_at=?, updated_at=? "
                 "WHERE kind='comment' AND parent_comment_id IS NULL "
