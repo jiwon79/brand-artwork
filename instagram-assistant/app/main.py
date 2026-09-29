@@ -62,6 +62,13 @@ class DraftBody(BaseModel):
     draft: str
 
 
+class DmSequenceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1)
+    messages: list[str] = Field(min_length=1, max_length=10)
+
+
 class PostLabelBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -300,6 +307,16 @@ def send_event(event_id: str, x_instagram_assistant_token: str | None = Header(d
     protect(x_instagram_assistant_token)
     try:
         return instagram_service.send_for_event(event_id)
+    except Exception as exc:
+        raise as_http_error(exc) from exc
+
+
+@app.post("/api/events/{event_id}/send-sequence")
+def send_dm_sequence(event_id: str, body: DmSequenceBody,
+                     x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
+    protect(x_instagram_assistant_token)
+    try:
+        return instagram_service.send_dm_sequence(event_id, body.username, body.messages)
     except Exception as exc:
         raise as_http_error(exc) from exc
 

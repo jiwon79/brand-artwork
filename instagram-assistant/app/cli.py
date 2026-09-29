@@ -61,7 +61,8 @@ class Client:
             data = None
         request = Request(url, data=data, headers=headers, method=method)
         try:
-            with self.opener.open(request, timeout=600 if path == "/api/viewer/sync" else 45) as response:
+            timeout = 600 if path == "/api/viewer/sync" else (180 if path.endswith("/send-sequence") else 45)
+            with self.opener.open(request, timeout=timeout) as response:
                 if path == "/api/admin/login":
                     return None  # A 303 redirect may have opened the HTML dashboard.
                 return json.load(response)
@@ -100,6 +101,10 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("status")
     conversations = commands.add_parser("conversations")
     conversations.add_argument("--status", choices=["active", "completed", "all"])
+    review = commands.add_parser("review", help="Compact full context for the next DM conversations")
+    review.add_argument("--limit", type=int, default=10)
+    review.add_argument("--offset", type=int, default=0)
+    review.add_argument("--skip-user", action="append", default=[], help="Exclude a held account; repeatable")
     conversation = commands.add_parser("conversation")
     conversation.add_argument("thread_id")
     events = commands.add_parser("events")
@@ -121,6 +126,9 @@ def parser() -> argparse.ArgumentParser:
     send.add_argument("event_id")
     send.add_argument("--expect-draft", required=True, help="Must exactly match the saved draft")
     send.add_argument("--yes", action="store_true", required=True, help="Actually send the reply")
+    batch = commands.add_parser("send-batch", help="Send approved DM sequences from one JSON file")
+    batch.add_argument("file", type=Path, help="JSON array of event_id, username, and messages")
+    batch.add_argument("--yes", action="store_true", required=True, help="Actually send every listed sequence")
     for name in ("heart-observed", "ignore"):
         action = commands.add_parser(name)
         action.add_argument("event_id")
@@ -162,6 +170,27 @@ def run(args: argparse.Namespace) -> Any:
         return client.request("GET", "/api/status")
     if args.command == "conversations":
         return client.request("GET", "/api/conversations", params={"status": None if args.status == "all" else args.status})
+    if args.command == "review":
+        if not 1 <= args.limit <= 30 or args.offset < 0:
+            raise CliError("--limit must be 1-30 and --offset must be non-negative")
+        skipped = {name.lstrip("@").casefold() for name in args.skip_user}
+        queue = client.request("GET", "/api/conversations", params={"status": "active"})
+        selected = [item for item in queue if item["username"].casefold() not in skipped]
+        selected = selected[args.offset:args.offset + args.limit]
+        conversations = []
+        for item in selected:
+            messages = client.request("GET", "/api/conversations/" + quote(item["thread_id"], safe=""))
+            latest_inbound = next((message for message in reversed(messages)
+                                   if message["direction"] == "inbound"), None)
+            conversations.append({
+                "username": item["username"], "thread_id": item["thread_id"],
+                "reply_event_id": latest_inbound["id"] if latest_inbound else None,
+                "latest_at": item["latest_at"],
+                "messages": [{key: message.get(key) for key in
+                              ("direction", "body", "shared_url", "received_at", "has_liked", "status")}
+                             for message in messages],
+            })
+        return {"conversations": conversations, "count": len(conversations)}
     if args.command == "conversation":
         return client.request("GET", "/api/conversations/" + quote(args.thread_id, safe=""))
     if args.command == "events":
@@ -177,6 +206,52 @@ def run(args: argparse.Namespace) -> Any:
             raise CliError("--dm-limit must be between 1 and 100")
         return client.request("POST", "/api/viewer/sync", params={"scope": args.scope,
             "user_id": args.user_id, "dm_limit": args.dm_limit}, body={})
+    if args.command == "send-batch":
+        if not args.yes:
+            raise CliError("This action requires --yes")
+        try:
+            manifest = json.loads(args.file.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CliError(f"Cannot read DM manifest: {exc}") from exc
+        if not isinstance(manifest, list) or not manifest:
+            raise CliError("DM manifest must be a non-empty JSON array")
+        if len(manifest) > 20:
+            raise CliError("DM manifest may contain at most 20 conversations")
+        seen: set[str] = set()
+        for item in manifest:
+            if not isinstance(item, dict) or set(item) != {"event_id", "username", "messages"}:
+                raise CliError("Each entry needs only event_id, username, and messages")
+            if not isinstance(item["event_id"], str) or not item["event_id"].startswith("dm:"):
+                raise CliError("Each event_id must identify a DM")
+            if not isinstance(item["username"], str) or not item["username"].strip():
+                raise CliError("Each entry needs a username")
+            messages = item["messages"]
+            if (not isinstance(messages, list) or not 1 <= len(messages) <= 10 or
+                    any(not isinstance(message, str) or not message.strip() or len(message) > 1000
+                        for message in messages)):
+                raise CliError("Each entry needs 1-10 non-empty DM messages of at most 1000 characters")
+            if item["event_id"] in seen:
+                raise CliError("The same DM event appears twice in the manifest")
+            seen.add(item["event_id"])
+        # Validate every account before the first irreversible send.
+        for item in manifest:
+            current = client.request("GET", "/api/events/" + quote(item["event_id"], safe=""))
+            if str(current.get("author_username") or "").casefold() != item["username"].lstrip("@").casefold():
+                raise CliError(f"Account mismatch for {item['event_id']}; nothing was sent")
+        results = []
+        for item in manifest:
+            path = "/api/events/" + quote(item["event_id"], safe="")
+            try:
+                result = client.request("POST", path + "/send-sequence", body={
+                    "username": item["username"], "messages": item["messages"],
+                })
+            except CliError as exc:
+                completed = ", ".join(result["username"] for result in results) or "none"
+                raise CliError(f"Stopped at @{item['username']}; completed before it: {completed}. {exc}") from exc
+            if not all(message["status"] == "sent" for message in result.get("messages", [])):
+                raise CliError(f"Unconfirmed sequence for @{item['username']}; stopped")
+            results.append({"username": result["username"], "sent": len(result["messages"])})
+        return {"completed": results}
     path = "/api/events/" + quote(args.event_id, safe="")
     if args.command == "event":
         return client.request("GET", path)

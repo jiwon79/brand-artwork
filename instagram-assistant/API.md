@@ -11,18 +11,20 @@ From this directory, run:
 ```bash
 ./assistant --env dev status
 ./assistant --env prod conversations --status active
+./assistant --env prod review --limit 10 --skip-user 'held_account'
 ./assistant --env prod conversation 'THREAD_ID'
 ./assistant --env prod events --kind comment --status active --limit 10
 ./assistant --env dev event 'dm:MESSAGE_ID'
 ./assistant --env dev sync --scope dm --user-id 'INSTAGRAM_SCOPED_USER_ID'
 ./assistant --env dev draft 'dm:MESSAGE_ID' --text '승인된 답장'
 ./assistant --env dev send 'dm:MESSAGE_ID' --expect-draft '승인된 답장' --yes
+./assistant --env dev send-batch /path/to/approved-dms.json --yes
 ./assistant --env dev heart-observed 'comment:COMMENT_ID' --yes
 ```
 
 `--pretty` formats JSON. `draft --text-stdin` reads an exact multiline draft. The CLI authenticates every invocation with an administrator password from `INSTAGRAM_ASSISTANT_ADMIN_PASSWORD`, macOS Keychain service `Instagram Assistant Dev Admin` or `Instagram Assistant Prod Admin` (account `jiwon`), or an interactive password prompt. `--password-stdin` also works for scripts. It keeps the session cookie in memory only. A custom `--base-url` requires an explicitly supplied password; HTTPS is required except for localhost. Local mode reads the existing local token file. Never pass the password as a command-line argument.
 
-`send` compares the saved draft with `--expect-draft` and requires `--yes`; it does not create a draft implicitly. `heart-observed` and `ignore` also require `--yes`. Codex must still obtain the user's item-specific approval before a reply or heart. `heart-observed` only records a heart already verified in Chrome; it does not add a heart. For DMs, use a targeted conversation sync instead. A failed or uncertain send must be checked in Instagram before retrying.
+`send` compares the saved draft with `--expect-draft` and requires `--yes`; it does not create a draft implicitly. `send-batch` accepts a JSON array of `{event_id, username, messages}` for already approved DM sequences and requires `--yes`. It validates all usernames first and stops on the first uncertain result. `heart-observed` and `ignore` also require `--yes`. Codex must still obtain the user's item-specific approval before a reply or heart. `heart-observed` only records a heart already verified in Chrome; it does not add a heart. For DMs, use a targeted conversation sync instead. A failed or uncertain send must be checked in Instagram before retrying.
 
 ## Read records
 
@@ -45,6 +47,7 @@ Hosted requests need an administrator session cookie; mutations also need a matc
 | Sync from Codex | `POST /api/sync` | Fetches supported Instagram comments and DMs. |
 | Save approved reply | `PATCH /api/events/{event_id}/draft` | JSON `{"draft":"답변"}`. Sets `reply_dm` or `reply_comment` from the event type. |
 | Send approved reply | `POST /api/events/{event_id}/send` | Sends the saved draft through Meta's official API. |
+| Send approved DM sequence | `POST /api/events/{event_id}/send-sequence` | JSON `{"username":"recipient","messages":["first","second"]}`. Stores the exact sequence and sends each message in order. Uncertain or partial results require manual review. |
 | Record a verified UI heart | `POST /api/events/{event_id}/heart-observed` | Records a heart already pressed in Instagram; this endpoint does **not** press it. |
 | Mark an item handled without reply | `POST /api/events/{event_id}/ignore` | Changes the local review state. |
 
