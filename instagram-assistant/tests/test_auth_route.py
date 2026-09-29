@@ -181,6 +181,24 @@ def test_observed_heart_requires_token_and_completes_review(tmp_path, monkeypatc
     assert db.list_comment_threads(status="active") == []
 
 
+def test_observed_heart_on_latest_reply_completes_parent(tmp_path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    with TestClient(main.app) as client:
+        db.upsert_event({"id": "comment:root", "kind": "comment", "source_id": "root",
+                         "author_username": "visitor", "received_at": "2026-09-15T01:00:00+00:00"})
+        db.upsert_event({"id": "comment:reply", "kind": "comment", "source_id": "reply",
+                         "parent_comment_id": "root", "direction": "inbound", "status": "history",
+                         "author_username": "visitor", "received_at": "2026-09-15T01:01:00+00:00"})
+        assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
+        response = client.post("/api/events/comment:reply/heart-observed", headers={
+            "X-Instagram-Assistant-Token": main.TOKEN})
+    assert response.status_code == 200
+    assert db.get_event("comment:reply")["has_liked"] == 1
+    assert db.get_event("comment:reply")["reviewed_at"] is not None
+    assert [item["source_id"] for item in db.list_comment_threads(status="completed")] == ["root"]
+
+
 def test_observed_comment_heart_rejects_unknown_or_own_author(tmp_path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

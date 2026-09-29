@@ -150,7 +150,7 @@ function commentHeart(event, compact = false) {
 
 function observedCommentHeartButton(event) {
   if (event.direction !== "inbound" || event.has_liked || !event.author_username) return "";
-  return `<button class="observe-comment-heart" data-event-id="${escapeHtml(event.id)}" type="button">Chrome 하트 확인 후 기록</button>`;
+  return `<button class="observe-comment-heart" data-event-id="${escapeHtml(event.id)}" type="button">Chrome에서 하트 눌렀음 · 완료로 기록</button>`;
 }
 
 function commentReplies(event) {
@@ -304,7 +304,7 @@ document.querySelector("#events").addEventListener("click", async (event) => {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.detail || `하트 기록 실패 (${response.status})`);
     await refreshComments();
-    showToast("확인한 댓글 하트를 기록했습니다.");
+    showToast("댓글 하트를 기록하고 대화를 완료로 옮겼습니다.");
   } catch (error) {
     button.disabled = false;
     showError(error);
