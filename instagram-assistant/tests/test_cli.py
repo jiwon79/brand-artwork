@@ -1,3 +1,4 @@
+import json
 from urllib.parse import urlparse
 
 from fastapi.testclient import TestClient
@@ -47,6 +48,27 @@ def test_send_requires_exact_saved_draft_and_explicit_yes(monkeypatch):
     requests.clear()
     assert cli.main(["--env", "dev", "send", "dm:test-id", "--expect-draft", "approved words", "--yes"]) == 0
     assert requests == [("GET", "/api/events/dm%3Atest-id"), ("POST", "/api/events/dm%3Atest-id/send")]
+
+
+def test_send_batch_checks_all_accounts_before_any_post(tmp_path, monkeypatch):
+    requests = []
+
+    class FakeClient:
+        def __init__(self, base_url, token): pass
+        def login(self, password): pass
+        def request(self, method, path, **kwargs):
+            requests.append((method, path))
+            return {"author_username": "first"}
+
+    manifest = tmp_path / "approved.json"
+    manifest.write_text(json.dumps([
+        {"event_id": "dm:one", "username": "first", "messages": ["one", "two"]},
+        {"event_id": "dm:two", "username": "second", "messages": ["three"]},
+    ]))
+    monkeypatch.setattr(cli, "Client", FakeClient)
+    monkeypatch.setenv("INSTAGRAM_ASSISTANT_ADMIN_PASSWORD", "test password")
+    assert cli.main(["--env", "dev", "send-batch", str(manifest), "--yes"]) == 1
+    assert requests == [("GET", "/api/events/dm%3Aone"), ("GET", "/api/events/dm%3Atwo")]
 
 
 def test_custom_url_cannot_receive_automatic_keychain_password(monkeypatch):

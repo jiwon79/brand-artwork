@@ -90,6 +90,17 @@ CREATE TABLE IF NOT EXISTS deliveries (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS dm_send_items (
+  event_id TEXT NOT NULL REFERENCES events(id),
+  item_index INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  remote_id TEXT,
+  error TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(event_id, item_index)
+);
+
 CREATE TABLE IF NOT EXISTS dm_sync_state (
   account_id TEXT NOT NULL,
   thread_id TEXT NOT NULL,
@@ -780,6 +791,53 @@ def add_delivery(
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (event_id, action, body, remote_id, status, error, now()),
         )
+
+
+def dm_send_items(event_id: str) -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM dm_send_items WHERE event_id=? ORDER BY item_index",
+            (event_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def create_dm_send_items(event_id: str, messages: list[str]) -> list[dict[str, Any]]:
+    # The first approved sequence is immutable. A retry may only resume those exact texts.
+    with connect() as conn:
+        stamp = now()
+        for index, body in enumerate(messages):
+            conn.execute(
+                "INSERT OR IGNORE INTO dm_send_items(event_id,item_index,body,status,updated_at) "
+                "VALUES(?,?,?,'pending',?)",
+                (event_id, index, body, stamp),
+            )
+    items = dm_send_items(event_id)
+    if [item["body"] for item in items] != messages:
+        raise ValueError("Saved DM sequence differs from requested messages")
+    return items
+
+
+def claim_dm_send_item(event_id: str, index: int) -> bool:
+    with connect() as conn:
+        cursor = conn.execute(
+            "UPDATE dm_send_items SET status='sending',updated_at=? "
+            "WHERE event_id=? AND item_index=? AND status='pending'",
+            (now(), event_id, index),
+        )
+        return cursor.rowcount == 1
+
+
+def finish_dm_send_item(event_id: str, index: int, status: str,
+                        remote_id: str | None = None, error: str | None = None) -> None:
+    with connect() as conn:
+        cursor = conn.execute(
+            "UPDATE dm_send_items SET status=?,remote_id=?,error=?,updated_at=? "
+            "WHERE event_id=? AND item_index=? AND status='sending'",
+            (status, remote_id, error, now(), event_id, index),
+        )
+        if cursor.rowcount != 1:
+            raise RuntimeError("DM send state changed while recording the result")
 
 
 def sent_today_count() -> int:

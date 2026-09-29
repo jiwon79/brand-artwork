@@ -14,8 +14,10 @@ from .config import paths, prepare_data_dir
 from .meta_config import get_meta_config
 from .token_store import (delete_oauth_state, delete_token, load_and_delete_oauth_state,
                           load_token, save_oauth_state, save_token)
-from .db import (add_delivery, get_dm_sync_state, get_event, get_settings, list_artworks, mark_comment_reviewed,
-                 reconcile_own_dm_messages, reconcile_pending_dm_reactions, save_artwork, save_dm_sync_state,
+from .db import (add_delivery, claim_dm_send_item, create_dm_send_items, dm_send_items,
+                 finish_dm_send_item, get_dm_sync_state, get_event, get_settings, list_artworks,
+                 list_conversation_messages, mark_comment_reviewed, reconcile_own_dm_messages,
+                 reconcile_pending_dm_reactions, save_artwork, save_dm_sync_state,
                  sent_today_count, set_dm_reactions, update_event, update_settings, upsert_event)
 
 GRAPH_BASE = "https://graph.instagram.com/" + os.getenv("INSTAGRAM_GRAPH_VERSION", "v25.0")
@@ -568,6 +570,97 @@ class InstagramService:
             if action == "reply_comment":
                 mark_comment_reviewed(event_id)
             return sent_event
+
+    def send_dm_sequence(self, event_id: str, username: str,
+                         messages: list[str]) -> dict[str, Any]:
+        """Send an immutable approved DM sequence, stopping on any uncertain result."""
+        with self._lock:
+            event = get_event(event_id)
+            if not event or event.get("kind") != "dm" or event.get("direction") != "inbound":
+                raise InstagramAssistantError("받은 DM 메시지를 선택해야 합니다.")
+            if not event.get("author_id") or not event.get("thread_id"):
+                raise InstagramAssistantError("상대방 ID와 대화 ID가 필요합니다.")
+            if str(event.get("author_username") or "").casefold() != username.lstrip("@").casefold():
+                raise InstagramAssistantError("승인한 계정과 DM 계정이 다릅니다.")
+            if not 1 <= len(messages) <= 10 or any(not item.strip() or len(item) > 1000 for item in messages):
+                raise InstagramAssistantError("DM은 1~10개이며 각 문장은 1~1000자여야 합니다.")
+
+            saved = dm_send_items(event_id)
+            if not saved:
+                if event["status"] not in {"pending", "drafted"}:
+                    raise InstagramAssistantError("이미 처리된 DM은 새로 발송할 수 없습니다.")
+                conversation = list_conversation_messages(event["thread_id"])
+                latest_inbound = next((item for item in reversed(conversation)
+                                       if item["direction"] == "inbound"), None)
+                if not latest_inbound or latest_inbound["id"] != event_id:
+                    raise InstagramAssistantError("승인 후 새 DM이 도착했습니다. 대화를 다시 검토하세요.")
+                if any(item["direction"] == "outbound" and
+                       item["received_at"] > event["received_at"] for item in conversation):
+                    raise InstagramAssistantError("이 요청 뒤 보낸 DM이 있어 중복 가능성을 확인해야 합니다.")
+            elif [item["body"] for item in saved] != messages:
+                raise InstagramAssistantError("기존 발송 목록과 문구가 다릅니다.")
+
+            if saved and all(item["status"] == "sent" for item in saved):
+                update_event(event_id, {"status": "sent", "error": None})
+                return {"event_id": event_id, "username": username,
+                        "messages": [{"index": item["item_index"] + 1, "status": "sent",
+                                      "remote_id": item["remote_id"]} for item in saved]}
+
+            settings = get_settings()
+            self._check_halt(settings)
+            client = self.connect_saved_session()
+            if event.get("account_id") != client.account_id:
+                raise InstagramAssistantError("현재 연결 계정에서 수집한 DM이 아닙니다.")
+            try:
+                items = create_dm_send_items(event_id, messages)
+            except ValueError as exc:
+                raise InstagramAssistantError(str(exc)) from exc
+            for item in items:
+                index = item["item_index"]
+                if item["status"] == "sent":
+                    continue
+                if item["status"] != "pending":
+                    raise InstagramAssistantError(
+                        f"{index + 1}번째 DM의 결과가 {item['status']}입니다. Instagram에서 확인 후 수동으로 조정하세요.")
+                if sent_today_count() >= int(settings.get("daily_send_limit", 20)):
+                    raise InstagramAssistantError("오늘의 발송 한도에 도달했습니다.")
+                if not claim_dm_send_item(event_id, index):
+                    raise InstagramAssistantError("다른 발송이 진행 중입니다. 대화를 다시 확인하세요.")
+                body = item["body"]
+                try:
+                    result = client.request("POST", f"/{client.account_id}/messages", json_body={
+                        "recipient": {"id": event["author_id"]}, "message": {"text": body},
+                    })
+                except InstagramHaltedError as exc:
+                    self._record_halt(exc)
+                    add_delivery(event_id, "reply_dm", body, "halted", error=str(exc))
+                    finish_dm_send_item(event_id, index, "halted", error=str(exc))
+                    update_event(event_id, {"status": "manual", "error": str(exc)})
+                    raise
+                except MetaApiError as exc:
+                    status = "rejected" if 400 <= exc.status < 500 and exc.status not in {408, 429} else "uncertain"
+                    add_delivery(event_id, "reply_dm", body, status, error=str(exc))
+                    finish_dm_send_item(event_id, index, status, error=str(exc))
+                    update_event(event_id, {"status": "manual", "error": str(exc)})
+                    raise
+                except InstagramAssistantError as exc:
+                    add_delivery(event_id, "reply_dm", body, "uncertain", error=str(exc))
+                    finish_dm_send_item(event_id, index, "uncertain", error=str(exc))
+                    update_event(event_id, {"status": "manual", "error": str(exc)})
+                    raise
+                remote_id = str(result.get("id") or result.get("message_id") or "")
+                if not remote_id:
+                    add_delivery(event_id, "reply_dm", body, "uncertain", error="발송 ID 없음")
+                    finish_dm_send_item(event_id, index, "uncertain", error="발송 ID 없음")
+                    update_event(event_id, {"status": "manual", "error": "발송 ID 없음"})
+                    raise InstagramAssistantError("발송 ID가 없어 Instagram에서 확인해야 합니다.")
+                add_delivery(event_id, "reply_dm", body, "sent", remote_id)
+                finish_dm_send_item(event_id, index, "sent", remote_id)
+            update_event(event_id, {"status": "sent", "error": None})
+            return {"event_id": event_id, "username": username,
+                    "messages": [{"index": item["item_index"] + 1, "status": item["status"],
+                                  "remote_id": item["remote_id"]}
+                                 for item in dm_send_items(event_id)]}
 
     def heart_dm(self, event_id: str) -> dict[str, Any]:
         with self._lock:

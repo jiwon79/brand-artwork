@@ -217,6 +217,34 @@ def test_old_account_event_cannot_be_sent(monkeypatch):
         service.send_for_event(item["id"])
 
 
+def test_dm_sequence_sends_exact_messages_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "records.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.update_settings({"instagram_account_id": "ig-1", "daily_send_limit": 20})
+    db.upsert_event({"id": "dm:in-1", "account_id": "ig-1", "kind": "dm",
+                     "source_id": "in-1", "thread_id": "thread-1", "author_id": "visitor-1",
+                     "author_username": "recipient", "direction": "inbound", "body": "안녕하세요",
+                     "received_at": "2026-09-28T00:00:00Z", "status": "pending"})
+    sent = []
+
+    def post(method, path, **kwargs):
+        sent.append(kwargs["json_body"]["message"]["text"])
+        return {"id": f"out-{len(sent)}"}
+
+    service = InstagramService()
+    service._client = SimpleNamespace(account_id="ig-1", request=post)
+    messages = ["첫 DM", "둘째 DM"]
+    result = service.send_dm_sequence("dm:in-1", "recipient", messages)
+    assert sent == messages
+    assert [item["remote_id"] for item in result["messages"]] == ["out-1", "out-2"]
+    assert db.get_event("dm:in-1")["status"] == "sent"
+    assert service.send_dm_sequence("dm:in-1", "recipient", messages) == result
+    assert sent == messages
+    with pytest.raises(InstagramAssistantError, match="문구가 다릅니다"):
+        service.send_dm_sequence("dm:in-1", "recipient", ["changed"])
+
+
 def test_dm_heart_uses_official_reaction_and_records_success(monkeypatch):
     item = event(id="dm:message-1", kind="dm", source_id="message-1", author_id="visitor-1",
                  proposed_action=None, draft="")
