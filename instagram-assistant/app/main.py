@@ -46,7 +46,6 @@ class SettingsBody(BaseModel):
     auto_send: bool | None = None
     auto_comment: bool | None = None
     auto_dm: bool | None = None
-    daily_send_limit: int | None = Field(default=None, ge=1, le=50)
 
 
 class ArtworkBody(BaseModel):

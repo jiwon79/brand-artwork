@@ -149,7 +149,6 @@ DEFAULT_SETTINGS = {
     "auto_send": False,
     "auto_comment": False,
     "auto_dm": False,
-    "daily_send_limit": 20,
     "last_sync_at": None,
     "last_full_sync_at": None,
     "full_sync_progress": None,
@@ -240,6 +239,7 @@ def initialize() -> None:
         if "reviewed_at" not in columns:
             conn.execute("ALTER TABLE events ADD COLUMN reviewed_at TEXT")
         conn.execute("DELETE FROM settings WHERE key='read_only_observation'")
+        conn.execute("DELETE FROM settings WHERE key='daily_send_limit'")
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",

@@ -18,7 +18,7 @@ from .db import (add_delivery, claim_dm_send_item, create_dm_send_items, dm_send
                  finish_dm_send_item, get_dm_sync_state, get_event, get_settings, list_artworks,
                  list_conversation_messages, mark_comment_reviewed, reconcile_own_dm_messages,
                  reconcile_pending_dm_reactions, save_artwork, save_dm_sync_state,
-                 sent_today_count, set_dm_reactions, update_event, update_settings, upsert_event)
+                 set_dm_reactions, update_event, update_settings, upsert_event)
 
 GRAPH_BASE = "https://graph.instagram.com/" + os.getenv("INSTAGRAM_GRAPH_VERSION", "v25.0")
 SCOPES = "instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages"
@@ -504,8 +504,6 @@ class InstagramService:
                 raise InstagramAssistantError("이미 전송한 항목입니다.")
             settings = get_settings()
             self._check_halt(settings)
-            if sent_today_count() >= int(settings.get("daily_send_limit", 20)):
-                raise InstagramAssistantError("오늘의 발송 한도에 도달했습니다.")
             if not event.get("draft"):
                 raise InstagramAssistantError("전송할 답변 초안이 없습니다.")
             client = self.connect_saved_session()
@@ -622,8 +620,6 @@ class InstagramService:
                 if item["status"] != "pending":
                     raise InstagramAssistantError(
                         f"{index + 1}번째 DM의 결과가 {item['status']}입니다. Instagram에서 확인 후 수동으로 조정하세요.")
-                if sent_today_count() >= int(settings.get("daily_send_limit", 20)):
-                    raise InstagramAssistantError("오늘의 발송 한도에 도달했습니다.")
                 if not claim_dm_send_item(event_id, index):
                     raise InstagramAssistantError("다른 발송이 진행 중입니다. 대화를 다시 확인하세요.")
                 body = item["body"]
