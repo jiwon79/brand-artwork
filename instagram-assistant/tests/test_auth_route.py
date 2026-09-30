@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app import config, db, main
+from app.admin_auth import hash_password
 
 
 def test_oauth_start_requires_local_token_and_uses_post(monkeypatch):
@@ -11,6 +12,45 @@ def test_oauth_start_requires_local_token_and_uses_post(monkeypatch):
         response = client.post("/api/auth/url", headers={"X-Instagram-Assistant-Token": main.TOKEN})
     assert response.status_code == 200
     assert response.json()["url"] == "https://www.instagram.com/oauth/authorize"
+
+
+def test_hosted_oauth_callback_uses_one_time_state_without_admin_cookie(monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", hash_password("test-admin-password-long"))
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret")
+    calls = []
+    monkeypatch.setattr(main.instagram_service, "complete_oauth",
+                        lambda code, state: calls.append((code, state)))
+    with TestClient(main.app, base_url="https://admin.example") as client:
+        assert client.get("/api/status").status_code == 401
+        assert client.get("/api/auth/callback").status_code == 400
+        response = client.get("/api/auth/callback?code=test-code&state=test-state",
+                              follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/setting?oauth=connected"
+    assert calls == [("test-code", "test-state")]
+
+
+def test_webhook_subscription_requires_auth_and_confirms_fields(monkeypatch):
+    calls = []
+
+    class StubClient:
+        def request(self, method, path, **kwargs):
+            calls.append((method, path, kwargs))
+            return {"data": [{"subscribed_fields": ["messages", "message_reactions", "comments"]}]}
+
+    monkeypatch.setattr(main.instagram_service, "connect_saved_session", lambda: StubClient())
+    with TestClient(main.app) as client:
+        assert client.post("/api/webhooks/subscribe").status_code == 403
+        response = client.post("/api/webhooks/subscribe", headers={
+            "X-Instagram-Assistant-Token": main.TOKEN})
+    assert response.status_code == 200
+    assert response.json()["subscriptions"][0]["subscribed_fields"] == [
+        "messages", "message_reactions", "comments"]
+    assert calls == [
+        ("POST", "/me/subscribed_apps", {"data": {
+            "subscribed_fields": "messages,message_reactions,comments"}}),
+        ("GET", "/me/subscribed_apps", {}),
+    ]
 
 
 def test_viewer_only_exposes_sync_action_without_mutation_token():
@@ -27,7 +67,7 @@ def test_viewer_only_exposes_sync_action_without_mutation_token():
     assert 'id="sync"' in page.text
     assert script.status_code == 200
     assert "X-Instagram-Assistant-Token" not in script.text
-    assert '"/api/viewer/sync"' in script.text
+    assert '/api/viewer/sync' in script.text
     assert '"/api/events/' not in script.text
     assert 'method: "PATCH"' not in script.text
 
@@ -49,6 +89,26 @@ def test_viewer_sync_requires_same_origin_and_cannot_call_protected_sync(monkeyp
     assert response.status_code == 200
     assert response.json()["comments"] == 1
     assert calls == [True]
+
+
+def test_viewer_dm_sync_skips_comment_fetch(monkeypatch):
+    calls = []
+    monkeypatch.setattr(main.instagram_service, "sync", lambda **kwargs: calls.append(kwargs) or {"dms": 1})
+    headers = {"Origin": "http://testserver", "X-Requested-With": "InstagramAssistant",
+               "Sec-Fetch-Site": "same-origin"}
+    with TestClient(main.app) as client:
+        response = client.post("/api/viewer/sync?scope=dm", headers=headers)
+        targeted = client.post("/api/viewer/sync?scope=dm&user_id=123", headers=headers)
+        limited = client.post("/api/viewer/sync?scope=dm&dm_limit=1", headers=headers)
+        invalid = client.post("/api/viewer/sync?scope=other", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["dms"] == 1
+    assert targeted.status_code == 200
+    assert limited.status_code == 200
+    assert calls == [{"media_amount": 0, "threads_amount": 100, "dm_user_id": None},
+                     {"media_amount": 0, "threads_amount": 100, "dm_user_id": "123"},
+                     {"media_amount": 0, "threads_amount": 1, "dm_user_id": None}]
+    assert invalid.status_code == 422
 
 
 def test_observation_setting_is_absent_and_cannot_be_restored(tmp_path, monkeypatch):
@@ -109,6 +169,7 @@ def test_observed_heart_requires_token_and_completes_review(tmp_path, monkeypatc
     with TestClient(main.app) as client:
         db.upsert_event({
             "id": "comment:root", "kind": "comment", "source_id": "root",
+            "author_username": "someone_else",
             "received_at": "2026-09-15T01:00:00+00:00",
         })
         path = "/api/events/comment:root/heart-observed"
@@ -118,6 +179,38 @@ def test_observed_heart_requires_token_and_completes_review(tmp_path, monkeypatc
     assert response.json()["has_liked"] == 1
     assert db.get_event("comment:root")["reviewed_at"] is not None
     assert db.list_comment_threads(status="active") == []
+
+
+def test_observed_heart_on_latest_reply_completes_parent(tmp_path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    with TestClient(main.app) as client:
+        db.upsert_event({"id": "comment:root", "kind": "comment", "source_id": "root",
+                         "author_username": "visitor", "received_at": "2026-09-15T01:00:00+00:00"})
+        db.upsert_event({"id": "comment:reply", "kind": "comment", "source_id": "reply",
+                         "parent_comment_id": "root", "direction": "inbound", "status": "history",
+                         "author_username": "visitor", "received_at": "2026-09-15T01:01:00+00:00"})
+        assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
+        response = client.post("/api/events/comment:reply/heart-observed", headers={
+            "X-Instagram-Assistant-Token": main.TOKEN})
+    assert response.status_code == 200
+    assert db.get_event("comment:reply")["has_liked"] == 1
+    assert db.get_event("comment:reply")["reviewed_at"] is not None
+    assert [item["source_id"] for item in db.list_comment_threads(status="completed")] == ["root"]
+
+
+def test_observed_comment_heart_rejects_unknown_or_own_author(tmp_path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    headers = {"X-Instagram-Assistant-Token": main.TOKEN}
+    with TestClient(main.app) as client:
+        db.update_settings({"instagram_username": "studio.jiiwon"})
+        for event_id, username in (("comment:unknown", ""), ("comment:own", "studio.jiiwon")):
+            db.upsert_event({"id": event_id, "kind": "comment", "source_id": event_id,
+                             "author_username": username})
+            response = client.post(f"/api/events/{event_id}/heart-observed", headers=headers)
+            assert response.status_code == 400
+            assert not db.get_event(event_id)["has_liked"]
 
 
 def test_observed_dm_heart_completes_conversation(tmp_path, monkeypatch):

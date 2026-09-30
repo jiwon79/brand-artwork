@@ -1,16 +1,16 @@
 # Cursor Cat
 
-- 커서 방향을 따라 120개의 원형 시선 포즈를 표시한다.
-- 기준 frame은 001 오른쪽, 031 위, 061 왼쪽, 091 아래다.
+- 커서 위치에 맞춰 고양이가 그쪽을 바라보는 프레임을 표시한다.
+- 기준 프레임은 001 오른쪽, 031 위, 061 왼쪽, 091 아래다.
 - 메인 경로는 R2 pack `main`을 사용한다.
 - 정확히 10자리인 영문 소문자·숫자 서브 경로는 같은 ID의 R2 pack을 사용한다.
-- pack은 flat WebP 120장과 manifest 하나만 가진다. runtime 이미지는 Git build에 포함하지 않는다.
-- manifest가 눈 기준점과 표시 scale calibration을 제공한다.
+- pack은 WebP 120장과 manifest 하나만 가진다. 실행할 때 쓰는 이미지는 Git 빌드에 포함하지 않는다.
+- manifest가 프레임별 눈 위치와 표시 크기 보정값을 제공한다.
 - 로딩 중에는 고양이를 숨기고 중앙에 실제 decode 진행률을 표시한다.
-- 모든 frame을 preload·decode한 뒤 고양이를 표시하고 pointer 상호작용을 시작한다.
-- 상단 `Angle / Frame / Final` 단계에서 터치 각도, 실제 120-frame 선택 경계와 최종 결과를 차례로 보여준다.
+- 모든 프레임을 미리 불러와 해석한 뒤 고양이를 표시하고 포인터 상호작용을 시작한다.
+- 상단 `Angle / Frame / Final` 단계에서 포인터 방향, 실제 프레임 선택 구간과 최종 결과를 차례로 보여준다.
 - `?stage=angle|frame|final`, 숫자키 `1…3`과 좌우 방향키로 원리 단계를 바꾼다.
-- `?debug=1` 또는 `D` 키로 실제 frame 선택 경계와 눈→커서 방향을 확인한다.
+- `?debug=1` 또는 `D` 키로 실제 프레임 선택 구간과 눈에서 커서로 향하는 방향을 확인한다.
 - 모바일은 `dvh`를 사용해 고양이 아래를 현재 viewport 아래에 고정한다.
 
 상세 구현은 [`../../docs/artworks/cursor-cat/architecture.md`](../../docs/artworks/cursor-cat/architecture.md), 제작 과정은 [`../../docs/artworks/cursor-cat/generation.md`](../../docs/artworks/cursor-cat/generation.md), 새 pack 등록은 [`../../docs/guides/cursor-cat-registration.md`](../../docs/guides/cursor-cat-registration.md)를 따른다.

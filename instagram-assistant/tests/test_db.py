@@ -3,6 +3,64 @@ from pathlib import Path
 from app import config, db
 
 
+def test_initialize_removes_legacy_daily_send_limit(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    with db.connect() as conn:
+        conn.execute("INSERT INTO settings(key, value) VALUES ('daily_send_limit', '20')")
+    db.initialize()
+    assert "daily_send_limit" not in db.get_settings()
+
+
+def test_dm_reactions_track_both_people_and_unreact(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.update_settings({"instagram_account_id": "account-1"})
+    for source_id, direction, author in (("in", "inbound", "visitor-1"),
+                                         ("out", "outbound", "own-1")):
+        db.upsert_event({"id": f"dm:{source_id}", "kind": "dm", "account_id": "account-1",
+                         "source_id": source_id, "thread_id": "thread-1", "author_id": author,
+                         "direction": direction, "body": "test", "received_at": db.now()})
+    assert db.apply_dm_reaction("account-1", "out", "visitor-1", {"own-1"}, "react", "❤")
+    assert db.get_event("dm:out")["peer_reaction"] == "❤"
+    assert db.get_event("dm:out")["has_liked"] is None
+    assert db.apply_dm_reaction("account-1", "in", "own-1", {"own-1"}, "react", "❤")
+    assert db.get_event("dm:in")["has_liked"] == 1
+    assert db.list_conversations(status="active") == []
+    assert db.apply_dm_reaction("account-1", "in", "own-1", {"own-1"}, "unreact", None)
+    assert db.get_event("dm:in")["own_reaction"] is None
+    assert db.get_event("dm:in")["has_liked"] == 0
+    assert db.apply_dm_reaction("account-1", "out", "visitor-1", {"own-1"}, "unreact", None)
+    assert db.get_event("dm:out")["peer_reaction"] is None
+
+
+def test_graph_reaction_snapshot_clears_removed_heart(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    db.upsert_event({"id": "dm:1", "kind": "dm", "source_id": "1", "body": "test"})
+    db.set_dm_reactions("dm:1", "❤", "👍")
+    assert db.get_event("dm:1")["has_liked"] == 1
+    db.set_dm_reactions("dm:1", None, None)
+    assert db.get_event("dm:1")["has_liked"] == 0
+    assert db.get_event("dm:1")["peer_reaction"] is None
+
+
+def test_reaction_for_unknown_message_is_saved_until_message_sync(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    assert not db.apply_dm_reaction("account-1", "later", "visitor-1", {"own-1"},
+                                    "react", "❤")
+    db.upsert_event({"id": "dm:later", "account_id": "account-1", "kind": "dm",
+                     "source_id": "later", "author_id": "own-1", "direction": "outbound"})
+    assert db.reconcile_pending_dm_reactions("account-1", "later", {"own-1"}) == 1
+    assert db.get_event("dm:later")["peer_reaction"] == "❤"
+    assert db.reconcile_pending_dm_reactions("account-1", "later", {"own-1"}) == 0
+
+
 def test_event_insert_is_idempotent(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)
@@ -308,3 +366,32 @@ def test_comment_heart_completes_review_and_later_reply_reopens_it(tmp_path: Pat
         "received_at": "2026-09-15T01:02:00+00:00",
     })
     assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
+
+
+def test_latest_comment_action_moves_thread_between_review_lists(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
+    monkeypatch.setattr(config.paths, "data", tmp_path)
+    db.initialize()
+    root = {"id": "comment:root", "kind": "comment", "source_id": "root",
+            "received_at": "2026-09-15T01:00:00+00:00"}
+    db.upsert_event(root)
+    assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
+
+    db.mark_comment_reviewed("comment:root")
+    assert [item["source_id"] for item in db.list_comment_threads(status="completed")] == ["root"]
+
+    reply = {"id": "comment:reply", "kind": "comment", "source_id": "reply",
+             "parent_comment_id": "root", "direction": "inbound", "status": "history",
+             "received_at": "2099-09-15T01:01:00+00:00"}
+    db.upsert_event(reply)
+    assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
+    db.upsert_event({**reply, "has_liked": True})
+    assert [item["source_id"] for item in db.list_comment_threads(status="completed")] == ["root"]
+
+    db.upsert_event({**reply, "id": "comment:new", "source_id": "new",
+                     "has_liked": False, "received_at": "2099-09-15T01:02:00+00:00"})
+    assert [item["source_id"] for item in db.list_comment_threads(status="active")] == ["root"]
+    db.upsert_event({"id": "comment:out", "kind": "comment", "source_id": "out",
+                     "parent_comment_id": "root", "direction": "outbound", "status": "history",
+                     "received_at": "2099-09-15T01:03:00+00:00"})
+    assert [item["source_id"] for item in db.list_comment_threads(status="completed")] == ["root"]
