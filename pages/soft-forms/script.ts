@@ -16,7 +16,7 @@ import { motionFrames } from './motion-data';
 import { DEFAULT_PLAYBACK_SPEED, MOTION_FPS } from './motion-track';
 import { variants, type VariantColors } from './variants';
 import { TouchReaction } from './touch-reaction';
-import { pinchDistance, pinchZoom, MIN_ZOOM, MAX_ZOOM } from './zoom';
+import { pinchDistance, pinchZoom } from './zoom';
 
 const params = new URLSearchParams(location.search);
 if (params.has('editor') || params.has('rig')) {
@@ -114,8 +114,11 @@ const original = Float32Array.from(shape.getAttribute('position').array as Array
 const shapePosition = shape.getAttribute('position') as THREE.BufferAttribute;
 const shapeNormal = shape.getAttribute('normal') as THREE.BufferAttribute;
 shapePosition.setUsage(THREE.DynamicDrawUsage);
+const influenceColors = new Float32Array(original.length);
+const influenceColorAttribute = new THREE.BufferAttribute(influenceColors, 3).setUsage(THREE.DynamicDrawUsage);
+shape.setAttribute('color', influenceColorAttribute);
 const bodyUniforms = { uCheek: { value: 0 }, uStarSoftness: { value: 0 }, ...paletteUniforms };
-const body = new THREE.Mesh(
+const body: THREE.Mesh<THREE.SphereGeometry, THREE.Material> = new THREE.Mesh(
   shape,
   new THREE.ShaderMaterial({
     vertexShader: `varying vec3 vLocal; varying vec3 vNormal; void main() { vLocal = position; vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -129,37 +132,37 @@ ${bodyFragment}`,
   }),
 );
 character.add(body);
+const artworkBodyMaterial = body.material;
+const inspectionBodyMaterial = new THREE.MeshStandardMaterial({ color: 0xb3bac3, roughness: 0.92 });
+const influenceBodyMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
 // The inspection overlay shares the animated body geometry, so every wire follows the real skin.
 const bodyWire = new THREE.Mesh(shape, new THREE.MeshBasicMaterial({
-  color: 0xf8f5ff, wireframe: true, transparent: true, opacity: 0.36,
+  color: 0x35404f, wireframe: true, transparent: true, opacity: 0.32,
   depthTest: false, depthWrite: false, side: THREE.FrontSide,
 }));
 bodyWire.scale.setScalar(1.003);
 bodyWire.renderOrder = 80;
 bodyWire.visible = false;
 character.add(bodyWire);
-const boneLinesPosition = new Float32Array((boneDefinitions.length - 1) * 4 * 3);
-const boneLineGeometry = new THREE.BufferGeometry();
-boneLineGeometry.setAttribute('position', new THREE.BufferAttribute(boneLinesPosition, 3).setUsage(THREE.DynamicDrawUsage));
-const boneLines = new THREE.LineSegments(boneLineGeometry, new THREE.LineBasicMaterial({
-  color: 0x6b3568, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false,
+// The real rig uses independent weighted controls, so no connection is drawn between them.
+const controlMarkerGeometry = new THREE.SphereGeometry(6, 14, 10);
+const influencePalette = [
+  0xffc27a, 0xff8d91, 0xf7ab6d, 0xe5cf78, 0x9ed99c, 0x73cdb7, 0x76c8df,
+  0x83aaf0, 0xa8a1ef, 0xd3a0df, 0xf0a6c8, 0xed9eab, 0xe8a477,
+].map((value) => new THREE.Color(value));
+const influenceMarkerMaterials = influencePalette.map((color) => new THREE.MeshBasicMaterial({
+  color, transparent: true, depthTest: false, depthWrite: false,
 }));
-boneLines.frustumCulled = false;
-boneLines.renderOrder = 90;
-const boneMarkerGeometry = new THREE.SphereGeometry(4.6, 10, 8);
-const boneMarkerMaterial = new THREE.MeshBasicMaterial({
-  color: 0xfff2cd, transparent: true, depthTest: false, depthWrite: false,
-});
-const boneMarkers = boneDefinitions.map(() => {
-  const marker = new THREE.Mesh(boneMarkerGeometry, boneMarkerMaterial);
+const controlMarkers = boneDefinitions.map((_, index) => {
+  const marker = new THREE.Mesh(controlMarkerGeometry, influenceMarkerMaterials[index]);
   marker.frustumCulled = false;
   marker.renderOrder = 91;
   return marker;
 });
-const boneDisplay = new THREE.Group();
-boneDisplay.add(boneLines, ...boneMarkers);
-boneDisplay.visible = false;
-character.add(boneDisplay);
+const controlDisplay = new THREE.Group();
+controlDisplay.add(...controlMarkers);
+controlDisplay.visible = false;
+character.add(controlDisplay);
 // Thin translucent shells fill the volume between the body and visible fiber tips.
 const SHELL_COUNT = 13;
 const shells = Array.from({ length: SHELL_COUNT }, (_, index) => {
@@ -264,30 +267,26 @@ const frozenTime = params.has('t') && Number.isFinite(queryTime) ? Math.max(0, q
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const startTime = performance.now();
 const controls = { turnX: 0, turnY: 0, turnZ: 0 };
-const view = { shape: variants[targetVariant].id, mesh: false, bones: false, zoom: 1 };
-const guiMount = document.querySelector<HTMLElement>('#gui');
-if (!guiMount) throw new Error('GUI mount is missing');
-const gui = new GUI({ title: '솜결 · 구조 보기', container: guiMount, width: 244 });
+const view = { shape: variants[targetVariant].id, mesh: false, handles: false };
+const gui = new GUI({ title: '솜결 · 구조 보기' });
 const shapeController = gui.add(view, 'shape', Object.fromEntries(variants.map((variant) => [variant.label, variant.id])))
   .name('모양').onChange((id: typeof view.shape) => {
     const index = variants.findIndex((variant) => variant.id === id);
     if (index >= 0) selectVariant(index);
   });
 function applyInspection() {
+  const inspecting = view.mesh || view.handles;
+  body.material = view.handles ? influenceBodyMaterial : view.mesh ? inspectionBodyMaterial : artworkBodyMaterial;
   bodyWire.visible = view.mesh;
-  boneDisplay.visible = view.bones;
-  for (const shell of shells) shell.mesh.visible = !view.mesh;
-  fur.visible = !view.mesh;
-  canvas!.style.filter = view.mesh || view.bones ? 'none' : '';
+  controlDisplay.visible = view.handles;
+  for (const shell of shells) shell.mesh.visible = !inspecting;
+  fur.visible = !inspecting;
+  for (const eye of eyes) eye.visible = !inspecting;
+  canvas!.style.filter = inspecting ? 'none' : '';
   refresh();
 }
 gui.add(view, 'mesh').name('몸체 메시').onChange(applyInspection);
-gui.add(view, 'bones').name('관절 13개').onChange(applyInspection);
-const zoomController = gui.add(view, 'zoom', MIN_ZOOM, MAX_ZOOM, 0.01).name('확대').onChange((value: number) => {
-  camera.zoom = value;
-  camera.updateProjectionMatrix();
-  refresh();
-});
+gui.add(view, 'handles').name('변형 컨트롤').onChange(applyInspection);
 let frameRequested = false;
 function refresh() {
   if (frameRequested) return;
@@ -363,8 +362,6 @@ canvas.addEventListener('pointermove', (event) => {
     const [first, second] = [...touchPoints.values()];
     camera.zoom = Math.round(pinchZoom(pinch.zoom, pinch.distance, pinchDistance(first, second)) * 100) / 100;
     camera.updateProjectionMatrix();
-    view.zoom = camera.zoom;
-    zoomController.updateDisplay();
     refresh();
     return;
   }
@@ -509,19 +506,39 @@ function updateShape() {
   fiberTipAttribute.needsUpdate = true;
 }
 
-function updateBoneDisplay() {
-  if (!view.bones) return;
-  const center = boneRig.jointPosition(0);
-  const rimCount = boneDefinitions.length - 1;
+let influenceKey = '';
+function updateInfluenceColors() {
+  if (!view.handles || !bodyBoneWeights) return;
+  const key = boneRig.shape;
+  if (key === influenceKey) return;
+  influenceKey = key;
+  for (let index = 0; index < original.length / 3; index++) {
+    let total = 0;
+    let red = 0, green = 0, blue = 0;
+    for (let control = 0; control < boneDefinitions.length; control++) {
+      const weight = bodyBoneWeights[index * boneDefinitions.length + control] ** 4;
+      const color = influencePalette[control];
+      red += color.r * weight;
+      green += color.g * weight;
+      blue += color.b * weight;
+      total += weight;
+    }
+    const offset = index * 3;
+    influenceColors[offset] = red / total;
+    influenceColors[offset + 1] = green / total;
+    influenceColors[offset + 2] = blue / total;
+  }
+  influenceColorAttribute.needsUpdate = true;
+}
+
+function updateControlDisplay() {
+  if (!view.handles) return;
   for (let index = 0; index < boneDefinitions.length; index++) {
     const [x, y] = boneRig.jointPosition(index);
-    boneMarkers[index].position.set(x, y, 155);
-    if (index === 0) continue;
-    const next = boneRig.jointPosition(index === rimCount ? 1 : index + 1);
-    boneLinesPosition.set([center[0], center[1], 155, x, y, 155,
-      x, y, 155, next[0], next[1], 155], (index - 1) * 12);
+    // The rig is planar: its controls live inside the body on the local XY plane.
+    // A fixed front-facing Z offset makes them orbit outside the body when it rotates.
+    controlMarkers[index].position.set(x, y, 0);
   }
-  boneLineGeometry.getAttribute('position').needsUpdate = true;
 }
 
 function render(now: number) {
@@ -565,9 +582,10 @@ function render(now: number) {
   bodyUniforms.uCheek.value = cheekStrength;
   bodyUniforms.uStarSoftness.value = variantWeights[3];
   ensureBoneWeights();
+  updateInfluenceColors();
   boneRig.setPose(sampleDefaultPose(boneClips, selectedVariant.id, timelineFrame));
   updateShape();
-  updateBoneDisplay();
+  updateControlDisplay();
 
   const sourceCx = lerp(first.center[0], second.center[0]);
   const sourceCy = lerp(first.center[1], second.center[1]);
