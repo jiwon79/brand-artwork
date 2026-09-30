@@ -1,16 +1,22 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { CELLS, REFERENCE_HEIGHT, REFERENCE_WIDTH } from './reference-layout';
-import { type ModelName } from './flip-motion';
+import { REFERENCE_HEIGHT, REFERENCE_WIDTH, TILES } from './reference-layout';
+import { type TileModel } from './tile-model';
 import { createLookControls, createLook } from './look-controls';
-import { createFieldInteraction } from './field-interaction';
+import { createTileInteraction } from './tile-interaction';
 
 const assets = {
   flower: new URL('./assets/flower-web.glb', import.meta.url).href,
   smiley: new URL('./assets/smiley-web.glb', import.meta.url).href,
 };
-type Part = { mesh: THREE.InstancedMesh; materialName: string; model: ModelName; colors: THREE.Color[]; baseRoughness: number };
+type ModelPart = {
+  mesh: THREE.InstancedMesh;
+  materialName: string;
+  model: TileModel;
+  colors: THREE.Color[];
+  baseRoughness: number;
+};
 
 function studioEnvironment(renderer: THREE.WebGLRenderer) {
   const studio = new THREE.Scene();
@@ -59,7 +65,7 @@ function start() {
   let visible = true;
   let previousTime: number | undefined;
   let dirty = true;
-  const field = createFieldInteraction(canvas, () => ready,
+  const interaction = createTileInteraction(canvas, () => ready,
     () => reducedMotion.matches, () => { dirty = true; }, look);
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -75,7 +81,7 @@ function start() {
   scene.environment = environment.texture;
   const camera = new THREE.OrthographicCamera(-6, 6, REFERENCE_HEIGHT / 2, -REFERENCE_HEIGHT / 2, 0.1, 70);
   camera.position.set(0, 0, 30);
-  const parts: Part[] = [];
+  const modelParts: ModelPart[] = [];
   const keyLights: THREE.DirectionalLight[] = [];
   const keyPosition = new THREE.Vector3(-3, 5, 3.5);
   const keyRight = new THREE.Vector3().crossVectors(keyPosition, THREE.Object3D.DEFAULT_UP).normalize();
@@ -105,20 +111,20 @@ function start() {
   const color = new THREE.Color();
   const hsl = { h: 0, s: 0, l: 0 };
 
-  function colorInstances() {
-    for (const part of parts) {
-      part.mesh.count = CELLS.length;
+  function updateInstanceColors() {
+    for (const part of modelParts) {
+      part.mesh.count = TILES.length;
       for (let index = 0; index < part.mesh.count; index++) {
-        const cell = CELLS[index];
+        const tile = TILES[index];
         if (part.model === 'smiley') {
-          color.set(look.smileys[cell.color]);
+          color.set(look.smileys[tile.color]);
         } else if (part.materialName.includes('enamel')) {
-          color.set(look.cores[cell.color]);
+          color.set(look.cores[tile.color]);
         } else if (part.materialName.includes('raised center')) {
-          color.set(look.cores[cell.color])
+          color.set(look.cores[tile.color])
             .lerp(new THREE.Color(look.rimColor), 0.65);
         } else if (part.materialName.includes('porcelain')) {
-          color.set(look.petals[cell.porcelain]);
+          color.set(look.petals[tile.porcelain]);
         } else if (part.materialName.includes('stamens')) {
           color.set(look.strokeColor);
         } else {
@@ -127,7 +133,9 @@ function start() {
         color.getHSL(hsl, THREE.SRGBColorSpace);
         color.setHSL(hsl.h, Math.min(1, hsl.s * look.saturation), hsl.l, THREE.SRGBColorSpace);
         // The top of the reference receives more of the broad studio light.
-        color.multiplyScalar(1 - look.falloff + look.falloff * (cell.y + REFERENCE_HEIGHT / 2) / REFERENCE_HEIGHT);
+        color.multiplyScalar(
+          1 - look.falloff + look.falloff * (tile.y + REFERENCE_HEIGHT / 2) / REFERENCE_HEIGHT,
+        );
         part.colors[index] = color.clone();
       }
       part.mesh.instanceColor!.needsUpdate = true;
@@ -135,25 +143,27 @@ function start() {
     dirty = true;
   }
 
-  function updateMatrices() {
-    const count = CELLS.length;
-    for (const part of parts) part.mesh.count = 0;
+  function updateInstanceMatrices() {
+    const count = TILES.length;
+    for (const part of modelParts) part.mesh.count = 0;
     for (let index = 0; index < count; index++) {
-      const pose = field.pose(index);
-      const layout = field.layout[index];
-      if (layout.scale === 0) continue;
-      transform.position.set(layout.x, layout.y, 0);
-      transform.rotation.set(pose.rotationX, 0, 0);
-      transform.scale.setScalar((0.98 * layout.scale) * (pose.model === 'flower' ? 1 : 0.98));
+      const renderPose = interaction.renderPose(index);
+      const tileLayout = interaction.tileLayouts[index];
+      if (tileLayout.scale === 0) continue;
+      transform.position.set(tileLayout.x, tileLayout.y, 0);
+      transform.rotation.set(renderPose.rotationX, 0, 0);
+      transform.scale.setScalar(
+        (0.98 * tileLayout.scale) * (renderPose.model === 'flower' ? 1 : 0.98),
+      );
       transform.updateMatrix();
-      for (const part of parts) {
-        if (part.model !== pose.model) continue;
+      for (const part of modelParts) {
+        if (part.model !== renderPose.model) continue;
         const slot = part.mesh.count++;
         part.mesh.setMatrixAt(slot, transform.matrix);
         part.mesh.setColorAt(slot, part.colors[index]);
       }
     }
-    for (const part of parts) {
+    for (const part of modelParts) {
       part.mesh.instanceMatrix.needsUpdate = true;
       part.mesh.instanceColor!.needsUpdate = true;
     }
@@ -192,7 +202,7 @@ function start() {
     const toneChanged = renderer.toneMapping !== toneMapping;
     renderer.toneMapping = toneMapping;
     renderer.toneMappingExposure = look.exposure;
-    for (const part of parts) {
+    for (const part of modelParts) {
       const material = part.mesh.material as THREE.MeshPhysicalMaterial;
       material.roughness = part.model === 'smiley' ? look.smileyRoughness
         : part.materialName.includes('porcelain') ? look.petalRoughness
@@ -202,7 +212,7 @@ function start() {
       if (toneChanged) material.needsUpdate = true;
     }
     updateLighting();
-    colorInstances();
+    updateInstanceColors();
   }
   const disposeLookControls = createLookControls(look, applyLook);
 
@@ -228,7 +238,7 @@ function start() {
   canvas.addEventListener('webglcontextrestored', () => { dirty = true; previousTime = undefined; }, { signal: events.signal });
   reducedMotion.addEventListener('change', () => {
     if (reducedMotion.matches) {
-      field.settle();
+      interaction.settle();
       dirty = true;
     }
   }, { signal: events.signal });
@@ -264,7 +274,7 @@ function start() {
             '#include <beginnormal_vertex>\nobjectNormal.xy += position.xy * 0.18 * pow(max(normal.z, 0.0), 12.0);');
         };
       }
-      const mesh = new THREE.InstancedMesh(geometry, material, CELLS.length);
+      const mesh = new THREE.InstancedMesh(geometry, material, TILES.length);
       mesh.name = model + ' · ' + original.name;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.setColorAt(0, new THREE.Color());
@@ -272,14 +282,14 @@ function start() {
       mesh.castShadow = model === 'flower';
       mesh.receiveShadow = model === 'flower';
       scene.add(mesh);
-      parts.push({ mesh, materialName: original.name, model, colors: [], baseRoughness: original.roughness });
+      modelParts.push({ mesh, materialName: original.name, model, colors: [], baseRoughness: original.roughness });
     });
     disposeModel(gltf.scene);
   })).then(async () => {
     if (disposed) return;
     applyLook();
     resizeView();
-    updateMatrices();
+    updateInstanceMatrices();
     await renderer.compileAsync(scene, camera);
     if (disposed) return;
     renderer.render(scene, camera);
@@ -300,9 +310,9 @@ function start() {
     }
     const delta = previousTime === undefined ? 0 : Math.min((time - previousTime) / 1000, 0.1);
     previousTime = time;
-    const moving = field.advance(delta);
+    const moving = interaction.advance(delta);
     if (moving || dirty) {
-      updateMatrices();
+      updateInstanceMatrices();
       dirty = false;
       renderer.render(scene, camera);
     }
@@ -313,11 +323,15 @@ function start() {
     ready = false;
     renderer.setAnimationLoop(null);
     events.abort();
-    field.dispose();
+    interaction.dispose();
     disposeLookControls();
     resize.disconnect();
     intersection.disconnect();
-    parts.forEach(({ mesh }) => { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); mesh.dispose(); });
+    modelParts.forEach(({ mesh }) => {
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+      mesh.dispose();
+    });
     keyLights.forEach(light => light.shadow.dispose());
     environment.dispose();
     renderer.dispose();

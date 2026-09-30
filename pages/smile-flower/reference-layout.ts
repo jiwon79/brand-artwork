@@ -45,7 +45,7 @@ const porcelain = [
 
 export const PETAL_PALETTE = { W: '#e9dfeb', R: '#e8c4dd', P: '#e7aaca' } as const;
 
-export const CELLS = centers.flatMap((row, r) => [...row].map((color, c) => ({
+export const TILES = centers.flatMap((row, r) => [...row].map((color, c) => ({
   x: ((r % 2 ? 0 : 60) + c * 120 - 360) / 60,
   y: (640 - (30 + r * 102)) / 60,
   color: color as keyof typeof PALETTE,

@@ -103,7 +103,7 @@ const geometry = object.geometry
   .translate(0, 0, -depthCenter);
 ```
 
-같은 geometry를 84번 복제하지 않는다. `InstancedMesh` 한 개가 geometry와 material을 공유하고 각 cell의 matrix와 color만 저장한다.
+같은 geometry를 84번 복제하지 않는다. `InstancedMesh` 한 개가 geometry와 material을 공유하고 각 타일의 matrix와 color만 저장한다.
 
 ## 7. 배치와 색 바꾸기
 
@@ -122,23 +122,23 @@ y = (640 - referencePixelY) / 60
 
 ```ts
 {
-  dragSpeed: 0.5,
-  dragAmount: 0.5,
-  releaseSpeed: 1.6,
-  releaseTurns: 1,
-  waveSpeed: 1.2,
-  waveDeceleration: 1,
+  motionSpeed: 0.5,
+  dragStrength: 0.5,
+  waveRotationSpeed: 1.6,
+  waveTurns: 1,
+  waveTravelSpeed: 1.2,
+  waveSlowdown: 1,
 }
 ```
 
-- `dragSpeed`: 드래그 뒤 관성 애니메이션의 시간 배수
-- `dragAmount`: 포인터 속도가 전달하는 회전 에너지 배수
-- `releaseSpeed`: 길게 누른 뒤 놓았을 때 개별 모델의 회전 속도
-- `releaseTurns`: 놓기 파동의 바퀴 수
-- `waveSpeed`: 파동의 초기 전파 속도 배수
-- `waveDeceleration`: 거리가 멀어질수록 추가되는 지연 강도
+- `motionSpeed`: 드래그 뒤 이어지는 전체 회전 속도
+- `dragStrength`: 포인터 움직임이 타일에 전달하는 회전 강도
+- `waveRotationSpeed`: 회전 파동이 닿은 타일의 회전 속도
+- `waveTurns`: 회전 파동이 타일을 돌리는 바퀴 수
+- `waveTravelSpeed`: 회전 파동이 바깥으로 퍼지는 속도
+- `waveSlowdown`: 바깥쪽 타일의 출발을 늦추는 정도
 
-`waveSpeed`와 `releaseSpeed`는 역할이 다르다. 전자는 다음 모델이 언제 출발하는지를 바꾸고, 후자는 출발한 한 모델이 한 바퀴를 도는 시간을 바꾼다.
+`waveTravelSpeed`와 `waveRotationSpeed`는 역할이 다르다. 전자는 다음 타일이 언제 출발하는지를 바꾸고, 후자는 출발한 타일이 한 바퀴를 도는 시간을 바꾼다.
 
 ## 9. 확인 체크리스트
 
