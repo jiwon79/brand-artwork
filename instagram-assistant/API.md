@@ -45,6 +45,7 @@ Hosted requests need an administrator session cookie; mutations also need a matc
 | Task | Request | Body / effect |
 | --- | --- | --- |
 | Sync from Codex | `POST /api/sync` | Fetches supported Instagram comments and DMs. |
+| Sync selected DM batch | `POST /api/dm/sync-batch` | JSON `{"targets":[{"event_id":"dm:MESSAGE_ID","username":"recipient"}]}`. Validates all targets, refreshes only their conversations in one request, and returns each target's `ready_to_send` status. |
 | Save approved reply | `PATCH /api/events/{event_id}/draft` | JSON `{"draft":"답변"}`. Sets `reply_dm` or `reply_comment` from the event type. |
 | Send approved reply | `POST /api/events/{event_id}/send` | Sends the saved draft through Meta's official API. |
 | Send approved DM sequence | `POST /api/events/{event_id}/send-sequence` | JSON `{"username":"recipient","messages":["first","second"]}`. Stores the exact sequence and sends each message in order. Uncertain or partial results require manual review. |

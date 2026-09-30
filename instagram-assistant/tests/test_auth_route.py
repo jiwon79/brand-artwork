@@ -111,6 +111,22 @@ def test_viewer_dm_sync_skips_comment_fetch(monkeypatch):
     assert invalid.status_code == 422
 
 
+def test_dm_batch_sync_requires_auth_and_forwards_exact_targets(monkeypatch):
+    calls = []
+    monkeypatch.setattr(main.instagram_service, "sync_dm_batch",
+                        lambda targets: calls.append(targets) or {"targets": []})
+    body = {"targets": [{"event_id": "dm:one", "username": "first"}]}
+    with TestClient(main.app) as client:
+        assert client.post("/api/dm/sync-batch", json=body).status_code == 403
+        response = client.post("/api/dm/sync-batch", json=body, headers={
+            "X-Instagram-Assistant-Token": main.TOKEN})
+        invalid = client.post("/api/dm/sync-batch", json={"targets": []}, headers={
+            "X-Instagram-Assistant-Token": main.TOKEN})
+    assert response.status_code == 200
+    assert invalid.status_code == 422
+    assert calls == [[("dm:one", "first")]]
+
+
 def test_observation_setting_is_absent_and_cannot_be_restored(tmp_path, monkeypatch):
     monkeypatch.setattr(config.paths, "database", tmp_path / "test.sqlite3")
     monkeypatch.setattr(config.paths, "data", tmp_path)

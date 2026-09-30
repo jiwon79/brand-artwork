@@ -455,6 +455,39 @@ class InstagramService:
                 "dm_threads_skipped": dm_threads_skipped, "dm_full_sync": full,
                 "dm_requests_full_sync": False}
 
+    def sync_dm_batch(self, targets: list[tuple[str, str]]) -> dict[str, Any]:
+        """Refresh only the approved conversations in one service request."""
+        with self._lock:
+            client = self.connect_saved_session()
+            conversations = []
+            seen_threads: set[str] = set()
+            for event_id, username in targets:
+                event = get_event(event_id)
+                if (not event or event.get("kind") != "dm" or event.get("direction") != "inbound"
+                        or not event.get("thread_id") or event.get("account_id") != client.account_id
+                        or str(event.get("author_username") or "").casefold() != username.lstrip("@").casefold()):
+                    raise InstagramAssistantError(f"동기화 대상이 현재 계정의 DM과 일치하지 않습니다: {event_id}")
+                if event["thread_id"] in seen_threads:
+                    raise InstagramAssistantError("같은 대화가 동기화 목록에 두 번 있습니다.")
+                seen_threads.add(event["thread_id"])
+                conversations.append({"id": event["thread_id"]})
+
+            result = self.sync(media_amount=0, conversation_items=conversations)
+            checked = []
+            for event_id, username in targets:
+                event = get_event(event_id)
+                messages = list_conversation_messages(event["thread_id"])
+                latest_inbound = next((item for item in reversed(messages)
+                                       if item["direction"] == "inbound"), None)
+                newer_outbound = any(item["direction"] == "outbound" and
+                                     item["received_at"] > event["received_at"] for item in messages)
+                checked.append({"event_id": event_id, "username": username,
+                                "latest_inbound_id": latest_inbound["id"] if latest_inbound else None,
+                                "ready_to_send": bool(latest_inbound and latest_inbound["id"] == event_id
+                                                      and not newer_outbound
+                                                      and event["status"] in {"pending", "drafted"})})
+            return {"sync": result, "targets": checked}
+
     def sync_comment_thread(self, comment_id: str) -> dict[str, int]:
         if not re.fullmatch(r"\d+", comment_id):
             raise InstagramAssistantError("댓글 ID는 숫자여야 합니다.")

@@ -71,6 +71,30 @@ def test_send_batch_checks_all_accounts_before_any_post(tmp_path, monkeypatch):
     assert requests == [("GET", "/api/events/dm%3Aone"), ("GET", "/api/events/dm%3Atwo")]
 
 
+def test_sync_batch_reuses_send_manifest_in_one_request(tmp_path, monkeypatch):
+    requests = []
+
+    class FakeClient:
+        def __init__(self, base_url, token): pass
+        def login(self, password): pass
+        def request(self, method, path, **kwargs):
+            requests.append((method, path, kwargs))
+            return {"targets": []}
+
+    manifest = tmp_path / "approved.json"
+    manifest.write_text(json.dumps([
+        {"event_id": "dm:one", "username": "first", "messages": ["hello"]},
+        {"event_id": "dm:two", "username": "second", "messages": ["hi"]},
+    ]))
+    monkeypatch.setattr(cli, "Client", FakeClient)
+    monkeypatch.setenv("INSTAGRAM_ASSISTANT_ADMIN_PASSWORD", "test password")
+    assert cli.main(["--env", "dev", "sync-batch", str(manifest)]) == 0
+    assert requests == [("POST", "/api/dm/sync-batch", {"body": {"targets": [
+        {"event_id": "dm:one", "username": "first"},
+        {"event_id": "dm:two", "username": "second"},
+    ]}})]
+
+
 def test_custom_url_cannot_receive_automatic_keychain_password(monkeypatch):
     monkeypatch.delenv("INSTAGRAM_ASSISTANT_ADMIN_PASSWORD", raising=False)
     assert cli.main(["--env", "dev", "--base-url", "https://example.com", "status"]) == 1

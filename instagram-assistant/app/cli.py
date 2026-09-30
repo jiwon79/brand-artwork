@@ -61,7 +61,8 @@ class Client:
             data = None
         request = Request(url, data=data, headers=headers, method=method)
         try:
-            timeout = 600 if path == "/api/viewer/sync" else (180 if path.endswith("/send-sequence") else 45)
+            timeout = (600 if path in {"/api/viewer/sync", "/api/dm/sync-batch"}
+                       else (180 if path.endswith("/send-sequence") else 45))
             with self.opener.open(request, timeout=timeout) as response:
                 if path == "/api/admin/login":
                     return None  # A 303 redirect may have opened the HTML dashboard.
@@ -117,6 +118,8 @@ def parser() -> argparse.ArgumentParser:
     sync.add_argument("--scope", choices=["all", "dm"], default="dm")
     sync.add_argument("--user-id", help="Instagram-scoped user ID for a single DM conversation")
     sync.add_argument("--dm-limit", type=int, default=100)
+    sync_batch = commands.add_parser("sync-batch", help="Refresh only the DMs in one approved batch")
+    sync_batch.add_argument("file", type=Path, help="JSON array of event_id and username; send-batch files also work")
     draft = commands.add_parser("draft")
     draft.add_argument("event_id")
     text_input = draft.add_mutually_exclusive_group(required=True)
@@ -206,6 +209,25 @@ def run(args: argparse.Namespace) -> Any:
             raise CliError("--dm-limit must be between 1 and 100")
         return client.request("POST", "/api/viewer/sync", params={"scope": args.scope,
             "user_id": args.user_id, "dm_limit": args.dm_limit}, body={})
+    if args.command == "sync-batch":
+        try:
+            manifest = json.loads(args.file.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CliError(f"Cannot read DM manifest: {exc}") from exc
+        if not isinstance(manifest, list) or not 1 <= len(manifest) <= 20:
+            raise CliError("DM manifest must contain 1-20 conversations")
+        targets = []
+        seen: set[str] = set()
+        for item in manifest:
+            if (not isinstance(item, dict) or not isinstance(item.get("event_id"), str)
+                    or not item["event_id"].startswith("dm:") or
+                    not isinstance(item.get("username"), str) or not item["username"].strip()):
+                raise CliError("Each entry needs a DM event_id and username")
+            if item["event_id"] in seen:
+                raise CliError("The same DM event appears twice in the manifest")
+            seen.add(item["event_id"])
+            targets.append({"event_id": item["event_id"], "username": item["username"]})
+        return client.request("POST", "/api/dm/sync-batch", body={"targets": targets})
     if args.command == "send-batch":
         if not args.yes:
             raise CliError("This action requires --yes")
