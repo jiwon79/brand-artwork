@@ -1,6 +1,6 @@
 # 판매 자료 관리
 
-판매 상품의 원본 에셋, 제작 자료, 배포 ZIP은 [Google Drive의 바이브코딩 판매자료](https://drive.google.com/drive/folders/1S7Lre1gpLGEGQNKL0eSpjHyWcsJmRmnM)를 기준으로 관리한다. 리틀리에는 작품 이름이 포함된 `<작품명>-시작하기.pdf` 한 개만 첨부한다. 구매자는 PDF에서 작품별 Notion 제작 가이드로 이동하고, 가이드 첫머리에서 Drive의 해당 상품 `배포본` 폴더를 연다. 저장소의 `kits/`는 필요할 때 Drive에서 내려받아 사용하는 로컬 작업 폴더이며 Git에서 추적하지 않는다.
+판매 상품의 원본 에셋, 제작 자료, 배포 ZIP은 [Google Drive의 바이브코딩 판매자료](https://drive.google.com/drive/folders/1S7Lre1gpLGEGQNKL0eSpjHyWcsJmRmnM)를 기준으로 관리한다. 제작 자료 상품은 리틀리에 작품 이름이 포함된 `<작품명>-시작하기.pdf` 한 개를 첨부한다. 구매자는 PDF에서 작품별 Notion 제작 가이드로 이동하고, 가이드 첫머리에서 Drive의 해당 상품 `배포본` 폴더를 연다. 배경화면 상품은 별도로 ZIP을 직접 전달한다. 저장소의 `kits/`는 필요할 때 Drive에서 내려받아 사용하는 로컬 작업 폴더이며 Git에서 추적하지 않는다.
 
 ## 상품별 위치
 
@@ -13,7 +13,7 @@
 | 고양이 | [05-Cursor Cat](https://drive.google.com/drive/folders/1Qf7x9pCBrqi-NiCCOoG7eNU0oK1K9jTu) | 리틀리 `고양이-시작하기.pdf`; Drive `05-cursor-cat-v1.3.zip` |
 | 웃음꽃 | [05-Smile Flower](https://drive.google.com/drive/folders/1MbLp2Qxt3SaZ1sCM9DC3gbys5yX6u2sR) | 리틀리 `웃음꽃-시작하기.pdf`; Drive `smile-flower-v3.zip` |
 | Rose Glass 제작 자료 | [06-Rose Glass](https://drive.google.com/drive/folders/1Oj-eYXYP0MhPlsViMnHw_8wTmGO5cf7Y) | 리틀리 `Rose-Glass-시작하기.pdf`; Drive `Rose-Glass-Material-Kit-20260926-v4.zip` |
-| Rose Glass 4K 배경화면 5종 | [배경화면 상품](https://drive.google.com/drive/folders/1-ATjsyTmt4nMqlhI5Dyf1YjdC-rqVTLY) | 리틀리 ZIP과 Drive 배포 ZIP 바이트 단위 동일. 관리원본 PNG 5개 확인 |
+| Rose Glass 4K 배경화면 10종 | [배경화면 상품](https://drive.google.com/drive/folders/1-ATjsyTmt4nMqlhI5Dyf1YjdC-rqVTLY) | 관리원본 4K PNG 10개와 워터마크 미리보기, 배포 ZIP 확인. 리틀리 공개 상품명·10종 ZIP 첨부 확인 |
 
 2026-09-26에 7개 작품의 PDF를 A4 HTML에서 다시 출력했다. 실제 작품의 소셜 공유 이미지를 사용하고, Pretendard·작품별 Notion 링크·중앙 정렬된 제목과 시작 순서를 확인했다. PDF 이름을 작품별로 바꾸고 Drive ZIP 내부에도 같은 이름을 반영했다. Drive ZIP 7개와 리틀리 PDF 7개를 다시 다운로드해 로컬 파일과 바이트 단위로 대조했다. 잔상 ZIP에는 `reference/body-echo-05-interaction.mp4`가 포함된다.
 
@@ -45,7 +45,7 @@ Notion의 작품별 제작 가이드 첫머리에는 아래 `배포본` 폴더�
 1. 상품 자료를 수정할 때 Drive의 해당 상품 폴더에서 원본을 가져와 로컬 `kits/` 또는 임시 폴더에서 작업한다. 작품 실행에 필요한 `pages/`의 코드와 에셋은 별도로 Git에서 관리한다.
 2. 작품별 시작하기 PDF를 수정할 때는 비공개 HTML 편집원본을 먼저 갱신하고, A4 PDF를 출력해 시각적으로 검토한다. PDF 이름에 작품명을 넣고 수정한 원본과 구매자용 ZIP을 Drive에 올린다. 파일 수·이름·크기와 ZIP 압축 검사를 확인한 뒤 Drive에서 다시 읽어 업로드를 확인한다.
 3. 시작하기 PDF에는 작품별 Notion 제작 가이드 링크를, Notion 가이드 첫머리에는 위 Drive `배포본` 폴더 링크를 둔다. `배포본`과 그 안의 파일만 구매자가 열 수 있게 하고 상위 폴더와 `관리원본`의 권한은 유지한다. 링크 변경 후에는 로그인하지 않은 상태에서 폴더와 ZIP 다운로드가 되는지 확인한다.
-4. 리틀리에는 해당 작품의 시작하기 PDF 한 개만 첨부한다. 저장 후 상품 목록을 다시 열어 파일명을 확인하고, 실제 첨부 PDF를 다운로드해 Drive 배포본의 PDF와 바이트 단위로 대조한다.
+4. 제작 자료 상품은 리틀리에 해당 작품의 시작하기 PDF 한 개를 첨부한다. 저장 후 상품 목록을 다시 열어 파일명을 확인하고, 실제 첨부 PDF를 다운로드해 Drive 배포본의 PDF와 바이트 단위로 대조한다. 배경화면 상품은 Drive 배포 ZIP과 같은 ZIP을 첨부하고 바이트 단위로 대조한다.
 5. Drive에 원본과 배포본이 모두 확인되기 전에는 로컬 유일본을 삭제하거나 Git에서 제거하지 않는다. 새 판매 자료는 Git에 추가하지 않는다.
 
 ## Rose Glass 로컬 작업 폴더
