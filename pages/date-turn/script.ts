@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import GUI from 'lil-gui';
 import { loadNumeralFont } from './glyph-texture';
-import { dragRotation, isValidNumber, rollAngle } from './motion';
+import { dragRotation, followAngle, isValidNumber } from './motion';
 import { createRenderer, DEFAULTS } from './renderer';
 
 const artwork = document.querySelector<HTMLElement>('#artwork')!;
@@ -27,24 +27,33 @@ async function start() {
   let time = Number(query.get('time')) || 0;
   let pitch = 0;
   let yaw = 0;
+  let targetPitch = 0;
+  let targetYaw = 0;
   let request = 0;
   let lastTime = performance.now();
   let disposed = false;
   let gesture: { id: number; x: number; y: number; moved: boolean; playing: boolean } | null = null;
+  function isSettling() { return Math.abs(targetPitch - pitch) + Math.abs(targetYaw - yaw) > 0.0001; }
 
   function draw() {
-    render.draw(time, pitch, yaw);
+    const pose = render.draw(time, pitch, yaw);
     artwork.dataset.numbers = numberKeys.map(key => settings[key]).join(',');
     artwork.dataset.playing = String(settings.playing);
-    artwork.dataset.rotation = `${(rollAngle(time) + pitch).toFixed(3)},${yaw.toFixed(3)}`;
+    artwork.dataset.rotation = `${pose.pitch.toFixed(3)},${pose.yaw.toFixed(3)},${pose.roll.toFixed(3)}`;
+    artwork.dataset.dragRotation = `${pitch.toFixed(3)},${yaw.toFixed(3)}`;
+    artwork.dataset.settling = String(isSettling());
+    artwork.dataset.time = time.toFixed(3);
     artwork.setAttribute('aria-label', `Date Turn, ${settings.first}·${settings.second}·${settings.third} 입체 숫자`);
   }
   function tick(now: number) {
     request = 0;
-    if (settings.playing && !gesture) time += Math.min((now - lastTime) / 1000, 0.05) * settings.speed;
+    const delta = Math.max(0, (now - lastTime) / 1000);
+    if (settings.playing && !gesture) time += delta * settings.speed;
+    pitch = followAngle(pitch, targetPitch, delta, settings.dragResponse);
+    yaw = followAngle(yaw, targetYaw, delta, settings.dragResponse);
     lastTime = now;
     draw();
-    if (settings.playing && !gesture && !document.hidden) request = requestAnimationFrame(tick);
+    if (!document.hidden && (settings.playing || gesture || isSettling())) request = requestAnimationFrame(tick);
   }
   function invalidate() {
     if (!request && !disposed && !document.hidden) {
@@ -84,8 +93,12 @@ async function start() {
   const motion = gui.addFolder('크기 · 움직임');
   motion.add(settings, 'size', 0.4, 1.8, 0.01).name('크기').onChange(invalidate);
   motion.add(settings, 'sensitivity', 0.1, 3, 0.05).name('드래그 감도');
+  motion.add(settings, 'dragResponse', 0.02, 0.2, 0.005).name('드래그 부드러움');
   const playback = motion.add(settings, 'playing').name('자동 회전').onChange(invalidate);
   motion.add(settings, 'speed', 0.1, 2.5, 0.05).name('회전 속도');
+  motion.add(settings, 'transition', 0.3, 0.9, 0.01).name('전환 시간').onChange(invalidate);
+  motion.add(settings, 'sway', 0, 45, 1).name('좌우 회전 각도').onChange(invalidate);
+  motion.add(settings, 'tilt', 0, 25, 1).name('기울기 각도').onChange(invalidate);
   motion.add(settings, 'bounce', 0, 1.2, 0.01).name('위아래 움직임').onChange(invalidate);
   const colors = gui.addFolder('색상 · 외곽선');
   colors.addColor(settings, 'numberColor').name('숫자').onChange(invalidate);
@@ -97,7 +110,7 @@ async function start() {
   const actions = {
     reset() {
       Object.assign(settings, DEFAULTS, { playing: !reducedMotion.matches });
-      time = pitch = yaw = 0;
+      time = pitch = yaw = targetPitch = targetYaw = 0;
       numberKeys.forEach((key, index) => { committed[index] = settings[key]; render.updateNumber(index, settings[key]); });
       gui.controllersRecursive().forEach(control => control.updateDisplay());
       invalidate();
@@ -127,7 +140,7 @@ async function start() {
     if (!gesture.moved && Math.hypot(dx, dy) < 4) return;
     gesture.moved = true;
     const change = dragRotation(dx, dy, Math.min(artwork.clientWidth, artwork.clientHeight), settings.sensitivity);
-    pitch += change[0]; yaw += change[1];
+    targetPitch += change[0]; targetYaw += change[1];
     gesture.x = event.clientX; gesture.y = event.clientY;
     invalidate();
   }, options);
@@ -147,10 +160,10 @@ async function start() {
       if (!event.repeat) { settings.playing = !settings.playing; playback.updateDisplay(); invalidate(); }
     } else if (event.key.startsWith('Arrow')) {
       event.preventDefault();
-      if (event.key === 'ArrowLeft') yaw -= 0.08 * settings.sensitivity;
-      if (event.key === 'ArrowRight') yaw += 0.08 * settings.sensitivity;
-      if (event.key === 'ArrowUp') pitch -= 0.08 * settings.sensitivity;
-      if (event.key === 'ArrowDown') pitch += 0.08 * settings.sensitivity;
+      if (event.key === 'ArrowLeft') targetYaw -= 0.08 * settings.sensitivity;
+      if (event.key === 'ArrowRight') targetYaw += 0.08 * settings.sensitivity;
+      if (event.key === 'ArrowUp') targetPitch -= 0.08 * settings.sensitivity;
+      if (event.key === 'ArrowDown') targetPitch += 0.08 * settings.sensitivity;
       settings.playing = false;
       playback.updateDisplay();
       invalidate();

@@ -2,12 +2,13 @@
 import * as THREE from 'three';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { FIELD_SPAN, createGlyphTexture } from './glyph-texture';
-import { rollAngle, TURN_DURATION } from './motion';
+import { motionPose, TRANSITION_DURATION } from './motion';
 import volumeFragment from './volume.frag?raw';
 import outlineFragment from './outline.frag?raw';
 
 export const DEFAULTS = {
-  first: '14', second: '09', third: '26', font: 'Arial Black', size: 1, sensitivity: 1, speed: 1,
+  first: '14', second: '09', third: '26', font: 'Arial Black', size: 1, sensitivity: 0.8, speed: 1,
+  transition: TRANSITION_DURATION, sway: 32, tilt: 13, dragResponse: 0.065,
   playing: true, numberColor: '#0000ff', lineColor: '#0000ff', sideColor: '#ffffff',
   background: '#fdfdfd', lineWidth: 2, padding: 0.12, bounce: 0.62,
 };
@@ -52,11 +53,13 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
   let pixelRatio = 1;
 
   function draw(time: number, pitch: number, yaw: number) {
-    const cycle = time / TURN_DURATION * Math.PI * 2;
-    euler.set(rollAngle(time) + pitch, yaw, 0.22 * Math.cos(cycle), 'ZYX');
+    const pose = motionPose(time, settings.transition, settings.sway, settings.tilt);
+    pose.pitch += pitch;
+    pose.yaw += yaw;
+    euler.set(pose.pitch, pose.yaw, pose.roll, 'ZYX');
     rotation.makeRotationFromEuler(euler).invert();
     uniforms.inverseRotation.value.setFromMatrix4(rotation);
-    uniforms.bounce.value = settings.bounce * Math.cos(cycle);
+    uniforms.bounce.value = settings.bounce * pose.height;
     uniforms.objectScale.value = settings.size;
     uniforms.padding.value = settings.padding;
     uniforms.numberColor.value.set(settings.numberColor);
@@ -73,6 +76,7 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     plane.material = antialias;
     renderer.setRenderTarget(null);
     renderer.render(scene, camera);
+    return pose;
   }
 
   function resize(width: number, height: number) {
