@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#fdfdfd">
+  <meta name="description" content="14, 09, 26. 파란 숫자가 돌아가는 작은 입체 타이포그래피.">
+  <title>Date Turn</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main id="artwork" tabindex="0" aria-label="Date Turn, 14·09·26 회전 애니메이션" aria-describedby="instructions">
+    <img id="poster" src="./assets/poster.svg" alt="" aria-hidden="true">
+    <canvas id="canvas" aria-hidden="true"></canvas>
+  </main>
+  <p id="instructions" class="sr-only">드래그하면 회전을 앞뒤로 움직입니다. 클릭 또는 스페이스 키로 재생과 일시 정지를 전환합니다. 좌우 방향키로 한 프레임씩 이동하고 R 키로 처음부터 재생합니다.</p>
+  <p id="status" class="sr-only" role="status"></p>
+  <script type="module" src="./script.ts"></script>
+</body>
+</html>
