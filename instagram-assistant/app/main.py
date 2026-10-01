@@ -68,6 +68,19 @@ class DmSequenceBody(BaseModel):
     messages: list[str] = Field(min_length=1, max_length=10)
 
 
+class DmSyncTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: str = Field(pattern=r"^dm:.+")
+    username: str = Field(min_length=1)
+
+
+class DmSyncBatchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    targets: list[DmSyncTarget] = Field(min_length=1, max_length=20)
+
+
 class PostLabelBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -240,6 +253,17 @@ def viewer_sync(request: Request, scope: Literal["all", "dm"] = "all",
     try:
         return (instagram_service.sync(media_amount=0, threads_amount=dm_limit, dm_user_id=user_id)
                 if scope == "dm" else instagram_service.sync())
+    except Exception as exc:
+        raise as_http_error(exc) from exc
+
+
+@app.post("/api/dm/sync-batch")
+def sync_dm_batch(body: DmSyncBatchBody,
+                  x_instagram_assistant_token: str | None = Header(default=None)) -> dict[str, Any]:
+    protect(x_instagram_assistant_token)
+    try:
+        return instagram_service.sync_dm_batch(
+            [(target.event_id, target.username) for target in body.targets])
     except Exception as exc:
         raise as_http_error(exc) from exc
 

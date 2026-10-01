@@ -65,6 +65,35 @@ def test_expired_meta_halt_does_not_block_new_actions(monkeypatch):
                                       "full_sync_retry_after": "2099-01-01T00:00:00+00:00"})
 
 
+def test_dm_batch_sync_targets_only_selected_threads_and_reports_stale_ids(monkeypatch):
+    service = InstagramService()
+    monkeypatch.setattr(service, "connect_saved_session", lambda: SimpleNamespace(account_id="ig-1"))
+    events = {
+        "dm:one": {"id": "dm:one", "kind": "dm", "direction": "inbound",
+                   "account_id": "ig-1", "thread_id": "thread-1", "author_username": "first",
+                   "received_at": "2026-09-30T01:00:00+00:00", "status": "pending"},
+        "dm:two": {"id": "dm:two", "kind": "dm", "direction": "inbound",
+                   "account_id": "ig-1", "thread_id": "thread-2", "author_username": "second",
+                   "received_at": "2026-09-30T01:00:00+00:00", "status": "pending"},
+    }
+    monkeypatch.setattr(instagram_client, "get_event", events.get)
+    monkeypatch.setattr(instagram_client, "list_conversation_messages", lambda thread: (
+        [{"id": "dm:one", "direction": "inbound", "received_at": "2026-09-30T01:00:00+00:00"}]
+        if thread == "thread-1" else
+        [{"id": "dm:two", "direction": "inbound", "received_at": "2026-09-30T01:00:00+00:00"},
+         {"id": "dm:new", "direction": "inbound", "received_at": "2026-09-30T02:00:00+00:00"}]))
+    calls = []
+    monkeypatch.setattr(service, "sync", lambda **kwargs: calls.append(kwargs) or
+                        {"dm_threads_checked": 2})
+    result = service.sync_dm_batch([("dm:one", "first"), ("dm:two", "second")])
+    assert calls == [{"media_amount": 0, "conversation_items": [
+        {"id": "thread-1"}, {"id": "thread-2"}]}]
+    assert [item["ready_to_send"] for item in result["targets"]] == [True, False]
+    with pytest.raises(InstagramAssistantError, match="일치하지 않습니다"):
+        service.sync_dm_batch([("dm:one", "wrong")])
+    assert len(calls) == 1
+
+
 def test_graph_pages_stop_when_meta_has_no_next_page(monkeypatch):
     client = GraphClient("token", "ig-1", "studio.jiiwon")
     calls = []
