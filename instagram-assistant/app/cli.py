@@ -102,7 +102,7 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("status")
     conversations = commands.add_parser("conversations")
     conversations.add_argument("--status", choices=["active", "completed", "all"])
-    review = commands.add_parser("review", help="Compact full context for the next DM conversations")
+    review = commands.add_parser("review", help="Compact full context for the oldest active DM conversations")
     review.add_argument("--limit", type=int, default=10)
     review.add_argument("--offset", type=int, default=0)
     review.add_argument("--skip-user", action="append", default=[], help="Exclude a held account; repeatable")
@@ -179,6 +179,7 @@ def run(args: argparse.Namespace) -> Any:
         skipped = {name.lstrip("@").casefold() for name in args.skip_user}
         queue = client.request("GET", "/api/conversations", params={"status": "active"})
         selected = [item for item in queue if item["username"].casefold() not in skipped]
+        selected.sort(key=lambda item: (item["latest_at"], item["thread_id"]))
         selected = selected[args.offset:args.offset + args.limit]
         conversations = []
         for item in selected:

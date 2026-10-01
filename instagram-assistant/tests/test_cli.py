@@ -147,3 +147,27 @@ def test_viewer_sync_sets_required_header(monkeypatch):
     assert client.request("POST", "/api/viewer/sync", params={"scope": "dm"}, body={}) == {"dms": 1}
     assert observed == {"origin": "https://instagram-assistant-dev.vercel.app",
                         "requested_with": "InstagramAssistant", "timeout": 600, "scope": "scope=dm"}
+
+
+def test_review_selects_oldest_before_offset_and_excludes_holds(monkeypatch, capsys):
+    requested = []
+
+    class FakeClient:
+        def __init__(self, base_url, token): pass
+        def login(self, password): pass
+        def request(self, method, path, **kwargs):
+            if path == '/api/conversations':
+                return [
+                    {'username': 'new', 'thread_id': 'new', 'latest_at': '2026-10-01'},
+                    {'username': 'held', 'thread_id': 'held', 'latest_at': '2026-09-01'},
+                    {'username': 'middle', 'thread_id': 'middle', 'latest_at': '2026-09-20'},
+                    {'username': 'old', 'thread_id': 'old', 'latest_at': '2026-09-10'},
+                ]
+            requested.append(path)
+            return [{'id': 'dm:middle', 'direction': 'inbound', 'body': 'hello'}]
+
+    monkeypatch.setattr(cli, 'Client', FakeClient)
+    monkeypatch.setenv('INSTAGRAM_ASSISTANT_ADMIN_PASSWORD', 'test password')
+    assert cli.main(['--env', 'dev', 'review', '--skip-user', '@HELD', '--offset', '1', '--limit', '1']) == 0
+    assert requested == ['/api/conversations/middle']
+    assert json.loads(capsys.readouterr().out)['conversations'][0]['username'] == 'middle'
