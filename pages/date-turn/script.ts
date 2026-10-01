@@ -1,169 +1,181 @@
+/// <reference types="vite/client" />
 import GUI from 'lil-gui';
-import { exposeGuiInDebugMode } from '../../common/debug';
-import { Timeline } from './timeline';
-
-type Keyframes = {
-  width: number;
-  height: number;
-  fps: number;
-  color: string;
-  background: string;
-  paths: string[];
-};
+import { loadNumeralFont } from './glyph-texture';
+import { dragRotation, isValidNumber, rollAngle } from './motion';
+import { createRenderer, DEFAULTS } from './renderer';
 
 const artwork = document.querySelector<HTMLElement>('#artwork')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!;
 const status = document.querySelector<HTMLElement>('#status')!;
-const context = canvas.getContext('2d')!;
+const toggle = document.querySelector<HTMLButtonElement>('#settings-toggle')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const query = new URLSearchParams(location.search);
 
-async function start(): Promise<void> {
-  const response = await fetch(new URL('./assets/keyframes.json', import.meta.url));
-  if (!response.ok) throw new Error(`Animation request failed (${response.status})`);
-  const data: Keyframes = await response.json();
-  const paths = data.paths.map(path => new Path2D(path));
-  const timeline = new Timeline(paths.length, data.fps);
-  timeline.playing = !reducedMotion.matches;
-  const settings = { color: data.color, background: data.background, scale: 1 };
-  const query = new URLSearchParams(location.search);
-  const frameParameter = query.get('frame');
-  if (frameParameter !== null && Number.isFinite(Number(frameParameter))) {
-    timeline.seek(Math.floor(Number(frameParameter)) / data.fps);
-    timeline.playing = false;
-  }
-
-  let width = innerWidth;
-  let height = innerHeight;
-  let pixelRatio = 1;
-  let dirty = true;
-  let renderedFrame = -1;
+async function start() {
+  await loadNumeralFont();
+  const settings = { ...DEFAULTS, playing: !reducedMotion.matches && !query.has('paused') };
+  const numberKeys = ['first', 'second', 'third'] as const;
+  numberKeys.forEach((key, index) => {
+    const value = query.get(`n${index + 1}`);
+    if (value && isValidNumber(value)) settings[key] = value;
+  });
+  const color = query.get('color');
+  if (color && /^#[a-f\d]{6}$/i.test(color)) settings.numberColor = settings.lineColor = color;
+  const render = createRenderer(canvas, settings);
+  const events = new AbortController();
+  const options = { signal: events.signal };
+  let time = Number(query.get('time')) || 0;
+  let pitch = 0;
+  let yaw = 0;
   let request = 0;
   let lastTime = performance.now();
-  let gesture: { id: number; x: number; y: number; time: number; playing: boolean; moved: boolean } | null = null;
+  let disposed = false;
+  let gesture: { id: number; x: number; y: number; moved: boolean; playing: boolean } | null = null;
 
-  function draw(): void {
-    const scale = Math.min(width / data.width, height / data.height);
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    context.fillStyle = settings.background;
-    context.fillRect(0, 0, width, height);
-    context.translate(width / 2, height / 2);
-    context.scale(scale * settings.scale, scale * settings.scale);
-    context.translate(-data.width / 2, -data.height / 2);
-    context.fillStyle = settings.color;
-    // One compound vector path preserves both the digit counters and thin outline.
-    context.fill(paths[timeline.frame], 'evenodd');
-    artwork.dataset.frame = String(timeline.frame);
-    artwork.dataset.playing = String(timeline.playing);
-    renderedFrame = timeline.frame;
-    dirty = false;
+  function draw() {
+    render.draw(time, pitch, yaw);
+    artwork.dataset.numbers = numberKeys.map(key => settings[key]).join(',');
+    artwork.dataset.playing = String(settings.playing);
+    artwork.dataset.rotation = `${(rollAngle(time) + pitch).toFixed(3)},${yaw.toFixed(3)}`;
+    artwork.setAttribute('aria-label', `Date Turn, ${settings.first}·${settings.second}·${settings.third} 입체 숫자`);
   }
-
-  function tick(now: number): void {
+  function tick(now: number) {
     request = 0;
-    timeline.advance(Math.min((now - lastTime) / 1000, 0.1));
+    if (settings.playing && !gesture) time += Math.min((now - lastTime) / 1000, 0.05) * settings.speed;
     lastTime = now;
-    if (dirty || renderedFrame !== timeline.frame) draw();
-    if (timeline.playing && !document.hidden) request = requestAnimationFrame(tick);
+    draw();
+    if (settings.playing && !gesture && !document.hidden) request = requestAnimationFrame(tick);
   }
-
-  function invalidate(): void {
-    dirty = true;
-    if (!request && !document.hidden) {
+  function invalidate() {
+    if (!request && !disposed && !document.hidden) {
       lastTime = performance.now();
       request = requestAnimationFrame(tick);
     }
   }
-
-  function resize(): void {
-    width = artwork.clientWidth;
-    height = artwork.clientHeight;
-    pixelRatio = Math.min(devicePixelRatio || 1, 3);
-    canvas.width = Math.round(width * pixelRatio);
-    canvas.height = Math.round(height * pixelRatio);
-    invalidate();
+  function resize() { render.resize(artwork.clientWidth, artwork.clientHeight); invalidate(); }
+  const gui = new GUI({ title: 'Date Turn · 설정', width: 280 });
+  let panelVisible = query.has('debug');
+  function showPanel(visible: boolean) {
+    panelVisible = visible;
+    if (visible) gui.show(); else gui.hide();
+    toggle.setAttribute('aria-expanded', String(visible));
   }
-
-  function setPlaying(value: boolean): void {
-    timeline.playing = value;
-    status.textContent = value ? '재생' : '일시 정지';
+  showPanel(panelVisible);
+  toggle.addEventListener('click', () => showPanel(!panelVisible), options);
+  const numbers = gui.addFolder('숫자');
+  const committed = numberKeys.map(key => settings[key]);
+  numbers.add(settings, 'font', { 'Arial Black': 'Arial Black', Arial: 'Arial', Pretendard: 'DateTurnNumerals' }).name('글꼴').onChange(() => {
+    numberKeys.forEach((key, index) => render.updateNumber(index, settings[key]));
     invalidate();
-  }
+  });
+  numberKeys.forEach((key, index) => {
+    const control = numbers.add(settings, key).name(`${index + 1}번째 면`).onFinishChange((value: string) => {
+      if (!isValidNumber(value)) {
+        settings[key] = committed[index]; control.updateDisplay();
+        status.textContent = '각 면에는 숫자 1~6자리를 입력해 주세요.';
+        return;
+      }
+      committed[index] = value;
+      render.updateNumber(index, value);
+      status.textContent = '숫자 형태를 다시 생성했습니다.';
+      invalidate();
+    });
+  });
+  const motion = gui.addFolder('크기 · 움직임');
+  motion.add(settings, 'size', 0.4, 1.8, 0.01).name('크기').onChange(invalidate);
+  motion.add(settings, 'sensitivity', 0.1, 3, 0.05).name('드래그 감도');
+  const playback = motion.add(settings, 'playing').name('자동 회전').onChange(invalidate);
+  motion.add(settings, 'speed', 0.1, 2.5, 0.05).name('회전 속도');
+  motion.add(settings, 'bounce', 0, 1.2, 0.01).name('위아래 움직임').onChange(invalidate);
+  const colors = gui.addFolder('색상 · 외곽선');
+  colors.addColor(settings, 'numberColor').name('숫자').onChange(invalidate);
+  colors.addColor(settings, 'lineColor').name('외곽선').onChange(invalidate);
+  colors.addColor(settings, 'sideColor').name('입체 옆면').onChange(invalidate);
+  colors.addColor(settings, 'background').name('배경').onChange(invalidate);
+  colors.add(settings, 'lineWidth', 0, 5, 0.1).name('선 두께').onChange(invalidate);
+  colors.add(settings, 'padding', 0, 0.18, 0.005).name('숫자 둘레 여백').onChange(invalidate);
+  const actions = {
+    reset() {
+      Object.assign(settings, DEFAULTS, { playing: !reducedMotion.matches });
+      time = pitch = yaw = 0;
+      numberKeys.forEach((key, index) => { committed[index] = settings[key]; render.updateNumber(index, settings[key]); });
+      gui.controllersRecursive().forEach(control => control.updateDisplay());
+      invalidate();
+    },
+    save() {
+      draw();
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `date-turn-${settings.first}-${settings.second}-${settings.third}.png`;
+      link.click();
+    },
+  };
+  gui.add(actions, 'reset').name('기본값으로');
+  gui.add(actions, 'save').name('현재 렌더 PNG 저장');
 
   artwork.addEventListener('pointerdown', event => {
     if (gesture || (event.pointerType === 'mouse' && event.button !== 0)) return;
-    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, time: timeline.time, playing: timeline.playing, moved: false };
+    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, playing: settings.playing };
     artwork.setPointerCapture(event.pointerId);
     artwork.classList.add('dragging');
     artwork.focus({ preventScroll: true });
-    timeline.playing = false;
     invalidate();
-  });
-
+  }, options);
   artwork.addEventListener('pointermove', event => {
     if (!gesture || gesture.id !== event.pointerId) return;
-    const dx = event.clientX - gesture.x;
-    const dy = event.clientY - gesture.y;
-    if (Math.hypot(dx, dy) > 5) gesture.moved = true;
-    if (!gesture.moved) return;
-    // Either horizontal or vertical swipes traverse the original three-face turn.
-    timeline.seek(gesture.time + (dx - dy) / Math.max(240, Math.min(width, height)) * timeline.duration);
+    const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+    if (!gesture.moved && Math.hypot(dx, dy) < 4) return;
+    gesture.moved = true;
+    const change = dragRotation(dx, dy, Math.min(artwork.clientWidth, artwork.clientHeight), settings.sensitivity);
+    pitch += change[0]; yaw += change[1];
+    gesture.x = event.clientX; gesture.y = event.clientY;
     invalidate();
-  });
-
-  function endGesture(event: PointerEvent): void {
-    if (!gesture || gesture.id !== event.pointerId) return;
-    const previous = gesture;
-    gesture = null;
-    artwork.classList.remove('dragging');
+  }, options);
+  function endGesture(event: PointerEvent) {
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const previous = gesture; gesture = null;
     if (artwork.hasPointerCapture(event.pointerId)) artwork.releasePointerCapture(event.pointerId);
-    setPlaying(event.type === 'pointerup' && !previous.moved ? !previous.playing : previous.playing);
+    artwork.classList.remove('dragging');
+    if (!previous.moved && event.type === 'pointerup') settings.playing = !previous.playing;
+    gui.controllersRecursive().forEach(control => control.updateDisplay());
+    invalidate();
   }
-  artwork.addEventListener('pointerup', endGesture);
-  artwork.addEventListener('pointercancel', endGesture);
-  artwork.addEventListener('lostpointercapture', endGesture);
-
+  for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) artwork.addEventListener(name, event => endGesture(event as PointerEvent), options);
   artwork.addEventListener('keydown', event => {
     if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault();
-      if (!event.repeat) setPlaying(!timeline.playing);
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      if (!event.repeat) { settings.playing = !settings.playing; playback.updateDisplay(); invalidate(); }
+    } else if (event.key.startsWith('Arrow')) {
       event.preventDefault();
-      timeline.seek(timeline.time + (event.key === 'ArrowLeft' ? -1 : 1) / data.fps);
-      setPlaying(false);
-    } else if (event.key.toLowerCase() === 'r') {
-      timeline.seek(0);
-      setPlaying(!reducedMotion.matches);
-    }
-  });
-
+      if (event.key === 'ArrowLeft') yaw -= 0.08 * settings.sensitivity;
+      if (event.key === 'ArrowRight') yaw += 0.08 * settings.sensitivity;
+      if (event.key === 'ArrowUp') pitch -= 0.08 * settings.sensitivity;
+      if (event.key === 'ArrowDown') pitch += 0.08 * settings.sensitivity;
+      settings.playing = false;
+      playback.updateDisplay();
+      invalidate();
+    } else if (event.key.toLowerCase() === 'r') actions.reset();
+  }, options);
+  window.addEventListener('keydown', event => {
+    if (event.key.toLowerCase() !== 'd' || event.repeat || (event.target as HTMLElement).closest('input,textarea,[contenteditable]')) return;
+    showPanel(!panelVisible);
+  }, options);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      cancelAnimationFrame(request);
-      request = 0;
-    } else invalidate();
+    if (document.hidden) { cancelAnimationFrame(request); request = 0; } else invalidate();
+  }, options);
+  reducedMotion.addEventListener('change', () => { settings.playing = !reducedMotion.matches; playback.updateDisplay(); invalidate(); }, options);
+  window.addEventListener('resize', resize, options);
+  canvas.addEventListener('webglcontextlost', event => { event.preventDefault(); status.textContent = '그래픽 연결을 복구하는 중입니다.'; }, options);
+  canvas.addEventListener('webglcontextrestored', invalidate, options);
+  if (import.meta.hot) import.meta.hot.dispose(() => {
+    disposed = true; cancelAnimationFrame(request); events.abort(); gui.destroy(); render.dispose();
   });
-  reducedMotion.addEventListener('change', () => setPlaying(!reducedMotion.matches));
-  window.addEventListener('resize', resize);
-
-  const gui = exposeGuiInDebugMode(new GUI({ title: 'Date Turn' }));
-  gui.add(timeline, 'playing').name('재생').onChange(invalidate);
-  gui.add(timeline, 'speed', 0.1, 2, 0.05).name('속도');
-  gui.add(settings, 'scale', 0.5, 1.5, 0.01).name('크기').onChange(invalidate);
-  gui.addColor(settings, 'color').name('숫자 · 외곽선').onChange(invalidate);
-  gui.addColor(settings, 'background').name('배경').onChange(invalidate);
-  const playhead = { frame: timeline.frame };
-  gui.add(playhead, 'frame', 0, paths.length - 1, 1).name('프레임').onChange((frame: number) => {
-    timeline.seek(frame / data.fps);
-    setPlaying(false);
-  });
-  gui.add({ reset: () => { timeline.seek(0); setPlaying(!reducedMotion.matches); } }, 'reset').name('처음부터');
-
-  resize();
-  draw();
+  resize(); draw();
   artwork.classList.add('ready');
+  artwork.dataset.renderer = 'webgl-volume';
 }
-
 start().catch(error => {
   console.error(error);
-  status.textContent = '애니메이션을 불러오지 못했습니다. 페이지를 새로고침해 주세요.';
+  status.classList.remove('sr-only');
+  status.textContent = '입체 렌더러를 시작하지 못했습니다. WebGL을 지원하는 브라우저에서 새로고침해 주세요.';
 });

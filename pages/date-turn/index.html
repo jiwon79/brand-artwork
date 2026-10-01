@@ -10,10 +10,10 @@
 </head>
 <body>
   <main id="artwork" tabindex="0" aria-label="Date Turn, 14·09·26 회전 애니메이션" aria-describedby="instructions">
-    <img id="poster" src="./assets/poster.svg" alt="" aria-hidden="true">
     <canvas id="canvas" aria-hidden="true"></canvas>
   </main>
-  <p id="instructions" class="sr-only">드래그하면 회전을 앞뒤로 움직입니다. 클릭 또는 스페이스 키로 재생과 일시 정지를 전환합니다. 좌우 방향키로 한 프레임씩 이동하고 R 키로 처음부터 재생합니다.</p>
+  <button id="settings-toggle" type="button" aria-expanded="false">설정</button>
+  <p id="instructions" class="sr-only">드래그하면 입체를 자유롭게 회전합니다. 클릭 또는 스페이스 키로 자동 회전을 전환합니다. 방향키로 회전하고 R 키로 기본값을 복원합니다. 설정에서 세 면의 숫자, 크기, 감도와 색상을 바꿀 수 있습니다.</p>
   <p id="status" class="sr-only" role="status"></p>
   <script type="module" src="./script.ts"></script>
 </body>
