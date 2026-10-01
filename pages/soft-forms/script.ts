@@ -28,7 +28,7 @@ if (params.has('editor') || params.has('rig')) {
 const shapeAliases: Record<string, string> = { drop: 'flower', cloud: 'wave' };
 const requestedShape = shapeAliases[params.get('shape') ?? ''] ?? params.get('shape');
 const requestedVariant = variants.findIndex((variant) => variant.id === requestedShape);
-let targetVariant = requestedVariant >= 0 ? requestedVariant : 3;
+let targetVariant = requestedVariant >= 0 ? requestedVariant : variants.findIndex((variant) => variant.id === 'wave');
 const variantWeights = variants.map((_, index) => Number(index === targetVariant));
 const colorChannels: readonly (keyof VariantColors)[] = [
   'base', 'cool', 'blush', 'warm', 'highlight', 'bottom', 'detail', 'furTip',
