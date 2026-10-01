@@ -83,12 +83,12 @@ test('drag settles equally at 30 and 144 Hz, including a rapid direction reversa
 });
 
 test('only the incoming numeral starts thin, then fills without changing the outgoing face', () => {
-  expect(inkInsets(0.6)).toEqual([0, 0.12, 0]);
+  expect(inkInsets(0.6)).toEqual([0, 0.08, 0]);
   expect(inkInsets(0.8)[1]).toBeGreaterThan(0);
   expect(inkInsets(0.8)[1]).toBeLessThan(0.06);
   expect(inkInsets(0.9)).toEqual([0, 0, 0]);
-  expect(inkInsets(1.6)).toEqual([0, 0, 0.12]);
-  expect(inkInsets(2.6)).toEqual([0.12, 0, 0]);
+  expect(inkInsets(1.6)).toEqual([0, 0, 0.08]);
+  expect(inkInsets(2.6)).toEqual([0.08, 0, 0]);
   expect(inkInsets(3.6)).toEqual(inkInsets(0.6));
 });
 
