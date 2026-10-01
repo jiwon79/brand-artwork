@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { FIELD_SPAN, createGlyphTexture } from './glyph-texture';
-import { motionPose, TRANSITION_DURATION } from './motion';
+import { inkInsets, motionPose, TRANSITION_DURATION } from './motion';
 import volumeFragment from './volume.frag?raw';
 import outlineFragment from './outline.frag?raw';
 
@@ -27,6 +27,7 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     inverseRotation: { value: new THREE.Matrix3() }, viewSize: { value: new THREE.Vector2() },
     objectScale: { value: settings.size }, bounce: { value: 0 }, apothem: { value: 0.67 },
     padding: { value: settings.padding }, fieldSpan: { value: FIELD_SPAN },
+    inkInset: { value: new THREE.Vector3() },
     numberColor: { value: new THREE.Color(settings.numberColor) }, sideColor: { value: new THREE.Color(settings.sideColor) },
   };
   const volume = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader: volumeFragment, depthTest: false, depthWrite: false });
@@ -60,6 +61,12 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     rotation.makeRotationFromEuler(euler).invert();
     uniforms.inverseRotation.value.setFromMatrix4(rotation);
     uniforms.bounce.value = settings.bounce * pose.height;
+    const insets = inkInsets(time);
+    uniforms.inkInset.value.set(
+      insets[0] * glyphs[0].userData.inkScale,
+      insets[1] * glyphs[1].userData.inkScale,
+      insets[2] * glyphs[2].userData.inkScale,
+    );
     uniforms.objectScale.value = settings.size;
     uniforms.padding.value = settings.padding;
     uniforms.numberColor.value.set(settings.numberColor);

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { encodeDistance, signedDistance } from './distance-field';
-import { dragRotation, followAngle, isValidNumber, motionPose, rollAngle } from './motion';
+import { dragRotation, followAngle, inkInsets, isValidNumber, motionPose, rollAngle } from './motion';
 
 test('numeral counters remain outside the solid, while the glyph is inside', () => {
   const mask = new Uint8Array(49);
@@ -80,6 +80,16 @@ test('drag settles equally at 30 and 144 Hz, including a rapid direction reversa
   expect(follow(30)).toBeLessThan(-0.49);
   expect(follow(30)).toBeGreaterThanOrEqual(-0.5);
   expect(followAngle(0, 1, 0, 0.065)).toBe(0);
+});
+
+test('only the incoming numeral starts thin, then fills without changing the outgoing face', () => {
+  expect(inkInsets(0.6)).toEqual([0, 0.12, 0]);
+  expect(inkInsets(0.8)[1]).toBeGreaterThan(0);
+  expect(inkInsets(0.8)[1]).toBeLessThan(0.06);
+  expect(inkInsets(0.9)).toEqual([0, 0, 0]);
+  expect(inkInsets(1.6)).toEqual([0, 0, 0.12]);
+  expect(inkInsets(2.6)).toEqual([0.12, 0, 0]);
+  expect(inkInsets(3.6)).toEqual(inkInsets(0.6));
 });
 
 test('number settings preserve leading zeros and reject unsupported input', () => {

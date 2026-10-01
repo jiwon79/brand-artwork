@@ -18,6 +18,7 @@ export function createGlyphTexture(text: string, fontFamily = 'Arial Black'): TH
   context.font = `800 100px ${fontFamily}, DateTurnNumerals, sans-serif`;
   const cap = context.measureText('00');
   let fontSize = 1.72 / FIELD_SPAN * RESOLUTION * 100 / (cap.actualBoundingBoxAscent + cap.actualBoundingBoxDescent);
+  const baseFontSize = fontSize;
   context.font = `800 ${fontSize}px ${fontFamily}, DateTurnNumerals, sans-serif`;
   let bounds = context.measureText(text);
   const maximumWidth = 2.85 / FIELD_SPAN * RESOLUTION;
@@ -40,6 +41,7 @@ export function createGlyphTexture(text: string, fontFamily = 'Arial Black'): TH
   const texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat);
   texture.minFilter = texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
+  texture.userData.inkScale = fontSize / baseFontSize;
   texture.needsUpdate = true;
   return texture;
 }

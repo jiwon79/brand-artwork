@@ -12,6 +12,7 @@ uniform float padding;
 uniform float fieldSpan;
 uniform vec3 numberColor;
 uniform vec3 sideColor;
+uniform vec3 inkInset;
 
 const float ROOT3 = 1.73205080757;
 
@@ -88,7 +89,7 @@ void main() {
   }
   if (!found) { gl_FragColor = vec4(0.0); return; }
   vec3 clip = planes(hit);
-  vec3 glyph = glyphDistances(hit);
+  vec3 glyph = glyphDistances(hit) + inkInset;
   float ink = 0.0;
   if (clip.x > -0.004 && direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.x));
   if (clip.y > -0.004 && 0.8660254 * direction.y - 0.5 * direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.y));

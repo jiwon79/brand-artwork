@@ -25,6 +25,16 @@ export function motionPose(time: number, transition = TRANSITION_DURATION, sway 
   };
 }
 
+/** The incoming ink starts thin and fills as the new face settles, after the main roll. */
+export function inkInsets(time: number): [number, number, number] {
+  const turn = Math.floor(time);
+  const progress = time - turn;
+  const incoming = ((turn + 1) % 3 + 3) % 3;
+  const insets: [number, number, number] = [0, 0, 0];
+  insets[incoming] = 0.12 * (1 - smootherstep((progress - 0.66) / 0.24));
+  return insets;
+}
+
 export function dragRotation(dx: number, dy: number, viewport: number, sensitivity: number): [number, number] {
   const factor = Math.PI * sensitivity / Math.max(240, viewport);
   return [-dy * factor, dx * factor];
