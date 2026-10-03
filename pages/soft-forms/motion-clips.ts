@@ -1,9 +1,9 @@
-import { boneDefinitionsFor, neutralBonePose, type BonePose } from './bone-rig';
-import { boneChannels, sampleBoneTracks, type BoneTracks } from './bone-animation';
+import { controlDefinitionsFor, neutralControlPose, type ControlPose } from './deformation-rig';
+import { controlChannels, sampleControlTracks, type ControlTracks } from './motion-fit';
 import { variants, type VariantId } from './variants';
 
-export const BONE_LOOP_FRAMES = 144;
-export const PREVIOUS_BONE_LOOP_FRAMES = 180;
+export const LOOP_FRAMES = 144;
+export const PREVIOUS_LOOP_FRAMES = 180;
 export const SOURCE_END = 119;
 const TAU = Math.PI * 2;
 const radians = Math.PI / 180;
@@ -12,7 +12,7 @@ export const smooth = (x: number) => {
   return u * u * u * (u * (u * 6 - 15) + 10);
 };
 export function cycleFrame(frame: number) {
-  return ((frame % BONE_LOOP_FRAMES) + BONE_LOOP_FRAMES) % BONE_LOOP_FRAMES;
+  return ((frame % LOOP_FRAMES) + LOOP_FRAMES) % LOOP_FRAMES;
 }
 // Only the forward performance is sampled. Recovery is a new pose trajectory.
 export function forwardFrame(frame: number) {
@@ -26,19 +26,19 @@ export function forwardFrame(frame: number) {
   return at;
 }
 
-function originalPose(frame: number, fitted: readonly (readonly BonePose[])[]) {
+function originalPose(frame: number, fitted: readonly (readonly ControlPose[])[]) {
   if (frame <= SOURCE_END) {
     const source = forwardFrame(frame), first = Math.floor(source);
     const fraction = source - first, next = Math.min(first + 1, SOURCE_END);
-    return fitted[first].map((bone, index) => ({
-      dx: bone.dx + (fitted[next][index].dx - bone.dx) * fraction,
-      dy: bone.dy + (fitted[next][index].dy - bone.dy) * fraction,
-      angle: bone.angle + (fitted[next][index].angle - bone.angle) * fraction,
+    return fitted[first].map((control, index) => ({
+      dx: control.dx + (fitted[next][index].dx - control.dx) * fraction,
+      dy: control.dy + (fitted[next][index].dy - control.dy) * fraction,
+      angle: control.angle + (fitted[next][index].angle - control.angle) * fraction,
     }));
   }
-  const u = (frame - SOURCE_END) / (PREVIOUS_BONE_LOOP_FRAMES - SOURCE_END);
-  return fitted[SOURCE_END].map((bone, index) => {
-    const definition = boneDefinitionsFor('original')[index];
+  const u = (frame - SOURCE_END) / (PREVIOUS_LOOP_FRAMES - SOURCE_END);
+  return fitted[SOURCE_END].map((control, index) => {
+    const definition = controlDefinitionsFor('original')[index];
     const theta = Math.atan2(definition.y, definition.x);
     // The rim follows the center with spatially staggered settling and a small
     // curved follow-through, instead of replaying every flutter in reverse.
@@ -47,9 +47,9 @@ function originalPose(frame: number, fitted: readonly (readonly BonePose[])[]) {
     const arc = Math.sin(Math.PI * u) ** 2 * Math.sin(TAU * u);
     const first = fitted[0][index];
     return {
-      dx: bone.dx + (first.dx - bone.dx) * recovery + (index ? 7 * Math.sin(theta) : 0) * arc,
-      dy: bone.dy + (first.dy - bone.dy) * recovery + (index ? 9 * Math.cos(theta) : 2) * arc,
-      angle: bone.angle + (first.angle - bone.angle) * recovery + (index ? 0.07 * Math.cos(theta) : 0.02) * arc,
+      dx: control.dx + (first.dx - control.dx) * recovery + (index ? 7 * Math.sin(theta) : 0) * arc,
+      dy: control.dy + (first.dy - control.dy) * recovery + (index ? 9 * Math.cos(theta) : 2) * arc,
+      angle: control.angle + (first.angle - control.angle) * recovery + (index ? 0.07 * Math.cos(theta) : 0.02) * arc,
     };
   });
 }
@@ -64,7 +64,7 @@ function wind(time: number) {
     + 1.18 * pulse(0.76, 0.033) - 0.66 * pulse(0.86, 0.052);
 }
 
-function windTarget(shape: Exclude<VariantId, 'original'>, time: number, x: number, y: number, index: number): BonePose {
+function windTarget(shape: Exclude<VariantId, 'original'>, time: number, x: number, y: number, index: number): ControlPose {
   const delay = shape === 'wave' ? 0.10 * x
     : shape === 'star' ? 0.075 * x - 0.025 * y : 0.06 * x + 0.025 * y;
   const flow = wind(time - delay), follow = wind(time - delay - 0.035);
@@ -93,21 +93,21 @@ function windTarget(shape: Exclude<VariantId, 'original'>, time: number, x: numb
 }
 
 function bakeVariantPoses(shape: Exclude<VariantId, 'original'>) {
-  const definitions = boneDefinitionsFor(shape);
-  const positions = neutralBonePose(), velocities = neutralBonePose();
-  const stepsPerFrame = 4, stepsPerLoop = PREVIOUS_BONE_LOOP_FRAMES * stepsPerFrame;
+  const definitions = controlDefinitionsFor(shape);
+  const positions = neutralControlPose(), velocities = neutralControlPose();
+  const stepsPerFrame = 4, stepsPerLoop = PREVIOUS_LOOP_FRAMES * stepsPerFrame;
   const dt = 1 / (24 * stepsPerFrame);
-  const frames: BonePose[][] = [];
+  const frames: ControlPose[][] = [];
   // Warm up complete cycles so the saved spring state is already periodic.
   for (let step = 0; step <= stepsPerLoop * 4; step++) {
     const time = step / stepsPerLoop;
-    definitions.forEach((bone, index) => {
-      const x = bone.x / 105, y = bone.y / 105;
+    definitions.forEach((control, index) => {
+      const x = control.x / 105, y = control.y / 105;
       const target = windTarget(shape, time, x, y, index);
       const strength = index === 0 ? 1.15 : 1.45;
       const frequency = TAU * (index === 0 ? 1.8 : 2.6 - 0.4 * Math.max(0, y));
       const damping = index === 0 ? 0.78 : 0.57;
-      for (const channel of boneChannels) {
+      for (const channel of controlChannels) {
         const acceleration = frequency * frequency * (strength * target[channel] - positions[index][channel])
           - 2 * damping * frequency * velocities[index][channel];
         velocities[index][channel] += acceleration * dt;
@@ -120,33 +120,33 @@ function bakeVariantPoses(shape: Exclude<VariantId, 'original'>) {
   return frames;
 }
 
-function tracksFromPoses(times: number[], frames: readonly (readonly BonePose[])[]): BoneTracks {
-  return neutralBonePose().map((_, bone) => Object.fromEntries(boneChannels.map((channel) => [channel,
-    times.map((frame, index) => ({ frame, value: frames[index][bone][channel] / (channel === 'angle' ? radians : 1) })),
-  ])) as BoneTracks[number]);
+function tracksFromPoses(times: number[], frames: readonly (readonly ControlPose[])[]): ControlTracks {
+  return neutralControlPose().map((_, control) => Object.fromEntries(controlChannels.map((channel) => [channel,
+    times.map((frame, index) => ({ frame, value: frames[index][control][channel] / (channel === 'angle' ? radians : 1) })),
+  ])) as ControlTracks[number]);
 }
 
-const legacyTimes = () => Array.from({ length: PREVIOUS_BONE_LOOP_FRAMES / 6 + 1 }, (_, index) => index * 6)
+const legacyTimes = () => Array.from({ length: PREVIOUS_LOOP_FRAMES / 6 + 1 }, (_, index) => index * 6)
   .concat(SOURCE_END).sort((a, b) => a - b);
 
-function createPreviousClips(fitted: readonly (readonly BonePose[])[]): Record<VariantId, BoneTracks> {
+function createPreviousClips(fitted: readonly (readonly ControlPose[])[]): Record<VariantId, ControlTracks> {
   return Object.fromEntries(variants.map(({ id }) => {
     const times = id === 'original' ? legacyTimes()
-      : Array.from({ length: PREVIOUS_BONE_LOOP_FRAMES / 3 + 1 }, (_, index) => index * 3);
+      : Array.from({ length: PREVIOUS_LOOP_FRAMES / 3 + 1 }, (_, index) => index * 3);
     const baked = id === 'original' ? null : bakeVariantPoses(id);
     const frames = times.map((frame) => id === 'original' ? originalPose(frame, fitted) : baked![frame]);
     frames[frames.length - 1] = structuredClone(frames[0]);
     return [id, tracksFromPoses(times, frames)];
-  })) as Record<VariantId, BoneTracks>;
+  })) as Record<VariantId, ControlTracks>;
 }
 
-export type BoneTimeMap = { oldAtNew: (frame: number) => number; newAtOld: (frame: number) => number };
+export type MotionTimeMap = { oldAtNew: (frame: number) => number; newAtOld: (frame: number) => number };
 
-function originalTimeMap(): BoneTimeMap {
+function originalTimeMap(): MotionTimeMap {
   // Keep the first 88 recorded frames at their original pace. The late
   // near-still portion of the forward performance and the settling tail shrink.
-  const old = [0, 88, SOURCE_END, PREVIOUS_BONE_LOOP_FRAMES];
-  const next = [0, 88, 96, BONE_LOOP_FRAMES];
+  const old = [0, 88, SOURCE_END, PREVIOUS_LOOP_FRAMES];
+  const next = [0, 88, 96, LOOP_FRAMES];
   const convert = (value: number, from: number[], to: number[]) => {
     const at = Math.max(0, Math.min(from[from.length - 1], value));
     const index = Math.min(from.length - 2, from.findIndex((end, index) => index > 0 && at <= end) - 1);
@@ -155,13 +155,13 @@ function originalTimeMap(): BoneTimeMap {
   return { oldAtNew: (frame) => convert(frame, next, old), newAtOld: (frame) => convert(frame, old, next) };
 }
 
-function variantTimeMap(tracks: BoneTracks): BoneTimeMap {
-  const period = PREVIOUS_BONE_LOOP_FRAMES;
+function variantTimeMap(tracks: ControlTracks): MotionTimeMap {
+  const period = PREVIOUS_LOOP_FRAMES;
   const activity = Array.from({ length: period }, (_, frame) => {
-    const first = sampleBoneTracks(tracks, frame, period), second = sampleBoneTracks(tracks, frame + 1, period);
-    return Math.sqrt(first.reduce((sum, bone, index) => sum
-      + (second[index].dx - bone.dx) ** 2 + (second[index].dy - bone.dy) ** 2
-      + ((second[index].angle - bone.angle) * 70) ** 2, 0) / first.length);
+    const first = sampleControlTracks(tracks, frame, period), second = sampleControlTracks(tracks, frame + 1, period);
+    return Math.sqrt(first.reduce((sum, control, index) => sum
+      + (second[index].dx - control.dx) ** 2 + (second[index].dy - control.dy) ** 2
+      + ((second[index].angle - control.angle) * 70) ** 2, 0) / first.length);
   });
   // Smooth activity around the seam so the time map does not introduce a beat.
   const smoothed = activity.map((_, index) => {
@@ -177,21 +177,21 @@ function variantTimeMap(tracks: BoneTracks): BoneTimeMap {
   let low = 0.000001, high = Math.max(...smoothed) * 5;
   for (let attempt = 0; attempt < 36; attempt++) {
     const middle = (low + high) / 2;
-    if (smoothed.reduce((sum, speed) => sum + duration(speed, middle), 0) > BONE_LOOP_FRAMES) low = middle;
+    if (smoothed.reduce((sum, speed) => sum + duration(speed, middle), 0) > LOOP_FRAMES) low = middle;
     else high = middle;
   }
   const cumulative = [0];
   for (const speed of smoothed) cumulative.push(cumulative[cumulative.length - 1] + duration(speed, high));
-  const scale = BONE_LOOP_FRAMES / cumulative[period];
+  const scale = LOOP_FRAMES / cumulative[period];
   for (let index = 1; index <= period; index++) cumulative[index] *= scale;
-  cumulative[period] = BONE_LOOP_FRAMES;
+  cumulative[period] = LOOP_FRAMES;
   return {
     newAtOld: (frame) => {
       const at = Math.max(0, Math.min(period, frame)), index = Math.min(period - 1, Math.floor(at));
       return cumulative[index] + (at - index) * (cumulative[index + 1] - cumulative[index]);
     },
     oldAtNew: (frame) => {
-      const at = Math.max(0, Math.min(BONE_LOOP_FRAMES, frame));
+      const at = Math.max(0, Math.min(LOOP_FRAMES, frame));
       let low = 0, high = period;
       while (high - low > 1) {
         const middle = (low + high) >> 1;
@@ -202,20 +202,20 @@ function variantTimeMap(tracks: BoneTracks): BoneTimeMap {
   };
 }
 
-export function createBoneMotion(fitted: readonly (readonly BonePose[])[]) {
+export function createMotionClips(fitted: readonly (readonly ControlPose[])[]) {
   const previousClips = createPreviousClips(fitted);
   const timeMaps = Object.fromEntries(variants.map(({ id }) => [id,
     id === 'original' ? originalTimeMap() : variantTimeMap(previousClips[id]),
-  ])) as Record<VariantId, BoneTimeMap>;
+  ])) as Record<VariantId, MotionTimeMap>;
   const clips = Object.fromEntries(variants.map(({ id }) => {
-    const times = Array.from({ length: BONE_LOOP_FRAMES / 3 + 1 }, (_, index) => index * 3);
-    const frames = times.map((frame) => sampleBoneTracks(previousClips[id], timeMaps[id].oldAtNew(frame), PREVIOUS_BONE_LOOP_FRAMES));
+    const times = Array.from({ length: LOOP_FRAMES / 3 + 1 }, (_, index) => index * 3);
+    const frames = times.map((frame) => sampleControlTracks(previousClips[id], timeMaps[id].oldAtNew(frame), PREVIOUS_LOOP_FRAMES));
     frames[frames.length - 1] = structuredClone(frames[0]);
     return [id, tracksFromPoses(times, frames)];
-  })) as Record<VariantId, BoneTracks>;
+  })) as Record<VariantId, ControlTracks>;
   return { clips, previousClips, timeMaps };
 }
 
-export function sampleDefaultPose(clips: Record<VariantId, BoneTracks>, shape: VariantId, frame: number) {
-  return sampleBoneTracks(clips[shape], frame, BONE_LOOP_FRAMES);
+export function sampleDefaultPose(clips: Record<VariantId, ControlTracks>, shape: VariantId, frame: number) {
+  return sampleControlTracks(clips[shape], frame, LOOP_FRAMES);
 }

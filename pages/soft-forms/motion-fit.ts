@@ -1,10 +1,10 @@
-import { BoneRig, boneDefinitions, neutralBonePose, type BonePose } from './bone-rig';
+import { DeformationRig, controlDefinitions, neutralControlPose, type ControlPose } from './deformation-rig';
 import { loopFrame } from './motion-loop';
 import { MOTION_FPS, motionPeriod, sampleTrack, type Keyframe } from './motion-track';
 
-export const boneChannels = ['dx', 'dy', 'angle'] as const;
-export type BoneChannel = typeof boneChannels[number];
-export type BoneTracks = Record<BoneChannel, Keyframe[]>[];
+export const controlChannels = ['dx', 'dy', 'angle'] as const;
+export type ControlChannel = typeof controlChannels[number];
+export type ControlTracks = Record<ControlChannel, Keyframe[]>[];
 const RADIANS = Math.PI / 180;
 
 export function referenceRadius(x: number, y: number, radii: ArrayLike<number>, baseline: ArrayLike<number>) {
@@ -26,9 +26,9 @@ export function referenceRadius(x: number, y: number, radii: ArrayLike<number>, 
 // The constant, regularized least-squares system fits translations and small
 // rotations to the original surface. Exact rigid skinning is evaluated between
 // correction passes, rather than fitting only four averaged directions.
-export function fitBoneFrames(contourFrames: readonly (readonly number[])[]) {
+export function fitControlFrames(contourFrames: readonly (readonly number[])[]) {
   const baseline = contourFrames[0].map((_, index) => contourFrames.reduce((sum, row) => sum + row[index], 0) / contourFrames.length);
-  const rig = new BoneRig();
+  const rig = new DeformationRig();
   const samples = [0.25, 0.5, 0.75, 1].flatMap((ring) => Array.from({ length: 64 }, (_, index) => {
     const angle = -(index + 0.5) * Math.PI * 2 / 64;
     const x = Math.cos(angle) * ring, y = Math.sin(angle) * ring;
@@ -36,14 +36,14 @@ export function fitBoneFrames(contourFrames: readonly (readonly number[])[]) {
     const restX = x * radius, restY = y * radius;
     return { x, y, restX, restY, weights: rig.weightsFor(restX, restY), importance: ring === 1 ? 2 : 1 };
   }));
-  const size = boneDefinitions.length * 3;
+  const size = controlDefinitions.length * 3;
   const rows = samples.flatMap((sample) => [0, 1].map((axis) => {
     const row = new Float64Array(size);
-    for (let bone = 0; bone < boneDefinitions.length; bone++) {
-      const weight = sample.weights[bone] * sample.importance;
-      row[bone * 3 + axis] = weight;
-      row[bone * 3 + 2] = weight * RADIANS * (axis === 0
-        ? -(sample.restY - boneDefinitions[bone].y) : sample.restX - boneDefinitions[bone].x);
+    for (let control = 0; control < controlDefinitions.length; control++) {
+      const weight = sample.weights[control] * sample.importance;
+      row[control * 3 + axis] = weight;
+      row[control * 3 + 2] = weight * RADIANS * (axis === 0
+        ? -(sample.restY - controlDefinitions[control].y) : sample.restX - controlDefinitions[control].x);
     }
     return row;
   }));
@@ -78,7 +78,7 @@ export function fitBoneFrames(contourFrames: readonly (readonly number[])[]) {
   };
   const output = new Float32Array(3);
   return contourFrames.map((radii) => {
-    const pose = neutralBonePose();
+    const pose = neutralControlPose();
     for (let pass = 0; pass < 3; pass++) {
       rig.setPose(pose);
       const rhs = new Float64Array(size);
@@ -93,39 +93,39 @@ export function fitBoneFrames(contourFrames: readonly (readonly number[])[]) {
       });
       // Penalize accumulated values too, keeping the solution stable in regions
       // where several neighboring controls can explain the same deformation.
-      for (let bone = 0; bone < pose.length; bone++) {
-        rhs[bone * 3] -= 0.015 * pose[bone].dx;
-        rhs[bone * 3 + 1] -= 0.015 * pose[bone].dy;
-        rhs[bone * 3 + 2] -= 0.8 * pose[bone].angle / RADIANS;
+      for (let control = 0; control < pose.length; control++) {
+        rhs[control * 3] -= 0.015 * pose[control].dx;
+        rhs[control * 3 + 1] -= 0.015 * pose[control].dy;
+        rhs[control * 3 + 2] -= 0.8 * pose[control].angle / RADIANS;
       }
       const delta = solve(rhs);
-      for (let bone = 0; bone < pose.length; bone++) {
-        pose[bone].dx += delta[bone * 3];
-        pose[bone].dy += delta[bone * 3 + 1];
-        pose[bone].angle += delta[bone * 3 + 2] * RADIANS;
+      for (let control = 0; control < pose.length; control++) {
+        pose[control].dx += delta[control * 3];
+        pose[control].dy += delta[control * 3 + 1];
+        pose[control].angle += delta[control * 3 + 2] * RADIANS;
       }
     }
     return pose;
   });
 }
 
-export function fittedBoneTracks(frames: readonly (readonly BonePose[])[]): BoneTracks {
+export function fittedControlTracks(frames: readonly (readonly ControlPose[])[]): ControlTracks {
   const period = motionPeriod(frames.length);
   const positions = Array.from({ length: Math.ceil(period / 6) }, (_, index) => index * 6).concat(period);
-  return boneDefinitions.map((_, bone) => Object.fromEntries(boneChannels.map((channel) => [channel,
+  return controlDefinitions.map((_, control) => Object.fromEntries(controlChannels.map((channel) => [channel,
     positions.map((frame) => {
       const source = loopFrame(frame / MOTION_FPS, frames.length);
       const a = Math.floor(source), b = Math.min(a + 1, frames.length - 1), fraction = source - a;
-      const value = frames[a][bone][channel] * (1 - fraction) + frames[b][bone][channel] * fraction;
+      const value = frames[a][control][channel] * (1 - fraction) + frames[b][control][channel] * fraction;
       return { frame, value: value / (channel === 'angle' ? RADIANS : 1) };
     }),
-  ])) as Record<BoneChannel, Keyframe[]>);
+  ])) as Record<ControlChannel, Keyframe[]>);
 }
 
-export function sampleBoneTracks(tracks: BoneTracks, frame: number, period: number): BonePose[] {
-  return tracks.map((bone) => ({
-    dx: sampleTrack(bone.dx, frame, period),
-    dy: sampleTrack(bone.dy, frame, period),
-    angle: sampleTrack(bone.angle, frame, period) * RADIANS,
+export function sampleControlTracks(tracks: ControlTracks, frame: number, period: number): ControlPose[] {
+  return tracks.map((control) => ({
+    dx: sampleTrack(control.dx, frame, period),
+    dy: sampleTrack(control.dy, frame, period),
+    angle: sampleTrack(control.angle, frame, period) * RADIANS,
   }));
 }

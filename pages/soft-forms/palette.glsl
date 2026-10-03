@@ -11,7 +11,7 @@ float glow(vec2 point, vec2 center, vec2 spread) {
   return exp(-dot(p, p) * 0.5);
 }
 
-vec3 peachColor(vec2 p, float cheekStrength) {
+vec3 surfaceColor(vec2 p, float cheekStrength) {
   vec3 color = uBaseColor;
   color = mix(color, uCoolColor, glow(p, vec2(-107., -18.), vec2(82., 112.)) * 0.82);
   color = mix(color, uBlushColor, glow(p, vec2(12., 3.), vec2(71., 65.)) * 0.82);

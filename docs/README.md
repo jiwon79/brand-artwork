@@ -61,6 +61,7 @@ docs/
 
 ### 솜결 (Soft Forms)
 
+- [`architecture.md`](./artworks/soft-forms/architecture.md) - 독립 변형 컨트롤, 표면 바인딩, 셸·리본 털과 터치 응답의 현재 실행 흐름
 - [`social-share-image.md`](./artworks/soft-forms/social-share-image.md) - 실제 별 캐릭터 캡처에 한글·영어 제목을 합성하는 공유 PNG 제작 방법
 
 ### 웃음꽃 (Smile Flower)
@@ -79,6 +80,7 @@ Concept는 다음 중 하나를 만족할 때 독립 문서로 둔다.
 반대로 단일 작품의 파라미터 선택, 좌표 변환이나 역함수 한 번으로 끝나는 계산은 다른 곳에 응용할 수 있더라도 artwork architecture에 포함한다. 여러 원리를 조합한 자체 방법을 Concept로 유지할 때는 제목이 설명용 이름임을 본문 첫머리에 밝힌다.
 
 - [`3d-model-look-development.md`](./concepts/3d-model-look-development.md) - 기본색, PBR 재질, 조명과 tone mapping이 3D 모델의 색감과 재질감을 만드는 과정
+- [`fur-shells-and-ribbons.md`](./concepts/fur-shells-and-ribbons.md) - 겹친 셸로 털 두께를 채우고 카메라 방향 리본으로 가닥을 그리는 공간 관계와 수식
 - [`fragment-shader-execution.md`](./concepts/fragment-shader-execution.md) - 2x2 quad, warp/wave, helper invocation과 mipmap 선택 과정
 - [`golden-angle-sphere-distribution.md`](./concepts/golden-angle-sphere-distribution.md) - 점을 구 표면 전체에 분산하는 Fibonacci sphere 원리
 - [`jump-flood-nearest-seed.md`](./concepts/jump-flood-nearest-seed.md) - GPU pass가 큰 jump부터 가까운 seed 좌표를 전달하는 JFA 원리와 bounded 근사
