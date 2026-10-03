@@ -13,7 +13,7 @@ float noise(vec3 p) {
 }
 void main() {
   vec3 normal = normalize(vNormal);
-  vec3 color = peachColor(vLocal.xy, uCheek);
+  vec3 color = surfaceColor(vLocal.xy, uCheek);
   color *= 0.98 + 0.02 * dot(normal, normalize(vec3(-0.35, 0.60, 0.72)));
   color += (noise(vLocal * 0.16) - 0.5) * 0.014;
   float alpha = mix(smoothstep(0.0, 0.23, abs(normal.z)),

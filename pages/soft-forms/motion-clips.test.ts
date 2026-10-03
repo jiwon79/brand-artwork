@@ -1,20 +1,20 @@
 import { expect, test } from 'vitest';
-import { boneChannels, fitBoneFrames, sampleBoneTracks } from './bone-animation';
-import { BONE_LOOP_FRAMES, createBoneMotion, PREVIOUS_BONE_LOOP_FRAMES } from './bone-motion';
-import { BoneRig } from './bone-rig';
-import { restSurface } from './bone-surface';
+import { controlChannels, fitControlFrames, sampleControlTracks } from './motion-fit';
+import { LOOP_FRAMES, createMotionClips, PREVIOUS_LOOP_FRAMES } from './motion-clips';
+import { DeformationRig } from './deformation-rig';
+import { restSurface } from './rest-surface';
 import { motionFrames } from './motion-data';
 import { sampleTrack } from './motion-track';
 import { variants } from './variants';
 
-const fitted = fitBoneFrames(motionFrames.map((frame) => frame.radii));
-const { clips, timeMaps } = createBoneMotion(fitted);
-const period = BONE_LOOP_FRAMES;
+const fitted = fitControlFrames(motionFrames.map((frame) => frame.radii));
+const { clips, timeMaps } = createMotionClips(fitted);
+const period = LOOP_FRAMES;
 
 test('each shape has its own valid pose curves with continuous loop positions and velocities', () => {
   for (const { id } of variants) {
-    for (const bone of clips[id]) for (const channel of boneChannels) {
-      const track = bone[channel], epsilon = 0.0001;
+    for (const control of clips[id]) for (const channel of controlChannels) {
+      const track = control[channel], epsilon = 0.0001;
       const at = sampleTrack(track, 0, period);
       expect(sampleTrack(track, period, period)).toBe(at);
       const before = (at - sampleTrack(track, period - epsilon, period)) / epsilon;
@@ -22,22 +22,22 @@ test('each shape has its own valid pose curves with continuous loop positions an
       expect(Math.abs(before - after)).toBeLessThan(0.001);
     }
   }
-  const signatures = variants.map(({ id }) => JSON.stringify(sampleBoneTracks(clips[id], 24, period)));
+  const signatures = variants.map(({ id }) => JSON.stringify(sampleControlTracks(clips[id], 24, period)));
   expect(new Set(signatures).size).toBe(5);
 });
 
 test('original retains the forward flutter and returns along a new trajectory', () => {
   for (const frame of [24, 60, 84]) {
-    const actual = sampleBoneTracks(clips.original, frame, period);
-    actual.forEach((bone, index) => {
-      expect(bone.dx).toBeCloseTo(fitted[frame][index].dx, 5);
-      expect(bone.dy).toBeCloseTo(fitted[frame][index].dy, 5);
+    const actual = sampleControlTracks(clips.original, frame, period);
+    actual.forEach((control, index) => {
+      expect(control.dx).toBeCloseTo(fitted[frame][index].dx, 5);
+      expect(control.dy).toBeCloseTo(fitted[frame][index].dy, 5);
     });
   }
-  const returning = sampleBoneTracks(clips.original, 120, period);
+  const returning = sampleControlTracks(clips.original, 120, period);
   const replay = fitted[58];
-  const distance = Math.sqrt(returning.reduce((sum, bone, index) => sum
-    + (bone.dx - replay[index].dx) ** 2 + (bone.dy - replay[index].dy) ** 2, 0) / returning.length);
+  const distance = Math.sqrt(returning.reduce((sum, control, index) => sum
+    + (control.dx - replay[index].dx) ** 2 + (control.dy - replay[index].dy) ** 2, 0) / returning.length);
   expect(distance).toBeGreaterThan(8);
 });
 
@@ -47,7 +47,7 @@ test('strong flutter preserves surface orientation throughout every variant loop
   const rest = new Float32Array(3), output = new Float32Array(9), epsilon = 0.25;
   for (const { id } of variants) {
     if (id === 'original') continue;
-    const rig = new BoneRig(id);
+    const rig = new DeformationRig(id);
     const points = Array.from({ length: 6 * 32 }, (_, index) => {
       const radius = Math.floor(index / 32) / 5, angle = index % 32 / 32 * Math.PI * 2;
       restSurface(id, radius * Math.cos(angle), radius * Math.sin(angle), 0, baseline, rest);
@@ -56,7 +56,7 @@ test('strong flutter preserves surface orientation throughout every variant loop
     });
     let minimum = Infinity;
     for (let frame = 0; frame < period; frame += 2) {
-      rig.setPose(sampleBoneTracks(clips[id], frame, period));
+      rig.setPose(sampleControlTracks(clips[id], frame, period));
       for (const { x, y, weights } of points) {
         rig.skinPoint(x, y, 0, weights[0], output, 0);
         rig.skinPoint(x + epsilon, y, 0, weights[1], output, 3);
@@ -76,9 +76,9 @@ test('six-second time maps keep the first original flutter intact and compress q
   expect(timeMaps.original.oldAtNew(96)).toBeCloseTo(119);
   for (const { id } of variants) {
     const map = timeMaps[id];
-    expect(map.oldAtNew(period)).toBe(PREVIOUS_BONE_LOOP_FRAMES);
-    expect(map.newAtOld(PREVIOUS_BONE_LOOP_FRAMES)).toBe(period);
-    const durations = Array.from({ length: PREVIOUS_BONE_LOOP_FRAMES }, (_, frame) =>
+    expect(map.oldAtNew(period)).toBe(PREVIOUS_LOOP_FRAMES);
+    expect(map.newAtOld(PREVIOUS_LOOP_FRAMES)).toBe(period);
+    const durations = Array.from({ length: PREVIOUS_LOOP_FRAMES }, (_, frame) =>
       map.newAtOld(frame + 1) - map.newAtOld(frame));
     expect(Math.min(...durations)).toBeLessThan(0.7);
     expect(durations.every((duration) => duration > 0 && duration <= 1.01)).toBe(true);
