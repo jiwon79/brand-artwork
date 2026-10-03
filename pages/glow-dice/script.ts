@@ -8,7 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import { createDiceGeometry } from './geometry';
-import { createField, FIELD_HEIGHT, poseCell, random, type Cell, type Ripple } from './field';
+import { createField, DiceReveal, FIELD_HEIGHT, random, type Cell } from './field';
 
 function studioEnvironment(renderer: THREE.WebGLRenderer) {
   const studio = new THREE.Scene();
@@ -116,20 +116,28 @@ function start() {
     shader.uniforms.uIntensity = uniforms.intensity;
     shader.vertexShader = `attribute float pipIndex;
       attribute float cellSeed;
+      attribute float cellLuminance;
+      attribute float cellReveal;
       varying float vPip;
       varying float vSeed;
+      varying float vLuminance;
+      varying float vReveal;
       ${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vertex>
-      vPip = pipIndex; vSeed = cellSeed;`);
+      vPip = pipIndex; vSeed = cellSeed;
+      vLuminance = cellLuminance; vReveal = cellReveal;`);
     shader.fragmentShader = `uniform float uTime;
       uniform float uIntensity;
       varying float vPip;
       varying float vSeed;
+      varying float vLuminance;
+      varying float vReveal;
       ${shader.fragmentShader}`.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       float phase = vSeed * 91.7 + vPip * 13.73;
       float pulse = sin(uTime * (0.72 + fract(vSeed * 17.0) * 0.38) + phase);
       float lit = smoothstep(-0.32, -0.12, pulse);
       float variation = 0.85 + 0.15 * sin(phase * 2.3);
-      totalEmissiveRadiance *= lit * variation * uIntensity;`);
+      float letterLight = 0.001 + 1.15 * pow(vLuminance, 0.85);
+      totalEmissiveRadiance *= mix(lit * variation, letterLight, vReveal) * uIntensity;`);
   };
 
   const backgroundMaterial = new THREE.MeshStandardMaterial({ color: 0x030304, roughness: 1 });
@@ -158,16 +166,28 @@ function start() {
   let disposed = false;
   let dirty = true;
   let previousTime = 0;
-  let lastPointerRipple = -Infinity;
-  const ripples: Ripple[] = [];
+  let reveal: DiceReveal;
+  let revealAttribute: THREE.InstancedBufferAttribute;
+  let activePointer: number | undefined;
+  const lastPointer = new THREE.Vector2(Infinity, Infinity);
   const transform = new THREE.Object3D();
   const color = new THREE.Color();
 
   function rebuild() {
     meshes.forEach(mesh => { scene.remove(mesh); mesh.dispose(); });
     cells = createField(width, height);
+    const wasRevealing = reveal?.active;
+    reveal = new DiceReveal(cells, width, height);
+    if (wasRevealing) reveal.begin(0, 0, time, true);
     const seeds = new Float32Array(cells.map(cell => cell.seed));
+    geometry.lights.dispose();
     geometry.lights.setAttribute('cellSeed', new THREE.InstancedBufferAttribute(seeds, 1));
+    geometry.lights.setAttribute('cellLuminance', new THREE.InstancedBufferAttribute(
+      new Float32Array(reveal.states.map(state => state.luminance)), 1,
+    ));
+    revealAttribute = new THREE.InstancedBufferAttribute(new Float32Array(cells.length), 1);
+    revealAttribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.lights.setAttribute('cellReveal', revealAttribute);
     meshes = [
       new THREE.InstancedMesh(geometry.shell, shellMaterial, cells.length),
       new THREE.InstancedMesh(geometry.sockets, socketMaterial, cells.length),
@@ -211,28 +231,48 @@ function start() {
     rebuild();
   }
 
-  function rippleAt(event: PointerEvent) {
+  function pointerPosition(event: PointerEvent) {
     const bounds = canvas.getBoundingClientRect();
     const x = ((event.clientX - bounds.left) / bounds.width - 0.5) * width;
     const y = (0.5 - (event.clientY - bounds.top) / bounds.height) * height;
-    ripples.push({ x, y, start: time - (look.animate ? 0 : 0.7) });
-    if (ripples.length > 8) ripples.shift();
-    lastPointerRipple = time;
-    dirty = true;
+    return { x, y };
   }
   canvas.addEventListener('pointerdown', event => {
+    if (activePointer !== undefined) return;
+    activePointer = event.pointerId;
     canvas.setPointerCapture(event.pointerId);
-    rippleAt(event);
+    const { x, y } = pointerPosition(event);
+    lastPointer.set(x, y);
+    reveal.begin(x, y, time, reducedMotion.matches || !look.animate);
+    dirty = true;
   }, { signal: events.signal });
   canvas.addEventListener('pointermove', event => {
-    if (event.buttons && time - lastPointerRipple > 0.15) rippleAt(event);
+    if (event.pointerId !== activePointer) return;
+    const { x, y } = pointerPosition(event);
+    if (Math.hypot(lastPointer.x - x, lastPointer.y - y) < 0.25) return;
+    reveal.spread(x, y, time);
+    lastPointer.set(x, y);
+    dirty = true;
   }, { signal: events.signal });
+  const releasePointer = (event: PointerEvent) => {
+    if (activePointer === event.pointerId) activePointer = undefined;
+  };
+  canvas.addEventListener('pointerup', releasePointer, { signal: events.signal });
+  canvas.addEventListener('pointercancel', releasePointer, { signal: events.signal });
+  canvas.addEventListener('lostpointercapture', releasePointer, { signal: events.signal });
+  function reset() { time = 0; reveal.reset(); activePointer = undefined; dirty = true; }
+  function revealLetter() { reveal.begin(0, 0, time, reducedMotion.matches || !look.animate); dirty = true; }
   window.addEventListener('keydown', event => {
     if ((event.target as HTMLElement)?.closest('.lil-gui')) return;
     if (event.code === 'Space') { event.preventDefault(); look.animate = !look.animate; dirty = true; }
-    if (event.key.toLowerCase() === 'r') { time = 0; ripples.length = 0; dirty = true; }
+    if (event.key.toLowerCase() === 'r') reset();
+    if (event.key === 'Enter' && !event.repeat) revealLetter();
   }, { signal: events.signal });
-  reducedMotion.addEventListener('change', () => { look.animate = !reducedMotion.matches; dirty = true; }, { signal: events.signal });
+  reducedMotion.addEventListener('change', () => {
+    look.animate = !reducedMotion.matches;
+    if (reducedMotion.matches && reveal.active) reveal.begin(0, 0, time, true);
+    dirty = true;
+  }, { signal: events.signal });
   document.addEventListener('visibilitychange', () => { previousTime = 0; }, { signal: events.signal });
   canvas.addEventListener('webglcontextlost', event => {
     event.preventDefault();
@@ -243,10 +283,11 @@ function start() {
 
   const gui = exposeGuiInDebugMode(new GUI({ title: 'Glow Dice' }));
   const motion = gui.addFolder('움직임');
-  motion.add(look, 'animate').name('자동 회전').listen();
+  motion.add(look, 'animate').name('애니메이션').listen();
   motion.add(look, 'speed', 0.1, 2, 0.05).name('속도');
   motion.add(look, 'density', 0.6, 1.8, 0.05).name('주사위 크기').onFinishChange(resize);
-  motion.add({ reset: () => { time = 0; ripples.length = 0; dirty = true; } }, 'reset').name('처음으로');
+  motion.add({ revealLetter }, 'revealLetter').name('J 펼치기');
+  motion.add({ reset }, 'reset').name('처음으로');
   const material = gui.addFolder('재질과 빛');
   material.add(look, 'exposure', 0.4, 1.8, 0.01).name('노출').onChange(() => { renderer.toneMappingExposure = look.exposure; dirty = true; });
   material.add(look, 'roughness', 0.1, 0.65, 0.01).name('표면 거칠기').onChange(() => { shellMaterial.roughness = look.roughness; dirty = true; });
@@ -260,7 +301,7 @@ function start() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'glow-dice.png';
+      link.download = reveal.active ? 'glow-dice-j.png' : 'glow-dice.png';
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, 'image/png');
@@ -273,14 +314,19 @@ function start() {
     if (document.hidden || disposed) { previousTime = 0; return; }
     const delta = previousTime ? Math.min((now - previousTime) / 1000, 0.05) : 0;
     previousTime = now;
-    if (look.animate) { time += delta * look.speed; dirty = true; }
+    if (look.animate) {
+      // Keep a clock for subsequent gestures, but let a completed letter rest.
+      const moving = reveal.isMoving(time);
+      time += delta * look.speed;
+      if (!reveal.active || moving) dirty = true;
+    }
     if (!dirty) return;
     uniforms.time.value = time;
-    while (ripples.length && time - ripples[0].start > 7) ripples.shift();
-    cells.forEach((cell, index) => {
-      poseCell(cell, time, ripples, transform);
+    cells.forEach((_, index) => {
+      revealAttribute.setX(index, reveal.pose(index, time, transform));
       meshes.forEach(mesh => mesh.setMatrixAt(index, transform.matrix));
     });
+    revealAttribute.needsUpdate = true;
     meshes.forEach(mesh => { mesh.instanceMatrix.needsUpdate = true; });
     composer.render();
     status.hidden = true;
