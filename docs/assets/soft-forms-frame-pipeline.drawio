@@ -7,19 +7,19 @@
         <mxCell id="title" value="솜결 · 입력에서 화면까지" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=25;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="30" y="20" width="1000" height="40" />
         </mxCell>
-        <mxCell id="init" value="초기화 · 기준 표면, 변형 클립, 몸체·털 binding 생성" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
+        <mxCell id="init" value="초기화 · 기준 표면, 변형 클립, 몸체·털 바인딩 생성" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="30" y="70" width="1080" height="40" />
         </mxCell>
         <mxCell id="input" value="시간 · 포인터&lt;br&gt;모양 선택" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="30" y="140" width="240" height="90" />
         </mxCell>
-        <mxCell id="state" value="13개 컨트롤 pose&lt;br&gt;TouchReaction" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+        <mxCell id="state" value="13개 컨트롤 변형 상태&lt;br&gt;터치 반응" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="310" y="140" width="240" height="90" />
         </mxCell>
         <mxCell id="deform" value="몸체 · 털 뿌리/끝&lt;br&gt;CPU 변형" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="590" y="140" width="240" height="90" />
         </mxCell>
-        <mxCell id="buffers" value="position · normal&lt;br&gt;GPU buffer 갱신" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+        <mxCell id="buffers" value="위치 · 표면 법선&lt;br&gt;GPU 버퍼 갱신" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="870" y="140" width="240" height="90" />
         </mxCell>
         <mxCell id="input-state" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#516479;strokeWidth=2;" edge="1" source="input" target="state" parent="1">
@@ -31,7 +31,7 @@
         <mxCell id="deform-buffers" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#516479;strokeWidth=2;" edge="1" source="deform" target="buffers" parent="1">
           <mxGeometry as="geometry" relative="1" />
         </mxCell>
-        <mxCell id="renderlabel" value="GPU · 한 scene을 순서대로 그리기" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
+        <mxCell id="renderlabel" value="GPU · 장면을 순서대로 그리기" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="30" y="260" width="1080" height="40" />
         </mxCell>
         <mxCell id="background" value="배경 · 바닥 그림자" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
@@ -43,7 +43,7 @@
         <mxCell id="ribbons" value="23,000개 리본 → 눈" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="590" y="330" width="240" height="90" />
         </mxCell>
-        <mxCell id="output" value="정사영 · CSS blur&lt;br&gt;최종 캔버스" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+        <mxCell id="output" value="정사영 · CSS 흐림&lt;br&gt;최종 캔버스" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="870" y="330" width="240" height="90" />
         </mxCell>
         <mxCell id="background-body" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#516479;strokeWidth=2;" edge="1" source="background" target="body" parent="1">

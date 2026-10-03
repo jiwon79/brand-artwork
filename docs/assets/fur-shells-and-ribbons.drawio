@@ -4,7 +4,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="title" value="털의 두께와 한 가닥을 서로 다른 기하로 표현하기" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=25;" vertex="1" parent="1">
+        <mxCell id="title" value="털을 셸과 리본으로 그리기" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=25;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="20" y="15" width="1100" height="40" />
         </mxCell>
         <mxCell id="shell-title" value="1 · 셸: 표면을 겹쳐 두께 채우기" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=21;" vertex="1" parent="1">
@@ -19,7 +19,7 @@
         <mxCell id="bodylabel" value="몸체 B" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="60" y="385" width="140" height="30" />
         </mxCell>
-        <mxCell id="shelllabel" value="바깥쪽일수록 낮은 coverage" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
+        <mxCell id="shelllabel" value="바깥층은 채움 계수가 낮다" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="60" y="130" width="420" height="30" />
         </mxCell>
         <mxCell id="height" value="h_j" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
@@ -49,7 +49,7 @@
         <mxCell id="shell-note" value="설명용 5겹. h_j는 몸체에서 셸까지의 거리." style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="20" y="455" width="520" height="45" />
         </mxCell>
-        <mxCell id="ribbon-note" value="점선: 뿌리–끝 축. 폭은 끝으로 갈수록 0." style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
+        <mxCell id="ribbon-note" value="점선: 뿌리–끝 축. 끝에서는 폭이 0이다." style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="590" y="455" width="520" height="45" />
         </mxCell>
       </root>
