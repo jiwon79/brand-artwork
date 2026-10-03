@@ -1,0 +1,58 @@
+<mxfile host="Electron" version="31.1.8" modified="2026-10-03T09:00:00Z">
+  <diagram id="fur-shells-and-ribbons" name="Page-1">
+    <mxGraphModel dx="1140" dy="520" grid="1" gridSize="10" guides="1" page="1" pageWidth="1140" pageHeight="520" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="털의 두께와 한 가닥을 서로 다른 기하로 표현하기" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=25;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="20" y="15" width="1100" height="40" />
+        </mxCell>
+        <mxCell id="shell-title" value="1 · 셸: 표면을 겹쳐 두께 채우기" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=21;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="20" y="65" width="520" height="40" />
+        </mxCell>
+        <mxCell id="ribbon-title" value="2 · 리본: 화면에서 폭을 가진 한 가닥" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=21;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="590" y="65" width="520" height="40" />
+        </mxCell>
+        <mxCell id="geometry" value="" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;shape=image;imageAspect=0;aspect=fixed;image=data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201100%20300%22%20role%3D%22img%22%3E%3Ctitle%3E%ED%84%B8%20%EC%85%B8%20%EB%8B%A8%EB%A9%B4%EA%B3%BC%20%EB%A6%AC%EB%B3%B8%20%EA%B8%B0%ED%95%98%3C%2Ftitle%3E%3Cdesc%3E%EC%99%BC%EC%AA%BD%EC%9D%80%20%EB%AA%B8%EC%B2%B4%20%EC%9C%84%EC%97%90%20%EA%B2%B9%EC%B9%9C%20%EC%85%B8%20%EB%8B%A8%EB%A9%B4%2C%20%EC%98%A4%EB%A5%B8%EC%AA%BD%EC%9D%80%20%EB%BF%8C%EB%A6%AC%EC%97%90%EC%84%9C%20%EB%81%9D%EC%9C%BC%EB%A1%9C%20%EC%A2%81%EC%95%84%EC%A7%80%EB%8A%94%20%EA%B3%A1%EC%84%A0%20%EB%A6%AC%EB%B3%B8%EC%9D%B4%EB%8B%A4.%3C%2Fdesc%3E%0A%3Cg%20fill%3D%22none%22%20stroke%3D%22%23527b97%22%20stroke-width%3D%223%22%3E%0A%3Cpath%20d%3D%22M50%20245%20Q245%20160%20460%20245%22%20stroke%3D%22%23293f51%22%20stroke-width%3D%225%22%2F%3E%0A%3Cpath%20d%3D%22M50%20222%20Q245%20137%20460%20222%22%20stroke-dasharray%3D%228%206%22%2F%3E%0A%3Cpath%20d%3D%22M50%20197%20Q245%20112%20460%20197%22%20stroke-dasharray%3D%226%209%22%2F%3E%0A%3Cpath%20d%3D%22M50%20169%20Q245%2084%20460%20169%22%20stroke-dasharray%3D%224%2012%22%2F%3E%0A%3Cpath%20d%3D%22M50%20137%20Q245%2052%20460%20137%22%20stroke-dasharray%3D%223%2017%22%2F%3E%0A%3C%2Fg%3E%0A%3Cg%20stroke%3D%22%23316f8c%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22M723.873%20267.075%20L726.230%20261.803%20L728.593%20256.538%20L730.966%20251.285%20L733.351%20246.048%20L735.754%20240.831%20L738.176%20235.640%20L740.622%20230.477%20L743.095%20225.348%20L745.599%20220.256%20L748.136%20215.206%20L750.710%20210.201%20L753.325%20205.246%20L755.982%20200.343%20L758.686%20195.498%20L761.438%20190.712%20L764.242%20185.990%20L767.099%20181.334%20L770.014%20176.747%20L772.986%20172.233%20L776.020%20167.793%20L779.116%20163.431%20L782.276%20159.147%20L785.503%20154.945%20L788.796%20150.826%20L792.159%20146.792%20L795.591%20142.843%20L799.094%20138.981%20L802.668%20135.207%20L806.315%20131.522%20L810.033%20127.925%20L813.824%20124.418%20L817.687%20121.000%20L821.623%20117.670%20L825.630%20114.429%20L829.708%20111.276%20L833.857%20108.209%20L838.076%20105.228%20L842.362%20102.330%20L846.716%2099.516%20L851.136%2096.782%20L855.619%2094.127%20L860.165%2091.549%20L864.771%2089.045%20L869.435%2086.613%20L874.156%2084.250%20L878.931%2081.953%20L883.757%2079.720%20L888.631%2077.546%20L893.553%2075.430%20L898.517%2073.367%20L903.523%2071.355%20L908.567%2069.390%20L913.646%2067.468%20L918.758%2065.586%20L923.900%2063.742%20L929.069%2061.931%20L934.263%2060.151%20L939.482%2058.401%20L944.725%2056.681%20L950.000%2055.000%20L950.000%2055.000%20L944.635%2056.570%20L939.245%2058.109%20L933.845%2059.636%20L928.443%2061.160%20L923.044%2062.688%20L917.653%2064.227%20L912.275%2065.781%20L906.914%2067.356%20L901.574%2068.957%20L896.259%2070.588%20L890.972%2072.254%20L885.716%2073.959%20L880.496%2075.706%20L875.313%2077.501%20L870.172%2079.346%20L865.075%2081.246%20L860.024%2083.203%20L855.022%2085.220%20L850.072%2087.300%20L845.176%2089.447%20L840.335%2091.662%20L835.552%2093.948%20L830.828%2096.307%20L826.164%2098.741%20L821.563%20101.251%20L817.025%20103.838%20L812.551%20106.505%20L808.142%20109.251%20L803.798%20112.078%20L799.519%20114.985%20L795.307%20117.974%20L791.160%20121.044%20L787.080%20124.194%20L783.064%20127.425%20L779.113%20130.735%20L775.225%20134.123%20L771.401%20137.589%20L767.638%20141.131%20L763.935%20144.747%20L760.292%20148.436%20L756.705%20152.195%20L753.174%20156.021%20L749.696%20159.914%20L746.269%20163.869%20L742.890%20167.884%20L739.558%20171.957%20L736.270%20176.083%20L733.023%20180.259%20L729.814%20184.483%20L726.640%20188.750%20L723.499%20193.056%20L720.386%20197.398%20L717.299%20201.772%20L714.235%20206.174%20L711.190%20210.599%20L708.160%20215.043%20L705.142%20219.502%20L702.133%20223.972%20L699.129%20228.448%20L696.127%20232.925%20Z%22%20fill%3D%22%23a4d3dc%22%20fill-opacity%3D%220.7%22%2F%3E%3Cpath%20d%3D%22M710.000%20250.000%20L712.680%20245.125%20L715.363%20240.255%20L718.054%20235.394%20L720.756%20230.545%20L723.472%20225.715%20L726.205%20220.907%20L728.961%20216.125%20L731.741%20211.373%20L734.549%20206.656%20L737.388%20201.978%20L740.262%20197.342%20L743.174%20192.752%20L746.126%20188.213%20L749.122%20183.727%20L752.164%20179.298%20L755.255%20174.929%20L758.397%20170.624%20L761.594%20166.384%20L764.846%20162.214%20L768.156%20158.115%20L771.526%20154.089%20L774.957%20150.139%20L778.452%20146.267%20L782.011%20142.475%20L785.636%20138.763%20L789.327%20135.134%20L793.087%20131.588%20L796.914%20128.126%20L800.811%20124.748%20L804.776%20121.455%20L808.811%20118.248%20L812.914%20115.126%20L817.087%20112.088%20L821.327%20109.134%20L825.636%20106.263%20L830.011%20103.475%20L834.452%20100.767%20L838.957%2098.139%20L843.526%2095.589%20L848.156%2093.115%20L852.846%2090.714%20L857.594%2088.384%20L862.397%2086.124%20L867.255%2083.929%20L872.164%2081.798%20L877.122%2079.727%20L882.126%2077.713%20L887.174%2075.752%20L892.262%2073.842%20L897.388%2071.978%20L902.549%2070.156%20L907.741%2068.373%20L912.961%2066.625%20L918.205%2064.907%20L923.472%2063.215%20L928.756%2061.545%20L934.054%2059.894%20L939.363%2058.255%20L944.680%2056.625%20L950.000%2055.000%22%20fill%3D%22none%22%20stroke-dasharray%3D%226%206%22%2F%3E%3Cpath%20d%3D%22M696.127%20232.925%20L723.873%20267.075%20M742.890%20167.884%20L761.438%20190.712%20M799.519%20114.985%20L810.033%20127.925%20M870.172%2079.346%20L874.156%2084.250%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M710%20250%20L950%2055%22%20stroke%3D%22%23718391%22%20stroke-dasharray%3D%223%207%22%20fill%3D%22none%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22710%22%20cy%3D%22250%22%20r%3D%225%22%20fill%3D%22%23293f51%22%2F%3E%3Ccircle%20cx%3D%22950%22%20cy%3D%2255%22%20r%3D%225%22%20fill%3D%22%23293f51%22%2F%3E%0A%3C%2Fsvg%3E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="20" y="130" width="1100" height="300" />
+        </mxCell>
+        <mxCell id="bodylabel" value="몸체 B" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="60" y="385" width="140" height="30" />
+        </mxCell>
+        <mxCell id="shelllabel" value="바깥쪽일수록 낮은 coverage" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="60" y="130" width="420" height="30" />
+        </mxCell>
+        <mxCell id="height" value="h_j" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="490" y="305" width="60" height="30" />
+        </mxCell>
+        <mxCell id="height-arrow" value="" style="edgeStyle=none;html=1;endArrow=block;strokeColor=#516479;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="480" y="375" />
+            <mxPoint as="targetPoint" x="480" y="267" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="root" value="Rᵥ · 뿌리" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="605" y="405" width="130" height="30" />
+        </mxCell>
+        <mxCell id="tip" value="Tᵥ · 끝" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="990" y="155" width="100" height="30" />
+        </mxCell>
+        <mxCell id="across" value="A · 화면 폭 방향" style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=17;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="875" y="300" width="230" height="30" />
+        </mxCell>
+        <mxCell id="across-arrow" value="" style="edgeStyle=none;html=1;endArrow=block;strokeColor=#516479;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="824.7762949962214" y="251.45543999534937" />
+            <mxPoint as="targetPoint" x="862.6118525018893" y="298.0222800023253" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="shell-note" value="설명용 5겹. h_j는 몸체에서 셸까지의 거리." style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="20" y="455" width="520" height="45" />
+        </mxCell>
+        <mxCell id="ribbon-note" value="점선: 뿌리–끝 축. 폭은 끝으로 갈수록 0." style="whiteSpace=wrap;html=1;fontFamily=Arial;fontSize=17;text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="590" y="455" width="520" height="45" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
