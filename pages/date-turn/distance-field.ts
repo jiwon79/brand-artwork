@@ -57,14 +57,17 @@ export function signedDistance(mask: Uint8Array, width: number, height: number):
   });
 }
 
-/** RG stores a 16-bit distance in an ordinary filterable RGBA8 texture. */
-export function encodeDistance(distances: Float32Array, pixelSize: number, range: number): Uint8Array<ArrayBuffer> {
+/** RG stores the glyph distance; BA stores its filled housing distance. */
+export function encodeDistance(distances: Float32Array, pixelSize: number, range: number, housing: Float32Array = distances): Uint8Array<ArrayBuffer> {
+  if (housing.length !== distances.length) throw new Error('Distance field dimensions must match');
   const encoded = new Uint8Array(distances.length * 4);
   distances.forEach((distance, index) => {
     const value = Math.round(Math.max(0, Math.min(1, distance * pixelSize / (2 * range) + 0.5)) * 65535);
+    const body = Math.round(Math.max(0, Math.min(1, housing[index] * pixelSize / (2 * range) + 0.5)) * 65535);
     encoded[index * 4] = value >>> 8;
     encoded[index * 4 + 1] = value & 255;
-    encoded[index * 4 + 3] = 255;
+    encoded[index * 4 + 2] = body >>> 8;
+    encoded[index * 4 + 3] = body & 255;
   });
   return encoded;
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { encodeDistance, signedDistance } from './distance-field';
+import { housingMask } from './housing-mask';
 
 export const FIELD_SPAN = 4.6;
 const RESOLUTION = 768;
@@ -37,7 +38,8 @@ export function createGlyphTexture(text: string, fontFamily = 'Arial Black'): TH
   for (let y = 0; y < RESOLUTION; y++) for (let x = 0; x < RESOLUTION; x++) {
     mask[(RESOLUTION - 1 - y) * RESOLUTION + x] = rgba[(y * RESOLUTION + x) * 4 + 3] >= 128 ? 1 : 0;
   }
-  const data = encodeDistance(signedDistance(mask, RESOLUTION, RESOLUTION), FIELD_SPAN / RESOLUTION, FIELD_SPAN);
+  const body = signedDistance(housingMask(mask, RESOLUTION, RESOLUTION), RESOLUTION, RESOLUTION);
+  const data = encodeDistance(signedDistance(mask, RESOLUTION, RESOLUTION), FIELD_SPAN / RESOLUTION, FIELD_SPAN, body);
   const texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat);
   texture.minFilter = texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;

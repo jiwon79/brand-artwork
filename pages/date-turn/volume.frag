@@ -16,20 +16,25 @@ uniform vec3 inkInset;
 
 const float ROOT3 = 1.73205080757;
 
-float field(sampler2D source, vec2 point) {
+float smoothUnion(float a, float b, float radius) {
+  float blend = max(radius - abs(a - b), 0.0) / radius;
+  return min(a, b) - blend * blend * radius * 0.25;
+}
+
+vec2 field(sampler2D source, vec2 point) {
   vec2 uv = point / fieldSpan + 0.5;
   vec2 outside = max(abs(point) - fieldSpan * 0.5, 0.0);
-  vec2 encoded = texture2D(source, clamp(uv, 0.0, 1.0)).rg;
-  float distance = ((encoded.r * 65280.0 + encoded.g * 255.0) / 65535.0 - 0.5) * 2.0 * fieldSpan;
+  vec4 encoded = texture2D(source, clamp(uv, 0.0, 1.0));
+  vec2 distance = ((encoded.rb * 65280.0 + encoded.ga * 255.0) / 65535.0 - 0.5) * 2.0 * fieldSpan;
   return distance + length(outside);
 }
 
-vec3 glyphDistances(vec3 p) {
-  return vec3(
-    field(face0, p.xy),
-    field(face1, vec2(p.x, -0.5 * p.y - 0.8660254 * p.z)),
-    field(face2, vec2(p.x, -0.5 * p.y + 0.8660254 * p.z))
-  );
+void numeralFields(vec3 p, out vec3 glyph, out vec3 body) {
+  vec2 a = field(face0, p.xy);
+  vec2 b = field(face1, vec2(p.x, -0.5 * p.y - 0.8660254 * p.z));
+  vec2 c = field(face2, vec2(p.x, -0.5 * p.y + 0.8660254 * p.z));
+  glyph = vec3(a.x, b.x, c.x);
+  body = vec3(a.y, b.y, c.y);
 }
 
 float radiusAt(float x) {
@@ -37,7 +42,7 @@ float radiusAt(float x) {
   float local = min(abs(x - 0.64), abs(x + 0.64)) / 0.86;
   float radius = apothem * sqrt(max(0.0, 1.0 - local * local));
   float bridge = 0.53 * (1.0 - smoothstep(0.32, 0.46, abs(x)));
-  return max(radius, bridge);
+  return bridge > 0.0 ? -smoothUnion(-radius, -bridge, 0.05) : radius;
 }
 
 vec3 planes(vec3 p) {
@@ -45,18 +50,22 @@ vec3 planes(vec3 p) {
 }
 
 float volume(vec3 p) {
-  vec3 glyph = glyphDistances(p);
+  vec3 glyph, bodyField;
+  numeralFields(p, glyph, bodyField);
   vec3 clip = planes(p);
   float radial = radiusAt(p.x);
   vec3 housing = clip + apothem - radial;
-  float numerals = min(glyph.x, min(glyph.y, glyph.z));
+  // Closed counters belong to the ink, not the shared wall between faces.
+  float numerals = smoothUnion(smoothUnion(bodyField.x, bodyField.y, 0.16), bodyField.z, 0.16);
   float body = max(numerals - padding, max(housing.x, max(housing.y, housing.z)) * 0.35);
   // Flat numeral caps keep the type undistorted. Their supports meet the rounded body.
   float thickness = apothem - radial + 0.06;
   vec3 slabs = max(clip, -clip - thickness);
   vec3 letters = max(glyph, slabs * 0.35);
   float supports = max(min(letters.x, min(letters.y, letters.z)), max(clip.x, max(clip.y, clip.z)));
-  return min(body, supports);
+  // Fillet only the joins, then restore the flat face planes for crisp numeral caps.
+  float joined = smoothUnion(body, supports, 0.08);
+  return max(joined, max(clip.x, max(clip.y, clip.z)) * 0.35);
 }
 
 vec2 boxHit(vec3 origin, vec3 direction) {
@@ -89,7 +98,9 @@ void main() {
   }
   if (!found) { gl_FragColor = vec4(0.0); return; }
   vec3 clip = planes(hit);
-  vec3 glyph = glyphDistances(hit) + inkInset;
+  vec3 glyph, bodyField;
+  numeralFields(hit, glyph, bodyField);
+  glyph += inkInset;
   float ink = 0.0;
   if (clip.x > -0.004 && direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.x));
   if (clip.y > -0.004 && 0.8660254 * direction.y - 0.5 * direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.y));
