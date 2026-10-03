@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import * as THREE from 'three';
-import { createField, DiceReveal, faceOrientation, TURN_DURATION } from './field';
+import { createField, DiceReveal, faceOrientation } from './field';
 import { sampleLetter } from './letter';
 
 test('portrait and landscape fields fill the camera with an extra boundary row', () => {
@@ -70,7 +70,7 @@ test('arrival and final pose are continuous and reduced motion settles immediate
   const a = new THREE.Object3D();
   const b = new THREE.Object3D();
   reveal.begin(0, 0, 0);
-  for (const t of [reveal.states[100].arrival, reveal.states[100].arrival + TURN_DURATION]) {
+  for (const t of [reveal.states[100].arrival, reveal.states[100].finish]) {
     reveal.pose(100, t - 0.00001, a);
     reveal.pose(100, t + 0.00001, b);
     expect(a.quaternion.angleTo(b.quaternion)).toBeLessThan(0.001);
@@ -78,6 +78,48 @@ test('arrival and final pose are continuous and reduced motion settles immediate
   reveal.begin(0, 0, 50, true);
   expect(reveal.pose(100, 50, a)).toBeCloseTo(1, 10);
   expect(a.quaternion.angleTo(reveal.states[100].target)).toBeLessThan(1e-7);
+});
+
+test('dice settle individually from the drag origin while the rest keep rotating', () => {
+  for (const width of [8, 28.3]) {
+    const reveal = new DiceReveal(createField(width), width, 18);
+    reveal.begin(0, 0, 0);
+    const queue = [...reveal.states].sort((a, b) => a.finish - b.finish);
+    const target = new THREE.Object3D();
+    const turning = new THREE.Object3D();
+    for (let index = 1; index < queue.length; index++) {
+      expect(queue[index].finish - queue[index - 1].finish).toBeGreaterThanOrEqual(1 / 60 - 1e-10);
+      expect(queue[index].arrival).toBeGreaterThanOrEqual(queue[index - 1].arrival);
+    }
+    const last = queue[queue.length - 1];
+    expect(last.finish - queue[0].finish).toBeGreaterThanOrEqual(5.5 - 1e-10);
+
+    for (const fraction of [0.2, 0.5, 0.8]) {
+      const index = Math.floor(queue.length * fraction);
+      const time = (queue[index - 1].finish + queue[index].finish) / 2;
+      const lights = reveal.states.map((_, cellIndex) => reveal.pose(cellIndex, time, target));
+      expect(lights.filter(light => light === 1)).toHaveLength(index);
+      const lastIndex = reveal.states.indexOf(last);
+      expect(reveal.pose(lastIndex, time, target)).toBe(0);
+      reveal.pose(lastIndex, time + 0.1, turning);
+      expect(target.quaternion.angleTo(turning.quaternion)).toBeGreaterThan(0.1);
+    }
+  }
+});
+
+test('resizing preserves a partly settled wave instead of completing the whole letter', () => {
+  const before = new DiceReveal(createField(10), 10, 18);
+  before.begin(0, 0, 0);
+  const after = new DiceReveal(createField(12), 12, 18);
+  after.reframe(before, 6);
+  const target = new THREE.Object3D();
+  const light = after.states.map((_, index) => after.pose(index, 6, target));
+  expect(after.isMoving(6)).toBe(true);
+  expect(light.some(value => value === 1)).toBe(true);
+  expect(light.some(value => value === 0)).toBe(true);
+  after.reframe(before, 20);
+  expect(after.isMoving(20)).toBe(false);
+  expect(after.states.every((_, index) => after.pose(index, 20, target) === 1)).toBe(true);
 });
 
 test('luminance selects fewer pips at letter boundaries and six in the stroke', () => {

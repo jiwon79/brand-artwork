@@ -4,6 +4,10 @@ import { sampleLetter } from './letter';
 export type Cell = { x: number; y: number; seed: number; orientation: THREE.Quaternion };
 export const FIELD_HEIGHT = 18;
 export const TURN_DURATION = 3.15;
+export const SETTLE_DURATION = 0.85;
+const REVEAL_DURATION = 0.42;
+const SETTLE_SPAN = 5.5;
+const SPIN_RAMP = 0.3;
 const WAVE_DELAY = 0.115;
 const QUARTER_TURN = Math.PI / 2;
 
@@ -50,6 +54,21 @@ function smooth(value: number) {
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
+// Integral of smootherstep: speed ramps in and out, with a steady spin between.
+function rampIntegral(value: number) {
+  const t = THREE.MathUtils.clamp(value, 0, 1);
+  return t ** 6 - 3 * t ** 5 + 2.5 * t ** 4;
+}
+
+function spinProgress(local: number, duration: number) {
+  const travel = duration - (SPIN_RAMP + SETTLE_DURATION) / 2;
+  if (local <= SPIN_RAMP) return SPIN_RAMP * rampIntegral(local / SPIN_RAMP) / travel;
+  if (local >= duration - SETTLE_DURATION) {
+    return 1 - SETTLE_DURATION * rampIntegral((duration - local) / SETTLE_DURATION) / travel;
+  }
+  return (local - SPIN_RAMP / 2) / travel;
+}
+
 type RevealCell = {
   cell: Cell;
   luminance: number;
@@ -58,6 +77,7 @@ type RevealCell = {
   from: THREE.Quaternion;
   fromReveal: number;
   arrival: number;
+  finish: number;
   axis: THREE.Vector3;
 };
 
@@ -68,14 +88,14 @@ export class DiceReveal {
   private spin = new THREE.Quaternion();
   private scratch = new THREE.Object3D();
 
-  constructor(cells: Cell[], width: number, height: number) {
+  constructor(cells: Cell[], private width: number, private height: number) {
     this.states = cells.map(cell => {
       const sample = sampleLetter(cell.x, cell.y, width, height);
       const direction = cell.seed < 0.5 ? -1 : 1;
       return {
         cell, ...sample,
         target: faceOrientation(sample.face, Math.floor(random(cell.seed + 9) * 4)),
-        from: cell.orientation.clone(), fromReveal: 0, arrival: Infinity,
+        from: cell.orientation.clone(), fromReveal: 0, arrival: Infinity, finish: Infinity,
         axis: random(cell.seed + 16) < 0.6
           ? new THREE.Vector3(direction, 0, 0) : new THREE.Vector3(0, direction, 0),
       };
@@ -89,7 +109,19 @@ export class DiceReveal {
       state.from.copy(this.scratch.quaternion);
       state.fromReveal = reveal;
       state.arrival = instant ? time - TURN_DURATION : time + Math.hypot(state.cell.x - x, state.cell.y - y) * WAVE_DELAY;
+      state.finish = time;
     });
+    if (!instant) {
+      // A dedicated finish slot per die makes the letter accumulate piece by
+      // piece, including dice at the same distance from the pointer.
+      const queue = [...this.states].sort((a, b) => a.arrival - b.arrival || a.cell.seed - b.cell.seed);
+      const gap = Math.max(1 / 60, SETTLE_SPAN / Math.max(1, queue.length - 1));
+      let previous = time + TURN_DURATION - gap;
+      queue.forEach(state => {
+        state.finish = Math.max(state.arrival + TURN_DURATION, previous + gap);
+        previous = state.finish;
+      });
+    }
     this.active = true;
   }
 
@@ -109,11 +141,37 @@ export class DiceReveal {
       state.from.copy(state.cell.orientation);
       state.fromReveal = 0;
       state.arrival = Infinity;
+      state.finish = Infinity;
     });
   }
 
   isMoving(time: number) {
-    return this.active && this.states.some(state => time < state.arrival + TURN_DURATION);
+    return this.active && this.states.some(state => time < state.finish);
+  }
+
+  /** Resizing must not force an in-progress wall straight to the finished J. */
+  reframe(previous: DiceReveal, time: number) {
+    if (!previous.active) return;
+    if (!previous.isMoving(time)) {
+      this.begin(0, 0, time, true);
+      return;
+    }
+    this.active = true;
+    this.states.forEach(state => {
+      const x = state.cell.x / this.width * previous.width;
+      const y = state.cell.y / this.height * previous.height;
+      let nearest = previous.states[0];
+      let distance = Infinity;
+      for (const candidate of previous.states) {
+        const next = (candidate.cell.x - x) ** 2 + (candidate.cell.y - y) ** 2;
+        if (next < distance) { nearest = candidate; distance = next; }
+      }
+      state.from.copy(nearest.from);
+      state.fromReveal = nearest.fromReveal;
+      state.arrival = nearest.arrival;
+      state.finish = nearest.finish;
+      state.axis.copy(nearest.axis);
+    });
   }
 
   pose(index: number, time: number, target: THREE.Object3D) {
@@ -122,11 +180,14 @@ export class DiceReveal {
     let reveal = state.fromReveal;
     target.quaternion.copy(state.from);
     if (local > 0) {
-      const progress = smooth(local / TURN_DURATION);
-      target.quaternion.slerp(state.target, progress);
-      this.spin.setFromAxisAngle(state.axis, Math.PI * 4 * progress);
+      const duration = state.finish - state.arrival;
+      const progress = spinProgress(local, duration);
+      const turns = Math.max(2, Math.round(duration / 1.6));
+      const settling = smooth((time - state.finish + SETTLE_DURATION) / SETTLE_DURATION);
+      target.quaternion.slerp(state.target, settling);
+      this.spin.setFromAxisAngle(state.axis, Math.PI * 2 * turns * progress);
       target.quaternion.premultiply(this.spin);
-      const forming = smooth((local - TURN_DURATION * 0.65) / (TURN_DURATION * 0.35));
+      const forming = smooth((time - state.finish + REVEAL_DURATION) / REVEAL_DURATION);
       reveal = state.fromReveal * (1 - smooth(local / 0.45)) + forming;
     }
     target.position.set(state.cell.x, state.cell.y, 0);

@@ -176,9 +176,9 @@ function start() {
   function rebuild() {
     meshes.forEach(mesh => { scene.remove(mesh); mesh.dispose(); });
     cells = createField(width, height);
-    const wasRevealing = reveal?.active;
+    const previousReveal = reveal;
     reveal = new DiceReveal(cells, width, height);
-    if (wasRevealing) reveal.begin(0, 0, time, true);
+    if (previousReveal) reveal.reframe(previousReveal, time);
     const seeds = new Float32Array(cells.map(cell => cell.seed));
     geometry.lights.dispose();
     geometry.lights.setAttribute('cellSeed', new THREE.InstancedBufferAttribute(seeds, 1));
