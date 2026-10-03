@@ -15,6 +15,8 @@ uniform vec3 sideColor;
 uniform vec3 inkInset;
 
 const float ROOT3 = 1.73205080757;
+const float LOBE_OFFSET = 0.64;
+const float LOBE_RADIUS = 0.86;
 
 float smoothUnion(float a, float b, float radius) {
   float blend = max(radius - abs(a - b), 0.0) / radius;
@@ -39,7 +41,7 @@ void numeralFields(vec3 p, out vec3 glyph, out vec3 body) {
 
 float radiusAt(float x) {
   // Rounded numeral lobes soften the housing while keeping a single 3D volume.
-  float local = min(abs(x - 0.64), abs(x + 0.64)) / 0.86;
+  float local = min(abs(x - LOBE_OFFSET), abs(x + LOBE_OFFSET)) / LOBE_RADIUS;
   float radius = apothem * sqrt(max(0.0, 1.0 - local * local));
   float bridge = 0.53 * (1.0 - smoothstep(0.32, 0.46, abs(x)));
   return bridge > 0.0 ? -smoothUnion(-radius, -bridge, 0.05) : radius;
@@ -55,9 +57,11 @@ float volume(vec3 p) {
   vec3 clip = planes(p);
   float radial = radiusAt(p.x);
   vec3 housing = clip + apothem - radial;
+  // A zero radius still leaves a surface on the x axis; close it at the lobe ends.
+  float housingDistance = max(max(housing.x, max(housing.y, housing.z)), abs(p.x) - (LOBE_OFFSET + LOBE_RADIUS));
   // Closed counters belong to the ink, not the shared wall between faces.
   float numerals = smoothUnion(smoothUnion(bodyField.x, bodyField.y, 0.16), bodyField.z, 0.16);
-  float body = max(numerals - padding, max(housing.x, max(housing.y, housing.z)) * 0.35);
+  float body = max(numerals - padding, housingDistance * 0.35);
   // Flat numeral caps keep the type undistorted. Their supports meet the rounded body.
   float thickness = apothem - radial + 0.06;
   vec3 slabs = max(clip, -clip - thickness);
