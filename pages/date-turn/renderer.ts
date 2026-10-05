@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { FIELD_SPAN, createGlyphTexture } from './glyph-texture';
+import { FIELD_SPAN, GLYPH_HEIGHT, GLYPH_MAX_WIDTH, createGlyphTexture } from './glyph-texture';
 import { inkInsets, motionPose, TRANSITION_DURATION } from './motion';
 import volumeFragment from './volume.frag?raw';
 import outlineFragment from './outline.frag?raw';
@@ -10,8 +10,8 @@ export const DEFAULTS = {
   first: '14', second: '09', third: '26', font: 'Arial Black', size: 1, sensitivity: 0.8, speed: 1,
   transition: TRANSITION_DURATION, sway: 32, tilt: 13, dragResponse: 0.065,
   playing: true, numberColor: '#0000ff', lineColor: '#0000ff', sideColor: '#ffffff',
-  background: '#fdfdfd', lineWidth: 2, padding: 0.12, bounce: 0.62,
-  inspectMode: 0, inspectPart: 0, inspectGlyphs: true, inspectHousing: true,
+  background: '#fdfdfd', lineWidth: 2, prismRadius: 0.32, prismLength: 2.7, extrusionDepth: 0.30, bounce: 0.62,
+  inspectMode: 0, inspectPart: 0, inspectGlyphs: true, inspectPrism: true,
   inspectGrid: true, inspectHidden: true, inspectZoom: 1.6,
 };
 export type Settings = typeof DEFAULTS;
@@ -28,7 +28,9 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     face0: { value: glyphs[0] }, face1: { value: glyphs[1] }, face2: { value: glyphs[2] },
     inverseRotation: { value: new THREE.Matrix3() }, viewSize: { value: new THREE.Vector2() },
     objectScale: { value: settings.size }, bounce: { value: 0 }, apothem: { value: 0.67 },
-    padding: { value: settings.padding }, fieldSpan: { value: FIELD_SPAN },
+    prismRadius: { value: settings.prismRadius }, prismHalfLength: { value: settings.prismLength / 2 },
+    glyphScale: { value: new THREE.Vector2(1, 1) },
+    extrusionDepth: { value: settings.extrusionDepth }, fieldSpan: { value: FIELD_SPAN },
     inkInset: { value: new THREE.Vector3() },
     numberColor: { value: new THREE.Color(settings.numberColor) }, sideColor: { value: new THREE.Color(settings.sideColor) },
     inspectMode: { value: 0 }, inspectPart: { value: 0 },
@@ -69,7 +71,10 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     rotation.makeRotationFromEuler(euler).invert();
     uniforms.inverseRotation.value.setFromMatrix4(rotation);
     uniforms.bounce.value = inspecting ? -inspectionOffset : settings.bounce * pose.height;
-    const insets = inkInsets(time);
+    const heightScale = 2 * Math.sqrt(3) * settings.prismRadius / GLYPH_HEIGHT;
+    const widthScale = Math.min(heightScale, settings.prismLength / GLYPH_MAX_WIDTH);
+    uniforms.glyphScale.value.set(widthScale, heightScale);
+    const insets = inkInsets(time).map(value => value * Math.min(widthScale, heightScale));
     uniforms.inkInset.value.set(
       insets[0] * glyphs[0].userData.inkScale,
       insets[1] * glyphs[1].userData.inkScale,
@@ -79,9 +84,12 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     uniforms.inspectPixelWidth.value = uniforms.viewSize.value.y / source.height * pixelRatio * 0.85 / uniforms.objectScale.value;
     uniforms.inspectMode.value = settings.inspectMode;
     uniforms.inspectPart.value = settings.inspectPart;
-    uniforms.inspectLayers.value.set(Number(settings.inspectGlyphs), Number(settings.inspectHousing), Number(settings.inspectGrid), Number(settings.inspectHidden));
+    uniforms.inspectLayers.value.set(Number(settings.inspectGlyphs), Number(settings.inspectPrism), Number(settings.inspectGrid), Number(settings.inspectHidden));
     uniforms.inspectBackground.value.set(settings.background);
-    uniforms.padding.value = settings.padding;
+    uniforms.prismRadius.value = settings.prismRadius;
+    uniforms.prismHalfLength.value = settings.prismLength / 2;
+    uniforms.extrusionDepth.value = settings.extrusionDepth;
+    uniforms.apothem.value = settings.prismRadius + settings.extrusionDepth;
     uniforms.numberColor.value.set(settings.numberColor);
     uniforms.sideColor.value.set(settings.sideColor);
     outline.uniforms.lineColor.value.set(settings.lineColor);

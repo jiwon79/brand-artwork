@@ -8,8 +8,11 @@ uniform vec2 viewSize;
 uniform float objectScale;
 uniform float bounce;
 uniform float apothem;
-uniform float padding;
+uniform float prismRadius;
+uniform float prismHalfLength;
+uniform float extrusionDepth;
 uniform float fieldSpan;
+uniform vec2 glyphScale;
 uniform vec3 numberColor;
 uniform vec3 sideColor;
 uniform vec3 inkInset;
@@ -20,36 +23,19 @@ uniform vec3 inspectBackground;
 uniform float inspectPixelWidth;
 
 const float ROOT3 = 1.73205080757;
-const float LOBE_OFFSET = 0.64;
-const float LOBE_RADIUS = 0.86;
-
-float smoothUnion(float a, float b, float radius) {
-  float blend = max(radius - abs(a - b), 0.0) / radius;
-  return min(a, b) - blend * blend * radius * 0.25;
-}
-
-vec2 field(sampler2D source, vec2 point) {
+float field(sampler2D source, vec2 point) {
+  point /= glyphScale;
   vec2 uv = point / fieldSpan + 0.5;
   vec2 outside = max(abs(point) - fieldSpan * 0.5, 0.0);
   vec4 encoded = texture2D(source, clamp(uv, 0.0, 1.0));
-  vec2 distance = ((encoded.rb * 65280.0 + encoded.ga * 255.0) / 65535.0 - 0.5) * 2.0 * fieldSpan;
-  return distance + length(outside);
+  float distance = ((encoded.r * 65280.0 + encoded.g * 255.0) / 65535.0 - 0.5) * 2.0 * fieldSpan;
+  return (distance + length(outside)) * min(glyphScale.x, glyphScale.y);
 }
 
-void numeralFields(vec3 p, out vec3 glyph, out vec3 body) {
-  vec2 a = field(face0, p.xy);
-  vec2 b = field(face1, vec2(p.x, -0.5 * p.y - 0.8660254 * p.z));
-  vec2 c = field(face2, vec2(p.x, -0.5 * p.y + 0.8660254 * p.z));
-  glyph = vec3(a.x, b.x, c.x);
-  body = vec3(a.y, b.y, c.y);
-}
-
-float radiusAt(float x) {
-  // Rounded numeral lobes soften the housing while keeping a single 3D volume.
-  float local = min(abs(x - LOBE_OFFSET), abs(x + LOBE_OFFSET)) / LOBE_RADIUS;
-  float radius = apothem * sqrt(max(0.0, 1.0 - local * local));
-  float bridge = 0.53 * (1.0 - smoothstep(0.32, 0.46, abs(x)));
-  return bridge > 0.0 ? -smoothUnion(-radius, -bridge, 0.05) : radius;
+vec3 numeralFields(vec3 p) {
+  return vec3(field(face0, p.xy),
+    field(face1, vec2(p.x, -0.5 * p.y - 0.8660254 * p.z)),
+    field(face2, vec2(p.x, -0.5 * p.y + 0.8660254 * p.z)));
 }
 
 vec3 planes(vec3 p) {
@@ -57,60 +43,53 @@ vec3 planes(vec3 p) {
 }
 
 float volume(vec3 p) {
-  vec3 glyph, bodyField;
-  numeralFields(p, glyph, bodyField);
-  vec3 clip = planes(p);
-  float radial = radiusAt(p.x);
-  vec3 housing = clip + apothem - radial;
-  // A zero radius still leaves a surface on the x axis; close it at the lobe ends.
-  float housingDistance = max(max(housing.x, max(housing.y, housing.z)), abs(p.x) - (LOBE_OFFSET + LOBE_RADIUS));
-  // Closed counters belong to the ink, not the shared wall between faces.
-  float numerals = smoothUnion(smoothUnion(bodyField.x, bodyField.y, 0.16), bodyField.z, 0.16);
-  float body = max(numerals - padding, housingDistance * 0.35);
-  // Flat numeral caps keep the type undistorted. Their supports meet the rounded body.
-  float thickness = apothem - radial + 0.06;
-  vec3 slabs = max(clip, -clip - thickness);
-  vec3 letters = max(glyph, slabs * 0.35);
-  float supports = max(min(letters.x, min(letters.y, letters.z)), max(clip.x, max(clip.y, clip.z)));
-  // Fillet only the joins, then restore the flat face planes for crisp numeral caps.
-  float joined = smoothUnion(body, supports, 0.08);
-  if (inspectMode > 0.0 && inspectPart > 0.5) joined = inspectPart < 1.5 ? body : supports;
-  return max(joined, max(clip.x, max(clip.y, clip.z)) * 0.35);
+  vec3 glyph = numeralFields(p);
+  vec3 fromBase = planes(p) + extrusionDepth;
+  // One finite regular triangular prism. Its three side normals have unit length.
+  float prism = max(abs(p.x) - prismHalfLength, max(fromBase.x, max(fromBase.y, fromBase.z)));
+  // Each raw glyph is swept from its base plane to its tip plane, along that face normal.
+  // No rounded envelope, counter filling, face clipping, or smooth union is applied.
+  vec3 slabs = max(-fromBase, fromBase - extrusionDepth);
+  vec3 numerals = max(glyph, slabs);
+  float extrusions = min(numerals.x, min(numerals.y, numerals.z));
+  if (inspectMode > 0.0 && inspectPart > 0.5) return inspectPart < 1.5 ? prism : extrusions;
+  return min(prism, extrusions);
 }
 
 vec3 surfaceNormal(vec3 p) {
-  vec2 d = vec2(0.002, 0.0);
+  // Estimate over roughly two field texels; this only shades, never rounds the geometry.
+  vec2 d = vec2(fieldSpan * min(glyphScale.x, glyphScale.y) / 384.0, 0.0);
   vec3 gradient = vec3(volume(p + d.xyy) - volume(p - d.xyy),
     volume(p + d.yxy) - volume(p - d.yxy), volume(p + d.yyx) - volume(p - d.yyx));
   return gradient / max(length(gradient), 0.000001);
 }
 
-// These are contours of the same sampled fields used by the solid, on its three actual planes.
-// The dashed contour is an input field offset, not the final 3D silhouette or a polygon mesh.
+// Solid contours lie on the extruded tips; dashed rectangles lie on the prism's base faces.
 vec4 inspectFace(sampler2D source, vec3 origin, vec3 direction, vec3 normal, vec3 tangent,
   vec3 color, float hitTravel, float pixelWidth) {
   float facing = dot(normal, direction);
   if (abs(facing) < 0.0001) return vec4(0.0);
   float travel = (apothem - dot(normal, origin)) / facing;
-  if (travel < 0.0) return vec4(0.0);
+  float baseTravel = (prismRadius - dot(normal, origin)) / facing;
+  if (travel < 0.0 || baseTravel < 0.0) return vec4(0.0);
   vec3 p = origin + direction * travel;
+  vec3 base = origin + direction * baseTravel;
   vec2 uv = vec2(p.x, dot(tangent, p));
-  if (abs(uv.x) > 1.65 || abs(uv.y) > 1.12) return vec4(0.0);
-  float hidden = travel > hitTravel + 0.018 ? 1.0 : 0.0;
-  float visibility = hidden > 0.5 ? inspectLayers.w * 0.3 : 1.0;
-  vec2 distances = field(source, uv);
+  vec2 baseUv = vec2(base.x, dot(tangent, base));
   float width = pixelWidth / max(abs(facing), 0.2);
-  float glyphLine = 1.0 - smoothstep(width, width * 2.0, abs(distances.x));
-  float dash = step(0.38, fract((uv.x + uv.y) * 13.0));
-  float bodyLine = (1.0 - smoothstep(width, width * 2.0, abs(distances.y - padding))) * dash;
-  vec2 gridDistance = abs(fract(uv / 0.25 + 0.5) - 0.5) * 0.25;
-  float grid = 1.0 - smoothstep(width * 0.5, width, min(gridDistance.x, gridDistance.y));
-  float borderDistance = min(abs(abs(uv.x) - 1.6), abs(abs(uv.y) - 1.06));
-  float border = 1.0 - smoothstep(width, width * 2.0, borderDistance);
-  float line = max(glyphLine * inspectLayers.x, bodyLine * inspectLayers.y);
-  float frame = max(grid * 0.13, border * 0.4) * inspectLayers.z;
-  float fill = (1.0 - smoothstep(-width, width, distances.x)) * inspectLayers.x * 0.06;
-  return vec4(color, max(line, max(frame, fill)) * visibility);
+  float visibility = travel > hitTravel + 0.018 ? inspectLayers.w * 0.3 : 1.0;
+  float baseVisibility = baseTravel > hitTravel + 0.018 ? inspectLayers.w * 0.3 : 1.0;
+  float glyph = field(source, uv);
+  float glyphLine = (1.0 - smoothstep(width, width * 2.0, abs(glyph))) * inspectLayers.x * visibility;
+  vec2 q = abs(baseUv) - vec2(prismHalfLength, ROOT3 * prismRadius);
+  float rectangle = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+  float dash = step(0.38, fract((baseUv.x + baseUv.y) * 13.0));
+  float baseLine = (1.0 - smoothstep(width, width * 2.0, abs(rectangle))) * dash * inspectLayers.y * baseVisibility;
+  vec2 gridDistance = abs(fract(baseUv / 0.25 + 0.5) - 0.5) * 0.25;
+  float grid = (1.0 - smoothstep(width * 0.5, width, min(gridDistance.x, gridDistance.y))) * step(rectangle, 0.0);
+  float frame = grid * 0.2 * inspectLayers.z * baseVisibility;
+  float fill = (1.0 - smoothstep(-width, width, glyph)) * inspectLayers.x * 0.06 * visibility;
+  return vec4(color, max(glyphLine, max(baseLine, max(frame, fill))));
 }
 
 void blendFace(inout vec3 color, vec4 face) {
@@ -125,8 +104,10 @@ float planeDepth(vec3 origin, vec3 direction, vec3 normal) {
 }
 
 vec2 boxHit(vec3 origin, vec3 direction) {
-  vec3 low = vec3(-fieldSpan * 0.5, -ROOT3 * apothem, -2.0 * apothem);
-  vec3 high = vec3(fieldSpan * 0.5, ROOT3 * apothem, apothem);
+  float extent = max(2.0 * prismRadius, apothem + fieldSpan * glyphScale.y * 0.5);
+  float halfLength = max(prismHalfLength, fieldSpan * glyphScale.x * 0.5);
+  vec3 low = vec3(-halfLength, -extent, -extent);
+  vec3 high = -low;
   vec3 inverse = 1.0 / (direction + vec3(0.0000001));
   vec3 a = (low - origin) * inverse;
   vec3 b = (high - origin) * inverse;
@@ -188,12 +169,11 @@ void main() {
     return;
   }
   vec3 clip = planes(hit);
-  vec3 glyph, bodyField;
-  numeralFields(hit, glyph, bodyField);
+  vec3 glyph = numeralFields(hit);
   glyph += inkInset;
   float ink = 0.0;
-  if (clip.x > -0.004 && direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.x));
-  if (clip.y > -0.004 && 0.8660254 * direction.y - 0.5 * direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.y));
-  if (clip.z > -0.004 && -0.8660254 * direction.y - 0.5 * direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.z));
+  if (abs(clip.x) < 0.004 && direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.x));
+  if (abs(clip.y) < 0.004 && 0.8660254 * direction.y - 0.5 * direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.y));
+  if (abs(clip.z) < 0.004 && -0.8660254 * direction.y - 0.5 * direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.z));
   gl_FragColor = vec4(mix(sideColor, numberColor, ink), 1.0);
 }

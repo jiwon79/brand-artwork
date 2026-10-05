@@ -105,7 +105,7 @@ async function start() {
     inspectMode.value = String(mode || 1);
     document.querySelector<HTMLElement>('#inspect-explanation')!.textContent = mode === 2
       ? '표면 방향을 RGB로 표시합니다. R: X · G: Y · B: Z'
-      : mode === 3 ? '각 숫자의 입력 경계를 실제 세 면의 위치에서 봅니다.' : '최종 거리장 표면에 음영을 계산합니다.';
+      : mode === 3 ? '숫자 끝면과 삼각기둥의 경계를 실제 위치에서 봅니다.' : '최종 거리장 표면에 음영을 계산합니다.';
     gui.controllersRecursive().forEach(control => control.updateDisplay());
     invalidate();
   }
@@ -115,7 +115,7 @@ async function start() {
   inspection.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(button => {
     button.addEventListener('click', () => inspectView(button.dataset.view!), options);
   });
-  const layerKeys = ['inspectGlyphs', 'inspectHousing', 'inspectGrid', 'inspectHidden'] as const;
+  const layerKeys = ['inspectGlyphs', 'inspectPrism', 'inspectGrid', 'inspectHidden'] as const;
   inspection.querySelectorAll<HTMLInputElement>('[data-layer]').forEach(input => {
     input.addEventListener('change', () => {
       const key = layerKeys.find(key => key === input.dataset.layer)!;
@@ -158,7 +158,10 @@ async function start() {
   colors.addColor(settings, 'sideColor').name('입체 옆면').onChange(invalidate);
   colors.addColor(settings, 'background').name('배경').onChange(invalidate);
   colors.add(settings, 'lineWidth', 0, 5, 0.1).name('선 두께').onChange(invalidate);
-  colors.add(settings, 'padding', 0, 0.18, 0.005).name('숫자 둘레 여백').onChange(invalidate);
+  const model = gui.addFolder('삼각기둥 · 숫자 돌출');
+  model.add(settings, 'prismRadius', 0.15, 0.65, 0.01).name('기둥 중심에서 면까지').onChange(invalidate);
+  model.add(settings, 'prismLength', 1, 3.4, 0.05).name('기둥 길이').onChange(invalidate);
+  model.add(settings, 'extrusionDepth', 0.02, 0.65, 0.01).name('숫자 돌출 깊이').onChange(invalidate);
   const debug = gui.addFolder('3D 디버그');
   debug.add(settings, 'inspectZoom', 0.5, 3, 0.05).name('디버그 확대').onChange(invalidate);
   const actions = {
