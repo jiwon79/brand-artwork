@@ -8,3 +8,8 @@ canvas:focus-visible { outline: 1px solid #8d8e92; outline-offset: -2px; }
 .status[hidden] { display: none; }
 .lil-gui { --background-color: #171719; --widget-color: #29292d; --focus-color: #3d3d43; --font-size: 11px; }
 .lil-gui input { user-select: text; -webkit-user-select: text; }
+.controls-toggle { position: fixed; top: 14px; right: 16px; z-index: 1002; padding: 9px 13px; border: 1px solid #ffffff24; border-radius: 8px; background: #171719e8; color: #e5e5e7; font: inherit; font-size: 12px; cursor: pointer; }
+.controls-toggle:hover, .controls-toggle[aria-expanded="true"] { background: #29292de8; }
+.controls-toggle:focus-visible { outline: 2px solid #bfc0c4; outline-offset: 3px; }
+.lil-gui.root { top: 58px; right: 16px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 74px); }
+.lil-gui.root > .children { max-height: calc(100dvh - 100px); overflow-y: auto; }

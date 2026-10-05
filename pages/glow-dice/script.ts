@@ -6,7 +6,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
-import { exposeGuiInDebugMode } from '../../common/debug';
 import { createDiceGeometry } from './geometry';
 import { createField, DicePaint, FIELD_HEIGHT, random, type Cell } from './field';
 
@@ -64,6 +63,14 @@ const look = {
   light: 1.35,
   glow: 0.18,
   density: 1,
+  diceColor: '#56575a',
+  pipColor: '#fafaff',
+  backgroundColor: '#030304',
+  lightColor: '#f9faff',
+  softboxIntensity: 2.1,
+  keyIntensity: 0.22,
+  fillIntensity: 0.08,
+  ambientIntensity: 0.12,
 };
 
 function start() {
@@ -97,7 +104,8 @@ function start() {
   const fill = new THREE.DirectionalLight(0xe5e7f0, 0.08);
   fill.position.set(6, -3, 8);
   scene.add(fill);
-  scene.add(new THREE.AmbientLight(0xd9dbe4, 0.12));
+  const ambient = new THREE.AmbientLight(0xd9dbe4, look.ambientIntensity);
+  scene.add(ambient);
 
   const geometry = createDiceGeometry();
   const shellMaterial = new THREE.MeshPhysicalMaterial({
@@ -274,6 +282,7 @@ function start() {
     if ((event.target as HTMLElement)?.closest('.lil-gui')) return;
     if (event.code === 'Space') { event.preventDefault(); look.animate = !look.animate; dirty = true; }
     if (event.key.toLowerCase() === 'r') reset();
+    if (event.key.toLowerCase() === 'd' && !event.repeat) setGuiVisible(!guiVisible);
   }, { signal: events.signal });
   reducedMotion.addEventListener('change', () => {
     look.animate = !reducedMotion.matches;
@@ -288,19 +297,40 @@ function start() {
     status.textContent = '그래픽 연결이 끊겼습니다. 페이지를 새로고침해 주세요.';
   }, { signal: events.signal });
 
-  const gui = exposeGuiInDebugMode(new GUI({ title: 'Glow Dice' }));
+  const gui = new GUI({ title: 'Glow Dice', width: 280 });
+  gui.domElement.id = 'dice-controls';
+  const controlsToggle = document.querySelector<HTMLButtonElement>('.controls-toggle')!;
+  let guiVisible = true;
+  function setGuiVisible(visible: boolean) {
+    guiVisible = visible;
+    controlsToggle.setAttribute('aria-expanded', String(visible));
+    if (visible) gui.show(); else gui.hide();
+  }
+  controlsToggle.addEventListener('click', () => setGuiVisible(!guiVisible), { signal: events.signal });
+  const lighting = gui.addFolder('조명');
+  lighting.add(look, 'exposure', 0.2, 2.5, 0.01).name('노출').onChange(() => { renderer.toneMappingExposure = look.exposure; dirty = true; });
+  lighting.addColor(look, 'lightColor').name('조명 색').onChange(() => { softbox.color.set(look.lightColor); key.color.set(look.lightColor); dirty = true; });
+  lighting.add(look, 'softboxIntensity', 0, 6, 0.01).name('넓은 조명').onChange(() => { softbox.intensity = look.softboxIntensity; dirty = true; });
+  lighting.add(look, 'keyIntensity', 0, 2, 0.01).name('그림자 조명').onChange(() => { key.intensity = look.keyIntensity; dirty = true; });
+  lighting.add(look, 'fillIntensity', 0, 1, 0.01).name('보조 조명').onChange(() => { fill.intensity = look.fillIntensity; dirty = true; });
+  lighting.add(look, 'ambientIntensity', 0, 1, 0.01).name('전체 밝기').onChange(() => { ambient.intensity = look.ambientIntensity; dirty = true; });
+  const palette = gui.addFolder('색감');
+  palette.addColor(look, 'diceColor').name('주사위 색').onChange(() => { shellMaterial.color.set(look.diceColor); dirty = true; });
+  palette.addColor(look, 'pipColor').name('눈의 색').onChange(() => { lightMaterial.emissive.set(look.pipColor); dirty = true; });
+  palette.addColor(look, 'backgroundColor').name('배경 색').onChange(() => { backgroundMaterial.color.set(look.backgroundColor); renderer.setClearColor(look.backgroundColor); dirty = true; });
+  palette.add(look, 'light', 0, 3, 0.01).name('눈의 밝기').onChange(() => { uniforms.intensity.value = look.light; dirty = true; });
+  palette.add(look, 'glow', 0, 0.6, 0.01).name('빛 번짐').onChange(() => { bloom.strength = look.glow; dirty = true; });
   const motion = gui.addFolder('움직임');
   motion.add(look, 'animate').name('애니메이션').listen();
   motion.add(look, 'speed', 0.1, 2, 0.05).name('속도');
   motion.add(look, 'density', 0.6, 1.8, 0.05).name('주사위 크기').onFinishChange(resize);
   motion.add({ reset }, 'reset').name('처음으로');
-  const material = gui.addFolder('재질과 빛');
-  material.add(look, 'exposure', 0.4, 1.8, 0.01).name('노출').onChange(() => { renderer.toneMappingExposure = look.exposure; dirty = true; });
+  motion.close();
+  const material = gui.addFolder('재질');
   material.add(look, 'roughness', 0.1, 0.65, 0.01).name('표면 거칠기').onChange(() => { shellMaterial.roughness = look.roughness; dirty = true; });
   material.add(look, 'clearcoat', 0, 1, 0.01).name('코팅 반사').onChange(() => { shellMaterial.clearcoat = look.clearcoat; dirty = true; });
   material.add(look, 'environment', 0, 1.5, 0.01).name('주변 반사').onChange(() => { shellMaterial.envMapIntensity = look.environment; dirty = true; });
-  material.add(look, 'light', 0, 3, 0.01).name('눈의 밝기').onChange(() => { uniforms.intensity.value = look.light; dirty = true; });
-  material.add(look, 'glow', 0, 0.6, 0.01).name('빛 번짐').onChange(() => { bloom.strength = look.glow; dirty = true; });
+  material.close();
   gui.add({ save: () => {
     canvas.toBlob(blob => {
       if (!blob) return;
