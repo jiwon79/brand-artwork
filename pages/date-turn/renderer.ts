@@ -11,6 +11,8 @@ export const DEFAULTS = {
   transition: TRANSITION_DURATION, sway: 32, tilt: 13, dragResponse: 0.065,
   playing: true, numberColor: '#0000ff', lineColor: '#0000ff', sideColor: '#ffffff',
   background: '#fdfdfd', lineWidth: 2, padding: 0.12, bounce: 0.62,
+  inspectMode: 0, inspectPart: 0, inspectGlyphs: true, inspectHousing: true,
+  inspectGrid: true, inspectHidden: true, inspectZoom: 1.6,
 };
 export type Settings = typeof DEFAULTS;
 
@@ -29,6 +31,9 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     padding: { value: settings.padding }, fieldSpan: { value: FIELD_SPAN },
     inkInset: { value: new THREE.Vector3() },
     numberColor: { value: new THREE.Color(settings.numberColor) }, sideColor: { value: new THREE.Color(settings.sideColor) },
+    inspectMode: { value: 0 }, inspectPart: { value: 0 },
+    inspectPixelWidth: { value: 0.005 },
+    inspectLayers: { value: new THREE.Vector4() }, inspectBackground: { value: new THREE.Color(settings.background) },
   };
   const volume = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader: volumeFragment, depthTest: false, depthWrite: false });
   const outline = new THREE.ShaderMaterial({
@@ -52,28 +57,36 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
   const rotation = new THREE.Matrix4();
   const euler = new THREE.Euler();
   let pixelRatio = 1;
+  let inspectionOffset = 0;
+  let inspectionFit = 1;
 
   function draw(time: number, pitch: number, yaw: number) {
-    const pose = motionPose(time, settings.transition, settings.sway, settings.tilt);
+    const inspecting = settings.inspectMode > 0;
+    const pose = motionPose(time, settings.transition, inspecting ? 0 : settings.sway, inspecting ? 0 : settings.tilt);
     pose.pitch += pitch;
     pose.yaw += yaw;
     euler.set(pose.pitch, pose.yaw, pose.roll, 'ZYX');
     rotation.makeRotationFromEuler(euler).invert();
     uniforms.inverseRotation.value.setFromMatrix4(rotation);
-    uniforms.bounce.value = settings.bounce * pose.height;
+    uniforms.bounce.value = inspecting ? -inspectionOffset : settings.bounce * pose.height;
     const insets = inkInsets(time);
     uniforms.inkInset.value.set(
       insets[0] * glyphs[0].userData.inkScale,
       insets[1] * glyphs[1].userData.inkScale,
       insets[2] * glyphs[2].userData.inkScale,
     );
-    uniforms.objectScale.value = settings.size;
+    uniforms.objectScale.value = settings.size * (inspecting ? settings.inspectZoom * inspectionFit : 1);
+    uniforms.inspectPixelWidth.value = uniforms.viewSize.value.y / source.height * pixelRatio * 0.85 / uniforms.objectScale.value;
+    uniforms.inspectMode.value = settings.inspectMode;
+    uniforms.inspectPart.value = settings.inspectPart;
+    uniforms.inspectLayers.value.set(Number(settings.inspectGlyphs), Number(settings.inspectHousing), Number(settings.inspectGrid), Number(settings.inspectHidden));
+    uniforms.inspectBackground.value.set(settings.background);
     uniforms.padding.value = settings.padding;
     uniforms.numberColor.value.set(settings.numberColor);
     uniforms.sideColor.value.set(settings.sideColor);
     outline.uniforms.lineColor.value.set(settings.lineColor);
     outline.uniforms.backgroundColor.value.set(settings.background);
-    outline.uniforms.lineWidth.value = settings.lineWidth * pixelRatio;
+    outline.uniforms.lineWidth.value = inspecting ? 0 : settings.lineWidth * pixelRatio;
     plane.material = volume;
     renderer.setRenderTarget(source);
     renderer.render(scene, camera);
@@ -92,6 +105,8 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     renderer.setSize(width, height, false);
     const viewWidth = Math.max(5.2, width / height * 9.244);
     uniforms.viewSize.value.set(viewWidth, viewWidth * height / width);
+    inspectionOffset = width <= 640 ? uniforms.viewSize.value.y * 0.14 : 0;
+    inspectionFit = Math.min(1, viewWidth / 7);
     const renderWidth = Math.round(width * pixelRatio);
     const renderHeight = Math.round(height * pixelRatio);
     source.setSize(renderWidth, renderHeight);

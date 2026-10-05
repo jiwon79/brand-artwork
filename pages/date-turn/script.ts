@@ -8,6 +8,10 @@ const artwork = document.querySelector<HTMLElement>('#artwork')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!;
 const status = document.querySelector<HTMLElement>('#status')!;
 const toggle = document.querySelector<HTMLButtonElement>('#settings-toggle')!;
+const inspectToggle = document.querySelector<HTMLButtonElement>('#inspect-toggle')!;
+const inspection = document.querySelector<HTMLElement>('#inspection')!;
+const inspectMode = document.querySelector<HTMLSelectElement>('#inspect-mode')!;
+const inspectPart = document.querySelector<HTMLSelectElement>('#inspect-part')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const query = new URLSearchParams(location.search);
 
@@ -43,6 +47,12 @@ async function start() {
     artwork.dataset.dragRotation = `${pitch.toFixed(3)},${yaw.toFixed(3)}`;
     artwork.dataset.settling = String(isSettling());
     artwork.dataset.time = time.toFixed(3);
+    artwork.dataset.inspectMode = String(settings.inspectMode);
+    artwork.dataset.inspectPart = String(settings.inspectPart);
+    inspection.querySelectorAll<HTMLElement>('[data-face]').forEach((label, index) => {
+      const text = `${index + 1}면 · ${settings[numberKeys[index]]}`;
+      if (label.textContent !== text) label.textContent = text;
+    });
     artwork.setAttribute('aria-label', `Date Turn, ${settings.first}·${settings.second}·${settings.third} 입체 숫자`);
   }
   function tick(now: number) {
@@ -71,6 +81,48 @@ async function start() {
   }
   showPanel(panelVisible);
   toggle.addEventListener('click', () => showPanel(!panelVisible), options);
+  let previousView: { time: number; pitch: number; yaw: number; targetPitch: number; targetYaw: number; playing: boolean } | null = null;
+  function inspectView(view: string) {
+    settings.playing = false;
+    time = view === 'oblique' ? 0 : Number(view);
+    pitch = targetPitch = view === 'oblique' ? -0.45 : 0;
+    yaw = targetYaw = view === 'oblique' ? -0.55 : 0;
+    gui.controllersRecursive().forEach(control => control.updateDisplay());
+    invalidate();
+  }
+  function setInspection(mode: number) {
+    if (mode > 0 && settings.inspectMode === 0) {
+      previousView = { time, pitch, yaw, targetPitch, targetYaw, playing: settings.playing };
+      inspectView('oblique');
+    } else if (mode === 0 && previousView) {
+      ({ time, pitch, yaw, targetPitch, targetYaw } = previousView);
+      settings.playing = previousView.playing;
+      previousView = null;
+    }
+    settings.inspectMode = mode;
+    inspection.hidden = mode === 0;
+    inspectToggle.setAttribute('aria-expanded', String(mode > 0));
+    inspectMode.value = String(mode || 1);
+    document.querySelector<HTMLElement>('#inspect-explanation')!.textContent = mode === 2
+      ? '표면 방향을 RGB로 표시합니다. R: X · G: Y · B: Z'
+      : mode === 3 ? '각 숫자의 입력 경계를 실제 세 면의 위치에서 봅니다.' : '최종 거리장 표면에 음영을 계산합니다.';
+    gui.controllersRecursive().forEach(control => control.updateDisplay());
+    invalidate();
+  }
+  inspectToggle.addEventListener('click', () => setInspection(settings.inspectMode ? 0 : 1), options);
+  inspectMode.addEventListener('change', () => setInspection(Number(inspectMode.value)), options);
+  inspectPart.addEventListener('change', () => { settings.inspectPart = Number(inspectPart.value); invalidate(); }, options);
+  inspection.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(button => {
+    button.addEventListener('click', () => inspectView(button.dataset.view!), options);
+  });
+  const layerKeys = ['inspectGlyphs', 'inspectHousing', 'inspectGrid', 'inspectHidden'] as const;
+  inspection.querySelectorAll<HTMLInputElement>('[data-layer]').forEach(input => {
+    input.addEventListener('change', () => {
+      const key = layerKeys.find(key => key === input.dataset.layer)!;
+      settings[key] = input.checked;
+      invalidate();
+    }, options);
+  });
   const numbers = gui.addFolder('숫자');
   const committed = numberKeys.map(key => settings[key]);
   numbers.add(settings, 'font', { 'Arial Black': 'Arial Black', Arial: 'Arial', Pretendard: 'DateTurnNumerals' }).name('글꼴').onChange(() => {
@@ -107,9 +159,14 @@ async function start() {
   colors.addColor(settings, 'background').name('배경').onChange(invalidate);
   colors.add(settings, 'lineWidth', 0, 5, 0.1).name('선 두께').onChange(invalidate);
   colors.add(settings, 'padding', 0, 0.18, 0.005).name('숫자 둘레 여백').onChange(invalidate);
+  const debug = gui.addFolder('3D 디버그');
+  debug.add(settings, 'inspectZoom', 0.5, 3, 0.05).name('디버그 확대').onChange(invalidate);
   const actions = {
     reset() {
+      setInspection(0);
       Object.assign(settings, DEFAULTS, { playing: !reducedMotion.matches });
+      inspectPart.value = '0';
+      inspection.querySelectorAll<HTMLInputElement>('[data-layer]').forEach(input => { input.checked = true; });
       time = pitch = yaw = targetPitch = targetYaw = 0;
       numberKeys.forEach((key, index) => { committed[index] = settings[key]; render.updateNumber(index, settings[key]); });
       gui.controllersRecursive().forEach(control => control.updateDisplay());
@@ -183,6 +240,7 @@ async function start() {
   if (import.meta.hot) import.meta.hot.dispose(() => {
     disposed = true; cancelAnimationFrame(request); events.abort(); gui.destroy(); render.dispose();
   });
+  if (query.has('inspect')) setInspection(1);
   resize(); draw();
   artwork.classList.add('ready');
   artwork.dataset.renderer = 'webgl-volume';
