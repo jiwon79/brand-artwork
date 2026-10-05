@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
 import GUI from 'lil-gui';
+import { createStepper } from '../../common/stepper';
+import { ProcessView, PROCESS_STEPS, STAGE_DESCRIPTIONS, type ProcessStage } from './process-view';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -75,6 +77,12 @@ const look = {
 
 function start() {
   const events = new AbortController();
+  const processView = new ProcessView();
+  const description = document.createElement('p');
+  description.className = 'stage-description';
+  description.setAttribute('aria-live', 'polite');
+  document.querySelector('main')!.append(description);
+  let stage: ProcessStage = 'final';
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
   renderer.setClearColor(0x030304);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -133,6 +141,10 @@ function start() {
       ${shader.fragmentShader}`.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       totalEmissiveRadiance *= 1.15 * pow(vLuminance, 0.85) * vReveal * uIntensity;`);
   };
+
+  const neutralShell = new THREE.MeshMatcapMaterial({ color: 0x858a94 });
+  const neutralSocket = new THREE.MeshBasicMaterial({ color: 0x151922, side: THREE.DoubleSide });
+  const neutralPip = new THREE.MeshBasicMaterial({ color: 0xe1e5ee });
 
   const backgroundMaterial = new THREE.MeshStandardMaterial({ color: 0x030304, roughness: 1 });
   const backgroundGeometry = new THREE.PlaneGeometry(160, 80);
@@ -252,6 +264,7 @@ function start() {
     const seconds = Math.max((event.timeStamp - lastPointerTime) / 1000, 0.008);
     const weight = pointerMoved ? 0.45 : 1;
     velocity.lerp(new THREE.Vector2(dx / seconds, dy / seconds), weight);
+    processView.record(lastPointer, point, velocity, width, height);
     paint.paint(lastPointer, point, time, velocity, reducedMotion.matches || !look.animate);
     lastPointer.set(point.x, point.y);
     lastPointerTime = event.timeStamp;
@@ -267,6 +280,7 @@ function start() {
     if (event.pointerId !== activePointer) return;
     drawSample(event);
     if (!pointerMoved) {
+      processView.record(lastPointer, lastPointer, { x: 0, y: 0 }, width, height);
       paint.paint(lastPointer, lastPointer, time, { x: 0, y: 0 }, reducedMotion.matches || !look.animate);
       dirty = true;
     }
@@ -277,7 +291,7 @@ function start() {
   };
   canvas.addEventListener('pointercancel', releasePointer, { signal: events.signal });
   canvas.addEventListener('lostpointercapture', releasePointer, { signal: events.signal });
-  function reset() { time = 0; paint.reset(); activePointer = undefined; dirty = true; }
+  function reset() { time = 0; paint.reset(); processView.reset(); activePointer = undefined; dirty = true; }
   window.addEventListener('keydown', event => {
     if ((event.target as HTMLElement)?.closest('.lil-gui')) return;
     if (event.code === 'Space') { event.preventDefault(); look.animate = !look.animate; dirty = true; }
@@ -332,7 +346,8 @@ function start() {
   material.add(look, 'environment', 0, 1.5, 0.01).name('주변 반사').onChange(() => { shellMaterial.envMapIntensity = look.environment; dirty = true; });
   material.close();
   gui.add({ save: () => {
-    canvas.toBlob(blob => {
+    const imageCanvas = processView.canvas.hidden ? canvas : processView.canvas;
+    imageCanvas.toBlob(blob => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -343,6 +358,17 @@ function start() {
     }, 'image/png');
   } }, 'save').name('이미지 저장');
 
+  const stepper = createStepper({
+    steps: PROCESS_STEPS,
+    initialStep: 'final',
+    ariaLabel: '주사위 렌더링 단계',
+    onChange: next => {
+      stage = next;
+      description.textContent = STAGE_DESCRIPTIONS[stage];
+      canvas.setAttribute('aria-label', `${STAGE_DESCRIPTIONS[stage]}. 드래그로 그리기, R로 지우기, Space로 일시 정지, 1–5로 단계 선택.`);
+      dirty = true;
+    },
+  });
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
   resize();
@@ -365,7 +391,14 @@ function start() {
     revealAttribute.needsUpdate = true;
     luminanceAttribute.needsUpdate = true;
     meshes.forEach(mesh => { mesh.instanceMatrix.needsUpdate = true; });
-    composer.render();
+    const neutral = stage === 'rotation';
+    meshes[0].material = neutral ? neutralShell : shellMaterial;
+    meshes[1].material = neutral ? neutralSocket : socketMaterial;
+    meshes[2].material = neutral ? neutralPip : lightMaterial;
+    background.visible = !neutral;
+    bloom.enabled = stage === 'final';
+    processView.draw(stage, paint, height, canvas);
+    if (stage === 'rotation' || stage === 'final') composer.render();
     status.hidden = true;
     dirty = false;
   });
@@ -377,6 +410,10 @@ function start() {
     observer.disconnect();
     events.abort();
     gui.destroy();
+    stepper.destroy();
+    processView.dispose();
+    description.remove();
+    [neutralShell, neutralSocket, neutralPip].forEach(material => material.dispose());
     meshes.forEach(mesh => mesh.dispose());
     Object.values(geometry).forEach(part => part.dispose());
     [shellMaterial, socketMaterial, lightMaterial, backgroundMaterial].forEach(material => material.dispose());
