@@ -79,7 +79,8 @@ export class DicePaint {
 
   beginStroke(time: number) { this.stroke++; this.lastFinish = time; }
 
-  paint(a: Point, b: Point, time: number, velocity: Point, instant = false) {
+  paint(a: Point, b: Point, time: number, velocity: Point, instant = false, radius = BRUSH_RADIUS) {
+    const coreRadius = radius * (0.55 / BRUSH_RADIUS);
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const lengthSquared = dx * dx + dy * dy;
@@ -93,7 +94,7 @@ export class DicePaint {
     const strength = THREE.MathUtils.clamp(Math.log1p(speed / 6) / Math.log(9), 0, 1);
     const direction = speed > 0.001 ? velocity : lengthSquared > 0 ? { x: dx, y: dy } : { x: 1, y: 0 };
     const axis = new THREE.Vector3(-direction.y, direction.x, 0).normalize();
-    const touched = this.states.filter(state => distance(state.cell.x, state.cell.y) < BRUSH_RADIUS + 0.56)
+    const touched = this.states.filter(state => distance(state.cell.x, state.cell.y) < radius + 0.56)
       .sort((left, right) => projection(left.cell.x, left.cell.y) - projection(right.cell.x, right.cell.y));
 
     touched.forEach(state => {
@@ -104,7 +105,7 @@ export class DicePaint {
           const index = row * SAMPLES + column;
           const x = state.cell.x + ((column + 0.5) / SAMPLES - 0.5) * 0.78;
           const y = state.cell.y + ((row + 0.5) / SAMPLES - 0.5) * 0.78;
-          const ink = 1 - smooth((distance(x, y) - 0.55) / (BRUSH_RADIUS - 0.55));
+          const ink = 1 - smooth((distance(x, y) - coreRadius) / (radius - coreRadius));
           added ||= ink > 0;
           state.coverage[index] = Math.max(state.coverage[index], ink);
           covered += state.coverage[index];

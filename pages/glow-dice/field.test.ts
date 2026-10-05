@@ -130,3 +130,16 @@ test('each selected value rotates its modeled face toward the viewer', () => {
     }
   });
 });
+
+test('brush thickness changes the painted footprint while retaining feathered edges', () => {
+  const narrow = drawing();
+  const wide = drawing();
+  for (const [paint, radius] of [[narrow, 0.27], [wide, 2.7]] as const) {
+    paint.beginStroke(0);
+    paint.paint({ x: -4, y: 0.5 }, { x: 4, y: 0.5 }, 0, { x: 15, y: 0 }, true, radius);
+  }
+  expect(wide.states.filter(state => state.luminance > 0).length).toBeGreaterThan(narrow.states.filter(state => state.luminance > 0).length);
+  expect(narrow.states.filter(state => Math.abs(state.cell.y - 0.5) > 1).every(state => state.luminance === 0)).toBe(true);
+  expect(wide.states.some(state => Math.abs(state.cell.y - 0.5) >= 2 && state.luminance > 0)).toBe(true);
+  expect(wide.states.some(state => state.luminance > 0 && state.luminance < 1)).toBe(true);
+});

@@ -61,6 +61,7 @@ const look = {
   animate: !reducedMotion.matches && !(import.meta.env.DEV && params.has('still')),
   speed: 1,
   size: 1,
+  brushWidth: 1,
   preset: '차콜 · 기본',
 };
 
@@ -249,8 +250,8 @@ function start() {
     const seconds = Math.max((event.timeStamp - lastPointerTime) / 1000, 0.008);
     const weight = pointerMoved ? 0.45 : 1;
     velocity.lerp(new THREE.Vector2(dx / seconds, dy / seconds), weight);
-    processView.record(lastPointer, point, velocity, width, height);
-    paint.paint(lastPointer, point, time, velocity, reducedMotion.matches || !look.animate);
+    processView.record(lastPointer, point, velocity, width, height, look.brushWidth);
+    paint.paint(lastPointer, point, time, velocity, reducedMotion.matches || !look.animate, 0.9 * look.brushWidth);
     lastPointer.set(point.x, point.y);
     lastPointerTime = event.timeStamp;
     pointerMoved = true;
@@ -265,8 +266,8 @@ function start() {
     if (event.pointerId !== activePointer) return;
     drawSample(event);
     if (!pointerMoved) {
-      processView.record(lastPointer, lastPointer, { x: 0, y: 0 }, width, height);
-      paint.paint(lastPointer, lastPointer, time, { x: 0, y: 0 }, reducedMotion.matches || !look.animate);
+      processView.record(lastPointer, lastPointer, { x: 0, y: 0 }, width, height, look.brushWidth);
+      paint.paint(lastPointer, lastPointer, time, { x: 0, y: 0 }, reducedMotion.matches || !look.animate, 0.9 * look.brushWidth);
       dirty = true;
     }
     activePointer = undefined;
@@ -319,6 +320,7 @@ function start() {
     if (activePointer !== undefined) reset();
     resize();
   });
+  gui.add(look, 'brushWidth', 0.3, 3, 0.05).name('커서 두께');
   gui.add(look, 'preset', [...Object.keys(COLOR_PRESETS), '직접 설정']).name('프리셋').listen().onChange((name: string) => {
     if (!(name in COLOR_PRESETS)) return;
     Object.assign(look, COLOR_PRESETS[name as ColorPreset]);

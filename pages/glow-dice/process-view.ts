@@ -26,7 +26,7 @@ const PIPS = [
 export class ProcessView {
   readonly canvas = document.createElement('canvas');
   private context: CanvasRenderingContext2D;
-  private segments: Array<{ a: Point; b: Point; speed: number }> = [];
+  private segments: Array<{ a: Point; b: Point; speed: number; thickness: number }> = [];
   constructor() {
     this.canvas.className = 'process-canvas';
     this.canvas.hidden = true;
@@ -35,10 +35,11 @@ export class ProcessView {
     this.context = this.canvas.getContext('2d')!;
     document.querySelector('main')!.append(this.canvas);
   }
-  record(a: Point, b: Point, velocity: Point, width: number, height: number) {
+  record(a: Point, b: Point, velocity: Point, width: number, height: number, thickness = 1) {
     this.segments.push({
       a: { x: a.x / width, y: a.y / height },
       b: { x: b.x / width, y: b.y / height },
+      thickness,
       speed: Math.min(1, Math.log1p(Math.hypot(velocity.x, velocity.y) / 6) / Math.log(9)),
     });
   }
@@ -82,7 +83,7 @@ export class ProcessView {
       const by = (0.5 - segment.b.y) * h;
       ctx.strokeStyle = `hsl(${205 - segment.speed * 180} 90% 65%)`;
       ctx.fillStyle = ctx.strokeStyle;
-      ctx.lineWidth = Math.max(2, unit * 0.07);
+      ctx.lineWidth = Math.max(2, unit * 0.07 * segment.thickness);
       ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
       if (ax === bx && ay === by) { ctx.beginPath(); ctx.arc(ax, ay, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill(); }
