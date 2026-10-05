@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { FIELD_SPAN, GLYPH_HEIGHT, GLYPH_MAX_WIDTH, createGlyphTexture } from './glyph-texture';
+import { FIELD_SPAN, GLYPH_HEIGHT, GLYPH_WIDTH, createGlyphTexture } from './glyph-texture';
 import { inkInsets, motionPose, TRANSITION_DURATION } from './motion';
 import volumeFragment from './volume.frag?raw';
 import outlineFragment from './outline.frag?raw';
@@ -72,7 +72,7 @@ export function createRenderer(canvas: HTMLCanvasElement, settings: Settings) {
     uniforms.inverseRotation.value.setFromMatrix4(rotation);
     uniforms.bounce.value = inspecting ? -inspectionOffset : settings.bounce * pose.height;
     const heightScale = 2 * Math.sqrt(3) * settings.prismRadius / GLYPH_HEIGHT;
-    const widthScale = Math.min(heightScale, settings.prismLength / GLYPH_MAX_WIDTH);
+    const widthScale = settings.prismLength / GLYPH_WIDTH;
     uniforms.glyphScale.value.set(widthScale, heightScale);
     const insets = inkInsets(time).map(value => value * Math.min(widthScale, heightScale));
     uniforms.inkInset.value.set(

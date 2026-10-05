@@ -3,7 +3,7 @@ import { encodeDistance, signedDistance } from './distance-field';
 
 export const FIELD_SPAN = 4.6;
 export const GLYPH_HEIGHT = 1.72;
-export const GLYPH_MAX_WIDTH = 2.85;
+export const GLYPH_WIDTH = 2.85;
 const RESOLUTION = 768;
 
 export async function loadNumeralFont(): Promise<void> {
@@ -22,10 +22,10 @@ export function createGlyphTexture(text: string, fontFamily = 'Arial Black'): TH
   const fontSize = GLYPH_HEIGHT / FIELD_SPAN * RESOLUTION * 100 / (cap.actualBoundingBoxAscent + cap.actualBoundingBoxDescent);
   context.font = `800 ${fontSize}px ${fontFamily}, DateTurnNumerals, sans-serif`;
   const bounds = context.measureText(text);
-  const maximumWidth = GLYPH_MAX_WIDTH / FIELD_SPAN * RESOLUTION;
+  const targetWidth = GLYPH_WIDTH / FIELD_SPAN * RESOLUTION;
   const textWidth = bounds.actualBoundingBoxLeft + bounds.actualBoundingBoxRight;
-  // Fit long labels horizontally without shrinking their height.
-  const widthScale = Math.min(1, maximumWidth / textWidth);
+  // Normalize actual ink bounds to a fixed rectangle; the shader fits it to each prism face.
+  const widthScale = targetWidth / textWidth;
   context.translate(RESOLUTION / 2, RESOLUTION / 2);
   context.scale(widthScale, 1);
   context.fillStyle = '#ffffff';
@@ -41,7 +41,7 @@ export function createGlyphTexture(text: string, fontFamily = 'Arial Black'): TH
   const texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat);
   texture.minFilter = texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
-  texture.userData.inkScale = widthScale;
+  texture.userData.inkScale = Math.min(1, widthScale);
   texture.needsUpdate = true;
   return texture;
 }
