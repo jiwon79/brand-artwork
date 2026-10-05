@@ -21,6 +21,7 @@
     "pages/rose-glass/**/*.ts",
     "pages/line-pull/**/*.ts",
     "pages/smile-flower/**/*.ts",
+    "pages/date-turn/**/*.ts",
     "common/**/*.test.ts",
     "common/**/*.spec.ts",
     "pages/**/*.test.ts",
