@@ -8,12 +8,8 @@ canvas:focus-visible { outline: 1px solid #8d8e92; outline-offset: -2px; }
 .status[hidden] { display: none; }
 .lil-gui { --background-color: #171719; --widget-color: #29292d; --focus-color: #3d3d43; --font-size: 11px; }
 .lil-gui input { user-select: text; -webkit-user-select: text; }
-.controls-toggle { position: fixed; top: 14px; right: 16px; z-index: 1002; padding: 9px 13px; border: 1px solid #ffffff24; border-radius: 8px; background: #171719e8; color: #e5e5e7; font: inherit; font-size: 12px; cursor: pointer; }
-.controls-toggle:hover, .controls-toggle[aria-expanded="true"] { background: #29292de8; }
-.controls-toggle:focus-visible { outline: 2px solid #bfc0c4; outline-offset: 3px; }
-.lil-gui.root { top: 58px; right: 16px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 165px); }
-.lil-gui.root > .children { max-height: calc(100dvh - 191px); overflow-y: auto; }
+.lil-gui.root { top: 16px; right: 16px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 90px); }
+.lil-gui.root > .children { max-height: calc(100dvh - 116px); overflow-y: auto; }
 .process-canvas { position: fixed; inset: 0; pointer-events: none; }
 .process-canvas[hidden] { display: none; }
-.stage-description { position: fixed; bottom: max(67px, calc(env(safe-area-inset-bottom) + 67px)); left: 16px; right: 16px; margin: 0; text-align: center; color: #c0c7d5; font-size: 11px; pointer-events: none; text-shadow: 0 1px 5px #030304; }
 artwork-stepper { --stepper-color: #f4f7ff; --stepper-muted-color: #929aa9; --stepper-text-shadow: 0 1px 8px #030304; --stepper-focus-color: #8ebaff; --stepper-max-width: 500px; }

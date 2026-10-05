@@ -60,20 +60,13 @@ const look = {
   ...COLOR_PRESETS['차콜 · 기본'],
   animate: !reducedMotion.matches && !(import.meta.env.DEV && params.has('still')),
   speed: 1,
-  automaticGrid: true,
-  columns: 31,
-  rows: 20,
-  count: 620,
+  size: 1,
   preset: '차콜 · 기본',
 };
 
 function start() {
   const events = new AbortController();
   const processView = new ProcessView();
-  const description = document.createElement('p');
-  description.className = 'stage-description';
-  description.setAttribute('aria-live', 'polite');
-  document.querySelector('main')!.append(description);
   let stage: ProcessStage = 'final';
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
   renderer.setClearColor(0x030304);
@@ -177,8 +170,7 @@ function start() {
 
   function rebuild() {
     meshes.forEach(mesh => { scene.remove(mesh); mesh.dispose(); });
-    cells = createField(width, height, look.automaticGrid ? undefined : look);
-    look.count = cells.length;
+    cells = createField(width, height);
     const previousPaint = paint;
     paint = new DicePaint(cells, width, height);
     if (previousPaint) paint.reframe(previousPaint, time);
@@ -216,13 +208,7 @@ function start() {
     if (!w || !h) return;
     const aspect = w / h;
     // Portrait matches the source's ten columns; landscape extends the wall.
-    if (look.automaticGrid) {
-      height = aspect < 0.7 ? 10 / aspect : FIELD_HEIGHT;
-      look.columns = Math.ceil(height * aspect) + 2;
-      look.rows = Math.ceil(height) + 2;
-    } else {
-      height = Math.max(look.rows, look.columns / aspect);
-    }
+    height = (aspect < 0.7 ? 10 / aspect : FIELD_HEIGHT) / look.size;
     width = height * aspect;
     camera.aspect = aspect;
     camera.position.z = height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
@@ -324,28 +310,16 @@ function start() {
 
   const gui = new GUI({ title: 'Glow Dice', width: 280 });
   gui.domElement.id = 'dice-controls';
-  const controlsToggle = document.querySelector<HTMLButtonElement>('.controls-toggle')!;
   let guiVisible = true;
   function setGuiVisible(visible: boolean) {
     guiVisible = visible;
-    controlsToggle.setAttribute('aria-expanded', String(visible));
     if (visible) gui.show(); else gui.hide();
   }
-  controlsToggle.addEventListener('click', () => setGuiVisible(!guiVisible), { signal: events.signal });
-  const layout = gui.addFolder('주사위 개수');
-  layout.add(look, 'automaticGrid').name('화면에 자동 배치').listen().onChange(resize);
-  const changeGrid = () => {
-    look.columns = Math.round(look.columns);
-    look.rows = Math.round(look.rows);
-    look.automaticGrid = false;
+  gui.add(look, 'size', 0.6, 1.8, 0.05).name('주사위 크기').onFinishChange(() => {
     if (activePointer !== undefined) reset();
     resize();
-  };
-  layout.add(look, 'columns', 6, 48, 1).name('가로 개수').listen().onFinishChange(changeGrid);
-  layout.add(look, 'rows', 6, 40, 1).name('세로 개수').listen().onFinishChange(changeGrid);
-  layout.add(look, 'count').name('총 주사위').listen().disable();
-  const presets = gui.addFolder('색감 프리셋');
-  presets.add(look, 'preset', [...Object.keys(COLOR_PRESETS), '직접 설정']).name('프리셋').listen().onChange((name: string) => {
+  });
+  gui.add(look, 'preset', [...Object.keys(COLOR_PRESETS), '직접 설정']).name('프리셋').listen().onChange((name: string) => {
     if (!(name in COLOR_PRESETS)) return;
     Object.assign(look, COLOR_PRESETS[name as ColorPreset]);
     shellMaterial.color.set(look.diceColor);
@@ -415,7 +389,6 @@ function start() {
     onChange: next => {
       if (paint) reset();
       stage = next;
-      description.textContent = STAGE_DESCRIPTIONS[stage];
       canvas.setAttribute('aria-label', `${STAGE_DESCRIPTIONS[stage]}. 드래그로 그리기, R로 지우기, Space로 일시 정지, 1–5로 단계 선택.`);
       dirty = true;
     },
@@ -463,7 +436,6 @@ function start() {
     gui.destroy();
     stepper.destroy();
     processView.dispose();
-    description.remove();
     [neutralShell, neutralSocket, neutralPip].forEach(material => material.dispose());
     meshes.forEach(mesh => mesh.dispose());
     Object.values(geometry).forEach(part => part.dispose());
