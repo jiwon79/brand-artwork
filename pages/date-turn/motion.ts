@@ -25,7 +25,7 @@ export function motionPose(time: number, transition = TRANSITION_DURATION, sway 
   };
 }
 
-/** The incoming ink starts thin and fills as the new face settles, after the main roll. */
+/** The incoming numeral starts thin and fills as the new face settles, after the main roll. */
 export function inkInsets(time: number): [number, number, number] {
   const turn = Math.floor(time);
   const progress = time - turn;

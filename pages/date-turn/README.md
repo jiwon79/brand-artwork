@@ -11,3 +11,5 @@ The model is one finite regular triangular prism and three straight numeral extr
 **설정 → 삼각기둥 · 숫자 돌출** controls the center-to-face distance (default 0.32), prism length (2.7), and extrusion depth (0.30). Text or font changes regenerate the raw glyph distance textures. Arial Black and Arial use system fonts with bundled Pretendard ExtraBold as fallback; Pretendard can be selected directly. Each frame ray-marches the rotated prism/extrusion union, resolves occlusion, draws the silhouette, and applies antialiasing. The font is an approximation of the supplied reference; no reference frames, traced paths, or source video are used at runtime.
 
 Font source and license: [`../line-pull/assets/Pretendard-SOURCE.md`](../line-pull/assets/Pretendard-SOURCE.md), [`../line-pull/assets/Pretendard-LICENSE.txt`](../line-pull/assets/Pretendard-LICENSE.txt).
+
+The incoming numeral’s animated stroke inset is shared by the solid extrusion, cap color, and inspector contours. Its walls move with its cap boundary as the strokes fill during settling; there is no fixed wide extrusion behind a thinner painted numeral.

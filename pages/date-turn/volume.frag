@@ -35,7 +35,7 @@ float field(sampler2D source, vec2 point) {
 vec3 numeralFields(vec3 p) {
   return vec3(field(face0, p.xy),
     field(face1, vec2(p.x, -0.5 * p.y - 0.8660254 * p.z)),
-    field(face2, vec2(p.x, -0.5 * p.y + 0.8660254 * p.z)));
+    field(face2, vec2(p.x, -0.5 * p.y + 0.8660254 * p.z))) + inkInset;
 }
 
 vec3 planes(vec3 p) {
@@ -47,7 +47,7 @@ float volume(vec3 p) {
   vec3 fromBase = planes(p) + extrusionDepth;
   // One finite regular triangular prism. Its three side normals have unit length.
   float prism = max(abs(p.x) - prismHalfLength, max(fromBase.x, max(fromBase.y, fromBase.z)));
-  // Each raw glyph is swept from its base plane to its tip plane, along that face normal.
+  // Each animated glyph is swept from its base plane to its tip plane, along that face normal.
   // No rounded envelope, counter filling, face clipping, or smooth union is applied.
   vec3 slabs = max(-fromBase, fromBase - extrusionDepth);
   vec3 numerals = max(glyph, slabs);
@@ -66,7 +66,7 @@ vec3 surfaceNormal(vec3 p) {
 
 // Solid contours lie on the extruded tips; dashed rectangles lie on the prism's base faces.
 vec4 inspectFace(sampler2D source, vec3 origin, vec3 direction, vec3 normal, vec3 tangent,
-  vec3 color, float hitTravel, float pixelWidth) {
+  vec3 color, float hitTravel, float pixelWidth, float inset) {
   float facing = dot(normal, direction);
   if (abs(facing) < 0.0001) return vec4(0.0);
   float travel = (apothem - dot(normal, origin)) / facing;
@@ -79,7 +79,7 @@ vec4 inspectFace(sampler2D source, vec3 origin, vec3 direction, vec3 normal, vec
   float width = pixelWidth / max(abs(facing), 0.2);
   float visibility = travel > hitTravel + 0.018 ? inspectLayers.w * 0.3 : 1.0;
   float baseVisibility = baseTravel > hitTravel + 0.018 ? inspectLayers.w * 0.3 : 1.0;
-  float glyph = field(source, uv);
+  float glyph = field(source, uv) + inset;
   float glyphLine = (1.0 - smoothstep(width, width * 2.0, abs(glyph))) * inspectLayers.x * visibility;
   vec2 q = abs(baseUv) - vec2(prismHalfLength, ROOT3 * prismRadius);
   float rectangle = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
@@ -154,9 +154,9 @@ void main() {
     }
     float hitTravel = found ? travel : 1000.0;
     float pixelWidth = inspectPixelWidth;
-    vec4 a = inspectFace(face0, origin, direction, vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(0.88, 0.16, 0.07), hitTravel, pixelWidth);
-    vec4 b = inspectFace(face1, origin, direction, vec3(0.0, 0.8660254, -0.5), vec3(0.0, -0.5, -0.8660254), vec3(0.07, 0.3, 0.9), hitTravel, pixelWidth);
-    vec4 c = inspectFace(face2, origin, direction, vec3(0.0, -0.8660254, -0.5), vec3(0.0, -0.5, 0.8660254), vec3(0.02, 0.55, 0.26), hitTravel, pixelWidth);
+    vec4 a = inspectFace(face0, origin, direction, vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(0.88, 0.16, 0.07), hitTravel, pixelWidth, inkInset.x);
+    vec4 b = inspectFace(face1, origin, direction, vec3(0.0, 0.8660254, -0.5), vec3(0.0, -0.5, -0.8660254), vec3(0.07, 0.3, 0.9), hitTravel, pixelWidth, inkInset.y);
+    vec4 c = inspectFace(face2, origin, direction, vec3(0.0, -0.8660254, -0.5), vec3(0.0, -0.5, 0.8660254), vec3(0.02, 0.55, 0.26), hitTravel, pixelWidth, inkInset.z);
     // Sort the three ray/plane intersections so translucent rear contours cannot cover front ones.
     float ta = planeDepth(origin, direction, vec3(0.0, 0.0, 1.0));
     float tb = planeDepth(origin, direction, vec3(0.0, 0.8660254, -0.5));
@@ -170,7 +170,6 @@ void main() {
   }
   vec3 clip = planes(hit);
   vec3 glyph = numeralFields(hit);
-  glyph += inkInset;
   float ink = 0.0;
   if (abs(clip.x) < 0.004 && direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.x));
   if (abs(clip.y) < 0.004 && 0.8660254 * direction.y - 0.5 * direction.z < -0.02) ink = max(ink, 1.0 - smoothstep(-0.003, 0.003, glyph.y));
