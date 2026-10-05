@@ -291,7 +291,19 @@ function start() {
   };
   canvas.addEventListener('pointercancel', releasePointer, { signal: events.signal });
   canvas.addEventListener('lostpointercapture', releasePointer, { signal: events.signal });
-  function reset() { time = 0; paint.reset(); processView.reset(); activePointer = undefined; dirty = true; }
+  function reset() {
+    if (activePointer !== undefined && canvas.hasPointerCapture(activePointer)) {
+      canvas.releasePointerCapture(activePointer);
+    }
+    activePointer = undefined;
+    pointerMoved = false;
+    velocity.set(0, 0);
+    lastPointer.set(Infinity, Infinity);
+    time = previousTime = 0;
+    paint.reset();
+    processView.reset();
+    dirty = true;
+  }
   window.addEventListener('keydown', event => {
     if ((event.target as HTMLElement)?.closest('.lil-gui')) return;
     if (event.code === 'Space') { event.preventDefault(); look.animate = !look.animate; dirty = true; }
@@ -363,6 +375,7 @@ function start() {
     initialStep: 'final',
     ariaLabel: '주사위 렌더링 단계',
     onChange: next => {
+      if (paint) reset();
       stage = next;
       description.textContent = STAGE_DESCRIPTIONS[stage];
       canvas.setAttribute('aria-label', `${STAGE_DESCRIPTIONS[stage]}. 드래그로 그리기, R로 지우기, Space로 일시 정지, 1–5로 단계 선택.`);
