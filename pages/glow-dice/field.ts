@@ -21,14 +21,14 @@ export function faceOrientation(face: number, twist = 0) {
   return orientation.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), twist * QUARTER_TURN));
 }
 
-export function createField(width: number, height = FIELD_HEIGHT): Cell[] {
+export function createField(width: number, height = FIELD_HEIGHT, counts?: { columns: number; rows: number }): Cell[] {
   const cells: Cell[] = [];
-  const columns = Math.ceil(width) + 2;
-  const rows = Math.ceil(height) + 2;
+  const columns = counts?.columns ?? Math.ceil(width) + 2;
+  const rows = counts?.rows ?? Math.ceil(height) + 2;
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
-      const x = column - (columns - 1) / 2;
-      const y = row - (rows - 1) / 2;
+      const x = (column - (columns - 1) / 2) * (counts ? width / columns : 1);
+      const y = (row - (rows - 1) / 2) * (counts ? height / rows : 1);
       const seed = random((column + 71) * 13 + (row + 21) * 97);
       cells.push({ x, y, seed, orientation: faceOrientation(1) });
     }

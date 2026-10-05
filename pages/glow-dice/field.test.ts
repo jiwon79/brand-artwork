@@ -130,3 +130,17 @@ test('each selected value rotates its modeled face toward the viewer', () => {
     }
   });
 });
+
+test('explicit row and column counts produce an exact, evenly spaced grid inside the viewport', () => {
+  for (const [columns, rows, aspect] of [[16, 12, 1.6], [8, 24, 0.46], [48, 40, 1.6]]) {
+    const height = Math.max(rows, columns / aspect);
+    const width = height * aspect;
+    const cells = createField(width, height, { columns, rows });
+    expect(cells).toHaveLength(columns * rows);
+    expect(new Set(cells.map(cell => cell.x)).size).toBe(columns);
+    expect(new Set(cells.map(cell => cell.y)).size).toBe(rows);
+    expect(cells[1].x - cells[0].x).toBeGreaterThanOrEqual(1 - 1e-10);
+    expect(cells[columns].y - cells[0].y).toBeGreaterThanOrEqual(1 - 1e-10);
+    expect(cells.every(cell => Math.abs(cell.x) + 0.43 <= width / 2 && Math.abs(cell.y) + 0.43 <= height / 2)).toBe(true);
+  }
+});

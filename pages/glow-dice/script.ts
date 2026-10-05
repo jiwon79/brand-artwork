@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
 import GUI from 'lil-gui';
+import { COLOR_PRESETS, type ColorPreset } from './presets';
 import { createStepper } from '../../common/stepper';
 import { ProcessView, PROCESS_STEPS, STAGE_DESCRIPTIONS, type ProcessStage } from './process-view';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -56,23 +57,14 @@ const status = document.querySelector<HTMLElement>('.status')!;
 const params = new URLSearchParams(location.search);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const look = {
+  ...COLOR_PRESETS['차콜 · 기본'],
   animate: !reducedMotion.matches && !(import.meta.env.DEV && params.has('still')),
   speed: 1,
-  exposure: 1,
-  roughness: 0.4,
-  clearcoat: 0.75,
-  environment: 0.55,
-  light: 1.35,
-  glow: 0.18,
-  density: 1,
-  diceColor: '#56575a',
-  pipColor: '#fafaff',
-  backgroundColor: '#030304',
-  lightColor: '#f9faff',
-  softboxIntensity: 2.1,
-  keyIntensity: 0.22,
-  fillIntensity: 0.08,
-  ambientIntensity: 0.12,
+  automaticGrid: true,
+  columns: 31,
+  rows: 20,
+  count: 620,
+  preset: '차콜 · 기본',
 };
 
 function start() {
@@ -185,7 +177,8 @@ function start() {
 
   function rebuild() {
     meshes.forEach(mesh => { scene.remove(mesh); mesh.dispose(); });
-    cells = createField(width, height);
+    cells = createField(width, height, look.automaticGrid ? undefined : look);
+    look.count = cells.length;
     const previousPaint = paint;
     paint = new DicePaint(cells, width, height);
     if (previousPaint) paint.reframe(previousPaint, time);
@@ -223,7 +216,13 @@ function start() {
     if (!w || !h) return;
     const aspect = w / h;
     // Portrait matches the source's ten columns; landscape extends the wall.
-    height = (aspect < 0.7 ? 10 / aspect : FIELD_HEIGHT) / look.density;
+    if (look.automaticGrid) {
+      height = aspect < 0.7 ? 10 / aspect : FIELD_HEIGHT;
+      look.columns = Math.ceil(height * aspect) + 2;
+      look.rows = Math.ceil(height) + 2;
+    } else {
+      height = Math.max(look.rows, look.columns / aspect);
+    }
     width = height * aspect;
     camera.aspect = aspect;
     camera.position.z = height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
@@ -333,6 +332,44 @@ function start() {
     if (visible) gui.show(); else gui.hide();
   }
   controlsToggle.addEventListener('click', () => setGuiVisible(!guiVisible), { signal: events.signal });
+  const layout = gui.addFolder('주사위 개수');
+  layout.add(look, 'automaticGrid').name('화면에 자동 배치').listen().onChange(resize);
+  const changeGrid = () => {
+    look.columns = Math.round(look.columns);
+    look.rows = Math.round(look.rows);
+    look.automaticGrid = false;
+    if (activePointer !== undefined) reset();
+    resize();
+  };
+  layout.add(look, 'columns', 6, 48, 1).name('가로 개수').listen().onFinishChange(changeGrid);
+  layout.add(look, 'rows', 6, 40, 1).name('세로 개수').listen().onFinishChange(changeGrid);
+  layout.add(look, 'count').name('총 주사위').listen().disable();
+  const presets = gui.addFolder('색감 프리셋');
+  presets.add(look, 'preset', [...Object.keys(COLOR_PRESETS), '직접 설정']).name('프리셋').listen().onChange((name: string) => {
+    if (!(name in COLOR_PRESETS)) return;
+    Object.assign(look, COLOR_PRESETS[name as ColorPreset]);
+    shellMaterial.color.set(look.diceColor);
+    shellMaterial.roughness = look.roughness;
+    shellMaterial.clearcoat = look.clearcoat;
+    shellMaterial.envMapIntensity = look.environment;
+    lightMaterial.emissive.set(look.pipColor);
+    backgroundMaterial.color.set(look.backgroundColor);
+    renderer.setClearColor(look.backgroundColor);
+    renderer.toneMappingExposure = look.exposure;
+    softbox.color.set(look.lightColor);
+    key.color.set(look.lightColor);
+    softbox.intensity = look.softboxIntensity;
+    key.intensity = look.keyIntensity;
+    fill.intensity = look.fillIntensity;
+    ambient.intensity = look.ambientIntensity;
+    uniforms.intensity.value = look.light;
+    bloom.strength = look.glow;
+    gui.controllersRecursive().forEach(controller => controller.updateDisplay());
+    dirty = true;
+  });
+  gui.onChange(event => {
+    if (event.property in COLOR_PRESETS['차콜 · 기본']) look.preset = '직접 설정';
+  });
   const lighting = gui.addFolder('조명');
   lighting.add(look, 'exposure', 0.2, 2.5, 0.01).name('노출').onChange(() => { renderer.toneMappingExposure = look.exposure; dirty = true; });
   lighting.addColor(look, 'lightColor').name('조명 색').onChange(() => { softbox.color.set(look.lightColor); key.color.set(look.lightColor); dirty = true; });
@@ -340,16 +377,17 @@ function start() {
   lighting.add(look, 'keyIntensity', 0, 2, 0.01).name('그림자 조명').onChange(() => { key.intensity = look.keyIntensity; dirty = true; });
   lighting.add(look, 'fillIntensity', 0, 1, 0.01).name('보조 조명').onChange(() => { fill.intensity = look.fillIntensity; dirty = true; });
   lighting.add(look, 'ambientIntensity', 0, 1, 0.01).name('전체 밝기').onChange(() => { ambient.intensity = look.ambientIntensity; dirty = true; });
+  lighting.close();
   const palette = gui.addFolder('색감');
   palette.addColor(look, 'diceColor').name('주사위 색').onChange(() => { shellMaterial.color.set(look.diceColor); dirty = true; });
   palette.addColor(look, 'pipColor').name('눈의 색').onChange(() => { lightMaterial.emissive.set(look.pipColor); dirty = true; });
   palette.addColor(look, 'backgroundColor').name('배경 색').onChange(() => { backgroundMaterial.color.set(look.backgroundColor); renderer.setClearColor(look.backgroundColor); dirty = true; });
   palette.add(look, 'light', 0, 3, 0.01).name('눈의 밝기').onChange(() => { uniforms.intensity.value = look.light; dirty = true; });
   palette.add(look, 'glow', 0, 0.6, 0.01).name('빛 번짐').onChange(() => { bloom.strength = look.glow; dirty = true; });
+  palette.close();
   const motion = gui.addFolder('움직임');
   motion.add(look, 'animate').name('애니메이션').listen();
   motion.add(look, 'speed', 0.1, 2, 0.05).name('속도');
-  motion.add(look, 'density', 0.6, 1.8, 0.05).name('주사위 크기').onFinishChange(resize);
   motion.add({ reset }, 'reset').name('처음으로');
   motion.close();
   const material = gui.addFolder('재질');
