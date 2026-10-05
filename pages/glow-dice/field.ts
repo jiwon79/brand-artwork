@@ -1,14 +1,12 @@
 import * as THREE from 'three';
-import { sampleLetter } from './letter';
 
 export type Cell = { x: number; y: number; seed: number; orientation: THREE.Quaternion };
+export type Point = { x: number; y: number };
 export const FIELD_HEIGHT = 18;
-export const TURN_DURATION = 3.15;
-export const SETTLE_DURATION = 0.85;
-const REVEAL_DURATION = 0.42;
-const SETTLE_SPAN = 5.5;
-const SPIN_RAMP = 0.3;
-const WAVE_DELAY = 0.115;
+const SETTLE_DURATION = 0.65;
+const SPIN_RAMP = 0.16;
+const BRUSH_RADIUS = 0.9;
+const SAMPLES = 6;
 const QUARTER_TURN = Math.PI / 2;
 
 export function random(seed: number) {
@@ -17,15 +15,10 @@ export function random(seed: number) {
 }
 
 export function faceOrientation(face: number, twist = 0) {
-  const rotations = [
-    [0, 0], [QUARTER_TURN, 0], [0, -QUARTER_TURN],
-    [0, QUARTER_TURN], [-QUARTER_TURN, 0], [0, Math.PI],
-  ];
+  const rotations = [[0, 0], [QUARTER_TURN, 0], [0, -QUARTER_TURN], [0, QUARTER_TURN], [-QUARTER_TURN, 0], [0, Math.PI]];
   const [x, y] = rotations[face - 1];
   const orientation = new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, 0));
-  return orientation.premultiply(new THREE.Quaternion().setFromAxisAngle(
-    new THREE.Vector3(0, 0, 1), twist * QUARTER_TURN,
-  ));
+  return orientation.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), twist * QUARTER_TURN));
 }
 
 export function createField(width: number, height = FIELD_HEIGHT): Cell[] {
@@ -37,13 +30,7 @@ export function createField(width: number, height = FIELD_HEIGHT): Cell[] {
       const x = column - (columns - 1) / 2;
       const y = row - (rows - 1) / 2;
       const seed = random((column + 71) * 13 + (row + 21) * 97);
-      const orientation = faceOrientation(
-        1 + Math.floor(random(seed + 2) * 6), Math.floor(random(seed + 7) * 4),
-      );
-      const tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(
-        Math.sin(seed * 23.1) * 0.07, Math.sin(seed * 51.3) * 0.07, Math.sin(seed * 39.7) * 0.025,
-      ));
-      cells.push({ x, y, seed, orientation: orientation.premultiply(tilt) });
+      cells.push({ x, y, seed, orientation: faceOrientation(1) });
     }
   }
   return cells;
@@ -54,7 +41,6 @@ function smooth(value: number) {
   return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
-// Integral of smootherstep: speed ramps in and out, with a steady spin between.
 function rampIntegral(value: number) {
   const t = THREE.MathUtils.clamp(value, 0, 1);
   return t ** 6 - 3 * t ** 5 + 2.5 * t ** 4;
@@ -63,100 +49,115 @@ function rampIntegral(value: number) {
 function spinProgress(local: number, duration: number) {
   const travel = duration - (SPIN_RAMP + SETTLE_DURATION) / 2;
   if (local <= SPIN_RAMP) return SPIN_RAMP * rampIntegral(local / SPIN_RAMP) / travel;
-  if (local >= duration - SETTLE_DURATION) {
-    return 1 - SETTLE_DURATION * rampIntegral((duration - local) / SETTLE_DURATION) / travel;
-  }
+  if (local >= duration - SETTLE_DURATION) return 1 - SETTLE_DURATION * rampIntegral((duration - local) / SETTLE_DURATION) / travel;
   return (local - SPIN_RAMP / 2) / travel;
 }
 
-type RevealCell = {
-  cell: Cell;
-  luminance: number;
-  face: number;
-  target: THREE.Quaternion;
-  from: THREE.Quaternion;
-  fromReveal: number;
-  arrival: number;
-  finish: number;
-  axis: THREE.Vector3;
+type PaintCell = {
+  cell: Cell; coverage: Float32Array; luminance: number; face: number;
+  target: THREE.Quaternion; from: THREE.Quaternion; fromReveal: number;
+  arrival: number; finish: number; axis: THREE.Vector3; turns: number; stroke: number;
 };
 
-/** All dice retain their exact centers. Only their orientation and light change. */
-export class DiceReveal {
-  readonly states: RevealCell[];
+/** Brush segments accumulate a coverage mask. Dice keep their centers while
+ * the drawn coverage chooses the actual front face and emission. */
+export class DicePaint {
+  readonly states: PaintCell[];
   active = false;
+  private stroke = 0;
+  private lastFinish = 0;
   private spin = new THREE.Quaternion();
   private scratch = new THREE.Object3D();
 
   constructor(cells: Cell[], private width: number, private height: number) {
-    this.states = cells.map(cell => {
-      const sample = sampleLetter(cell.x, cell.y, width, height);
-      const direction = cell.seed < 0.5 ? -1 : 1;
-      return {
-        cell, ...sample,
-        target: faceOrientation(sample.face, Math.floor(random(cell.seed + 9) * 4)),
-        from: cell.orientation.clone(), fromReveal: 0, arrival: Infinity, finish: Infinity,
-        axis: random(cell.seed + 16) < 0.6
-          ? new THREE.Vector3(direction, 0, 0) : new THREE.Vector3(0, direction, 0),
-      };
+    this.states = cells.map(cell => ({
+      cell, coverage: new Float32Array(SAMPLES * SAMPLES), luminance: 0, face: 1,
+      target: cell.orientation.clone(), from: cell.orientation.clone(), fromReveal: 0,
+      arrival: Infinity, finish: Infinity, axis: new THREE.Vector3(0, 1, 0), turns: 1, stroke: -1,
+    }));
+  }
+
+  beginStroke(time: number) { this.stroke++; this.lastFinish = time; }
+
+  paint(a: Point, b: Point, time: number, velocity: Point, instant = false) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lengthSquared = dx * dx + dy * dy;
+    const projection = (x: number, y: number) => lengthSquared
+      ? THREE.MathUtils.clamp(((x - a.x) * dx + (y - a.y) * dy) / lengthSquared, 0, 1) : 0;
+    const distance = (x: number, y: number) => {
+      const t = projection(x, y);
+      return Math.hypot(x - a.x - dx * t, y - a.y - dy * t);
+    };
+    const speed = Math.hypot(velocity.x, velocity.y);
+    const strength = THREE.MathUtils.clamp(Math.log1p(speed / 6) / Math.log(9), 0, 1);
+    const direction = speed > 0.001 ? velocity : lengthSquared > 0 ? { x: dx, y: dy } : { x: 1, y: 0 };
+    const axis = new THREE.Vector3(-direction.y, direction.x, 0).normalize();
+    const touched = this.states.filter(state => distance(state.cell.x, state.cell.y) < BRUSH_RADIUS + 0.56)
+      .sort((left, right) => projection(left.cell.x, left.cell.y) - projection(right.cell.x, right.cell.y));
+
+    touched.forEach(state => {
+      let covered = 0;
+      let added = false;
+      for (let row = 0; row < SAMPLES; row++) {
+        for (let column = 0; column < SAMPLES; column++) {
+          const index = row * SAMPLES + column;
+          const x = state.cell.x + ((column + 0.5) / SAMPLES - 0.5) * 0.78;
+          const y = state.cell.y + ((row + 0.5) / SAMPLES - 0.5) * 0.78;
+          const ink = 1 - smooth((distance(x, y) - 0.55) / (BRUSH_RADIUS - 0.55));
+          added ||= ink > 0;
+          state.coverage[index] = Math.max(state.coverage[index], ink);
+          covered += state.coverage[index];
+        }
+      }
+      if (!added) return;
+      const luminance = covered / state.coverage.length;
+      // A pass updates coverage without restarting the same die at every sample.
+      // A later stroke rolls it again from its exact current pose and brightness.
+      if (state.stroke !== this.stroke || time >= state.finish) {
+        state.fromReveal = this.pose(this.states.indexOf(state), time, this.scratch);
+        state.from.copy(this.scratch.quaternion);
+        state.axis.copy(axis);
+        state.turns = 1 + Math.round(strength * 2);
+        state.arrival = time;
+        state.finish = instant ? time : Math.max(time + 1.25 + strength * 0.7, this.lastFinish + 0.018);
+        this.lastFinish = state.finish;
+        state.stroke = this.stroke;
+      }
+      state.luminance = luminance;
+      state.face = 1 + Math.round(luminance * 5);
+      state.target.copy(faceOrientation(state.face, Math.floor(random(state.cell.seed + 9) * 4)));
+      if (instant) state.finish = time;
+      this.active = true;
     });
   }
 
-  begin(x: number, y: number, time: number, instant = false) {
-    // Snapshot the current pose before restarting, including mid-turn input.
-    this.states.forEach((state, index) => {
-      const reveal = this.pose(index, time, this.scratch);
-      state.from.copy(this.scratch.quaternion);
-      state.fromReveal = reveal;
-      state.arrival = instant ? time - TURN_DURATION : time + Math.hypot(state.cell.x - x, state.cell.y - y) * WAVE_DELAY;
-      state.finish = time;
-    });
-    if (!instant) {
-      // A dedicated finish slot per die makes the letter accumulate piece by
-      // piece, including dice at the same distance from the pointer.
-      const queue = [...this.states].sort((a, b) => a.arrival - b.arrival || a.cell.seed - b.cell.seed);
-      const gap = Math.max(1 / 60, SETTLE_SPAN / Math.max(1, queue.length - 1));
-      let previous = time + TURN_DURATION - gap;
-      queue.forEach(state => {
-        state.finish = Math.max(state.arrival + TURN_DURATION, previous + gap);
-        previous = state.finish;
-      });
-    }
-    this.active = true;
-  }
-
-  spread(x: number, y: number, time: number) {
-    if (!this.active) return;
-    // Additional drag points advance unreached dice without restarting ones
-    // already in motion, so even a long drag finishes in a legible letter.
-    this.states.forEach(state => {
-      if (state.arrival <= time) return;
-      state.arrival = Math.min(state.arrival, time + Math.hypot(state.cell.x - x, state.cell.y - y) * WAVE_DELAY);
-    });
+  settle(time: number) {
+    this.states.forEach(state => { if (state.luminance > 0) state.finish = time; });
   }
 
   reset() {
     this.active = false;
     this.states.forEach(state => {
+      state.coverage.fill(0);
+      state.luminance = 0;
+      state.face = 1;
+      state.target.copy(state.cell.orientation);
       state.from.copy(state.cell.orientation);
       state.fromReveal = 0;
-      state.arrival = Infinity;
-      state.finish = Infinity;
+      state.arrival = state.finish = Infinity;
+      state.stroke = -1;
     });
   }
 
   isMoving(time: number) {
-    return this.active && this.states.some(state => time < state.finish);
+    return this.states.some(state => state.luminance > 0 && time < state.finish);
   }
 
-  /** Resizing must not force an in-progress wall straight to the finished J. */
-  reframe(previous: DiceReveal, time: number) {
-    if (!previous.active) return;
-    if (!previous.isMoving(time)) {
-      this.begin(0, 0, time, true);
-      return;
-    }
-    this.active = true;
+  reframe(previous: DicePaint, time: number) {
+    this.active = previous.active;
+    this.stroke = previous.stroke;
+    this.lastFinish = previous.lastFinish;
     this.states.forEach(state => {
       const x = state.cell.x / this.width * previous.width;
       const y = state.cell.y / this.height * previous.height;
@@ -166,12 +167,19 @@ export class DiceReveal {
         const next = (candidate.cell.x - x) ** 2 + (candidate.cell.y - y) ** 2;
         if (next < distance) { nearest = candidate; distance = next; }
       }
+      state.coverage.set(nearest.coverage);
+      state.luminance = nearest.luminance;
+      state.face = nearest.face;
+      state.target.copy(nearest.target);
       state.from.copy(nearest.from);
       state.fromReveal = nearest.fromReveal;
       state.arrival = nearest.arrival;
       state.finish = nearest.finish;
       state.axis.copy(nearest.axis);
+      state.turns = nearest.turns;
+      state.stroke = nearest.stroke;
     });
+    if (!previous.isMoving(time)) this.settle(time);
   }
 
   pose(index: number, time: number, target: THREE.Object3D) {
@@ -179,16 +187,17 @@ export class DiceReveal {
     const local = time - state.arrival;
     let reveal = state.fromReveal;
     target.quaternion.copy(state.from);
-    if (local > 0) {
+    if (state.luminance > 0 && time >= state.finish) {
+      target.quaternion.copy(state.target);
+      reveal = 1;
+    } else if (local > 0) {
       const duration = state.finish - state.arrival;
       const progress = spinProgress(local, duration);
-      const turns = Math.max(2, Math.round(duration / 1.6));
       const settling = smooth((time - state.finish + SETTLE_DURATION) / SETTLE_DURATION);
       target.quaternion.slerp(state.target, settling);
-      this.spin.setFromAxisAngle(state.axis, Math.PI * 2 * turns * progress);
+      this.spin.setFromAxisAngle(state.axis, Math.PI * 2 * state.turns * progress);
       target.quaternion.premultiply(this.spin);
-      const forming = smooth((time - state.finish + REVEAL_DURATION) / REVEAL_DURATION);
-      reveal = state.fromReveal * (1 - smooth(local / 0.45)) + forming;
+      reveal = state.fromReveal + (1 - state.fromReveal) * smooth(local / 0.6);
     }
     target.position.set(state.cell.x, state.cell.y, 0);
     target.scale.setScalar(1);

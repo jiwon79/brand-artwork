@@ -8,7 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import { createDiceGeometry } from './geometry';
-import { createField, DiceReveal, FIELD_HEIGHT, random, type Cell } from './field';
+import { createField, DicePaint, FIELD_HEIGHT, random, type Cell } from './field';
 
 function studioEnvironment(renderer: THREE.WebGLRenderer) {
   const studio = new THREE.Scene();
@@ -110,34 +110,20 @@ function start() {
   const lightMaterial = new THREE.MeshStandardMaterial({
     color: 0x010101, emissive: 0xfafaff, roughness: 0.65, envMapIntensity: 0.04,
   });
-  const uniforms = { time: { value: 0 }, intensity: { value: look.light } };
+  const uniforms = { intensity: { value: look.light } };
   lightMaterial.onBeforeCompile = shader => {
-    shader.uniforms.uTime = uniforms.time;
     shader.uniforms.uIntensity = uniforms.intensity;
-    shader.vertexShader = `attribute float pipIndex;
-      attribute float cellSeed;
-      attribute float cellLuminance;
+    shader.vertexShader = `attribute float cellLuminance;
       attribute float cellReveal;
-      varying float vPip;
-      varying float vSeed;
       varying float vLuminance;
       varying float vReveal;
       ${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vertex>
-      vPip = pipIndex; vSeed = cellSeed;
       vLuminance = cellLuminance; vReveal = cellReveal;`);
-    shader.fragmentShader = `uniform float uTime;
-      uniform float uIntensity;
-      varying float vPip;
-      varying float vSeed;
+    shader.fragmentShader = `uniform float uIntensity;
       varying float vLuminance;
       varying float vReveal;
       ${shader.fragmentShader}`.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-      float phase = vSeed * 91.7 + vPip * 13.73;
-      float pulse = sin(uTime * (0.72 + fract(vSeed * 17.0) * 0.38) + phase);
-      float lit = smoothstep(-0.32, -0.12, pulse);
-      float variation = 0.85 + 0.15 * sin(phase * 2.3);
-      float letterLight = 0.001 + 1.15 * pow(vLuminance, 0.85);
-      totalEmissiveRadiance *= mix(lit * variation, letterLight, vReveal) * uIntensity;`);
+      totalEmissiveRadiance *= 1.15 * pow(vLuminance, 0.85) * vReveal * uIntensity;`);
   };
 
   const backgroundMaterial = new THREE.MeshStandardMaterial({ color: 0x030304, roughness: 1 });
@@ -166,25 +152,27 @@ function start() {
   let disposed = false;
   let dirty = true;
   let previousTime = 0;
-  let reveal: DiceReveal;
+  let paint: DicePaint;
+  let luminanceAttribute: THREE.InstancedBufferAttribute;
   let revealAttribute: THREE.InstancedBufferAttribute;
   let activePointer: number | undefined;
   const lastPointer = new THREE.Vector2(Infinity, Infinity);
+  const velocity = new THREE.Vector2();
+  let lastPointerTime = 0;
+  let pointerMoved = false;
   const transform = new THREE.Object3D();
   const color = new THREE.Color();
 
   function rebuild() {
     meshes.forEach(mesh => { scene.remove(mesh); mesh.dispose(); });
     cells = createField(width, height);
-    const previousReveal = reveal;
-    reveal = new DiceReveal(cells, width, height);
-    if (previousReveal) reveal.reframe(previousReveal, time);
-    const seeds = new Float32Array(cells.map(cell => cell.seed));
+    const previousPaint = paint;
+    paint = new DicePaint(cells, width, height);
+    if (previousPaint) paint.reframe(previousPaint, time);
     geometry.lights.dispose();
-    geometry.lights.setAttribute('cellSeed', new THREE.InstancedBufferAttribute(seeds, 1));
-    geometry.lights.setAttribute('cellLuminance', new THREE.InstancedBufferAttribute(
-      new Float32Array(reveal.states.map(state => state.luminance)), 1,
-    ));
+    luminanceAttribute = new THREE.InstancedBufferAttribute(new Float32Array(cells.length), 1);
+    luminanceAttribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.lights.setAttribute('cellLuminance', luminanceAttribute);
     revealAttribute = new THREE.InstancedBufferAttribute(new Float32Array(cells.length), 1);
     revealAttribute.setUsage(THREE.DynamicDrawUsage);
     geometry.lights.setAttribute('cellReveal', revealAttribute);
@@ -243,34 +231,53 @@ function start() {
     canvas.setPointerCapture(event.pointerId);
     const { x, y } = pointerPosition(event);
     lastPointer.set(x, y);
-    reveal.begin(x, y, time, reducedMotion.matches || !look.animate);
-    dirty = true;
+    lastPointerTime = event.timeStamp;
+    velocity.set(0, 0);
+    pointerMoved = false;
+    paint.beginStroke(time);
   }, { signal: events.signal });
+  function drawSample(event: PointerEvent) {
+    const point = pointerPosition(event);
+    const dx = point.x - lastPointer.x;
+    const dy = point.y - lastPointer.y;
+    if (Math.hypot(dx, dy) < 0.025) return;
+    const seconds = Math.max((event.timeStamp - lastPointerTime) / 1000, 0.008);
+    const weight = pointerMoved ? 0.45 : 1;
+    velocity.lerp(new THREE.Vector2(dx / seconds, dy / seconds), weight);
+    paint.paint(lastPointer, point, time, velocity, reducedMotion.matches || !look.animate);
+    lastPointer.set(point.x, point.y);
+    lastPointerTime = event.timeStamp;
+    pointerMoved = true;
+    dirty = true;
+  }
   canvas.addEventListener('pointermove', event => {
     if (event.pointerId !== activePointer) return;
-    const { x, y } = pointerPosition(event);
-    if (Math.hypot(lastPointer.x - x, lastPointer.y - y) < 0.25) return;
-    reveal.spread(x, y, time);
-    lastPointer.set(x, y);
-    dirty = true;
+    const samples = event.getCoalescedEvents?.() ?? [];
+    for (const sample of samples.length ? samples : [event]) drawSample(sample);
+  }, { signal: events.signal });
+  canvas.addEventListener('pointerup', event => {
+    if (event.pointerId !== activePointer) return;
+    drawSample(event);
+    if (!pointerMoved) {
+      paint.paint(lastPointer, lastPointer, time, { x: 0, y: 0 }, reducedMotion.matches || !look.animate);
+      dirty = true;
+    }
+    activePointer = undefined;
   }, { signal: events.signal });
   const releasePointer = (event: PointerEvent) => {
     if (activePointer === event.pointerId) activePointer = undefined;
   };
-  canvas.addEventListener('pointerup', releasePointer, { signal: events.signal });
   canvas.addEventListener('pointercancel', releasePointer, { signal: events.signal });
   canvas.addEventListener('lostpointercapture', releasePointer, { signal: events.signal });
-  function reset() { time = 0; reveal.reset(); activePointer = undefined; dirty = true; }
-  function revealLetter() { reveal.begin(0, 0, time, reducedMotion.matches || !look.animate); dirty = true; }
+  function reset() { time = 0; paint.reset(); activePointer = undefined; dirty = true; }
   window.addEventListener('keydown', event => {
     if ((event.target as HTMLElement)?.closest('.lil-gui')) return;
     if (event.code === 'Space') { event.preventDefault(); look.animate = !look.animate; dirty = true; }
     if (event.key.toLowerCase() === 'r') reset();
-    if (event.key === 'Enter' && !event.repeat) revealLetter();
   }, { signal: events.signal });
   reducedMotion.addEventListener('change', () => {
     look.animate = !reducedMotion.matches;
-    if (reducedMotion.matches && reveal.active) reveal.begin(0, 0, time, true);
+    if (reducedMotion.matches) paint.settle(time);
     dirty = true;
   }, { signal: events.signal });
   document.addEventListener('visibilitychange', () => { previousTime = 0; }, { signal: events.signal });
@@ -286,7 +293,6 @@ function start() {
   motion.add(look, 'animate').name('애니메이션').listen();
   motion.add(look, 'speed', 0.1, 2, 0.05).name('속도');
   motion.add(look, 'density', 0.6, 1.8, 0.05).name('주사위 크기').onFinishChange(resize);
-  motion.add({ revealLetter }, 'revealLetter').name('J 펼치기');
   motion.add({ reset }, 'reset').name('처음으로');
   const material = gui.addFolder('재질과 빛');
   material.add(look, 'exposure', 0.4, 1.8, 0.01).name('노출').onChange(() => { renderer.toneMappingExposure = look.exposure; dirty = true; });
@@ -301,7 +307,7 @@ function start() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = reveal.active ? 'glow-dice-j.png' : 'glow-dice.png';
+      link.download = paint.active ? 'glow-dice-drawing.png' : 'glow-dice.png';
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, 'image/png');
@@ -315,18 +321,19 @@ function start() {
     const delta = previousTime ? Math.min((now - previousTime) / 1000, 0.05) : 0;
     previousTime = now;
     if (look.animate) {
-      // Keep a clock for subsequent gestures, but let a completed letter rest.
-      const moving = reveal.isMoving(time);
+      // Keep a gesture clock; the dark wall and settled strokes can rest.
+      const moving = paint.isMoving(time);
       time += delta * look.speed;
-      if (!reveal.active || moving) dirty = true;
+      if (moving) dirty = true;
     }
     if (!dirty) return;
-    uniforms.time.value = time;
     cells.forEach((_, index) => {
-      revealAttribute.setX(index, reveal.pose(index, time, transform));
+      revealAttribute.setX(index, paint.pose(index, time, transform));
+      luminanceAttribute.setX(index, paint.states[index].luminance);
       meshes.forEach(mesh => mesh.setMatrixAt(index, transform.matrix));
     });
     revealAttribute.needsUpdate = true;
+    luminanceAttribute.needsUpdate = true;
     meshes.forEach(mesh => { mesh.instanceMatrix.needsUpdate = true; });
     composer.render();
     status.hidden = true;
