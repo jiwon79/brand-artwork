@@ -217,6 +217,7 @@ function start() {
     width = height * aspect;
     camera.aspect = aspect;
     camera.position.z = height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+    camera.far = Math.max(100, camera.position.z + 10);
     camera.updateProjectionMatrix();
     const extent = Math.max(width, height) * 0.65;
     Object.assign(key.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent });
@@ -320,7 +321,7 @@ function start() {
     guiVisible = visible;
     if (visible) gui.show(); else gui.hide();
   }
-  gui.add(look, 'size', 0.6, 1.8, 0.05).name('주사위 크기').onFinishChange(() => {
+  gui.add(look, 'size', 0.3, 1.8, 0.05).name('주사위 크기').onFinishChange(() => {
     if (activePointer !== undefined) reset();
     resize();
   });
