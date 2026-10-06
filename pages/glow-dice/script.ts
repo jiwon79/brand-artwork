@@ -67,6 +67,24 @@ const look = {
 
 function start() {
   const events = new AbortController();
+  const standalone = matchMedia('(display-mode: standalone)');
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const updateDisplayHeight = () => {
+    const installed = standalone.matches || (navigator as Navigator & { standalone?: boolean }).standalone;
+    if (ios && installed) {
+      // iOS standalone can report a viewport shorter than the display when
+      // black-translucent extends content behind the status bar. Fill the screen
+      // explicitly; only GUI placement should reserve the top safe area.
+      const portrait = matchMedia('(orientation: portrait)').matches;
+      const height = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+      document.documentElement.style.setProperty('--artwork-height', `${height}px`);
+    } else document.documentElement.style.removeProperty('--artwork-height');
+  };
+  updateDisplayHeight();
+  standalone.addEventListener('change', updateDisplayHeight, { signal: events.signal });
+  window.addEventListener('resize', updateDisplayHeight, { signal: events.signal });
+  window.addEventListener('orientationchange', updateDisplayHeight, { signal: events.signal });
   const processView = new ProcessView();
   let stage: ProcessStage = 'final';
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
@@ -320,7 +338,6 @@ function start() {
   function setGuiVisible(visible: boolean) {
     guiVisible = visible;
     if (visible) gui.show(); else gui.hide();
-    document.body.classList.toggle('ui-hidden', !visible);
     if (!visible) canvas.focus({ preventScroll: true });
   }
   let tapStart: { x: number; y: number; id: number } | undefined;
@@ -408,7 +425,7 @@ function start() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, 'image/png');
   } }, 'save').name('이미지 저장');
-  gui.add({ hide: () => setGuiVisible(false) }, 'hide').name('UI 숨기기');
+  gui.add({ hide: () => setGuiVisible(false) }, 'hide').name('GUI 숨기기');
 
   const stepper = createStepper({
     steps: PROCESS_STEPS,
@@ -463,8 +480,8 @@ function start() {
     renderer.setAnimationLoop(null);
     observer.disconnect();
     events.abort();
+    document.documentElement.style.removeProperty('--artwork-height');
     gui.destroy();
-    document.body.classList.remove('ui-hidden');
     stepper.destroy();
     processView.dispose();
     [neutralShell, neutralSocket, neutralPip].forEach(material => material.dispose());
