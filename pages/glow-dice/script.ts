@@ -67,6 +67,36 @@ const look = {
 
 function start() {
   const events = new AbortController();
+  const fullscreenButton = document.querySelector<HTMLButtonElement>('.fullscreen-button')!;
+  const fullscreenMessage = document.querySelector<HTMLElement>('.fullscreen-message')!;
+  let fullscreenMessageTimer: ReturnType<typeof setTimeout> | undefined;
+  const syncFullscreen = () => {
+    const active = document.fullscreenElement === document.documentElement;
+    fullscreenButton.textContent = active ? '종료' : '전체화면';
+    fullscreenButton.setAttribute('aria-label', active ? '전체화면 종료' : '전체화면');
+    fullscreenButton.setAttribute('aria-pressed', String(active));
+    fullscreenMessage.hidden = true;
+  };
+  fullscreenButton.addEventListener('click', async () => {
+    clearTimeout(fullscreenMessageTimer);
+    fullscreenMessage.hidden = true;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      } else {
+        throw new Error('unsupported');
+      }
+    } catch {
+      fullscreenMessage.textContent = document.fullscreenEnabled
+        ? '전체화면을 열지 못했어요. 버튼을 다시 눌러주세요.'
+        : '이 브라우저는 전체화면 버튼을 지원하지 않아요.';
+      fullscreenMessage.hidden = false;
+      fullscreenMessageTimer = setTimeout(() => { fullscreenMessage.hidden = true; }, 4000);
+    }
+  }, { signal: events.signal });
+  document.addEventListener('fullscreenchange', syncFullscreen, { signal: events.signal });
+  syncFullscreen();
   const processView = new ProcessView();
   let stage: ProcessStage = 'final';
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
@@ -442,6 +472,7 @@ function start() {
     renderer.setAnimationLoop(null);
     observer.disconnect();
     events.abort();
+    clearTimeout(fullscreenMessageTimer);
     gui.destroy();
     stepper.destroy();
     processView.dispose();
