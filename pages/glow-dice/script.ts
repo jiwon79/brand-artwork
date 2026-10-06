@@ -59,7 +59,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const look = {
   ...COLOR_PRESETS['차콜 · 기본'],
   animate: !reducedMotion.matches && !(import.meta.env.DEV && params.has('still')),
-  spinDuration: 1,
+  spinDuration: 0,
   size: 0.6,
   brushWidth: 1.5,
   preset: '차콜 · 기본',
