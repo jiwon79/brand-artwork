@@ -6,37 +6,6 @@ PBR은 표면의 성질과 빛의 조건으로 픽셀 색을 계산하는 렌더
 
 > **작성 기준:** 이 문서는 ASD-STE100의 작성 원칙을 한글에 적용했다. 한 문장에는 한 가지 내용을 쓴다. 같은 개념에는 같은 용어를 쓴다. 계산은 입력, 중간값, 출력 순서로 설명한다. ASD-STE100의 영어 어휘 규칙에 따른 적합성은 주장하지 않는다. [ASD-STE100 설명](https://www.asd-ste100.org/STE_faq.html)
 
-## 비교 이미지로 먼저 보기
-
-**네 파라미터는 서로 다른 방식으로 최종 픽셀 색을 바꾼다.**
-각 이미지에서는 한 파라미터만 변경했다.
-고정값은 이미지 위에 표시했다.
-변경값은 각 구 아래에 표시했다.
-
-### Roughness: 반사의 폭과 흐림
-
-![roughness 비교. 고정값은 위에 표시하고, 변경값은 각 구 아래에 표시](../assets/pbr-roughness-comparison.png)
-
-roughness가 커지면 반사가 넓어지고 윤곽이 흐려진다.
-
-### Specular: 비금속 정반사의 강도
-
-![specularIntensity를 0부터 1까지 0.2 간격으로 변경한 구](../assets/pbr-specular-comparison.png)
-
-specular가 커지면 비금속의 정반사가 강해진다.
-
-### 환경광 강도: 주변 빛의 세기
-
-![envMapIntensity를 0부터 1까지 0.2 간격으로 변경한 구. 직접 조명은 고정](../assets/pbr-environment-comparison.png)
-
-환경광 강도가 커지면 환경 반사와 어두운 면이 밝아진다.
-
-### Metalness: 기본색의 사용
-
-![metalness를 0부터 1까지 0.2 간격으로 변경한 구](../assets/pbr-metalness-comparison.png)
-
-metalness가 커지면 확산색은 줄고 기본색이 정반사에 사용된다.
-
 ## 용어
 
 | 용어 | 이 문서의 의미 |
@@ -109,6 +78,8 @@ specular 절에서는 비금속의 기준 반사율을 설명한다.
 metalness 절에서는 기본색의 배분을 설명한다.
 
 ## 1. Roughness
+
+![roughness 비교. 고정값은 위에 표시하고, 변경값은 각 구 아래에 표시](../assets/pbr-roughness-comparison.png)
 
 ### 1.1 이미지에서 확인할 변화
 
@@ -477,6 +448,8 @@ roughness가 커지면 더 넓은 방향의 빛을 평균한 값을 조회한다
 
 ## 2. Specular
 
+![specularIntensity를 0부터 1까지 0.2 간격으로 변경한 구](../assets/pbr-specular-comparison.png)
+
 ### 2.1 이미지에서 확인할 변화
 
 구 위쪽의 하이라이트와 오른쪽 반사 띠를 비교한다.
@@ -530,6 +503,8 @@ metalness=1이면 specularIntensity의 영향이 사라진다.
 
 ## 3. 환경광 강도(Environment intensity)
 
+![envMapIntensity를 0부터 1까지 0.2 간격으로 변경한 구. 직접 조명은 고정](../assets/pbr-environment-comparison.png)
+
 ### 3.1 이미지에서 확인할 변화
 
 환경광 강도가 0이면 구의 아래쪽이 매우 어둡다.
@@ -576,6 +551,8 @@ specular는 직접 조명과 환경광의 비금속 정반사에 영향을 준�
 scene의 환경 설정을 사용하면 엔진 버전의 강도 설정을 확인한다.
 
 ## 4. Metalness
+
+![metalness를 0부터 1까지 0.2 간격으로 변경한 구](../assets/pbr-metalness-comparison.png)
 
 ### 4.1 이미지에서 확인할 변화
 
