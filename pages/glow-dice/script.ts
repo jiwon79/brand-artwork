@@ -128,7 +128,11 @@ function start() {
       totalEmissiveRadiance *= 1.15 * pow(vLuminance, 0.85) * vReveal * uIntensity;`);
   };
 
-  const neutralShell = new THREE.MeshMatcapMaterial({ color: 0x858a94 });
+  const neutralShell = new THREE.MeshBasicMaterial({ color: 0x858a94 });
+  // Keep per-die enamel variation exclusively in the final material.
+  neutralShell.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '');
+  };
   const neutralSocket = new THREE.MeshBasicMaterial({ color: 0x151922, side: THREE.DoubleSide });
   const neutralPip = new THREE.MeshBasicMaterial({ color: 0xe1e5ee });
 
@@ -418,6 +422,8 @@ function start() {
     luminanceAttribute.needsUpdate = true;
     meshes.forEach(mesh => { mesh.instanceMatrix.needsUpdate = true; });
     const neutral = stage === 'rotation';
+    renderer.toneMapping = neutral ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+    renderer.setClearColor(neutral ? '#030304' : look.backgroundColor);
     meshes[0].material = neutral ? neutralShell : shellMaterial;
     meshes[1].material = neutral ? neutralSocket : socketMaterial;
     meshes[2].material = neutral ? neutralPip : lightMaterial;
