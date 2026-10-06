@@ -84,6 +84,8 @@ Concept는 다음 중 하나를 만족할 때 독립 문서로 둔다.
 - [`jump-flood-nearest-seed.md`](./concepts/jump-flood-nearest-seed.md) - GPU pass가 큰 jump부터 가까운 seed 좌표를 전달하는 JFA 원리와 bounded 근사
 - [`mean-value-coordinates.md`](./concepts/mean-value-coordinates.md) - cage의 거리와 이웃 각도로 내부 좌표 weights를 만들고 다른 cage에 옮기는 원리
 - [`pixel-metaball-field.md`](./concepts/pixel-metaball-field.md) - 활성 픽셀의 황금각 주변 표본을 누적해 threshold 실루엣을 만드는 원리
+- [`pbr-material-parameters.md`](./concepts/pbr-material-parameters.md) - roughness·specular·환경광 강도·metalness의 역할과 계산, 0~1 실제 렌더 비교
+- [`pmrem.md`](./concepts/pmrem.md) - 환경 맵을 미리 필터하고 roughness별로 조회하는 PMREM의 데이터와 계산
 - [`sdf-glass-rendering.md`](./concepts/sdf-glass-rendering.md) - SDF에서 normal, 가상 유리 단면, 굴절 offset을 만드는 공통 원리
 - [`smooth-union.md`](./concepts/smooth-union.md) - signed-distance field의 union과 부드러운 접합 원리
 - [`svg-path-rope-tension.md`](./concepts/svg-path-rope-tension.md) - SVG contour를 graph로 바꾸고 거리 감쇠로 rope 장력을 전달하는 원리
