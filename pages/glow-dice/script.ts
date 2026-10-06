@@ -320,7 +320,27 @@ function start() {
   function setGuiVisible(visible: boolean) {
     guiVisible = visible;
     if (visible) gui.show(); else gui.hide();
+    document.body.classList.toggle('ui-hidden', !visible);
+    if (!visible) canvas.focus({ preventScroll: true });
   }
+  let tapStart: { x: number; y: number; id: number } | undefined;
+  let previousTap: { x: number; y: number; time: number } | undefined;
+  canvas.addEventListener('pointerdown', event => {
+    tapStart = !guiVisible ? { x: event.clientX, y: event.clientY, id: event.pointerId } : undefined;
+  }, { signal: events.signal });
+  canvas.addEventListener('pointermove', event => {
+    if (tapStart && Math.hypot(event.clientX - tapStart.x, event.clientY - tapStart.y) > 12) tapStart = undefined;
+  }, { signal: events.signal });
+  canvas.addEventListener('pointerup', event => {
+    if (!tapStart || tapStart.id !== event.pointerId || guiVisible) return;
+    if (previousTap && event.timeStamp - previousTap.time < 350
+      && Math.hypot(event.clientX - previousTap.x, event.clientY - previousTap.y) < 28) {
+      setGuiVisible(true);
+      previousTap = undefined;
+    } else previousTap = { x: event.clientX, y: event.clientY, time: event.timeStamp };
+    tapStart = undefined;
+  }, { signal: events.signal });
+  canvas.addEventListener('pointercancel', () => { tapStart = undefined; previousTap = undefined; }, { signal: events.signal });
   gui.add(look, 'size', 0.3, 1.8, 0.05).name('주사위 크기').onFinishChange(() => {
     if (activePointer !== undefined) reset();
     resize();
@@ -388,6 +408,7 @@ function start() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, 'image/png');
   } }, 'save').name('이미지 저장');
+  gui.add({ hide: () => setGuiVisible(false) }, 'hide').name('UI 숨기기');
 
   const stepper = createStepper({
     steps: PROCESS_STEPS,
@@ -443,6 +464,7 @@ function start() {
     observer.disconnect();
     events.abort();
     gui.destroy();
+    document.body.classList.remove('ui-hidden');
     stepper.destroy();
     processView.dispose();
     [neutralShell, neutralSocket, neutralPip].forEach(material => material.dispose());
