@@ -128,8 +128,8 @@ function start() {
       totalEmissiveRadiance *= 1.15 * pow(vLuminance, 0.85) * vReveal * uIntensity;`);
   };
 
-  const neutralShell = new THREE.MeshBasicMaterial({ color: 0x858a94 });
-  // Keep per-die enamel variation exclusively in the final material.
+  const neutralShell = new THREE.MeshMatcapMaterial({ color: 0x858a94 });
+  // Matcap supplies shape shading; per-die enamel variation stays in Final.
   neutralShell.onBeforeCompile = shader => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '');
   };
