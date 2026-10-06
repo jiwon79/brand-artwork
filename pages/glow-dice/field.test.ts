@@ -143,3 +143,30 @@ test('brush thickness changes the painted footprint while retaining feathered ed
   expect(wide.states.some(state => Math.abs(state.cell.y - 0.5) >= 2 && state.luminance > 0)).toBe(true);
   expect(wide.states.some(state => state.luminance > 0 && state.luminance < 1)).toBe(true);
 });
+
+test('middle rotation time changes duration without changing angular speed or ramp timing', () => {
+  const variants = [0.2, 2].map(duration => {
+    const paint = drawing();
+    paint.beginStroke(0);
+    paint.paint({ x: 0.5, y: 0.5 }, { x: 0.5, y: 0.5 }, 0, { x: 25, y: 0 }, false, 0.9, duration);
+    return paint;
+  });
+  const indexes = variants.map(paint => paint.states.findIndex(state => state.cell.x === 0.5 && state.cell.y === 0.5));
+  const states = variants.map((paint, index) => paint.states[indexes[index]]);
+  expect(states[1].finish - states[0].finish).toBeCloseTo(1.8, 10);
+  expect(states[0].spinRate).toBe(states[1].spinRate);
+  for (const time of [0.05, 0.12, 0.25, 0.3]) {
+    const poses = variants.map((paint, index) => {
+      paint.pose(indexes[index], time, target);
+      return target.quaternion.clone();
+    });
+    expect(poses[0].angleTo(poses[1])).toBeLessThan(1e-7);
+  }
+  variants.forEach((paint, index) => {
+    const state = states[index];
+    paint.pose(indexes[index], state.finish - 0.00001, target);
+    expect(target.quaternion.angleTo(state.target)).toBeLessThan(0.001);
+    paint.pose(indexes[index], state.finish, target);
+    expect(target.quaternion.angleTo(state.target)).toBeLessThan(1e-7);
+  });
+});

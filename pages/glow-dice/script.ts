@@ -59,7 +59,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const look = {
   ...COLOR_PRESETS['차콜 · 기본'],
   animate: !reducedMotion.matches && !(import.meta.env.DEV && params.has('still')),
-  speed: 1,
+  spinDuration: 1,
   size: 0.6,
   brushWidth: 1.5,
   preset: '차콜 · 기본',
@@ -255,7 +255,7 @@ function start() {
     const weight = pointerMoved ? 0.45 : 1;
     velocity.lerp(new THREE.Vector2(dx / seconds, dy / seconds), weight);
     processView.record(lastPointer, point, velocity, width, height, look.brushWidth);
-    paint.paint(lastPointer, point, time, velocity, reducedMotion.matches || !look.animate, 0.9 * look.brushWidth);
+    paint.paint(lastPointer, point, time, velocity, reducedMotion.matches || !look.animate, 0.9 * look.brushWidth, look.spinDuration);
     lastPointer.set(point.x, point.y);
     lastPointerTime = event.timeStamp;
     pointerMoved = true;
@@ -271,7 +271,7 @@ function start() {
     drawSample(event);
     if (!pointerMoved) {
       processView.record(lastPointer, lastPointer, { x: 0, y: 0 }, width, height, look.brushWidth);
-      paint.paint(lastPointer, lastPointer, time, { x: 0, y: 0 }, reducedMotion.matches || !look.animate, 0.9 * look.brushWidth);
+      paint.paint(lastPointer, lastPointer, time, { x: 0, y: 0 }, reducedMotion.matches || !look.animate, 0.9 * look.brushWidth, look.spinDuration);
       dirty = true;
     }
     activePointer = undefined;
@@ -325,6 +325,7 @@ function start() {
     resize();
   });
   gui.add(look, 'brushWidth', 0.3, 3, 0.05).name('커서 두께');
+  gui.add(look, 'spinDuration', 0, 5, 0.05).name('중간 회전 시간 (초)');
   gui.add(look, 'preset', [...Object.keys(COLOR_PRESETS), '직접 설정']).name('프리셋').listen().onChange((name: string) => {
     if (!(name in COLOR_PRESETS)) return;
     Object.assign(look, COLOR_PRESETS[name as ColorPreset]);
@@ -367,7 +368,6 @@ function start() {
   palette.close();
   const motion = gui.addFolder('움직임');
   motion.add(look, 'animate').name('애니메이션').listen();
-  motion.add(look, 'speed', 0.1, 2, 0.05).name('속도');
   motion.add({ reset }, 'reset').name('처음으로');
   motion.close();
   const material = gui.addFolder('재질');
@@ -409,7 +409,7 @@ function start() {
     if (look.animate) {
       // Keep a gesture clock; the dark wall and settled strokes can rest.
       const moving = paint.isMoving(time);
-      time += delta * look.speed;
+      time += delta;
       if (moving) dirty = true;
     }
     if (!dirty) return;

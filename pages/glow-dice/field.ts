@@ -46,17 +46,17 @@ function rampIntegral(value: number) {
   return t ** 6 - 3 * t ** 5 + 2.5 * t ** 4;
 }
 
-function spinProgress(local: number, duration: number) {
+function spinTravel(local: number, duration: number) {
   const travel = duration - (SPIN_RAMP + SETTLE_DURATION) / 2;
-  if (local <= SPIN_RAMP) return SPIN_RAMP * rampIntegral(local / SPIN_RAMP) / travel;
-  if (local >= duration - SETTLE_DURATION) return 1 - SETTLE_DURATION * rampIntegral((duration - local) / SETTLE_DURATION) / travel;
-  return (local - SPIN_RAMP / 2) / travel;
+  if (local <= SPIN_RAMP) return SPIN_RAMP * rampIntegral(local / SPIN_RAMP);
+  if (local >= duration - SETTLE_DURATION) return travel - SETTLE_DURATION * rampIntegral((duration - local) / SETTLE_DURATION);
+  return local - SPIN_RAMP / 2;
 }
 
 type PaintCell = {
   cell: Cell; coverage: Float32Array; luminance: number; face: number;
   target: THREE.Quaternion; from: THREE.Quaternion; fromReveal: number;
-  arrival: number; finish: number; axis: THREE.Vector3; turns: number; stroke: number;
+  arrival: number; finish: number; axis: THREE.Vector3; turns: number; spinRate: number; stroke: number;
 };
 
 /** Brush segments accumulate a coverage mask. Dice keep their centers while
@@ -73,13 +73,13 @@ export class DicePaint {
     this.states = cells.map(cell => ({
       cell, coverage: new Float32Array(SAMPLES * SAMPLES), luminance: 0, face: 1,
       target: cell.orientation.clone(), from: cell.orientation.clone(), fromReveal: 0,
-      arrival: Infinity, finish: Infinity, axis: new THREE.Vector3(0, 1, 0), turns: 1, stroke: -1,
+      arrival: Infinity, finish: Infinity, axis: new THREE.Vector3(0, 1, 0), turns: 1, spinRate: 0, stroke: -1,
     }));
   }
 
   beginStroke(time: number) { this.stroke++; this.lastFinish = time; }
 
-  paint(a: Point, b: Point, time: number, velocity: Point, instant = false, radius = BRUSH_RADIUS) {
+  paint(a: Point, b: Point, time: number, velocity: Point, instant = false, radius = BRUSH_RADIUS, middleDuration?: number) {
     const coreRadius = radius * (0.55 / BRUSH_RADIUS);
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -121,7 +121,12 @@ export class DicePaint {
         state.axis.copy(axis);
         state.turns = 1 + Math.round(strength * 2);
         state.arrival = time;
-        state.finish = instant ? time : Math.max(time + 1.25 + strength * 0.7, this.lastFinish + 0.018);
+        const naturalDuration = 1.25 + strength * 0.7;
+        // Gesture velocity fixes angular speed; the control changes only cruise time.
+        state.spinRate = state.turns / (naturalDuration - (SPIN_RAMP + SETTLE_DURATION) / 2);
+        const duration = middleDuration === undefined ? naturalDuration
+          : SPIN_RAMP + Math.max(0, middleDuration) + SETTLE_DURATION;
+        state.finish = instant ? time : Math.max(time + duration, this.lastFinish + 0.018);
         this.lastFinish = state.finish;
         state.stroke = this.stroke;
       }
@@ -178,6 +183,7 @@ export class DicePaint {
       state.finish = nearest.finish;
       state.axis.copy(nearest.axis);
       state.turns = nearest.turns;
+      state.spinRate = nearest.spinRate;
       state.stroke = nearest.stroke;
     });
     if (!previous.isMoving(time)) this.settle(time);
@@ -193,10 +199,14 @@ export class DicePaint {
       reveal = 1;
     } else if (local > 0) {
       const duration = state.finish - state.arrival;
-      const progress = spinProgress(local, duration);
       const settling = smooth((time - state.finish + SETTLE_DURATION) / SETTLE_DURATION);
       target.quaternion.slerp(state.target, settling);
-      this.spin.setFromAxisAngle(state.axis, Math.PI * 2 * state.turns * progress);
+      const totalTurns = state.spinRate * spinTravel(duration, duration);
+      // Absorb the fractional last turn during the fixed settling window so the
+      // selected face lands exactly, without changing the middle angular speed.
+      const turns = state.spinRate * spinTravel(local, duration)
+        - (totalTurns - Math.round(totalTurns)) * settling;
+      this.spin.setFromAxisAngle(state.axis, Math.PI * 2 * turns);
       target.quaternion.premultiply(this.spin);
       reveal = state.fromReveal + (1 - state.fromReveal) * smooth(local / 0.6);
     }
