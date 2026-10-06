@@ -2,7 +2,6 @@
 * { box-sizing: border-box; }
 html, body, main { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { height: 100dvh; }
-.fullscreen-message { position: fixed; z-index: 21; bottom: max(60px, calc(env(safe-area-inset-bottom) + 50px)); right: max(10px, env(safe-area-inset-right)); max-width: min(290px, calc(100vw - 20px)); margin: 0; padding: 10px 12px; border-radius: 8px; background: #171719ee; color: #f4f7ff; font-size: 12px; line-height: 1.5; pointer-events: none; }
 body, canvas { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
 canvas:focus-visible { outline: 1px solid #8d8e92; outline-offset: -2px; }
@@ -14,4 +13,4 @@ canvas:focus-visible { outline: 1px solid #8d8e92; outline-offset: -2px; }
 .lil-gui.root > .children { max-height: calc(100dvh - 84px); overflow-y: auto; }
 .process-canvas { position: fixed; inset: 0; pointer-events: none; }
 .process-canvas[hidden] { display: none; }
-artwork-stepper { --stepper-color: #f4f7ff; --stepper-muted-color: #929aa9; --stepper-text-shadow: 0 1px 8px #030304; --stepper-focus-color: #8ebaff; --stepper-max-width: 500px; }
+artwork-stepper { --stepper-bottom: 10px; --stepper-color: #f4f7ff; --stepper-muted-color: #929aa9; --stepper-text-shadow: 0 1px 8px #030304; --stepper-focus-color: #8ebaff; --stepper-max-width: 500px; }
