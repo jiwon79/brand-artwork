@@ -1,7 +1,7 @@
 const studio = {
   diceColor: '#56575a', pipColor: '#fafaff', backgroundColor: '#030304', lightColor: '#f9faff',
-  exposure: 1, softboxIntensity: 2.1, keyIntensity: 0.22, fillIntensity: 0.08, ambientIntensity: 0.12,
-  light: 1.35, glow: 0.18, roughness: 0.4, clearcoat: 0.75, environment: 0.55,
+  exposure: 0.36, softboxIntensity: 2.1, keyIntensity: 0.22, fillIntensity: 0.08, ambientIntensity: 0.12,
+  light: 3, glow: 0.18, roughness: 0.4, clearcoat: 0.75, environment: 0.55,
 };
 export const COLOR_PRESETS = {
   '차콜 · 기본': studio,

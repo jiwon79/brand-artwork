@@ -60,8 +60,8 @@ const look = {
   ...COLOR_PRESETS['차콜 · 기본'],
   animate: !reducedMotion.matches && !(import.meta.env.DEV && params.has('still')),
   speed: 1,
-  size: 1,
-  brushWidth: 1,
+  size: 0.6,
+  brushWidth: 1.5,
   preset: '차콜 · 기본',
 };
 
