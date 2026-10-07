@@ -17,6 +17,9 @@ importers:
       gsap:
         specifier: ^3.12.5
         version: 3.15.0
+      harfbuzzjs:
+        specifier: ^1.6.3
+        version: 1.6.3
       lil-gui:
         specifier: ^0.19.2
         version: 0.19.2
@@ -691,6 +694,9 @@ packages:
 
   gsap@3.15.0:
     resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
+
+  harfbuzzjs@1.6.3:
+    resolution: {integrity: sha512-R5Mfo1UUvQmZJmtScP7fBLKYKnYu82ZdtFT7WbQYeGb3Ut5PR3xfFCJ5/FjbcW5SAfb9cqCSny/KNjp+NJBx0w==}
 
   is-binary-path@2.1.0:
     resolution: {integrity: sha512-ZMERYes6pDydyuGidse7OsHxtbI7WVeUEozgR/g7rd0xUimYNlvZRE/K2MgZTjWy725IfelLeVcEM97mmtRGXw==}
@@ -1541,6 +1547,8 @@ snapshots:
       is-glob: 4.0.3
 
   gsap@3.15.0: {}
+
+  harfbuzzjs@1.6.3: {}
 
   is-binary-path@2.1.0:
     dependencies:

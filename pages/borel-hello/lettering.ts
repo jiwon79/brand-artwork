@@ -1,48 +1,179 @@
-/** Borel Regular, shaped as a whole word with HarfBuzz (default OpenType features).
- * Outlines retain the original font geometry; hand-authored center paths use a
- * 1000-unit em scaled by 0.4, with an 80-unit vertical translation at render time.
- * Stroke order is separate from outlines so it can drive a future 3D renderer.
- */
-export const lettering = [
-  {
-    "name": "h.init",
-    "outline": "M61.2 289.6Q45.6 278.0 43.6 257.6Q62.0 246.8 77.6 231.2V48.39999999999998Q77.6 8.399999999999977 94.6 -13.200000000000017Q111.60000000000001 -34.80000000000001 144.0 -34.400000000000034Q173.6 -34.0 190.2 -12.0Q206.8 10.0 206.8 45.19999999999999Q206.8 76.39999999999998 197.8 109.39999999999998Q188.8 142.39999999999998 170.0 175.2Q173.6 174.79999999999998 177.20000000000002 174.79999999999998Q207.20000000000002 174.79999999999998 225.0 196.0Q242.8 217.2 242.8 252.8V287.2Q242.8 310.4 248.60000000000002 320.79999999999995Q254.4 331.2 268.0 331.2Q274.4 331.2 277.2 336.2Q280.0 341.2 280.0 348.8Q280.0 356.4 276.2 361.0Q272.4 365.6 265.6 365.6Q236.8 365.6 221.4 347.0Q206.0 328.4 206.0 294.4V252.0Q206.0 231.6 197.0 220.2Q188.0 208.79999999999998 171.6 208.79999999999998Q155.60000000000002 208.79999999999998 142.8 219.39999999999998Q130.0 230.0 122.4 248.4Q114.8 266.8 114.4 290.8V360.0Q110.4 361.2 105.60000000000001 362.0Q100.80000000000001 362.8 96.4 362.8Q87.2 362.8 77.6 360.0V278.4Q68.0 286.0 61.2 289.6ZM113.2 48.0V203.6Q141.60000000000002 162.0 156.40000000000003 121.4Q171.20000000000002 80.80000000000001 171.20000000000002 44.799999999999955Q171.20000000000002 22.399999999999977 163.8 10.599999999999966Q156.4 -1.2000000000000455 142.4 -1.2000000000000455Q113.2 -1.2000000000000455 113.2 48.0Z",
-    "strokes": [
-      "M54 353 C132 316 189 213 189 125 C189 49 96 45 96 130",
-      "M96 130 L96 440",
-      "M96 374 C103 303 143 273 173 273 C205 273 224 296 224 333 L224 375 C224 429 243 429 268 429"
-    ]
-  },
-  {
-    "name": "e",
-    "outline": "M265.6 365.6Q260.40000000000003 365.6 257.20000000000005 360.8Q254.0 356.0 254.0 348.4Q254.0 331.2 268.40000000000003 331.2Q280.0 331.2 292.0 327.4Q304.0 323.6 320.0 314.4Q304.40000000000003 287.2 304.40000000000003 250.39999999999998Q304.40000000000003 225.6 313.6 206.6Q322.8 187.6 339.20000000000005 176.6Q355.6 165.6 376.40000000000003 165.6Q394.0 165.6 407.6 173.8Q421.20000000000005 182.0 428.80000000000007 196.39999999999998Q436.40000000000003 210.79999999999998 436.40000000000003 229.6Q436.40000000000003 255.2 421.4 276.4Q406.4 297.6 370.8 322.4Q383.6 331.6 405.20000000000005 331.6Q410.8 331.6 414.0 336.4Q417.20000000000005 341.2 417.20000000000005 349.2Q417.20000000000005 356.8 413.6 361.20000000000005Q410.0 365.6 403.20000000000005 365.6Q384.0 365.6 367.20000000000005 359.20000000000005Q350.40000000000003 352.8 339.20000000000005 341.6Q300.8 365.6 265.6 365.6ZM339.20000000000005 247.2Q339.20000000000005 278.8 350.40000000000003 297.6Q376.40000000000003 279.6 389.0 262.4Q401.6 245.2 401.6 229.6Q401.6 215.2 394.6 207.0Q387.6 198.79999999999998 375.20000000000005 198.79999999999998Q359.6 198.79999999999998 349.40000000000003 212.79999999999998Q339.20000000000005 226.79999999999998 339.20000000000005 247.2Z",
-    "strokes": [
-      "M268 429 C315 429 368 395 401 356 C439 312 418 263 375 263",
-      "M375 263 C319 263 305 340 342 395 C359 420 384 429 405 429"
-    ]
-  },
-  {
-    "name": "l.medi.cv01",
-    "outline": "M403.20000000000005 365.6Q397.6 365.6 394.40000000000003 360.8Q391.20000000000005 356.0 391.20000000000005 348.4Q391.20000000000005 340.8 395.0 336.20000000000005Q398.8 331.6 405.6 331.6Q431.20000000000005 331.6 455.0 319.20000000000005Q478.8 306.8 495.6 288.4Q493.6 271.2 493.6 244.8V56.80000000000001Q493.6 12.799999999999955 510.8 -10.80000000000004Q528.0 -34.400000000000034 560.0 -34.400000000000034Q594.0 -34.400000000000034 611.4000000000001 -7.400000000000034Q628.8000000000001 19.599999999999966 628.8000000000001 72.0Q628.8000000000001 136.39999999999998 604.2 196.0Q579.6 255.6 534.4000000000001 301.2Q535.2 303.6 536.0 306.0Q547.2 331.6 582.8000000000001 331.6Q588.4000000000001 331.6 591.4000000000001 336.20000000000005Q594.4000000000001 340.8 594.4000000000001 348.8Q594.4000000000001 365.6 580.4000000000001 365.6Q526.8000000000001 365.6 506.8 328.0Q506.0 326.8 505.6 325.6Q483.6 344.4 458.6 355.0Q433.6 365.6 403.20000000000005 365.6ZM560.4000000000001 0.0Q545.6 0.0 537.4000000000001 12.799999999999983Q529.2 25.599999999999966 529.2 49.19999999999999V243.2Q529.2 250.8 529.2 256.8Q593.2 171.2 593.2 70.0Q593.2 0.0 560.4000000000001 0.0Z",
-    "strokes": [
-      "M405 429 C480 429 554 365 593 275 C613 228 613 179 611 142",
-      "M611 142 C610 36 512 47 512 133 L512 324 C512 393 522 429 581 429"
-    ]
-  },
-  {
-    "name": "l.medi.cv01",
-    "outline": "M580.4000000000001 365.6Q574.8000000000001 365.6 571.6000000000001 360.8Q568.4000000000001 356.0 568.4000000000001 348.4Q568.4000000000001 340.8 572.2 336.20000000000005Q576.0000000000001 331.6 582.8000000000001 331.6Q608.4000000000001 331.6 632.2 319.20000000000005Q656.0000000000001 306.8 672.8000000000001 288.4Q670.8000000000001 271.2 670.8000000000001 244.8V56.80000000000001Q670.8000000000001 12.799999999999955 688.0 -10.80000000000004Q705.2 -34.400000000000034 737.2 -34.400000000000034Q771.2 -34.400000000000034 788.6000000000001 -7.400000000000034Q806.0000000000001 19.599999999999966 806.0000000000001 72.0Q806.0000000000001 136.39999999999998 781.4000000000001 196.0Q756.8000000000001 255.6 711.6000000000001 301.2Q712.4000000000001 303.6 713.2 306.0Q724.4000000000001 331.6 760.0000000000001 331.6Q765.6000000000001 331.6 768.6000000000001 336.20000000000005Q771.6000000000001 340.8 771.6000000000001 348.8Q771.6000000000001 365.6 757.6000000000001 365.6Q704.0000000000001 365.6 684.0000000000001 328.0Q683.2 326.8 682.8000000000001 325.6Q660.8000000000001 344.4 635.8000000000001 355.0Q610.8000000000001 365.6 580.4000000000001 365.6ZM737.6000000000001 0.0Q722.8000000000001 0.0 714.6000000000001 12.799999999999983Q706.4000000000001 25.599999999999966 706.4000000000001 49.19999999999999V243.2Q706.4000000000001 250.8 706.4000000000001 256.8Q770.4000000000001 171.2 770.4000000000001 70.0Q770.4000000000001 0.0 737.6000000000001 0.0Z",
-    "strokes": [
-      "M581 429 C657 429 731 365 770 275 C790 228 790 179 788 142",
-      "M788 142 C787 36 689 47 689 133 L689 324 C689 393 699 429 758 429"
-    ]
-  },
-  {
-    "name": "o.fina.cv01",
-    "outline": "M757.6 365.6Q752.0 365.6 748.6 360.8Q745.2 356.0 745.2 348.4Q745.2 340.4 749.2 336.0Q753.2 331.6 759.6 331.6Q784.0 331.6 804.2 318.6Q824.4 305.6 837.2 282.8Q836.0 274.4 836.0 265.2Q836.0 236.39999999999998 848.4 214.0Q860.8 191.6 882.2 178.6Q903.6 165.6 930.4 165.6Q957.2 165.6 978.4000000000001 178.6Q999.6 191.6 1011.8 214.0Q1024.0 236.39999999999998 1024.0 265.2Q1024.0 294.0 1011.8 316.8Q999.6 339.6 978.6 352.6Q957.6 365.6 930.4 365.6Q904.8 365.6 884.4 354.0Q864.0 342.4 851.6 322.4Q834.8 343.2 810.5999999999999 354.4Q786.4 365.6 757.6 365.6ZM930.0 331.2Q955.6 331.2 971.0 313.2Q986.4 295.2 986.4 265.2Q986.4 236.0 971.0 218.0Q955.6 200.0 930.4 200.0Q905.2 200.0 889.4000000000001 218.2Q873.6 236.39999999999998 873.6 266.0Q873.6 295.2 889.0 313.2Q904.4 331.2 930.0 331.2Z",
-    "strokes": [
-      "M758 429 C804 429 832 402 854 375",
-      "M854 375 C847 326 870 263 930 263 C979 263 1005 299 1005 346 C1005 397 976 429 930 429 C880 429 854 397 854 345"
-    ]
+import { alphabet, type PenStroke, type Point } from './stroke-alphabet';
+
+export type Matrix = readonly [number, number, number, number, number, number];
+export type Bounds = readonly [number, number, number, number];
+export interface GlyphRecord {
+  name: string;
+  advance: number;
+  bounds?: Bounds;
+  base?: string;
+  dx?: number;
+  components?: [number, Matrix][];
+}
+export interface FontCatalog { unitsPerEm: number; cmap: Record<string, number>; glyphs: GlyphRecord[] }
+export interface ShapedGlyph { id: number; x: number; y: number; advance: number; outline: string }
+export interface TextShaper { shape(text: string): ShapedGlyph[] }
+interface GlyphInk { strokes: PenStroke[]; marks: PenStroke[]; entry?: Point; exit?: Point }
+export interface Lettering { strokes: PenStroke[]; outlines: string[]; bounds: Bounds; lines: string[] }
+
+export function transformPoint([x, y]: Point, [a, b, c, d, e, f]: Matrix): Point {
+  return [a * x + c * y + e, b * x + d * y + f];
+}
+
+/** Authored paths use only absolute M/L/Q/C/Z commands, each with coordinate pairs. */
+export function transformPath(path: string, matrix: Matrix): string {
+  return path.replace(/[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?\s*,?\s*([-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?)/gi, pair => {
+    const [x, y] = pair.match(/[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?/gi)!.map(Number);
+    return transformPoint([x, y], matrix).map(value => Number(value.toFixed(3))).join(' ');
+  });
+}
+
+function pointBounds(paths: readonly PenStroke[]): Bounds {
+  const xs: number[] = [], ys: number[] = [];
+  for (const { d } of paths) {
+    const values = d.match(/[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?/gi)!.map(Number);
+    for (let i = 0; i < values.length; i += 2) { xs.push(values[i]); ys.push(values[i + 1]); }
   }
-] as const;
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+function moveInk(ink: GlyphInk, matrix: Matrix): GlyphInk {
+  const widthScale = Math.sqrt(Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]));
+  const move = (stroke: PenStroke): PenStroke => ({ d: transformPath(stroke.d, matrix), width: (stroke.width ?? 90) * widthScale });
+  return {
+    strokes: ink.strokes.map(move), marks: ink.marks.map(move),
+    entry: ink.entry && transformPoint(ink.entry, matrix), exit: ink.exit && transformPoint(ink.exit, matrix),
+  };
+}
+
+export function createGlyphResolver(catalog: FontCatalog) {
+  const cache = new Map<number, GlyphInk>();
+  const byName = new Map(catalog.glyphs.map(record => [record.name, record]));
+  function resolve(id: number): GlyphInk {
+    const cached = cache.get(id);
+    if (cached) return cached;
+    const record = catalog.glyphs[id];
+    if (!record) throw new Error(`Unknown Borel glyph ${id}`);
+    let ink: GlyphInk;
+    if (record.components) {
+      const children = record.components.map(([child, matrix]) => moveInk(resolve(child), matrix));
+      const body = children.find(child => child.entry);
+      ink = body ? {
+        ...body, marks: [...body.marks, ...children.filter(child => child !== body).flatMap(child => [...child.strokes, ...child.marks])],
+      } : { strokes: children.flatMap(child => [...child.strokes, ...child.marks]), marks: [] };
+    } else if (record.base) {
+      // Alternate uppercase forms are not enabled, but still have a drawable
+      // interpretation. Contextual lowercase forms use registered body paths.
+      const recipe = alphabet[record.base];
+      if (!recipe) throw new Error(`Missing pen trajectory for ${record.name}`);
+      let matrix: Matrix = [1, 0, 0, 1, record.dx ?? 0, 0];
+      if (recipe.normalized) {
+        const bounds = (byName.get(record.base)?.bounds ?? record.bounds)!;
+        const markBounds = record.base.endsWith('.case') ? byName.get(record.base.slice(0, -5))?.bounds : undefined;
+        const values = pointBounds(recipe.strokes);
+        // Symbols are authored in a unit box; marks retain their source units.
+        const source = markBounds ?? (Math.max(...values.map(Math.abs)) > 3 ? values : [0, 0, 1, 1]);
+        const insetX = markBounds ? 0 : Math.min(45, (bounds[2] - bounds[0]) / 4);
+        const insetY = markBounds ? 0 : Math.min(45, (bounds[3] - bounds[1]) / 4);
+        const sx = (bounds[2] - bounds[0] - insetX * 2) / Math.max(.01, source[2] - source[0]);
+        const sy = (bounds[3] - bounds[1] - insetY * 2) / Math.max(.01, source[3] - source[1]);
+        matrix = [sx, 0, 0, sy, bounds[0] + insetX - source[0] * sx + (record.dx ?? 0), bounds[1] + insetY - source[1] * sy];
+      }
+      // Fit path coordinates, then set the pen width in font units. Fitting a
+      // symbol's unit box must not scale its brush to hundreds of units wide.
+      ink = {
+        strokes: recipe.strokes.map(stroke => ({ ...stroke, d: transformPath(stroke.d, matrix) })), marks: [],
+        entry: recipe.entry && transformPoint(recipe.entry, matrix), exit: recipe.exit && transformPoint(recipe.exit, matrix),
+      };
+      if (record.base === 'o' && !/\.(fina|isol)/.test(record.name)) {
+        ink.strokes.push({ d: transformPath('M348 442.5 C418 442.5 446 372 552 347', matrix) });
+        ink.exit = transformPoint([552, 347], matrix);
+      }
+    } else ink = { strokes: [], marks: [] }; // Spacing/control glyphs.
+    cache.set(id, ink);
+    return ink;
+  }
+  return resolve;
+}
+
+export function unsupportedCharacters(text: string, catalog: FontCatalog): string[] {
+  return [...new Set([...text.normalize('NFC')].filter(character =>
+    !['\n', '\r', '\t'].includes(character) && catalog.cmap[String(character.codePointAt(0))] === undefined,
+  ))];
+}
+
+/** Wrap at words, or code points for a word longer than the available line. */
+export function wrapText(text: string, shaper: TextShaper, maxWidth: number): string[] {
+  const lines: string[] = [];
+  const width = (value: string) => shaper.shape(value).reduce((sum, glyph) => sum + glyph.advance, 0);
+  for (const paragraph of text.replace(/\r\n?/g, '\n').replace(/\t/g, '    ').normalize('NFC').split('\n')) {
+    let line = '';
+    for (const token of paragraph.match(/\S+|\s+/gu) ?? []) {
+      if (line && width(line + token) > maxWidth && token.trim()) { lines.push(line.trimEnd()); line = ''; }
+      for (const character of token) {
+        // Combining marks stay attached to the preceding base at line breaks.
+        if (line && width(line + character) > maxWidth && !/\p{M}/u.test(character)) { lines.push(line.trimEnd()); line = ''; }
+        if (line || character.trim()) line += character;
+      }
+    }
+    lines.push(line.trimEnd());
+  }
+  return lines;
+}
+
+export function composeText(text: string, shaper: TextShaper, catalog: FontCatalog, maxWidth = 6200): Lettering {
+  const missing = unsupportedCharacters(text, catalog);
+  if (missing.length) throw new Error(`Borel에 없는 문자: ${missing.join(' ')}`);
+  const resolve = createGlyphResolver(catalog);
+  const lines = wrapText(text, shaper, maxWidth);
+  const strokes: PenStroke[] = [], outlines: string[] = [];
+  let maxAdvance = 0;
+  for (const [lineIndex, line] of lines.entries()) {
+    const shaped = shaper.shape(line);
+    const advance = shaped.reduce((sum, glyph) => sum + glyph.advance, 0);
+    maxAdvance = Math.max(maxAdvance, advance);
+    const origin = (maxWidth - advance) / 2;
+    let previous: Point | undefined;
+    let pendingMarks: PenStroke[] = [];
+    const flushMarks = () => { strokes.push(...pendingMarks); pendingMarks = []; };
+    for (const glyph of shaped) {
+      // Work directly in SVG coordinates after positioning the shaped glyph.
+      const matrix: Matrix = [1, 0, 0, -1, origin + glyph.x, lineIndex * 1700 - glyph.y];
+      const ink = moveInk(resolve(glyph.id), matrix);
+      outlines.push(transformPath(glyph.outline, matrix));
+      if (ink.entry && ink.exit) {
+        const separation = previous ? Math.hypot(ink.entry[0] - previous[0], ink.entry[1] - previous[1]) : Infinity;
+        if (previous && separation <= 4) {
+          // Register almost coincident entries to the preceding pen endpoint.
+          // This keeps the original hello curves and removes tiny seams caused
+          // by reusing one canonical l at consecutive font advances.
+          const first = ink.strokes[0];
+          const start = first.d.match(/^M([-\d.]+) ([-\d.]+)/);
+          if (start && Math.hypot(Number(start[1]) - ink.entry[0], Number(start[2]) - ink.entry[1]) < .01) {
+            first.d = first.d.replace(/^M[-\d.]+ [-\d.]+/, `M${previous[0]} ${previous[1]}`);
+          }
+        } else if (previous) {
+          const [x, y] = previous, [ex, ey] = ink.entry;
+          const dx = ex - x;
+          strokes.push({ d: `M${x} ${y} C${x + dx * .45} ${y} ${ex - dx * .25} ${ey + (y - ey) * .2} ${ex} ${ey}` });
+        }
+        strokes.push(...ink.strokes);
+        pendingMarks.push(...ink.marks);
+        previous = ink.exit;
+      } else if (glyph.advance === 0 && ink.strokes.length) {
+        pendingMarks.push(...ink.strokes, ...ink.marks);
+      } else {
+        flushMarks();
+        previous = undefined;
+        strokes.push(...ink.strokes, ...ink.marks);
+      }
+    }
+    flushMarks();
+  }
+  // Include the complete trajectories and brush caps in the view box even if
+  // a line contains only dots, descenders, marks, or wide symbols.
+  const bounds = strokes.length ? pointBounds(strokes) : [maxWidth / 2 - 500, -900, maxWidth / 2 + 500, 500];
+  const center = maxWidth / 2;
+  const half = Math.max(maxAdvance / 2 + 160, center - bounds[0] + 160, bounds[2] - center + 160, 600);
+  return { strokes, outlines, lines, bounds: [center - half, bounds[1] - 180, center + half, bounds[3] + 180] };
+}
