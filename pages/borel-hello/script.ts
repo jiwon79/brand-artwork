@@ -1,5 +1,6 @@
 import GUI from 'lil-gui';
-import { lettering } from './lettering';
+import { composeText, unsupportedCharacters } from './lettering';
+import { loadBorel } from './shaper';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -13,28 +14,47 @@ const frameNumber = document.querySelector<HTMLInputElement>('#frame-number')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const settings = { duration: 6, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
+const inkLayer = svgElement('g', {});
 const reference = svgElement('g', { fill: 'currentColor', opacity: '.13', 'pointer-events': 'none' });
-for (const glyph of lettering) reference.append(svgElement('path', { d: glyph.outline, transform: 'translate(0 80)' }));
-artwork.append(reference);
-const strokes: { path: SVGPathElement; length: number; start: number }[] = [];
+const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '5', opacity: '.65', 'pointer-events': 'none' });
+artwork.append(reference, inkLayer, guides);
+let strokes: { path: SVGPathElement; length: number; start: number }[] = [];
 let totalLength = 0;
+let ready = false;
+const textInput = document.querySelector<HTMLTextAreaElement>('#text-input')!;
+const status = document.querySelector<HTMLElement>('#text-status')!;
+let loaded: Awaited<ReturnType<typeof loadBorel>>;
 
-// Draw the pen's actual trajectory. Clipping a wide brush to a completed font
-// outline exposes future branches at self-crossings and creates jagged tips.
-// These round strokes are a Borel-based interpretation, not exact font outlines.
-for (const glyph of lettering) {
-  for (const d of glyph.strokes) {
-    const path = svgElement('path', { d, fill: 'none', stroke: 'currentColor', 'stroke-width': '36', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
-    artwork.append(path);
+function writeText(text: string) {
+  const missing = unsupportedCharacters(text, loaded.catalog);
+  if (missing.length) {
+    status.textContent = `Borel에 없는 문자: ${missing.join(' ')}. 지원 문자 목록에서 확인할 수 있습니다.`;
+    textInput.setAttribute('aria-invalid', 'true');
+    return;
+  }
+  textInput.removeAttribute('aria-invalid');
+  const lettering = composeText(text, loaded.shaper, loaded.catalog);
+  inkLayer.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
+  strokes = []; totalLength = 0;
+  for (const { d, width = 90 } of lettering.strokes) {
+    const path = svgElement('path', { d, fill: 'none', stroke: 'currentColor', 'stroke-width': String(width), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+    inkLayer.append(path);
     const length = path.getTotalLength();
     path.style.strokeDasharray = `${length} ${length}`;
     strokes.push({ path, length, start: totalLength });
     totalLength += length;
+    guides.append(svgElement('path', { d }));
   }
+  for (const d of lettering.outlines) if (d) reference.append(svgElement('path', { d }));
+  const [left, top, right, bottom] = lettering.bounds;
+  artwork.setAttribute('viewBox', `${left} ${top} ${right - left} ${bottom - top}`);
+  artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
+  settings.duration = Math.max(4, Math.min(60, Math.round(totalLength / 1750 * 2) / 2));
+  progress = reducedMotion.matches ? 1 : 0;
+  playing = Boolean(totalLength) && !reducedMotion.matches;
+  status.textContent = text.trim() ? `${[...text].length}자 · ${lettering.lines.length}줄` : '위 입력창에 문장을 적어 주세요.';
+  start();
 }
-const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '2', opacity: '.65', 'pointer-events': 'none' });
-for (const glyph of lettering) for (const d of glyph.strokes) guides.append(svgElement('path', { d }));
-artwork.append(guides);
 let progress = reducedMotion.matches ? 1 : 0;
 let playing = !reducedMotion.matches;
 let speed = 1;
@@ -49,8 +69,9 @@ function render() {
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
   }
   const frameCount = Math.round(settings.duration * 60);
-  slider.step = String(1 / frameCount);
-  slider.value = String(progress);
+  slider.max = String(frameCount);
+  slider.step = '1';
+  slider.value = String(Math.round(progress * frameCount));
   if (document.activeElement !== frameNumber) frameNumber.value = String(Math.round(progress * frameCount));
   frameNumber.max = String(frameCount);
   document.querySelector('#frame-count')!.textContent = `/ ${frameCount}`;
@@ -74,9 +95,9 @@ function start() {
   if (!frame) frame = requestAnimationFrame(tick);
   render();
 }
-document.querySelector('#replay')!.addEventListener('click', () => { progress = 0; playing = true; start(); });
-pauseButton.addEventListener('click', () => { if (progress === 1) progress = 0; playing = !playing; start(); });
-slider.addEventListener('input', () => { progress = Number(slider.value); playing = false; render(); });
+document.querySelector('#replay')!.addEventListener('click', () => { if (!ready || !totalLength) return; progress = 0; playing = true; start(); });
+pauseButton.addEventListener('click', () => { if (!ready || !totalLength) return; if (progress === 1) progress = 0; playing = !playing; start(); });
+slider.addEventListener('input', () => { progress = Number(slider.value) / (settings.duration * 60); playing = false; render(); });
 frameNumber.addEventListener('focus', () => { playing = false; render(); });
 frameNumber.addEventListener('blur', render);
 frameNumber.addEventListener('input', () => {
@@ -97,11 +118,51 @@ document.querySelector('#next-frame')!.addEventListener('click', () => stepFrame
 document.querySelector<HTMLSelectElement>('#speed')!.addEventListener('change', event => { speed = Number((event.target as HTMLSelectElement).value); });
 document.addEventListener('visibilitychange', () => { lastTime = 0; });
 reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { progress = 1; playing = false; render(); } });
-const gui = new GUI({ title: 'Borel Hello' });
-gui.add(settings, 'duration', 2, 12, .5).name('필기 시간 (초)').onChange(render);
+const gui = new GUI({ title: 'Borel Handwriting' });
+gui.add(settings, 'duration', 2, 60, .5).listen().name('필기 시간 (초)').onChange(render);
 gui.add(settings, 'guides').name('필기 경로').onChange(render);
 gui.add(settings, 'reference').name('Borel 원형 비교').onChange(render);
 gui.addColor(settings, 'ink').name('글씨').onChange(render);
 gui.addColor(settings, 'paper').name('배경').onChange(render);
 gui.close();
-start();
+render();
+
+const presets: Record<string, string> = {
+  hello: 'hello',
+  lowercase: 'abcdefghijklmnopqrstuvwxyz',
+  uppercase: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  numbers: '0123456789 !? & @ # $ % + =',
+  accents: 'Café · Élève\nTiếng Việt · Ångström',
+};
+document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => { event.preventDefault(); if (ready) writeText(textInput.value); });
+textInput.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (ready) writeText(textInput.value); } });
+document.querySelector<HTMLSelectElement>('#example')!.addEventListener('change', event => {
+  const selected = (event.target as HTMLSelectElement).value;
+  if (presets[selected] !== undefined && ready) { textInput.value = presets[selected]; writeText(textInput.value); }
+});
+
+loadBorel().then(value => {
+  loaded = value; ready = true;
+  document.querySelector<HTMLButtonElement>('#write')!.disabled = false;
+  document.querySelector<HTMLSelectElement>('#example')!.disabled = false;
+  const characterList = document.querySelector('#character-list')!;
+  for (const codepoint of Object.keys(loaded.catalog.cmap)) {
+    const character = String.fromCodePoint(Number(codepoint));
+    if (/\p{C}|\p{Z}/u.test(character)) continue;
+    const button = document.createElement('button');
+    button.type = 'button'; button.textContent = /\p{M}/u.test(character) ? `◌${character}` : character;
+    button.title = `U+${Number(codepoint).toString(16).toUpperCase().padStart(4, '0')}`;
+    button.setAttribute('aria-label', `${character} 삽입`);
+    button.addEventListener('click', () => {
+      const start = textInput.selectionStart, end = textInput.selectionEnd;
+      if (textInput.value.length - (end - start) + character.length > textInput.maxLength) return;
+      textInput.setRangeText(character, start, end, 'end');
+      textInput.focus();
+    });
+    characterList.append(button);
+  }
+  writeText(textInput.value);
+}).catch(error => {
+  status.textContent = error instanceof Error ? error.message : '필기 자료를 불러오지 못했습니다.';
+  playing = false; render();
+});

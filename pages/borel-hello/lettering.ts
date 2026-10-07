@@ -85,6 +85,10 @@ export function createGlyphResolver(catalog: FontCatalog) {
         strokes: recipe.strokes.map(stroke => ({ ...stroke, d: transformPath(stroke.d, matrix) })), marks: [],
         entry: recipe.entry && transformPoint(recipe.entry, matrix), exit: recipe.exit && transformPoint(recipe.exit, matrix),
       };
+      if (['v', 'w'].includes(record.base) && /\.(init|isol)/.test(record.name)) {
+        ink.strokes.unshift({ d: transformPath('M40 28 C152 28 148 432 252 432', matrix) });
+        ink.entry = transformPoint([40, 28], matrix);
+      }
       if (record.base === 'o' && !/\.(fina|isol)/.test(record.name)) {
         ink.strokes.push({ d: transformPath('M348 442.5 C418 442.5 446 372 552 347', matrix) });
         ink.exit = transformPoint([552, 347], matrix);
