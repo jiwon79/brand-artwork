@@ -20,6 +20,7 @@
     "pages/soft-forms/**/*.ts",
     "pages/rose-glass/**/*.ts",
     "pages/line-pull/**/*.ts",
+    "pages/borel-hello/**/*.ts",
     "pages/smile-flower/**/*.ts",
     "common/**/*.test.ts",
     "common/**/*.spec.ts",

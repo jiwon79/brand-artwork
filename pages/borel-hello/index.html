@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3e8de">
+  <meta name="description" content="Borel의 연결형 레터링을 한 획씩 쓰는 인터랙티브 애니메이션.">
+  <title>Borel Hello</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><a href="/">Jiiwon Studio</a><span>Borel Hello <small>01 — handwriting study</small></span></header>
+  <main>
+    <svg id="artwork" viewBox="0 0 1100 530" role="img" aria-label="Borel 필기체로 한 획씩 써지는 hello"></svg>
+  </main>
+  <footer>
+    <div class="playback"><button id="replay" aria-label="처음부터 다시 쓰기">다시 쓰기 ↻</button><button id="pause">일시정지</button></div>
+    <label class="timeline"><span>필기 진행</span><input id="progress" aria-label="필기 진행" type="range" min="0" max="1" step="0.001" value="0"></label>
+    <label class="speed">속도 <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
+  </footer>
+  <p class="credit">Borel by <a href="https://github.com/RosaWagner/Borel">Rosalie Wagner</a> · <a href="./assets/OFL.txt">OFL 1.1</a></p>
+  <script type="module" src="script.ts"></script>
+</body>
+</html>
