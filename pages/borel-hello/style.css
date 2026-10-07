@@ -18,3 +18,7 @@ input { width: 100%; accent-color: #6f4031; cursor: pointer; }
 .speed { display: flex; align-items: center; gap: 8px; }
 .credit { text-align: center; font-size: 10px; opacity: .6; margin: 22px 0 24px; }
 @media (max-width: 560px) { header { padding: 24px; } main { padding: 0 4vw; } footer { flex-wrap: wrap; gap: 16px; justify-content: space-between; width: calc(100% - 40px); } .timeline { order: 3; flex-basis: 100%; } }
+
+.frame-controls { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.frame-controls button { padding: 3px 10px; font-size: 16px; }
+.frame-controls input { width: 52px; border: 0; border-bottom: 1px solid #6f40312e; background: transparent; color: inherit; font: inherit; text-align: center; padding: 4px 0; }
