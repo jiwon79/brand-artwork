@@ -38,3 +38,10 @@ excluded. Separate sentence tests cover wrapping, mixed case, punctuation and
 word-initial n/w forms. All 60 fps frames of hello/name won are checked for loss
 of already written ink. Chrome verification additionally checks native text
 rendering and the live controls; temporary QA output is not shipped.
+
+Word regressions in `word-corpus.ts` include 932 everyday/connection-focused
+words and 1,300 dictionary words (50 per initial letter, stratified by length).
+Title-case and uppercase versions of the 932 words, plus 75 phrases with
+punctuation, numbers and wrapping, bring the total to 4,171 complete-text cases.
+The fixed dictionary fixtures are drawn from macOS `/usr/share/dict/words`
+(`web2`), rather than depending on a machine's dictionary at test time.

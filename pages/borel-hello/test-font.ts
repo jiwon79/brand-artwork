@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import * as hb from 'harfbuzzjs';
 import { Resvg } from '@resvg/resvg-js';
-import type { Bounds, FontCatalog, TextShaper } from './lettering';
+import { composeText, type Bounds, type FontCatalog, type TextShaper } from './lettering';
+import { preparePen, penGeometry } from './pen-geometry';
 
 const assets = new URL('./assets/', import.meta.url);
 export const catalog: FontCatalog = {
@@ -39,4 +40,12 @@ export function foregroundIoU(a: Uint8Array, b: Uint8Array): number {
     union += Math.max(a[i], b[i]);
   }
   return union ? intersection / union : 1;
+}
+
+export function textForegroundIoU(text: string, maxWidth = 6200, scale = .35): number {
+  const lettering = composeText(text, shaper, catalog, maxWidth);
+  const paths = (values: string[]) => values.map(d => `<path d="${d}"/>`).join('');
+  const actual = raster(paths(lettering.strokes.map(stroke => penGeometry(preparePen(stroke)))), lettering.bounds, scale);
+  const expected = raster(paths(lettering.outlines), lettering.bounds, scale);
+  return foregroundIoU(actual, expected);
 }
