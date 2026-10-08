@@ -6,28 +6,50 @@
 - Font blob SHA: `4b440768cc833cd29ee1dc88d4b9fd4d09702336`.
 - License: SIL Open Font License 1.1; see `OFL.txt`.
 
-The bundled font contains 351 encoded codepoints and 1,514 glyphs, including
-contextual forms. Input supports its Latin uppercase/lowercase, accented letters,
-combining marks, digits, punctuation, and symbols. Characters absent from this
-font, including Hangul, produce an explicit input error. Nothing is sent to a
-server; the font and HarfBuzz WebAssembly module load from this site.
+The bundled font has 351 encoded codepoints and 1,514 glyphs. This artwork accepts
+159 unaccented English letters, digits, punctuation and symbols, including space.
+Accented letters, combining marks and characters absent from the font produce an
+input error. Text stays in the browser. FontFace and HarfBuzz use the same bundled
+TTF; no system font or external font CDN is used.
 
-`stroke-alphabet.ts` contains authored pen trajectories for letter bodies, marks,
-and symbols. `font-catalog.json` retains the source font's glyph IDs, metrics,
-composite transforms, and registration of contextual letter bodies. Regenerate
-it with `python3 scripts/generate-borel-catalog.py` (requires `fonttools`).
-HarfBuzz shapes each line with the font's default OpenType features, including
-contextual substitutions, positioning, mark placement, and the `tt` ligature.
-The layout joins lowercase pen endpoints, writes dots/accents after their word,
-and wraps long input. Roman capitals retain Borel's separate strokes.
+HarfBuzz applies default OpenType substitutions and positioning to each complete
+line. Its advances determine wrapping and centering; its exact glyph bounds
+provide the artwork's view box. `font-catalog.json` contains only source font IDs,
+metrics and bounds. Regenerate it with `python3 scripts/generate-borel-catalog.py`
+(requires `fonttools`). No hand-authored letter shapes or join corrections remain.
 
-The visible ink is a round, 90-font-unit stroke following the pen trajectories;
-the previous `hello` study's 36-unit SVG stroke used a 0.4 font scale. The verified
-`h`, `e`, `l`, and final `o` trajectories are reused as canonical letter paths.
-A regression test samples the original `hello` curves to retain their shape.
+The visible ink is **native Canvas `fillText`**, including the browser's glyph
+selection, connections and antialiasing. Playback changes the alpha of those
+original pixels. The final frame copies the untouched native image, so the
+completed lettering has exactly the same RGBA bytes as native rendering in the
+same browser and Canvas configuration. Resizing or changing the ink color renders
+fresh native text at the current device pixel ratio.
 
-This remains a Borel-based lettering interpretation, not exact font contours or
-the font designer's prescribed stroke order. The debug panel overlays the exact
-shaped font outlines for comparison. No outline mask or pre-rendered animation
-frames are used in playback. Tests cover every drawable glyph and all 676 basic
-lowercase pairs; visual QA captures are temporary and are not shipped.
+Writing order is estimated from the actual assembled line: render at a fixed
+200 px em size, thin its filled shape to a center graph, then visit graph edges.
+Connected words are processed from left to right; bodies precede detached dots.
+Nearest center points give each output pixel a reveal time. A small round pen head
+covers the center of crossings without opening distant branches. No pre-rendered
+animation frames are shipped. This graph walk estimates handwriting order; a font
+outline does not encode the designer's prescribed pen movements.
+
+## Verification
+
+- `pnpm test pages/borel-hello`: exact directed outline segments and advances
+  against an independent `opentype.js` parser for all 398 glyphs reached by the
+  supported characters and 17,576 lowercase triples; layout checks for `name won`,
+  initial/medial/final `n` and `w`, symbols and all 676 lowercase pairs.
+- `pnpm dev`, then open `/borel-hello/verify.html` in the existing Chrome and click
+  **검사 실행**: compares the production canvas output against independently drawn
+  native Borel text, with no pixel tolerance. Covers 859 cases and 5,054 intermediate
+  frames at desktop and mobile dimensions/device pixel ratios. Intermediate alpha
+  must stay within the native font and never decrease. Every nonempty `hello`
+  frame must retain one connected stroke component (excluding tiny AA specks).
+- The browser verifier is a development-only HTML entry; it is not included in the
+  production build. Unit tests also cover nearest-point ownership at crossings,
+  graph coverage, line breaks, unsupported input and exact final pixel copying.
+
+Pixel identity is checked within one browser/rendering configuration. Different
+browsers, pixel ratios and Canvas backends can rasterize the same outline with
+different antialiasing; each comparison creates both images in the same setup.
+Temporary screenshots, measurements and QA scripts are not committed.

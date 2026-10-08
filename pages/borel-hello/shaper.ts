@@ -1,3 +1,4 @@
+import { FONT_FAMILY } from './renderer';
 import type { FontCatalog, ShapedGlyph, TextShaper } from './lettering';
 
 export async function loadBorel(): Promise<{ shaper: TextShaper; catalog: FontCatalog }> {
@@ -7,7 +8,10 @@ export async function loadBorel(): Promise<{ shaper: TextShaper; catalog: FontCa
     fetch(new URL('./assets/font-catalog.json', import.meta.url)),
   ]);
   if (!response.ok || !catalogResponse.ok) throw new Error('Borel 자료를 불러오지 못했습니다.');
-  const font = new hb.Font(new hb.Face(new hb.Blob(await response.arrayBuffer())));
+  const bytes = await response.arrayBuffer();
+  const browserFont = await new FontFace(FONT_FAMILY, bytes).load();
+  document.fonts.add(browserFont);
+  const font = new hb.Font(new hb.Face(new hb.Blob(bytes)));
   const catalog = await catalogResponse.json() as FontCatalog;
   const buffer = new hb.Buffer();
   const cache = new Map<string, ShapedGlyph[]>();
