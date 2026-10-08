@@ -1,19 +1,24 @@
 import GUI from 'lil-gui';
-import { composeText, unsupportedCharacters, supportedCharacter, type Lettering } from './lettering';
+import { composeText, unsupportedCharacters } from './lettering';
 import { loadBorel } from './shaper';
-import { paintFontFrame, prepareFontRaster, type FontRaster } from './renderer';
 
-const artwork = document.querySelector<HTMLCanvasElement>('#artwork')!;
-const context = artwork.getContext('2d')!;
+const NS = 'http://www.w3.org/2000/svg';
+function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
+  const element = document.createElementNS(NS, tag);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+  return element;
+}
+const artwork = document.querySelector<SVGSVGElement>('#artwork')!;
 const slider = document.querySelector<HTMLInputElement>('#progress')!;
 const frameNumber = document.querySelector<HTMLInputElement>('#frame-number')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const settings = { duration: 6, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
-let raster: FontRaster | undefined;
-let output: ImageData;
-let lettering: Lettering;
-let lastProgress = -1;
+const inkLayer = svgElement('g', {});
+const reference = svgElement('g', { fill: 'currentColor', opacity: '.13', 'pointer-events': 'none' });
+const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '5', opacity: '.65', 'pointer-events': 'none' });
+artwork.append(reference, inkLayer, guides);
+let strokes: { path: SVGPathElement; length: number; start: number }[] = [];
 let totalLength = 0;
 let ready = false;
 const textInput = document.querySelector<HTMLTextAreaElement>('#text-input')!;
@@ -23,13 +28,26 @@ let loaded: Awaited<ReturnType<typeof loadBorel>>;
 function writeText(text: string) {
   const missing = unsupportedCharacters(text, loaded.catalog);
   if (missing.length) {
-    status.textContent = `지원하지 않는 문자: ${missing.join(' ')}. 악센트 문자는 제외했습니다.`;
+    status.textContent = `Borel에 없는 문자: ${missing.join(' ')}. 지원 문자 목록에서 확인할 수 있습니다.`;
     textInput.setAttribute('aria-invalid', 'true');
     return;
   }
   textInput.removeAttribute('aria-invalid');
-  lettering = composeText(text, loaded.shaper, loaded.catalog);
-  rebuildRaster();
+  const lettering = composeText(text, loaded.shaper, loaded.catalog);
+  inkLayer.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
+  strokes = []; totalLength = 0;
+  for (const { d, width = 90 } of lettering.strokes) {
+    const path = svgElement('path', { d, fill: 'none', stroke: 'currentColor', 'stroke-width': String(width), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+    inkLayer.append(path);
+    const length = path.getTotalLength();
+    path.style.strokeDasharray = `${length} ${length}`;
+    strokes.push({ path, length, start: totalLength });
+    totalLength += length;
+    guides.append(svgElement('path', { d }));
+  }
+  for (const d of lettering.outlines) if (d) reference.append(svgElement('path', { d }));
+  const [left, top, right, bottom] = lettering.bounds;
+  artwork.setAttribute('viewBox', `${left} ${top} ${right - left} ${bottom - top}`);
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.max(4, Math.min(60, Math.round(totalLength / 1750 * 2) / 2));
   progress = reducedMotion.matches ? 1 : 0;
@@ -37,34 +55,18 @@ function writeText(text: string) {
   status.textContent = text.trim() ? `${[...text].length}자 · ${lettering.lines.length}줄` : '위 입력창에 문장을 적어 주세요.';
   start();
 }
-function rebuildRaster() {
-  if (!lettering) return;
-  const { width, height } = artwork.getBoundingClientRect();
-  raster = prepareFontRaster(lettering, loaded.catalog, width, height, window.devicePixelRatio, settings.ink);
-  artwork.width = raster.source.width; artwork.height = raster.source.height;
-  output = context.createImageData(artwork.width, artwork.height);
-  totalLength = raster.totalLength; lastProgress = -1;
-}
-new ResizeObserver(() => { if (ready) { rebuildRaster(); render(); } }).observe(artwork);
 let progress = reducedMotion.matches ? 1 : 0;
 let playing = !reducedMotion.matches;
 let speed = 1;
 let lastTime = 0;
 let frame = 0;
 function render() {
-  if (raster && progress !== lastProgress) {
-    paintFontFrame(context, raster, progress, output);
-    if (settings.reference && progress < 1) {
-      const original = document.createElement('canvas'); original.width = artwork.width; original.height = artwork.height;
-      original.getContext('2d')!.putImageData(raster.source, 0, 0);
-      context.globalAlpha = .13; context.drawImage(original, 0, 0); context.globalAlpha = 1;
-    }
-    if (settings.guides) {
-      context.strokeStyle = '#dc7962'; context.lineWidth = 1; context.beginPath();
-      for (const path of raster.traces) { context.moveTo(...path[0]); for (const point of path.slice(1)) context.lineTo(...point); }
-      context.stroke();
-    }
-    lastProgress = progress;
+  const distance = progress * totalLength;
+  for (const stroke of strokes) {
+    const written = Math.max(0, Math.min(stroke.length, distance - stroke.start));
+    stroke.path.style.strokeDashoffset = String(stroke.length - written);
+    // Hide the round cap entirely before a stroke starts.
+    stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
   }
   const frameCount = Math.round(settings.duration * 60);
   slider.max = String(frameCount);
@@ -74,6 +76,9 @@ function render() {
   frameNumber.max = String(frameCount);
   document.querySelector('#frame-count')!.textContent = `/ ${frameCount}`;
   pauseButton.textContent = playing ? '일시정지' : progress === 1 ? '재생' : '계속 쓰기';
+  guides.style.display = settings.guides ? '' : 'none';
+  reference.style.display = settings.reference ? '' : 'none';
+  artwork.style.color = settings.ink;
   document.documentElement.style.background = settings.paper;
 }
 function tick(time: number) {
@@ -115,9 +120,9 @@ document.addEventListener('visibilitychange', () => { lastTime = 0; });
 reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { progress = 1; playing = false; render(); } });
 const gui = new GUI({ title: 'Borel Handwriting' });
 gui.add(settings, 'duration', 2, 60, .5).listen().name('필기 시간 (초)').onChange(render);
-gui.add(settings, 'guides').name('필기 경로').onChange(() => { lastProgress = -1; render(); });
-gui.add(settings, 'reference').name('완성된 원본 보기').onChange(() => { lastProgress = -1; render(); });
-gui.addColor(settings, 'ink').name('글씨').onChange(() => { rebuildRaster(); render(); });
+gui.add(settings, 'guides').name('필기 경로').onChange(render);
+gui.add(settings, 'reference').name('Borel 원형 비교').onChange(render);
+gui.addColor(settings, 'ink').name('글씨').onChange(render);
 gui.addColor(settings, 'paper').name('배경').onChange(render);
 gui.close();
 render();
@@ -127,6 +132,7 @@ const presets: Record<string, string> = {
   lowercase: 'abcdefghijklmnopqrstuvwxyz',
   uppercase: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
   numbers: '0123456789 !? & @ # $ % + =',
+  accents: 'Café · Élève\nTiếng Việt · Ångström',
 };
 document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => { event.preventDefault(); if (ready) writeText(textInput.value); });
 textInput.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (ready) writeText(textInput.value); } });
@@ -142,9 +148,9 @@ loadBorel().then(value => {
   const characterList = document.querySelector('#character-list')!;
   for (const codepoint of Object.keys(loaded.catalog.cmap)) {
     const character = String.fromCodePoint(Number(codepoint));
-    if (!supportedCharacter(character, loaded.catalog) || /\p{Z}/u.test(character)) continue;
+    if (/\p{C}|\p{Z}/u.test(character)) continue;
     const button = document.createElement('button');
-    button.type = 'button'; button.textContent = character;
+    button.type = 'button'; button.textContent = /\p{M}/u.test(character) ? `◌${character}` : character;
     button.title = `U+${Number(codepoint).toString(16).toUpperCase().padStart(4, '0')}`;
     button.setAttribute('aria-label', `${character} 삽입`);
     button.addEventListener('click', () => {
