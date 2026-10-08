@@ -6,6 +6,25 @@ import { catalog, font, foregroundIoU, raster, shaper } from './test-font';
 const ink = (paths: string[]) => paths.map(d => `<path d="${d}"/>`).join('');
 const lowercase = 'abcdefghijklmnopqrstuvwxyz';
 
+function inkComponents(pixels: Uint8Array, width: number): number {
+  const mask = new Uint8Array(pixels.length / 4);
+  for (let i = 0; i < mask.length; i++) mask[i] = Number(pixels[i * 4 + 3] >= 128);
+  let count = 0;
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue;
+    const queue = [i]; mask[i] = 0;
+    let area = 0;
+    while (queue.length) {
+      const at = queue.pop()!; area++;
+      for (const next of [at - width, at + width, at % width ? at - 1 : -1, at % width < width - 1 ? at + 1 : -1]) {
+        if (next >= 0 && next < mask.length && mask[next]) { mask[next] = 0; queue.push(next); }
+      }
+    }
+    if (area >= 4) count++; // Ignore subpixel antialias specks.
+  }
+  return count;
+}
+
 // Enumerate the font's actual default shaping, including initial/medial/final
 // contextual alternatives and four-letter contexts for the tt ligature.
 function reachableGlyphs(): Set<number> {
@@ -72,6 +91,10 @@ for (const text of ['hello', 'name won']) test(`every frame retains written ink 
     let remaining = total * frame / frames;
     const paths = pens.map(pen => { const d = penGeometry(pen, Math.max(0, Math.min(pen.length, remaining))); remaining -= pen.length; return d; });
     const pixels = raster(ink(paths), lettering.bounds, .1);
+    if (text === 'hello' && frame > 0) {
+      const width = Math.ceil((lettering.bounds[2] - lettering.bounds[0]) * .1);
+      expect(inkComponents(pixels, width), `detached ink at frame ${frame}/${frames}`).toBe(1);
+    }
     if (previous) {
       let erased = 0, written = 0;
       for (let i = 3; i < pixels.length; i += 4) { erased += Math.max(0, previous[i] - pixels[i]); written += previous[i]; }

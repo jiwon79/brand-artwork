@@ -1,7 +1,7 @@
 import type { PenStroke, Point } from './stroke-alphabet';
 
 export interface PenPoint { x: number; y: number; radius: number; distance: number }
-export interface PenPath { points: PenPoint[]; length: number; nibScale: Point }
+export interface PenPath { points: PenPoint[]; length: number; nibScale: Point; retrace?: boolean }
 
 export function cubic(a: number, b: number, c: number, d: number, t: number): number {
   const s = 1 - t;
@@ -48,7 +48,7 @@ export function preparePen(stroke: PenStroke): PenPath {
     subdivide(0, a, 1, b, 0);
     start = end; curveIndex++;
   }
-  return { points, length: distance, nibScale: stroke.nibScale ?? [1, 1] };
+  return { points, length: distance, nibScale: stroke.nibScale ?? [1, 1], retrace: stroke.retrace };
 }
 
 const number = (value: number) => Number(value.toFixed(3));
@@ -82,7 +82,7 @@ function arc(center: PenPoint, from: Point, to: Point, scale: Point, large = fal
  * follows brush tangents and round joins; it never samples a source image.
  */
 export function penGeometry(pen: PenPath, written = pen.length): string {
-  if (written <= 0 || !pen.points.length) return '';
+  if (pen.retrace || written <= 0 || !pen.points.length) return '';
   const points: PenPoint[] = [pen.points[0]];
   for (let i = 1; i < pen.points.length; i++) {
     const a = pen.points[i - 1], sample = pen.points[i];

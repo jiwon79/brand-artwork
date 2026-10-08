@@ -5,6 +5,8 @@ export interface PenStroke {
   /** One cubic diameter profile for each cubic centerline segment. */
   widths?: [number, number, number, number][];
   nibScale?: Point;
+  /** Move along an already written curve without repainting its ink. */
+  retrace?: boolean;
 }
 export interface PenGlyph {
   strokes: PenStroke[];

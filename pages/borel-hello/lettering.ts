@@ -1,4 +1,5 @@
 import { alphabet, type PenStroke, type Point } from './stroke-alphabet';
+import { routeWord } from './pen-routing';
 
 export type Matrix = readonly [number, number, number, number, number, number];
 export type Bounds = readonly [number, number, number, number];
@@ -45,7 +46,7 @@ function pointBounds(paths: readonly PenStroke[]): Bounds {
 function moveInk(ink: GlyphInk, matrix: Matrix): GlyphInk {
   const widthScale = Math.sqrt(Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]));
   const move = (stroke: PenStroke): PenStroke => ({
-    d: transformPath(stroke.d, matrix), nibScale: stroke.nibScale,
+    d: transformPath(stroke.d, matrix), nibScale: stroke.nibScale, retrace: stroke.retrace,
     width: (stroke.width ?? 90) * widthScale,
     widths: stroke.widths?.map(profile => profile.map(width => width * widthScale) as [number, number, number, number]),
   });
@@ -157,18 +158,20 @@ export function composeText(text: string, shaper: TextShaper, catalog: FontCatal
     const origin = (maxWidth - advance) / 2;
     let previous: Point | undefined;
     let pendingMarks: PenStroke[] = [];
-    const flushMarks = () => { strokes.push(...pendingMarks); pendingMarks = []; };
+    let word: PenStroke[][] = [];
+    const flushWord = () => { strokes.push(...routeWord(word)); word = []; };
+    const flushMarks = () => { flushWord(); strokes.push(...pendingMarks); pendingMarks = []; };
     for (const glyph of shaped) {
       // Work directly in SVG coordinates after positioning the shaped glyph.
       const matrix: Matrix = [1, 0, 0, -1, origin + glyph.x, lineIndex * 1700 - glyph.y];
       const ink = moveInk(resolve(glyph.id), matrix);
       outlines.push(transformPath(glyph.outline, matrix));
-      // Fitted contextual curves already include their actual entry/exit;
-      // synthetic joins would alter the source form and thicken crossings.
       if (ink.fitted) {
-        if (!/^[a-z](?:\.|$)|^t_t/.test(catalog.glyphs[glyph.id].name)) flushMarks();
-        strokes.push(...ink.strokes); pendingMarks.push(...ink.marks); previous = undefined;
+        if (/^[a-z](?:\.|$)|^t_t/.test(catalog.glyphs[glyph.id].name)) word.push(ink.strokes);
+        else { flushMarks(); strokes.push(...ink.strokes); }
+        pendingMarks.push(...ink.marks); previous = undefined;
       } else if (ink.entry && ink.exit) {
+        flushWord();
         const separation = previous ? Math.hypot(ink.entry[0] - previous[0], ink.entry[1] - previous[1]) : Infinity;
         if (previous && separation <= 4) {
           // Register almost coincident entries to the preceding pen endpoint.
