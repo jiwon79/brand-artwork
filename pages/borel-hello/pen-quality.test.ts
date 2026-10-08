@@ -108,7 +108,14 @@ for (const name of [
   const id = catalog.glyphs.findIndex(glyph => glyph.name === name);
   expect(id).toBeGreaterThanOrEqual(0);
   const strokes = createGlyphResolver(catalog)(id).strokes;
-  expect(auditPen(routeWord([strokes]))).toEqual([]);
+  // Keep the accepted pen recipes compact instead of fitting dozens of tiny
+  // curves to the source pixels. Ink overlap has its own 95% acceptance gate.
+  const painted = strokes.filter(stroke => !stroke.retrace);
+  const curves = painted.reduce((sum, stroke) => sum + (stroke.d.match(/[LC]/g)?.length ?? 0), 0);
+  expect(curves, `over-fragmented pen path: ${name}`).toBeLessThanOrEqual(12);
+  // Shared tangents allow at most rounding error, and pressure may vary
+  // gently without inflating a small knot around a crossing.
+  expect(auditPen(routeWord([strokes]), { turnDegrees: 1, bulgeRatio: 1.15 })).toEqual([]);
 });
 
 test('audit all supported contextual forms with reproducible issue positions (advisory)', () => {

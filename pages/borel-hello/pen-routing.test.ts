@@ -135,6 +135,17 @@ test('one brush run spans connected e and both l loops in hello', () => {
   expect(pens.some(pen => hasLoop(pen, 1, 435) && hasLoop(pen, 2, 900) && hasLoop(pen, 3, 900))).toBe(true);
 });
 
+test('jiwon continues from the final w bowl through the o loop in one brush run', () => {
+  const glyphs = shaper.shape('jiwon'), origin = (6200 - glyphs.reduce((sum, glyph) => sum + glyph.advance, 0)) / 2;
+  const pens = composeText('jiwon', shaper, catalog).strokes.filter(stroke => !stroke.retrace).map(preparePen);
+  const reachesBaseline = (pen: PenPath, glyphIndex: number, left: number, right: number) => pen.points.some(point =>
+    point.x > origin + glyphs[glyphIndex].x + left && point.x < origin + glyphs[glyphIndex].x + right && point.y > -60,
+  );
+  // The w exit and o entry share a tangent, so the brush need not finish a
+  // cap and restart a separate ribbon at this letter boundary.
+  expect(pens.some(pen => reachesBaseline(pen, 2, 700, 800) && reachesBaseline(pen, 3, 200, 400))).toBe(true);
+});
+
 test('aligned cubic brush runs join into one path with continuous width controls', () => {
   const a: PenStroke = { d: 'M0 0 C30 0 60 0 90 0', widths: [[10, 10, 10, 10]] };
   const b: PenStroke = { d: 'M90 0 C120 0 150 30 180 30', widths: [[10, 10, 14, 14]] };
