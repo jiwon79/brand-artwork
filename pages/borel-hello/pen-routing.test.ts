@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
-import { composeText } from './lettering';
+import { composeText, createGlyphResolver } from './lettering';
 import { penGeometry, preparePen, type PenPath } from './pen-geometry';
-import { reverseStroke, routeWord } from './pen-routing';
+import { joinPenStrokes, reverseStroke, routeWord } from './pen-routing';
 import type { PenStroke, Point } from './stroke-alphabet';
 import { catalog, foregroundIoU, raster, shaper } from './test-font';
 
@@ -87,18 +87,68 @@ for (const text of ['hello', 'he', 'el', 'll', 'spell', 'letter', 'all', 'well',
   }
 });
 
-test('both hello l loops ascend diagonally from the incoming he/hel join', () => {
-  const strokes = composeText('hello', shaper, catalog).strokes;
-  let loops = 0;
-  for (let i = 1; i < strokes.length; i++) {
-    const pen = preparePen(strokes[i]), start = pen.points[0], end = endPoint(pen);
-    if (strokes[i].retrace || pen.length < 1500 || Math.hypot(start.x - end.x, start.y - end.y) > .01) continue;
-    const after = head([pen], 3), beforePen = preparePen(strokes[i - 1]), before = head([beforePen], beforePen.length - 3);
-    expect(after[0]).toBeGreaterThan(start.x);
-    expect(after[1]).toBeLessThan(start.y);
-    const arriving: Point = [start.x - before[0], start.y - before[1]], leaving: Point = [after[0] - start.x, after[1] - start.y];
-    expect((arriving[0] * leaving[0] + arriving[1] * leaving[1]) / (Math.hypot(...arriving) * Math.hypot(...leaving))).toBeGreaterThan(.8);
-    loops++;
+test('both hello l ascents remain a thin continuous curve through the crossing', () => {
+  const resolve = createGlyphResolver(catalog);
+  const letters = shaper.shape('hello').filter(glyph => catalog.glyphs[glyph.id].name.startsWith('l.'));
+  expect(letters).toHaveLength(2);
+  for (const glyph of letters) {
+    const strokes = resolve(glyph.id).strokes;
+    expect(strokes.filter(stroke => !stroke.retrace)).toHaveLength(1);
+    const points = routeWord([strokes]).flatMap(stroke => preparePen(stroke).points);
+    const top = points.findIndex(point => point.y > 700);
+    expect(top).toBeGreaterThan(0);
+    const crossing = points.slice(0, top).filter(point => point.y > 90 && point.y < 330);
+    expect(crossing.length).toBeGreaterThan(5);
+    // A skeleton junction's 124-unit brush made a knob before the returning
+    // stem existed. The actual ascending stroke stays near the 84-unit nib.
+    expect(Math.max(...crossing.map(point => point.radius * 2))).toBeLessThan(96);
+    expect(crossing[crossing.length - 1].x).toBeGreaterThan(crossing[0].x + 120);
   }
-  expect(loops).toBe(2);
+});
+
+test('hello h rises without painting inflated stem/shoulder junctions early', () => {
+  const glyph = shaper.shape('hello')[0], strokes = createGlyphResolver(catalog)(glyph.id).strokes;
+  const points = routeWord([strokes]).flatMap(stroke => preparePen(stroke).points);
+  const top = points.findIndex(point => point.y > 650);
+  expect(top).toBeGreaterThan(0);
+  expect(Math.max(...points.slice(0, top).map(point => point.radius * 2))).toBeLessThan(96);
+});
+
+test('connected e crosses its middle before drawing the left outside of the loop', () => {
+  const glyph = shaper.shape('hello')[1], strokes = createGlyphResolver(catalog)(glyph.id).strokes;
+  const points = routeWord([strokes]).flatMap(stroke => preparePen(stroke).points);
+  const firstHigh = points.findIndex(point => point.y > 180);
+  const top = points.findIndex(point => point.y > 425);
+  const leftSide = points.findIndex(point => point.y > 180 && point.x < 180);
+  expect(firstHigh).toBeGreaterThan(0);
+  expect(points[firstHigh].x).toBeGreaterThan(280);
+  expect(top).toBeGreaterThan(firstHigh);
+  expect(leftSide).toBeGreaterThan(top);
+});
+
+test('one brush run spans connected e and both l loops in hello', () => {
+  const glyphs = shaper.shape('hello'), origin = (6200 - glyphs.reduce((sum, glyph) => sum + glyph.advance, 0)) / 2;
+  const pens = composeText('hello', shaper, catalog).strokes.filter(stroke => !stroke.retrace).map(preparePen);
+  const hasLoop = (pen: PenPath, glyphIndex: number, height: number) => pen.points.some(point =>
+    point.x > origin + glyphs[glyphIndex].x + 140 && point.x < origin + glyphs[glyphIndex].x + 420 && point.y < -height,
+  );
+  expect(pens.some(pen => hasLoop(pen, 1, 435) && hasLoop(pen, 2, 900) && hasLoop(pen, 3, 900))).toBe(true);
+});
+
+test('aligned cubic brush runs join into one path with continuous width controls', () => {
+  const a: PenStroke = { d: 'M0 0 C30 0 60 0 90 0', widths: [[10, 10, 10, 10]] };
+  const b: PenStroke = { d: 'M90 0 C120 0 150 30 180 30', widths: [[10, 10, 14, 14]] };
+  const joined = joinPenStrokes([a, b]);
+  expect(joined).toHaveLength(1);
+  expect(joined[0].d.match(/M/g)).toHaveLength(1);
+  expect(joined[0].widths).toEqual([...a.widths!, ...b.widths!]);
+  const bounds = [-10, -10, 195, 45] as const;
+  expect(foregroundIoU(raster(ink([a, b]), bounds, 2), raster(ink(joined), bounds, 2))).toBeGreaterThan(.995);
+});
+
+test('a sharp corner or a retrace does not become one painted ribbon', () => {
+  const a: PenStroke = { d: 'M0 0 C30 0 60 0 90 0', widths: [[10, 10, 10, 10]] };
+  const b: PenStroke = { d: 'M90 0 C90 30 90 60 90 90', widths: [[10, 10, 10, 10]] };
+  expect(joinPenStrokes([a, b])).toEqual([a, b]);
+  expect(joinPenStrokes([a, { ...reverseStroke(a), retrace: true }])).toHaveLength(2);
 });

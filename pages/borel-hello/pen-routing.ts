@@ -54,6 +54,32 @@ export function reverseStroke(stroke: PenStroke): PenStroke {
   };
 }
 
+/** Keep a smooth writing run in one cubic path, so internal joins are swept
+ * by the same brush rather than rendered as independent round end caps.
+ * A retrace or a deliberate pen lift still starts a separate run.
+ */
+export function joinPenStrokes(strokes: readonly PenStroke[]): PenStroke[] {
+  const result: PenStroke[] = [];
+  for (const stroke of strokes) {
+    const previous = result[result.length - 1];
+    if (previous?.widths && stroke.widths && !previous.retrace && !stroke.retrace &&
+      String(previous.nibScale ?? [1, 1]) === String(stroke.nibScale ?? [1, 1])) {
+      const [, a] = endpoints(previous), [b] = endpoints(stroke);
+      const incoming = direction(previous, true), outgoing = direction(stroke);
+      if (distance(a.point, b.point) < .01 && Math.abs(a.radius - b.radius) < .25 &&
+        incoming[0] * outgoing[0] + incoming[1] * outgoing[1] > .97) {
+        result[result.length - 1] = {
+          ...previous, d: previous.d + stroke.d.replace(/^M[^LC]*/, ' '),
+          widths: [...previous.widths, ...stroke.widths],
+        };
+        continue;
+      }
+    }
+    result.push(stroke);
+  }
+  return result;
+}
+
 /** A short pen handoff inside two overlapping brush caps. The radius narrows
  * enough that every intermediate disc fits inside one of the existing caps.
  * It therefore joins motion without adding a thick seam to the final form.

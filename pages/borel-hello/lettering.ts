@@ -1,5 +1,5 @@
 import { alphabet, type PenStroke, type Point } from './stroke-alphabet';
-import { routeWord } from './pen-routing';
+import { joinPenStrokes, routeWord } from './pen-routing';
 
 export type Matrix = readonly [number, number, number, number, number, number];
 export type Bounds = readonly [number, number, number, number];
@@ -159,7 +159,7 @@ export function composeText(text: string, shaper: TextShaper, catalog: FontCatal
     let previous: Point | undefined;
     let pendingMarks: PenStroke[] = [];
     let word: PenStroke[][] = [];
-    const flushWord = () => { strokes.push(...routeWord(word)); word = []; };
+    const flushWord = () => { strokes.push(...joinPenStrokes(routeWord(word))); word = []; };
     const flushMarks = () => { flushWord(); strokes.push(...pendingMarks); pendingMarks = []; };
     for (const glyph of shaped) {
       // Work directly in SVG coordinates after positioning the shaped glyph.
