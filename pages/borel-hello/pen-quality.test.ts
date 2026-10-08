@@ -96,10 +96,15 @@ test('a cut-off round cap is detected separately from pressure and direction', (
   expect(missingNibInterior(raster('<ellipse rx="10" ry="5"/>', bounds, 2), bounds, 2, point, [1,.5])).toBe(0);
 });
 
-// These three shapes have been visually approved as smooth writing runs.
+// These shapes have been visually reviewed as smooth writing runs.
 // Expand this set after reviewing an audit candidate, rather than blessing
 // every existing sharp corner/pressure change with a snapshot baseline.
-for (const name of ['h.init', 'e', 'l.medi.cv01']) test(`approved smooth glyph has no pressure/flow candidates: ${name}`, () => {
+for (const name of [
+  'h.init', 'e', 'l.medi.cv01',
+  'm', 'm.fina', 'm.fina.cv01', 'm.fina.cv02', 'm.fina.cv03', 'm.init', 'm.isol', 'm.medi.cv01', 'm.medi.cv02', 'm.medi.cv03',
+  'y', 'y.fina', 'y.fina.cv01', 'y.init',
+  'n.init', 'n.fina.cv02', 'a', 'e.fina', 'i.init', 'i.medi.cv03', 'j.init', 's.fina', 'w', 'o.medi.cv02',
+]) test(`approved smooth glyph has no pressure/flow candidates: ${name}`, () => {
   const id = catalog.glyphs.findIndex(glyph => glyph.name === name);
   expect(id).toBeGreaterThanOrEqual(0);
   const strokes = createGlyphResolver(catalog)(id).strokes;
