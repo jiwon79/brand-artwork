@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import * as hb from 'harfbuzzjs';
 import { Resvg } from '@resvg/resvg-js';
-import { composeText, type Bounds, type FontCatalog, type TextShaper } from './lettering';
+import { composeText, supportedCharacter, type Bounds, type FontCatalog, type TextShaper } from './lettering';
 import { preparePen, penGeometry } from './pen-geometry';
 
 const assets = new URL('./assets/', import.meta.url);
@@ -24,6 +24,24 @@ export const shaper: TextShaper = {
     });
   },
 };
+
+/** A reproducible unaccented text witness for every drawable contextual form. */
+export function supportedGlyphWitnesses(): Map<number, string> {
+  const witnesses = new Map<number, string>();
+  const add = (text: string) => shaper.shape(text).forEach(glyph => {
+    if (catalog.glyphs[glyph.id].bounds && !witnesses.has(glyph.id)) witnesses.set(glyph.id, text);
+  });
+  for (const cp of Object.keys(catalog.cmap)) {
+    const character = String.fromCodePoint(Number(cp));
+    if (supportedCharacter(character, catalog)) add(character);
+  }
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  for (const a of lowercase) for (const b of lowercase) {
+    for (const c of lowercase) add(a + b + c);
+    add(a + 'tt' + b);
+  }
+  return witnesses;
+}
 
 export function raster(body: string, bounds: Bounds, scale = .35): Uint8Array {
   const [left, top, right, bottom] = bounds;
