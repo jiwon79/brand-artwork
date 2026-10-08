@@ -14,10 +14,10 @@
     <label for="text-input">쓰고 싶은 문장</label>
     <textarea id="text-input" maxlength="160" rows="2" spellcheck="false" aria-describedby="text-hint text-status">hello</textarea>
     <div class="editor-actions">
-      <label class="examples">예시 <select id="example" aria-label="예시" disabled><option value="hello">hello</option><option value="lowercase">영문 소문자</option><option value="uppercase">영문 대문자</option><option value="numbers">숫자와 기호</option><option value="accents">악센트 문자</option></select></label>
+      <label class="examples">예시 <select id="example" aria-label="예시" disabled><option value="hello">hello</option><option value="lowercase">영문 소문자</option><option value="uppercase">영문 대문자</option><option value="numbers">숫자와 기호</option></select></label>
       <button id="write" type="submit" disabled>문장 쓰기 ↗</button>
     </div>
-    <p id="text-hint">Borel 지원 문자 · 최대 160자 · 줄바꿈 가능</p>
+    <p id="text-hint">영문 A–Z, a–z · 숫자와 기호 · 최대 160자 · 줄바꿈 가능</p>
     <p id="text-status" role="status" aria-live="polite">필기 자료를 불러오는 중…</p>
     <details class="character-picker"><summary>지원 문자 보기</summary><div id="character-list" aria-label="지원 문자 삽입"></div></details>
   </form>

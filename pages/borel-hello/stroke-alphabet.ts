@@ -1,5 +1,11 @@
 export type Point = readonly [number, number];
-export interface PenStroke { d: string; width?: number }
+export interface PenStroke {
+  d: string;
+  width?: number;
+  /** One cubic diameter profile for each cubic centerline segment. */
+  widths?: [number, number, number, number][];
+  nibScale?: Point;
+}
 export interface PenGlyph {
   strokes: PenStroke[];
   entry?: Point;

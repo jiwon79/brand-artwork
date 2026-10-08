@@ -1,6 +1,7 @@
 import GUI from 'lil-gui';
-import { composeText, unsupportedCharacters } from './lettering';
+import { composeText, unsupportedCharacters, supportedCharacter } from './lettering';
 import { loadBorel } from './shaper';
+import { preparePen, penGeometry, type PenPath } from './pen-geometry';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -18,7 +19,7 @@ const inkLayer = svgElement('g', {});
 const reference = svgElement('g', { fill: 'currentColor', opacity: '.13', 'pointer-events': 'none' });
 const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '5', opacity: '.65', 'pointer-events': 'none' });
 artwork.append(reference, inkLayer, guides);
-let strokes: { path: SVGPathElement; length: number; start: number }[] = [];
+let strokes: { path: SVGPathElement; length: number; start: number; pen?: PenPath; written?: number }[] = [];
 let totalLength = 0;
 let ready = false;
 const textInput = document.querySelector<HTMLTextAreaElement>('#text-input')!;
@@ -28,7 +29,7 @@ let loaded: Awaited<ReturnType<typeof loadBorel>>;
 function writeText(text: string) {
   const missing = unsupportedCharacters(text, loaded.catalog);
   if (missing.length) {
-    status.textContent = `Borel에 없는 문자: ${missing.join(' ')}. 지원 문자 목록에서 확인할 수 있습니다.`;
+    status.textContent = `지원하지 않는 문자: ${missing.join(' ')}. 지원 문자 목록에서 확인할 수 있습니다.`;
     textInput.setAttribute('aria-invalid', 'true');
     return;
   }
@@ -36,12 +37,15 @@ function writeText(text: string) {
   const lettering = composeText(text, loaded.shaper, loaded.catalog);
   inkLayer.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
   strokes = []; totalLength = 0;
-  for (const { d, width = 90 } of lettering.strokes) {
+  for (const stroke of lettering.strokes) {
+    const { d, width = 90 } = stroke;
     const path = svgElement('path', { d, fill: 'none', stroke: 'currentColor', 'stroke-width': String(width), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
     inkLayer.append(path);
-    const length = path.getTotalLength();
+    const pen = stroke.widths ? preparePen(stroke) : undefined;
+    const length = pen?.length ?? path.getTotalLength();
+    if (pen) { path.setAttribute('stroke', 'none'); path.setAttribute('fill', 'currentColor'); }
     path.style.strokeDasharray = `${length} ${length}`;
-    strokes.push({ path, length, start: totalLength });
+    strokes.push({ path, length, start: totalLength, pen });
     totalLength += length;
     guides.append(svgElement('path', { d }));
   }
@@ -64,7 +68,11 @@ function render() {
   const distance = progress * totalLength;
   for (const stroke of strokes) {
     const written = Math.max(0, Math.min(stroke.length, distance - stroke.start));
-    stroke.path.style.strokeDashoffset = String(stroke.length - written);
+    if (written !== stroke.written) {
+      if (stroke.pen) stroke.path.setAttribute('d', penGeometry(stroke.pen, written));
+      else stroke.path.style.strokeDashoffset = String(stroke.length - written);
+      stroke.written = written;
+    }
     // Hide the round cap entirely before a stroke starts.
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
   }
@@ -132,7 +140,6 @@ const presets: Record<string, string> = {
   lowercase: 'abcdefghijklmnopqrstuvwxyz',
   uppercase: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
   numbers: '0123456789 !? & @ # $ % + =',
-  accents: 'Café · Élève\nTiếng Việt · Ångström',
 };
 document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => { event.preventDefault(); if (ready) writeText(textInput.value); });
 textInput.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (ready) writeText(textInput.value); } });
@@ -148,7 +155,7 @@ loadBorel().then(value => {
   const characterList = document.querySelector('#character-list')!;
   for (const codepoint of Object.keys(loaded.catalog.cmap)) {
     const character = String.fromCodePoint(Number(codepoint));
-    if (/\p{C}|\p{Z}/u.test(character)) continue;
+    if (!supportedCharacter(character, loaded.catalog) || /\p{Z}/u.test(character)) continue;
     const button = document.createElement('button');
     button.type = 'button'; button.textContent = /\p{M}/u.test(character) ? `◌${character}` : character;
     button.title = `U+${Number(codepoint).toString(16).toUpperCase().padStart(4, '0')}`;

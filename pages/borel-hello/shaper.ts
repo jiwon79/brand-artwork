@@ -1,14 +1,16 @@
 import type { FontCatalog, ShapedGlyph, TextShaper } from './lettering';
 
 export async function loadBorel(): Promise<{ shaper: TextShaper; catalog: FontCatalog }> {
-  const [hb, response, catalogResponse] = await Promise.all([
+  const [hb, response, catalogResponse, pathsResponse] = await Promise.all([
     import('harfbuzzjs'),
     fetch(new URL('./assets/Borel-Regular.ttf', import.meta.url)),
     fetch(new URL('./assets/font-catalog.json', import.meta.url)),
+    fetch(new URL('./assets/pen-paths.json', import.meta.url)),
   ]);
-  if (!response.ok || !catalogResponse.ok) throw new Error('Borel 자료를 불러오지 못했습니다.');
+  if (!response.ok || !catalogResponse.ok || !pathsResponse.ok) throw new Error('Borel 자료를 불러오지 못했습니다.');
   const font = new hb.Font(new hb.Face(new hb.Blob(await response.arrayBuffer())));
   const catalog = await catalogResponse.json() as FontCatalog;
+  catalog.penPaths = await pathsResponse.json() as FontCatalog['penPaths'];
   const buffer = new hb.Buffer();
   const cache = new Map<string, ShapedGlyph[]>();
   const shaper: TextShaper = {

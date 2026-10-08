@@ -10,10 +10,15 @@ export interface GlyphRecord {
   dx?: number;
   components?: [number, Matrix][];
 }
-export interface FontCatalog { unitsPerEm: number; cmap: Record<string, number>; glyphs: GlyphRecord[] }
+export interface FontCatalog {
+  penPaths?: Record<string, (PenStroke & { mark?: boolean })[]>;
+  unitsPerEm: number;
+  cmap: Record<string, number>;
+  glyphs: GlyphRecord[];
+}
 export interface ShapedGlyph { id: number; x: number; y: number; advance: number; outline: string }
 export interface TextShaper { shape(text: string): ShapedGlyph[] }
-interface GlyphInk { strokes: PenStroke[]; marks: PenStroke[]; entry?: Point; exit?: Point }
+interface GlyphInk { fitted?: boolean; strokes: PenStroke[]; marks: PenStroke[]; entry?: Point; exit?: Point }
 export interface Lettering { strokes: PenStroke[]; outlines: string[]; bounds: Bounds; lines: string[] }
 
 export function transformPoint([x, y]: Point, [a, b, c, d, e, f]: Matrix): Point {
@@ -39,9 +44,13 @@ function pointBounds(paths: readonly PenStroke[]): Bounds {
 
 function moveInk(ink: GlyphInk, matrix: Matrix): GlyphInk {
   const widthScale = Math.sqrt(Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]));
-  const move = (stroke: PenStroke): PenStroke => ({ d: transformPath(stroke.d, matrix), width: (stroke.width ?? 90) * widthScale });
+  const move = (stroke: PenStroke): PenStroke => ({
+    d: transformPath(stroke.d, matrix), nibScale: stroke.nibScale,
+    width: (stroke.width ?? 90) * widthScale,
+    widths: stroke.widths?.map(profile => profile.map(width => width * widthScale) as [number, number, number, number]),
+  });
   return {
-    strokes: ink.strokes.map(move), marks: ink.marks.map(move),
+    fitted: ink.fitted, strokes: ink.strokes.map(move), marks: ink.marks.map(move),
     entry: ink.entry && transformPoint(ink.entry, matrix), exit: ink.exit && transformPoint(ink.exit, matrix),
   };
 }
@@ -55,7 +64,10 @@ export function createGlyphResolver(catalog: FontCatalog) {
     const record = catalog.glyphs[id];
     if (!record) throw new Error(`Unknown Borel glyph ${id}`);
     let ink: GlyphInk;
-    if (record.components) {
+    const fitted = catalog.penPaths?.[String(id)];
+    if (fitted) {
+      ink = { fitted: true, strokes: fitted.filter(stroke => !stroke.mark), marks: fitted.filter(stroke => stroke.mark) };
+    } else if (record.components) {
       const children = record.components.map(([child, matrix]) => moveInk(resolve(child), matrix));
       const body = children.find(child => child.entry);
       ink = body ? {
@@ -100,9 +112,15 @@ export function createGlyphResolver(catalog: FontCatalog) {
   return resolve;
 }
 
+export function supportedCharacter(character: string, catalog: FontCatalog): boolean {
+  const codepoint = character.codePointAt(0)!;
+  return catalog.cmap[String(codepoint)] !== undefined &&
+    (codepoint >= 32 && codepoint <= 126 || !/[\p{L}\p{M}\p{C}\p{Z}]/u.test(character));
+}
+
 export function unsupportedCharacters(text: string, catalog: FontCatalog): string[] {
   return [...new Set([...text.normalize('NFC')].filter(character =>
-    !['\n', '\r', '\t'].includes(character) && catalog.cmap[String(character.codePointAt(0))] === undefined,
+    !['\n', '\r', '\t'].includes(character) && !supportedCharacter(character, catalog),
   ))];
 }
 
@@ -127,7 +145,7 @@ export function wrapText(text: string, shaper: TextShaper, maxWidth: number): st
 
 export function composeText(text: string, shaper: TextShaper, catalog: FontCatalog, maxWidth = 6200): Lettering {
   const missing = unsupportedCharacters(text, catalog);
-  if (missing.length) throw new Error(`Borel에 없는 문자: ${missing.join(' ')}`);
+  if (missing.length) throw new Error(`지원하지 않는 문자: ${missing.join(' ')}`);
   const resolve = createGlyphResolver(catalog);
   const lines = wrapText(text, shaper, maxWidth);
   const strokes: PenStroke[] = [], outlines: string[] = [];
@@ -145,7 +163,12 @@ export function composeText(text: string, shaper: TextShaper, catalog: FontCatal
       const matrix: Matrix = [1, 0, 0, -1, origin + glyph.x, lineIndex * 1700 - glyph.y];
       const ink = moveInk(resolve(glyph.id), matrix);
       outlines.push(transformPath(glyph.outline, matrix));
-      if (ink.entry && ink.exit) {
+      // Fitted contextual curves already include their actual entry/exit;
+      // synthetic joins would alter the source form and thicken crossings.
+      if (ink.fitted) {
+        if (!/^[a-z](?:\.|$)|^t_t/.test(catalog.glyphs[glyph.id].name)) flushMarks();
+        strokes.push(...ink.strokes); pendingMarks.push(...ink.marks); previous = undefined;
+      } else if (ink.entry && ink.exit) {
         const separation = previous ? Math.hypot(ink.entry[0] - previous[0], ink.entry[1] - previous[1]) : Infinity;
         if (previous && separation <= 4) {
           // Register almost coincident entries to the preceding pen endpoint.
