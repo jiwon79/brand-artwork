@@ -5,6 +5,19 @@ import { penGeometry, preparePen } from './pen-geometry';
 import { createPenPlayback, strokeState } from './pen-playback';
 import { catalog, foregroundIoU, raster, shaper } from './test-font';
 
+test('a crossing may recolor only the actual nib footprint, even inside existing ink', () => {
+  const pens = [preparePen({ d: 'M0 -300L0 300', width: 90 }), preparePen({ d: 'M-300 0L300 0', width: 90 })];
+  const pieces = gradientPieces(pens);
+  // Use contrasting flat colors to make ownership independent of the palette.
+  // The shared mask alone cannot catch recoloring inside the previous stroke.
+  const ink = pens.map(pen => `<path d="${penGeometry(pen)}"/>`).join('');
+  const color = pieces.map((parts, i) => parts.map(part => `<path fill="${i ? '#0000ff' : '#ff0000'}" d="${gradientPieceGeometry(part, pens[i].length, 1)}"/>`).join('')).join('');
+  const actual = raster(`<defs><mask id="ink" mask-type="alpha" maskUnits="userSpaceOnUse" x="-350" y="-350" width="700" height="700">${ink}</mask></defs><g mask="url(#ink)">${color}</g>`, [-350, -350, 350, 350], 1);
+  const pixel = (x: number, y: number) => Array.from(actual.slice(((y + 350) * 700 + x + 350) * 4, ((y + 350) * 700 + x + 350) * 4 + 4));
+  expect(pixel(0, 0)).toEqual([0, 0, 255, 255]);
+  for (const y of [-55, -50, 49, 54]) expect(pixel(0, y), `old ink at y=${y}`).toEqual([255, 0, 0, 255]);
+});
+
 test('the spectrum follows the full pen journey without restarting at a stroke or pen lift', () => {
   const pens = composeText('hello jiwon', shaper, catalog).strokes.map(preparePen);
   const pieces = gradientPieces(pens), flat = pieces.flat();
@@ -56,7 +69,7 @@ test('overlapping round caps share the same extended color field along a straigh
 
 // Compare real raster output, including crossings, growing dots and crossbars.
 // The color layer is opaque; only the original authored geometry supplies alpha.
-for (const text of ['hello', 'jiwon', 'little letters flow', 'my name is jiwon', 'B D K R !?']) {
+for (const text of ['hello', 'jiwon', 'little letters flow', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz', 'B D K R !?']) {
   test(`gradient keeps the original ink silhouette throughout playback: ${text}`, () => {
     const lettering = composeText(text, shaper, catalog), pens = lettering.strokes.map(preparePen);
     const playback = createPenPlayback(pens), pieces = gradientPieces(pens);
@@ -68,7 +81,7 @@ for (const text of ['hello', 'jiwon', 'little letters flow', 'my name is jiwon',
     const [left, top, right, bottom] = lettering.bounds;
     const rect = `x="${left}" y="${top}" width="${right - left}" height="${bottom - top}"`;
     const frames = new Set([0, .1, .25, .5, .75, 1].map(fraction => playback.duration * fraction));
-    if (text === 'hello' || text === 'jiwon') {
+    if (['hello', 'jiwon', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz'].includes(text)) {
       for (let frame = 0; frame <= Math.ceil(playback.duration * 60); frame++) frames.add(Math.min(playback.duration, frame / 60));
     }
     for (const stroke of playback.strokes.filter(stroke => stroke.dot)) {
@@ -78,15 +91,26 @@ for (const text of ['hello', 'jiwon', 'little letters flow', 'my name is jiwon',
       const states = playback.strokes.map(stroke => strokeState(stroke, time));
       const ink = pens.map((pen, i) => `<path d="${penGeometry(pen, states[i].written, states[i].pressure)}"/>`).join('');
       const color = pieces.map((parts, i) => parts.map((part, j) => `<path fill="${pens[i].length <= .1 ? part.from : `url(#c-${i}-${j})`}" d="${gradientPieceGeometry(part, states[i].written, states[i].pressure)}"/>`).join('')).join('');
-      const body = `<defs>${spectrum}${definitions}<mask id="ink" maskUnits="userSpaceOnUse" mask-type="alpha" ${rect}>${ink}</mask></defs><g mask="url(#ink)"><rect ${rect} fill="${gradientColor(0)}"/>${color}</g>`;
+      const opaque = `<filter id="opaque" filterUnits="userSpaceOnUse" ${rect} color-interpolation-filters="sRGB"><feComponentTransfer><feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer></filter>`;
+      const body = `<defs>${spectrum}${definitions}${opaque}<mask id="ink" maskUnits="userSpaceOnUse" mask-type="alpha" ${rect}>${ink}</mask></defs><g mask="url(#ink)"><g filter="url(#opaque)">${color}</g></g>`;
       const actual = raster(body, lettering.bounds, .12), expected = raster(ink, lettering.bounds, .12);
       // Allow only 8-bit mask-compositing rounding at antialiased edges.
       expect(foregroundIoU(actual, expected), `at ${time}s`).toBeGreaterThan(.99999);
+      // Alpha normalization must preserve RGB at edges. An uncovered black
+      // fringe could keep perfect silhouette IoU while still looking wrong.
+      const minimum = [0, 1, 2].map(channel => Math.min(...gradientPalette.map(hex => parseInt(hex.slice(1 + channel * 2, 3 + channel * 2), 16))));
+      for (let i = 0; i < actual.length; i += 4) {
+        const alpha = actual[i + 3];
+        if (alpha < 64) continue;
+        for (let channel = 0; channel < 3; channel++) {
+          if (actual[i + channel] * 255 / alpha < minimum[channel] - 5) throw new Error(`uncolored edge at ${time}s, pixel ${i / 4}`);
+        }
+      }
       if (time === playback.duration) {
         const colors = new Set<string>();
         for (let i = 0; i < actual.length; i += 4) if (actual[i + 3] === 255) colors.add(`${actual[i]},${actual[i + 1]},${actual[i + 2]}`);
         expect(colors.size).toBeGreaterThan(100);
       }
     }
-  }, 30_000);
+  }, 180_000);
 }

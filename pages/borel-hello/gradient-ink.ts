@@ -52,11 +52,11 @@ export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
   });
 }
 
-/** A small color bleed covers antialias fringes. The shared authored-ink mask
- * supplies the exact silhouette, including pressure-sensitive dots.
+/** Color belongs only to the nib's swept area. Expanding a patch would recolor
+ * earlier ink at crossings, even when a shared mask preserves the silhouette.
  */
 export function gradientPieceGeometry(piece: GradientPiece, written: number, pressure: number): string {
   const distance = Math.min(piece.pen.length, written - piece.start);
   if (distance <= 0 || pressure <= 0) return '';
-  return penGeometry({ ...piece.pen, points: piece.pen.points.map(point => ({ ...point, radius: point.radius * pressure + 12 })) }, distance);
+  return penGeometry(piece.pen, distance, pressure);
 }
