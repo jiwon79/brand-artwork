@@ -81,6 +81,28 @@ test('tiny antialias changes do not hide a visible foreign pixel', () => {
   expect(inkTravelPasses(measureInkTravel(previous, current, bounds, 1, [], 0, 1))).toBe(false);
 });
 
+test('a narrowing handoff after a loop cannot expose ink elsewhere on the loop', () => {
+  // Independent reproduction of the w→n and o→v handoff failures. A single
+  // self-crossing ribbon used to expose a solid sliver at frame 179.
+  const pen = preparePen({
+    d: 'M0 0 C100 0 100 150 0 150 C-100 150 -100 0 0 0 C20 0 40 0 60 0',
+    widths: [[80,80,80,80],[80,80,80,80],[80,-90,-50,100]],
+  });
+  const bounds = [-180,-100,250,280] as const, scale = .35, frames = 180;
+  let previous = raster('', bounds, scale);
+  for (let frame = 1; frame <= frames; frame++) {
+    const from = pen.length * (frame - 1) / frames, to = pen.length * frame / frames;
+    const current = raster(`<path d="${penGeometry(pen, to)}"/>`, bounds, scale);
+    expect(inkTravelPasses(measureInkTravel(previous, current, bounds, scale, [pen], from, to)), `frame ${frame}`).toBe(true);
+    let erased = 0, written = 0;
+    for (let i = 3; i < current.length; i += 4) {
+      erased += Math.max(0, previous[i] - current[i]); written += previous[i];
+    }
+    expect(erased / Math.max(1, written), `erased ink at frame ${frame}`).toBeLessThan(.002);
+    previous = current;
+  }
+});
+
 test('my-style nearly zero nib tips are flagged without forbidding a modest taper', () => {
   // Measured my tips fall to a 2.423-unit diameter beside an 83.608-unit
   // stem. This can fit a flat font edge while losing a rounded pen ending.

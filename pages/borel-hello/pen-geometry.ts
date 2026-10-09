@@ -83,36 +83,27 @@ function arc(center: PenPoint, from: Point, to: Point, scale: Point, large = fal
  */
 export function penGeometry(pen: PenPath, written = pen.length): string {
   if (pen.retrace || written <= 0 || !pen.points.length) return '';
-  const points: PenPoint[] = [pen.points[0]];
+  let d = disk(pen.points[0], pen.nibScale);
   for (let i = 1; i < pen.points.length; i++) {
     const a = pen.points[i - 1], sample = pen.points[i];
     if (a.distance >= written) break;
     const t = Math.min(1, (written - a.distance) / (sample.distance - a.distance || 1));
     const b = t === 1 ? sample : { x: a.x + (sample.x - a.x) * t, y: a.y + (sample.y - a.y) * t, radius: a.radius + (sample.radius - a.radius) * t, distance: written };
-    // A disc entirely contained by its neighbour adds no brush boundary.
-    while (points.length) {
-      const last = points[points.length - 1];
-      const separation = Math.hypot((b.x - last.x) / pen.nibScale[0], (b.y - last.y) / pen.nibScale[1]);
-      if (separation > Math.abs(b.radius - last.radius) + .000001) { points.push(b); break; }
-      if (last.radius >= b.radius) break;
-      points.pop();
+    // Each traveled interval contributes its own positively wound capsule.
+    // A self-crossing outline can cancel old ink or expose a remote sliver as
+    // the tip moves. Independent capsules form the union of the swept nib;
+    // their completed prefix never changes when another interval is added.
+    const separation = Math.hypot((b.x - a.x) / pen.nibScale[0], (b.y - a.y) / pen.nibScale[1]);
+    if (separation <= Math.abs(b.radius - a.radius) + .000001) {
+      d += disk(a.radius >= b.radius ? a : b, pen.nibScale);
+    } else {
+      const edge = tangent(a, b, pen.nibScale);
+      d += `M${coordinates(edge.rightA)}L${coordinates(edge.rightB)}` +
+        arc(b, edge.rightB, edge.leftB, pen.nibScale, edge.slope > 0, 1) +
+        `L${coordinates(edge.leftA)}` +
+        arc(a, edge.leftA, edge.rightA, pen.nibScale, edge.slope < 0, 1) + 'Z';
     }
-    if (!points.length) points.push(b);
     if (t < 1) break;
   }
-  if (points.length === 1) return disk(points[0], pen.nibScale);
-  const edges = points.slice(1).map((b, i) => tangent(points[i], b, pen.nibScale));
-  let d = `M${coordinates(edges[0].rightA)}`;
-  for (let i = 0; i < edges.length; i++) {
-    d += `L${coordinates(edges[i].rightB)}`;
-    if (i + 1 < edges.length) d += arc(points[i + 1], edges[i].rightB, edges[i + 1].rightA, pen.nibScale);
-  }
-  const last = edges[edges.length - 1];
-  d += arc(points[points.length - 1], last.rightB, last.leftB, pen.nibScale, last.slope > 0, 1);
-  for (let i = edges.length - 1; i >= 0; i--) {
-    d += `L${coordinates(edges[i].leftA)}`;
-    if (i > 0) d += arc(points[i], edges[i].leftA, edges[i - 1].leftB, pen.nibScale);
-  }
-  d += arc(points[0], edges[0].leftA, edges[0].rightA, pen.nibScale, edges[0].slope < 0, 1);
-  return d + 'Z';
+  return d;
 }
