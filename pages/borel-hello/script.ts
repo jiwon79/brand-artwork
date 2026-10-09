@@ -135,17 +135,11 @@ gui.addColor(settings, 'paper').name('배경').onChange(render);
 gui.close();
 render();
 
-const presets: Record<string, string> = {
-  hello: 'hello',
-  lowercase: 'abcdefghijklmnopqrstuvwxyz',
-  uppercase: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-  numbers: '0123456789 !? & @ # $ % + =',
-};
 document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => { event.preventDefault(); if (ready) writeText(textInput.value); });
 textInput.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (ready) writeText(textInput.value); } });
 document.querySelector<HTMLSelectElement>('#example')!.addEventListener('change', event => {
   const selected = (event.target as HTMLSelectElement).value;
-  if (presets[selected] !== undefined && ready) { textInput.value = presets[selected]; writeText(textInput.value); }
+  if (ready) { textInput.value = selected; writeText(textInput.value); }
 });
 
 loadBorel().then(value => {

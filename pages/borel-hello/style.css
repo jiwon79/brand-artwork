@@ -29,8 +29,9 @@ textarea { resize: vertical; width: 100%; min-height: 70px; max-height: 220px; b
 textarea:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 textarea[aria-invalid] { border-color: #a23d2d; }
 .editor-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
-.examples { display: flex; gap: 10px; align-items: center; }
-#write { background: #6f4031; color: #f3e8de; }
+.examples { display: flex; flex: 1; min-width: 0; gap: 10px; align-items: center; white-space: nowrap; }
+#example { flex: 1; min-width: 0; max-width: 420px; text-overflow: ellipsis; }
+#write { flex-shrink: 0; white-space: nowrap; background: #6f4031; color: #f3e8de; }
 #text-hint { margin: 12px 0 4px; font-size: 10px; opacity: .6; }
 #text-status { margin: 0; min-height: 15px; font-size: 10px; }
 .character-picker { margin-top: 10px; font-size: 10px; }

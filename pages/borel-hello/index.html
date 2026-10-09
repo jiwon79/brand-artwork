@@ -14,7 +14,30 @@
     <label for="text-input">쓰고 싶은 문장</label>
     <textarea id="text-input" maxlength="160" rows="2" spellcheck="false" aria-describedby="text-hint text-status">hello</textarea>
     <div class="editor-actions">
-      <label class="examples">예시 <select id="example" aria-label="예시" disabled><option value="hello">hello</option><option value="lowercase">영문 소문자</option><option value="uppercase">영문 대문자</option><option value="numbers">숫자와 기호</option></select></label>
+      <label class="examples">예시
+        <select id="example" aria-label="예시" disabled>
+          <option>hello</option>
+          <optgroup label="테스트 문장">
+            <option>my name is jiwon</option>
+            <option>hello my lovely world</option>
+            <option>many merry moments</option>
+            <option>we move with the wind</option>
+            <option>little letters flow</option>
+            <option>happy people play</option>
+            <option>bring your dreams to life</option>
+            <option>every day is a new beginning</option>
+            <option>the quick brown fox jumps over the lazy dog</option>
+            <option>sphinx of black quartz judge my vow</option>
+            <option>Hello, world!</option>
+            <option>See you at 7:30!</option>
+          </optgroup>
+          <optgroup label="문자 모음">
+            <option value="abcdefghijklmnopqrstuvwxyz">영문 소문자</option>
+            <option value="ABCDEFGHIJKLMNOPQRSTUVWXYZ">영문 대문자</option>
+            <option value="0123456789 !? &amp; @ # $ % + =">숫자와 기호</option>
+          </optgroup>
+        </select>
+      </label>
       <button id="write" type="submit" disabled>문장 쓰기 ↗</button>
     </div>
     <p id="text-hint">영문 A–Z, a–z · 숫자와 기호 · 최대 160자 · 줄바꿈 가능</p>
