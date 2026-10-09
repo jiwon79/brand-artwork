@@ -1,7 +1,7 @@
 import GUI from 'lil-gui';
-import { composeText, unsupportedCharacters, supportedCharacter } from './lettering';
+import { composeText, unsupportedCharacters, supportedCharacter, type Bounds } from './lettering';
 import { loadBorel } from './shaper';
-import { preparePen, penGeometry } from './pen-geometry';
+import { preparePen, penGeometry, expandPenBounds } from './pen-geometry';
 import { createPenPlayback, strokeState, type PenPlayback } from './pen-playback';
 import { activeOrderStep, letterContexts } from './stroke-order';
 import { StrokeOrderView, stepName } from './stroke-order-view';
@@ -18,7 +18,7 @@ const slider = document.querySelector<HTMLInputElement>('#progress')!;
 const frameNumber = document.querySelector<HTMLInputElement>('#frame-number')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-const settings = { duration: 6, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
+const settings = { duration: 6, weight: 1, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
 let gradientEnabled = false;
 const gradientView = new GradientInkView();
 const inkShape = svgElement('g', { id: 'borel-ink-shape' });
@@ -40,13 +40,13 @@ const inspectStep = document.querySelector<HTMLSelectElement>('#inspect-step')!;
 const orderStatus = document.querySelector<HTMLElement>('#order-status')!;
 const inspectSource = document.querySelector<HTMLAnchorElement>('#inspect-source')!;
 let inspecting = false;
-let bounds: readonly number[] = [0, 0, 1100, 530];
+let bounds: Bounds = [0, 0, 1100, 530];
 let lastOrderStep = -2;
 function updateViewBox() {
   const [left, top, right, bottom] = bounds, pad = inspecting ? 180 : 0;
   artwork.setAttribute('viewBox', `${left - pad} ${top - pad} ${right - left + 2 * pad} ${bottom - top + 2 * pad}`);
 }
-let strokes: { path: SVGPathElement; written?: number; pressure?: number }[] = [];
+let strokes: { path: SVGPathElement; written?: number; pressure?: number; weight?: number }[] = [];
 let playback: PenPlayback = { strokes: [], duration: 0 };
 let totalLength = 0;
 let ready = false;
@@ -79,10 +79,10 @@ function writeText(text: string) {
     guides.append(svgElement('path', { d }));
   }
   for (const d of lettering.outlines) if (d) reference.append(svgElement('path', { d }));
-  bounds = lettering.bounds;
+  bounds = expandPenBounds(lettering.bounds, playback.strokes.map(stroke => stroke.pen), Number(weightSlider.max) / 100);
   const [left, top, right, bottom] = bounds;
   for (const [name, value] of Object.entries({ x: left, y: top, width: right - left, height: bottom - top })) inkMask.setAttribute(name, String(value));
-  gradientView.setPens(playback.strokes.map(stroke => stroke.pen), lettering.bounds);
+  gradientView.setPens(playback.strokes.map(stroke => stroke.pen), bounds);
   updateViewBox();
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
@@ -101,14 +101,15 @@ function render() {
   for (const [index, stroke] of strokes.entries()) {
     const timed = playback.strokes[index];
     const { written, pressure } = strokeState(timed, time);
-    if (written !== stroke.written || pressure !== stroke.pressure) {
-      stroke.path.setAttribute('d', penGeometry(timed.pen, written, pressure));
+    if (written !== stroke.written || pressure !== stroke.pressure || settings.weight !== stroke.weight) {
+      stroke.path.setAttribute('d', penGeometry(timed.pen, written, pressure, settings.weight));
       stroke.written = written;
       stroke.pressure = pressure;
+      stroke.weight = settings.weight;
     }
     // Hide the round cap entirely before a stroke starts.
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
-    if (gradientEnabled && !inspecting) gradientView.renderStroke(index, written, pressure);
+    if (gradientEnabled && !inspecting) gradientView.renderStroke(index, written, pressure, settings.weight);
   }
   const frameCount = Math.round(settings.duration * 60);
   slider.max = String(frameCount);
@@ -182,6 +183,16 @@ for (const [id, enabled] of [['solid-color', false], ['gradient-color', true]] a
     render();
   });
 }
+const weightSlider = document.querySelector<HTMLInputElement>('#weight')!;
+const weightValue = document.querySelector<HTMLOutputElement>('#weight-value')!;
+function updateWeight() {
+  settings.weight = Number(weightSlider.value) / 100;
+  weightValue.value = `${weightSlider.value}%`;
+  weightSlider.setAttribute('aria-valuetext', `${weightSlider.value}%`);
+  render();
+}
+weightSlider.addEventListener('input', updateWeight);
+document.querySelector('#reset-weight')!.addEventListener('click', () => { weightSlider.value = '100'; updateWeight(); });
 const gui = new GUI({ title: 'Borel Handwriting' });
 gui.add(settings, 'duration', 2, 60, .5).listen().name('필기 시간 (초)').onChange(render);
 gui.add(settings, 'guides').name('필기 경로').onChange(render);

@@ -97,8 +97,8 @@ export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
 /** Color belongs only to the nib's swept area. Expanding a patch would recolor
  * earlier ink at crossings, even when a shared mask preserves the silhouette.
  */
-export function gradientPieceGeometry(piece: GradientPiece, written: number, pressure: number): string {
+export function gradientPieceGeometry(piece: GradientPiece, written: number, pressure: number, weight = 1): string {
   const distance = Math.min(piece.pen.length, written - piece.start);
   if (distance <= 0 || pressure <= 0) return '';
-  return penGeometry(piece.pen, distance, pressure);
+  return penGeometry(piece.pen, distance, pressure, weight);
 }

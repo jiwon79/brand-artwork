@@ -1,7 +1,22 @@
 import type { PenStroke, Point } from './stroke-alphabet';
+import type { Bounds } from './lettering';
 
 export interface PenPoint { x: number; y: number; radius: number; distance: number }
 export interface PenPath { points: PenPoint[]; length: number; nibScale: Point; retrace?: boolean; colorAnchors?: readonly Point[] }
+
+/** Reserve the largest allowed nib once, keeping framing fixed during edits. */
+export function expandPenBounds(bounds: Bounds, pens: readonly PenPath[], weight: number): Bounds {
+  let [left, top, right, bottom] = bounds;
+  for (const pen of pens) {
+    if (pen.retrace) continue;
+    for (const point of pen.points) {
+      const rx = point.radius * pen.nibScale[0] * weight + 2, ry = point.radius * pen.nibScale[1] * weight + 2;
+      left = Math.min(left, point.x - rx); right = Math.max(right, point.x + rx);
+      top = Math.min(top, point.y - ry); bottom = Math.max(bottom, point.y + ry);
+    }
+  }
+  return [left, top, right, bottom];
+}
 
 export function cubic(a: number, b: number, c: number, d: number, t: number): number {
   const s = 1 - t;
@@ -85,9 +100,12 @@ function arc(center: PenPoint, from: Point, to: Point, scale: Point, large = fal
 /** Build a vector ribbon along the traveled Bézier center curve. Its boundary
  * follows brush tangents and round joins; it never samples a source image.
  */
-export function penGeometry(pen: PenPath, written = pen.length, pressure = 1): string {
-  if (pen.retrace || written <= 0 || pressure <= 0 || !pen.points.length) return '';
-  if (pressure < 1) return penGeometry({ ...pen, points: pen.points.map(point => ({ ...point, radius: point.radius * pressure })) }, written);
+export function penGeometry(pen: PenPath, written = pen.length, pressure = 1, weight = 1): string {
+  if (pen.retrace || written <= 0 || pressure <= 0 || weight <= 0 || !pen.points.length) return '';
+  // Scale the nib after path sampling so weight never changes travel, timing,
+  // color anchors, or the original radius profile used by a later reset.
+  const scale = Math.min(1, pressure) * weight;
+  if (scale !== 1) return penGeometry({ ...pen, points: pen.points.map(point => ({ ...point, radius: point.radius * scale })) }, written);
   let d = disk(pen.points[0], pen.nibScale);
   for (let i = 1; i < pen.points.length; i++) {
     const a = pen.points[i - 1], sample = pen.points[i];

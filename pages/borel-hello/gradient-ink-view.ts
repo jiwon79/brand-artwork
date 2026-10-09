@@ -12,7 +12,7 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<st
 export class GradientInkView {
   readonly layer = svg('g', { mask: 'url(#borel-ink-mask)' });
   readonly definitions = svg('defs', {});
-  private strokes: { piece: GradientPiece; path: SVGPathElement; written?: number; pressure?: number }[][] = [];
+  private strokes: { piece: GradientPiece; path: SVGPathElement; written?: number; pressure?: number; weight?: number }[][] = [];
 
   setPens(pens: readonly PenPath[], bounds: Bounds) {
     this.definitions.replaceChildren();
@@ -41,12 +41,12 @@ export class GradientInkView {
     }));
   }
 
-  renderStroke(index: number, written: number, pressure: number) {
+  renderStroke(index: number, written: number, pressure: number, weight = 1) {
     for (const part of this.strokes[index] ?? []) {
       const distance = Math.max(0, Math.min(part.piece.end, written) - part.piece.start);
-      if (part.written === distance && part.pressure === pressure) continue;
-      part.path.setAttribute('d', gradientPieceGeometry(part.piece, written, pressure));
-      part.written = distance; part.pressure = pressure;
+      if (part.written === distance && part.pressure === pressure && part.weight === weight) continue;
+      part.path.setAttribute('d', gradientPieceGeometry(part.piece, written, pressure, weight));
+      part.written = distance; part.pressure = pressure; part.weight = weight;
     }
   }
 }

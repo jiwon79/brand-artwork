@@ -32,21 +32,21 @@ for (const first of alphabet) {
         for (const [interval, part] of parts.entries()) {
           // Test a moving tip as well as each completed interval. For dots,
           // also exercise the growing contact area rather than only full size.
-          for (const progress of [.35, 1]) {
+          for (const weight of text === first ? [.5, 1, 1.5] : [1]) for (const progress of [.35, 1]) {
             const pressure = pen.length <= .1 ? progress : 1;
             const sourceA = pen.points[interval], sourceB = pen.points[Math.min(interval + 1, pen.points.length - 1)];
-            const a = { ...sourceA, radius: sourceA.radius * pressure };
+            const a = { ...sourceA, radius: sourceA.radius * pressure * weight };
             const b = {
               ...sourceB,
               x: sourceA.x + (sourceB.x - sourceA.x) * progress,
               y: sourceA.y + (sourceB.y - sourceA.y) * progress,
-              radius: (sourceA.radius + (sourceB.radius - sourceA.radius) * progress) * pressure,
+              radius: (sourceA.radius + (sourceB.radius - sourceA.radius) * progress) * pressure * weight,
             };
             const r = Math.max(a.radius, b.radius);
             // Include the former 12-unit overpaint in the observation window.
             const bounds: Bounds = [Math.floor(Math.min(a.x, b.x) - (r + 16) * sx), Math.floor(Math.min(a.y, b.y) - (r + 16) * sy), Math.ceil(Math.max(a.x, b.x) + (r + 16) * sx), Math.ceil(Math.max(a.y, b.y) + (r + 16) * sy)];
             const scale = .5, width = Math.ceil((bounds[2] - bounds[0]) * scale), height = Math.ceil((bounds[3] - bounds[1]) * scale);
-            const d = gradientPieceGeometry(part, part.start + part.pen.length * progress, pressure);
+            const d = gradientPieceGeometry(part, part.start + part.pen.length * progress, pressure, weight);
             const pixels = raster(`<path d="${d}"/>`, bounds, scale);
             // One diagonal raster pixel of antialias tolerance, in nib space.
             const margin = Math.hypot((bounds[2] - bounds[0]) / width / sx, (bounds[3] - bounds[1]) / height / sy);
@@ -58,7 +58,7 @@ for (const first of alphabet) {
               const py = bounds[1] + (y + .5) * (bounds[3] - bounds[1]) / height;
               if (!insideSweep(px, py, a, b, sx, sy, margin)) escaped++;
             }
-            if (escaped) throw new Error(`${text}: stroke ${stroke}, interval ${interval}, progress ${progress}: ${escaped} pixels recolor outside the nib`);
+            if (escaped) throw new Error(`${text}: stroke ${stroke}, interval ${interval}, progress ${progress}, weight ${weight}: ${escaped} pixels recolor outside the nib`);
             // Avoid an empty renderer satisfying containment vacuously.
             if (Math.min(a.radius, b.radius) * Math.min(sx, sy) > 4) expect(painted, text).toBeGreaterThan(0);
           }

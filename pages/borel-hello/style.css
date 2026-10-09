@@ -49,6 +49,11 @@ textarea[aria-invalid] { border-color: #a23d2d; }
 .color-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 .solid-swatch { background: currentColor; }
 .gradient-swatch { background: linear-gradient(120deg, #2589a6, #cedb56, #f4d35e, #eb7266, #d57ba5, #6b83c6); }
+.weight-control { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 12px; }
+.weight-control label { opacity: .65; }
+.weight-control input { width: min(180px, 35vw); margin: 0; }
+.weight-control output { width: 34px; font-variant-numeric: tabular-nums; text-align: right; }
+.weight-control button { padding: 4px 9px; font-size: 10px; }
 #order-panel { margin-top: 14px; border: 1px solid #6f40312e; border-radius: 14px; padding: 12px 16px; }
 .order-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .order-controls label { display: flex; align-items: center; gap: 8px; }
