@@ -5,6 +5,7 @@ import { preparePen, penGeometry } from './pen-geometry';
 import { createPenPlayback, strokeState, type PenPlayback } from './pen-playback';
 import { activeOrderStep, letterContexts } from './stroke-order';
 import { StrokeOrderView, stepName } from './stroke-order-view';
+import { GradientInkView } from './gradient-ink-view';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -18,11 +19,20 @@ const frameNumber = document.querySelector<HTMLInputElement>('#frame-number')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const settings = { duration: 6, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
+let gradientEnabled = false;
+const gradientView = new GradientInkView();
+const inkShape = svgElement('g', { id: 'borel-ink-shape' });
+const inkMask = svgElement('mask', { id: 'borel-ink-mask', maskUnits: 'userSpaceOnUse', 'mask-type': 'alpha' });
+inkMask.append(svgElement('use', { href: '#borel-ink-shape' }));
+const definitions = svgElement('defs', {});
+definitions.append(inkShape, inkMask);
 const inkLayer = svgElement('g', {});
+const solidInk = svgElement('use', { href: '#borel-ink-shape' });
+inkLayer.append(solidInk, gradientView.layer);
 const reference = svgElement('g', { fill: 'currentColor', opacity: '.13', 'pointer-events': 'none' });
 const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '5', opacity: '.65', 'pointer-events': 'none' });
 const orderView = new StrokeOrderView();
-artwork.append(reference, inkLayer, guides, orderView.layer);
+artwork.append(definitions, gradientView.definitions, reference, inkLayer, guides, orderView.layer);
 const orderPanel = document.querySelector<HTMLElement>('#order-panel')!;
 const inspectLetter = document.querySelector<HTMLSelectElement>('#inspect-letter')!;
 const inspectContext = document.querySelector<HTMLSelectElement>('#inspect-context')!;
@@ -58,18 +68,21 @@ function writeText(text: string) {
   inspectStep.replaceChildren(...orderView.steps.map(step => new Option(`${step.index + 1} · ${stepName[step.kind]}`, String(step.index))));
   inspectStep.disabled = !orderView.steps.length;
   lastOrderStep = -2;
-  inkLayer.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
+  inkShape.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
   strokes = []; totalLength = 0;
   for (const [index, stroke] of lettering.strokes.entries()) {
     const { d } = stroke;
     const path = svgElement('path', { d: '', fill: 'currentColor' });
-    inkLayer.append(path);
+    inkShape.append(path);
     strokes.push({ path });
     totalLength += playback.strokes[index].pen.length;
     guides.append(svgElement('path', { d }));
   }
   for (const d of lettering.outlines) if (d) reference.append(svgElement('path', { d }));
   bounds = lettering.bounds;
+  const [left, top, right, bottom] = bounds;
+  for (const [name, value] of Object.entries({ x: left, y: top, width: right - left, height: bottom - top })) inkMask.setAttribute(name, String(value));
+  gradientView.setPens(playback.strokes.map(stroke => stroke.pen), lettering.bounds);
   updateViewBox();
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
@@ -95,6 +108,7 @@ function render() {
     }
     // Hide the round cap entirely before a stroke starts.
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
+    if (gradientEnabled && !inspecting) gradientView.renderStroke(index, written, pressure);
   }
   const frameCount = Math.round(settings.duration * 60);
   slider.max = String(frameCount);
@@ -107,6 +121,8 @@ function render() {
   guides.style.display = settings.guides && !inspecting ? '' : 'none';
   reference.style.display = settings.reference || inspecting ? '' : 'none';
   inkLayer.style.opacity = inspecting ? '.12' : '1';
+  solidInk.style.display = gradientEnabled && !inspecting ? 'none' : '';
+  gradientView.layer.style.display = gradientEnabled && !inspecting ? '' : 'none';
   orderView.layer.style.display = inspecting ? '' : 'none';
   if (inspecting) {
     const active = orderView.render(playback, time);
@@ -158,6 +174,14 @@ document.querySelector('#next-frame')!.addEventListener('click', () => stepFrame
 document.querySelector<HTMLSelectElement>('#speed')!.addEventListener('change', event => { speed = Number((event.target as HTMLSelectElement).value); });
 document.addEventListener('visibilitychange', () => { lastTime = 0; });
 reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { progress = 1; playing = false; render(); } });
+for (const [id, enabled] of [['solid-color', false], ['gradient-color', true]] as const) {
+  document.querySelector(`#${id}`)!.addEventListener('click', () => {
+    gradientEnabled = enabled;
+    document.querySelector('#solid-color')!.setAttribute('aria-pressed', String(!enabled));
+    document.querySelector('#gradient-color')!.setAttribute('aria-pressed', String(enabled));
+    render();
+  });
+}
 const gui = new GUI({ title: 'Borel Handwriting' });
 gui.add(settings, 'duration', 2, 60, .5).listen().name('필기 시간 (초)').onChange(render);
 gui.add(settings, 'guides').name('필기 경로').onChange(render);
