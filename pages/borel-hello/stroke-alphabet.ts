@@ -7,6 +7,8 @@ export interface PenStroke {
   nibScale?: Point;
   /** Move along an already written curve without repainting its ink. */
   retrace?: boolean;
+  /** Preserve this glyph's authored stroke order and direction. */
+  ordered?: boolean;
 }
 export interface PenGlyph {
   strokes: PenStroke[];

@@ -46,7 +46,7 @@ function pointBounds(paths: readonly PenStroke[]): Bounds {
 function moveInk(ink: GlyphInk, matrix: Matrix): GlyphInk {
   const widthScale = Math.sqrt(Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]));
   const move = (stroke: PenStroke): PenStroke => ({
-    d: transformPath(stroke.d, matrix), nibScale: stroke.nibScale, retrace: stroke.retrace,
+    d: transformPath(stroke.d, matrix), nibScale: stroke.nibScale, retrace: stroke.retrace, ordered: stroke.ordered,
     width: (stroke.width ?? 90) * widthScale,
     widths: stroke.widths?.map(profile => profile.map(width => width * widthScale) as [number, number, number, number]),
   });

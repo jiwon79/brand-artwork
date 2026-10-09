@@ -69,6 +69,24 @@ test('separate ink components retain a real pen lift', () => {
   expect(routeWord([[left], [right]])).toEqual([left, right]);
 });
 
+test('authored glyph order keeps a continuous loop and exit without graph retracing', () => {
+  const loop: PenStroke = { d: 'M0 0 C60 -100 0 -160 0 -100 C0 -60 0 -20 0 0', width: 20, ordered: true };
+  const exit: PenStroke = { d: 'M0 0 C20 0 40 0 60 0', width: 20, ordered: true };
+  expect(routeWord([[loop, exit]])).toEqual([loop, exit]);
+  const before = { d: 'M-50 0 C-35 0 -20 0 -10 0', width: 20 };
+  const after = { d: 'M70 0 C80 0 90 0 100 0', width: 20 };
+  const routed = routeWord([[before], [loop, exit], [after]]);
+  expect(routed.filter(stroke => stroke.ordered)).toEqual([loop, exit]);
+  expect(routed.some(stroke => stroke.retrace)).toBe(false);
+  expect(routed).toHaveLength(6); // Two short overlapping-cap handoffs.
+});
+
+test('an authored second stroke may lift instead of traveling backwards through a crossing', () => {
+  const diagonal: PenStroke = { d: 'M0 0 C30 30 70 70 100 100', width: 20, ordered: true };
+  const crossing: PenStroke = { d: 'M100 0 C70 30 30 70 0 100', width: 20, ordered: true };
+  expect(routeWord([[diagonal, crossing]])).toEqual([diagonal, crossing]);
+});
+
 for (const text of ['hello', 'he', 'el', 'll', 'spell', 'letter', 'all', 'well', 'bell', 'ell', 'elle']) test(`the cursive body stays continuous at every 60 fps step: ${text}`, () => {
   const resolve = createGlyphResolver(catalog);
   const marks = shaper.shape(text).reduce((sum, glyph) => sum + resolve(glyph.id).marks.length, 0);

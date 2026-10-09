@@ -18,8 +18,12 @@ catalog with `python3 scripts/generate-borel-catalog.py` (requires fonttools).
 `pen-paths.json` stores independent, editable pen trajectories keyed by glyph ID.
 Each `d` is an open cubic Bézier centerline, with one `widths` tuple per cubic:
 start width, two width controls, end width. `nibScale` optionally sets an elliptical
-nib for small dots. `mark` delays an i/j dot or a t/tt crossbar until its word
-body has been written. `retrace` moves the pen over existing ink without painting.
+nib for small dots. `mark` delays an i/j dot, a t/tt crossbar or the second x
+diagonal until its word body has been written. `retrace` moves the pen over
+existing ink without painting. `ordered` preserves a glyph's authored stroke
+sequence and direction instead of finding a route through its pieces. All 40
+supported f/d/b/x forms use these compact, authored runs; adjacent letters still
+use the font's contextual shaping and matching entry/exit positions.
 Initial, medial, final and isolated forms have their own curves. The original
 hand-authored alphabet in `stroke-alphabet.ts` supplied stroke-order guides;
 center curves and width controls were fitted against the licensed source font
@@ -46,6 +50,11 @@ deferred t crossbars and compact curves without pressure knots or needle tips.
 These checks supplement visual inspection; source overlap alone cannot prove
 natural stroke order for every possible text. Chrome verification checks native text
 rendering and the live controls; temporary QA output is not shipped.
+
+`lowercase-order.test.ts` checks all reachable f/d/b/x forms, including isolated
+letters, for complete strokes, loop direction, d's stem-before-exit order and
+x's two diagonals. A raster pause detector rejects complete-loop retracing even
+when the repeated path is painted again rather than tagged as a retrace.
 
 Word regressions in `word-corpus.ts` include 932 everyday/connection-focused
 words and 1,300 dictionary words (50 per initial letter, stratified by length).

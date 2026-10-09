@@ -71,6 +71,7 @@ export function joinPenStrokes(strokes: readonly PenStroke[]): PenStroke[] {
         result[result.length - 1] = {
           ...previous, d: previous.d + stroke.d.replace(/^M[^LC]*/, ' '),
           widths: [...previous.widths, ...stroke.widths],
+          ordered: previous.ordered || stroke.ordered,
         };
         continue;
       }
@@ -94,11 +95,33 @@ function capJoin(a: Endpoint, b: Endpoint): PenStroke {
   };
 }
 
-/** Keep the intended curve order, but reach each curve through the actual
- * junctions first. Missing branches are written on the way; already written
- * branches are retraced. Separate components still permit genuine pen lifts.
+/** Preserve authored glyph sequences and join their entry/exit caps. Other
+ * glyphs use graph traversal through their actual junctions. Keeping authored
+ * runs out of that graph prevents reverse trips around completed loops.
  */
 export function routeWord(glyphs: readonly (readonly PenStroke[])[]): PenStroke[] {
+  if (!glyphs.some(glyph => glyph.some(stroke => stroke.ordered))) return routeGraph(glyphs);
+  const result: PenStroke[] = [];
+  let pending: (readonly PenStroke[])[] = [];
+  const append = (strokes: readonly PenStroke[]) => {
+    if (!strokes.length) return;
+    if (result.length) {
+      const [, a] = endpoints(result[result.length - 1]), [b] = endpoints(strokes[0]);
+      const gap = distance(a.point, b.point);
+      if (gap >= .01 && gap < a.radius + b.radius) result.push(capJoin(a, b));
+    }
+    result.push(...strokes);
+  };
+  const flush = () => { if (pending.length) append(routeGraph(pending)); pending = []; };
+  for (const glyph of glyphs) {
+    if (glyph.some(stroke => stroke.ordered)) { flush(); append(glyph); }
+    else pending.push(glyph);
+  }
+  flush();
+  return result;
+}
+
+function routeGraph(glyphs: readonly (readonly PenStroke[])[]): PenStroke[] {
   const nodes: Point[] = [], adjacent: number[][] = [], edges: Edge[] = [];
   const node = (point: Point) => {
     let id = nodes.findIndex(value => distance(value, point) < .01);
