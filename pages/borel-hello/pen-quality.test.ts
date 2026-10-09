@@ -4,7 +4,7 @@ import { penGeometry, preparePen } from './pen-geometry';
 import { routeWord } from './pen-routing';
 import type { PenStroke } from './stroke-alphabet';
 import { catalog, raster, shaper, supportedGlyphWitnesses } from './test-font';
-import { auditPen, inkTravelPasses, measureInkTravel, missingNibInterior, type PenIssue } from './test-pen-quality';
+import { auditPen, isLocalStemReturn, inkTravelPasses, measureInkTravel, missingNibInterior, type PenIssue } from './test-pen-quality';
 
 const smooth: PenStroke = { d: 'M0 0 C100 0 150 -100 250 -100 C350 -100 400 0 500 0', width: 20 };
 const bulge: PenStroke = {
@@ -139,7 +139,7 @@ for (const name of [
   'm', 'm.fina', 'm.fina.cv01', 'm.fina.cv02', 'm.fina.cv03', 'm.init', 'm.isol', 'm.medi.cv01', 'm.medi.cv02', 'm.medi.cv03',
   'y', 'y.fina', 'y.fina.cv01', 'y.init',
   'n.init', 'n.fina.cv02', 'a', 'e.fina', 'i.init', 'i.medi.cv03', 'j.init', 's.fina', 'w', 'o.medi.cv02',
-]) test(`approved smooth glyph has no pressure/flow candidates: ${name}`, () => {
+]) test(`approved smooth glyph has no pressure knots or unintended direction breaks: ${name}`, () => {
   const id = catalog.glyphs.findIndex(glyph => glyph.name === name);
   expect(id).toBeGreaterThanOrEqual(0);
   const strokes = createGlyphResolver(catalog)(id).strokes;
@@ -150,7 +150,12 @@ for (const name of [
   expect(curves, `over-fragmented pen path: ${name}`).toBeLessThanOrEqual(12);
   // Shared tangents allow at most rounding error, and pressure may vary
   // gently without inflating a small knot around a crossing.
-  expect(auditPen(routeWord([strokes]), { turnDegrees: 1, bulgeRatio: 1.15 })).toEqual([]);
+  const routed = routeWord([strokes]);
+  const issues = auditPen(routed, { turnDegrees: 1, bulgeRatio: 1.15 });
+  // These authored runs now include the short stem returns in one path.
+  // Keep the angle guard everywhere else and verify actual local overlap.
+  const allowReturns = /^[ahimtuwy](?:\.|$)/.test(name);
+  expect(issues.filter(issue => !allowReturns || !isLocalStemReturn(routed[issue.stroke], issue))).toEqual([]);
 });
 
 test('audit all supported contextual forms with reproducible issue positions (advisory)', () => {

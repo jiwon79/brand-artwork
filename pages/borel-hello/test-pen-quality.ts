@@ -37,6 +37,19 @@ export function samplePen(pen: PenPath, distance: number): PenPoint {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, radius: a.radius + (b.radius - a.radius) * t, distance: at };
 }
 
+/** A handwritten upright may reverse direction, but it must return over the
+ * same stem. A large angle alone cannot distinguish that from a bad join. */
+export function isLocalStemReturn(stroke: PenStroke, issue: PenIssue): boolean {
+  if (issue.kind !== 'tangent-break' || issue.value < 150) return false;
+  const pen = preparePen(stroke), radius = samplePen(pen, issue.distance).radius;
+  return [.5, 1, 1.5].every(multiplier => {
+    const span = radius * multiplier;
+    if (issue.distance < span || issue.distance + span > pen.length) return false;
+    const a = samplePen(pen, issue.distance - span), b = samplePen(pen, issue.distance + span);
+    return Math.hypot(a.x - b.x, a.y - b.y) < radius * .6;
+  });
+}
+
 interface Segment { start: Point; end: Point; incoming: Point; outgoing: Point; r0: number; r1: number; distance: number }
 function segments(stroke: PenStroke): Segment[] {
   let start: Point = [0, 0], distance = 0;

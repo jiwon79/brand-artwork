@@ -91,10 +91,10 @@ test('both corrected t forms enter before ascending and defer one complete cross
 
 test('smooth shoulders, bowls and exits share tangents instead of making a corner', () => {
   const joins: Record<string, number[]> = {
-    'h.medi.cv03': [1,2,4,5,6], 'h.fina.cv03': [1,2,4,5,6],
+    'h.medi.cv03': [1,2,3,5,6], 'h.fina.cv03': [1,2,3,5,6],
     'r.medi.cv03': [2,3,4], 'r.fina.cv03': [2,3,4],
     s: [1,3,4,5,7], 's.init': [1,3,4,5,7],
-    'w.medi.cv02': [1,2,3,5,6,7,8], 'w.fina.cv02': [1,2,3,5,6,7,8,9],
+    'w.medi.cv02': [1,2,4,5,6], 'w.fina.cv02': [1,2,4,5,6,7],
   };
   // Deliberate turnarounds at upright tips are excluded. Everywhere else,
   // compare the incoming and outgoing Bézier derivatives geometrically.

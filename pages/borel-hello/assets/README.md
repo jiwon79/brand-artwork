@@ -34,6 +34,16 @@ center curves and width controls were fitted against the licensed source font
 and refined using foreground overlap tests. These paths are an interpretation
 of handwriting order, not a prescribed order from the font designer.
 
+All 80 reachable a/h/i/m/t/u/w/y forms also have one ordered body, with separate
+i dots and t crossbars. a completes its bowl counterclockwise before climbing
+and descending its right upright; h completes its ascender before its stem and
+shoulder. These choices follow French cursive instruction for
+[a](https://clicmaclasse.fr/ecriture-de-la-lettre-a/) and
+[h](https://l-education.com/ecrire-la-lettre-h-minuscule-cursive), consistent with
+[Borel's French school-cursive basis](https://github.com/RosaWagner/Borel/blob/main/README_en.md).
+Short stem returns stay on the same upright. They are part of the continuous
+painted path, so restarting a round-capped fragment cannot add a side nub.
+
 `pen-geometry.ts` advances the pen along these curves and adds short SVG brush
 segments with round ends. Each segment covers the space swept by the nib;
 their filled areas combine so crossing a previous stroke cannot cancel old ink.
@@ -69,6 +79,13 @@ letters, for complete strokes, loop direction, d's stem-before-exit order and
 x's two diagonals. k's stem must finish before its shoulder loop and foot.
 A raster pause detector rejects complete-loop retracing even
 when the repeated path is painted again rather than tagged as a retrace.
+
+`contextual-flow.test.ts` checks all 80 a/h/i/m/t/u/w/y forms for authored order,
+compact bodies and smooth stem silhouettes at four pixels per font unit. It
+also replays every frame of th, la, aia, ma, ta, wa, ya and bua. A geometric
+return check distinguishes a short reversal over an existing upright from an
+unintended corner or a return that veers off the stem. The silhouette test is
+separate: two locally aligned centerlines can still leave a visible edge seam.
 
 Word regressions in `word-corpus.ts` include 932 everyday/connection-focused
 words and 1,300 dictionary words (50 per initial letter, stratified by length).
