@@ -105,6 +105,20 @@ clipping, native text pixels, alpha reveal maps, nor captured frames. The debug
 panel can separately overlay exact font outlines or the center trajectories.
 Changing a pen curve changes the visible ink itself.
 
+The **3D 원통** mode lazily loads a Three.js renderer. It uses the same prepared
+center paths, widths and playback distances to extend circular tube meshes with
+flat moving end caps. The material has one selectable color; lighting supplies
+the shading. Whole connected runs receive broad, monotone depth ramps and
+pen-lifted strokes receive depth offsets, keeping later crossings above earlier
+tubes with clearance reserved for 150% weight. Depth never rises and falls only
+at an isolated intersection. Deferred dots inherit their own letter's depth.
+Parallel-transported frames keep circular sections continuous through stem
+returns and joined paths. Frame scrubbing restores completed mesh rings before
+extending a new tip. Rotation, zoom and camera reset affect only the 3D view;
+the authored 2D paths, shaping and stroke order are unchanged. Tube tests cover
+sampled crossing clearance, ring continuity and complete mesh recovery after
+forward/backward scrubbing and weight changes.
+
 The visible **획순 경로** mode overlays the actual playback centerline with
 ordered colors, direction arrows, interval numbers and a moving pen marker.
 Numbers divide long paths into inspection intervals, not handwriting strokes.

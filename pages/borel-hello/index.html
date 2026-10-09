@@ -48,7 +48,9 @@
   <section class="order-inspector" aria-label="경로 살펴보기">
     <div class="color-switch" role="group" aria-label="글씨 색상"><span>색상</span><button id="solid-color" aria-pressed="true"><span class="color-swatch solid-swatch" aria-hidden="true"></span>단색</button><button id="gradient-color" aria-pressed="false"><span class="color-swatch gradient-swatch" aria-hidden="true"></span>그라데이션</button></div>
     <div class="weight-control"><label for="weight">굵기</label><input id="weight" type="range" min="50" max="150" step="5" value="100" aria-valuetext="100%"><output id="weight-value" for="weight">100%</output><button id="reset-weight" aria-label="굵기 기본값으로">기본</button></div>
-    <div class="view-switch" role="group" aria-label="보기 모드"><button id="ink-view" aria-pressed="true">잉크</button><button id="order-view" aria-pressed="false">획순 경로</button></div>
+    <div class="view-switch" role="group" aria-label="보기 모드"><button id="ink-view" aria-pressed="true">잉크</button><button id="tube-view" aria-pressed="false">3D 원통</button><button id="order-view" aria-pressed="false">획순 경로</button></div>
+    <div id="tube-controls" hidden><label>원통 색상 <input id="tube-color" type="color" value="#e4dfd8"></label><button id="reset-camera">시점 초기화</button><span>드래그로 회전 · 스크롤로 확대</span></div>
+    <p id="tube-status" class="order-note" role="status" hidden></p>
     <div id="order-panel" hidden>
       <div class="order-controls">
         <label>글자 <select id="inspect-letter" aria-label="살펴볼 글자" disabled><option value="">현재 문장</option></select></label>
@@ -63,6 +65,7 @@
   </section>
   <main>
     <svg id="artwork" viewBox="0 0 1100 530" role="img" aria-label="Borel 필기체로 한 획씩 써지는 hello"></svg>
+    <canvas id="tube-artwork" role="img" aria-label="획순을 따라 그려지는 3D 원통 글씨" hidden></canvas>
   </main>
   <footer>
     <div class="playback"><button id="replay" aria-label="처음부터 다시 쓰기">다시 쓰기 ↻</button><button id="pause">일시정지</button></div>

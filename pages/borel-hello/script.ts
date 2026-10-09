@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import GUI from 'lil-gui';
 import { composeText, unsupportedCharacters, supportedCharacter, type Bounds } from './lettering';
 import { loadBorel } from './shaper';
@@ -7,6 +8,7 @@ import { activeOrderStep, letterContexts } from './stroke-order';
 import { StrokeOrderView, stepName } from './stroke-order-view';
 import { GradientInkView } from './gradient-ink-view';
 import { teachingReference } from './teaching-model';
+import type { TubeInkView } from './tube-ink-view';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -48,6 +50,12 @@ function showTeachingReference(character: string) {
   teachingGuide.hidden = !teachingGuide.textContent;
 }
 let inspecting = false;
+let tubing = false;
+let tubeView: TubeInkView | undefined;
+let tubeLoading: Promise<void> | undefined;
+const tubeCanvas = document.querySelector<HTMLCanvasElement>('#tube-artwork')!;
+const tubeColor = document.querySelector<HTMLInputElement>('#tube-color')!;
+const tubeStatus = document.querySelector<HTMLElement>('#tube-status')!;
 let bounds: Bounds = [0, 0, 1100, 530];
 let lastOrderStep = -2;
 function updateViewBox() {
@@ -91,8 +99,10 @@ function writeText(text: string) {
   const [left, top, right, bottom] = bounds;
   for (const [name, value] of Object.entries({ x: left, y: top, width: right - left, height: bottom - top })) inkMask.setAttribute(name, String(value));
   gradientView.setPens(playback.strokes.map(stroke => stroke.pen), bounds);
+  tubeView?.setPlayback(playback, bounds);
   updateViewBox();
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
+  tubeCanvas.setAttribute('aria-label', text.trim() ? `획순을 따라 3D 원통으로 써지는 ${text}` : '문장을 입력하면 3D 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
   progress = reducedMotion.matches ? 1 : 0;
   playing = Boolean(totalLength) && !reducedMotion.matches;
@@ -106,7 +116,7 @@ let lastTime = 0;
 let frame = 0;
 function render() {
   const time = progress * playback.duration;
-  for (const [index, stroke] of strokes.entries()) {
+  if (!tubing) for (const [index, stroke] of strokes.entries()) {
     const timed = playback.strokes[index];
     const { written, pressure } = strokeState(timed, time);
     if (written !== stroke.written || pressure !== stroke.pressure || settings.weight !== stroke.weight) {
@@ -119,6 +129,7 @@ function render() {
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
     if (gradientEnabled && !inspecting) gradientView.renderStroke(index, written, pressure, settings.weight);
   }
+  if (tubing) tubeView?.render(time, settings.weight, tubeColor.value);
   const frameCount = Math.round(settings.duration * 60);
   slider.max = String(frameCount);
   slider.step = '1';
@@ -225,15 +236,35 @@ document.querySelector<HTMLSelectElement>('#example')!.addEventListener('change'
   if (ready) { textInput.value = selected; submitText(); }
 });
 
-for (const [id, enabled] of [['ink-view', false], ['order-view', true]] as const) {
-  document.querySelector(`#${id}`)!.addEventListener('click', () => {
-    inspecting = enabled; orderPanel.hidden = !enabled;
-    document.body.classList.toggle('inspecting', enabled);
-    document.querySelector('#ink-view')!.setAttribute('aria-pressed', String(!enabled));
-    document.querySelector('#order-view')!.setAttribute('aria-pressed', String(enabled));
-    updateViewBox(); render();
-  });
+function setView(mode: 'ink' | 'order' | 'tube') {
+  inspecting = mode === 'order'; tubing = mode === 'tube';
+  orderPanel.hidden = !inspecting;
+  document.body.classList.toggle('inspecting', inspecting);
+  document.body.classList.toggle('tubing', tubing);
+  artwork.toggleAttribute('hidden', tubing);
+  tubeCanvas.hidden = !tubing;
+  document.querySelector<HTMLElement>('#tube-controls')!.hidden = !tubing;
+  for (const name of ['ink', 'order', 'tube']) document.querySelector(`#${name}-view`)!.setAttribute('aria-pressed', String(mode === name));
+  tubeView?.setVisible(tubing);
+  updateViewBox(); render();
+  if (tubing && !tubeView && !tubeLoading) {
+    tubeStatus.hidden = false; tubeStatus.textContent = '3D 보기를 준비하는 중…';
+    tubeLoading = import('./tube-ink-view').then(({ TubeInkView }) => {
+      tubeView = new TubeInkView(tubeCanvas);
+      tubeView.setPlayback(playback, bounds); tubeView.setVisible(tubing);
+      tubeStatus.hidden = true; render();
+    }).catch(() => {
+      tubeView?.dispose(); tubeView = undefined;
+      tubeStatus.hidden = false;
+      tubeStatus.textContent = '3D 보기를 시작하지 못했습니다. WebGL을 지원하는 브라우저에서 다시 시도해 주세요.';
+      if (tubing) setView('ink');
+    }).finally(() => { tubeLoading = undefined; });
+  }
 }
+for (const mode of ['ink', 'order', 'tube'] as const) document.querySelector(`#${mode}-view`)!.addEventListener('click', () => setView(mode));
+tubeColor.addEventListener('input', render);
+document.querySelector('#reset-camera')!.addEventListener('click', () => tubeView?.resetCamera());
+import.meta.hot?.dispose(() => { cancelAnimationFrame(frame); tubeView?.dispose(); gui.destroy(); });
 function jumpToStep(index: number) {
   const step = orderView.steps[index];
   if (!step || !playback.duration) return;

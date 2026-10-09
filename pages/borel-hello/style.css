@@ -67,5 +67,16 @@ textarea[aria-invalid] { border-color: #a23d2d; }
 .order-note { font-size: 10px; opacity: .65; line-height: 1.5; margin: 9px 0 0; }
 body.inspecting main { min-height: 250px; }
 body.inspecting .color-switch { display: none; }
+body.tubing .color-switch { display: none; }
+#tube-artwork { display: block; width: min(100%, 1100px); height: clamp(320px, 48svh, 620px); border-radius: 20px; background: #14151c; touch-action: none; cursor: grab; }
+#tube-artwork:active { cursor: grabbing; }
+#tube-artwork[hidden], #artwork[hidden] { display: none; }
+body.tubing main { margin-top: 16px; }
+#tube-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+#tube-controls[hidden] { display: none; }
+#tube-controls label { display: flex; align-items: center; gap: 8px; }
+#tube-controls input { width: 28px; height: 28px; padding: 2px; border: 1px solid #6f40312e; border-radius: 50%; background: transparent; }
+#tube-controls button { padding: 5px 10px; }
+#tube-controls > span { font-size: 10px; opacity: .6; }
 body.inspecting #artwork { height: clamp(360px, 45svh, 560px); }
 @media (max-width: 560px) { .order-controls { row-gap: 8px; } .context-control { flex-basis: 100%; } .order-legend { font-size: 9px; } }
