@@ -16,36 +16,53 @@ export interface GradientPiece {
   end: number;
   from: string;
   to: string;
+  solid?: string;
   axis: readonly [number, number, number, number];
 }
 
 /** Fixed body colors follow arc length, including connected letter handoffs.
- * Deferred i/j dots borrow their own body's color without advancing the spectrum.
+ * Deferred dots and t crossbars borrow their bodies' colors without advancing it.
  * Colors never rescale to the currently visible portion during playback.
  */
 export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
   let total = 0;
   const offsets = pens.map(pen => {
     const offset = total;
-    if (!pen.retrace && !pen.colorAnchor) total += pen.length;
+    if (!pen.retrace && !pen.colorAnchors) total += pen.length;
     return offset;
   });
   total ||= 1;
   return pens.map((pen, stroke) => {
     if (pen.retrace || !pen.points.length) return [];
     const offset = offsets[stroke];
-    let dotColor: string | undefined;
-    if (pen.colorAnchor) {
-      const [x, y] = pen.colorAnchor;
+    const anchors = pen.colorAnchors?.map(([x, y]) => {
       let nearest = Infinity, position = offset;
       pens.forEach((body, index) => {
-        if (body.retrace || body.colorAnchor || body.length <= .1) return;
-        for (const point of body.points) {
-          const distance = (point.x - x) ** 2 + (point.y - y) ** 2;
-          if (distance <= nearest) { nearest = distance; position = offsets[index] + point.distance; }
+        if (body.retrace || body.colorAnchors || body.length <= .1) return;
+        for (let i = 1; i < body.points.length; i++) {
+          const a = body.points[i - 1], b = body.points[i], dx = b.x - a.x, dy = b.y - a.y;
+          const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+          const distance = (a.x + dx * t - x) ** 2 + (a.y + dy * t - y) ** 2;
+          // At a retraced stem use the last visible pass, including exact ties.
+          if (distance <= nearest + 1e-8) {
+            nearest = distance; position = offsets[index] + a.distance + (b.distance - a.distance) * t;
+          }
         }
       });
-      dotColor = gradientColor(position / total);
+      return { x, y, progress: position / total };
+    });
+    let anchoredAxis: GradientPiece['axis'] | undefined;
+    let solid = pen.length <= .1 ? gradientColor(offset / total) : undefined;
+    if (anchors?.length) {
+      const a = anchors[0], b = anchors[anchors.length - 1], span = b.progress - a.progress;
+      if (Math.abs(span) < 1e-8 || Math.hypot(b.x - a.x, b.y - a.y) < 1e-8) solid = gradientColor(a.progress);
+      else {
+        // All capsules of a shared tt crossbar use one continuous color field.
+        // Its two stem crossings match the colors already painted underneath.
+        const dx = (b.x - a.x) / span, dy = (b.y - a.y) / span;
+        const x = a.x - dx * a.progress, y = a.y - dy * a.progress;
+        anchoredAxis = [x, y, x + dx, y + dy];
+      }
     }
     const pieces: GradientPiece[] = [];
     let first = 0;
@@ -56,10 +73,16 @@ export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
       // Extend the full spectrum beyond both brush caps. Clamping a separate
       // two-stop gradient at each interval would stamp visible flat-color discs.
       const x1 = a.x - dx * (offset + start) / length, y1 = a.y - dy * (offset + start) / length;
+      const axis = anchoredAxis ?? [x1, y1, x1 + dx * total / length, y1 + dy * total / length] as const;
+      const colorAt = (x: number, y: number) => {
+        const [ax, ay, bx, by] = axis, dx = bx - ax, dy = by - ay;
+        return solid ?? gradientColor(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1));
+      };
       pieces.push({
         pen: { ...pen, length: end - start, points: pen.points.slice(first, last + 1).map(point => ({ ...point, distance: point.distance - start })) },
-        start, end, from: dotColor ?? gradientColor((offset + start) / total), to: dotColor ?? gradientColor((offset + end) / total),
-        axis: [x1, y1, x1 + dx * total / length, y1 + dy * total / length],
+        start, end, solid,
+        from: anchors ? colorAt(a.x, a.y) : gradientColor((offset + start) / total),
+        to: anchors ? colorAt(b.x, b.y) : gradientColor((offset + end) / total), axis,
       });
       first = last;
     };

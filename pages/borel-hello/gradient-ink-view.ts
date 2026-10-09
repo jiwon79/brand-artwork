@@ -35,7 +35,7 @@ export class GradientInkView {
       const id = `borel-color-${stroke}-${index}`, [x1, y1, x2, y2] = piece.axis;
       const gradient = svg('linearGradient', { id, href: '#borel-spectrum', gradientUnits: 'userSpaceOnUse', x1: String(x1), y1: String(y1), x2: String(x2), y2: String(y2) });
       this.definitions.append(gradient);
-      const path = svg('path', { fill: pens[stroke].length <= .1 ? piece.from : `url(#${id})` });
+      const path = svg('path', { fill: piece.solid ?? `url(#${id})` });
       color.append(path);
       return { piece, path };
     }));

@@ -48,7 +48,7 @@ function moveInk(ink: GlyphInk, matrix: Matrix): GlyphInk {
   const widthScale = Math.sqrt(Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]));
   const move = (stroke: PenStroke): PenStroke => ({
     d: transformPath(stroke.d, matrix), nibScale: stroke.nibScale, retrace: stroke.retrace, ordered: stroke.ordered,
-    colorAnchor: stroke.colorAnchor && transformPoint(stroke.colorAnchor, matrix),
+    colorAnchors: stroke.colorAnchors?.map(point => transformPoint(point, matrix)),
     width: (stroke.width ?? 90) * widthScale,
     widths: stroke.widths?.map(profile => profile.map(width => width * widthScale) as [number, number, number, number]),
   });
@@ -100,6 +100,8 @@ export function createGlyphResolver(catalog: FontCatalog) {
         strokes: recipe.strokes.map(stroke => ({ ...stroke, d: transformPath(stroke.d, matrix) })), marks: [],
         entry: recipe.entry && transformPoint(recipe.entry, matrix), exit: recipe.exit && transformPoint(recipe.exit, matrix),
       };
+      // The isolated tt fallback also ends with one shared deferred crossbar.
+      if (record.base === 't_t.liga') ink.marks = ink.strokes.splice(-1);
       if (['v', 'w'].includes(record.base) && /\.(init|isol)/.test(record.name)) {
         ink.strokes.unshift({ d: transformPath('M40 28 C152 28 148 432 252 432', matrix) });
         ink.entry = transformPoint([40, 28], matrix);
@@ -117,7 +119,32 @@ export function createGlyphResolver(catalog: FontCatalog) {
         const dot = preparePen(mark).points[0];
         if (!dot || !body.length) return mark;
         const nearest = body.reduce((a, b) => Math.hypot(a.x - dot.x, a.y - dot.y) <= Math.hypot(b.x - dot.x, b.y - dot.y) ? a : b);
-        return { ...mark, colorAnchor: [nearest.x, nearest.y] };
+        return { ...mark, colorAnchors: [[nearest.x, nearest.y]] };
+      });
+    }
+    if (/^t(?:_t)?(?:\.|$)/.test(record.name) && ink.marks.length) {
+      // Bind to the downward stem crossings before word joining. A shared tt
+      // bar spans two body colors; both anchors follow glyph/line transforms.
+      const bodies = ink.strokes.filter(stroke => !stroke.retrace).map(preparePen);
+      ink.marks = ink.marks.map(mark => {
+        const bar = preparePen(mark), first = bar.points[0], last = bar.points[bar.points.length - 1];
+        if (!first || !last) return mark;
+        const dx = last.x - first.x, dy = last.y - first.y;
+        const anchors: Point[] = [];
+        for (const body of bodies) for (let i = 1; i < body.points.length; i++) {
+          const a = body.points[i - 1], b = body.points[i];
+          if (b.y >= a.y) continue; // Font coordinates are y-up.
+          const ax = a.x - first.x, ay = a.y - first.y;
+          const bx = b.x - a.x, by = b.y - a.y, cross = dx * by - dy * bx;
+          if (Math.abs(cross) < 1e-8) continue;
+          const alongBar = (ax * by - ay * bx) / cross;
+          const alongBody = (ax * dy - ay * dx) / cross;
+          if (alongBar < 0 || alongBar > 1 || alongBody < 0 || alongBody > 1) continue;
+          const point: Point = [first.x + dx * alongBar, first.y + dy * alongBar];
+          if (!anchors.some(other => Math.hypot(other[0] - point[0], other[1] - point[1]) < 1)) anchors.push(point);
+        }
+        anchors.sort((a, b) => (a[0] - b[0]) * dx + (a[1] - b[1]) * dy);
+        return anchors.length ? { ...mark, colorAnchors: anchors } : mark;
       });
     }
     cache.set(id, ink);

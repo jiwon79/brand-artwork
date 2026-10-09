@@ -20,7 +20,7 @@ test('a crossing may recolor only the actual nib footprint, even inside existing
 
 test('the spectrum follows the full pen journey without restarting at a stroke or pen lift', () => {
   const pens = composeText('hello jiwon', shaper, catalog).strokes.map(preparePen);
-  const pieces = gradientPieces(pens), flat = pieces.filter((_, index) => !pens[index].colorAnchor).flat();
+  const pieces = gradientPieces(pens), flat = pieces.filter((_, index) => !pens[index].colorAnchors).flat();
   expect(flat[0].from).toBe(gradientColor(0));
   expect(flat[flat.length - 1].to).toBe(gradientColor(1));
   for (let i = 1; i < flat.length; i++) expect(flat[i].from).toBe(flat[i - 1].to);
@@ -69,7 +69,7 @@ test('overlapping round caps share the same extended color field along a straigh
 
 // Compare real raster output, including crossings, growing dots and crossbars.
 // The color layer is opaque; only the original authored geometry supplies alpha.
-for (const text of ['hello', 'jiwon', 'little letters flow', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz', 'B D K R !?']) {
+for (const text of ['hello', 'jiwon', 'tttsss', 'little letters flow', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz', 'B D K R !?']) {
   test(`gradient keeps the original ink silhouette throughout playback: ${text}`, () => {
     const lettering = composeText(text, shaper, catalog), pens = lettering.strokes.map(preparePen);
     const playback = createPenPlayback(pens), pieces = gradientPieces(pens);
@@ -85,13 +85,13 @@ for (const text of ['hello', 'jiwon', 'little letters flow', 'my name is jiwon',
       for (const fraction of [0, .25, .5, 1]) detailFrames.add(stroke.start + (stroke.end - stroke.start) * fraction);
     }
     const frames = new Set(detailFrames);
-    if (['hello', 'jiwon', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz'].includes(text)) {
+    if (['hello', 'jiwon', 'tttsss', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz'].includes(text)) {
       for (let frame = 0; frame <= Math.ceil(playback.duration * 60); frame++) frames.add(Math.min(playback.duration, frame / 60));
     }
     for (const time of frames) {
       const states = playback.strokes.map(stroke => strokeState(stroke, time));
       const ink = pens.map((pen, i) => `<path d="${penGeometry(pen, states[i].written, states[i].pressure)}"/>`).join('');
-      const color = pieces.map((parts, i) => parts.map((part, j) => `<path fill="${pens[i].length <= .1 ? part.from : `url(#c-${i}-${j})`}" d="${gradientPieceGeometry(part, states[i].written, states[i].pressure)}"/>`).join('')).join('');
+      const color = pieces.map((parts, i) => parts.map((part, j) => `<path fill="${part.solid ?? `url(#c-${i}-${j})`}" d="${gradientPieceGeometry(part, states[i].written, states[i].pressure)}"/>`).join('')).join('');
       const opaque = `<filter id="opaque" filterUnits="userSpaceOnUse" ${rect} color-interpolation-filters="sRGB"><feComponentTransfer><feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer></filter>`;
       const body = `<defs>${spectrum}${definitions}${opaque}<mask id="ink" maskUnits="userSpaceOnUse" mask-type="alpha" ${rect}>${ink}</mask></defs><g mask="url(#ink)"><g filter="url(#opaque)">${color}</g></g>`;
       // Keep every 60 fps frame; long, wrapped passages need less raster area
