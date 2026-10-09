@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { composeText } from './lettering';
 import { penGeometry, preparePen } from './pen-geometry';
+import { createPenPlayback, strokeState } from './pen-playback';
 import { catalog, foregroundIoU, raster, shaper } from './test-font';
 import { auditPen, inkTravelPasses, measureInkTravel } from './test-pen-quality';
 
@@ -61,18 +62,19 @@ test('f ascenders finish before their lower loop, and t crossbars are deferred m
 
 for (const text of [...sentences, ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']) test(`every intermediate state follows the pen: ${text}`, () => {
   const lettering = composeText(text, shaper, catalog), pens = lettering.strokes.map(preparePen);
-  const total = pens.reduce((sum, pen) => sum + pen.length, 0);
-  const frames = Math.round(Math.max(4, Math.min(60, Math.round(total / 1750 * 2) / 2)) * 60);
+  const playback = createPenPlayback(pens);
+  const frames = Math.ceil(playback.duration * 60);
   const scale = text.length === 1 ? .35 : .08;
   const full = pens.map(pen => `<path d="${penGeometry(pen)}"/>`);
   let previous = raster('', lettering.bounds, scale);
+  let from = 0;
   for (let frame = 1; frame <= frames; frame++) {
-    const from = total * (frame - 1) / frames, to = total * frame / frames;
-    let remaining = to;
+    const states = playback.strokes.map(stroke => strokeState(stroke, playback.duration * frame / frames));
+    const to = states.reduce((sum, state) => sum + state.written, 0);
     const body = pens.map((pen, i) => {
-      const length = remaining; remaining -= pen.length;
-      if (length <= 0) return '';
-      return length >= pen.length ? full[i] : `<path d="${penGeometry(pen, length)}"/>`;
+      const { written, pressure } = states[i];
+      if (written <= 0) return '';
+      return written >= pen.length ? full[i] : `<path d="${penGeometry(pen, written, pressure)}"/>`;
     }).join('');
     const current = raster(body, lettering.bounds, scale);
     expect(inkTravelPasses(measureInkTravel(previous, current, lettering.bounds, scale, pens, from, to)), `foreign ink at frame ${frame}/${frames}`).toBe(true);
@@ -82,6 +84,7 @@ for (const text of [...sentences, ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']) test(`every 
     }
     expect(erased / Math.max(1, written), `erased ink at frame ${frame}/${frames}`).toBeLessThan(.002);
     previous = current;
+    from = to;
   }
   const actual = raster(full.join(''), lettering.bounds);
   const reference = raster(lettering.outlines.map(d => `<path d="${d}"/>`).join(''), lettering.bounds);

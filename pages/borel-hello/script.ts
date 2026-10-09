@@ -1,7 +1,8 @@
 import GUI from 'lil-gui';
 import { composeText, unsupportedCharacters, supportedCharacter } from './lettering';
 import { loadBorel } from './shaper';
-import { preparePen, penGeometry, type PenPath } from './pen-geometry';
+import { preparePen, penGeometry } from './pen-geometry';
+import { createPenPlayback, strokeState, type PenPlayback } from './pen-playback';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -19,7 +20,8 @@ const inkLayer = svgElement('g', {});
 const reference = svgElement('g', { fill: 'currentColor', opacity: '.13', 'pointer-events': 'none' });
 const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '5', opacity: '.65', 'pointer-events': 'none' });
 artwork.append(reference, inkLayer, guides);
-let strokes: { path: SVGPathElement; length: number; start: number; pen?: PenPath; written?: number }[] = [];
+let strokes: { path: SVGPathElement; written?: number; pressure?: number }[] = [];
+let playback: PenPlayback = { strokes: [], duration: 0 };
 let totalLength = 0;
 let ready = false;
 const textInput = document.querySelector<HTMLTextAreaElement>('#text-input')!;
@@ -35,25 +37,22 @@ function writeText(text: string) {
   }
   textInput.removeAttribute('aria-invalid');
   const lettering = composeText(text, loaded.shaper, loaded.catalog);
+  playback = createPenPlayback(lettering.strokes.map(preparePen));
   inkLayer.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
   strokes = []; totalLength = 0;
-  for (const stroke of lettering.strokes) {
-    const { d, width = 90 } = stroke;
-    const path = svgElement('path', { d, fill: 'none', stroke: 'currentColor', 'stroke-width': String(width), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+  for (const [index, stroke] of lettering.strokes.entries()) {
+    const { d } = stroke;
+    const path = svgElement('path', { d: '', fill: 'currentColor' });
     inkLayer.append(path);
-    const pen = stroke.widths ? preparePen(stroke) : undefined;
-    const length = pen?.length ?? path.getTotalLength();
-    if (pen) { path.setAttribute('stroke', 'none'); path.setAttribute('fill', 'currentColor'); }
-    path.style.strokeDasharray = `${length} ${length}`;
-    strokes.push({ path, length, start: totalLength, pen });
-    totalLength += length;
+    strokes.push({ path });
+    totalLength += playback.strokes[index].pen.length;
     guides.append(svgElement('path', { d }));
   }
   for (const d of lettering.outlines) if (d) reference.append(svgElement('path', { d }));
   const [left, top, right, bottom] = lettering.bounds;
   artwork.setAttribute('viewBox', `${left} ${top} ${right - left} ${bottom - top}`);
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
-  settings.duration = Math.max(4, Math.min(60, Math.round(totalLength / 1750 * 2) / 2));
+  settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
   progress = reducedMotion.matches ? 1 : 0;
   playing = Boolean(totalLength) && !reducedMotion.matches;
   status.textContent = text.trim() ? `${[...text].length}자 · ${lettering.lines.length}줄` : '위 입력창에 문장을 적어 주세요.';
@@ -65,13 +64,14 @@ let speed = 1;
 let lastTime = 0;
 let frame = 0;
 function render() {
-  const distance = progress * totalLength;
-  for (const stroke of strokes) {
-    const written = Math.max(0, Math.min(stroke.length, distance - stroke.start));
-    if (written !== stroke.written) {
-      if (stroke.pen) stroke.path.setAttribute('d', penGeometry(stroke.pen, written));
-      else stroke.path.style.strokeDashoffset = String(stroke.length - written);
+  const time = progress * playback.duration;
+  for (const [index, stroke] of strokes.entries()) {
+    const timed = playback.strokes[index];
+    const { written, pressure } = strokeState(timed, time);
+    if (written !== stroke.written || pressure !== stroke.pressure) {
+      stroke.path.setAttribute('d', penGeometry(timed.pen, written, pressure));
       stroke.written = written;
+      stroke.pressure = pressure;
     }
     // Hide the round cap entirely before a stroke starts.
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';

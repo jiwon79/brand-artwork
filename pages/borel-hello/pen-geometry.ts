@@ -85,8 +85,9 @@ function arc(center: PenPoint, from: Point, to: Point, scale: Point, large = fal
 /** Build a vector ribbon along the traveled Bézier center curve. Its boundary
  * follows brush tangents and round joins; it never samples a source image.
  */
-export function penGeometry(pen: PenPath, written = pen.length): string {
-  if (pen.retrace || written <= 0 || !pen.points.length) return '';
+export function penGeometry(pen: PenPath, written = pen.length, pressure = 1): string {
+  if (pen.retrace || written <= 0 || pressure <= 0 || !pen.points.length) return '';
+  if (pressure < 1) return penGeometry({ ...pen, points: pen.points.map(point => ({ ...point, radius: point.radius * pressure })) }, written);
   let d = disk(pen.points[0], pen.nibScale);
   for (let i = 1; i < pen.points.length; i++) {
     const a = pen.points[i - 1], sample = pen.points[i];

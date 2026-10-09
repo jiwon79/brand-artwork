@@ -38,6 +38,15 @@ clipping, native text pixels, alpha reveal maps, nor captured frames. The debug
 panel can separately overlay exact font outlines or the center trajectories.
 Changing a pen curve changes the visible ink itself.
 
+`pen-playback.ts` schedules writing and pen lifts separately. Near-stationary
+dot paths receive 160 ms of contact time at the default speed, independent of
+their almost-zero arc length. Their round nib grows as it presses down; the
+completed geometry is unchanged. Moving between disconnected strokes takes
+100–320 ms without painting, so adjacent i/j dots appear one at a time.
+The duration and speed controls scale this entire schedule together.
+`pen-playback.test.ts` checks dot spacing, gradual contact area, pen-up travel
+and identical completed geometry. Sentence-frame checks use this same schedule.
+
 Vitest rasterizes the actual brush geometry and the independently shaped source
 font with the same SVG renderer. Every supported contextual glyph must achieve
 at least 95% soft-alpha foreground intersection-over-union; blank background is
