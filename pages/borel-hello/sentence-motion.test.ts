@@ -60,7 +60,7 @@ test('f ascenders finish before their lower loop, and t crossbars are deferred m
   }
 });
 
-for (const text of [...sentences, ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']) test(`every intermediate state follows the pen: ${text}`, () => {
+for (const text of [...sentences, ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789']) test(`every intermediate state follows the pen: ${text}`, () => {
   const lettering = composeText(text, shaper, catalog), pens = lettering.strokes.map(preparePen);
   const playback = createPenPlayback(pens);
   const frames = Math.ceil(playback.duration * 60);
@@ -92,8 +92,8 @@ for (const text of [...sentences, ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']) test(`every 
 }, 120_000);
 
 const principalStrokes: Record<string, number> = {
-  A: 2, B: 2, C: 1, D: 1, E: 2, F: 3, G: 1, H: 3, I: 3,
-  J: 2, K: 2, L: 1, M: 1, N: 1, O: 1, P: 2, Q: 2, R: 2,
+  A: 3, B: 2, C: 1, D: 2, E: 3, F: 3, G: 2, H: 3, I: 3,
+  J: 2, K: 3, L: 1, M: 2, N: 2, O: 1, P: 2, Q: 2, R: 3,
   S: 1, T: 2, U: 1, V: 1, W: 1, X: 2, Y: 2, Z: 1,
 };
 for (const [letter, count] of Object.entries(principalStrokes)) test(`capital ${letter} uses complete writing strokes without corrective fragments`, () => {
@@ -109,10 +109,10 @@ for (const [letter, count] of Object.entries(principalStrokes)) test(`capital ${
   }
 });
 
-test('H descends each complete stem before its crossbar; X draws each complete diagonal', () => {
+test('H descends both complete stems; X draws two complete descending diagonals', () => {
   for (const letter of ['H', 'X']) {
     const pens = catalog.penPaths![shaper.shape(letter)[0].id].map(preparePen);
-    for (const pen of pens.slice(0, 2)) {
+    for (const pen of letter === 'H' ? [pens[0], pens[2]] : pens) {
       expect(pen.points[0].y).toBeGreaterThan(640);
       expect(pen.points[pen.points.length - 1].y).toBeLessThan(80);
       for (let i = 1; i < pen.points.length; i++) expect(pen.points[i].y).toBeLessThanOrEqual(pen.points[i - 1].y + .01);

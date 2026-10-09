@@ -58,10 +58,34 @@ A locally rounded turn is not a separately painted patch or a nib-width spike.
 
 b's non-final beak now completes its outgoing curve, keeping the high entries
 in bm/bn/bv/bw connected. All nine tt ligatures use one continuous two-stem body
-and one deferred crossbar. B/K/R use two full writing strokes, and D descends
-its stem before continuing around its bowl from bottom to top in one stroke.
-These changes preserve Borel's plain capital shapes and the requested two
-lowercase x diagonals.
+and one deferred crossbar. Lowercase x retains the requested two diagonals.
+
+All 26 roman capitals and all ten digits have been reviewed against the
+DGESCO [Écriture A ductus diagrams, p.21](https://eduscol.education.fr/document/15805/download#page=21).
+A uses the separate descending arms from
+[La forme des lettres, p.5](https://eduscol.education.gouv.fr/sites/default/files/document/ressc1ecritureforme-lettres456435pdf-74256.pdf#page=5).
+The sources allow more than one capital ductus; this is the selected model,
+not a claim of one mandatory French standard. As requested, Borel's shapes
+remain: no ornamental capital flourishes, no middle bar added to 7, and no
+extra terminal stem added to U. Borel I/J retain their existing horizontal bars.
+
+D now draws its bowl clockwise, after lifting from its descending stem.
+E writes the stem/bottom first, then top and middle; H writes left, crossbar,
+right; I writes stem, bottom, top; J and T write the stem before the top bar.
+K writes stem, lower arm, upper arm, and R has a separate final leg. M/N
+descend the left stem before lifting for the connected remainder. X starts
+with the right-to-left diagonal, and Y finishes its upright on the second run.
+Each authored capital stroke is explicitly ordered.
+
+Digits use one continuous body, except 4 and 5 which require two strokes.
+0 turns counterclockwise; 1 rises to its apex before descending; 2/3 turn
+clockwise; 4 completes its diagonal and horizontal before its right upright;
+5 draws its left-to-right top bar before its descending body; 6 completes a
+counterclockwise lower loop; 8 starts at the top and follows a continuous
+figure eight; 9 closes its counterclockwise bowl before a local return into
+the descender. Smooth joins share tangents and continuous width profiles.
+There are 58 cubic segments across the ten digits, down from 515, without
+tiny cap patches or new source-outline masks.
 
 `pen-geometry.ts` advances the pen along these curves and adds short SVG brush
 segments with round ends. Each segment covers the space swept by the nib;
@@ -76,13 +100,13 @@ ordered colors, direction arrows, interval numbers and a moving pen marker.
 Numbers divide long paths into inspection intervals, not handwriting strokes.
 Dashed lines indicate scheduled pen lifts; their straight travel is illustrative
 and never paints ink. Previous/next interval and frame controls pause playback.
-The letter selector covers A–Z/a–z and discovers all 260 lowercase contextual
+The letter selector covers A–Z/a–z/0–9 and discovers all 260 lowercase contextual
 forms through actual shaping witnesses. The context menu renders the complete
 witness word so entry/exit routing remains the same as normal playback.
-Per-letter French teaching links are comparison references, not a claim that the
-current animation follows their ductus. In particular, Borel's plain capitals
-differ from the linked ornamental capital models, and the requested diagonal
-lowercase x differs from their two opposing curves. The overlay does not change
+Capital and digit selections show the selected teaching movements and link to
+the matching diagram page, rather than an ornamental capital of another shape.
+The 7 and lowercase x selections explain their intentional shape/ductus
+differences. Lowercase links remain comparison references. The overlay does not change
 the authored pen paths or their order. Tests keep its marker synchronized with
 actual ink timing, including separate dots, retracing and pen lifts.
 
@@ -100,7 +124,7 @@ font with the same SVG renderer. Every supported contextual glyph must achieve
 at least 95% soft-alpha foreground intersection-over-union; blank background is
 excluded. Separate sentence tests cover wrapping, mixed case, punctuation and
 word-initial n/w forms. `sentence-motion.test.ts` reads the 12 test sentences
-directly from the example menu and checks every 60 fps state, alongside A–Z:
+directly from the example menu and checks every 60 fps state, alongside A–Z/0–9:
 new ink must stay inside the traveled nib footprint and old ink must remain.
 Letter-specific guards preserve complete capital strokes, l/f loop order,
 deferred t crossbars and compact curves without pressure knots or needle tips.
@@ -134,5 +158,10 @@ curve tangents. Every body in 676 lowercase pair contexts must connect, except
 for a deliberate lift after q. Nine tt forms must complete both uprights before
 their single crossbar. It also checks every 60 fps playback frame of the 130
 newly reviewed lowercase forms and all nine ligatures for ink preservation and
-nib-local drawing. Existing source-font, 4,171-text, sentence, dot-timing and
+nib-local drawing. `teaching-model.test.ts` adds independent, normalized movement
+waypoints for every capital and digit, start/finish positions, stroke order,
+pen lifts, loop winding and continuous nib profiles. Every reviewed glyph
+must still pass the separate 95% source-ink IoU gate. Full uppercase and digit
+playback also pass the same gradient/silhouette checks as lowercase words.
+Existing source-font, 4,171-text, sentence, dot-timing and
 magnified-edge regressions remain separate gates.

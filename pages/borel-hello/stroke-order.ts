@@ -82,13 +82,15 @@ export function orderTip(playback: PenPlayback, step: OrderStep, time: number) {
 /** Find real shaping witnesses for every form of the selected letter. */
 export function letterContexts(letter: string, shaper: TextShaper, catalog: FontCatalog) {
   const found = new Map<number, { id: number; name: string; text: string }>();
+  const family = catalog.glyphs[catalog.cmap[String(letter.codePointAt(0))]]?.name.split('.')[0];
   const add = (text: string) => {
     for (const glyph of shaper.shape(text)) {
       const name = catalog.glyphs[glyph.id].name;
-      if (name.split('.')[0] === letter && !found.has(glyph.id)) found.set(glyph.id, { id: glyph.id, name, text });
+      if (name.split('.')[0] === family && !found.has(glyph.id)) found.set(glyph.id, { id: glyph.id, name, text });
     }
   };
   add(letter);
+  if (!/^[a-z]$/.test(letter)) return [...found.values()];
   const lower = 'abcdefghijklmnopqrstuvwxyz';
   for (const next of lower) add(letter + next);
   for (const previous of lower) add(previous + letter);

@@ -69,7 +69,7 @@ test('overlapping round caps share the same extended color field along a straigh
 
 // Compare real raster output, including crossings, growing dots and crossbars.
 // The color layer is opaque; only the original authored geometry supplies alpha.
-for (const text of ['hello', 'jiwon', 'tttsss', 'little letters flow', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz', 'B D K R !?']) {
+for (const text of ['hello', 'jiwon', 'tttsss', 'little letters flow', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '0123456789', 'B D K R !?']) {
   test(`gradient keeps the original ink silhouette throughout playback: ${text}`, () => {
     const lettering = composeText(text, shaper, catalog), pens = lettering.strokes.map(preparePen);
     const playback = createPenPlayback(pens), pieces = gradientPieces(pens);
@@ -85,7 +85,7 @@ for (const text of ['hello', 'jiwon', 'tttsss', 'little letters flow', 'my name 
       for (const fraction of [0, .25, .5, 1]) detailFrames.add(stroke.start + (stroke.end - stroke.start) * fraction);
     }
     const frames = new Set(detailFrames);
-    if (['hello', 'jiwon', 'tttsss', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz'].includes(text)) {
+    if (['hello', 'jiwon', 'tttsss', 'my name is jiwon', 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '0123456789'].includes(text)) {
       for (let frame = 0; frame <= Math.ceil(playback.duration * 60); frame++) frames.add(Math.min(playback.duration, frame / 60));
     }
     for (const time of frames) {

@@ -6,6 +6,7 @@ import { createPenPlayback, strokeState, type PenPlayback } from './pen-playback
 import { activeOrderStep, letterContexts } from './stroke-order';
 import { StrokeOrderView, stepName } from './stroke-order-view';
 import { GradientInkView } from './gradient-ink-view';
+import { teachingReference } from './teaching-model';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -39,6 +40,13 @@ const inspectContext = document.querySelector<HTMLSelectElement>('#inspect-conte
 const inspectStep = document.querySelector<HTMLSelectElement>('#inspect-step')!;
 const orderStatus = document.querySelector<HTMLElement>('#order-status')!;
 const inspectSource = document.querySelector<HTMLAnchorElement>('#inspect-source')!;
+const teachingGuide = document.querySelector<HTMLElement>('#teaching-guide')!;
+function showTeachingReference(character: string) {
+  const source = teachingReference(character);
+  inspectSource.href = source.href;
+  teachingGuide.textContent = [source.text, source.note].filter(Boolean).join(' ');
+  teachingGuide.hidden = !teachingGuide.textContent;
+}
 let inspecting = false;
 let bounds: Bounds = [0, 0, 1100, 530];
 let lastOrderStep = -2;
@@ -207,7 +215,7 @@ function submitText() {
   inspectLetter.value = '';
   inspectContext.replaceChildren(new Option('글자를 선택하세요', ''));
   inspectContext.disabled = true;
-  inspectSource.href = 'https://eduscol.education.fr/document/15805/download';
+  showTeachingReference('');
   writeText(textInput.value);
 }
 document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => { event.preventDefault(); submitText(); });
@@ -240,13 +248,10 @@ inspectLetter.addEventListener('change', () => {
   if (!inspectLetter.value || !ready) {
     inspectContext.replaceChildren(new Option('글자를 선택하세요', ''));
     inspectContext.disabled = true;
-    inspectSource.href = 'https://eduscol.education.fr/document/15805/download';
+    showTeachingReference('');
     return;
   }
-  const letter = inspectLetter.value;
-  inspectSource.href = letter === letter.toLowerCase()
-    ? `https://l-education.com/ecrire-la-lettre-${letter}-minuscule-cursive`
-    : `https://l-education.com/apprendre-a-ecrire-la-lettre-${letter.toLowerCase()}-majuscule-cursive`;
+  showTeachingReference(inspectLetter.value);
   const contexts = letterContexts(inspectLetter.value, loaded.shaper, loaded.catalog);
   inspectContext.replaceChildren(...contexts.map(context => {
     const glyphs = loaded.shaper.shape(context.text), index = glyphs.findIndex(glyph => glyph.id === context.id);
@@ -263,7 +268,7 @@ loadBorel().then(value => {
   loaded = value; ready = true;
   document.querySelector<HTMLButtonElement>('#write')!.disabled = false;
   document.querySelector<HTMLSelectElement>('#example')!.disabled = false;
-  for (const [label, letters] of [['소문자', 'abcdefghijklmnopqrstuvwxyz'], ['대문자', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ']]) {
+  for (const [label, letters] of [['소문자', 'abcdefghijklmnopqrstuvwxyz'], ['대문자', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'], ['숫자', '0123456789']]) {
     const group = document.createElement('optgroup'); group.label = label;
     group.append(...[...letters].map(letter => new Option(letter, letter))); inspectLetter.append(group);
   }

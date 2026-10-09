@@ -41,8 +41,9 @@ test('inspection retains repeated movement, separate dot timing and empty input'
 
 test('letter selector reaches every supported unaccented contextual letter form', () => {
   const witnesses = supportedGlyphWitnesses();
-  for (const letter of 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ') {
-    const expected = [...witnesses.keys()].filter(id => catalog.glyphs[id].name.split('.')[0] === letter);
+  for (const letter of 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') {
+    const family = catalog.glyphs[catalog.cmap[String(letter.codePointAt(0))]].name.split('.')[0];
+    const expected = [...witnesses.keys()].filter(id => catalog.glyphs[id].name.split('.')[0] === family);
     const actual = letterContexts(letter, shaper, catalog);
     expect(actual.map(value => value.id).sort((a, b) => a - b), letter).toEqual(expected.sort((a, b) => a - b));
     for (const context of actual) expect(shaper.shape(context.text).some(glyph => glyph.id === context.id)).toBe(true);
