@@ -154,7 +154,7 @@ for (const name of [
   const issues = auditPen(routed, { turnDegrees: 1, bulgeRatio: 1.15 });
   // These authored runs now include the short stem returns in one path.
   // Keep the angle guard everywhere else and verify actual local overlap.
-  const allowReturns = /^[ahimtuwy](?:\.|$)/.test(name);
+  const allowReturns = /^[a-z](?:\.|$)/.test(name);
   expect(issues.filter(issue => !allowReturns || !isLocalStemReturn(routed[issue.stroke], issue))).toEqual([]);
 });
 

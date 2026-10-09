@@ -44,6 +44,25 @@ shoulder. These choices follow French cursive instruction for
 Short stem returns stay on the same upright. They are part of the continuous
 painted path, so restarting a round-capped fragment cannot add a side nub.
 
+The remaining 130 c/e/g/j/l/n/o/p/q/r/s/v/z forms now also use one authored
+body each. All 260 reachable lowercase forms retain their contextual entries
+and exits. e/l/o loops run counterclockwise; g/j/z descend on the right before
+returning around the left of the lower loop. n/p finish their first stem before
+the right shoulder. q ends at the bottom and lifts to the following letter,
+following the [French q ductus](https://l-education.com/ecrire-la-lettre-q-minuscule-cursive).
+Small branch patches and complete-loop returns have been removed. Curve joins
+share tangents; deliberate direction changes use a short rounded turn within
+the same painted path or retrace the same upright. These curves were fitted
+with continuity constraints as well as the separate 95% foreground-IoU gate.
+A locally rounded turn is not a separately painted patch or a nib-width spike.
+
+b's non-final beak now completes its outgoing curve, keeping the high entries
+in bm/bn/bv/bw connected. All nine tt ligatures use one continuous two-stem body
+and one deferred crossbar. B/K/R use two full writing strokes, and D descends
+its stem before continuing around its bowl from bottom to top in one stroke.
+These changes preserve Borel's plain capital shapes and the requested two
+lowercase x diagonals.
+
 `pen-geometry.ts` advances the pen along these curves and adds short SVG brush
 segments with round ends. Each segment covers the space swept by the nib;
 their filled areas combine so crossing a previous stroke cannot cancel old ink.
@@ -108,3 +127,12 @@ Title-case and uppercase versions of the 932 words, plus 75 phrases with
 punctuation, numbers and wrapping, bring the total to 4,171 complete-text cases.
 The fixed dictionary fixtures are drawn from macOS `/usr/share/dict/words`
 (`web2`), rather than depending on a machine's dictionary at test time.
+
+`ductus.test.ts` checks the newly authored contextual forms for loop direction,
+stem-before-shoulder order, q's descender finish, compact bodies and continuous
+curve tangents. Every body in 676 lowercase pair contexts must connect, except
+for a deliberate lift after q. Nine tt forms must complete both uprights before
+their single crossbar. It also checks every 60 fps playback frame of the 130
+newly reviewed lowercase forms and all nine ligatures for ink preservation and
+nib-local drawing. Existing source-font, 4,171-text, sentence, dot-timing and
+magnified-edge regressions remain separate gates.

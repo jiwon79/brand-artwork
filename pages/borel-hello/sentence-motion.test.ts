@@ -92,8 +92,8 @@ for (const text of [...sentences, ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']) test(`every 
 }, 120_000);
 
 const principalStrokes: Record<string, number> = {
-  A: 2, B: 3, C: 1, D: 2, E: 2, F: 3, G: 1, H: 3, I: 3,
-  J: 2, K: 3, L: 1, M: 1, N: 1, O: 1, P: 2, Q: 2, R: 3,
+  A: 2, B: 2, C: 1, D: 1, E: 2, F: 3, G: 1, H: 3, I: 3,
+  J: 2, K: 2, L: 1, M: 1, N: 1, O: 1, P: 2, Q: 2, R: 2,
   S: 1, T: 2, U: 1, V: 1, W: 1, X: 2, Y: 2, Z: 1,
 };
 for (const [letter, count] of Object.entries(principalStrokes)) test(`capital ${letter} uses complete writing strokes without corrective fragments`, () => {

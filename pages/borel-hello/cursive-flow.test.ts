@@ -3,7 +3,7 @@ import { composeText, createGlyphResolver } from './lettering';
 import { penGeometry, preparePen } from './pen-geometry';
 import { createPenPlayback, strokeState } from './pen-playback';
 import { catalog, font, foregroundIoU, raster, shaper } from './test-font';
-import { inkTravelPasses, measureInkTravel } from './test-pen-quality';
+import { auditPen, isLocalStemReturn, inkTravelPasses, measureInkTravel } from './test-pen-quality';
 
 // These are the actual contextual forms exposed by the lowercase preset and
 // its two-letter witnesses. An isolated letter is not a substitute for them.
@@ -67,11 +67,11 @@ test('g, j, y and z descend to the bottom before returning up the left side of t
   }
 });
 
-test('q returns from its descender only to the baseline handoff, not the top of the letter', () => {
+test('q finishes at its descender before lifting to the next letter', () => {
   for (const name of ['q', 'q.init']) {
     const points = preparePen(body(name)[0]).points;
     expect(Math.min(...points.map(point => point.y)), name).toBeLessThan(-320);
-    expect(Math.abs(points[points.length - 1].y), name).toBeLessThan(50);
+    expect(points[points.length - 1].y, name).toBeLessThan(-340);
   }
 });
 
@@ -90,21 +90,10 @@ test('both corrected t forms enter before ascending and defer one complete cross
 });
 
 test('smooth shoulders, bowls and exits share tangents instead of making a corner', () => {
-  const joins: Record<string, number[]> = {
-    'h.medi.cv03': [1,2,3,5,6], 'h.fina.cv03': [1,2,3,5,6],
-    'r.medi.cv03': [2,3,4], 'r.fina.cv03': [2,3,4],
-    s: [1,3,4,5,7], 's.init': [1,3,4,5,7],
-    'w.medi.cv02': [1,2,4,5,6], 'w.fina.cv02': [1,2,4,5,6,7],
-  };
-  // Deliberate turnarounds at upright tips are excluded. Everywhere else,
-  // compare the incoming and outgoing Bézier derivatives geometrically.
-  for (const [name, knots] of Object.entries(joins)) {
-    const values = body(name)[0].d.match(/[-+]?(?:\d*\.)?\d+/g)!.map(Number);
-    for (const knot of knots) {
-      const i = knot * 6, ax = values[i] - values[i - 2], ay = values[i + 1] - values[i - 1];
-      const bx = values[i + 2] - values[i], by = values[i + 3] - values[i + 1];
-      expect((ax * bx + ay * by) / Math.hypot(ax, ay) / Math.hypot(bx, by), `${name}: join ${knot}`).toBeGreaterThan(.999);
-    }
+  for (const name of ['h.medi.cv03', 'h.fina.cv03', 'r.medi.cv03', 'r.fina.cv03',
+    's', 's.init', 'w.medi.cv02', 'w.fina.cv02']) {
+    const stroke = body(name)[0];
+    expect(auditPen([stroke], { turnDegrees: 1 }).filter(issue => !isLocalStemReturn(stroke, issue)), name).toEqual([]);
   }
 });
 
@@ -112,14 +101,20 @@ for (const text of ['abcdefghijklmnopqrstuvwxyz', 'abcdefghijkl', 'mnopqrstu', '
   'ab', 'bc', 'cd', 'gh', 'ij', 'kl', 'qr', 'st', 'uv', 'vw', 'xy', 'yz', 'lm',
 ]) test(`the cursive word body has no unintentional lift: ${text}`, () => {
   // Also exercise the whole alphabet without wrapping. Marks are the only
-  // intentional lifts, and composeText places them after the word body.
+  // post-word lifts. q also deliberately ends its descender before lifting.
   const lettering = composeText(text, shaper, catalog, 20000), resolve = createGlyphResolver(catalog);
   const marks = shaper.shape(text).reduce((sum, glyph) => sum + resolve(glyph.id).marks.length, 0);
   const pens = lettering.strokes.slice(0, lettering.strokes.length - marks).map(preparePen);
+  let lifts = 0;
   for (let i = 1; i < pens.length; i++) {
     const before = pens[i - 1].points, a = before[before.length - 1], b = pens[i].points[0];
-    expect(Math.hypot(a.x - b.x, a.y - b.y), `stroke ${i}`).toBeLessThan(.01);
+    const gap = Math.hypot(a.x - b.x, a.y - b.y);
+    if (gap > 1) {
+      lifts++;
+      expect(a.y - b.y, `q descender lift at stroke ${i}`).toBeGreaterThan(300);
+    } else expect(gap, `stroke ${i}`).toBeLessThan(.01);
   }
+  expect(lifts).toBe((text.match(/q(?=[a-z])/g) ?? []).length);
 });
 
 test('r and u do not spend the animation revisiting completed ink', () => {
