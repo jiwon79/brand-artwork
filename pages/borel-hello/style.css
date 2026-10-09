@@ -74,6 +74,11 @@ body.tubing .color-switch { display: none; }
 body.tubing main { margin-top: 16px; }
 #tube-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
 #tube-controls[hidden] { display: none; }
+#tube-controls [hidden] { display: none; }
+.tube-finish-switch { display: flex; align-items: center; gap: 4px; }
+.tube-finish-switch button { display: inline-flex; align-items: center; gap: 6px; }
+.tube-finish-switch button[aria-pressed="true"] { background: #ffffff70; border-color: #6f403199; }
+.rainbow-swatch { background: linear-gradient(120deg, #1686ff, #7135e8, #d715c4, #f51d60, #ff7018, #f3cd16, #70ce29, #00b6a0); }
 #tube-controls label { display: flex; align-items: center; gap: 8px; }
 #tube-controls input { width: 28px; height: 28px; padding: 2px; border: 1px solid #6f40312e; border-radius: 50%; background: transparent; }
 #tube-controls button { padding: 5px 10px; }

@@ -4,6 +4,7 @@ import type { Bounds } from './lettering';
 import { strokeState, type PenPlayback } from './pen-playback';
 import { createTubeFrames, createTubePaths, multiply, subtract, TUBE_SCALE, TUBE_SIDES, type TubeFrame, type TubePath, type TubePoint, type Vec3 } from './tube-geometry';
 import { TubeBodyGeometry } from './tube-mesh';
+import { createMatteTubeMaterial, createTubeColors, type TubeFinish } from './tube-color';
 
 interface TubeMesh {
   path: TubePath;
@@ -12,6 +13,8 @@ interface TubeMesh {
   start: THREE.Mesh;
   tip: THREE.Mesh;
   dot?: THREE.Mesh;
+  startColor: THREE.MeshStandardMaterial;
+  tipColor: THREE.MeshStandardMaterial;
   written: number;
   pressure: number;
   weight: number;
@@ -25,6 +28,7 @@ export class TubeInkView {
   private readonly camera = new THREE.OrthographicCamera(-3, 3, 2, -2, .01, 100);
   private readonly controls: OrbitControls;
   private readonly material = new THREE.MeshStandardMaterial({ color: '#e4dfd8', roughness: .32, metalness: .04 });
+  private readonly rainbowMaterial = createMatteTubeMaterial(true);
   private readonly capGeometry = new THREE.CircleGeometry(1, TUBE_SIDES);
   private readonly dotGeometry = new THREE.CylinderGeometry(1, 1, 1, TUBE_SIDES);
   private readonly group = new THREE.Group();
@@ -76,13 +80,14 @@ export class TubeInkView {
   }
 
   setPlayback(playback: PenPlayback, bounds: Bounds) {
-    for (const mesh of this.meshes) mesh.body.geometry.dispose();
+    this.disposeMeshes();
     this.group.clear();
     this.playback = playback;
     const [left, top, right, bottom] = bounds;
     this.width = Math.max(1, (right - left) * TUBE_SCALE);
     this.height = Math.max(.8, (bottom - top) * TUBE_SCALE);
-    const paths = createTubePaths(playback.strokes.map(stroke => stroke.pen), [(left + right) / 2, (top + bottom) / 2]);
+    const pens = playback.strokes.map(stroke => stroke.pen);
+    const paths = createTubePaths(pens, [(left + right) / 2, (top + bottom) / 2]), colors = createTubeColors(pens);
     const frames = createTubeFrames(paths);
     let near = 0, far = 0;
     for (const path of paths) for (const point of path.points) {
@@ -93,7 +98,9 @@ export class TubeInkView {
     this.group.position.z = -(near + far) / 2;
     this.backdrop.position.z = near + this.group.position.z - .15;
     this.meshes = paths.map((path, index) => {
-      const geometry = new TubeBodyGeometry(path, frames[index]);
+      const geometry = new TubeBodyGeometry(path, frames[index], colors[index]);
+      const startColor = createMatteTubeMaterial(), tipColor = createMatteTubeMaterial();
+      if (colors[index].length) startColor.color.copy(colors[index][0]);
       const body = new THREE.Mesh(geometry, this.material);
       body.frustumCulled = false; body.castShadow = true; body.receiveShadow = true;
       const start = new THREE.Mesh(this.capGeometry, this.material), tip = new THREE.Mesh(this.capGeometry, this.material);
@@ -104,7 +111,7 @@ export class TubeInkView {
       this.group.add(body, start, tip);
       body.visible = start.visible = tip.visible = false;
       if (dot) dot.visible = false;
-      return { path, frames: frames[index], body, start, tip, dot, written: -1, pressure: -1, weight: -1 };
+      return { path, frames: frames[index], body, start, tip, dot, startColor, tipColor, written: -1, pressure: -1, weight: -1 };
     });
     const extent = Math.max(this.width, this.height, this.depth);
     this.backdrop.scale.set(this.width * 4, this.height * 4, 1);
@@ -120,12 +127,18 @@ export class TubeInkView {
     cap.scale.setScalar(point.radius * weight);
   }
 
-  render(time: number, weight: number, color: string) {
+  render(time: number, weight: number, color: string, finish: TubeFinish = 'solid') {
+    const rainbow = finish === 'matte-rainbow';
     this.material.color.set(color);
+    this.renderer.toneMappingExposure = rainbow ? .95 : 1.1;
     for (const [index, mesh] of this.meshes.entries()) {
       const timed = this.playback.strokes[index], { written, pressure } = strokeState(timed, time);
       const { path } = mesh, visible = !timed.pen.retrace && written > 0 && pressure > 0 && !!path.points.length;
       mesh.body.visible = mesh.start.visible = mesh.tip.visible = visible && !mesh.dot;
+      mesh.body.material = rainbow ? this.rainbowMaterial : this.material;
+      mesh.start.material = rainbow ? mesh.startColor : this.material;
+      mesh.tip.material = rainbow ? mesh.tipColor : this.material;
+      if (mesh.dot) mesh.dot.material = rainbow ? mesh.startColor : this.material;
       if (mesh.written === written && mesh.weight === weight && mesh.pressure === pressure) continue;
       if (mesh.dot) {
         mesh.dot.visible = visible;
@@ -135,7 +148,8 @@ export class TubeInkView {
           mesh.dot.scale.set(radius, radius * 1.2, radius);
         }
       } else if (path.points.length > 1) {
-        const { point, frame } = mesh.body.geometry.setProgress(visible ? written : 0, weight);
+        const { point, frame, color } = mesh.body.geometry.setProgress(visible ? written : 0, weight);
+        mesh.tipColor.color.copy(color);
         if (visible) {
           this.cap(mesh.start, path.points[0], multiply(mesh.frames[0].tangent, -1), weight);
           this.cap(mesh.tip, point, frame.tangent, weight);
@@ -185,11 +199,17 @@ export class TubeInkView {
     if (this.visible && !this.disposed) this.renderer.render(this.scene, this.camera);
   };
 
+  private disposeMeshes() {
+    for (const mesh of this.meshes) {
+      mesh.body.geometry.dispose(); mesh.startColor.dispose(); mesh.tipColor.dispose();
+    }
+  }
+
   dispose() {
     this.disposed = true;
     this.resizeObserver.disconnect(); this.controls.dispose();
-    for (const mesh of this.meshes) mesh.body.geometry.dispose();
-    this.capGeometry.dispose(); this.dotGeometry.dispose(); this.material.dispose();
+    this.disposeMeshes();
+    this.capGeometry.dispose(); this.dotGeometry.dispose(); this.material.dispose(); this.rainbowMaterial.dispose();
     this.backdrop.geometry.dispose(); this.backdrop.material.dispose(); this.renderer.dispose();
   }
 }

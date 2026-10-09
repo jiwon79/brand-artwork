@@ -9,6 +9,7 @@ import { StrokeOrderView, stepName } from './stroke-order-view';
 import { GradientInkView } from './gradient-ink-view';
 import { teachingReference } from './teaching-model';
 import type { TubeInkView } from './tube-ink-view';
+import type { TubeFinish } from './tube-color';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -51,6 +52,7 @@ function showTeachingReference(character: string) {
 }
 let inspecting = false;
 let tubing = false;
+let tubeFinish: TubeFinish = 'solid';
 let tubeView: TubeInkView | undefined;
 let tubeLoading: Promise<void> | undefined;
 const tubeCanvas = document.querySelector<HTMLCanvasElement>('#tube-artwork')!;
@@ -129,7 +131,7 @@ function render() {
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
     if (gradientEnabled && !inspecting) gradientView.renderStroke(index, written, pressure, settings.weight);
   }
-  if (tubing) tubeView?.render(time, settings.weight, tubeColor.value);
+  if (tubing) tubeView?.render(time, settings.weight, tubeColor.value, tubeFinish);
   const frameCount = Math.round(settings.duration * 60);
   slider.max = String(frameCount);
   slider.step = '1';
@@ -263,6 +265,15 @@ function setView(mode: 'ink' | 'order' | 'tube') {
 }
 for (const mode of ['ink', 'order', 'tube'] as const) document.querySelector(`#${mode}-view`)!.addEventListener('click', () => setView(mode));
 tubeColor.addEventListener('input', render);
+for (const [id, finish] of [['tube-solid', 'solid'], ['tube-rainbow', 'matte-rainbow']] as const) {
+  document.querySelector(`#${id}`)!.addEventListener('click', () => {
+    tubeFinish = finish;
+    document.querySelector('#tube-solid')!.setAttribute('aria-pressed', String(finish === 'solid'));
+    document.querySelector('#tube-rainbow')!.setAttribute('aria-pressed', String(finish === 'matte-rainbow'));
+    document.querySelector<HTMLElement>('#tube-color-control')!.hidden = finish !== 'solid';
+    render();
+  });
+}
 document.querySelector('#reset-camera')!.addEventListener('click', () => tubeView?.resetCamera());
 import.meta.hot?.dispose(() => { cancelAnimationFrame(frame); tubeView?.dispose(); gui.destroy(); });
 function jumpToStep(index: number) {

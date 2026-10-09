@@ -2,11 +2,11 @@ import { penGeometry, type PenPath } from './pen-geometry';
 
 // Spectrum reference: https://developer.apple.com/videos/play/wwdc2022/10037/
 export const gradientPalette = ['#2589a6', '#70b49c', '#cedb56', '#f4d35e', '#f5a16c', '#eb7266', '#d57ba5', '#9764aa', '#6b83c6', '#7ab6da'];
-export function gradientColor(progress: number): string {
-  const position = Math.max(0, Math.min(1, progress)) * (gradientPalette.length - 1);
-  const index = Math.min(gradientPalette.length - 2, Math.floor(position)), fraction = position - index;
+export function gradientColor(progress: number, palette: readonly string[] = gradientPalette): string {
+  const position = Math.max(0, Math.min(1, progress)) * (palette.length - 1);
+  const index = Math.min(palette.length - 2, Math.floor(position)), fraction = position - index;
   const channels = (hex: string) => [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16));
-  const a = channels(gradientPalette[index]), b = channels(gradientPalette[index + 1]);
+  const a = channels(palette[index]), b = channels(palette[index + 1]);
   return '#' + a.map((value, i) => Math.round(value + (b[i] - value) * fraction).toString(16).padStart(2, '0')).join('');
 }
 
@@ -24,7 +24,8 @@ export interface GradientPiece {
  * Deferred dots and t crossbars borrow their bodies' colors without advancing it.
  * Colors never rescale to the currently visible portion during playback.
  */
-export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
+export function gradientPieces(pens: readonly PenPath[], palette: readonly string[] = gradientPalette): GradientPiece[][] {
+  const color = (progress: number) => gradientColor(progress, palette);
   let total = 0;
   const offsets = pens.map(pen => {
     const offset = total;
@@ -52,10 +53,10 @@ export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
       return { x, y, progress: position / total };
     });
     let anchoredAxis: GradientPiece['axis'] | undefined;
-    let solid = pen.length <= .1 ? gradientColor(offset / total) : undefined;
+    let solid = pen.length <= .1 ? color(offset / total) : undefined;
     if (anchors?.length) {
       const a = anchors[0], b = anchors[anchors.length - 1], span = b.progress - a.progress;
-      if (Math.abs(span) < 1e-8 || Math.hypot(b.x - a.x, b.y - a.y) < 1e-8) solid = gradientColor(a.progress);
+      if (Math.abs(span) < 1e-8 || Math.hypot(b.x - a.x, b.y - a.y) < 1e-8) solid = color(a.progress);
       else {
         // All capsules of a shared tt crossbar use one continuous color field.
         // Its two stem crossings match the colors already painted underneath.
@@ -76,13 +77,13 @@ export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
       const axis = anchoredAxis ?? [x1, y1, x1 + dx * total / length, y1 + dy * total / length] as const;
       const colorAt = (x: number, y: number) => {
         const [ax, ay, bx, by] = axis, dx = bx - ax, dy = by - ay;
-        return solid ?? gradientColor(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1));
+        return solid ?? color(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1));
       };
       pieces.push({
         pen: { ...pen, length: end - start, points: pen.points.slice(first, last + 1).map(point => ({ ...point, distance: point.distance - start })) },
         start, end, solid,
-        from: anchors ? colorAt(a.x, a.y) : gradientColor((offset + start) / total),
-        to: anchors ? colorAt(b.x, b.y) : gradientColor((offset + end) / total), axis,
+        from: anchors ? colorAt(a.x, a.y) : color((offset + start) / total),
+        to: anchors ? colorAt(b.x, b.y) : color((offset + end) / total), axis,
       });
       first = last;
     };
