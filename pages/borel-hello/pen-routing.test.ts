@@ -69,8 +69,12 @@ test('separate ink components retain a real pen lift', () => {
   expect(routeWord([[left], [right]])).toEqual([left, right]);
 });
 
-for (const text of ['hello', 'he', 'el', 'll', 'spell', 'letter', 'all', 'well', 'bell', 'ell', 'elle']) test(`the pen stays continuous at every 60 fps step: ${text}`, () => {
-  const pens = composeText(text, shaper, catalog).strokes.map(preparePen);
+for (const text of ['hello', 'he', 'el', 'll', 'spell', 'letter', 'all', 'well', 'bell', 'ell', 'elle']) test(`the cursive body stays continuous at every 60 fps step: ${text}`, () => {
+  const resolve = createGlyphResolver(catalog);
+  const marks = shaper.shape(text).reduce((sum, glyph) => sum + resolve(glyph.id).marks.length, 0);
+  const strokes = composeText(text, shaper, catalog).strokes;
+  // Dots and t crossbars are deliberate lifts after the connected word body.
+  const pens = strokes.slice(0, strokes.length - marks).map(preparePen);
   for (let i = 1; i < pens.length; i++) {
     const a = endPoint(pens[i - 1]), b = pens[i].points[0];
     expect(Math.hypot(a.x - b.x, a.y - b.y), `stroke boundary ${i}`).toBeLessThan(.01);

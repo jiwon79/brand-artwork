@@ -73,6 +73,19 @@ test('the frame oracle rejects an early mark outside the traveled pen footprint'
   expect(inkTravelPasses(measureInkTravel(blank, foreign, bounds, scale, [pen], 0, 50))).toBe(false);
 });
 
+test('the frame oracle includes an acute corner between its regular samples', () => {
+  const bounds = [-60,-160,160,60] as const, scale = 1;
+  const pen = preparePen({ d: 'M0 0 L0 -100 L70 0', width: 90 });
+  const from = 95, to = 105;
+  const previous = raster(`<path d="${penGeometry(pen, from)}"/>`, bounds, scale);
+  const current = raster(`<path d="${penGeometry(pen, to)}"/>`, bounds, scale);
+  expect(inkTravelPasses(measureInkTravel(previous, current, bounds, scale, [pen], from, to))).toBe(true);
+  // A genuine foreign spot remains a failure; including a real turn does not
+  // grant permission to paint anywhere outside this interval's nib travel.
+  const foreign = raster(`<path d="${penGeometry(pen, to)}"/><circle cx="100" cy="20" r="10"/>`, bounds, scale);
+  expect(inkTravelPasses(measureInkTravel(previous, foreign, bounds, scale, [pen], from, to))).toBe(false);
+});
+
 test('tiny antialias changes do not hide a visible foreign pixel', () => {
   const bounds = [0,0,10,10] as const, previous = new Uint8Array(400), current = new Uint8Array(400);
   current[3] = 5;

@@ -140,6 +140,12 @@ export function measureInkTravel(previous: Uint8Array, current: Uint8Array, boun
       const spacing = Math.max(.001, Math.min(...pen.points.map(p => p.radius)) / 4);
       const count = Math.max(1, Math.ceil((end - start) / spacing));
       for (let i = 0; i <= count; i++) nibs.push({ point: samplePen(pen, start + (end - start) * i / count), scale: pen.nibScale });
+      // Uniform samples alone can miss the exact apex of an acute N/W turn.
+      // Include the traveled vertices as well: the pen really visits them,
+      // even when a whole corner falls between two regular arc samples.
+      for (const point of pen.points) {
+        if (point.distance > start && point.distance < end) nibs.push({ point, scale: pen.nibScale });
+      }
     }
     offset += pen.length;
   }

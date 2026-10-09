@@ -18,15 +18,18 @@ catalog with `python3 scripts/generate-borel-catalog.py` (requires fonttools).
 `pen-paths.json` stores independent, editable pen trajectories keyed by glyph ID.
 Each `d` is an open cubic Bézier centerline, with one `widths` tuple per cubic:
 start width, two width controls, end width. `nibScale` optionally sets an elliptical
-nib for small dots. `mark` delays an i/j dot until its word has been written.
+nib for small dots. `mark` delays an i/j dot or a t/tt crossbar until its word
+body has been written. `retrace` moves the pen over existing ink without painting.
 Initial, medial, final and isolated forms have their own curves. The original
 hand-authored alphabet in `stroke-alphabet.ts` supplied stroke-order guides;
 center curves and width controls were fitted against the licensed source font
 and refined using foreground overlap tests. These paths are an interpretation
 of handwriting order, not a prescribed order from the font designer.
 
-`pen-geometry.ts` advances the pen along these curves and builds an SVG brush
-ribbon from the traveled curve and its width. Playback uses neither font-outline
+`pen-geometry.ts` advances the pen along these curves and adds short SVG brush
+segments with round ends. Each segment covers the space swept by the nib;
+their filled areas combine so crossing a previous stroke cannot cancel old ink.
+Playback uses neither font-outline
 clipping, native text pixels, alpha reveal maps, nor captured frames. The debug
 panel can separately overlay exact font outlines or the center trajectories.
 Changing a pen curve changes the visible ink itself.
@@ -35,8 +38,13 @@ Vitest rasterizes the actual brush geometry and the independently shaped source
 font with the same SVG renderer. Every supported contextual glyph must achieve
 at least 95% soft-alpha foreground intersection-over-union; blank background is
 excluded. Separate sentence tests cover wrapping, mixed case, punctuation and
-word-initial n/w forms. All 60 fps frames of hello/name won are checked for loss
-of already written ink. Chrome verification additionally checks native text
+word-initial n/w forms. `sentence-motion.test.ts` reads the 12 test sentences
+directly from the example menu and checks every 60 fps state, alongside A–Z:
+new ink must stay inside the traveled nib footprint and old ink must remain.
+Letter-specific guards preserve complete capital strokes, l/f loop order,
+deferred t crossbars and compact curves without pressure knots or needle tips.
+These checks supplement visual inspection; source overlap alone cannot prove
+natural stroke order for every possible text. Chrome verification checks native text
 rendering and the live controls; temporary QA output is not shipped.
 
 Word regressions in `word-corpus.ts` include 932 everyday/connection-focused

@@ -27,7 +27,11 @@ test('all encoded characters and contextual lowercase pairs compose without miss
   const letters = 'abcdefghijklmnopqrstuvwxyz';
   for (const a of letters) for (const b of letters) {
     const result = composeText(a + b, shaper, catalog);
-    expect(result.strokes.length, a + b).toBeGreaterThan(1);
+    // Two letters may now form one continuous writing run. Check that both
+    // shaped forms survive rather than requiring an artificial pen lift.
+    expect(result.strokes.length, a + b).toBeGreaterThan(0);
+    expect(result.outlines.length, a + b).toBe(shaper.shape(a + b).length);
+    expect(result.strokes.reduce((sum, stroke) => sum + (stroke.d.match(/C/g)?.length ?? 0), 0), a + b).toBeGreaterThanOrEqual(2);
   }
 });
 

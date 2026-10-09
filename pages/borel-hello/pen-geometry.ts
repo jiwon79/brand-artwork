@@ -38,7 +38,11 @@ export function preparePen(stroke: PenStroke): PenPath {
         const actual = sample(t0 + (t1 - t0) * fraction);
         error = Math.max(error, Math.hypot(actual.x - a.x - (b.x - a.x) * fraction, actual.y - a.y - (b.y - a.y) * fraction), Math.abs(actual.radius - a.radius - (b.radius - a.radius) * fraction));
       }
-      if (error <= .2 || depth >= 14) { append(b); return; }
+      // Bound even perfectly straight intervals. Extending one very long SVG
+      // polygon can retessellate an old antialias fringe far behind the nib.
+      // Short, completed capsules remain stable while only the tip advances.
+      const span = Math.hypot(b.x - a.x, b.y - a.y);
+      if (error <= .2 && span <= Math.max(8, Math.min(a.radius, b.radius)) || depth >= 14) { append(b); return; }
       const middle = (t0 + t1) / 2, midpoint = sample(middle);
       subdivide(t0, a, middle, midpoint, depth + 1);
       subdivide(middle, midpoint, t1, b, depth + 1);
