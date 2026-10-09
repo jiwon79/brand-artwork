@@ -3,6 +3,8 @@ import { composeText, unsupportedCharacters, supportedCharacter } from './letter
 import { loadBorel } from './shaper';
 import { preparePen, penGeometry } from './pen-geometry';
 import { createPenPlayback, strokeState, type PenPlayback } from './pen-playback';
+import { activeOrderStep, letterContexts } from './stroke-order';
+import { StrokeOrderView, stepName } from './stroke-order-view';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -19,7 +21,21 @@ const settings = { duration: 6, guides: false, ink: '#6f4031', paper: '#f3e8de',
 const inkLayer = svgElement('g', {});
 const reference = svgElement('g', { fill: 'currentColor', opacity: '.13', 'pointer-events': 'none' });
 const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '5', opacity: '.65', 'pointer-events': 'none' });
-artwork.append(reference, inkLayer, guides);
+const orderView = new StrokeOrderView();
+artwork.append(reference, inkLayer, guides, orderView.layer);
+const orderPanel = document.querySelector<HTMLElement>('#order-panel')!;
+const inspectLetter = document.querySelector<HTMLSelectElement>('#inspect-letter')!;
+const inspectContext = document.querySelector<HTMLSelectElement>('#inspect-context')!;
+const inspectStep = document.querySelector<HTMLSelectElement>('#inspect-step')!;
+const orderStatus = document.querySelector<HTMLElement>('#order-status')!;
+const inspectSource = document.querySelector<HTMLAnchorElement>('#inspect-source')!;
+let inspecting = false;
+let bounds: readonly number[] = [0, 0, 1100, 530];
+let lastOrderStep = -2;
+function updateViewBox() {
+  const [left, top, right, bottom] = bounds, pad = inspecting ? 180 : 0;
+  artwork.setAttribute('viewBox', `${left - pad} ${top - pad} ${right - left + 2 * pad} ${bottom - top + 2 * pad}`);
+}
 let strokes: { path: SVGPathElement; written?: number; pressure?: number }[] = [];
 let playback: PenPlayback = { strokes: [], duration: 0 };
 let totalLength = 0;
@@ -38,6 +54,10 @@ function writeText(text: string) {
   textInput.removeAttribute('aria-invalid');
   const lettering = composeText(text, loaded.shaper, loaded.catalog);
   playback = createPenPlayback(lettering.strokes.map(preparePen));
+  orderView.setPlayback(playback);
+  inspectStep.replaceChildren(...orderView.steps.map(step => new Option(`${step.index + 1} · ${stepName[step.kind]}`, String(step.index))));
+  inspectStep.disabled = !orderView.steps.length;
+  lastOrderStep = -2;
   inkLayer.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
   strokes = []; totalLength = 0;
   for (const [index, stroke] of lettering.strokes.entries()) {
@@ -49,8 +69,8 @@ function writeText(text: string) {
     guides.append(svgElement('path', { d }));
   }
   for (const d of lettering.outlines) if (d) reference.append(svgElement('path', { d }));
-  const [left, top, right, bottom] = lettering.bounds;
-  artwork.setAttribute('viewBox', `${left} ${top} ${right - left} ${bottom - top}`);
+  bounds = lettering.bounds;
+  updateViewBox();
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
   progress = reducedMotion.matches ? 1 : 0;
@@ -84,8 +104,20 @@ function render() {
   frameNumber.max = String(frameCount);
   document.querySelector('#frame-count')!.textContent = `/ ${frameCount}`;
   pauseButton.textContent = playing ? '일시정지' : progress === 1 ? '재생' : '계속 쓰기';
-  guides.style.display = settings.guides ? '' : 'none';
-  reference.style.display = settings.reference ? '' : 'none';
+  guides.style.display = settings.guides && !inspecting ? '' : 'none';
+  reference.style.display = settings.reference || inspecting ? '' : 'none';
+  inkLayer.style.opacity = inspecting ? '.12' : '1';
+  orderView.layer.style.display = inspecting ? '' : 'none';
+  if (inspecting) {
+    const active = orderView.render(playback, time);
+    if (active !== lastOrderStep) {
+      inspectStep.value = String(active);
+      orderStatus.textContent = active < 0 ? '문장을 입력하세요.' : `${active + 1} / ${orderView.steps.length} · ${stepName[orderView.steps[active].kind]}`;
+      document.querySelector<HTMLButtonElement>('#previous-step')!.disabled = active <= 0;
+      document.querySelector<HTMLButtonElement>('#next-step')!.disabled = active < 0 || active >= orderView.steps.length - 1;
+      lastOrderStep = active;
+    }
+  }
   artwork.style.color = settings.ink;
   document.documentElement.style.background = settings.paper;
 }
@@ -135,17 +167,72 @@ gui.addColor(settings, 'paper').name('배경').onChange(render);
 gui.close();
 render();
 
-document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => { event.preventDefault(); if (ready) writeText(textInput.value); });
-textInput.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); if (ready) writeText(textInput.value); } });
+function submitText() {
+  if (!ready) return;
+  inspectLetter.value = '';
+  inspectContext.replaceChildren(new Option('글자를 선택하세요', ''));
+  inspectContext.disabled = true;
+  inspectSource.href = 'https://eduscol.education.fr/document/15805/download';
+  writeText(textInput.value);
+}
+document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => { event.preventDefault(); submitText(); });
+textInput.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); submitText(); } });
 document.querySelector<HTMLSelectElement>('#example')!.addEventListener('change', event => {
   const selected = (event.target as HTMLSelectElement).value;
-  if (ready) { textInput.value = selected; writeText(textInput.value); }
+  if (ready) { textInput.value = selected; submitText(); }
 });
+
+for (const [id, enabled] of [['ink-view', false], ['order-view', true]] as const) {
+  document.querySelector(`#${id}`)!.addEventListener('click', () => {
+    inspecting = enabled; orderPanel.hidden = !enabled;
+    document.body.classList.toggle('inspecting', enabled);
+    document.querySelector('#ink-view')!.setAttribute('aria-pressed', String(!enabled));
+    document.querySelector('#order-view')!.setAttribute('aria-pressed', String(enabled));
+    updateViewBox(); render();
+  });
+}
+function jumpToStep(index: number) {
+  const step = orderView.steps[index];
+  if (!step || !playback.duration) return;
+  progress = (step.start + Math.min(.001, (step.end - step.start) / 2)) / playback.duration;
+  playing = false; render();
+}
+inspectStep.addEventListener('change', () => jumpToStep(Number(inspectStep.value)));
+for (const [id, direction] of [['previous-step', -1], ['next-step', 1]] as const) {
+  document.querySelector(`#${id}`)!.addEventListener('click', () => jumpToStep(activeOrderStep(orderView.steps, progress * playback.duration) + direction));
+}
+inspectLetter.addEventListener('change', () => {
+  if (!inspectLetter.value || !ready) {
+    inspectContext.replaceChildren(new Option('글자를 선택하세요', ''));
+    inspectContext.disabled = true;
+    inspectSource.href = 'https://eduscol.education.fr/document/15805/download';
+    return;
+  }
+  const letter = inspectLetter.value;
+  inspectSource.href = letter === letter.toLowerCase()
+    ? `https://l-education.com/ecrire-la-lettre-${letter}-minuscule-cursive`
+    : `https://l-education.com/apprendre-a-ecrire-la-lettre-${letter.toLowerCase()}-majuscule-cursive`;
+  const contexts = letterContexts(inspectLetter.value, loaded.shaper, loaded.catalog);
+  inspectContext.replaceChildren(...contexts.map(context => {
+    const glyphs = loaded.shaper.shape(context.text), index = glyphs.findIndex(glyph => glyph.id === context.id);
+    const position = glyphs.length === 1 ? '단독' : index === 0 ? '처음' : index === glyphs.length - 1 ? '끝' : '중간';
+    return new Option(`${position} · ${context.text}`, context.text);
+  }));
+  inspectContext.disabled = contexts.length < 2;
+  textInput.value = contexts[0]?.text ?? inspectLetter.value;
+  writeText(textInput.value);
+});
+inspectContext.addEventListener('change', () => { textInput.value = inspectContext.value; writeText(textInput.value); });
 
 loadBorel().then(value => {
   loaded = value; ready = true;
   document.querySelector<HTMLButtonElement>('#write')!.disabled = false;
   document.querySelector<HTMLSelectElement>('#example')!.disabled = false;
+  for (const [label, letters] of [['소문자', 'abcdefghijklmnopqrstuvwxyz'], ['대문자', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ']]) {
+    const group = document.createElement('optgroup'); group.label = label;
+    group.append(...[...letters].map(letter => new Option(letter, letter))); inspectLetter.append(group);
+  }
+  inspectLetter.disabled = false;
   const characterList = document.querySelector('#character-list')!;
   for (const codepoint of Object.keys(loaded.catalog.cmap)) {
     const character = String.fromCodePoint(Number(codepoint));

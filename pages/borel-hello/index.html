@@ -44,6 +44,19 @@
     <p id="text-status" role="status" aria-live="polite">필기 자료를 불러오는 중…</p>
     <details class="character-picker"><summary>지원 문자 보기</summary><div id="character-list" aria-label="지원 문자 삽입"></div></details>
   </form>
+  <section class="order-inspector" aria-label="경로 살펴보기">
+    <div class="view-switch" role="group" aria-label="보기 모드"><button id="ink-view" aria-pressed="true">잉크</button><button id="order-view" aria-pressed="false">획순 경로</button></div>
+    <div id="order-panel" hidden>
+      <div class="order-controls">
+        <label>글자 <select id="inspect-letter" aria-label="살펴볼 글자" disabled><option value="">현재 문장</option></select></label>
+        <label class="context-control">연결 형태 <select id="inspect-context" aria-label="연결 형태" disabled><option>글자를 선택하세요</option></select></label>
+        <a id="inspect-source" href="https://eduscol.education.fr/document/15805/download" target="_blank" rel="noopener noreferrer">프랑스 교본 보기 ↗</a>
+      </div>
+      <p class="order-legend"><span class="order-spectrum"></span> 처음 → 끝 · 화살표는 진행 방향 · 점선은 펜을 뗀 이동</p>
+      <div class="order-controls step-controls"><button id="previous-step" aria-label="이전 경로 구간">‹</button><label>구간 <select id="inspect-step" aria-label="경로 구간"></select></label><button id="next-step" aria-label="다음 경로 구간">›</button><span id="order-status" role="status"></span></div>
+      <p class="order-note">번호는 긴 곡선을 나눈 관찰 구간입니다. 실제 획 개수와 다르며, 점선은 이동 방향만 표시합니다.</p>
+    </div>
+  </section>
   <main>
     <svg id="artwork" viewBox="0 0 1100 530" role="img" aria-label="Borel 필기체로 한 획씩 써지는 hello"></svg>
   </main>

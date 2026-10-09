@@ -52,6 +52,21 @@ clipping, native text pixels, alpha reveal maps, nor captured frames. The debug
 panel can separately overlay exact font outlines or the center trajectories.
 Changing a pen curve changes the visible ink itself.
 
+The visible **획순 경로** mode overlays the actual playback centerline with
+ordered colors, direction arrows, interval numbers and a moving pen marker.
+Numbers divide long paths into inspection intervals, not handwriting strokes.
+Dashed lines indicate scheduled pen lifts; their straight travel is illustrative
+and never paints ink. Previous/next interval and frame controls pause playback.
+The letter selector covers A–Z/a–z and discovers all 260 lowercase contextual
+forms through actual shaping witnesses. The context menu renders the complete
+witness word so entry/exit routing remains the same as normal playback.
+Per-letter French teaching links are comparison references, not a claim that the
+current animation follows their ductus. In particular, Borel's plain capitals
+differ from the linked ornamental capital models, and the requested diagonal
+lowercase x differs from their two opposing curves. The overlay does not change
+the authored pen paths or their order. Tests keep its marker synchronized with
+actual ink timing, including separate dots, retracing and pen lifts.
+
 `pen-playback.ts` schedules writing and pen lifts separately. Near-stationary
 dot paths receive 160 ms of contact time at the default speed, independent of
 their almost-zero arc length. Their round nib grows as it presses down; the
