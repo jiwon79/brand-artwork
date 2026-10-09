@@ -56,6 +56,16 @@ the same painted path or retrace the same upright. These curves were fitted
 with continuity constraints as well as the separate 95% foreground-IoU gate.
 A locally rounded turn is not a separately painted patch or a nib-width spike.
 
+h's low-entry ascender and later shoulder remain independent cubic curves.
+The shoulder meets the original ascender at one exact point with the same
+tangent and nib width, then separates naturally. Its two cubic spans also
+match signed curvature at that contact. Keeping the arch's inside edge beyond
+the earlier ink prevents a protruding gradient sliver without copying a shared
+curve. Eight low-entry/initial/final forms use this contact fit; the two cv02
+high-entry forms retain their genuine crossing. Every original upward-entry
+command stays unchanged; only the later shoulder is refitted, within one
+ordered writing run.
+
 b's non-final beak now completes its outgoing curve, keeping the high entries
 in bm/bn/bv/bw connected. All nine tt ligatures use one continuous two-stem body
 and one deferred crossbar. Lowercase x retains the requested two diagonals.
@@ -165,3 +175,10 @@ must still pass the separate 95% source-ink IoU gate. Full uppercase and digit
 playback also pass the same gradient/silhouette checks as lowercase words.
 Existing source-font, 4,171-text, sentence, dot-timing and
 magnified-edge regressions remain separate gates.
+
+`h-overlap.test.ts` separately checks the common point, tangent and nib width
+of all eight independent h contacts, plus a smooth arch and distinct curvatures.
+Contrasting first/second-pass colors expose residual
+ink at 50%, 100% and 150% weight, with a deliberately offset negative control.
+This detects internal color slivers that final silhouette overlap cannot catch.
+Independent entry samples prevent the contact fit from warping the first pass.
