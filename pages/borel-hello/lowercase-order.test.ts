@@ -6,30 +6,43 @@ import { catalog, raster, shaper, supportedGlyphWitnesses } from './test-font';
 import { inkTravelPasses, measureInkTravel } from './test-pen-quality';
 import type { PenStroke } from './stroke-alphabet';
 
-const forms = [...supportedGlyphWitnesses()].filter(([id]) => /^[fdbx](?:\.|$)/.test(catalog.glyphs[id].name));
+const forms = [...supportedGlyphWitnesses()].filter(([id]) => /^[fdbxk](?:\.|$)/.test(catalog.glyphs[id].name));
 
-test('all reachable f/d/b/x forms have compact authored writing runs', () => {
-  expect(forms).toHaveLength(40);
+test('all reachable f/d/b/x/k forms have compact authored writing runs', () => {
+  expect(forms).toHaveLength(50);
   for (const [id] of forms) {
     const name = catalog.glyphs[id].name, strokes = catalog.penPaths![id];
     const body = strokes.filter(stroke => !stroke.mark), marks = strokes.filter(stroke => stroke.mark);
     expect(body, name).toHaveLength(1);
     expect(marks, name).toHaveLength(name.startsWith('x') ? 1 : 0);
     expect(strokes.every(stroke => stroke.ordered && !stroke.retrace), name).toBe(true);
-    expect(strokes.reduce((sum, stroke) => sum + stroke.widths!.length, 0), name).toBeLessThanOrEqual(8);
+    expect(strokes.reduce((sum, stroke) => sum + stroke.widths!.length, 0), name).toBeLessThanOrEqual(name.startsWith('k') ? 9 : 8);
     // A graph traversal must not reverse a loop or invent a return trip.
     expect(routeWord([body]), name).toEqual(body);
   }
 });
 
-test('f and b ascend the right side of the loop before descending its left stem', () => {
-  for (const [id] of forms.filter(([id]) => /^[fb]/.test(catalog.glyphs[id].name))) {
+test('f, b and k ascend the right side of the loop before descending its left stem', () => {
+  for (const [id] of forms.filter(([id]) => /^[fbk]/.test(catalog.glyphs[id].name))) {
     const points = preparePen(catalog.penPaths![id][0]).points;
     const high = points.filter(point => point.y > 650);
     expect(high[0].x - high[high.length - 1].x, catalog.glyphs[id].name).toBeGreaterThan(160);
     let upwardCrossings = 0;
     for (let i = 1; i < points.length; i++) if (points[i - 1].y < 650 && points[i].y >= 650) upwardCrossings++;
     expect(upwardCrossings, catalog.glyphs[id].name).toBe(1);
+  }
+});
+
+test('k descends its stem before the shoulder loop and carries that loop into the foot', () => {
+  for (const [id] of forms.filter(([id]) => /^k/.test(catalog.glyphs[id].name))) {
+    const points = preparePen(catalog.penPaths![id][0]).points;
+    const top = points.findIndex(point => point.y > 850);
+    const baseline = points.findIndex((point, i) => i > top && point.y < 55);
+    const stem = points[baseline].x;
+    const bowl = points.findIndex((point, i) => i > baseline && point.x > stem + 260 && point.y > 230);
+    expect(baseline, catalog.glyphs[id].name).toBeGreaterThan(top);
+    expect(bowl, catalog.glyphs[id].name).toBeGreaterThan(baseline);
+    expect(points[points.length - 1].x - stem, catalog.glyphs[id].name).toBeGreaterThan(300);
   }
 });
 
@@ -87,14 +100,17 @@ test('the pause detector rejects a full painted-loop return trip', () => {
   expect(longestInkPause([loop, loop, exit], [-180, -150, 180, 250])).toBeGreaterThan(80);
 });
 
-test('f and b no longer pause for a full-loop return in any contextual form', () => {
-  for (const [id] of forms.filter(([id]) => /^[fb]/.test(catalog.glyphs[id].name))) {
+test('f, b and k no longer pause for a full-loop return in any contextual form', () => {
+  for (const [id] of forms.filter(([id]) => /^[fbk]/.test(catalog.glyphs[id].name))) {
     const [x0, y0, x1, y1] = catalog.glyphs[id].bounds!;
-    expect(longestInkPause(catalog.penPaths![id], [x0 - 60, y0 - 60, x1 + 60, y1 + 60]), catalog.glyphs[id].name).toBeLessThan(20);
+    const name = catalog.glyphs[id].name;
+    // k briefly reverses its straight stem before the shoulder and its short
+    // crossbar before the foot. Neither return traverses a completed loop.
+    expect(longestInkPause(catalog.penPaths![id], [x0 - 60, y0 - 60, x1 + 60, y1 + 60]), name).toBeLessThan(name.startsWith('k') ? 30 : 20);
   }
 }, 120_000);
 
-test('every intermediate state of all 40 forms stays inside the moving nib', () => {
+test('every intermediate state of all 50 forms stays inside the moving nib', () => {
   for (const [id] of forms) {
     const pens = catalog.penPaths![id].map(preparePen), total = pens.reduce((sum, pen) => sum + pen.length, 0);
     const [x0, y0, x1, y1] = catalog.glyphs[id].bounds!;

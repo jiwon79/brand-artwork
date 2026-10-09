@@ -24,6 +24,10 @@ existing ink without painting. `ordered` preserves a glyph's authored stroke
 sequence and direction instead of finding a route through its pieces. All 40
 supported f/d/b/x forms use these compact, authored runs; adjacent letters still
 use the font's contextual shaping and matching entry/exit positions.
+All 10 supported k forms also use a single authored path of nine cubics: the
+large ascender loop, downward stem, shoulder loop and outgoing foot. Only the
+short straight stem and crossbar are repeated as the pen changes direction;
+the pen no longer returns around a completed loop to find another fragment.
 Initial, medial, final and isolated forms have their own curves. The original
 hand-authored alphabet in `stroke-alphabet.ts` supplied stroke-order guides;
 center curves and width controls were fitted against the licensed source font
@@ -60,9 +64,10 @@ These checks supplement visual inspection; source overlap alone cannot prove
 natural stroke order for every possible text. Chrome verification checks native text
 rendering and the live controls; temporary QA output is not shipped.
 
-`lowercase-order.test.ts` checks all reachable f/d/b/x forms, including isolated
+`lowercase-order.test.ts` checks all reachable f/d/b/x/k forms, including isolated
 letters, for complete strokes, loop direction, d's stem-before-exit order and
-x's two diagonals. A raster pause detector rejects complete-loop retracing even
+x's two diagonals. k's stem must finish before its shoulder loop and foot.
+A raster pause detector rejects complete-loop retracing even
 when the repeated path is painted again rather than tagged as a retrace.
 
 Word regressions in `word-corpus.ts` include 932 everyday/connection-focused
