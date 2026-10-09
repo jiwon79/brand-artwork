@@ -1,7 +1,7 @@
 import type { PenStroke, Point } from './stroke-alphabet';
 
 export interface PenPoint { x: number; y: number; radius: number; distance: number }
-export interface PenPath { points: PenPoint[]; length: number; nibScale: Point; retrace?: boolean }
+export interface PenPath { points: PenPoint[]; length: number; nibScale: Point; retrace?: boolean; colorAnchor?: Point }
 
 export function cubic(a: number, b: number, c: number, d: number, t: number): number {
   const s = 1 - t;
@@ -52,7 +52,7 @@ export function preparePen(stroke: PenStroke): PenPath {
     subdivide(0, a, 1, b, 0);
     start = end; curveIndex++;
   }
-  return { points, length: distance, nibScale: stroke.nibScale ?? [1, 1], retrace: stroke.retrace };
+  return { points, length: distance, nibScale: stroke.nibScale ?? [1, 1], retrace: stroke.retrace, colorAnchor: stroke.colorAnchor };
 }
 
 const number = (value: number) => Number(value.toFixed(3));

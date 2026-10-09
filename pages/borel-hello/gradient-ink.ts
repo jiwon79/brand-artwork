@@ -19,14 +19,34 @@ export interface GradientPiece {
   axis: readonly [number, number, number, number];
 }
 
-/** Fixed colors follow written arc length, including connected letter handoffs.
- * They never rescale to the currently visible portion during playback.
+/** Fixed body colors follow arc length, including connected letter handoffs.
+ * Deferred i/j dots borrow their own body's color without advancing the spectrum.
+ * Colors never rescale to the currently visible portion during playback.
  */
 export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
-  const total = pens.reduce((sum, pen) => sum + (pen.retrace ? 0 : pen.length), 0) || 1;
-  let offset = 0;
-  return pens.map(pen => {
+  let total = 0;
+  const offsets = pens.map(pen => {
+    const offset = total;
+    if (!pen.retrace && !pen.colorAnchor) total += pen.length;
+    return offset;
+  });
+  total ||= 1;
+  return pens.map((pen, stroke) => {
     if (pen.retrace || !pen.points.length) return [];
+    const offset = offsets[stroke];
+    let dotColor: string | undefined;
+    if (pen.colorAnchor) {
+      const [x, y] = pen.colorAnchor;
+      let nearest = Infinity, position = offset;
+      pens.forEach((body, index) => {
+        if (body.retrace || body.colorAnchor || body.length <= .1) return;
+        for (const point of body.points) {
+          const distance = (point.x - x) ** 2 + (point.y - y) ** 2;
+          if (distance <= nearest) { nearest = distance; position = offsets[index] + point.distance; }
+        }
+      });
+      dotColor = gradientColor(position / total);
+    }
     const pieces: GradientPiece[] = [];
     let first = 0;
     const append = (last: number) => {
@@ -38,7 +58,7 @@ export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
       const x1 = a.x - dx * (offset + start) / length, y1 = a.y - dy * (offset + start) / length;
       pieces.push({
         pen: { ...pen, length: end - start, points: pen.points.slice(first, last + 1).map(point => ({ ...point, distance: point.distance - start })) },
-        start, end, from: gradientColor((offset + start) / total), to: gradientColor((offset + end) / total),
+        start, end, from: dotColor ?? gradientColor((offset + start) / total), to: dotColor ?? gradientColor((offset + end) / total),
         axis: [x1, y1, x1 + dx * total / length, y1 + dy * total / length],
       });
       first = last;
@@ -47,7 +67,6 @@ export function gradientPieces(pens: readonly PenPath[]): GradientPiece[][] {
       append(i);
     }
     if (!pieces.length) append(0);
-    offset += pen.length;
     return pieces;
   });
 }

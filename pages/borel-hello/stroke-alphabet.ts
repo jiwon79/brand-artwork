@@ -9,6 +9,8 @@ export interface PenStroke {
   retrace?: boolean;
   /** Preserve this glyph's authored stroke order and direction. */
   ordered?: boolean;
+  /** Deferred dot color is sampled from this point on its own letter body. */
+  colorAnchor?: Point;
 }
 export interface PenGlyph {
   strokes: PenStroke[];

@@ -1,5 +1,6 @@
 import { alphabet, type PenStroke, type Point } from './stroke-alphabet';
 import { joinPenStrokes, routeWord } from './pen-routing';
+import { preparePen } from './pen-geometry';
 
 export type Matrix = readonly [number, number, number, number, number, number];
 export type Bounds = readonly [number, number, number, number];
@@ -47,6 +48,7 @@ function moveInk(ink: GlyphInk, matrix: Matrix): GlyphInk {
   const widthScale = Math.sqrt(Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]));
   const move = (stroke: PenStroke): PenStroke => ({
     d: transformPath(stroke.d, matrix), nibScale: stroke.nibScale, retrace: stroke.retrace, ordered: stroke.ordered,
+    colorAnchor: stroke.colorAnchor && transformPoint(stroke.colorAnchor, matrix),
     width: (stroke.width ?? 90) * widthScale,
     widths: stroke.widths?.map(profile => profile.map(width => width * widthScale) as [number, number, number, number]),
   });
@@ -107,6 +109,17 @@ export function createGlyphResolver(catalog: FontCatalog) {
         ink.exit = transformPoint([552, 347], matrix);
       }
     } else ink = { strokes: [], marks: [] }; // Spacing/control glyphs.
+    if (/^[ij](?:\.|$)/.test(record.name) && ink.marks.length) {
+      // Bind before joining letters: a nearby l/f ascender must not steal a
+      // dot's color. The anchor then follows all glyph/line transformations.
+      const body = ink.strokes.filter(stroke => !stroke.retrace).flatMap(stroke => preparePen(stroke).points);
+      ink.marks = ink.marks.map(mark => {
+        const dot = preparePen(mark).points[0];
+        if (!dot || !body.length) return mark;
+        const nearest = body.reduce((a, b) => Math.hypot(a.x - dot.x, a.y - dot.y) <= Math.hypot(b.x - dot.x, b.y - dot.y) ? a : b);
+        return { ...mark, colorAnchor: [nearest.x, nearest.y] };
+      });
+    }
     cache.set(id, ink);
     return ink;
   }
