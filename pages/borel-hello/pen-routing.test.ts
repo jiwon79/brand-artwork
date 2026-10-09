@@ -69,6 +69,23 @@ test('separate ink components retain a real pen lift', () => {
   expect(routeWord([[left], [right]])).toEqual([left, right]);
 });
 
+test('an authored cursive handoff retains its nib and tangents across nearly touching caps', () => {
+  // The v→w caps were about one font unit apart. A containment bridge either
+  // left a lift or pinched the pen to a needle as it crossed that handoff.
+  const left: PenStroke = { d: 'M0 0 C30 0 60 0 90 0', widths: [[90,90,90,90]], ordered: true };
+  const right: PenStroke = { d: 'M181 0 C211 15 241 30 271 45', widths: [[88,88,88,88]], ordered: true };
+  const routed = routeWord([[left], [right]]);
+  expect(routed).toHaveLength(3);
+  const bridge = preparePen(routed[1]);
+  expect(bridge.points[0].x).toBe(90);
+  expect(bridge.points[bridge.points.length - 1].x).toBe(181);
+  expect(Math.min(...bridge.points.map(point => point.radius))).toBeGreaterThanOrEqual(44);
+  const controls = routed[1].d.match(/[-+]?(?:\d*\.)?\d+/g)!.map(Number);
+  expect(controls[3] - controls[1]).toBeCloseTo(0, 3);
+  // End direction agrees with the following diagonal, not the center-to-center chord.
+  expect((controls[7] - controls[5]) / (controls[6] - controls[4])).toBeCloseTo(.5, 3);
+});
+
 test('authored glyph order keeps a continuous loop and exit without graph retracing', () => {
   const loop: PenStroke = { d: 'M0 0 C60 -100 0 -160 0 -100 C0 -60 0 -20 0 0', width: 20, ordered: true };
   const exit: PenStroke = { d: 'M0 0 C20 0 40 0 60 0', width: 20, ordered: true };

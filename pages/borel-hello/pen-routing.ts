@@ -95,6 +95,22 @@ function capJoin(a: Endpoint, b: Endpoint): PenStroke {
   };
 }
 
+/** Authored entries and exits describe actual pen motion. Carry their full
+ * round nib through the handoff, with the same tangents on both sides. The
+ * graph's containment-only bridge can pinch to zero between touching caps.
+ */
+function cursiveJoin(before: PenStroke, after: PenStroke): PenStroke {
+  const [, a] = endpoints(before), [b] = endpoints(after);
+  const incoming = direction(before, true), outgoing = direction(after);
+  const handle = distance(a.point, b.point) / 3;
+  const first: Point = [a.point[0] + incoming[0] * handle, a.point[1] + incoming[1] * handle];
+  const last: Point = [b.point[0] - outgoing[0] * handle, b.point[1] - outgoing[1] * handle];
+  return {
+    d: `M${coordinates(a.point)} C${coordinates(first)} ${coordinates(last)} ${coordinates(b.point)}`,
+    widths: [[a.radius * 2, a.radius * 2, b.radius * 2, b.radius * 2]],
+  };
+}
+
 /** Preserve authored glyph sequences and join their entry/exit caps. Other
  * glyphs use graph traversal through their actual junctions. Keeping authored
  * runs out of that graph prevents reverse trips around completed loops.
@@ -108,7 +124,12 @@ export function routeWord(glyphs: readonly (readonly PenStroke[])[]): PenStroke[
     if (result.length) {
       const [, a] = endpoints(result[result.length - 1]), [b] = endpoints(strokes[0]);
       const gap = distance(a.point, b.point);
-      if (gap >= .01 && gap < a.radius + b.radius) result.push(capJoin(a, b));
+      const authored = result[result.length - 1].ordered || strokes[0].ordered;
+      // Font joins can leave a subpixel gap between caps. Only authored
+      // cursive endpoints may bridge that small tolerance; real lifts stay.
+      if (gap >= .01 && gap < (a.radius + b.radius) * (authored ? 1.15 : 1)) {
+        result.push(authored ? cursiveJoin(result[result.length - 1], strokes[0]) : capJoin(a, b));
+      }
     }
     result.push(...strokes);
   };
