@@ -50,8 +50,8 @@
     <div class="weight-control"><label for="weight">굵기</label><input id="weight" type="range" min="50" max="150" step="5" value="100" aria-valuetext="100%"><output id="weight-value" for="weight">100%</output><button id="reset-weight" aria-label="굵기 기본값으로">기본</button></div>
     <div class="view-switch" role="group" aria-label="보기 모드"><button id="ink-view" aria-pressed="true">잉크</button><button id="tube-view" aria-pressed="false">3D 원통</button><button id="order-view" aria-pressed="false">획순 경로</button></div>
     <div id="tube-controls" hidden>
-      <div class="tube-finish-switch" role="group" aria-label="원통 재질"><button id="tube-solid" aria-pressed="true">단색</button><button id="tube-rainbow" aria-pressed="false"><span class="color-swatch rainbow-swatch" aria-hidden="true"></span>무광 무지개</button><button id="tube-glossy" aria-pressed="false"><span class="color-swatch glossy-swatch" aria-hidden="true"></span>유광 무지개</button></div>
-      <label id="tube-color-control">원통 색상 <input id="tube-color" type="color" value="#e4dfd8"></label><button id="reset-camera">시점 초기화</button><span>드래그로 회전 · 스크롤로 확대</span>
+      <div class="tube-color-switch" role="group" aria-label="원통 색상 모드"><button id="tube-solid" aria-pressed="false">단색</button><button id="tube-rainbow" aria-pressed="true"><span class="color-swatch rainbow-swatch" aria-hidden="true"></span>무지개</button></div>
+      <label id="tube-color-control" hidden>원통 색상 <input id="tube-color" type="color" value="#e4dfd8"></label><button id="reset-camera">시점 초기화</button><span>드래그로 회전 · 스크롤로 확대</span>
     </div>
     <p id="tube-status" class="order-note" role="status" hidden></p>
     <div id="order-panel" hidden>

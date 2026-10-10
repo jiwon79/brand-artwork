@@ -1,28 +1,39 @@
-import { Color, MeshPhysicalMaterial, MeshStandardMaterial, type Texture } from 'three';
-import { gradientPieces } from './gradient-ink';
+import { Color, SRGBColorSpace } from 'three';
 import type { PenPath } from './pen-geometry';
 
-export type TubeFinish = 'solid' | 'matte-rainbow' | 'glossy-rainbow';
-export const tubeRainbowPalette = ['#1686ff', '#7135e8', '#d715c4', '#f51d60', '#ff7018', '#f3cd16', '#70ce29', '#00b6a0'];
+export type TubeColorMode = 'solid' | 'rainbow';
 
-/** Reuse the body/mark anchors from the ink gradient with a vivid 3D palette.
- * Each ring has one fixed linear-light color. Surface normals and view angle
- * change its shading, never its place in the spectrum. */
+// Horizontal, smoothly interpolated stops observed in the public Spline scene.
+// Timing and traveled distance do not move a color already assigned to a letter.
+export const tubeRainbowStops = [
+  [0, '#ff5f5f'], [.196167, '#ffa17e'], [.288135, '#ffcb44'],
+  [.425439, '#8fd668'], [.495215, '#8edccb'], [.633081, '#819bfc'],
+  [.774878, '#819bfc'], [.839478, '#d183ff'], [.964551, '#ff60ab'], [1, '#ff5f5f'],
+] as const;
+
+export function tubeRainbowColor(progress: number): Color {
+  const t = Math.max(0, Math.min(1, progress));
+  let index = 1;
+  while (index < tubeRainbowStops.length - 1 && tubeRainbowStops[index][0] < t) index++;
+  const [left, from] = tubeRainbowStops[index - 1], [right, to] = tubeRainbowStops[index];
+  const fraction = (t - left) / (right - left), smooth = fraction * fraction * (3 - 2 * fraction);
+  const a = new Color(from).convertLinearToSRGB(), b = new Color(to).convertLinearToSRGB();
+  a.lerp(b, smooth);
+  return new Color().setRGB(a.r, a.g, a.b, SRGBColorSpace);
+}
+
+/** One fixed horizontal field across the whole text. Deferred dots use their
+ * own stem's anchor; crossbars sample the same field at each stem crossing. */
 export function createTubeColors(pens: readonly PenPath[]): Color[][] {
-  return gradientPieces(pens, tubeRainbowPalette).map((pieces, index) => {
-    if (!pieces.length) return pens[index].points.map(() => new Color(0xffffff));
-    return [new Color(pieces[0].from), ...pieces.map(piece => new Color(piece.to))].slice(0, pens[index].points.length);
-  });
-}
-
-export function createMatteTubeMaterial(vertexColors = false) {
-  return new MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, vertexColors });
-}
-
-export function createGlossyTubeMaterial(environment: Texture, vertexColors = false) {
-  return new MeshPhysicalMaterial({
-    color: 0xffffff, vertexColors, roughness: .24, metalness: .02,
-    clearcoat: 1, clearcoatRoughness: .14, ior: 1.46,
-    envMap: environment, envMapIntensity: .8,
-  });
+  const bodies = pens.filter(pen => !pen.retrace && !pen.colorAnchors && pen.points.length);
+  const bounds = bodies.length ? bodies : pens.filter(pen => !pen.retrace);
+  let left = Infinity, right = -Infinity;
+  for (const pen of bounds) for (const point of pen.points) {
+    left = Math.min(left, point.x); right = Math.max(right, point.x);
+  }
+  const span = right - left;
+  return pens.map(pen => pen.points.map(point => {
+    const x = pen.length <= .1 && pen.colorAnchors?.length ? pen.colorAnchors[0][0] : point.x;
+    return tubeRainbowColor(span > 1e-8 ? (x - left) / span : .5);
+  }));
 }

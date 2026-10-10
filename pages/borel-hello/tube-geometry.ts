@@ -8,7 +8,7 @@ interface DepthRamp { start: number; end: number; height: number }
 interface Contact { earlier: Segment; later: Segment; before: number; after: number; clearance: number }
 interface Segment { a: TubePoint; b: TubePoint; path: number; group: number; offset: number; index: number }
 export const TUBE_SCALE = .001;
-export const TUBE_SIDES = 24;
+export const TUBE_SIDES = 48;
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const subtract = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 export const multiply = (v: Vec3, scale: number): Vec3 => [v[0] * scale, v[1] * scale, v[2] * scale];

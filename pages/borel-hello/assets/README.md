@@ -110,15 +110,25 @@ Changing a pen curve changes the visible ink itself.
 
 The **3D 원통** mode lazily loads a Three.js renderer. It uses the same prepared
 center paths, widths and playback distances to extend circular tube meshes with
-flat moving end caps. **단색** retains its selectable color and satin surface;
-**무광 무지개** uses a vivid fixed spectrum with fully rough, nonmetallic shading.
-**유광 무지개** uses the same colors with a clear coat and broad studio-panel
-reflections. Its generated environment map is applied only to glossy body,
-cap and dot materials; it does not alter the matte/solid lighting or the paths.
-Rainbow colors belong to mesh rings, with matching moving caps, so changing
-the camera or playback progress cannot move the color field or spill color
-across intersections. Deferred dots and crossbars borrow their own body colors,
-including both anchors of a shared tt crossbar. Whole connected runs receive broad, monotone depth ramps and
+flat moving end caps and spherical dots. Both **단색** and **무지개** use one
+soft studio surface, with rainbow selected initially. `tube-material.ts` combines
+an analytic, camera-relative reflection field with cool volume shading and
+Fresnel edges. There is no bloom, transparency, environment-map download or
+separate matte/glossy material. Circular sections use 48 sides for smooth normals.
+
+The visual reference is the public [Spline handwritten scene](https://my.spline.design/3dpathshandwrittencopy-5738fab2c72ab2937badc0013eff7d8e/).
+Its embedded scene (runtime 0.9.232) uses an elliptical extrusion along a 3D
+Bézier path, a spherical dot, a horizontal ten-stop gradient, two matcap layers
+and two Fresnel layers. The text's Phong layer and scene bloom are disabled.
+Our surface implements that layered appearance procedurally; it does not bundle
+the reference runtime, geometry or matcap images. The authored Borel curves
+continue to define the lettering.
+
+Rainbow colors sample a fixed horizontal field over the complete text, from
+coral through yellow, green, mint, blue, violet and pink. Each ring and moving
+cap retains its assigned color during camera movement and frame scrubbing.
+Deferred dots sample their own stem anchors; crossbars sample the same spatial
+field as the stems they cross. Whole connected runs receive broad, monotone depth ramps and
 pen-lifted strokes receive depth offsets, keeping later crossings above earlier
 tubes with clearance reserved for 150% weight. Depth never rises and falls only
 at an isolated intersection. Deferred dots inherit their own letter's depth.

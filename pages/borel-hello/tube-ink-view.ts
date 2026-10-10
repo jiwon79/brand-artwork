@@ -4,20 +4,18 @@ import type { Bounds } from './lettering';
 import { strokeState, type PenPlayback } from './pen-playback';
 import { createTubeFrames, createTubePaths, multiply, subtract, TUBE_SCALE, TUBE_SIDES, type TubeFrame, type TubePath, type TubePoint, type Vec3 } from './tube-geometry';
 import { TubeBodyGeometry } from './tube-mesh';
-import { createGlossyTubeMaterial, createMatteTubeMaterial, createTubeColors, type TubeFinish } from './tube-color';
-import { createTubeStudioEnvironment } from './tube-lighting';
+import { createTubeColors, type TubeColorMode } from './tube-color';
+import { TubeMaterial } from './tube-material';
 
 interface TubeMesh {
   path: TubePath;
   frames: TubeFrame[];
-  body: THREE.Mesh<TubeBodyGeometry, THREE.MeshStandardMaterial>;
+  body: THREE.Mesh<TubeBodyGeometry, TubeMaterial>;
   start: THREE.Mesh;
   tip: THREE.Mesh;
   dot?: THREE.Mesh;
-  startColor: THREE.MeshStandardMaterial;
-  tipColor: THREE.MeshStandardMaterial;
-  startGloss: THREE.MeshPhysicalMaterial;
-  tipGloss: THREE.MeshPhysicalMaterial;
+  startColor: TubeMaterial;
+  tipColor: TubeMaterial;
   written: number;
   pressure: number;
   weight: number;
@@ -30,15 +28,11 @@ export class TubeInkView {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.OrthographicCamera(-3, 3, 2, -2, .01, 100);
   private readonly controls: OrbitControls;
-  private readonly material = new THREE.MeshStandardMaterial({ color: '#e4dfd8', roughness: .32, metalness: .04 });
-  private readonly rainbowMaterial = createMatteTubeMaterial(true);
-  private readonly glossyEnvironment: THREE.WebGLRenderTarget;
-  private readonly glossyMaterial: THREE.MeshPhysicalMaterial;
+  private readonly material = new TubeMaterial();
+  private readonly rainbowMaterial = new TubeMaterial(true);
   private readonly capGeometry = new THREE.CircleGeometry(1, TUBE_SIDES);
-  private readonly dotGeometry = new THREE.CylinderGeometry(1, 1, 1, TUBE_SIDES);
+  private readonly dotGeometry = new THREE.SphereGeometry(1, TUBE_SIDES, 32);
   private readonly group = new THREE.Group();
-  private readonly key = new THREE.DirectionalLight(0xfff5e9, 3.2);
-  private readonly backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShadowMaterial({ color: 0x000000, opacity: .25 }));
   private readonly resizeObserver: ResizeObserver;
   private playback: PenPlayback = { strokes: [], duration: 0 };
   private meshes: TubeMesh[] = [];
@@ -50,27 +44,11 @@ export class TubeInkView {
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    this.renderer.setClearColor(0x14151c);
+    this.renderer.setClearColor(0xeee7ff);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.glossyEnvironment = createTubeStudioEnvironment(this.renderer);
-    this.glossyMaterial = createGlossyTubeMaterial(this.glossyEnvironment.texture, true);
-    this.scene.add(this.group, this.backdrop, new THREE.HemisphereLight(0xf0f3ff, 0x333341, 1.25));
-    this.backdrop.position.z = -.18;
-    this.backdrop.receiveShadow = true;
-    this.key.position.set(-3, 5, 7);
-    this.key.castShadow = true;
-    this.key.shadow.mapSize.set(2048, 2048);
-    this.key.shadow.bias = -.00005;
-    this.key.shadow.normalBias = .002;
-    this.key.shadow.radius = 4;
-    this.scene.add(this.key, this.key.target);
-    const fill = new THREE.DirectionalLight(0xdce5ff, 1.05); fill.position.set(4, -2, 4); this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xffffff, 1.8); rim.position.set(1, 4, -.5); this.scene.add(rim);
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.scene.add(this.group);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enablePan = false;
     this.controls.enableDamping = false;
@@ -103,30 +81,20 @@ export class TubeInkView {
     }
     this.depth = far - near;
     this.group.position.z = -(near + far) / 2;
-    this.backdrop.position.z = near + this.group.position.z - .15;
     this.meshes = paths.map((path, index) => {
       const geometry = new TubeBodyGeometry(path, frames[index], colors[index]);
-      const startColor = createMatteTubeMaterial(), tipColor = createMatteTubeMaterial();
-      const startGloss = createGlossyTubeMaterial(this.glossyEnvironment.texture), tipGloss = createGlossyTubeMaterial(this.glossyEnvironment.texture);
+      const startColor = new TubeMaterial(), tipColor = new TubeMaterial();
       if (colors[index].length) startColor.color.copy(colors[index][0]);
-      startGloss.color.copy(startColor.color);
       const body = new THREE.Mesh(geometry, this.material);
-      body.frustumCulled = false; body.castShadow = true; body.receiveShadow = true;
+      body.frustumCulled = false;
       const start = new THREE.Mesh(this.capGeometry, this.material), tip = new THREE.Mesh(this.capGeometry, this.material);
-      start.castShadow = tip.castShadow = true;
-      start.receiveShadow = tip.receiveShadow = true;
       const dot = playback.strokes[index].dot ? new THREE.Mesh(this.dotGeometry, this.material) : undefined;
-      if (dot) { dot.rotation.x = Math.PI / 2; dot.castShadow = true; dot.receiveShadow = true; this.group.add(dot); }
+      if (dot) this.group.add(dot);
       this.group.add(body, start, tip);
       body.visible = start.visible = tip.visible = false;
       if (dot) dot.visible = false;
-      return { path, frames: frames[index], body, start, tip, dot, startColor, tipColor, startGloss, tipGloss, written: -1, pressure: -1, weight: -1 };
+      return { path, frames: frames[index], body, start, tip, dot, startColor, tipColor, written: -1, pressure: -1, weight: -1 };
     });
-    const extent = Math.max(this.width, this.height, this.depth);
-    this.backdrop.scale.set(this.width * 4, this.height * 4, 1);
-    this.key.position.set(-extent * .6, extent, extent * 1.4);
-    Object.assign(this.key.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: .1, far: Math.max(50, extent * 5) });
-    this.key.shadow.camera.updateProjectionMatrix();
     this.resetCamera();
   }
 
@@ -136,17 +104,16 @@ export class TubeInkView {
     cap.scale.setScalar(point.radius * weight);
   }
 
-  render(time: number, weight: number, color: string, finish: TubeFinish = 'solid') {
-    const rainbow = finish !== 'solid', glossy = finish === 'glossy-rainbow';
+  render(time: number, weight: number, color: string, colorMode: TubeColorMode = 'rainbow') {
+    const rainbow = colorMode === 'rainbow';
     this.material.color.set(color);
-    this.renderer.toneMappingExposure = rainbow ? .95 : 1.1;
     for (const [index, mesh] of this.meshes.entries()) {
       const timed = this.playback.strokes[index], { written, pressure } = strokeState(timed, time);
       const { path } = mesh, visible = !timed.pen.retrace && written > 0 && pressure > 0 && !!path.points.length;
       mesh.body.visible = mesh.start.visible = mesh.tip.visible = visible && !mesh.dot;
-      mesh.body.material = glossy ? this.glossyMaterial : rainbow ? this.rainbowMaterial : this.material;
-      mesh.start.material = glossy ? mesh.startGloss : rainbow ? mesh.startColor : this.material;
-      mesh.tip.material = glossy ? mesh.tipGloss : rainbow ? mesh.tipColor : this.material;
+      mesh.body.material = rainbow ? this.rainbowMaterial : this.material;
+      mesh.start.material = rainbow ? mesh.startColor : this.material;
+      mesh.tip.material = rainbow ? mesh.tipColor : this.material;
       if (mesh.dot) mesh.dot.material = mesh.start.material;
       if (mesh.written === written && mesh.weight === weight && mesh.pressure === pressure) continue;
       if (mesh.dot) {
@@ -154,12 +121,11 @@ export class TubeInkView {
         if (visible) {
           const point = path.points[0], radius = point.radius * pressure * weight;
           mesh.dot.position.set(point.center[0], point.center[1], point.center[2] + radius * .6);
-          mesh.dot.scale.set(radius, radius * 1.2, radius);
+          mesh.dot.scale.setScalar(radius);
         }
       } else if (path.points.length > 1) {
         const { point, frame, color } = mesh.body.geometry.setProgress(visible ? written : 0, weight);
         mesh.tipColor.color.copy(color);
-        mesh.tipGloss.color.copy(color);
         if (visible) {
           this.cap(mesh.start, path.points[0], multiply(mesh.frames[0].tangent, -1), weight);
           this.cap(mesh.tip, point, frame.tangent, weight);
@@ -212,7 +178,6 @@ export class TubeInkView {
   private disposeMeshes() {
     for (const mesh of this.meshes) {
       mesh.body.geometry.dispose(); mesh.startColor.dispose(); mesh.tipColor.dispose();
-      mesh.startGloss.dispose(); mesh.tipGloss.dispose();
     }
   }
 
@@ -221,7 +186,6 @@ export class TubeInkView {
     this.resizeObserver.disconnect(); this.controls.dispose();
     this.disposeMeshes();
     this.capGeometry.dispose(); this.dotGeometry.dispose(); this.material.dispose(); this.rainbowMaterial.dispose();
-    this.glossyMaterial.dispose(); this.glossyEnvironment.dispose();
-    this.backdrop.geometry.dispose(); this.backdrop.material.dispose(); this.renderer.dispose();
+    this.renderer.dispose();
   }
 }

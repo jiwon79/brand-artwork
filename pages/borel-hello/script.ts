@@ -9,7 +9,7 @@ import { StrokeOrderView, stepName } from './stroke-order-view';
 import { GradientInkView } from './gradient-ink-view';
 import { teachingReference } from './teaching-model';
 import type { TubeInkView } from './tube-ink-view';
-import type { TubeFinish } from './tube-color';
+import type { TubeColorMode } from './tube-color';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -52,7 +52,7 @@ function showTeachingReference(character: string) {
 }
 let inspecting = false;
 let tubing = false;
-let tubeFinish: TubeFinish = 'solid';
+let tubeColorMode: TubeColorMode = 'rainbow';
 let tubeView: TubeInkView | undefined;
 let tubeLoading: Promise<void> | undefined;
 const tubeCanvas = document.querySelector<HTMLCanvasElement>('#tube-artwork')!;
@@ -131,7 +131,7 @@ function render() {
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
     if (gradientEnabled && !inspecting) gradientView.renderStroke(index, written, pressure, settings.weight);
   }
-  if (tubing) tubeView?.render(time, settings.weight, tubeColor.value, tubeFinish);
+  if (tubing) tubeView?.render(time, settings.weight, tubeColor.value, tubeColorMode);
   const frameCount = Math.round(settings.duration * 60);
   slider.max = String(frameCount);
   slider.step = '1';
@@ -265,12 +265,12 @@ function setView(mode: 'ink' | 'order' | 'tube') {
 }
 for (const mode of ['ink', 'order', 'tube'] as const) document.querySelector(`#${mode}-view`)!.addEventListener('click', () => setView(mode));
 tubeColor.addEventListener('input', render);
-const tubeFinishes = [['tube-solid', 'solid'], ['tube-rainbow', 'matte-rainbow'], ['tube-glossy', 'glossy-rainbow']] as const;
-for (const [id, finish] of tubeFinishes) {
+const tubeColorModes = [['tube-solid', 'solid'], ['tube-rainbow', 'rainbow']] as const;
+for (const [id, mode] of tubeColorModes) {
   document.querySelector(`#${id}`)!.addEventListener('click', () => {
-    tubeFinish = finish;
-    for (const [button, option] of tubeFinishes) document.querySelector(`#${button}`)!.setAttribute('aria-pressed', String(finish === option));
-    document.querySelector<HTMLElement>('#tube-color-control')!.hidden = finish !== 'solid';
+    tubeColorMode = mode;
+    for (const [button, option] of tubeColorModes) document.querySelector(`#${button}`)!.setAttribute('aria-pressed', String(mode === option));
+    document.querySelector<HTMLElement>('#tube-color-control')!.hidden = mode !== 'solid';
     render();
   });
 }
