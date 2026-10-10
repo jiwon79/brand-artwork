@@ -1,4 +1,4 @@
-import { penGeometry, type PenPath } from './pen-geometry';
+import { penGeometry, type PenPath, type PenPoint } from './pen-geometry';
 
 // Spectrum reference: https://developer.apple.com/videos/play/wwdc2022/10037/
 export const gradientPalette = ['#2589a6', '#70b49c', '#cedb56', '#f4d35e', '#f5a16c', '#eb7266', '#d57ba5', '#9764aa', '#6b83c6', '#7ab6da'];
@@ -102,4 +102,48 @@ export function gradientPieceGeometry(piece: GradientPiece, written: number, pre
   const distance = Math.min(piece.pen.length, written - piece.start);
   if (distance <= 0 || pressure <= 0) return '';
   return penGeometry(piece.pen, distance, pressure, weight);
+}
+
+/** Move a color interval with its original material coordinates. Color anchors
+ * were resolved before deformation; dragging a dot or a stem cannot reassign it
+ * to a different letter, or redistribute the spectrum by the new arc length. */
+export function deformGradientPiece(piece: GradientPiece, pen: PenPath): GradientPiece {
+  const sample = (distance: number): PenPoint => {
+    let low = 0, high = pen.points.length - 1;
+    while (low + 1 < high) {
+      const middle = (low + high) >> 1;
+      if (pen.points[middle].distance < distance) low = middle; else high = middle;
+    }
+    const a = pen.points[low], b = pen.points[high];
+    const t = Math.max(0, Math.min(1, (distance - a.distance) / (b.distance - a.distance || 1)));
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
+      radius: a.radius + (b.radius - a.radius) * t, distance: distance - piece.start };
+  };
+  const a = sample(piece.start), b = sample(piece.end);
+  const points = [a];
+  // Keep every new curve sample inside this fixed color interval, including
+  // bends that did not exist in the original letter tessellation.
+  let low = 0, high = pen.points.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (pen.points[middle].distance <= piece.start) low = middle + 1; else high = middle;
+  }
+  for (let i = low; i < pen.points.length && pen.points[i].distance < piece.end; i++) {
+    points.push({ ...pen.points[i], distance: pen.points[i].distance - piece.start });
+  }
+  if (piece.end > piece.start) points.push(b);
+  const curve = { ...pen, points, length: piece.end - piece.start };
+  if (piece.solid) return { ...piece, pen: curve };
+  const [x1, y1, x2, y2] = piece.axis, dx = x2 - x1, dy = y2 - y1;
+  const progress = (p: PenPoint) => ((p.x - x1) * dx + (p.y - y1) * dy) / (dx * dx + dy * dy || 1);
+  const from = progress(piece.pen.points[0]), to = progress(piece.pen.points[piece.pen.points.length - 1]);
+  const span = to - from;
+  if (Math.abs(span) < 1e-12) return { ...piece, pen: curve, solid: piece.from };
+  let vx = b.x - a.x, vy = b.y - a.y;
+  if (Math.hypot(vx, vy) < 1e-8) {
+    const next = points.find(p => Math.hypot(p.x - a.x, p.y - a.y) > 1e-8);
+    vx = next ? next.x - a.x : 1; vy = next ? next.y - a.y : 0;
+  }
+  const startX = a.x - vx * from / span, startY = a.y - vy * from / span;
+  return { ...piece, pen: curve, axis: [startX, startY, startX + vx / span, startY + vy / span] };
 }

@@ -56,7 +56,14 @@ let tubing = false;
 let roping = false;
 let rope = new FloorRope([]);
 const ropeLayer = svgElement('g', { fill: 'currentColor', 'pointer-events': 'none' });
-artwork.append(ropeLayer);
+const ropeGradientView = new GradientInkView('borel-rope');
+const ropeShape = svgElement('g', { id: 'borel-rope-ink-shape' });
+const ropeMask = svgElement('mask', { id: 'borel-rope-ink-mask', maskUnits: 'userSpaceOnUse', 'mask-type': 'alpha' });
+ropeMask.append(svgElement('use', { href: '#borel-rope-ink-shape' }));
+definitions.append(ropeShape, ropeMask);
+const solidRope = svgElement('use', { href: '#borel-rope-ink-shape' });
+ropeLayer.append(solidRope, ropeGradientView.layer);
+artwork.append(ropeGradientView.definitions, ropeLayer);
 let ropePaths: SVGPathElement[] = [];
 let ropePointer: number | undefined;
 let tubeColorMode: TubeColorMode = 'rainbow';
@@ -141,7 +148,23 @@ function render() {
   }
   ropeLayer.style.display = roping ? '' : 'none';
   inkLayer.style.display = roping ? 'none' : '';
-  if (roping) for (const [index, path] of ropePaths.entries()) path.setAttribute('d', penGeometry(rope.deformed(index), undefined, 1, settings.weight));
+  if (roping) {
+    const pens = ropePaths.map((_, index) => rope.deformed(index));
+    for (const [index, path] of ropePaths.entries()) {
+      path.setAttribute('d', penGeometry(pens[index], undefined, 1, settings.weight));
+      if (gradientEnabled) ropeGradientView.renderDeformedStroke(index, pens[index], settings.weight);
+    }
+    solidRope.style.display = gradientEnabled ? 'none' : '';
+    ropeGradientView.layer.style.display = gradientEnabled ? '' : 'none';
+    if (gradientEnabled) {
+      // The color buffer and alpha mask follow the rope outside its original
+      // lettering bounds, rather than clipping the part being pulled.
+      const deformedBounds = expandPenBounds(bounds, pens, settings.weight);
+      const [left, top, right, bottom] = deformedBounds;
+      for (const [name, value] of Object.entries({ x: left, y: top, width: right - left, height: bottom - top })) ropeMask.setAttribute(name, String(value));
+      ropeGradientView.updateBounds(deformedBounds);
+    }
+  }
   if (tubing) tubeView?.render(time, settings.weight, tubeColor.value, tubeColorMode);
   const frameCount = Math.round(settings.duration * 60);
   slider.max = String(frameCount);
@@ -261,7 +284,8 @@ function resetRope() {
   cancelRopeGrab();
   rope = new FloorRope(playback.strokes.map(stroke => stroke.pen));
   ropePaths = playback.strokes.map(() => svgElement('path', {}));
-  ropeLayer.replaceChildren(...ropePaths);
+  ropeShape.replaceChildren(...ropePaths);
+  ropeGradientView.setPens(playback.strokes.map(stroke => stroke.pen), bounds);
 }
 function ropePoint(event: PointerEvent) {
   const matrix = artwork.getScreenCTM();
