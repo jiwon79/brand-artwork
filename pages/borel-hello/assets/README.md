@@ -109,11 +109,19 @@ panel can separately overlay exact font outlines or the center trajectories.
 Changing a pen curve changes the visible ink itself.
 
 The **3D 원통** mode lazily loads a Three.js renderer. It uses the same prepared
-center paths, widths and playback distances to extend circular tube meshes with
-flat moving end caps and spherical dots. Both **단색** and **무지개** use one
+center paths and playback distances as the source for circular tube meshes with
+flat moving end caps and spherical dots. At 100% weight, the body diameter is
+twice the 2D nib diameter; dots use a 1.5× scale to stay proportionate. Before
+depth layout, a 70-font-unit Gaussian arc neighborhood relaxes short 3D bends,
+with a tested maximum XY displacement of 56 font units. Connected paths share
+one filter and closed paths wrap the sample neighborhood, so joins do not open.
+This relaxation keeps the full tube width through j-to-i handoffs instead of
+creating a local neck. Playback distances and the original 2D recipes stay intact. Both **단색** and **무지개** use one
 soft studio surface, with rainbow selected initially. `tube-material.ts` combines
 an analytic, camera-relative reflection field with cool volume shading and
-Fresnel edges. There is no bloom, transparency, environment-map download or
+Fresnel edges. A rounded softbox lobe and a softer narrow core replace the
+rectangular highlight plateau. The default camera is almost frontal so thick
+loops retain their lettering proportions. There is no bloom, transparency, environment-map download or
 separate matte/glossy material. Circular sections use 48 sides for smooth normals.
 
 The visual reference is the public [Spline handwritten scene](https://my.spline.design/3dpathshandwrittencopy-5738fab2c72ab2937badc0013eff7d8e/).
@@ -136,7 +144,8 @@ Parallel-transported frames keep circular sections continuous through stem
 returns and joined paths. Frame scrubbing restores completed mesh rings before
 extending a new tip. Rotation, zoom and camera reset affect only the 3D view;
 the authored 2D paths, shaping and stroke order are unchanged. Tube tests cover
-sampled crossing clearance, ring continuity and complete mesh/color recovery
+sampled crossing clearance at the fuller radius, bounded 3D relaxation, join
+invariance, closed seams, ring continuity and complete mesh/color recovery
 after forward/backward scrubbing and weight changes. Color probes check local
 dot/crossbar ownership independently of the palette mapping.
 

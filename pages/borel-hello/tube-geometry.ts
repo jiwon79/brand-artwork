@@ -9,6 +9,10 @@ interface Contact { earlier: Segment; later: Segment; before: number; after: num
 interface Segment { a: TubePoint; b: TubePoint; path: number; group: number; offset: number; index: number }
 export const TUBE_SCALE = .001;
 export const TUBE_SIDES = 48;
+// A sculptural tube is fuller than the 2D nib. Apply this before depth layout
+// so crossing clearance and framing reserve the actual 150% tube diameter.
+export const TUBE_RADIUS_SCALE = 2;
+export const TUBE_DOT_RADIUS_SCALE = 1.5;
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const subtract = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 export const multiply = (v: Vec3, scale: number): Vec3 => [v[0] * scale, v[1] * scale, v[2] * scale];
@@ -39,14 +43,15 @@ function proximity(a: TubePoint, b: TubePoint, u: TubePoint, v: TubePoint) {
 
 /** Lay out depth over complete connected writing runs. Each separation adds a
  * broad monotone ramp, never a local bump that goes up and back down. All
- * authored XY coordinates and arc distances remain unchanged. Later ramps
+ * relaxed XY coordinates and authored playback distances stay fixed. Later ramps
  * cannot undo clearance already established between two earlier positions.
  */
 export function createTubePaths(pens: readonly PenPath[], origin: readonly [number, number]): TubePath[] {
   const paths: TubePath[] = pens.map(pen => ({ length: pen.length, points: pen.points.map(p => ({
     center: [(p.x - origin[0]) * TUBE_SCALE, (origin[1] - p.y) * TUBE_SCALE, 0],
-    radius: p.radius * TUBE_SCALE, distance: p.distance,
+    radius: p.radius * TUBE_SCALE * (pen.length <= .1 ? TUBE_DOT_RADIUS_SCALE : TUBE_RADIUS_SCALE), distance: p.distance,
   })) }));
+  softenTubeCenters(paths, pens);
   const groups: { ramps: DepthRamp[]; offset: number; length: number }[] = [];
   const owners = paths.map((path, index) => {
     const previous = paths[index - 1], from = previous?.points[previous.points.length - 1], to = path.points[0];
@@ -117,6 +122,48 @@ export function createTubePaths(pens: readonly PenPath[], origin: readonly [numb
     for (const point of path.points) point.center[2] = depth;
   }
   return paths;
+}
+
+/** Relax the 3D sweep over a fixed arc neighborhood, retaining the authored
+ * playback parameter. This broadens short curvature spikes for fuller tubes;
+ * the 2D pen geometry is never modified. Joined bodies use one shared filter. */
+function softenTubeCenters(paths: readonly TubePath[], pens: readonly PenPath[]) {
+  for (let first = 0; first < paths.length;) {
+    let last = first;
+    const points = [...paths[first].points], offsets = [0];
+    while (last + 1 < paths.length && !pens[last].retrace && !pens[last + 1].retrace &&
+      paths[last].length > .1 && paths[last + 1].length > .1 &&
+      Math.hypot(...subtract(points[points.length - 1].center, paths[last + 1].points[0].center)) < 1e-6) {
+      offsets.push(points.length - 1); points.push(...paths[++last].points.slice(1));
+    }
+    if (points.length < 3 || paths[first].length <= .1 || pens[first].retrace) { first = last + 1; continue; }
+    const distance = [0];
+    for (let i = 1; i < points.length; i++) distance[i] = distance[i - 1] + Math.hypot(...subtract(points[i].center, points[i - 1].center));
+    const closed = Math.hypot(...subtract(points[0].center, points[points.length - 1].center)) < 1e-8;
+    const length = distance[distance.length - 1];
+    const sample = (at: number): Vec3 => {
+      if (closed && length > 0) at = ((at % length) + length) % length;
+      let low = 0, high = points.length - 1;
+      if (at <= 0) high = 1;
+      else if (at >= distance[high]) low = high - 1;
+      else while (low + 1 < high) { const middle = (low + high) >>> 1; if (distance[middle] < at) low = middle; else high = middle; }
+      const t = (at - distance[low]) / (distance[high] - distance[low] || 1);
+      return add(points[low].center, multiply(subtract(points[high].center, points[low].center), t));
+    };
+    const sigma = .07, step = sigma / 5;
+    const smooth = points.map((_, i): Vec3 => {
+      let total = 0, center: Vec3 = [0, 0, 0];
+      for (let k = -15; k <= 15; k++) {
+        const weight = Math.exp(-.5 * (k / 5) ** 2);
+        center = add(center, multiply(sample(distance[i] + k * step), weight)); total += weight;
+      }
+      return multiply(center, 1 / total);
+    });
+    for (let i = first; i <= last; i++) for (let j = 0; j < paths[i].points.length; j++) {
+      paths[i].points[j].center = [...smooth[offsets[i - first] + j]];
+    }
+    first = last + 1;
+  }
 }
 
 export function sampleTube(path: TubePath, distance: number): { point: TubePoint; segment: number; fraction: number } {

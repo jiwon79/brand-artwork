@@ -152,7 +152,7 @@ export class TubeInkView {
 
   resetCamera() {
     const extent = Math.max(this.width, this.height, this.depth, 2);
-    this.camera.position.set(extent * .22, extent * .18, extent * 2);
+    this.camera.position.set(extent * .08, extent * .04, extent * 2);
     this.camera.far = Math.max(100, extent * 8);
     this.controls.target.set(0, 0, 0);
     this.camera.zoom = 1;
