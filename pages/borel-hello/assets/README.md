@@ -109,6 +109,9 @@ The **3D 원통** mode lazily loads a Three.js renderer. It uses the same prepar
 center paths, widths and playback distances to extend circular tube meshes with
 flat moving end caps. **단색** retains its selectable color and satin surface;
 **무광 무지개** uses a vivid fixed spectrum with fully rough, nonmetallic shading.
+**유광 무지개** uses the same colors with a clear coat and broad studio-panel
+reflections. Its generated environment map is applied only to glossy body,
+cap and dot materials; it does not alter the matte/solid lighting or the paths.
 Rainbow colors belong to mesh rings, with matching moving caps, so changing
 the camera or playback progress cannot move the color field or spill color
 across intersections. Deferred dots and crossbars borrow their own body colors,

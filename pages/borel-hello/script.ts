@@ -265,11 +265,11 @@ function setView(mode: 'ink' | 'order' | 'tube') {
 }
 for (const mode of ['ink', 'order', 'tube'] as const) document.querySelector(`#${mode}-view`)!.addEventListener('click', () => setView(mode));
 tubeColor.addEventListener('input', render);
-for (const [id, finish] of [['tube-solid', 'solid'], ['tube-rainbow', 'matte-rainbow']] as const) {
+const tubeFinishes = [['tube-solid', 'solid'], ['tube-rainbow', 'matte-rainbow'], ['tube-glossy', 'glossy-rainbow']] as const;
+for (const [id, finish] of tubeFinishes) {
   document.querySelector(`#${id}`)!.addEventListener('click', () => {
     tubeFinish = finish;
-    document.querySelector('#tube-solid')!.setAttribute('aria-pressed', String(finish === 'solid'));
-    document.querySelector('#tube-rainbow')!.setAttribute('aria-pressed', String(finish === 'matte-rainbow'));
+    for (const [button, option] of tubeFinishes) document.querySelector(`#${button}`)!.setAttribute('aria-pressed', String(finish === option));
     document.querySelector<HTMLElement>('#tube-color-control')!.hidden = finish !== 'solid';
     render();
   });

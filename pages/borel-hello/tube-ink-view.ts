@@ -4,7 +4,8 @@ import type { Bounds } from './lettering';
 import { strokeState, type PenPlayback } from './pen-playback';
 import { createTubeFrames, createTubePaths, multiply, subtract, TUBE_SCALE, TUBE_SIDES, type TubeFrame, type TubePath, type TubePoint, type Vec3 } from './tube-geometry';
 import { TubeBodyGeometry } from './tube-mesh';
-import { createMatteTubeMaterial, createTubeColors, type TubeFinish } from './tube-color';
+import { createGlossyTubeMaterial, createMatteTubeMaterial, createTubeColors, type TubeFinish } from './tube-color';
+import { createTubeStudioEnvironment } from './tube-lighting';
 
 interface TubeMesh {
   path: TubePath;
@@ -15,6 +16,8 @@ interface TubeMesh {
   dot?: THREE.Mesh;
   startColor: THREE.MeshStandardMaterial;
   tipColor: THREE.MeshStandardMaterial;
+  startGloss: THREE.MeshPhysicalMaterial;
+  tipGloss: THREE.MeshPhysicalMaterial;
   written: number;
   pressure: number;
   weight: number;
@@ -29,6 +32,8 @@ export class TubeInkView {
   private readonly controls: OrbitControls;
   private readonly material = new THREE.MeshStandardMaterial({ color: '#e4dfd8', roughness: .32, metalness: .04 });
   private readonly rainbowMaterial = createMatteTubeMaterial(true);
+  private readonly glossyEnvironment: THREE.WebGLRenderTarget;
+  private readonly glossyMaterial: THREE.MeshPhysicalMaterial;
   private readonly capGeometry = new THREE.CircleGeometry(1, TUBE_SIDES);
   private readonly dotGeometry = new THREE.CylinderGeometry(1, 1, 1, TUBE_SIDES);
   private readonly group = new THREE.Group();
@@ -52,6 +57,8 @@ export class TubeInkView {
     this.renderer.toneMappingExposure = 1.1;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.glossyEnvironment = createTubeStudioEnvironment(this.renderer);
+    this.glossyMaterial = createGlossyTubeMaterial(this.glossyEnvironment.texture, true);
     this.scene.add(this.group, this.backdrop, new THREE.HemisphereLight(0xf0f3ff, 0x333341, 1.25));
     this.backdrop.position.z = -.18;
     this.backdrop.receiveShadow = true;
@@ -100,7 +107,9 @@ export class TubeInkView {
     this.meshes = paths.map((path, index) => {
       const geometry = new TubeBodyGeometry(path, frames[index], colors[index]);
       const startColor = createMatteTubeMaterial(), tipColor = createMatteTubeMaterial();
+      const startGloss = createGlossyTubeMaterial(this.glossyEnvironment.texture), tipGloss = createGlossyTubeMaterial(this.glossyEnvironment.texture);
       if (colors[index].length) startColor.color.copy(colors[index][0]);
+      startGloss.color.copy(startColor.color);
       const body = new THREE.Mesh(geometry, this.material);
       body.frustumCulled = false; body.castShadow = true; body.receiveShadow = true;
       const start = new THREE.Mesh(this.capGeometry, this.material), tip = new THREE.Mesh(this.capGeometry, this.material);
@@ -111,7 +120,7 @@ export class TubeInkView {
       this.group.add(body, start, tip);
       body.visible = start.visible = tip.visible = false;
       if (dot) dot.visible = false;
-      return { path, frames: frames[index], body, start, tip, dot, startColor, tipColor, written: -1, pressure: -1, weight: -1 };
+      return { path, frames: frames[index], body, start, tip, dot, startColor, tipColor, startGloss, tipGloss, written: -1, pressure: -1, weight: -1 };
     });
     const extent = Math.max(this.width, this.height, this.depth);
     this.backdrop.scale.set(this.width * 4, this.height * 4, 1);
@@ -128,17 +137,17 @@ export class TubeInkView {
   }
 
   render(time: number, weight: number, color: string, finish: TubeFinish = 'solid') {
-    const rainbow = finish === 'matte-rainbow';
+    const rainbow = finish !== 'solid', glossy = finish === 'glossy-rainbow';
     this.material.color.set(color);
     this.renderer.toneMappingExposure = rainbow ? .95 : 1.1;
     for (const [index, mesh] of this.meshes.entries()) {
       const timed = this.playback.strokes[index], { written, pressure } = strokeState(timed, time);
       const { path } = mesh, visible = !timed.pen.retrace && written > 0 && pressure > 0 && !!path.points.length;
       mesh.body.visible = mesh.start.visible = mesh.tip.visible = visible && !mesh.dot;
-      mesh.body.material = rainbow ? this.rainbowMaterial : this.material;
-      mesh.start.material = rainbow ? mesh.startColor : this.material;
-      mesh.tip.material = rainbow ? mesh.tipColor : this.material;
-      if (mesh.dot) mesh.dot.material = rainbow ? mesh.startColor : this.material;
+      mesh.body.material = glossy ? this.glossyMaterial : rainbow ? this.rainbowMaterial : this.material;
+      mesh.start.material = glossy ? mesh.startGloss : rainbow ? mesh.startColor : this.material;
+      mesh.tip.material = glossy ? mesh.tipGloss : rainbow ? mesh.tipColor : this.material;
+      if (mesh.dot) mesh.dot.material = mesh.start.material;
       if (mesh.written === written && mesh.weight === weight && mesh.pressure === pressure) continue;
       if (mesh.dot) {
         mesh.dot.visible = visible;
@@ -150,6 +159,7 @@ export class TubeInkView {
       } else if (path.points.length > 1) {
         const { point, frame, color } = mesh.body.geometry.setProgress(visible ? written : 0, weight);
         mesh.tipColor.color.copy(color);
+        mesh.tipGloss.color.copy(color);
         if (visible) {
           this.cap(mesh.start, path.points[0], multiply(mesh.frames[0].tangent, -1), weight);
           this.cap(mesh.tip, point, frame.tangent, weight);
@@ -202,6 +212,7 @@ export class TubeInkView {
   private disposeMeshes() {
     for (const mesh of this.meshes) {
       mesh.body.geometry.dispose(); mesh.startColor.dispose(); mesh.tipColor.dispose();
+      mesh.startGloss.dispose(); mesh.tipGloss.dispose();
     }
   }
 
@@ -210,6 +221,7 @@ export class TubeInkView {
     this.resizeObserver.disconnect(); this.controls.dispose();
     this.disposeMeshes();
     this.capGeometry.dispose(); this.dotGeometry.dispose(); this.material.dispose(); this.rainbowMaterial.dispose();
+    this.glossyMaterial.dispose(); this.glossyEnvironment.dispose();
     this.backdrop.geometry.dispose(); this.backdrop.material.dispose(); this.renderer.dispose();
   }
 }
