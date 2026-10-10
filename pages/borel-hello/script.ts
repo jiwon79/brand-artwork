@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import GUI from 'lil-gui';
+import { FloorRope } from './rope';
 import { composeText, unsupportedCharacters, supportedCharacter, type Bounds } from './lettering';
 import { loadBorel } from './shaper';
 import { preparePen, penGeometry, expandPenBounds } from './pen-geometry';
@@ -52,6 +53,12 @@ function showTeachingReference(character: string) {
 }
 let inspecting = false;
 let tubing = false;
+let roping = false;
+let rope = new FloorRope([]);
+const ropeLayer = svgElement('g', { fill: 'currentColor', 'pointer-events': 'none' });
+artwork.append(ropeLayer);
+let ropePaths: SVGPathElement[] = [];
+let ropePointer: number | undefined;
 let tubeColorMode: TubeColorMode = 'rainbow';
 let tubeView: TubeInkView | undefined;
 let tubeLoading: Promise<void> | undefined;
@@ -61,7 +68,7 @@ const tubeStatus = document.querySelector<HTMLElement>('#tube-status')!;
 let bounds: Bounds = [0, 0, 1100, 530];
 let lastOrderStep = -2;
 function updateViewBox() {
-  const [left, top, right, bottom] = bounds, pad = inspecting ? 180 : 0;
+  const [left, top, right, bottom] = bounds, pad = roping ? Math.max(right - left, bottom - top) * .3 : inspecting ? 180 : 0;
   artwork.setAttribute('viewBox', `${left - pad} ${top - pad} ${right - left + 2 * pad} ${bottom - top + 2 * pad}`);
 }
 let strokes: { path: SVGPathElement; written?: number; pressure?: number; weight?: number }[] = [];
@@ -83,6 +90,7 @@ function writeText(text: string) {
   const lettering = composeText(text, loaded.shaper, loaded.catalog);
   playback = createPenPlayback(lettering.strokes.map(preparePen));
   orderView.setPlayback(playback);
+  resetRope();
   inspectStep.replaceChildren(...orderView.steps.map(step => new Option(`${step.index + 1} · ${stepName[step.kind]}`, String(step.index))));
   inspectStep.disabled = !orderView.steps.length;
   lastOrderStep = -2;
@@ -106,8 +114,8 @@ function writeText(text: string) {
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
   tubeCanvas.setAttribute('aria-label', text.trim() ? `획순을 따라 3D 원통으로 써지는 ${text}` : '문장을 입력하면 3D 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
-  progress = reducedMotion.matches ? 1 : 0;
-  playing = Boolean(totalLength) && !reducedMotion.matches;
+  progress = roping || reducedMotion.matches ? 1 : 0;
+  playing = !roping && Boolean(totalLength) && !reducedMotion.matches;
   status.textContent = text.trim() ? `${[...text].length}자 · ${lettering.lines.length}줄` : '위 입력창에 문장을 적어 주세요.';
   start();
 }
@@ -118,7 +126,7 @@ let lastTime = 0;
 let frame = 0;
 function render() {
   const time = progress * playback.duration;
-  if (!tubing) for (const [index, stroke] of strokes.entries()) {
+  if (!tubing && !roping) for (const [index, stroke] of strokes.entries()) {
     const timed = playback.strokes[index];
     const { written, pressure } = strokeState(timed, time);
     if (written !== stroke.written || pressure !== stroke.pressure || settings.weight !== stroke.weight) {
@@ -131,6 +139,9 @@ function render() {
     stroke.path.style.visibility = written > 0 ? 'visible' : 'hidden';
     if (gradientEnabled && !inspecting) gradientView.renderStroke(index, written, pressure, settings.weight);
   }
+  ropeLayer.style.display = roping ? '' : 'none';
+  inkLayer.style.display = roping ? 'none' : '';
+  if (roping) for (const [index, path] of ropePaths.entries()) path.setAttribute('d', penGeometry(rope.deformed(index), undefined, 1, settings.weight));
   if (tubing) tubeView?.render(time, settings.weight, tubeColor.value, tubeColorMode);
   const frameCount = Math.round(settings.duration * 60);
   slider.max = String(frameCount);
@@ -140,8 +151,8 @@ function render() {
   frameNumber.max = String(frameCount);
   document.querySelector('#frame-count')!.textContent = `/ ${frameCount}`;
   pauseButton.textContent = playing ? '일시정지' : progress === 1 ? '재생' : '계속 쓰기';
-  guides.style.display = settings.guides && !inspecting ? '' : 'none';
-  reference.style.display = settings.reference || inspecting ? '' : 'none';
+  guides.style.display = settings.guides && !inspecting && !roping ? '' : 'none';
+  reference.style.display = !roping && (settings.reference || inspecting) ? '' : 'none';
   inkLayer.style.opacity = inspecting ? '.12' : '1';
   solidInk.style.display = gradientEnabled && !inspecting ? 'none' : '';
   gradientView.layer.style.display = gradientEnabled && !inspecting ? '' : 'none';
@@ -160,13 +171,14 @@ function render() {
   document.documentElement.style.background = settings.paper;
 }
 function tick(time: number) {
+  if (roping && lastTime && !document.hidden) rope.step((time - lastTime) / 1000);
   if (playing && lastTime && !document.hidden) {
     progress = Math.min(1, progress + (time - lastTime) * speed / (settings.duration * 1000));
     if (progress === 1) playing = false;
   }
   lastTime = time;
   render();
-  frame = playing ? requestAnimationFrame(tick) : 0;
+  frame = playing || roping && rope.awake ? requestAnimationFrame(tick) : 0;
 }
 function start() {
   lastTime = 0;
@@ -238,17 +250,60 @@ document.querySelector<HTMLSelectElement>('#example')!.addEventListener('change'
   if (ready) { textInput.value = selected; submitText(); }
 });
 
-function setView(mode: 'ink' | 'order' | 'tube') {
+function cancelRopeGrab() {
+  const pointer = ropePointer;
+  ropePointer = undefined;
+  rope.release();
+  if (pointer !== undefined && artwork.hasPointerCapture(pointer)) artwork.releasePointerCapture(pointer);
+  artwork.classList.remove('dragging');
+}
+function resetRope() {
+  cancelRopeGrab();
+  rope = new FloorRope(playback.strokes.map(stroke => stroke.pen));
+  ropePaths = playback.strokes.map(() => svgElement('path', {}));
+  ropeLayer.replaceChildren(...ropePaths);
+}
+function ropePoint(event: PointerEvent) {
+  const matrix = artwork.getScreenCTM();
+  return matrix ? new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse()) : undefined;
+}
+artwork.addEventListener('pointerdown', event => {
+  if (!roping || ropePointer !== undefined || event.button !== 0) return;
+  const point = ropePoint(event);
+  if (!point || !rope.pick(point.x, point.y, 85 * settings.weight)) return;
+  event.preventDefault(); ropePointer = event.pointerId;
+  artwork.setPointerCapture(event.pointerId); artwork.classList.add('dragging');
+  start();
+});
+artwork.addEventListener('pointermove', event => {
+  if (event.pointerId !== ropePointer) return;
+  const point = ropePoint(event);
+  if (point) rope.move(point.x, point.y);
+  if (!frame) start();
+});
+for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) artwork.addEventListener(name, event => {
+  if ((event as PointerEvent).pointerId === ropePointer) { cancelRopeGrab(); start(); }
+});
+document.querySelector('#reset-rope')!.addEventListener('click', () => { resetRope(); render(); });
+
+function setView(mode: 'ink' | 'order' | 'tube' | 'rope') {
   inspecting = mode === 'order'; tubing = mode === 'tube';
+  roping = mode === 'rope';
+  cancelRopeGrab();
+  if (roping) { progress = 1; playing = false; }
+  document.body.classList.toggle('roping', roping);
+  document.querySelector<HTMLElement>('#rope-controls')!.hidden = !roping;
+  for (const element of document.querySelectorAll<HTMLElement>('footer, .frame-controls')) element.hidden = roping;
   orderPanel.hidden = !inspecting;
   document.body.classList.toggle('inspecting', inspecting);
   document.body.classList.toggle('tubing', tubing);
   artwork.toggleAttribute('hidden', tubing);
   tubeCanvas.hidden = !tubing;
   document.querySelector<HTMLElement>('#tube-controls')!.hidden = !tubing;
-  for (const name of ['ink', 'order', 'tube']) document.querySelector(`#${name}-view`)!.setAttribute('aria-pressed', String(mode === name));
+  for (const name of ['ink', 'order', 'tube', 'rope']) document.querySelector(`#${name}-view`)!.setAttribute('aria-pressed', String(mode === name));
   tubeView?.setVisible(tubing);
   updateViewBox(); render();
+  if (roping && rope.awake) start();
   if (tubing && !tubeView && !tubeLoading) {
     tubeStatus.hidden = false; tubeStatus.textContent = '3D 보기를 준비하는 중…';
     tubeLoading = import('./tube-ink-view').then(({ TubeInkView }) => {
@@ -263,7 +318,7 @@ function setView(mode: 'ink' | 'order' | 'tube') {
     }).finally(() => { tubeLoading = undefined; });
   }
 }
-for (const mode of ['ink', 'order', 'tube'] as const) document.querySelector(`#${mode}-view`)!.addEventListener('click', () => setView(mode));
+for (const mode of ['ink', 'order', 'tube', 'rope'] as const) document.querySelector(`#${mode}-view`)!.addEventListener('click', () => setView(mode));
 tubeColor.addEventListener('input', render);
 const tubeColorModes = [['tube-solid', 'solid'], ['tube-rainbow', 'rainbow']] as const;
 for (const [id, mode] of tubeColorModes) {
@@ -275,7 +330,7 @@ for (const [id, mode] of tubeColorModes) {
   });
 }
 document.querySelector('#reset-camera')!.addEventListener('click', () => tubeView?.resetCamera());
-import.meta.hot?.dispose(() => { cancelAnimationFrame(frame); tubeView?.dispose(); gui.destroy(); });
+import.meta.hot?.dispose(() => { cancelAnimationFrame(frame); cancelRopeGrab(); tubeView?.dispose(); gui.destroy(); });
 function jumpToStep(index: number) {
   const step = orderView.steps[index];
   if (!step || !playback.duration) return;

@@ -85,3 +85,11 @@ body.tubing main { margin-top: 16px; }
 #tube-controls > span { font-size: 10px; opacity: .6; }
 body.inspecting #artwork { height: clamp(360px, 45svh, 560px); }
 @media (max-width: 560px) { .order-controls { row-gap: 8px; } .context-control { flex-basis: 100%; } .order-legend { font-size: 9px; } }
+
+body.roping #artwork { touch-action: none; cursor: grab; overflow: visible; }
+body.roping #artwork.dragging { cursor: grabbing; }
+body.roping .color-switch { display: none; }
+#rope-controls { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; font-size: 10px; }
+#rope-controls[hidden], body.roping footer, body.roping .frame-controls { display: none; }
+#rope-controls button { padding: 5px 10px; }
+@media (max-width: 560px) { .view-switch button { padding: 7px 11px; } }
