@@ -111,6 +111,45 @@ function cursiveJoin(before: PenStroke, after: PenStroke): PenStroke {
   };
 }
 
+/** A very short, sideways offset can force a tangent-matched bridge into an
+ * S bend tighter than the nib. Extend the preceding cubic to the next entry
+ * instead, retaining its first half and the next letter's whole curve.
+ * Only nearby, similarly directed authored ends are eligible; pen lifts and
+ * intentional corners keep their existing routing.
+ */
+function absorbCursiveGap(before: PenStroke, after: PenStroke): PenStroke | undefined {
+  if (!before.ordered || !after.ordered || before.retrace || after.retrace ||
+    String(before.nibScale ?? [1, 1]) !== String(after.nibScale ?? [1, 1])) return;
+  const [, a] = endpoints(before), [b] = endpoints(after), gap = distance(a.point, b.point);
+  if (gap < .01 || gap > Math.min(a.radius, b.radius)) return;
+  const incoming = direction(before, true), outgoing = direction(after);
+  if (incoming[0] * outgoing[0] + incoming[1] * outgoing[1] < .92) return;
+  const chord: Point = [(b.point[0] - a.point[0]) / gap, (b.point[1] - a.point[1]) / gap];
+  if (Math.min(incoming[0] * chord[0] + incoming[1] * chord[1], outgoing[0] * chord[0] + outgoing[1] * chord[1]) > .97) return;
+  const segments = curves(before), last = segments[segments.length - 1], c = last.controls;
+  const handle = distance([c[2], c[3]], a.point);
+  // Do not stretch a tiny terminal curve into a new, larger turn.
+  if (handle < gap * 2) return;
+  const control: Point = [b.point[0] - outgoing[0] * handle, b.point[1] - outgoing[1] * handle];
+  if (distance(control, [c[2], c[3]]) > Math.min(a.radius, b.radius) * 1.5) return;
+  const midpoint = (p: Point, q: Point): Point => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+  const p1: Point = [c[0], c[1]], p2: Point = [c[2], c[3]];
+  const ab = midpoint(last.start, p1), bc = midpoint(p1, p2), cd = midpoint(p2, a.point);
+  const abc = midpoint(ab, bc), bcd = midpoint(bc, cd), middle = midpoint(abc, bcd);
+  const endControl: Point = [b.point[0] - outgoing[0] * handle / 2, b.point[1] - outgoing[1] * handle / 2];
+  const widths = before.widths?.map(profile => [...profile] as [number, number, number, number]) ??
+    segments.map((): [number, number, number, number] => [before.width ?? 90, before.width ?? 90, before.width ?? 90, before.width ?? 90]);
+  const endWidth = after.widths?.[0][0] ?? after.width ?? 90;
+  const [w0, w1, w2, w3] = widths.pop()!, w01 = (w0 + w1) / 2, w12 = (w1 + w2) / 2, w23 = (w2 + w3) / 2;
+  const w012 = (w01 + w12) / 2, w123 = (w12 + w23) / 2, wm = (w012 + w123) / 2;
+  widths.push([w0, w01, w012, wm], [wm, w123, endWidth, endWidth]);
+  return {
+    ...before,
+    d: before.d.replace(/[LC][^LC]*$/, `C${coordinates(ab)} ${coordinates(abc)} ${coordinates(middle)} C${coordinates(bcd)} ${coordinates(endControl)} ${coordinates(b.point)}`),
+    widths,
+  };
+}
+
 /** Preserve authored glyph sequences and join their entry/exit caps. Other
  * glyphs use graph traversal through their actual junctions. Keeping authored
  * runs out of that graph prevents reverse trips around completed loops.
@@ -128,7 +167,9 @@ export function routeWord(glyphs: readonly (readonly PenStroke[])[]): PenStroke[
       // Font joins can leave a subpixel gap between caps. Only authored
       // cursive endpoints may bridge that small tolerance; real lifts stay.
       if (gap >= .01 && gap < (a.radius + b.radius) * (authored ? 1.15 : 1)) {
-        result.push(authored ? cursiveJoin(result[result.length - 1], strokes[0]) : capJoin(a, b));
+        const extended = authored && absorbCursiveGap(result[result.length - 1], strokes[0]);
+        if (extended) result[result.length - 1] = extended;
+        else result.push(authored ? cursiveJoin(result[result.length - 1], strokes[0]) : capJoin(a, b));
       }
     }
     result.push(...strokes);

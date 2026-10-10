@@ -55,6 +55,9 @@ share tangents; deliberate direction changes use a short rounded turn within
 the same painted path or retrace the same upright. These curves were fitted
 with continuity constraints as well as the separate 95% foreground-IoU gate.
 A locally rounded turn is not a separately painted patch or a nib-width spike.
+For short offset handoffs such as j-to-i, routing preserves the first half of
+the outgoing cubic and fits its final half to the next entry's position,
+tangent and width. This avoids a tiny S-shaped bridge that folds a 3D tube.
 
 h's low-entry ascender and later shoulder remain independent cubic curves.
 The shoulder meets the original ascender at one exact point with the same
