@@ -11,6 +11,7 @@ import { GradientInkView } from './gradient-ink-view';
 import { teachingReference } from './teaching-model';
 import type { TubeInkView } from './tube-ink-view';
 import type { TubeColorMode } from './tube-color';
+import { wallpaperFilename } from './wallpaper-timing';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -85,6 +86,72 @@ let ready = false;
 const textInput = document.querySelector<HTMLTextAreaElement>('#text-input')!;
 const status = document.querySelector<HTMLElement>('#text-status')!;
 let loaded: Awaited<ReturnType<typeof loadBorel>>;
+
+const wallpaperCreate = document.querySelector<HTMLButtonElement>('#wallpaper-create')!;
+const wallpaperStatus = document.querySelector<HTMLElement>('#wallpaper-status')!;
+const wallpaperResult = document.querySelector<HTMLElement>('#wallpaper-result')!;
+const wallpaperPreview = document.querySelector<HTMLVideoElement>('#wallpaper-preview')!;
+const livePhotoSave = document.querySelector<HTMLButtonElement>('#live-photo-save')!;
+let wallpaperURLs: string[] = [];
+let wallpaperVideo: Blob | undefined;
+let wallpaperName = 'borel-name';
+let exportingWallpaper = false;
+let livePhotoAvailable = false;
+const livePhotoAvailability = fetch('/api/borel-live-photo').then(async response => {
+  livePhotoAvailable = response.ok && (await response.json()).available === true;
+}).catch(() => { livePhotoAvailable = false; });
+function clearWallpaper() {
+  wallpaperPreview.pause(); wallpaperPreview.removeAttribute('src'); wallpaperPreview.load();
+  for (const url of wallpaperURLs) URL.revokeObjectURL(url);
+  wallpaperURLs = []; wallpaperVideo = undefined; wallpaperResult.hidden = true;
+}
+function wallpaperURL(blob: Blob) { const url = URL.createObjectURL(blob); wallpaperURLs.push(url); return url; }
+wallpaperCreate.addEventListener('click', async () => {
+  if (!ready || exportingWallpaper) return;
+  if (unsupportedCharacters(textInput.value, loaded.catalog).length || !textInput.value.trim()) {
+    wallpaperStatus.textContent = '지원하는 영문 이름을 입력해 주세요.'; return;
+  }
+  // Export the editor text, even when the user has not pressed “문장 쓰기”.
+  const lettering = composeText(textInput.value, loaded.shaper, loaded.catalog);
+  const exportPlayback = createPenPlayback(lettering.strokes.map(preparePen));
+  const exportBounds = expandPenBounds(lettering.bounds, exportPlayback.strokes.map(stroke => stroke.pen), settings.weight);
+  const options = { playback: exportPlayback, bounds: exportBounds, weight: settings.weight, ink: settings.ink, paper: settings.paper, gradient: gradientEnabled, tube: tubing, tubeColor: tubeColor.value, tubeColorMode };
+  wallpaperName = wallpaperFilename(textInput.value);
+  exportingWallpaper = true; wallpaperCreate.disabled = true; clearWallpaper();
+  wallpaperStatus.textContent = '잠금화면 영상을 준비하는 중…';
+  try {
+    const { exportWallpaper } = await import('./wallpaper-export');
+    const result = await exportWallpaper(options, fraction => { wallpaperStatus.textContent = `잠금화면 영상 만드는 중 · ${Math.round(fraction * 100)}%`; });
+    wallpaperVideo = result.video;
+    const videoURL = wallpaperURL(result.video), coverURL = wallpaperURL(result.cover);
+    wallpaperPreview.src = videoURL; wallpaperPreview.poster = coverURL;
+    for (const [id, url, suffix] of [['wallpaper-video', videoURL, '.mp4'], ['wallpaper-cover', coverURL, '.png']]) {
+      const link = document.querySelector<HTMLAnchorElement>(`#${id}`)!; link.href = url; link.download = wallpaperName + suffix;
+    }
+    await livePhotoAvailability;
+    livePhotoSave.disabled = !livePhotoAvailable;
+    document.querySelector('#live-photo-help')!.textContent = livePhotoAvailable
+      ? 'ZIP을 풀고 HEIC·MOV 두 파일을 Mac 사진 앱에 함께 가져오세요. 하나의 LIVE 항목으로 인식되는지 확인한 뒤 사진 앱에서 AirDrop 또는 iCloud로 아이폰에 보내 주세요.'
+      : '현재 서버에서는 Live Photo 변환을 사용할 수 없습니다. MP4를 저장하고 intoLive의 Live Wallpaper 메뉴에서 변환해 주세요.';
+    wallpaperResult.hidden = false; wallpaperStatus.textContent = '미리보기가 준비됐습니다. 영상에서 글씨가 완성되는 모습을 확인해 주세요.';
+  } catch (error) {
+    wallpaperStatus.textContent = error instanceof Error ? error.message : '저장 준비에 실패했습니다. 다시 시도해 주세요.';
+  } finally { exportingWallpaper = false; wallpaperCreate.disabled = !ready; }
+});
+livePhotoSave.addEventListener('click', async () => {
+  if (!wallpaperVideo || exportingWallpaper) return;
+  exportingWallpaper = true; livePhotoSave.disabled = true; wallpaperCreate.disabled = true;
+  wallpaperStatus.textContent = 'Live Photo 파일을 만드는 중…';
+  try {
+    const response = await fetch('/api/borel-live-photo', { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: wallpaperVideo });
+    if (!response.ok || !response.headers.get('Content-Type')?.includes('application/zip')) throw new Error('Live Photo 변환에 실패했습니다. 영상 저장은 계속 사용할 수 있습니다.');
+    const link = document.createElement('a'); link.href = wallpaperURL(await response.blob()); link.download = wallpaperName + '-live-photo.zip';
+    document.body.append(link); link.click(); link.remove();
+    wallpaperStatus.textContent = 'Live Photo ZIP을 저장했습니다. HEIC·MOV 두 파일을 함께 가져와 주세요.';
+  } catch (error) {
+    wallpaperStatus.textContent = error instanceof Error ? error.message : 'Live Photo 저장에 실패했습니다.';
+  } finally { exportingWallpaper = false; livePhotoSave.disabled = !livePhotoAvailable; wallpaperCreate.disabled = !ready; }
+});
 
 function writeText(text: string) {
   const missing = unsupportedCharacters(text, loaded.catalog);
@@ -354,7 +421,7 @@ for (const [id, mode] of tubeColorModes) {
   });
 }
 document.querySelector('#reset-camera')!.addEventListener('click', () => tubeView?.resetCamera());
-import.meta.hot?.dispose(() => { cancelAnimationFrame(frame); cancelRopeGrab(); tubeView?.dispose(); gui.destroy(); });
+import.meta.hot?.dispose(() => { cancelAnimationFrame(frame); cancelRopeGrab(); tubeView?.dispose(); gui.destroy(); clearWallpaper(); });
 function jumpToStep(index: number) {
   const step = orderView.steps[index];
   if (!step || !playback.duration) return;
@@ -387,6 +454,7 @@ inspectContext.addEventListener('change', () => { textInput.value = inspectConte
 
 loadBorel().then(value => {
   loaded = value; ready = true;
+  wallpaperCreate.disabled = false;
   document.querySelector<HTMLButtonElement>('#write')!.disabled = false;
   document.querySelector<HTMLSelectElement>('#example')!.disabled = false;
   for (const [label, letters] of [['소문자', 'abcdefghijklmnopqrstuvwxyz'], ['대문자', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'], ['숫자', '0123456789']]) {

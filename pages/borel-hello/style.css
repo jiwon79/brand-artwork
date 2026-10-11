@@ -92,3 +92,10 @@ body.roping #artwork.dragging { cursor: grabbing; }
 #rope-controls[hidden], body.roping footer, body.roping .frame-controls { display: none; }
 #rope-controls button { padding: 5px 10px; }
 @media (max-width: 560px) { .view-switch button { padding: 7px 11px; } }
+
+.wallpaper-export { max-width: 600px; margin: 32px auto; padding: 24px; border: 1px solid #6f40312e; border-radius: 20px; text-align: center; }
+.wallpaper-export p { font-size: 12px; line-height: 1.6; opacity: .7; }
+.wallpaper-export [hidden] { display: none; }
+#wallpaper-preview { width: min(220px, 100%); margin: 16px auto; display: block; border-radius: 20px; }
+.wallpaper-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; align-items: center; }
+.wallpaper-actions a { font-size: 12px; }

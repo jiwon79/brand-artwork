@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import { readdirSync, existsSync } from 'fs';
 import { staticPageAssets } from './scripts/static-page-assets';
+import { borelLivePhoto } from './scripts/borel-live-photo';
 
 const root = new URL('.', import.meta.url).pathname;
 const pagesDir = resolve(root, 'pages');
@@ -77,6 +78,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    borelLivePhoto(root),
     artworkRouteFallback(pageEntries),
     {
       name: 'inject-site-favicon',

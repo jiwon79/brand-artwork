@@ -30,6 +30,10 @@ docs/
 
 ## Artworks
 
+### Borel Handwriting
+
+- [`live-photo-export.md`](./artworks/borel-hello/live-photo-export.md) - 1.5초 안에 완성되는 잠금화면 영상과 Mac Live Photo 파일 저장, 배포 조건
+
 ### Body Echo
 
 - [`architecture.md`](./artworks/body-echo/architecture.md) - SVG rope hold, wave-gated particle dissolve, Canvas 2D 합성 구조
