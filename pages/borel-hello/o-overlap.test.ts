@@ -17,10 +17,11 @@ function xAt(points: PenPoint[], y: number) {
 
 function passes(id: number) {
   const stroke = catalog.penPaths![id][0], commands = stroke.d.match(/[MC][^MC]*/g)!;
-  const top = commands[2].match(/-?\d+(?:\.\d+)?/g)!.slice(-2).join(' ');
+  const entry = catalog.glyphs[id].name.includes('cv02') ? 1 : 2;
+  const top = commands[entry].match(/-?\d+(?:\.\d+)?/g)!.slice(-2).join(' ');
   return {
-    ascending: preparePen({ ...stroke, d: commands.slice(0, 3).join(' '), widths: stroke.widths!.slice(0, 2) }),
-    bowl: preparePen({ ...stroke, d: `M${top} ${commands.slice(3).join(' ')}`, widths: stroke.widths!.slice(2) }),
+    ascending: preparePen({ ...stroke, d: commands.slice(0, entry + 1).join(' '), widths: stroke.widths!.slice(0, entry) }),
+    bowl: preparePen({ ...stroke, d: `M${top} ${commands.slice(entry + 1).join(' ')}`, widths: stroke.widths!.slice(entry) }),
   };
 }
 
@@ -46,6 +47,12 @@ for (const [id, witness] of ascendingForms) test(`o returning bowl covers earlie
     expect(xAt(ascending.points, y) - xAt(bowl.points.slice(0, bottom + 1), y), `inner edge at ${y}`).toBeLessThan(.25);
   }
   for (const weight of [.5, 1, 1.5]) expect(oldColorArea(ascending, bowl, weight), `old ink at weight ${weight}`).toBeLessThan(1);
+  expect(textForegroundIoU(witness)).toBeGreaterThanOrEqual(.95);
+});
+
+for (const [id, witness] of forms.filter(([id]) => catalog.glyphs[id].name.includes('cv02'))) test(`o high entry has no exposed inner sliver: ${catalog.glyphs[id].name}`, () => {
+  const { ascending, bowl } = passes(id);
+  for (const weight of [.5, 1, 1.5]) expect(oldColorArea(ascending, bowl, weight)).toBeLessThan(1);
   expect(textForegroundIoU(witness)).toBeGreaterThanOrEqual(.95);
 });
 
