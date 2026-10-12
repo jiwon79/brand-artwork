@@ -2,6 +2,8 @@
 import Foundation
 import AVFoundation
 import CoreMedia
+import CoreVideo
+import VideoToolbox
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -10,7 +12,7 @@ func require(_ condition: Bool, _ message: String) throws {
     if !condition { throw ConversionError.invalid(message) }
 }
 
-func makeLivePhoto(input: URL, directory: URL) async throws {
+func makeLivePhoto(input: URL, directory: URL, cover: URL?) async throws {
     let asset = AVURLAsset(url: input)
     let duration = try await asset.load(.duration)
     try require(abs(duration.seconds - 2) < 0.05, "Expected a two-second wallpaper")
@@ -18,7 +20,7 @@ func makeLivePhoto(input: URL, directory: URL) async throws {
     try require(tracks.count == 1, "Expected one video track")
     let track = tracks[0]
     let size = try await track.load(.naturalSize)
-    try require(size.width == 1080 && size.height == 2340, "Unexpected wallpaper dimensions")
+    try require(size.width == 1290 && size.height == 2796 || size.width == 1080 && size.height == 2340, "Unexpected wallpaper dimensions")
     let identifier = UUID().uuidString
     let posterTime = CMTime(value: 90, timescale: 60)
     let stillURL = directory.appendingPathComponent("name.HEIC")
@@ -28,23 +30,35 @@ func makeLivePhoto(input: URL, directory: URL) async throws {
     generator.appliesPreferredTrackTransform = true
     generator.requestedTimeToleranceBefore = .zero
     generator.requestedTimeToleranceAfter = .zero
-    let image = try generator.copyCGImage(at: posterTime, actualTime: nil)
+    let image: CGImage
+    if let cover {
+        guard let source = CGImageSourceCreateWithURL(cover as CFURL, nil), let still = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw ConversionError.invalid("Invalid original cover")
+        }
+        try require(still.width == Int(size.width) * 2 && still.height == Int(size.height) * 2, "Unexpected cover dimensions")
+        image = still
+    } else { image = try generator.copyCGImage(at: posterTime, actualTime: nil) }
     guard let destination = CGImageDestinationCreateWithURL(stillURL as CFURL, UTType.heic.identifier as CFString, 1, nil) else {
         throw ConversionError.invalid("HEIC encoder unavailable")
     }
     let properties: [CFString: Any] = [
-        kCGImageDestinationLossyCompressionQuality: 0.95,
+        kCGImageDestinationLossyCompressionQuality: 1.0,
         kCGImagePropertyMakerAppleDictionary: ["17": identifier]
     ]
     CGImageDestinationAddImage(destination, image, properties as CFDictionary)
     try require(CGImageDestinationFinalize(destination), "Could not write HEIC")
 
     let reader = try AVAssetReader(asset: asset)
-    let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+    let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange])
     reader.add(output)
     let writer = try AVAssetWriter(outputURL: movieURL, fileType: .mov)
-    let descriptions = try await track.load(.formatDescriptions)
-    let video = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: descriptions.first)
+    let video = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        AVVideoCodecKey: AVVideoCodecType.hevc, AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
+        AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 32_000_000,
+            AVVideoProfileLevelKey: kVTProfileLevel_HEVC_Main10_AutoLevel,
+            AVVideoExpectedSourceFrameRateKey: 60, AVVideoMaxKeyFrameIntervalKey: 30]
+    ])
+    video.mediaTimeScale = 600
     video.transform = try await track.load(.preferredTransform)
     writer.add(video)
     let contentID = AVMutableMetadataItem()
@@ -75,7 +89,7 @@ func makeLivePhoto(input: URL, directory: URL) async throws {
     let group = AVTimedMetadataGroup(items: [marker], timeRange: CMTimeRange(start: posterTime, duration: CMTime(value: 1, timescale: 60)))
     try require(adaptor.append(group), "Could not write poster marker")
     metadata.markAsFinished()
-    // One compressed video track; wait asynchronously rather than blocking the writer queue.
+    // High-quality HEVC with 10-bit output reduces banding in gradients.
     while let sample = output.copyNextSampleBuffer() {
         while !video.isReadyForMoreMediaData {
             try require(writer.status == .writing, "Video writer failed")
@@ -120,11 +134,11 @@ func makeLivePhoto(input: URL, directory: URL) async throws {
     print("Verified HEIC + MOV, matching identifiers and poster marker at 1.5s")
 }
 
-guard CommandLine.arguments.count == 3 else {
-    FileHandle.standardError.write(Data("usage: borel-live-photo INPUT.mp4 OUTPUT_DIRECTORY\n".utf8)); exit(2)
+guard (3...4).contains(CommandLine.arguments.count) else {
+    FileHandle.standardError.write(Data("usage: borel-live-photo INPUT.mp4 OUTPUT_DIRECTORY [ORIGINAL.png]\n".utf8)); exit(2)
 }
 do {
-    try await makeLivePhoto(input: URL(fileURLWithPath: CommandLine.arguments[1]), directory: URL(fileURLWithPath: CommandLine.arguments[2]))
+    try await makeLivePhoto(input: URL(fileURLWithPath: CommandLine.arguments[1]), directory: URL(fileURLWithPath: CommandLine.arguments[2]), cover: CommandLine.arguments.count == 4 ? URL(fileURLWithPath: CommandLine.arguments[3]) : nil)
 } catch {
     FileHandle.standardError.write(Data("Live Photo conversion failed: \(error)\n".utf8)); exit(1)
 }

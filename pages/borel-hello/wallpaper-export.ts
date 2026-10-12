@@ -37,7 +37,9 @@ function svgFrameRenderer(options: WallpaperOptions) {
     gradient.layer.setAttribute('mask', 'url(#wallpaper-mask)');
   } else root.append(element('use', { href: '#wallpaper-shape' }));
   const place = wallpaperPlacement(options.bounds);
-  root.setAttribute('width', String(Math.ceil(place.width))); root.setAttribute('height', String(Math.ceil(place.height)));
+  // Rasterize vectors at twice the output resolution before downsampling.
+  // This also supplies the full-resolution, uncompressed still photo.
+  root.setAttribute('width', String(Math.ceil(place.width * WALLPAPER.supersample))); root.setAttribute('height', String(Math.ceil(place.height * WALLPAPER.supersample)));
   return async (context: CanvasRenderingContext2D, time: number) => {
     for (const [index, stroke] of options.playback.strokes.entries()) {
       const { written, pressure } = strokeState(stroke, time);
@@ -59,7 +61,7 @@ export async function exportWallpaper(options: WallpaperOptions, onProgress: (fr
   const canvas = document.createElement('canvas'); canvas.width = WALLPAPER.width; canvas.height = WALLPAPER.height;
   const context = canvas.getContext('2d')!;
   const target = new BufferTarget(), output = new Output({ format: new Mp4OutputFormat(), target });
-  const source = new CanvasSource(canvas, { codec: 'avc', quality: new Quality({ bitrate: 8_000_000 }), keyFrameInterval: .5 });
+  const source = new CanvasSource(canvas, { codec: 'avc', quality: new Quality({ bitrate: WALLPAPER.bitrate }), keyFrameInterval: .5 });
   output.addVideoTrack(source, { frameRate: WALLPAPER.fps });
   let tube: import('./tube-ink-view').TubeInkView | undefined;
   let tubeCanvas: HTMLCanvasElement | undefined;
@@ -72,7 +74,7 @@ export async function exportWallpaper(options: WallpaperOptions, onProgress: (fr
       const place = wallpaperPlacement(options.bounds);
       Object.assign(tubeCanvas.style, { position: 'fixed', left: '-10000px', width: `${Math.ceil(place.width)}px`, height: `${Math.ceil(place.height)}px` });
       document.body.append(tubeCanvas);
-      tube = new TubeInkView(tubeCanvas); tube.setPlayback(options.playback, options.bounds); tube.setVisible(true);
+      tube = new TubeInkView(tubeCanvas, WALLPAPER.supersample); tube.setPlayback(options.playback, options.bounds); tube.setVisible(true);
       draw = async (ctx, time) => {
         tube!.render(time, options.weight, options.tubeColor, options.tubeColorMode);
         ctx.drawImage(tubeCanvas!, place.x, place.y, place.width, place.height);
@@ -85,7 +87,15 @@ export async function exportWallpaper(options: WallpaperOptions, onProgress: (fr
       context.fillStyle = options.tube ? '#eee7ff' : options.paper;
       context.fillRect(0, 0, canvas.width, canvas.height);
       await waitForWallpaperStep(draw(context, wallpaperProgress(seconds) * options.playback.duration));
-      if (index === Math.round(WALLPAPER.poster * WALLPAPER.fps)) cover = await waitForWallpaperStep(new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('완성 이미지를 만들지 못했습니다.')), 'image/png')));
+      if (index === Math.round(WALLPAPER.poster * WALLPAPER.fps)) {
+        const still = document.createElement('canvas');
+        still.width = canvas.width * WALLPAPER.supersample; still.height = canvas.height * WALLPAPER.supersample;
+        const stillContext = still.getContext('2d')!;
+        stillContext.scale(WALLPAPER.supersample, WALLPAPER.supersample);
+        stillContext.fillStyle = context.fillStyle; stillContext.fillRect(0, 0, canvas.width, canvas.height);
+        await waitForWallpaperStep(draw(stillContext, options.playback.duration));
+        cover = await waitForWallpaperStep(new Promise<Blob>((resolve, reject) => still.toBlob(blob => blob ? resolve(blob) : reject(new Error('완성 이미지를 만들지 못했습니다.')), 'image/png')));
+      }
       await waitForWallpaperStep(source.add(seconds, 1 / WALLPAPER.fps));
       onProgress((index + 1) / count);
     }

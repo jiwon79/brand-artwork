@@ -1,6 +1,6 @@
 import type { Bounds } from './lettering';
 
-export const WALLPAPER = { width: 1080, height: 2340, fps: 60, duration: 2, lead: .2, complete: 1.5, poster: 1.5 } as const;
+export const WALLPAPER = { width: 1290, height: 2796, fps: 60, duration: 2, lead: .2, complete: 1.5, poster: 1.5, supersample: 2, bitrate: 40_000_000 } as const;
 
 /** Fixed output clock: pen lifts and delayed marks keep their relative order. */
 export function wallpaperProgress(seconds: number) {

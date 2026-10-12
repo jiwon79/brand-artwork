@@ -62,6 +62,7 @@ test.skipIf(!ffmpeg || !ffprobe)('HTTP PVT export preserves 120 frames, decodes 
     expect(Number(info.format.duration)).toBe(2);
     expect(info.format.tags['com.apple.quicktime.content.identifier']).toMatch(/^[A-F0-9-]{36}$/);
     expect(info.streams.filter((stream: { codec_tag_string: string }) => stream.codec_tag_string === 'mebx')).toHaveLength(1);
+    expect(video.codec_name).toBe('hevc'); expect(video.profile).toBe('Main 10');
     // No library import or permissions: ask PhotoKit to decode these two resources.
     const probe = `import Foundation
 import Photos
@@ -75,6 +76,40 @@ PHLivePhoto.request(withResourceFileURLs: [folder.appendingPathComponent("name.H
 RunLoop.main.run()`;
     const probeFile = join(directory, 'probe.swift'); await writeFile(probeFile, probe);
     expect((await run('/usr/bin/swift', [probeFile, output], { timeout: 20_000 })).stdout.trim()).toBe('recognized');
+    // A blue original PNG and a beige movie catch accidental extraction of
+    // the lossy video frame instead of preserving the supplied 2x cover.
+    const highVideo = join(directory, 'high.mp4'), highCover = join(directory, 'high.png');
+    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=beige:s=1290x2796:r=60:d=2', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', highVideo]);
+    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=2580x5592', '-frames:v', '1', highCover]);
+    const form = new FormData();
+    form.append('video', new Blob([new Uint8Array(await readFile(highVideo))], { type: 'video/mp4' }), 'name.mp4');
+    form.append('cover', new Blob([new Uint8Array(await readFile(highCover))], { type: 'image/png' }), 'cover.png');
+    const high = await fetch(`${endpoint}?format=pvt&name=high`, { method: 'POST', headers: { Origin: origin }, body: form });
+    expect(high.status).toBe(200);
+    const highFile = await high.json(), highEntries = unzipSync(new Uint8Array(await (await fetch(origin + highFile.downloadURL)).arrayBuffer()));
+    await writeFile(join(output, 'name.HEIC'), highEntries['high.pvt/high.HEIC']);
+    await writeFile(join(output, 'name.MOV'), highEntries['high.pvt/high.MOV']);
+    const highInfo = JSON.parse((await run(ffprobe, ['-v', 'error', '-show_streams', '-of', 'json', join(output, 'name.MOV')])).stdout);
+    const highStream = highInfo.streams.find((stream: { codec_type: string }) => stream.codec_type === 'video');
+    expect([highStream.width, highStream.height, highStream.nb_frames, highStream.profile]).toEqual([1290, 2796, '120', 'Main 10']);
+    const coverProbe = join(directory, 'cover.swift');
+    await writeFile(coverProbe, `import Foundation
+import ImageIO
+import CoreGraphics
+let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: CommandLine.arguments[1]) as CFURL, nil)!
+let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
+let context = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+let pixel = context.data!.assumingMemoryBound(to: UInt8.self)
+print("\\(image.width),\\(image.height),\\(pixel[0]),\\(pixel[1]),\\(pixel[2])")`);
+    const coverValues = (await run('/usr/bin/swift', [coverProbe, join(output, 'name.HEIC')])).stdout.trim().split(',').map(Number);
+    expect(coverValues.slice(0, 2)).toEqual([2580, 5592]);
+    const originalValues = (await run('/usr/bin/swift', [coverProbe, highCover])).stdout.trim().split(',').map(Number);
+    for (let channel = 2; channel < 5; channel++) expect(Math.abs(coverValues[channel] - originalValues[channel])).toBeLessThanOrEqual(3);
+    expect(coverValues[4]).toBeGreaterThan(245);
+    expect((await run('/usr/bin/swift', [probeFile, output], { timeout: 20_000 })).stdout.trim()).toBe('recognized');
+    const missingCover = new FormData(); missingCover.append('video', form.get('video')!);
+    expect((await fetch(endpoint, { method: 'POST', body: missingCover })).status).toBe(415);
     const mac = await upload();
     expect(mac.headers.get('content-type')).toBe('application/zip');
     expect(Object.keys(unzipSync(new Uint8Array(await mac.arrayBuffer()))).sort()).toEqual(['READ-ME.txt', 'name.HEIC', 'name.MOV']);

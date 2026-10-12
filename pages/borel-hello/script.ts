@@ -122,10 +122,16 @@ function clearWallpaper() {
   livePhotoHelp.textContent = 'Live Photo 파일을 준비하는 중…';
 }
 function wallpaperURL(blob: Blob) { const url = URL.createObjectURL(blob); wallpaperURLs.push(url); return url; }
+function livePhotoUpload() {
+  const body = new FormData();
+  body.append('video', wallpaperVideo!, 'name.mp4');
+  body.append('cover', imageShareFile!, 'name.png');
+  return body;
+}
 async function prepareLivePhoto() {
   if (!wallpaperVideo) return;
   const query = new URLSearchParams({ format: 'pvt', name: wallpaperName });
-  const response = await fetch(`/api/borel-live-photo?${query}`, { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: wallpaperVideo });
+  const response = await fetch(`/api/borel-live-photo?${query}`, { method: 'POST', body: livePhotoUpload() });
   if (!response.ok) throw new Error('Live Photo를 만들지 못했습니다. 다시 준비하기를 눌러 주세요. 영상·이미지 다운로드도 사용할 수 있습니다.');
   const file = await response.json();
   if (typeof file.downloadURL !== 'string' || !/^\/api\/borel-live-photo\/download\/[a-f0-9-]+\/[a-zA-Z0-9_-]+\.pvt\.zip$/.test(file.downloadURL)
@@ -223,7 +229,7 @@ livePhotoMacSave.addEventListener('click', async () => {
   exportingWallpaper = true; livePhotoSave.disabled = livePhotoMacSave.disabled = true; wallpaperCreate.disabled = true;
   wallpaperStatus.textContent = 'Mac용 Live Photo 파일을 만드는 중…';
   try {
-    const response = await fetch('/api/borel-live-photo', { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: wallpaperVideo });
+    const response = await fetch('/api/borel-live-photo', { method: 'POST', body: livePhotoUpload() });
     if (!response.ok || !response.headers.get('Content-Type')?.includes('application/zip')) throw new Error('Live Photo 변환에 실패했습니다. 영상 저장은 계속 사용할 수 있습니다.');
     const link = document.createElement('a'); link.href = wallpaperURL(await response.blob()); link.download = wallpaperName + '-live-photo.zip';
     document.body.append(link); link.click(); link.remove();

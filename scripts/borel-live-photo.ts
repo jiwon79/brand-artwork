@@ -11,7 +11,7 @@ import { livePhotoPackage, LivePhotoDownloads, livePhotoDownloadRoute } from './
 const run = promisify(execFile);
 const limit = 24 * 1024 * 1024;
 const route = '/api/borel-live-photo';
-const instructions = `Borel Live Photo — 1080 × 2340, 60 fps, 2 seconds
+const instructions = `Borel Live Photo — 1290 × 2796 video, 2580 × 5592 still, 60 fps, 2 seconds
 
 The handwriting is complete at 1.5s. The completed frame at 1.5s is the still photo.
 name.HEIC and name.MOV share an Apple asset identifier and a timed still-image marker.
@@ -66,7 +66,9 @@ export function borelLivePhoto(root: string): Plugin {
       try { if (new URL(req.headers.origin).host !== req.headers.host) { json(403, '같은 페이지에서만 저장할 수 있습니다.'); return; } }
       catch { json(403, '요청 출처를 확인할 수 없습니다.'); return; }
     }
-    if (req.headers['content-type'] !== 'video/mp4') { json(415, 'MP4 영상이 필요합니다.'); return; }
+    const contentType = req.headers['content-type'] ?? '';
+    const multipart = contentType.startsWith('multipart/form-data;');
+    if (contentType !== 'video/mp4' && !multipart) { json(415, 'MP4 영상과 PNG 이미지가 필요합니다.'); return; }
     if (Number(req.headers['content-length']) > limit) { json(413, '영상 파일이 너무 큽니다.'); return; }
     if (busy) { json(429, '다른 저장 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요.'); return; }
     busy = true;
@@ -79,8 +81,14 @@ export function borelLivePhoto(root: string): Plugin {
         parts.push(chunk);
       }
       work = await mkdtemp(join(tmpdir(), 'borel-live-'));
-      const input = join(work, 'input.mp4'); await writeFile(input, Buffer.concat(parts));
-      await run(await executable(), [input, work], { timeout: 45_000 });
+      const input = join(work, 'input.mp4'), poster = join(work, 'cover.png');
+      if (multipart) {
+        const form = await new Request('http://localhost', { method: 'POST', headers: { 'Content-Type': contentType }, body: Buffer.concat(parts) }).formData();
+        const video = form.get('video'), cover = form.get('cover');
+        if (!(video instanceof File) || video.type !== 'video/mp4' || !(cover instanceof File) || cover.type !== 'image/png') { json(415, 'MP4 영상과 PNG 이미지가 필요합니다.'); return; }
+        await Promise.all([writeFile(input, Buffer.from(await video.arrayBuffer())), writeFile(poster, Buffer.from(await cover.arrayBuffer()))]);
+      } else await writeFile(input, Buffer.concat(parts));
+      await run(await executable(), [input, work, ...(multipart ? [poster] : [])], { timeout: 45_000 });
       const [still, movie] = await Promise.all([readFile(join(work, 'name.HEIC')), readFile(join(work, 'name.MOV'))]);
       if (format === 'pvt') {
         const file = livePhotoPackage(still, movie, url.searchParams.get('name') ?? undefined);
