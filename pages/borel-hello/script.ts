@@ -93,6 +93,11 @@ const wallpaperStatus = document.querySelector<HTMLElement>('#wallpaper-status')
 const wallpaperResult = document.querySelector<HTMLElement>('#wallpaper-result')!;
 const wallpaperPreview = document.querySelector<HTMLVideoElement>('#wallpaper-preview')!;
 const livePhotoSave = document.querySelector<HTMLButtonElement>('#live-photo-save')!;
+const livePhotoMacSave = document.querySelector<HTMLButtonElement>('#live-photo-mac-save')!;
+const livePhotoDownload = document.querySelector<HTMLAnchorElement>('#live-photo-download')!;
+const livePhotoHelp = document.querySelector<HTMLElement>('#live-photo-help')!;
+const livePhotoSteps = document.querySelector<HTMLElement>('#live-photo-steps')!;
+let livePhotoExpiresAt = 0;
 const imageShare = document.querySelector<HTMLButtonElement>('#wallpaper-image-share')!;
 const videoShare = document.querySelector<HTMLButtonElement>('#wallpaper-video-share')!;
 let imageShareFile: File | undefined;
@@ -111,15 +116,40 @@ function clearWallpaper() {
   wallpaperURLs = []; wallpaperVideo = undefined; wallpaperResult.hidden = true;
   imageShareFile = videoShareFile = undefined;
   imageShare.hidden = videoShare.hidden = true;
+  livePhotoDownload.hidden = livePhotoSteps.hidden = livePhotoSave.hidden = true;
+  livePhotoDownload.removeAttribute('href'); livePhotoExpiresAt = 0;
+  livePhotoSave.disabled = livePhotoMacSave.disabled = true;
+  livePhotoHelp.textContent = 'Live Photo 파일을 준비하는 중…';
 }
 function wallpaperURL(blob: Blob) { const url = URL.createObjectURL(blob); wallpaperURLs.push(url); return url; }
+async function prepareLivePhoto() {
+  if (!wallpaperVideo) return;
+  const query = new URLSearchParams({ format: 'pvt', name: wallpaperName });
+  const response = await fetch(`/api/borel-live-photo?${query}`, { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: wallpaperVideo });
+  if (!response.ok) throw new Error('Live Photo를 만들지 못했습니다. 다시 준비하기를 눌러 주세요. 영상·이미지 다운로드도 사용할 수 있습니다.');
+  const file = await response.json();
+  if (typeof file.downloadURL !== 'string' || !/^\/api\/borel-live-photo\/download\/[a-f0-9-]+\/[a-zA-Z0-9_-]+\.pvt\.zip$/.test(file.downloadURL)
+    || typeof file.filename !== 'string' || !Number.isFinite(file.expiresAt)) throw new Error('Live Photo 다운로드를 준비하지 못했습니다. 다시 시도해 주세요.');
+  livePhotoDownload.href = file.downloadURL; livePhotoDownload.download = file.filename;
+  livePhotoExpiresAt = file.expiresAt;
+  livePhotoDownload.hidden = livePhotoSteps.hidden = false; livePhotoSave.hidden = true;
+  livePhotoHelp.textContent = '별도 변환 앱 없이 저장할 수 있어요. 아래 순서대로 진행해 주세요.';
+}
+livePhotoDownload.addEventListener('click', event => {
+  if (Date.now() >= livePhotoExpiresAt) {
+    event.preventDefault(); livePhotoDownload.hidden = true; livePhotoSave.hidden = false;
+    livePhotoHelp.textContent = '다운로드 링크가 만료됐습니다. Live Photo 다시 준비하기를 눌러 주세요.';
+    return;
+  }
+  wallpaperStatus.textContent = 'Safari 다운로드 목록에서 파일을 열고 공유 → 이미지 저장을 선택해 주세요.';
+});
 for (const [button, kind] of [[imageShare, 'image'], [videoShare, 'video']] as const) button.addEventListener('click', async () => {
   const file = kind === 'image' ? imageShareFile : videoShareFile;
   if (!file) return;
   button.disabled = true;
   wallpaperStatus.textContent = kind === 'image'
     ? '공유 메뉴에서 이미지 저장을 선택해 주세요. 정지 사진으로 저장됩니다.'
-    : '공유 메뉴에서 비디오 저장을 선택해 주세요. Live Photo는 intoLive에서 변환할 수 있습니다.';
+    : '공유 메뉴에서 비디오 저장을 선택해 주세요. Live Photo는 별도의 Live Photo 다운로드 버튼을 사용해 주세요.';
   try {
     const result = await shareWallpaper(navigator, file);
     wallpaperStatus.textContent = result === 'cancelled' ? '공유를 취소했습니다. 다운로드 버튼도 사용할 수 있습니다.'
@@ -156,28 +186,51 @@ wallpaperCreate.addEventListener('click', async () => {
       const link = document.querySelector<HTMLAnchorElement>(`#${id}`)!; link.href = url; link.download = wallpaperName + suffix;
     }
     await livePhotoAvailability;
-    livePhotoSave.disabled = !livePhotoAvailable;
-    document.querySelector('#live-photo-help')!.textContent = livePhotoAvailable
-      ? 'ZIP을 풀고 HEIC·MOV 두 파일을 Mac 사진 앱에 함께 가져오세요. 하나의 LIVE 항목으로 인식되는지 확인한 뒤 사진 앱에서 AirDrop 또는 iCloud로 아이폰에 보내 주세요.'
-      : '현재 서버에서는 Live Photo 변환을 사용할 수 없습니다. MP4를 저장하고 intoLive의 Live Wallpaper 메뉴에서 변환해 주세요.';
-    wallpaperResult.hidden = false; wallpaperStatus.textContent = '미리보기가 준비됐습니다. 영상에서 글씨가 완성되는 모습을 확인해 주세요.';
+    wallpaperResult.hidden = false;
+    if (livePhotoAvailable) {
+      wallpaperStatus.textContent = '영상이 준비됐습니다. Live Photo 파일을 만드는 중…';
+      try {
+        await prepareLivePhoto();
+        wallpaperStatus.textContent = 'Live Photo와 미리보기가 준비됐습니다. 아래 다운로드 버튼을 눌러 주세요.';
+      } catch (error) {
+        livePhotoSave.hidden = false;
+        livePhotoHelp.textContent = error instanceof Error ? error.message : 'Live Photo를 준비하지 못했습니다. 다시 시도해 주세요.';
+        wallpaperStatus.textContent = '영상·이미지는 준비됐습니다. Live Photo는 다시 준비할 수 있습니다.';
+      }
+    } else {
+      livePhotoHelp.textContent = '현재 서버에서는 Live Photo 변환을 사용할 수 없습니다. 영상·이미지 다운로드 또는 아래 다른 저장 방법을 사용해 주세요.';
+      wallpaperStatus.textContent = '미리보기와 영상·이미지 다운로드가 준비됐습니다.';
+    }
   } catch (error) {
     wallpaperStatus.textContent = error instanceof Error ? error.message : '저장 준비에 실패했습니다. 다시 시도해 주세요.';
-  } finally { exportingWallpaper = false; wallpaperCreate.disabled = !ready; }
+  } finally { exportingWallpaper = false; wallpaperCreate.disabled = !ready; livePhotoSave.disabled = livePhotoMacSave.disabled = !livePhotoAvailable || !wallpaperVideo; }
 });
 livePhotoSave.addEventListener('click', async () => {
   if (!wallpaperVideo || exportingWallpaper) return;
-  exportingWallpaper = true; livePhotoSave.disabled = true; wallpaperCreate.disabled = true;
+  exportingWallpaper = true; livePhotoSave.disabled = livePhotoMacSave.disabled = true; wallpaperCreate.disabled = true;
   wallpaperStatus.textContent = 'Live Photo 파일을 만드는 중…';
+  livePhotoHelp.textContent = 'Live Photo 파일을 다시 준비하는 중…';
+  try {
+    await prepareLivePhoto();
+    wallpaperStatus.textContent = 'Live Photo가 준비됐습니다. 다운로드 버튼을 눌러 주세요.';
+  } catch (error) {
+    livePhotoHelp.textContent = error instanceof Error ? error.message : 'Live Photo를 준비하지 못했습니다. 다시 시도해 주세요.';
+    wallpaperStatus.textContent = '영상·이미지 다운로드는 계속 사용할 수 있습니다.';
+  } finally { exportingWallpaper = false; livePhotoSave.disabled = livePhotoMacSave.disabled = !livePhotoAvailable; wallpaperCreate.disabled = !ready; }
+});
+livePhotoMacSave.addEventListener('click', async () => {
+  if (!wallpaperVideo || exportingWallpaper) return;
+  exportingWallpaper = true; livePhotoSave.disabled = livePhotoMacSave.disabled = true; wallpaperCreate.disabled = true;
+  wallpaperStatus.textContent = 'Mac용 Live Photo 파일을 만드는 중…';
   try {
     const response = await fetch('/api/borel-live-photo', { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: wallpaperVideo });
     if (!response.ok || !response.headers.get('Content-Type')?.includes('application/zip')) throw new Error('Live Photo 변환에 실패했습니다. 영상 저장은 계속 사용할 수 있습니다.');
     const link = document.createElement('a'); link.href = wallpaperURL(await response.blob()); link.download = wallpaperName + '-live-photo.zip';
     document.body.append(link); link.click(); link.remove();
-    wallpaperStatus.textContent = 'Live Photo ZIP을 저장했습니다. HEIC·MOV 두 파일을 함께 가져와 주세요.';
+    wallpaperStatus.textContent = 'Mac용 ZIP 다운로드를 시작했습니다. HEIC·MOV 두 파일을 Mac 사진 앱에 함께 가져와 주세요.';
   } catch (error) {
     wallpaperStatus.textContent = error instanceof Error ? error.message : 'Live Photo 저장에 실패했습니다.';
-  } finally { exportingWallpaper = false; livePhotoSave.disabled = !livePhotoAvailable; wallpaperCreate.disabled = !ready; }
+  } finally { exportingWallpaper = false; livePhotoSave.disabled = livePhotoMacSave.disabled = !livePhotoAvailable; wallpaperCreate.disabled = !ready; }
 });
 
 function writeText(text: string) {

@@ -6,20 +6,37 @@
 
 파일 공유를 지원하는 브라우저에서는 **이미지 공유·저장**, **영상 공유·저장**이 기기의 공유 메뉴를 연다. 내보내기를 마칠 때 실제 PNG·MP4 파일을 준비하고 각각 `navigator.canShare({files})`로 확인한다. 공유 버튼을 누른 시점에는 네트워크 요청이나 인코딩을 기다리지 않고 `navigator.share`를 호출한다. 이미지 공유는 정지 PNG이며 Live Photo가 아니다. 공유 취소를 저장 성공으로 표시하지 않으며, 공유 완료도 사진 보관함에 저장됐다는 보장으로 표시하지 않는다. 공유를 지원하지 않는 브라우저에는 다운로드 링크를 유지한다.
 
-아이폰에서는 MP4를 사진 앱에 저장하고 intoLive의 **Live Wallpaper** 메뉴에서 Live Photo로 변환할 수 있다. 웹의 일반 파일 공유에는 사진·영상을 하나의 Live Photo로 저장하는 PhotoKit 계약이 없다. 앱 없이 바로 Live Photo로 사진 보관함에 저장하는 기능으로 안내하지 않는다. Mac용 ZIP은 기본 저장 버튼에서 분리해 접힌 상세 항목에 둔다.
+## 아이폰에서 Live Photo 저장
+
+변환 서버를 사용할 수 있으면 **잠금화면 만들기**가 영상 렌더링에 이어 Live Photo 패키지를 준비한다. 준비가 끝나면 **Live Photo 다운로드** 링크와 다음 안내가 나타난다.
+
+1. 아이폰 Safari에서 다운로드한다.
+2. Safari 다운로드 목록에서 `.pvt.zip` 파일을 연다. 압축을 수동으로 풀지 않는다.
+3. 열린 Quick Look 화면에서 **공유 → 이미지 저장**을 선택한다.
+4. 사진 앱에서 하나의 **LIVE** 항목인지 확인하고 **공유 → 배경화면으로 사용**을 선택한다.
+
+이 경로는 별도 변환 앱 없이 OS의 패키지 가져오기를 사용한다. 웹에서 사진 보관함에 직접 쓰는 API는 아니다. 사진·영상 두 파일을 `navigator.share`에 함께 보내면 별개 항목으로 저장될 수 있고, PVT 자체를 Web Share에 보내면 파일 저장만 제공되므로, 실제 HTTP 다운로드 링크를 사용한다. 링크를 누르는 사용자 동작과 변환 요청을 분리해 Safari 다운로드 흐름을 유지한다.
+
+변환 실패 시 영상·완성 이미지와 미리보기를 유지하고 **Live Photo 다시 준비하기**를 제공한다. 링크는 10분 뒤 만료된다. 만료된 링크를 누르면 다운로드 대신 다시 준비하기를 안내한다. 서버가 보관하는 다운로드는 최대 네 개이며, 동시 사용으로 이전 링크가 교체되거나 서버가 재시작되면 다시 생성해야 한다. 생성한 입력·출력 파일은 바로 삭제하고, 다운로드용 패키지만 한시적으로 메모리에 보관한다.
 
 ## Live Photo 파일
 
-macOS에서 `pnpm dev` 또는 `pnpm preview`로 제공하는 페이지는 `POST /api/borel-live-photo`로 생성한 MP4를 변환한다. `swiftc`와 HEIC 인코더가 필요하다. 서버는 HEIC와 MOV에 동일한 UUID를 기록하고, MOV의 timed metadata에 1.5초의 `still-image-time`을 넣는다. 두 식별자와 마커의 시점·값을 다시 읽어 검증한 다음 두 파일과 안내문을 ZIP으로 반환한다. 변환 작업의 입력·출력 임시 파일은 성공/실패 모두 제거한다. 사진 보관함에는 접근하지 않는다.
+macOS에서 `pnpm dev` 또는 `pnpm preview`로 제공하는 페이지는 생성한 MP4를 변환한다. `swiftc`와 HEIC 인코더가 필요하다. 서버는 HEIC와 MOV에 동일한 UUID를 기록하고, MOV의 timed metadata에 1.5초의 `still-image-time`을 넣는다. 두 식별자와 마커의 시점·값을 다시 읽어 검증한다. 서버는 사진 보관함에 접근하지 않는다.
 
-ZIP을 풀고 HEIC·MOV를 **함께** Mac 사진 앱으로 가져온다. 하나의 LIVE 항목으로 인식되는지 확인한 후, 사진 앱에서 Live Photo를 유지하며 AirDrop 또는 iCloud 사진으로 아이폰에 전달한다. 아이폰의 배경화면 설정에서 움직임을 활성화한다. ZIP 자체를 아이폰 사진 앱으로 바로 가져오는 방식은 지원하지 않는다.
+`POST /api/borel-live-photo?format=pvt&name=borel-jiwon`은 파일 두 개를 `borel-jiwon.pvt/` 폴더에 넣고 `metadata.plist`를 추가한다. plist의 `PFVideoComplementMetadataVersionKey`는 문자열 `1`이다. 기존 쌍의 메타데이터와 미디어 바이트는 그대로 유지하며 폴더 전체를 `.pvt.zip`으로 묶는다. [makelive의 PVT 구성](https://github.com/RhetTbull/makelive/blob/main/makelive/makelive.py)을 참고한 구조이며 새 라이브러리는 추가하지 않는다. 응답 JSON의 `downloadURL`, `filename`, `expiresAt`을 사용해 다운로드 링크를 표시한다. `GET`/`HEAD /api/borel-live-photo/download/<uuid>/<name>.pvt.zip`은 해당 패키지를 attachment로 제공하며, 유효하지 않거나 만료된 링크는 410을 반환한다. 업로드는 기존과 같이 같은 출처의 MP4, 24MiB 이하, 한 번에 한 작업만 허용한다.
+
+기존 `POST /api/borel-live-photo` 또는 `?format=mac`은 두 파일과 안내문이 든 평평한 Mac용 ZIP을 계속 반환한다. 화면의 **다른 저장 방법**에서 사용할 수 있다.
+
+Mac용 ZIP을 풀고 HEIC·MOV를 **함께** Mac 사진 앱으로 가져온다. 하나의 LIVE 항목으로 인식되는지 확인한 후, 사진 앱에서 Live Photo를 유지하며 AirDrop 또는 iCloud 사진으로 아이폰에 전달한다. 이 평평한 ZIP과 아이폰용 PVT 패키지는 구조와 가져오기 경로가 다르다.
 
 PhotoKit에서 쌍으로 인식되는 것과 실제 아이폰 잠금화면에서 재생 가능한 것은 별개의 조건이다. iOS가 재생할 구간도 전체 영상과 다를 수 있다. 실제 아이폰에서 움직임 버튼 활성화와 잠금화면의 글씨 완성을 확인해야 한다. 이 기능은 잠금화면 지원을 보장하지 않는다.
 
 ## 배포 조건
 
-현재 변환 엔드포인트는 Vite의 Mac 개발/미리보기 서버에 있다. 정적 호스팅이나 Linux 서버에는 변환 기능이 자동 배포되지 않는다. 변환을 사용할 수 없는 서버에서는 ZIP 저장 버튼을 비활성화하고, MP4를 intoLive의 Live Wallpaper 메뉴에서 변환하는 경로를 안내한다. 공개 서비스에서 직접 Live Photo를 제공하려면 동일한 변환 계약을 제공하는 서버 또는 iOS의 Photos 저장을 담당하는 네이티브 구성요소를 별도로 배포해야 한다.
+현재 변환 엔드포인트는 Vite의 Mac 개발/미리보기 서버에 있다. 기존 Tailscale URL에서도 같은 서버를 사용한다. 정적 호스팅이나 Linux 서버에는 변환 기능이 자동 배포되지 않는다. 변환을 사용할 수 없는 서버에서는 Live Photo 버튼을 비활성화하고 MP4·PNG 다운로드와 **다른 저장 방법**을 유지한다. 이때 MP4를 intoLive의 Live Wallpaper 메뉴에서 변환하는 대안도 안내한다. 공개 호스팅에는 동일한 변환·패키지 다운로드 계약을 제공하는 서버를 배포해야 한다.
 
 ## 확인
 
-`pnpm test pages/borel-hello/wallpaper-timing.test.ts`는 120프레임 전체의 단조로운 진행, 프레임 90 이후 모든 획·점의 완성, 시계 아래 배치와 파일명을 검사한다. 실제 내보내기는 Chrome에서 생성하고, 저장된 MP4의 프레임·해상도·길이를 확인한다. 변환된 파일은 Apple PhotoKit의 `PHLivePhoto.request`로 보관함을 변경하지 않고 쌍으로 인식되는지 검사할 수 있다. 잠금화면 적합성은 실제 기기 검사로 남는다.
+`wallpaper-timing.test.ts`는 120프레임 전체의 단조로운 진행, 프레임 90 이후 모든 획·점의 완성, 시계 아래 배치와 파일명을 검사한다. `scripts/borel-live-photo-package.test.ts`는 패키지 내부 경로와 plist, 미디어 바이트 보존, 안전한 파일명, 링크 만료·개수 제한·정리를 확인한다. Mac에서 실행하는 `scripts/borel-live-photo.test.ts`는 실제 HTTP 업로드·다운로드, HEAD와 오류 응답, Mac ZIP 유지, 120프레임·해상도·길이·메타데이터, `PHLivePhoto.request`의 쌍 인식을 확인한다.
+
+서비스의 Chrome 화면에서 `jiwon`을 생성하고 다운로드했다. 같은 서비스 다운로드 URL을 iOS 18.5 시뮬레이터의 Safari에서 열어 다운로드 → Quick Look 공유 → 이미지 저장으로 단일 LIVE 항목과 2초 영상, 1.5초 표지 프레임을 확인했다. Quick Look의 미리보기가 빈 화면이어도 가져오기는 성공했다. Chrome에서는 실제 10분 만료와 다시 준비하기를 확인했고, 393px 화면에 가로 넘침이 없었다. Tailscale HTTPS에서도 같은 패키지의 attachment 다운로드 응답을 확인했다. 실제 아이폰과 최신 iOS, 잠금화면 적합성·재생 구간은 기기 검사로 남는다.
