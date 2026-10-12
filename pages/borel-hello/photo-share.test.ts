@@ -52,11 +52,18 @@ test('dismissing the share sheet is cancellation, not an error or retry', async 
 
 test('unsupported file sharing reports the limitation instead of sharing a page link', async () => {
   const device = host({ canShare: vi.fn(() => false) });
-  await expect(shareArtworkPhoto(photo, device)).rejects.toThrow('이미지 공유를 지원하지 않습니다');
+  await expect(shareArtworkPhoto(photo, device)).rejects.toThrow('이 파일의 공유를 지원하지 않습니다');
   expect(device.share).not.toHaveBeenCalled();
 });
 
 test('unexpected share failures remain visible to the caller', async () => {
   const device = host({ share: vi.fn(async () => { throw new DOMException('Failed', 'DataError'); }) });
   await expect(shareArtworkPhoto(photo, device)).rejects.toMatchObject({ name: 'DataError' });
+});
+
+test('shares the original MP4 file alone for iPhone video saving', async () => {
+  const video = new File(['mp4'], 'borel-hello.mp4', { type: 'video/mp4' });
+  const device = host();
+  expect(await shareArtworkPhoto(video, device)).toBe('shared');
+  expect(device.share).toHaveBeenCalledExactlyOnceWith({ files: [video] });
 });

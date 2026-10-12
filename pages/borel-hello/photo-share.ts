@@ -12,7 +12,7 @@ export function prefersPhotoShare(host: Pick<ShareNavigator, 'userAgent' | 'plat
 export async function shareArtworkPhoto(photo: File, host: ShareNavigator = navigator): Promise<'shared' | 'cancelled' | 'retry'> {
   const data = { files: [photo] };
   if (!host.share || !host.canShare?.(data)) {
-    throw new Error('이 브라우저는 이미지 공유를 지원하지 않습니다. 아이폰 Safari에서 열어 주세요.');
+    throw new Error('이 브라우저는 이 파일의 공유를 지원하지 않습니다. 아이폰 Safari에서 열어 주세요.');
   }
   if (host.userActivation?.isActive === false) return 'retry';
   try {

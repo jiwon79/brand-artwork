@@ -12,6 +12,7 @@ import { StrokeOrderView, stepName } from './stroke-order-view';
 import { GradientInkView } from './gradient-ink-view';
 import { teachingReference } from './teaching-model';
 import { createArtworkPhoto, downloadPhotoFile } from './image-export';
+import { createArtworkVideo } from './video-export';
 import { prefersPhotoShare, shareArtworkPhoto } from './photo-share';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -127,6 +128,7 @@ function writeText(text: string) {
   preparedPhoto = undefined;
   photoController.name(photoLabel);
   photoController.disable(!totalLength || savingPhoto);
+  videoController.disable(!totalLength || savingVideo);
   debugState.frame = Math.round(progress * settings.duration * 60);
   frameController?.max(Math.round(settings.duration * 60));
   stepController?.options(Object.fromEntries(orderView.steps.map(step => [`${step.index + 1} · ${stepName[step.kind]}`, step.index])));
@@ -138,6 +140,9 @@ let speed = 2;
 let lastTime = 0;
 let frame = 0;
 function render() {
+  if (ready && !savingVideo && preparedVideo && preparedVideo.key !== videoKey()) {
+    preparedVideo = undefined; videoController.name(videoLabel); status.hidden = true;
+  }
   const time = progress * playback.duration;
   const showRope = !inspecting && Boolean(totalLength) && !playing;
   if (showRope !== roping) {
@@ -340,6 +345,41 @@ const photoController = gui.add({ photo: async () => {
     savingPhoto = false; photoController.disable(!totalLength);
   }
 } }, 'photo').name(photoLabel).disable();
+let savingVideo = false;
+let preparedVideo: { file: File; key: string } | undefined;
+const videoLabel = sharePhoto ? '영상 만들기' : '영상 다운로드';
+function videoKey() {
+  return JSON.stringify([textInput.value, settings.ink, settings.paper, settings.weight, gradientEnabled, speed]);
+}
+const videoController = gui.add({ video: async () => {
+  if (!ready || !totalLength || savingVideo) return;
+  savingVideo = true; videoController.disable(); status.hidden = true;
+  try {
+    const key = videoKey();
+    if (sharePhoto && preparedVideo?.key === key) {
+      const result = await shareArtworkPhoto(preparedVideo.file);
+      if (result !== 'retry') preparedVideo = undefined;
+    } else {
+      preparedVideo = undefined;
+      const file = await createArtworkVideo({ playback, bounds: [...bounds], text: textInput.value,
+        ink: settings.ink, paper: settings.paper, weight: settings.weight, gradient: gradientEnabled, speed,
+        onProgress: fraction => videoController.name(`영상 만드는 중 ${Math.round(fraction * 100)}%`),
+      });
+      if (sharePhoto) preparedVideo = { file, key };
+      else downloadPhotoFile(file);
+    }
+    if (preparedVideo) {
+      status.textContent = '영상이 준비됐습니다. ‘준비된 영상 공유’를 눌러 공유 창에서 비디오 저장을 선택하세요.';
+      status.hidden = false;
+    }
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : '영상을 저장하지 못했습니다.';
+    status.hidden = false;
+  } finally {
+    savingVideo = false;
+    videoController.name(preparedVideo ? '준비된 영상 공유' : videoLabel).disable(!totalLength);
+  }
+} }, 'video').name(videoLabel).disable();
 gui.add(debugState, 'mode', { '필기': 'ink', '획순 경로': 'order', '로프': 'rope' }).name('보기').onChange(setView);
 gui.add(debugState, 'example', debugExamples).name('테스트 문장').onChange((text: string) => { textInput.value = text; submitText(); });
 const frameController = gui.add(debugState, 'frame', 0, 360, 1).name('프레임').onChange(seekFrame);
