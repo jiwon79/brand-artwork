@@ -66,6 +66,29 @@ test('fixed substeps produce the same drag result at 30 and 120Hz and survive st
   expect(new FloorRope([]).pick(0, 0, 100)).toBe(false);
 });
 
+test('a drag released before the first physics frame still reaches its last pointer target', () => {
+  const rope = new FloorRope([line(0)]);
+  expect(rope.pick(0, 0, 20)).toBe(true);
+  rope.move(300, 180);
+  rope.release();
+  for (let step = 0; step < 3; step++) rope.step(1 / 120);
+  expect(rope.nodes[0].x).toBeCloseTo(300, 5);
+  expect(rope.nodes[0].y).toBeCloseTo(180, 5);
+  for (let frame = 0; frame < 600; frame++) rope.step(1 / 60);
+  expect(rope.awake).toBe(false);
+});
+
+test('cancelling a grab discards a pending pointer target', () => {
+  const rope = new FloorRope([line(0)]);
+  expect(rope.pick(0, 0, 20)).toBe(true);
+  rope.move(300, 180);
+  rope.cancelGrab();
+  rope.step(1 / 60);
+  expect(rope.nodes[0].x).toBe(0);
+  expect(rope.nodes[0].y).toBe(0);
+  expect(rope.awake).toBe(false);
+});
+
 for (const text of ['hello', 'jiwon', 'my name is jiwon']) for (const weight of [.5, 1, 1.5]) {
   test(`entire painted rope stays above the controls during extreme drags and release: ${text}, ${weight}x`, () => {
     const pens = composeText(text, shaper, catalog).strokes.map(preparePen);

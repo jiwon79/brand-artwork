@@ -13,7 +13,7 @@ export class FloorRope {
   private restNodes: RopePosition[] = [];
   private display: RopePosition[] | undefined;
   private neighbors = new Map<number, Set<number>>();
-  private grab: { index: number; x: number; y: number; offsetX: number; offsetY: number } | undefined;
+  private grab: { index: number; x: number; y: number; offsetX: number; offsetY: number; released: boolean } | undefined;
   private accumulator = 0;
   private floor = Infinity;
   private radius = 0;
@@ -94,12 +94,21 @@ export class FloorRope {
       if (d < distance) { distance = d; index = i; }
     }
     if (index < 0) return false;
-    this.grab = { index, x: this.nodes[index].x, y: this.nodes[index].y, offsetX: x - this.nodes[index].x, offsetY: y - this.nodes[index].y };
+    this.grab = { index, x: this.nodes[index].x, y: this.nodes[index].y, offsetX: x - this.nodes[index].x, offsetY: y - this.nodes[index].y, released: false };
     this.awake = true;
     return true;
   }
   move(x: number, y: number) { if (this.grab) { this.grab.x = x - this.grab.offsetX; this.grab.y = Math.min(this.floor, y - this.grab.offsetY); this.awake = true; } }
-  release() { this.grab = undefined; }
+  release() {
+    const grab = this.grab;
+    if (!grab) return;
+    const held = this.nodes[grab.index];
+    // Pointer events can finish between animation frames. Let the existing
+    // capped substeps consume the last target before releasing the particle.
+    if (Math.hypot(grab.x - held.x, grab.y - held.y) < .001) this.grab = undefined;
+    else grab.released = true;
+  }
+  cancelGrab() { this.grab = undefined; }
   step(seconds: number) {
     if (!this.awake) return;
     this.accumulator += Math.min(.05, Math.max(0, seconds));
@@ -151,10 +160,13 @@ export class FloorRope {
       // nor a captured pointer over the controls can push ink through it.
       this.projectFloor();
     }
-    if (held) { held.px = held.x; held.py = held.y; }
+    if (held) {
+      held.px = held.x; held.py = held.y;
+      if (grab?.released && Math.hypot(grab.x - held.x, grab.y - held.y) < .001) this.grab = undefined;
+    }
     let speed = 0;
     for (const n of this.nodes) speed = Math.max(speed, Math.hypot(n.x - n.px, n.y - n.py));
-    this.awake = Boolean(grab) || speed > .015;
+    this.awake = Boolean(this.grab) || speed > .015;
     if (!this.awake) for (const n of this.nodes) { n.px = n.x; n.py = n.y; }
   }
   private displayPositions(): RopePosition[] {
