@@ -11,6 +11,7 @@ import { letterContexts } from './stroke-order';
 import { StrokeOrderView, stepName } from './stroke-order-view';
 import { GradientInkView } from './gradient-ink-view';
 import { teachingReference } from './teaching-model';
+import { downloadArtworkPhoto } from './image-export';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -108,6 +109,7 @@ function writeText(text: string) {
   roping = false;
   status.hidden = true;
   pauseButton.disabled = !totalLength;
+  photoController.disable(!totalLength || savingPhoto);
   debugState.frame = Math.round(progress * settings.duration * 60);
   frameController?.max(Math.round(settings.duration * 60));
   stepController?.options(Object.fromEntries(orderView.steps.map(step => [`${step.index + 1} · ${stepName[step.kind]}`, step.index])));
@@ -277,6 +279,23 @@ function seekFrame(value: number) {
 const debugState = { mode: 'ink', example: 'hello', character: '', context: '', frame: 0, step: 0, speed: 2 };
 const gui = new GUI({ title: 'Borel · Debug' });
 gui.hide();
+let savingPhoto = false;
+const photoController = gui.add({ photo: async () => {
+  if (!ready || !totalLength || savingPhoto) return;
+  savingPhoto = true; photoController.disable();
+  try {
+    render();
+    // Dragged rope can extend outside the original lettering frame. Keep the
+    // visible frame and expand it only when needed to include all painted ink.
+    const photoBounds = roping ? expandPenBounds(bounds, ropePaths.map((_, i) => rope.deformed(i)), settings.weight) : undefined;
+    await downloadArtworkPhoto(artwork, { paper: settings.paper, ink: settings.ink, text: textInput.value, bounds: photoBounds });
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : '사진을 저장하지 못했습니다.';
+    status.hidden = false;
+  } finally {
+    savingPhoto = false; photoController.disable(!totalLength);
+  }
+} }, 'photo').name('사진 다운로드').disable();
 gui.add(debugState, 'mode', { '필기': 'ink', '획순 경로': 'order', '로프': 'rope' }).name('보기').onChange(setView);
 gui.add(debugState, 'example', debugExamples).name('테스트 문장').onChange((text: string) => { textInput.value = text; submitText(); });
 const frameController = gui.add(debugState, 'frame', 0, 360, 1).name('프레임').onChange(seekFrame);
