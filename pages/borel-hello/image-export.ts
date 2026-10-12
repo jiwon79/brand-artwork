@@ -4,29 +4,24 @@ interface PhotoOptions {
   paper: string;
   ink: string;
   text: string;
-  bounds?: Bounds;
+  bounds: Bounds;
 }
 
 /** Freeze the current vector view before async image decoding. UI and the touch
  * cursor live outside this SVG, so neither appears in the downloaded image. */
 export async function downloadArtworkPhoto(artwork: SVGSVGElement, options: PhotoOptions): Promise<void> {
   const snapshot = artwork.cloneNode(true) as SVGSVGElement;
-  const size = artwork.getBoundingClientRect();
-  const scale = 3200 / Math.max(1, size.width, size.height);
-  const width = Math.max(1, Math.round(size.width * scale));
-  const height = Math.max(1, Math.round(size.height * scale));
+  const width = 1440, height = 3200;
+  const [left, top, right, bottom] = options.bounds;
+  // Fit the whole word/rope into a centered wallpaper composition, independent
+  // of the browser viewport. Leave room above and below for lock-screen UI.
+  const scale = Math.min(width * .8 / Math.max(1, right - left), height * .44 / Math.max(1, bottom - top));
+  const viewWidth = width / scale, viewHeight = height / scale;
+  snapshot.setAttribute('viewBox', `${(left + right - viewWidth) / 2} ${(top + bottom - viewHeight) / 2} ${viewWidth} ${viewHeight}`);
+  snapshot.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   snapshot.setAttribute('width', String(width)); snapshot.setAttribute('height', String(height));
   snapshot.removeAttribute('id'); snapshot.removeAttribute('class');
   snapshot.setAttribute('style', `color: ${options.ink}; overflow: hidden;`);
-  if (options.bounds) {
-    const view = artwork.viewBox.baseVal, [left, top, right, bottom] = options.bounds;
-    const pad = Math.max(view.width, view.height) * .02;
-    const x = left < view.x ? left - pad : view.x;
-    const y = top < view.y ? top - pad : view.y;
-    const rightEdge = right > view.x + view.width ? right + pad : view.x + view.width;
-    const bottomEdge = bottom > view.y + view.height ? bottom + pad : view.y + view.height;
-    snapshot.setAttribute('viewBox', `${x} ${y} ${rightEdge - x} ${bottomEdge - y}`);
-  }
   const source = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(snapshot)], { type: 'image/svg+xml;charset=utf-8' }));
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   try {

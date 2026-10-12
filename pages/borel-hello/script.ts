@@ -285,9 +285,10 @@ const photoController = gui.add({ photo: async () => {
   savingPhoto = true; photoController.disable();
   try {
     render();
-    // Dragged rope can extend outside the original lettering frame. Keep the
-    // visible frame and expand it only when needed to include all painted ink.
-    const photoBounds = roping ? expandPenBounds(bounds, ropePaths.map((_, i) => rope.deformed(i)), settings.weight) : undefined;
+    // Center the actual rope silhouette, including ink dragged outside the
+    // authored frame. An empty paused frame falls back to the text's bounds.
+    const ropeBounds = roping ? expandPenBounds([Infinity, Infinity, -Infinity, -Infinity], ropePaths.map((_, i) => rope.deformed(i)), settings.weight) : undefined;
+    const photoBounds = ropeBounds?.every(Number.isFinite) ? ropeBounds : bounds;
     await downloadArtworkPhoto(artwork, { paper: settings.paper, ink: settings.ink, text: textInput.value, bounds: photoBounds });
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : '사진을 저장하지 못했습니다.';

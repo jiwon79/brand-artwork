@@ -213,7 +213,8 @@ Partial dots preserve contact pressure, and partial gradient intervals retain
 their original material colors. The debug rope view can still expose full text. Live Photo export and 3D rendering are removed.
 
 The debug panel's photo download button saves the current SVG artwork as an
-opaque PNG with a 3,200-pixel longest edge. It retains the current playback
-frame, color, paper background and dragged rope shape. Rope beyond the original
-view gets an expanded export frame with a small edge margin. Controls and the
+opaque 1,440 × 3,200 PNG (9:20 portrait wallpaper). It retains the current playback
+frame, color, paper background and dragged rope shape. The artwork is centered,
+fitting within 80% of the image width and 44% of its height, with room above and
+below for lock-screen controls. Dragged rope uses its current ink bounds. Controls and the
 touch cursor are excluded; no download controls appear in the public interface.
