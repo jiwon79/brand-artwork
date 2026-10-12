@@ -32,6 +32,7 @@ docs/
 
 ### Cursive
 
+- [`social-share-image.md`](./artworks/cursive/social-share-image.md) - 실제 필기체 렌더링과 제목 합성, 공유 이미지 재생성 방법
 
 ### Body Echo
 
