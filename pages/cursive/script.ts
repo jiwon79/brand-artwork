@@ -24,6 +24,10 @@ function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Re
 const artwork = document.querySelector<SVGSVGElement>('#artwork')!;
 const artworkArea = document.querySelector<HTMLElement>('main')!;
 const controls = document.querySelector<HTMLElement>('#text-form')!;
+const loadingScreen = document.querySelector<HTMLElement>('#loading-screen')!;
+const loadingMessage = document.querySelector<HTMLElement>('#loading-message')!;
+const loadingRetry = document.querySelector<HTMLButtonElement>('#loading-retry')!;
+loadingRetry.addEventListener('click', () => location.reload());
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const settings = { duration: 6, weight: 1, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
@@ -435,8 +439,16 @@ import.meta.hot?.dispose(() => {
 loadBorel().then(value => {
   loaded = value; ready = true; textInput.disabled = weightInput.disabled = false;
   writeText(textInput.value);
-}).catch(error => {
-  status.hidden = false;
-  status.textContent = error instanceof Error ? error.message : '필기 자료를 불러오지 못했습니다.';
-  playing = false; render();
+  // Include shaping and the initial SVG render, not just fetch completion.
+  artworkArea.setAttribute('aria-busy', 'false');
+  loadingScreen.hidden = true;
+  delete document.body.dataset.loadState;
+}).catch(() => {
+  ready = false; playing = false;
+  textInput.disabled = weightInput.disabled = pauseButton.disabled = true;
+  cancelAnimationFrame(frame); frame = 0;
+  artworkArea.setAttribute('aria-busy', 'false');
+  document.body.dataset.loadState = 'error';
+  loadingMessage.textContent = '필기 자료를 불러오지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.';
+  loadingRetry.hidden = false;
 });

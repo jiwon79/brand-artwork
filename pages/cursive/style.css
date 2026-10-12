@@ -27,3 +27,9 @@ main { flex: 1; display: grid; place-items: center; padding: 24px 7vw; min-heigh
 .roping #artwork.dragging { cursor: grabbing; }
 .lil-gui.root { max-height: calc(100svh - 24px); overflow-y: auto; z-index: 10; }
 @media (max-width: 600px) { main { padding: 20px 6vw; } .lil-gui.root { max-width: calc(100vw - 24px); } }
+
+#loading-screen { position: fixed; inset: 0; z-index: 20; display: grid; place-content: center; justify-items: center; gap: 12px; background: #f3e8de; color: #6f4031; padding: 24px; text-align: center; }
+#loading-message { margin: 0; font-size: 14px; line-height: 1.6; }
+#loading-retry { border: 1px solid #6f403130; border-radius: 100px; padding: 10px 18px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+body[data-load-state] main, body[data-load-state] .controls { visibility: hidden; }
+body[data-load-state] .lil-gui { display: none !important; }

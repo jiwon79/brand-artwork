@@ -8,8 +8,12 @@
   <title>Cursive</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <main><svg id="artwork" viewBox="0 0 1100 530" role="img" aria-label="Cursive 필기체 애니메이션"></svg></main>
+<body data-load-state="loading">
+  <div id="loading-screen">
+    <p id="loading-message" role="status" aria-live="polite">로딩 중…</p>
+    <button id="loading-retry" type="button" hidden>다시 시도</button>
+  </div>
+  <main aria-busy="true"><svg id="artwork" viewBox="0 0 1100 530" role="img" aria-label="Cursive 필기체 애니메이션"></svg></main>
   <form id="text-form" class="controls">
     <textarea id="text-input" maxlength="160" rows="1" spellcheck="false" aria-label="쓰고 싶은 문장" aria-describedby="text-status" placeholder="영문으로 문장을 입력하세요" disabled>hello</textarea>
     <div class="actions">
