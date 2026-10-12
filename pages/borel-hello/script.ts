@@ -143,7 +143,8 @@ function render() {
     }
   }
   debugState.frame = Math.round(progress * settings.duration * 60);
-  pauseButton.textContent = playing ? '일시정지' : progress === 1 ? '다시 재생' : '재생';
+  pauseButton.dataset.state = playing ? 'pause' : progress === 1 ? 'restart' : 'play';
+  pauseButton.setAttribute('aria-label', playing ? '일시정지' : progress === 1 ? '다시하기' : '재생');
   guides.style.display = settings.guides && !inspecting && !roping ? '' : 'none';
   reference.style.display = !roping && (settings.reference || inspecting) ? '' : 'none';
   inkLayer.style.opacity = inspecting ? '.12' : '1';
@@ -178,14 +179,17 @@ document.addEventListener('visibilitychange', () => { lastTime = 0; });
 reducedMotion.addEventListener('change', () => {
   if (reducedMotion.matches) { progress = 1; playing = false; render(); }
 });
-const inkInput = document.querySelector<HTMLInputElement>('#ink-color')!;
-inkInput.addEventListener('input', () => { settings.ink = inkInput.value; render(); });
-const gradientButton = document.querySelector<HTMLButtonElement>('#gradient-color')!;
-gradientButton.addEventListener('click', () => {
-  gradientEnabled = !gradientEnabled;
-  gradientButton.setAttribute('aria-pressed', String(gradientEnabled));
-  inkInput.disabled = gradientEnabled;
-  render();
+const colorButtons = [...document.querySelectorAll<HTMLButtonElement>('.swatch')];
+function updateColors() {
+  for (const button of colorButtons) {
+    const selected = button.dataset.ink ? !gradientEnabled && button.dataset.ink === settings.ink : gradientEnabled;
+    button.setAttribute('aria-pressed', String(selected));
+  }
+}
+for (const button of colorButtons) button.addEventListener('click', () => {
+  gradientEnabled = !button.dataset.ink;
+  if (button.dataset.ink) settings.ink = button.dataset.ink;
+  updateColors(); render();
 });
 function submitText() {
   if (ready) writeText(textInput.value);
@@ -261,6 +265,7 @@ gui.add(debugState, 'speed', .25, 2, .25).name('재생 속도').onChange((value:
 gui.add(settings, 'weight', .5, 1.5, .05).name('획 두께').onChange(render);
 gui.add(settings, 'guides').name('중심 경로').onChange(render);
 gui.add(settings, 'reference').name('원본 폰트').onChange(render);
+gui.addColor(settings, 'ink').name('사용자 색상').onChange(() => { gradientEnabled = false; updateColors(); render(); });
 gui.addColor(settings, 'paper').name('배경').onChange(render);
 const orderFolder = gui.addFolder('획순 검사');
 const contextController = orderFolder.add(debugState, 'context', ['']).name('연결 문맥').onChange((text: string) => {

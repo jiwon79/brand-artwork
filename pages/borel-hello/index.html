@@ -9,20 +9,27 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header><a href="/">Jiiwon Studio</a><span>Borel Handwriting</span></header>
   <main><svg id="artwork" viewBox="0 0 1100 530" role="img" aria-label="Borel 필기체 애니메이션"></svg></main>
   <form id="text-form" class="controls">
     <textarea id="text-input" maxlength="160" rows="2" spellcheck="false" aria-label="쓰고 싶은 문장" aria-describedby="text-status" placeholder="영문으로 문장을 입력하세요" disabled>hello</textarea>
     <div class="actions">
       <div class="colors" role="group" aria-label="글씨 색상">
-        <input id="ink-color" type="color" value="#6f4031" aria-label="단색 선택">
-        <button id="gradient-color" type="button" aria-pressed="false">무지개</button>
+        <button class="swatch" type="button" data-ink="#6f4031" style="--swatch:#6f4031" aria-label="브라운" aria-pressed="true"></button>
+        <button class="swatch" type="button" data-ink="#292723" style="--swatch:#292723" aria-label="차콜" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#dc7962" style="--swatch:#dc7962" aria-label="코랄" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#527fa8" style="--swatch:#527fa8" aria-label="블루" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#66836a" style="--swatch:#66836a" aria-label="그린" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#9472a5" style="--swatch:#9472a5" aria-label="퍼플" aria-pressed="false"></button>
+        <button id="gradient-color" class="swatch rainbow" type="button" aria-label="무지개" aria-pressed="false"></button>
       </div>
-      <button id="pause" type="button" disabled>재생</button>
+      <button id="pause" type="button" aria-label="재생" data-state="play" disabled>
+        <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7Z" fill="currentColor" stroke="none"/></svg>
+        <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+        <svg class="restart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></svg>
+      </button>
     </div>
     <p id="text-status" role="status" aria-live="polite" hidden></p>
   </form>
-  <a class="credit" href="https://fonts.google.com/specimen/Borel">Borel · Rosalie Wagner</a>
   <script type="module" src="script.ts"></script>
 </body>
 </html>
