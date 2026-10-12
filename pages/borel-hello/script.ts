@@ -1,18 +1,15 @@
 /// <reference types="vite/client" />
 import GUI from 'lil-gui';
+import { debugExamples } from './debug-examples';
 import { FloorRope } from './rope';
-import { composeText, unsupportedCharacters, supportedCharacter, type Bounds } from './lettering';
+import { composeText, unsupportedCharacters, type Bounds } from './lettering';
 import { loadBorel } from './shaper';
 import { preparePen, penGeometry, expandPenBounds } from './pen-geometry';
 import { createPenPlayback, strokeState, type PenPlayback } from './pen-playback';
-import { activeOrderStep, letterContexts } from './stroke-order';
+import { letterContexts } from './stroke-order';
 import { StrokeOrderView, stepName } from './stroke-order-view';
 import { GradientInkView } from './gradient-ink-view';
 import { teachingReference } from './teaching-model';
-import type { TubeInkView } from './tube-ink-view';
-import type { TubeColorMode } from './tube-color';
-import { wallpaperFilename } from './wallpaper-timing';
-import { canShareWallpaper, shareWallpaper } from './wallpaper-share';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -21,8 +18,6 @@ function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Re
   return element;
 }
 const artwork = document.querySelector<SVGSVGElement>('#artwork')!;
-const slider = document.querySelector<HTMLInputElement>('#progress')!;
-const frameNumber = document.querySelector<HTMLInputElement>('#frame-number')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const settings = { duration: 6, weight: 1, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
@@ -40,21 +35,7 @@ const reference = svgElement('g', { fill: 'currentColor', opacity: '.13', 'point
 const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '5', opacity: '.65', 'pointer-events': 'none' });
 const orderView = new StrokeOrderView();
 artwork.append(definitions, gradientView.definitions, reference, inkLayer, guides, orderView.layer);
-const orderPanel = document.querySelector<HTMLElement>('#order-panel')!;
-const inspectLetter = document.querySelector<HTMLSelectElement>('#inspect-letter')!;
-const inspectContext = document.querySelector<HTMLSelectElement>('#inspect-context')!;
-const inspectStep = document.querySelector<HTMLSelectElement>('#inspect-step')!;
-const orderStatus = document.querySelector<HTMLElement>('#order-status')!;
-const inspectSource = document.querySelector<HTMLAnchorElement>('#inspect-source')!;
-const teachingGuide = document.querySelector<HTMLElement>('#teaching-guide')!;
-function showTeachingReference(character: string) {
-  const source = teachingReference(character);
-  inspectSource.href = source.href;
-  teachingGuide.textContent = [source.text, source.note].filter(Boolean).join(' ');
-  teachingGuide.hidden = !teachingGuide.textContent;
-}
 let inspecting = false;
-let tubing = false;
 let roping = false;
 let rope = new FloorRope([]);
 const ropeLayer = svgElement('g', { fill: 'currentColor', 'pointer-events': 'none' });
@@ -68,14 +49,8 @@ ropeLayer.append(solidRope, ropeGradientView.layer);
 artwork.append(ropeGradientView.definitions, ropeLayer);
 let ropePaths: SVGPathElement[] = [];
 let ropePointer: number | undefined;
-let tubeColorMode: TubeColorMode = 'rainbow';
-let tubeView: TubeInkView | undefined;
-let tubeLoading: Promise<void> | undefined;
-const tubeCanvas = document.querySelector<HTMLCanvasElement>('#tube-artwork')!;
-const tubeColor = document.querySelector<HTMLInputElement>('#tube-color')!;
-const tubeStatus = document.querySelector<HTMLElement>('#tube-status')!;
 let bounds: Bounds = [0, 0, 1100, 530];
-let lastOrderStep = -2;
+
 function updateViewBox() {
   const [left, top, right, bottom] = bounds, pad = roping ? Math.max(right - left, bottom - top) * .3 : inspecting ? 180 : 0;
   artwork.setAttribute('viewBox', `${left - pad} ${top - pad} ${right - left + 2 * pad} ${bottom - top + 2 * pad}`);
@@ -88,161 +63,11 @@ const textInput = document.querySelector<HTMLTextAreaElement>('#text-input')!;
 const status = document.querySelector<HTMLElement>('#text-status')!;
 let loaded: Awaited<ReturnType<typeof loadBorel>>;
 
-const wallpaperCreate = document.querySelector<HTMLButtonElement>('#wallpaper-create')!;
-const wallpaperStatus = document.querySelector<HTMLElement>('#wallpaper-status')!;
-const wallpaperResult = document.querySelector<HTMLElement>('#wallpaper-result')!;
-const wallpaperPreview = document.querySelector<HTMLVideoElement>('#wallpaper-preview')!;
-const livePhotoSave = document.querySelector<HTMLButtonElement>('#live-photo-save')!;
-const livePhotoMacSave = document.querySelector<HTMLButtonElement>('#live-photo-mac-save')!;
-const livePhotoDownload = document.querySelector<HTMLAnchorElement>('#live-photo-download')!;
-const livePhotoHelp = document.querySelector<HTMLElement>('#live-photo-help')!;
-const livePhotoSteps = document.querySelector<HTMLElement>('#live-photo-steps')!;
-let livePhotoExpiresAt = 0;
-const imageShare = document.querySelector<HTMLButtonElement>('#wallpaper-image-share')!;
-const videoShare = document.querySelector<HTMLButtonElement>('#wallpaper-video-share')!;
-let imageShareFile: File | undefined;
-let videoShareFile: File | undefined;
-let wallpaperURLs: string[] = [];
-let wallpaperVideo: Blob | undefined;
-let wallpaperName = 'borel-name';
-let exportingWallpaper = false;
-let livePhotoAvailable = false;
-const livePhotoAvailability = fetch('/api/borel-live-photo').then(async response => {
-  livePhotoAvailable = response.ok && (await response.json()).available === true;
-}).catch(() => { livePhotoAvailable = false; });
-function clearWallpaper() {
-  wallpaperPreview.pause(); wallpaperPreview.removeAttribute('src'); wallpaperPreview.load();
-  for (const url of wallpaperURLs) URL.revokeObjectURL(url);
-  wallpaperURLs = []; wallpaperVideo = undefined; wallpaperResult.hidden = true;
-  imageShareFile = videoShareFile = undefined;
-  imageShare.hidden = videoShare.hidden = true;
-  livePhotoDownload.hidden = livePhotoSteps.hidden = livePhotoSave.hidden = true;
-  livePhotoDownload.removeAttribute('href'); livePhotoExpiresAt = 0;
-  livePhotoSave.disabled = livePhotoMacSave.disabled = true;
-  livePhotoHelp.textContent = 'Live Photo 파일을 준비하는 중…';
-}
-function wallpaperURL(blob: Blob) { const url = URL.createObjectURL(blob); wallpaperURLs.push(url); return url; }
-function livePhotoUpload() {
-  const body = new FormData();
-  body.append('video', wallpaperVideo!, 'name.mp4');
-  body.append('cover', imageShareFile!, 'name.png');
-  return body;
-}
-async function prepareLivePhoto() {
-  if (!wallpaperVideo) return;
-  const query = new URLSearchParams({ format: 'pvt', name: wallpaperName });
-  const response = await fetch(`/api/borel-live-photo?${query}`, { method: 'POST', body: livePhotoUpload() });
-  if (!response.ok) throw new Error('Live Photo를 만들지 못했습니다. 다시 준비하기를 눌러 주세요. 영상·이미지 다운로드도 사용할 수 있습니다.');
-  const file = await response.json();
-  if (typeof file.downloadURL !== 'string' || !/^\/api\/borel-live-photo\/download\/[a-f0-9-]+\/[a-zA-Z0-9_-]+\.pvt\.zip$/.test(file.downloadURL)
-    || typeof file.filename !== 'string' || !Number.isFinite(file.expiresAt)) throw new Error('Live Photo 다운로드를 준비하지 못했습니다. 다시 시도해 주세요.');
-  livePhotoDownload.href = file.downloadURL; livePhotoDownload.download = file.filename;
-  livePhotoExpiresAt = file.expiresAt;
-  livePhotoDownload.hidden = livePhotoSteps.hidden = false; livePhotoSave.hidden = true;
-  livePhotoHelp.textContent = '별도 변환 앱 없이 저장할 수 있어요. 아래 순서대로 진행해 주세요.';
-}
-livePhotoDownload.addEventListener('click', event => {
-  if (Date.now() >= livePhotoExpiresAt) {
-    event.preventDefault(); livePhotoDownload.hidden = true; livePhotoSave.hidden = false;
-    livePhotoHelp.textContent = '다운로드 링크가 만료됐습니다. Live Photo 다시 준비하기를 눌러 주세요.';
-    return;
-  }
-  wallpaperStatus.textContent = 'Safari 다운로드 목록에서 파일을 열고 공유 → 이미지 저장을 선택해 주세요.';
-});
-for (const [button, kind] of [[imageShare, 'image'], [videoShare, 'video']] as const) button.addEventListener('click', async () => {
-  const file = kind === 'image' ? imageShareFile : videoShareFile;
-  if (!file) return;
-  button.disabled = true;
-  wallpaperStatus.textContent = kind === 'image'
-    ? '공유 메뉴에서 이미지 저장을 선택해 주세요. 정지 사진으로 저장됩니다.'
-    : '공유 메뉴에서 비디오 저장을 선택해 주세요. Live Photo는 별도의 Live Photo 다운로드 버튼을 사용해 주세요.';
-  try {
-    const result = await shareWallpaper(navigator, file);
-    wallpaperStatus.textContent = result === 'cancelled' ? '공유를 취소했습니다. 다운로드 버튼도 사용할 수 있습니다.'
-      : result === 'unsupported' ? '이 브라우저에서는 파일 공유를 지원하지 않습니다. 다운로드 버튼을 사용해 주세요.'
-      : '공유 메뉴를 닫았습니다. 사진 앱에서 저장된 파일을 확인해 주세요.';
-  } catch {
-    wallpaperStatus.textContent = '공유 메뉴를 열지 못했습니다. 다운로드 버튼을 사용해 주세요.';
-  } finally { button.disabled = false; }
-});
-wallpaperCreate.addEventListener('click', async () => {
-  if (!ready || exportingWallpaper) return;
-  if (unsupportedCharacters(textInput.value, loaded.catalog).length || !textInput.value.trim()) {
-    wallpaperStatus.textContent = '지원하는 영문 이름을 입력해 주세요.'; return;
-  }
-  // Export the editor text, even when the user has not pressed “문장 쓰기”.
-  const lettering = composeText(textInput.value, loaded.shaper, loaded.catalog);
-  const exportPlayback = createPenPlayback(lettering.strokes.map(preparePen));
-  const exportBounds = expandPenBounds(lettering.bounds, exportPlayback.strokes.map(stroke => stroke.pen), settings.weight);
-  const options = { playback: exportPlayback, bounds: exportBounds, weight: settings.weight, ink: settings.ink, paper: settings.paper, gradient: gradientEnabled, tube: tubing, tubeColor: tubeColor.value, tubeColorMode };
-  wallpaperName = wallpaperFilename(textInput.value);
-  exportingWallpaper = true; wallpaperCreate.disabled = true; clearWallpaper();
-  wallpaperStatus.textContent = '잠금화면 영상을 준비하는 중…';
-  try {
-    const { exportWallpaper } = await import('./wallpaper-export');
-    const result = await exportWallpaper(options, fraction => { wallpaperStatus.textContent = `잠금화면 영상 만드는 중 · ${Math.round(fraction * 100)}%`; });
-    wallpaperVideo = result.video;
-    imageShareFile = new File([result.cover], wallpaperName + '.png', { type: 'image/png' });
-    videoShareFile = new File([result.video], wallpaperName + '.mp4', { type: 'video/mp4' });
-    imageShare.hidden = !canShareWallpaper(navigator, imageShareFile);
-    videoShare.hidden = !canShareWallpaper(navigator, videoShareFile);
-    const videoURL = wallpaperURL(result.video), coverURL = wallpaperURL(result.cover);
-    wallpaperPreview.src = videoURL; wallpaperPreview.poster = coverURL;
-    for (const [id, url, suffix] of [['wallpaper-video', videoURL, '.mp4'], ['wallpaper-cover', coverURL, '.png']]) {
-      const link = document.querySelector<HTMLAnchorElement>(`#${id}`)!; link.href = url; link.download = wallpaperName + suffix;
-    }
-    await livePhotoAvailability;
-    wallpaperResult.hidden = false;
-    if (livePhotoAvailable) {
-      wallpaperStatus.textContent = '영상이 준비됐습니다. Live Photo 파일을 만드는 중…';
-      try {
-        await prepareLivePhoto();
-        wallpaperStatus.textContent = 'Live Photo와 미리보기가 준비됐습니다. 아래 다운로드 버튼을 눌러 주세요.';
-      } catch (error) {
-        livePhotoSave.hidden = false;
-        livePhotoHelp.textContent = error instanceof Error ? error.message : 'Live Photo를 준비하지 못했습니다. 다시 시도해 주세요.';
-        wallpaperStatus.textContent = '영상·이미지는 준비됐습니다. Live Photo는 다시 준비할 수 있습니다.';
-      }
-    } else {
-      livePhotoHelp.textContent = '현재 서버에서는 Live Photo 변환을 사용할 수 없습니다. 영상·이미지 다운로드 또는 아래 다른 저장 방법을 사용해 주세요.';
-      wallpaperStatus.textContent = '미리보기와 영상·이미지 다운로드가 준비됐습니다.';
-    }
-  } catch (error) {
-    wallpaperStatus.textContent = error instanceof Error ? error.message : '저장 준비에 실패했습니다. 다시 시도해 주세요.';
-  } finally { exportingWallpaper = false; wallpaperCreate.disabled = !ready; livePhotoSave.disabled = livePhotoMacSave.disabled = !livePhotoAvailable || !wallpaperVideo; }
-});
-livePhotoSave.addEventListener('click', async () => {
-  if (!wallpaperVideo || exportingWallpaper) return;
-  exportingWallpaper = true; livePhotoSave.disabled = livePhotoMacSave.disabled = true; wallpaperCreate.disabled = true;
-  wallpaperStatus.textContent = 'Live Photo 파일을 만드는 중…';
-  livePhotoHelp.textContent = 'Live Photo 파일을 다시 준비하는 중…';
-  try {
-    await prepareLivePhoto();
-    wallpaperStatus.textContent = 'Live Photo가 준비됐습니다. 다운로드 버튼을 눌러 주세요.';
-  } catch (error) {
-    livePhotoHelp.textContent = error instanceof Error ? error.message : 'Live Photo를 준비하지 못했습니다. 다시 시도해 주세요.';
-    wallpaperStatus.textContent = '영상·이미지 다운로드는 계속 사용할 수 있습니다.';
-  } finally { exportingWallpaper = false; livePhotoSave.disabled = livePhotoMacSave.disabled = !livePhotoAvailable; wallpaperCreate.disabled = !ready; }
-});
-livePhotoMacSave.addEventListener('click', async () => {
-  if (!wallpaperVideo || exportingWallpaper) return;
-  exportingWallpaper = true; livePhotoSave.disabled = livePhotoMacSave.disabled = true; wallpaperCreate.disabled = true;
-  wallpaperStatus.textContent = 'Mac용 Live Photo 파일을 만드는 중…';
-  try {
-    const response = await fetch('/api/borel-live-photo', { method: 'POST', body: livePhotoUpload() });
-    if (!response.ok || !response.headers.get('Content-Type')?.includes('application/zip')) throw new Error('Live Photo 변환에 실패했습니다. 영상 저장은 계속 사용할 수 있습니다.');
-    const link = document.createElement('a'); link.href = wallpaperURL(await response.blob()); link.download = wallpaperName + '-live-photo.zip';
-    document.body.append(link); link.click(); link.remove();
-    wallpaperStatus.textContent = 'Mac용 ZIP 다운로드를 시작했습니다. HEIC·MOV 두 파일을 Mac 사진 앱에 함께 가져와 주세요.';
-  } catch (error) {
-    wallpaperStatus.textContent = error instanceof Error ? error.message : 'Live Photo 저장에 실패했습니다.';
-  } finally { exportingWallpaper = false; livePhotoSave.disabled = livePhotoMacSave.disabled = !livePhotoAvailable; wallpaperCreate.disabled = !ready; }
-});
-
 function writeText(text: string) {
   const missing = unsupportedCharacters(text, loaded.catalog);
   if (missing.length) {
-    status.textContent = `지원하지 않는 문자: ${missing.join(' ')}. 지원 문자 목록에서 확인할 수 있습니다.`;
+    status.textContent = `지원하지 않는 문자: ${missing.join(' ')}. 영문·숫자·기호를 입력해 주세요.`;
+    status.hidden = false;
     textInput.setAttribute('aria-invalid', 'true');
     return;
   }
@@ -250,10 +75,6 @@ function writeText(text: string) {
   const lettering = composeText(text, loaded.shaper, loaded.catalog);
   playback = createPenPlayback(lettering.strokes.map(preparePen));
   orderView.setPlayback(playback);
-  resetRope();
-  inspectStep.replaceChildren(...orderView.steps.map(step => new Option(`${step.index + 1} · ${stepName[step.kind]}`, String(step.index))));
-  inspectStep.disabled = !orderView.steps.length;
-  lastOrderStep = -2;
   inkShape.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
   strokes = []; totalLength = 0;
   for (const [index, stroke] of lettering.strokes.entries()) {
@@ -265,18 +86,21 @@ function writeText(text: string) {
     guides.append(svgElement('path', { d }));
   }
   for (const d of lettering.outlines) if (d) reference.append(svgElement('path', { d }));
-  bounds = expandPenBounds(lettering.bounds, playback.strokes.map(stroke => stroke.pen), Number(weightSlider.max) / 100);
+  bounds = expandPenBounds(lettering.bounds, playback.strokes.map(stroke => stroke.pen), 1.5);
+  resetRope();
   const [left, top, right, bottom] = bounds;
   for (const [name, value] of Object.entries({ x: left, y: top, width: right - left, height: bottom - top })) inkMask.setAttribute(name, String(value));
   gradientView.setPens(playback.strokes.map(stroke => stroke.pen), bounds);
-  tubeView?.setPlayback(playback, bounds);
   updateViewBox();
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
-  tubeCanvas.setAttribute('aria-label', text.trim() ? `획순을 따라 3D 원통으로 써지는 ${text}` : '문장을 입력하면 3D 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
   progress = roping || reducedMotion.matches ? 1 : 0;
   playing = !roping && Boolean(totalLength) && !reducedMotion.matches;
-  status.textContent = text.trim() ? `${[...text].length}자 · ${lettering.lines.length}줄` : '위 입력창에 문장을 적어 주세요.';
+  status.hidden = true;
+  pauseButton.disabled = roping || !totalLength;
+  debugState.frame = Math.round(progress * settings.duration * 60);
+  frameController?.max(Math.round(settings.duration * 60));
+  stepController?.options(Object.fromEntries(orderView.steps.map(step => [`${step.index + 1} · ${stepName[step.kind]}`, step.index])));
   start();
 }
 let progress = reducedMotion.matches ? 1 : 0;
@@ -286,7 +110,7 @@ let lastTime = 0;
 let frame = 0;
 function render() {
   const time = progress * playback.duration;
-  if (!tubing && !roping) for (const [index, stroke] of strokes.entries()) {
+  if (!roping) for (const [index, stroke] of strokes.entries()) {
     const timed = playback.strokes[index];
     const { written, pressure } = strokeState(timed, time);
     if (written !== stroke.written || pressure !== stroke.pressure || settings.weight !== stroke.weight) {
@@ -318,31 +142,15 @@ function render() {
       ropeGradientView.updateBounds(deformedBounds);
     }
   }
-  if (tubing) tubeView?.render(time, settings.weight, tubeColor.value, tubeColorMode);
-  const frameCount = Math.round(settings.duration * 60);
-  slider.max = String(frameCount);
-  slider.step = '1';
-  slider.value = String(Math.round(progress * frameCount));
-  if (document.activeElement !== frameNumber) frameNumber.value = String(Math.round(progress * frameCount));
-  frameNumber.max = String(frameCount);
-  document.querySelector('#frame-count')!.textContent = `/ ${frameCount}`;
-  pauseButton.textContent = playing ? '일시정지' : progress === 1 ? '재생' : '계속 쓰기';
+  debugState.frame = Math.round(progress * settings.duration * 60);
+  pauseButton.textContent = playing ? '일시정지' : progress === 1 ? '다시 재생' : '재생';
   guides.style.display = settings.guides && !inspecting && !roping ? '' : 'none';
   reference.style.display = !roping && (settings.reference || inspecting) ? '' : 'none';
   inkLayer.style.opacity = inspecting ? '.12' : '1';
   solidInk.style.display = gradientEnabled && !inspecting ? 'none' : '';
   gradientView.layer.style.display = gradientEnabled && !inspecting ? '' : 'none';
   orderView.layer.style.display = inspecting ? '' : 'none';
-  if (inspecting) {
-    const active = orderView.render(playback, time);
-    if (active !== lastOrderStep) {
-      inspectStep.value = String(active);
-      orderStatus.textContent = active < 0 ? '문장을 입력하세요.' : `${active + 1} / ${orderView.steps.length} · ${stepName[orderView.steps[active].kind]}`;
-      document.querySelector<HTMLButtonElement>('#previous-step')!.disabled = active <= 0;
-      document.querySelector<HTMLButtonElement>('#next-step')!.disabled = active < 0 || active >= orderView.steps.length - 1;
-      lastOrderStep = active;
-    }
-  }
+  if (inspecting) debugState.step = orderView.render(playback, time);
   artwork.style.color = settings.ink;
   document.documentElement.style.background = settings.paper;
 }
@@ -361,69 +169,36 @@ function start() {
   if (!frame) frame = requestAnimationFrame(tick);
   render();
 }
-document.querySelector('#replay')!.addEventListener('click', () => { if (!ready || !totalLength) return; progress = 0; playing = true; start(); });
-pauseButton.addEventListener('click', () => { if (!ready || !totalLength) return; if (progress === 1) progress = 0; playing = !playing; start(); });
-slider.addEventListener('input', () => { progress = Number(slider.value) / (settings.duration * 60); playing = false; render(); });
-frameNumber.addEventListener('focus', () => { playing = false; render(); });
-frameNumber.addEventListener('blur', render);
-frameNumber.addEventListener('input', () => {
-  if (frameNumber.value === '') return;
-  const requested = Number(frameNumber.value);
-  if (!Number.isFinite(requested)) return;
-  progress = Math.max(0, Math.min(1, requested / (settings.duration * 60)));
-  playing = false;
+pauseButton.addEventListener('click', () => {
+  if (!ready || !totalLength || roping) return;
+  if (progress === 1) progress = 0;
+  playing = !playing; start();
+});
+document.addEventListener('visibilitychange', () => { lastTime = 0; });
+reducedMotion.addEventListener('change', () => {
+  if (reducedMotion.matches) { progress = 1; playing = false; render(); }
+});
+const inkInput = document.querySelector<HTMLInputElement>('#ink-color')!;
+inkInput.addEventListener('input', () => { settings.ink = inkInput.value; render(); });
+const gradientButton = document.querySelector<HTMLButtonElement>('#gradient-color')!;
+gradientButton.addEventListener('click', () => {
+  gradientEnabled = !gradientEnabled;
+  gradientButton.setAttribute('aria-pressed', String(gradientEnabled));
+  inkInput.disabled = gradientEnabled;
   render();
 });
-function stepFrame(direction: number) {
-  progress = Math.max(0, Math.min(1, (Math.round(progress * settings.duration * 60) + direction) / (settings.duration * 60)));
-  playing = false;
-  render();
-}
-document.querySelector('#previous-frame')!.addEventListener('click', () => stepFrame(-1));
-document.querySelector('#next-frame')!.addEventListener('click', () => stepFrame(1));
-document.querySelector<HTMLSelectElement>('#speed')!.addEventListener('change', event => { speed = Number((event.target as HTMLSelectElement).value); });
-document.addEventListener('visibilitychange', () => { lastTime = 0; });
-reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { progress = 1; playing = false; render(); } });
-for (const [id, enabled] of [['solid-color', false], ['gradient-color', true]] as const) {
-  document.querySelector(`#${id}`)!.addEventListener('click', () => {
-    gradientEnabled = enabled;
-    document.querySelector('#solid-color')!.setAttribute('aria-pressed', String(!enabled));
-    document.querySelector('#gradient-color')!.setAttribute('aria-pressed', String(enabled));
-    render();
-  });
-}
-const weightSlider = document.querySelector<HTMLInputElement>('#weight')!;
-const weightValue = document.querySelector<HTMLOutputElement>('#weight-value')!;
-function updateWeight() {
-  settings.weight = Number(weightSlider.value) / 100;
-  weightValue.value = `${weightSlider.value}%`;
-  weightSlider.setAttribute('aria-valuetext', `${weightSlider.value}%`);
-  render();
-}
-weightSlider.addEventListener('input', updateWeight);
-document.querySelector('#reset-weight')!.addEventListener('click', () => { weightSlider.value = '100'; updateWeight(); });
-const gui = new GUI({ title: 'Borel Handwriting' });
-gui.add(settings, 'duration', 2, 60, .5).listen().name('필기 시간 (초)').onChange(render);
-gui.add(settings, 'guides').name('필기 경로').onChange(render);
-gui.add(settings, 'reference').name('Borel 원형 비교').onChange(render);
-gui.addColor(settings, 'ink').name('글씨').onChange(render);
-gui.addColor(settings, 'paper').name('배경').onChange(render);
-gui.close();
-render();
-
 function submitText() {
-  if (!ready) return;
-  inspectLetter.value = '';
-  inspectContext.replaceChildren(new Option('글자를 선택하세요', ''));
-  inspectContext.disabled = true;
-  showTeachingReference('');
-  writeText(textInput.value);
+  if (ready) writeText(textInput.value);
 }
-document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => { event.preventDefault(); submitText(); });
-textInput.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); submitText(); } });
-document.querySelector<HTMLSelectElement>('#example')!.addEventListener('change', event => {
-  const selected = (event.target as HTMLSelectElement).value;
-  if (ready) { textInput.value = selected; submitText(); }
+let inputTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleText() {
+  clearTimeout(inputTimer);
+  if (!textInput.matches(':disabled')) inputTimer = setTimeout(submitText, 250);
+}
+textInput.addEventListener('input', event => { if (!(event as InputEvent).isComposing) scheduleText(); });
+textInput.addEventListener('compositionend', scheduleText);
+document.querySelector<HTMLFormElement>('#text-form')!.addEventListener('submit', event => {
+  event.preventDefault(); clearTimeout(inputTimer); submitText();
 });
 
 function cancelRopeGrab() {
@@ -461,111 +236,76 @@ artwork.addEventListener('pointermove', event => {
 for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) artwork.addEventListener(name, event => {
   if ((event as PointerEvent).pointerId === ropePointer) { cancelRopeGrab(); start(); }
 });
-document.querySelector('#reset-rope')!.addEventListener('click', () => { resetRope(); render(); });
 
-function setView(mode: 'ink' | 'order' | 'tube' | 'rope') {
-  inspecting = mode === 'order'; tubing = mode === 'tube';
-  roping = mode === 'rope';
+function setView(mode: 'ink' | 'order' | 'rope') {
+  inspecting = mode === 'order'; roping = mode === 'rope';
   cancelRopeGrab();
   if (roping) { progress = 1; playing = false; }
   document.body.classList.toggle('roping', roping);
-  document.querySelector<HTMLElement>('#rope-controls')!.hidden = !roping;
-  for (const element of document.querySelectorAll<HTMLElement>('footer, .frame-controls')) element.hidden = roping;
-  orderPanel.hidden = !inspecting;
-  document.body.classList.toggle('inspecting', inspecting);
-  document.body.classList.toggle('tubing', tubing);
-  artwork.toggleAttribute('hidden', tubing);
-  tubeCanvas.hidden = !tubing;
-  document.querySelector<HTMLElement>('#tube-controls')!.hidden = !tubing;
-  for (const name of ['ink', 'order', 'tube', 'rope']) document.querySelector(`#${name}-view`)!.setAttribute('aria-pressed', String(mode === name));
-  tubeView?.setVisible(tubing);
+  pauseButton.disabled = roping || !totalLength;
+  orderFolder.show(inspecting); ropeFolder.show(roping);
   updateViewBox(); render();
   if (roping && rope.awake) start();
-  if (tubing && !tubeView && !tubeLoading) {
-    tubeStatus.hidden = false; tubeStatus.textContent = '3D 보기를 준비하는 중…';
-    tubeLoading = import('./tube-ink-view').then(({ TubeInkView }) => {
-      tubeView = new TubeInkView(tubeCanvas);
-      tubeView.setPlayback(playback, bounds); tubeView.setVisible(tubing);
-      tubeStatus.hidden = true; render();
-    }).catch(() => {
-      tubeView?.dispose(); tubeView = undefined;
-      tubeStatus.hidden = false;
-      tubeStatus.textContent = '3D 보기를 시작하지 못했습니다. WebGL을 지원하는 브라우저에서 다시 시도해 주세요.';
-      if (tubing) setView('ink');
-    }).finally(() => { tubeLoading = undefined; });
-  }
 }
-for (const mode of ['ink', 'order', 'tube', 'rope'] as const) document.querySelector(`#${mode}-view`)!.addEventListener('click', () => setView(mode));
-tubeColor.addEventListener('input', render);
-const tubeColorModes = [['tube-solid', 'solid'], ['tube-rainbow', 'rainbow']] as const;
-for (const [id, mode] of tubeColorModes) {
-  document.querySelector(`#${id}`)!.addEventListener('click', () => {
-    tubeColorMode = mode;
-    for (const [button, option] of tubeColorModes) document.querySelector(`#${button}`)!.setAttribute('aria-pressed', String(mode === option));
-    document.querySelector<HTMLElement>('#tube-color-control')!.hidden = mode !== 'solid';
-    render();
-  });
+function seekFrame(value: number) {
+  progress = Math.max(0, Math.min(1, value / (settings.duration * 60)));
+  playing = false; render();
 }
-document.querySelector('#reset-camera')!.addEventListener('click', () => tubeView?.resetCamera());
-import.meta.hot?.dispose(() => { cancelAnimationFrame(frame); cancelRopeGrab(); tubeView?.dispose(); gui.destroy(); clearWallpaper(); });
-function jumpToStep(index: number) {
+const debugState = { mode: 'ink', example: 'hello', character: '', context: '', frame: 0, step: 0, speed: 1 };
+const gui = new GUI({ title: 'Borel · Debug' });
+gui.hide();
+gui.add(debugState, 'mode', { '필기': 'ink', '획순 경로': 'order', '로프': 'rope' }).name('보기').onChange(setView);
+gui.add(debugState, 'example', debugExamples).name('테스트 문장').onChange((text: string) => { textInput.value = text; submitText(); });
+const frameController = gui.add(debugState, 'frame', 0, 360, 1).name('프레임').listen().onChange(seekFrame);
+gui.add(debugState, 'speed', .25, 2, .25).name('재생 속도').onChange((value: number) => { speed = value; });
+gui.add(settings, 'weight', .5, 1.5, .05).name('획 두께').onChange(render);
+gui.add(settings, 'guides').name('중심 경로').onChange(render);
+gui.add(settings, 'reference').name('원본 폰트').onChange(render);
+gui.addColor(settings, 'paper').name('배경').onChange(render);
+const orderFolder = gui.addFolder('획순 검사');
+const contextController = orderFolder.add(debugState, 'context', ['']).name('연결 문맥').onChange((text: string) => {
+  if (text && ready) { textInput.value = text; writeText(text); }
+});
+orderFolder.add(debugState, 'character', ['', ...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789']).name('문자').onChange((character: string) => {
+  if (!ready || !character) return;
+  const contexts = letterContexts(character, loaded.shaper, loaded.catalog);
+  contextController.options(contexts.map(context => context.text));
+  debugState.context = contexts[0]?.text ?? character;
+  contextController.updateDisplay();
+  textInput.value = debugState.context; writeText(textInput.value);
+});
+const stepController = orderFolder.add(debugState, 'step', { '문장을 입력하세요': 0 }).name('검사 구간').listen().onChange((index: number) => {
   const step = orderView.steps[index];
   if (!step || !playback.duration) return;
   progress = (step.start + Math.min(.001, (step.end - step.start) / 2)) / playback.duration;
   playing = false; render();
-}
-inspectStep.addEventListener('change', () => jumpToStep(Number(inspectStep.value)));
-for (const [id, direction] of [['previous-step', -1], ['next-step', 1]] as const) {
-  document.querySelector(`#${id}`)!.addEventListener('click', () => jumpToStep(activeOrderStep(orderView.steps, progress * playback.duration) + direction));
-}
-inspectLetter.addEventListener('change', () => {
-  if (!inspectLetter.value || !ready) {
-    inspectContext.replaceChildren(new Option('글자를 선택하세요', ''));
-    inspectContext.disabled = true;
-    showTeachingReference('');
-    return;
-  }
-  showTeachingReference(inspectLetter.value);
-  const contexts = letterContexts(inspectLetter.value, loaded.shaper, loaded.catalog);
-  inspectContext.replaceChildren(...contexts.map(context => {
-    const glyphs = loaded.shaper.shape(context.text), index = glyphs.findIndex(glyph => glyph.id === context.id);
-    const position = glyphs.length === 1 ? '단독' : index === 0 ? '처음' : index === glyphs.length - 1 ? '끝' : '중간';
-    return new Option(`${position} · ${context.text}`, context.text);
-  }));
-  inspectContext.disabled = contexts.length < 2;
-  textInput.value = contexts[0]?.text ?? inspectLetter.value;
-  writeText(textInput.value);
 });
-inspectContext.addEventListener('change', () => { textInput.value = inspectContext.value; writeText(textInput.value); });
-
+orderFolder.add({ reference: () => window.open(teachingReference(debugState.character).href, '_blank', 'noopener') }, 'reference').name('프랑스 교본 보기');
+orderFolder.hide();
+const ropeFolder = gui.addFolder('로프 · 글씨를 드래그');
+ropeFolder.add({ reset: () => { resetRope(); render(); } }, 'reset').name('로프 초기화');
+ropeFolder.hide();
+let debugVisible = new URLSearchParams(location.search).has('debug');
+function toggleDebug(visible: boolean) {
+  debugVisible = visible; gui.show(visible);
+  if (!visible) { debugState.mode = 'ink'; setView('ink'); settings.guides = settings.reference = false; render(); }
+}
+toggleDebug(debugVisible);
+const debugKeys = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') { toggleDebug(false); return; }
+  if ((event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]') || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key.toLowerCase() === 'd') toggleDebug(!debugVisible);
+};
+window.addEventListener('keydown', debugKeys);
+import.meta.hot?.dispose(() => {
+  cancelAnimationFrame(frame); clearTimeout(inputTimer); cancelRopeGrab(); gui.destroy();
+  window.removeEventListener('keydown', debugKeys);
+});
 loadBorel().then(value => {
-  loaded = value; ready = true;
-  wallpaperCreate.disabled = false;
-  document.querySelector<HTMLButtonElement>('#write')!.disabled = false;
-  document.querySelector<HTMLSelectElement>('#example')!.disabled = false;
-  for (const [label, letters] of [['소문자', 'abcdefghijklmnopqrstuvwxyz'], ['대문자', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'], ['숫자', '0123456789']]) {
-    const group = document.createElement('optgroup'); group.label = label;
-    group.append(...[...letters].map(letter => new Option(letter, letter))); inspectLetter.append(group);
-  }
-  inspectLetter.disabled = false;
-  const characterList = document.querySelector('#character-list')!;
-  for (const codepoint of Object.keys(loaded.catalog.cmap)) {
-    const character = String.fromCodePoint(Number(codepoint));
-    if (!supportedCharacter(character, loaded.catalog) || /\p{Z}/u.test(character)) continue;
-    const button = document.createElement('button');
-    button.type = 'button'; button.textContent = /\p{M}/u.test(character) ? `◌${character}` : character;
-    button.title = `U+${Number(codepoint).toString(16).toUpperCase().padStart(4, '0')}`;
-    button.setAttribute('aria-label', `${character} 삽입`);
-    button.addEventListener('click', () => {
-      const start = textInput.selectionStart, end = textInput.selectionEnd;
-      if (textInput.value.length - (end - start) + character.length > textInput.maxLength) return;
-      textInput.setRangeText(character, start, end, 'end');
-      textInput.focus();
-    });
-    characterList.append(button);
-  }
+  loaded = value; ready = true; textInput.disabled = false;
   writeText(textInput.value);
 }).catch(error => {
+  status.hidden = false;
   status.textContent = error instanceof Error ? error.message : '필기 자료를 불러오지 못했습니다.';
   playing = false; render();
 });

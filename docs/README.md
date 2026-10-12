@@ -32,7 +32,6 @@ docs/
 
 ### Borel Handwriting
 
-- [`live-photo-export.md`](./artworks/borel-hello/live-photo-export.md) - 1.5초 안에 완성되는 잠금화면 영상과 Mac Live Photo 파일 저장, 배포 조건
 
 ### Body Echo
 

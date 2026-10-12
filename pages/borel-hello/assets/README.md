@@ -57,7 +57,7 @@ with continuity constraints as well as the separate 95% foreground-IoU gate.
 A locally rounded turn is not a separately painted patch or a nib-width spike.
 For short offset handoffs such as j-to-i, routing preserves the first half of
 the outgoing cubic and fits its final half to the next entry's position,
-tangent and width. This avoids a tiny S-shaped bridge that folds a 3D tube.
+tangent and width. This avoids a tiny S-shaped bridge in the connected pen path.
 
 h's low-entry ascender and later shoulder remain independent cubic curves.
 The shoulder meets the original ascender at one exact point with the same
@@ -108,48 +108,7 @@ clipping, native text pixels, alpha reveal maps, nor captured frames. The debug
 panel can separately overlay exact font outlines or the center trajectories.
 Changing a pen curve changes the visible ink itself.
 
-The **3D 원통** mode lazily loads a Three.js renderer. It uses the same prepared
-center paths and playback distances as the source for circular tube meshes with
-flat moving end caps and spherical dots. At 100% weight, the body diameter is
-twice the 2D nib diameter; dots use a 1.5× scale to stay proportionate. Before
-depth layout, a 70-font-unit Gaussian arc neighborhood relaxes short 3D bends,
-with a tested maximum XY displacement of 56 font units. Connected paths share
-one filter and closed paths wrap the sample neighborhood, so joins do not open.
-This relaxation keeps the full tube width through j-to-i handoffs instead of
-creating a local neck. Playback distances and the original 2D recipes stay intact. Both **단색** and **무지개** use one
-soft studio surface, with rainbow selected initially. `tube-material.ts` combines
-an analytic, camera-relative reflection field with cool volume shading and
-Fresnel edges. A rounded softbox lobe and a softer narrow core replace the
-rectangular highlight plateau. The default camera is almost frontal so thick
-loops retain their lettering proportions. There is no bloom, transparency, environment-map download or
-separate matte/glossy material. Circular sections use 48 sides for smooth normals.
-
-The visual reference is the public [Spline handwritten scene](https://my.spline.design/3dpathshandwrittencopy-5738fab2c72ab2937badc0013eff7d8e/).
-Its embedded scene (runtime 0.9.232) uses an elliptical extrusion along a 3D
-Bézier path, a spherical dot, a horizontal ten-stop gradient, two matcap layers
-and two Fresnel layers. The text's Phong layer and scene bloom are disabled.
-Our surface implements that layered appearance procedurally; it does not bundle
-the reference runtime, geometry or matcap images. The authored Borel curves
-continue to define the lettering.
-
-Rainbow colors sample a fixed horizontal field over the complete text, from
-coral through yellow, green, mint, blue, violet and pink. Each ring and moving
-cap retains its assigned color during camera movement and frame scrubbing.
-Deferred dots sample their own stem anchors; crossbars sample the same spatial
-field as the stems they cross. Whole connected runs receive broad, monotone depth ramps and
-pen-lifted strokes receive depth offsets, keeping later crossings above earlier
-tubes with clearance reserved for 150% weight. Depth never rises and falls only
-at an isolated intersection. Deferred dots inherit their own letter's depth.
-Parallel-transported frames keep circular sections continuous through stem
-returns and joined paths. Frame scrubbing restores completed mesh rings before
-extending a new tip. Rotation, zoom and camera reset affect only the 3D view;
-the authored 2D paths, shaping and stroke order are unchanged. Tube tests cover
-sampled crossing clearance at the fuller radius, bounded 3D relaxation, join
-invariance, closed seams, ring continuity and complete mesh/color recovery
-after forward/backward scrubbing and weight changes. Color probes check local
-dot/crossbar ownership independently of the palette mapping.
-
-The visible **획순 경로** mode overlays the actual playback centerline with
+The debug **획순 경로** mode overlays the actual playback centerline with
 ordered colors, direction arrows, interval numbers and a moving pen marker.
 Numbers divide long paths into inspection intervals, not handwriting strokes.
 Dashed lines indicate scheduled pen lifts; their straight travel is illustrative
@@ -169,7 +128,7 @@ dot paths receive 160 ms of contact time at the default speed, independent of
 their almost-zero arc length. Their round nib grows as it presses down; the
 completed geometry is unchanged. Moving between disconnected strokes takes
 100–320 ms without painting, so adjacent i/j dots appear one at a time.
-The duration and speed controls scale this entire schedule together.
+The debug speed control scales this entire schedule together.
 `pen-playback.test.ts` checks dot spacing, gradual contact area, pen-up travel
 and identical completed geometry. Sentence-frame checks use this same schedule.
 
@@ -177,8 +136,8 @@ Vitest rasterizes the actual brush geometry and the independently shaped source
 font with the same SVG renderer. Every supported contextual glyph must achieve
 at least 95% soft-alpha foreground intersection-over-union; blank background is
 excluded. Separate sentence tests cover wrapping, mixed case, punctuation and
-word-initial n/w forms. `sentence-motion.test.ts` reads the 12 test sentences
-directly from the example menu and checks every 60 fps state, alongside A–Z/0–9:
+word-initial n/w forms. `sentence-motion.test.ts` uses the 12 shared debug test sentences
+from `debug-examples.ts` and checks every 60 fps state, alongside A–Z/0–9:
 new ink must stay inside the traveled nib footprint and old ink must remain.
 Letter-specific guards preserve complete capital strokes, l/f loop order,
 deferred t crossbars and compact curves without pressure knots or needle tips.
@@ -226,3 +185,9 @@ Contrasting first/second-pass colors expose residual
 ink at 50%, 100% and 150% weight, with a deliberately offset negative control.
 This detects internal color slivers that final silhouette overlap cannot catch.
 Independent entry samples prevent the contact fit from warping the first pass.
+
+The default interface contains only text, color and playback. Text edits restart
+writing after a short debounce. Open `?debug` or press D outside a text field to
+show lil-gui; Escape hides it and restores ink view. Frame seeking, examples,
+weight, speed, source outlines, stroke-order/context inspection and floor rope
+interaction live in this panel. Live Photo export and 3D rendering are removed.

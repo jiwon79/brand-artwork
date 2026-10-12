@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { testSentences as sentences } from './debug-examples';
 import { expect, test } from 'vitest';
 import { composeText } from './lettering';
 import { penGeometry, preparePen } from './pen-geometry';
@@ -6,12 +6,7 @@ import { createPenPlayback, strokeState } from './pen-playback';
 import { catalog, foregroundIoU, raster, shaper } from './test-font';
 import { auditPen, inkTravelPasses, measureInkTravel } from './test-pen-quality';
 
-// Follow the actual menu so a newly offered sentence cannot silently escape
-// intermediate-frame QA. The source-font comparison is a separate gate.
-const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-const group = html.match(/<optgroup label="테스트 문장">([\s\S]*?)<\/optgroup>/)![1];
-const sentences = [...group.matchAll(/<option[^>]*>([^<]+)<\/option>/g)].map(match => match[1]);
-
+// The debug menu and intermediate-frame QA share the same sentence fixtures.
 test('the sentence menu keeps broad motion coverage', () => {
   expect(sentences.length).toBeGreaterThanOrEqual(12);
   expect(sentences).toContain('my name is jiwon');
