@@ -189,5 +189,9 @@ Independent entry samples prevent the contact fit from warping the first pass.
 The default interface contains only text, color and playback. Text edits restart
 writing after a short debounce. Open `?debug` or press D outside a text field to
 show lil-gui; Escape hides it and restores ink view. Frame seeking, examples,
-weight, speed, source outlines, stroke-order/context inspection and floor rope
-interaction live in this panel. Live Photo export and 3D rendering are removed.
+weight, speed, source outlines and stroke-order/context inspection live in this
+panel. Rainbow is selected initially. Pausing or finishing handwriting freezes
+only the painted strokes into a draggable floor rope without changing framing.
+Resuming restores the authored paths at the paused time; replay starts over.
+Partial dots preserve contact pressure, and partial gradient intervals retain
+their original material colors. The debug rope view can still expose full text. Live Photo export and 3D rendering are removed.

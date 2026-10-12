@@ -64,6 +64,9 @@ export class GradientInkView {
 
   renderDeformedStroke(index: number, pen: PenPath, weight = 1) {
     for (const part of this.strokes[index] ?? []) {
+      if (!pen.points.length || part.piece.start >= pen.length) {
+        part.path.setAttribute('d', ''); continue;
+      }
       const piece = deformGradientPiece(part.piece, pen);
       const [x1, y1, x2, y2] = piece.axis;
       for (const [name, value] of Object.entries({ x1, y1, x2, y2 })) part.gradient.setAttribute(name, String(value));

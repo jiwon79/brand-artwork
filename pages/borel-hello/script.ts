@@ -2,6 +2,7 @@
 import GUI from 'lil-gui';
 import { debugExamples } from './debug-examples';
 import { FloorRope } from './rope';
+import { visibleRopePens } from './rope-playback';
 import { composeText, unsupportedCharacters, type Bounds } from './lettering';
 import { loadBorel } from './shaper';
 import { preparePen, penGeometry, expandPenBounds } from './pen-geometry';
@@ -21,7 +22,7 @@ const artwork = document.querySelector<SVGSVGElement>('#artwork')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const settings = { duration: 6, weight: 1, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
-let gradientEnabled = false;
+let gradientEnabled = true;
 const gradientView = new GradientInkView();
 const inkShape = svgElement('g', { id: 'borel-ink-shape' });
 const inkMask = svgElement('mask', { id: 'borel-ink-mask', maskUnits: 'userSpaceOnUse', 'mask-type': 'alpha' });
@@ -52,7 +53,7 @@ let ropePointer: number | undefined;
 let bounds: Bounds = [0, 0, 1100, 530];
 
 function updateViewBox() {
-  const [left, top, right, bottom] = bounds, pad = roping ? Math.max(right - left, bottom - top) * .3 : inspecting ? 180 : 0;
+  const [left, top, right, bottom] = bounds, pad = debugState.mode === 'rope' ? Math.max(right - left, bottom - top) * .3 : inspecting ? 180 : 0;
   artwork.setAttribute('viewBox', `${left - pad} ${top - pad} ${right - left + 2 * pad} ${bottom - top + 2 * pad}`);
 }
 let strokes: { path: SVGPathElement; written?: number; pressure?: number; weight?: number }[] = [];
@@ -94,10 +95,11 @@ function writeText(text: string) {
   updateViewBox();
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
-  progress = roping || reducedMotion.matches ? 1 : 0;
-  playing = !roping && Boolean(totalLength) && !reducedMotion.matches;
+  progress = debugState.mode === 'rope' || reducedMotion.matches ? 1 : 0;
+  playing = debugState.mode !== 'rope' && Boolean(totalLength) && !reducedMotion.matches;
+  roping = false;
   status.hidden = true;
-  pauseButton.disabled = roping || !totalLength;
+  pauseButton.disabled = !totalLength;
   debugState.frame = Math.round(progress * settings.duration * 60);
   frameController?.max(Math.round(settings.duration * 60));
   stepController?.options(Object.fromEntries(orderView.steps.map(step => [`${step.index + 1} · ${stepName[step.kind]}`, step.index])));
@@ -110,6 +112,12 @@ let lastTime = 0;
 let frame = 0;
 function render() {
   const time = progress * playback.duration;
+  const showRope = !inspecting && Boolean(totalLength) && !playing;
+  if (showRope !== roping) {
+    cancelRopeGrab(); roping = showRope;
+    if (roping) resetRope(time);
+  }
+  document.body.classList.toggle('roping', roping);
   if (!roping) for (const [index, stroke] of strokes.entries()) {
     const timed = playback.strokes[index];
     const { written, pressure } = strokeState(timed, time);
@@ -171,8 +179,10 @@ function start() {
   render();
 }
 pauseButton.addEventListener('click', () => {
-  if (!ready || !totalLength || roping) return;
-  if (progress === 1) progress = 0;
+  if (!ready || !totalLength) return;
+  if (progress === 1 || debugState.mode === 'rope') {
+    progress = 0; debugState.mode = 'ink'; inspecting = false; ropeFolder.hide(); updateViewBox();
+  }
   playing = !playing; start();
 });
 document.addEventListener('visibilitychange', () => { lastTime = 0; });
@@ -186,6 +196,7 @@ function updateColors() {
     button.setAttribute('aria-pressed', String(selected));
   }
 }
+updateColors();
 for (const button of colorButtons) button.addEventListener('click', () => {
   gradientEnabled = !button.dataset.ink;
   if (button.dataset.ink) settings.ink = button.dataset.ink;
@@ -212,9 +223,9 @@ function cancelRopeGrab() {
   if (pointer !== undefined && artwork.hasPointerCapture(pointer)) artwork.releasePointerCapture(pointer);
   artwork.classList.remove('dragging');
 }
-function resetRope() {
+function resetRope(time = playback.duration) {
   cancelRopeGrab();
-  rope = new FloorRope(playback.strokes.map(stroke => stroke.pen));
+  rope = new FloorRope(visibleRopePens(playback, time));
   ropePaths = playback.strokes.map(() => svgElement('path', {}));
   ropeShape.replaceChildren(...ropePaths);
   ropeGradientView.setPens(playback.strokes.map(stroke => stroke.pen), bounds);
@@ -242,12 +253,11 @@ for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) artwork
 });
 
 function setView(mode: 'ink' | 'order' | 'rope') {
-  inspecting = mode === 'order'; roping = mode === 'rope';
+  inspecting = mode === 'order';
   cancelRopeGrab();
-  if (roping) { progress = 1; playing = false; }
-  document.body.classList.toggle('roping', roping);
-  pauseButton.disabled = roping || !totalLength;
-  orderFolder.show(inspecting); ropeFolder.show(roping);
+  if (mode === 'rope') { progress = 1; playing = false; }
+  pauseButton.disabled = !totalLength;
+  orderFolder.show(inspecting); ropeFolder.show(mode === 'rope');
   updateViewBox(); render();
   if (roping && rope.awake) start();
 }
