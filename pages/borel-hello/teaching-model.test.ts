@@ -54,6 +54,19 @@ const area = (points: PenPoint[]) => points.reduce((sum,a,i) => {
   const b = points[(i+1)%points.length]; return sum+a.x*b.y-b.x*a.y;
 },0)/2;
 
+test('capital J has a level top edge throughout its separate left-to-right bar', () => {
+  const strokes = catalog.penPaths![shaper.shape('J')[0].id];
+  const bar = preparePen(strokes[1]);
+  for (const point of bar.points) {
+    // Source J has flat edges at y=641 and y=722. A centerline-only
+    // check would miss a bulge introduced by varying brush widths.
+    expect(point.y - point.radius).toBeCloseTo(641, 5);
+    expect(point.y + point.radius).toBeCloseTo(722, 5);
+  }
+  for (let i = 1; i < bar.points.length; i++) expect(bar.points[i].x).toBeGreaterThan(bar.points[i - 1].x);
+  expect(textForegroundIoU('J')).toBeGreaterThanOrEqual(.95);
+});
+
 for (const character of letters) test(`French teaching movements and source shape: ${character}`, () => {
   const id = shaper.shape(character)[0].id, strokes = catalog.penPaths![id];
   expect(strokes).toHaveLength(traces[character].length);
