@@ -12,6 +12,7 @@ import { teachingReference } from './teaching-model';
 import type { TubeInkView } from './tube-ink-view';
 import type { TubeColorMode } from './tube-color';
 import { wallpaperFilename } from './wallpaper-timing';
+import { canShareWallpaper, shareWallpaper } from './wallpaper-share';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -92,6 +93,10 @@ const wallpaperStatus = document.querySelector<HTMLElement>('#wallpaper-status')
 const wallpaperResult = document.querySelector<HTMLElement>('#wallpaper-result')!;
 const wallpaperPreview = document.querySelector<HTMLVideoElement>('#wallpaper-preview')!;
 const livePhotoSave = document.querySelector<HTMLButtonElement>('#live-photo-save')!;
+const imageShare = document.querySelector<HTMLButtonElement>('#wallpaper-image-share')!;
+const videoShare = document.querySelector<HTMLButtonElement>('#wallpaper-video-share')!;
+let imageShareFile: File | undefined;
+let videoShareFile: File | undefined;
 let wallpaperURLs: string[] = [];
 let wallpaperVideo: Blob | undefined;
 let wallpaperName = 'borel-name';
@@ -104,8 +109,26 @@ function clearWallpaper() {
   wallpaperPreview.pause(); wallpaperPreview.removeAttribute('src'); wallpaperPreview.load();
   for (const url of wallpaperURLs) URL.revokeObjectURL(url);
   wallpaperURLs = []; wallpaperVideo = undefined; wallpaperResult.hidden = true;
+  imageShareFile = videoShareFile = undefined;
+  imageShare.hidden = videoShare.hidden = true;
 }
 function wallpaperURL(blob: Blob) { const url = URL.createObjectURL(blob); wallpaperURLs.push(url); return url; }
+for (const [button, kind] of [[imageShare, 'image'], [videoShare, 'video']] as const) button.addEventListener('click', async () => {
+  const file = kind === 'image' ? imageShareFile : videoShareFile;
+  if (!file) return;
+  button.disabled = true;
+  wallpaperStatus.textContent = kind === 'image'
+    ? '공유 메뉴에서 이미지 저장을 선택해 주세요. 정지 사진으로 저장됩니다.'
+    : '공유 메뉴에서 비디오 저장을 선택해 주세요. Live Photo는 intoLive에서 변환할 수 있습니다.';
+  try {
+    const result = await shareWallpaper(navigator, file);
+    wallpaperStatus.textContent = result === 'cancelled' ? '공유를 취소했습니다. 다운로드 버튼도 사용할 수 있습니다.'
+      : result === 'unsupported' ? '이 브라우저에서는 파일 공유를 지원하지 않습니다. 다운로드 버튼을 사용해 주세요.'
+      : '공유 메뉴를 닫았습니다. 사진 앱에서 저장된 파일을 확인해 주세요.';
+  } catch {
+    wallpaperStatus.textContent = '공유 메뉴를 열지 못했습니다. 다운로드 버튼을 사용해 주세요.';
+  } finally { button.disabled = false; }
+});
 wallpaperCreate.addEventListener('click', async () => {
   if (!ready || exportingWallpaper) return;
   if (unsupportedCharacters(textInput.value, loaded.catalog).length || !textInput.value.trim()) {
@@ -123,6 +146,10 @@ wallpaperCreate.addEventListener('click', async () => {
     const { exportWallpaper } = await import('./wallpaper-export');
     const result = await exportWallpaper(options, fraction => { wallpaperStatus.textContent = `잠금화면 영상 만드는 중 · ${Math.round(fraction * 100)}%`; });
     wallpaperVideo = result.video;
+    imageShareFile = new File([result.cover], wallpaperName + '.png', { type: 'image/png' });
+    videoShareFile = new File([result.video], wallpaperName + '.mp4', { type: 'video/mp4' });
+    imageShare.hidden = !canShareWallpaper(navigator, imageShareFile);
+    videoShare.hidden = !canShareWallpaper(navigator, videoShareFile);
     const videoURL = wallpaperURL(result.video), coverURL = wallpaperURL(result.cover);
     wallpaperPreview.src = videoURL; wallpaperPreview.poster = coverURL;
     for (const [id, url, suffix] of [['wallpaper-video', videoURL, '.mp4'], ['wallpaper-cover', coverURL, '.png']]) {

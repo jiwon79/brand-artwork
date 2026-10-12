@@ -99,3 +99,5 @@ body.roping #artwork.dragging { cursor: grabbing; }
 #wallpaper-preview { width: min(220px, 100%); margin: 16px auto; display: block; border-radius: 20px; }
 .wallpaper-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; align-items: center; }
 .wallpaper-actions a { font-size: 12px; }
+.wallpaper-mac { margin-top: 18px; font-size: 12px; }
+.wallpaper-mac summary { cursor: pointer; margin-bottom: 10px; }
