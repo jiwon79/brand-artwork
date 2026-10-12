@@ -1,7 +1,10 @@
-import type { PenStroke, Point } from './stroke-alphabet';
-import type { Bounds } from './lettering';
+import type { Point } from './coordinates';
+import type { Bounds } from './coordinates';
+import type { PenStroke } from './stroke-alphabet';
 
+/** Center, nib radius and cumulative material distance, all in font units. */
 export interface PenPoint { x: number; y: number; radius: number; distance: number }
+/** Sampled stroke; rope deformation keeps its original material distances. */
 export interface PenPath { points: PenPoint[]; length: number; nibScale: Point; retrace?: boolean; colorAnchors?: readonly Point[] }
 
 /** Reserve the largest allowed nib once, keeping framing fixed during edits. */

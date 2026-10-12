@@ -1,12 +1,7 @@
+import { svgElement } from './svg';
 import { deformGradientPiece, gradientPalette, gradientRenderPieces, gradientPieceGeometry, type GradientPiece } from './gradient-ink';
 import { expandPenBounds, type PenPath } from './pen-geometry';
 
-const NS = 'http://www.w3.org/2000/svg';
-function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
-  const element = document.createElementNS(NS, tag);
-  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
-  return element;
-}
 function cover(rect: SVGRectElement, pen: PenPath, weight: number) {
   if (!pen.points.length) return;
   const p = pen.points[0];
@@ -28,8 +23,8 @@ interface Patch {
  * with full color underneath its antialias fringe even at browser zoom.
  */
 export class GradientInkView {
-  readonly layer = svg('g', {});
-  readonly definitions = svg('defs', {});
+  readonly layer = svgElement('g', {});
+  readonly definitions = svgElement('defs', {});
   private strokes: Patch[][] = [];
   private deformed: ({ pen: PenPath; weight: number } | undefined)[] = [];
 
@@ -37,16 +32,16 @@ export class GradientInkView {
 
   setPens(pens: readonly PenPath[]) {
     this.definitions.replaceChildren(); this.layer.replaceChildren(); this.deformed = [];
-    const spectrum = svg('linearGradient', { id: `${this.prefix}-spectrum`, 'color-interpolation': 'sRGB' });
-    spectrum.append(...gradientPalette.map((color, index) => svg('stop', { offset: String(index / (gradientPalette.length - 1)), 'stop-color': color })));
+    const spectrum = svgElement('linearGradient', { id: `${this.prefix}-spectrum`, 'color-interpolation': 'sRGB' });
+    spectrum.append(...gradientPalette.map((color, index) => svgElement('stop', { offset: String(index / (gradientPalette.length - 1)), 'stop-color': color })));
     this.definitions.append(spectrum);
     this.strokes = gradientRenderPieces(pens).map((pieces, stroke) => pieces.map((piece, index) => {
       const id = `${this.prefix}-color-${stroke}-${index}`, [x1, y1, x2, y2] = piece.axis;
-      const gradient = svg('linearGradient', { id, href: `#${this.prefix}-spectrum`, gradientUnits: 'userSpaceOnUse', x1: String(x1), y1: String(y1), x2: String(x2), y2: String(y2) });
-      const clip = svg('clipPath', { id: `${id}-clip`, clipPathUnits: 'userSpaceOnUse' });
-      const path = svg('path', { d: '' }); clip.append(path);
+      const gradient = svgElement('linearGradient', { id, href: `#${this.prefix}-spectrum`, gradientUnits: 'userSpaceOnUse', x1: String(x1), y1: String(y1), x2: String(x2), y2: String(y2) });
+      const clip = svgElement('clipPath', { id: `${id}-clip`, clipPathUnits: 'userSpaceOnUse' });
+      const path = svgElement('path', { d: '' }); clip.append(path);
       this.definitions.append(gradient, clip);
-      const rect = svg('rect', { fill: piece.solid ?? `url(#${id})`, 'clip-path': `url(#${id}-clip)` });
+      const rect = svgElement('rect', { fill: piece.solid ?? `url(#${id})`, 'clip-path': `url(#${id}-clip)` });
       cover(rect, piece.pen, 1.5); this.layer.append(rect);
       return { piece, path, rect, gradient };
     }));

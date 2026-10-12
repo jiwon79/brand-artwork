@@ -2,15 +2,15 @@ type ShareNavigator = Pick<Navigator, 'userAgent' | 'platform' | 'maxTouchPoints
   userActivation?: Pick<UserActivation, 'isActive'>;
 };
 
-export function prefersPhotoShare(host: Pick<ShareNavigator, 'userAgent' | 'platform' | 'maxTouchPoints'> = navigator): boolean {
+export function prefersFileShare(host: Pick<ShareNavigator, 'userAgent' | 'platform' | 'maxTouchPoints'> = navigator): boolean {
   return /iPhone|iPad|iPod/.test(host.userAgent) || host.platform === 'MacIntel' && host.maxTouchPoints > 1;
 }
 
-/** Share the PNG alone, so iOS treats it as an image rather than a web link.
+/** Share the artwork file alone, without a URL or text attachment.
  * A slow encode can outlast Safari's transient activation. Keep the prepared
  * file and retry directly from a fresh tap rather than downloading it. */
-export async function shareArtworkPhoto(photo: File, host: ShareNavigator = navigator): Promise<'shared' | 'cancelled' | 'retry'> {
-  const data = { files: [photo] };
+export async function shareArtworkFile(file: File, host: ShareNavigator = navigator): Promise<'shared' | 'cancelled' | 'retry'> {
+  const data = { files: [file] };
   if (!host.share || !host.canShare?.(data)) {
     throw new Error('이 브라우저는 이 파일의 공유를 지원하지 않습니다. 아이폰 Safari에서 열어 주세요.');
   }
@@ -24,4 +24,12 @@ export async function shareArtworkPhoto(photo: File, host: ShareNavigator = navi
     if (name === 'NotAllowedError') return 'retry';
     throw error;
   }
+}
+
+export function downloadArtworkFile(file: File): void {
+  const download = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = download; link.download = file.name;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(download), 60_000);
 }

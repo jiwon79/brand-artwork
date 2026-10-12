@@ -1,8 +1,9 @@
+import type { Point } from './coordinates';
 import { expect, test } from 'vitest';
 import { composeText, createGlyphResolver } from './lettering';
 import { penGeometry, preparePen, type PenPath } from './pen-geometry';
 import { joinPenStrokes, reverseStroke, routeWord } from './pen-routing';
-import type { PenStroke, Point } from './stroke-alphabet';
+import type { PenStroke } from './stroke-alphabet';
 import { catalog, foregroundIoU, raster, shaper } from './test-font';
 
 const distance = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]);

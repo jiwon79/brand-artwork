@@ -1,6 +1,7 @@
+import type { Point } from './coordinates';
+import type { Bounds } from './coordinates';
 import { preparePen, type PenPath, type PenPoint } from './pen-geometry';
-import type { PenStroke, Point } from './stroke-alphabet';
-import type { Bounds } from './lettering';
+import type { PenStroke } from './stroke-alphabet';
 
 export interface PenIssue {
   kind: 'width-bulge' | 'width-step' | 'tangent-break' | 'nib-collapse';

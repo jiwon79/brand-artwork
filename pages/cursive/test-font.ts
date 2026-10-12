@@ -1,7 +1,8 @@
+import type { Bounds } from './coordinates';
 import { readFileSync } from 'node:fs';
 import * as hb from 'harfbuzzjs';
 import { Resvg } from '@resvg/resvg-js';
-import { composeText, supportedCharacter, type Bounds, type FontCatalog, type TextShaper } from './lettering';
+import { composeText, supportedCharacter, type FontCatalog, type TextShaper } from './lettering';
 import { preparePen, penGeometry } from './pen-geometry';
 
 const assets = new URL('./assets/', import.meta.url);

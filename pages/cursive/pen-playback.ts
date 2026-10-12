@@ -1,5 +1,6 @@
 import type { PenPath } from './pen-geometry';
 
+/** One sampled stroke with start/end times in playback seconds. */
 export interface TimedStroke {
   pen: PenPath;
   start: number;

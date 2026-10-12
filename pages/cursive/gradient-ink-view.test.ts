@@ -1,3 +1,4 @@
+import { svgDocument, svgNode as node } from './test-svg';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { GradientInkView } from './gradient-ink-view';
 import { gradientPalette, gradientPieces, gradientRenderPieces } from './gradient-ink';
@@ -8,25 +9,9 @@ import { visibleRopePens } from './rope-playback';
 import { FloorRope } from './rope';
 import { catalog, foregroundIoU, raster, shaper } from './test-font';
 
-// Serialize the actual view, using only the DOM methods it needs. Raster tests
-// exercise the shipped clips/color planes, rather than reconstructing a filter.
-class SVGNode {
-  attributes = new Map<string, string>();
-  children: SVGNode[] = [];
-  writes = 0;
-  constructor(readonly tag: string) {}
-  get id() { return this.attributes.get('id') ?? ''; }
-  setAttribute(name: string, value: string) { this.attributes.set(name, value); this.writes++; }
-  append(...children: SVGNode[]) { this.children.push(...children); }
-  replaceChildren(...children: SVGNode[]) { this.children = children; }
-  get outerHTML(): string {
-    return `<${this.tag} ${[...this.attributes].map(([k, v]) => `${k}="${v}"`).join(' ')}>${this.children.map(c => c.outerHTML).join('')}</${this.tag}>`;
-  }
-  all(): SVGNode[] { return [this, ...this.children.flatMap(c => c.all())]; }
-}
-beforeEach(() => vi.stubGlobal('document', { createElementNS: (_: string, tag: string) => new SVGNode(tag) }));
+// Rasterize the shipped clips/color planes, rather than reconstructing a filter.
+beforeEach(() => vi.stubGlobal('document', svgDocument()));
 afterEach(() => vi.unstubAllGlobals());
-const node = (element: SVGElement) => element as unknown as SVGNode;
 const body = (view: GradientInkView) => node(view.definitions).outerHTML + node(view.layer).outerHTML;
 const ink = (pens: readonly PenPath[]) => pens.map(p => `<path d="${penGeometry(p)}"/>`).join('');
 

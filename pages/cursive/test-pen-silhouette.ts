@@ -1,4 +1,5 @@
-import type { Bounds } from './lettering';
+import type { Bounds } from './coordinates';
+
 import { raster } from './test-font';
 
 /** Read the outside edge at subpixel precision. Compare tangents on either

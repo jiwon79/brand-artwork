@@ -1,5 +1,6 @@
+import type { Bounds } from './coordinates';
 import { expect, test } from 'vitest';
-import { composeText, type Bounds } from './lettering';
+import { composeText } from './lettering';
 import { penGeometry, preparePen } from './pen-geometry';
 import { createPenPlayback, strokeState } from './pen-playback';
 import { routeWord } from './pen-routing';

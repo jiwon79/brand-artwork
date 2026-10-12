@@ -1,4 +1,5 @@
-import type { Bounds } from './lettering';
+import { artworkFileName, exportViewBox } from './export-layout';
+import type { Bounds } from './coordinates';
 
 interface PhotoOptions {
   paper: string;
@@ -12,12 +13,7 @@ interface PhotoOptions {
 export async function createArtworkPhoto(artwork: SVGSVGElement, options: PhotoOptions): Promise<File> {
   const snapshot = artwork.cloneNode(true) as SVGSVGElement;
   const width = 1440, height = 3200;
-  const [left, top, right, bottom] = options.bounds;
-  // Fit the whole word/rope into a centered wallpaper composition, independent
-  // of the browser viewport. Leave room above and below for lock-screen UI.
-  const scale = Math.min(width * .8 / Math.max(1, right - left), height * .44 / Math.max(1, bottom - top));
-  const viewWidth = width / scale, viewHeight = height / scale;
-  snapshot.setAttribute('viewBox', `${(left + right - viewWidth) / 2} ${(top + bottom - viewHeight) / 2} ${viewWidth} ${viewHeight}`);
+  snapshot.setAttribute('viewBox', exportViewBox(options.bounds, width, height));
   snapshot.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   snapshot.setAttribute('width', String(width)); snapshot.setAttribute('height', String(height));
   snapshot.removeAttribute('id'); snapshot.removeAttribute('class');
@@ -38,18 +34,9 @@ export async function createArtworkPhoto(artwork: SVGSVGElement, options: PhotoO
     const photo = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => {
       if (blob) resolve(blob); else reject(new Error('사진을 저장하지 못했습니다. 다시 시도해 주세요.'));
     }, 'image/png'));
-    const name = `cursive-${options.text.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'handwriting'}.png`;
-    return new File([photo], name, { type: 'image/png' });
+    return new File([photo], artworkFileName(options.text, 'png'), { type: 'image/png' });
   } finally {
     URL.revokeObjectURL(source);
     canvas.width = canvas.height = 0;
   }
-}
-
-export function downloadPhotoFile(photo: File): void {
-  const download = URL.createObjectURL(photo);
-  const link = document.createElement('a');
-  link.href = download; link.download = photo.name;
-  document.body.append(link); link.click(); link.remove();
-  setTimeout(() => URL.revokeObjectURL(download), 60_000);
 }
