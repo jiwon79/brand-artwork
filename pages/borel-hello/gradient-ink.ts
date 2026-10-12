@@ -25,7 +25,7 @@ export interface GradientPiece {
  * Deferred dots and t crossbars borrow their bodies' colors without advancing it.
  * Colors never rescale to the currently visible portion during playback.
  */
-export function gradientPieces(pens: readonly PenPath[], palette: readonly string[] = gradientPalette): GradientPiece[][] {
+export function gradientPieces(pens: readonly PenPath[], palette: readonly string[] = gradientPalette, maxSpan = 0): GradientPiece[][] {
   const color = (progress: number) => gradientColor(progress, palette);
   let total = 0;
   const offsets = pens.map(pen => {
@@ -89,12 +89,25 @@ export function gradientPieces(pens: readonly PenPath[], palette: readonly strin
       first = last;
     };
     for (let i = 1; i < pen.points.length; i++) {
-      append(i);
+      if (!maxSpan) { append(i); continue; }
+      const a = pen.points[first], b = pen.points[i];
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+      const turns = pen.points.slice(first + 1, i + 1).some((p, j) => {
+        const previous = pen.points[first + j];
+        const turn = Math.atan2(p.y - previous.y, p.x - previous.x) - angle;
+        return Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) > .3;
+      });
+      // Batch adjacent color intervals, retaining every geometry sample.
+      // Bound both material length and curvature, including after rope pulls.
+      if (i > first + 1 && (b.distance - a.distance > maxSpan || turns)) append(i - 1);
     }
+    if (first < pen.points.length - 1) append(pen.points.length - 1);
     if (!pieces.length) append(0);
     return pieces;
   });
 }
+
+export const gradientRenderPieces = (pens: readonly PenPath[]) => gradientPieces(pens, gradientPalette, 64);
 
 /** Color belongs only to the nib's swept area. Expanding a patch would recolor
  * earlier ink at crossings, even when a shared mask preserves the silhouette.

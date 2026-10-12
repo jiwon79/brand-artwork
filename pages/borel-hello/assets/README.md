@@ -108,6 +108,22 @@ clipping, native text pixels, alpha reveal maps, nor captured frames. The debug
 panel can separately overlay exact font outlines or the center trajectories.
 Changing a pen curve changes the visible ink itself.
 
+Gradient patches use opaque SVG color planes clipped to the actual traveled
+nib geometry. This replaces the full-text alpha-normalizing filter and mask;
+the antialias fringe receives full color through one vector clip. Adjacent
+color intervals are batched within bounded length and turning angle, retaining
+every centerline/width sample and nib footprint. Dots and crossbars retain their
+original local color anchors. Completed brush capsules are cached, so playback
+calculates only its moving tip. Rope rendering skips unchanged curves, and
+rope/inspection views are prepared only when needed. Capital J's top bar has
+flat source-matching edges at y=641 and y=722.
+
+`gradient-ink-view.test.ts` serializes the actual view and rasterizes every
+60 fps frame, including alphabet, capitals, digits and sample words. Separate
+zoom, crossing-ownership, partial-rope and unchanged-DOM checks guard against
+dark fringes, color spill and redundant work. Subpixel patch antialiasing is
+measured separately from the 95% source-font overlap requirement.
+
 The debug **획순 경로** mode overlays the actual playback centerline with
 ordered colors, direction arrows, interval numbers and a moving pen marker.
 Numbers divide long paths into inspection intervals, not handwriting strokes.

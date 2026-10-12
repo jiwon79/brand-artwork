@@ -25,16 +25,15 @@ const settings = { duration: 6, weight: 1, guides: false, ink: '#6f4031', paper:
 let gradientEnabled = true;
 const gradientView = new GradientInkView();
 const inkShape = svgElement('g', { id: 'borel-ink-shape' });
-const inkMask = svgElement('mask', { id: 'borel-ink-mask', maskUnits: 'userSpaceOnUse', 'mask-type': 'alpha' });
-inkMask.append(svgElement('use', { href: '#borel-ink-shape' }));
 const definitions = svgElement('defs', {});
-definitions.append(inkShape, inkMask);
+definitions.append(inkShape);
 const inkLayer = svgElement('g', {});
 const solidInk = svgElement('use', { href: '#borel-ink-shape' });
 inkLayer.append(solidInk, gradientView.layer);
 const reference = svgElement('g', { fill: 'currentColor', opacity: '.13', 'pointer-events': 'none' });
 const guides = svgElement('g', { fill: 'none', stroke: '#dc7962', 'stroke-width': '5', opacity: '.65', 'pointer-events': 'none' });
 const orderView = new StrokeOrderView();
+let orderPrepared = false;
 artwork.append(definitions, gradientView.definitions, reference, inkLayer, guides, orderView.layer);
 let inspecting = false;
 let roping = false;
@@ -42,13 +41,14 @@ let rope = new FloorRope([]);
 const ropeLayer = svgElement('g', { fill: 'currentColor', 'pointer-events': 'none' });
 const ropeGradientView = new GradientInkView('borel-rope');
 const ropeShape = svgElement('g', { id: 'borel-rope-ink-shape' });
-const ropeMask = svgElement('mask', { id: 'borel-rope-ink-mask', maskUnits: 'userSpaceOnUse', 'mask-type': 'alpha' });
-ropeMask.append(svgElement('use', { href: '#borel-rope-ink-shape' }));
-definitions.append(ropeShape, ropeMask);
+definitions.append(ropeShape);
 const solidRope = svgElement('use', { href: '#borel-rope-ink-shape' });
 ropeLayer.append(solidRope, ropeGradientView.layer);
 artwork.append(ropeGradientView.definitions, ropeLayer);
 let ropePaths: SVGPathElement[] = [];
+let ropePlayback: PenPlayback | undefined;
+let renderedRopePens: ReturnType<typeof preparePen>[] = [];
+let ropeWeight = 0;
 let ropePointer: number | undefined;
 let bounds: Bounds = [0, 0, 1100, 530];
 
@@ -64,6 +64,12 @@ const textInput = document.querySelector<HTMLTextAreaElement>('#text-input')!;
 const status = document.querySelector<HTMLElement>('#text-status')!;
 let loaded: Awaited<ReturnType<typeof loadBorel>>;
 
+function prepareOrderView() {
+  if (orderPrepared) return;
+  orderView.setPlayback(playback); orderPrepared = true;
+  stepController.options(Object.fromEntries(orderView.steps.map(step => [`${step.index + 1} · ${stepName[step.kind]}`, step.index])));
+}
+
 function writeText(text: string) {
   const missing = unsupportedCharacters(text, loaded.catalog);
   if (missing.length) {
@@ -75,7 +81,9 @@ function writeText(text: string) {
   textInput.removeAttribute('aria-invalid');
   const lettering = composeText(text, loaded.shaper, loaded.catalog);
   playback = createPenPlayback(lettering.strokes.map(preparePen));
-  orderView.setPlayback(playback);
+  orderPrepared = false;
+  orderView.layer.replaceChildren();
+  orderView.steps = [];
   inkShape.replaceChildren(); reference.replaceChildren(); guides.replaceChildren();
   strokes = []; totalLength = 0;
   for (const [index, stroke] of lettering.strokes.entries()) {
@@ -88,10 +96,10 @@ function writeText(text: string) {
   }
   for (const d of lettering.outlines) if (d) reference.append(svgElement('path', { d }));
   bounds = expandPenBounds(lettering.bounds, playback.strokes.map(stroke => stroke.pen), 1.5);
-  resetRope();
-  const [left, top, right, bottom] = bounds;
-  for (const [name, value] of Object.entries({ x: left, y: top, width: right - left, height: bottom - top })) inkMask.setAttribute(name, String(value));
-  gradientView.setPens(playback.strokes.map(stroke => stroke.pen), bounds);
+  cancelRopeGrab();
+  ropeGradientView.setPens([]); ropePaths = []; ropeShape.replaceChildren();
+  gradientView.setPens(playback.strokes.map(stroke => stroke.pen));
+  if (inspecting) prepareOrderView();
   updateViewBox();
   artwork.setAttribute('aria-label', text.trim() ? `Borel 필기체로 써지는 ${text}` : '문장을 입력하면 필기 애니메이션을 볼 수 있습니다.');
   settings.duration = Math.ceil(playback.duration * 60) / 60 || 4;
@@ -121,7 +129,7 @@ function render() {
   if (!roping) for (const [index, stroke] of strokes.entries()) {
     const timed = playback.strokes[index];
     const { written, pressure } = strokeState(timed, time);
-    if (written !== stroke.written || pressure !== stroke.pressure || settings.weight !== stroke.weight) {
+    if ((!gradientEnabled || inspecting) && (written !== stroke.written || pressure !== stroke.pressure || settings.weight !== stroke.weight)) {
       stroke.path.setAttribute('d', penGeometry(timed.pen, written, pressure, settings.weight));
       stroke.written = written;
       stroke.pressure = pressure;
@@ -136,19 +144,15 @@ function render() {
   if (roping) {
     const pens = ropePaths.map((_, index) => rope.deformed(index));
     for (const [index, path] of ropePaths.entries()) {
-      path.setAttribute('d', penGeometry(pens[index], undefined, 1, settings.weight));
+      if (!gradientEnabled && (pens[index] !== renderedRopePens[index] || settings.weight !== ropeWeight)) {
+        path.setAttribute('d', penGeometry(pens[index], undefined, 1, settings.weight));
+        renderedRopePens[index] = pens[index];
+      }
       if (gradientEnabled) ropeGradientView.renderDeformedStroke(index, pens[index], settings.weight);
     }
+    if (!gradientEnabled) ropeWeight = settings.weight;
     solidRope.style.display = gradientEnabled ? 'none' : '';
     ropeGradientView.layer.style.display = gradientEnabled ? '' : 'none';
-    if (gradientEnabled) {
-      // The color buffer and alpha mask follow the rope outside its original
-      // lettering bounds, rather than clipping the part being pulled.
-      const deformedBounds = expandPenBounds(bounds, pens, settings.weight);
-      const [left, top, right, bottom] = deformedBounds;
-      for (const [name, value] of Object.entries({ x: left, y: top, width: right - left, height: bottom - top })) ropeMask.setAttribute(name, String(value));
-      ropeGradientView.updateBounds(deformedBounds);
-    }
   }
   debugState.frame = Math.round(progress * settings.duration * 60);
   pauseButton.dataset.state = playing ? 'pause' : progress === 1 ? 'restart' : 'play';
@@ -226,9 +230,13 @@ function cancelRopeGrab() {
 function resetRope(time = playback.duration) {
   cancelRopeGrab();
   rope = new FloorRope(visibleRopePens(playback, time));
+  renderedRopePens = []; ropeWeight = 0;
   ropePaths = playback.strokes.map(() => svgElement('path', {}));
   ropeShape.replaceChildren(...ropePaths);
-  ropeGradientView.setPens(playback.strokes.map(stroke => stroke.pen), bounds);
+  if (ropePlayback !== playback) {
+    ropeGradientView.setPens(playback.strokes.map(stroke => stroke.pen));
+    ropePlayback = playback;
+  }
 }
 function ropePoint(event: PointerEvent) {
   const matrix = artwork.getScreenCTM();
@@ -254,6 +262,7 @@ for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) artwork
 
 function setView(mode: 'ink' | 'order' | 'rope') {
   inspecting = mode === 'order';
+  if (inspecting) prepareOrderView();
   cancelRopeGrab();
   if (mode === 'rope') { progress = 1; playing = false; }
   pauseButton.disabled = !totalLength;
@@ -270,7 +279,7 @@ const gui = new GUI({ title: 'Borel · Debug' });
 gui.hide();
 gui.add(debugState, 'mode', { '필기': 'ink', '획순 경로': 'order', '로프': 'rope' }).name('보기').onChange(setView);
 gui.add(debugState, 'example', debugExamples).name('테스트 문장').onChange((text: string) => { textInput.value = text; submitText(); });
-const frameController = gui.add(debugState, 'frame', 0, 360, 1).name('프레임').listen().onChange(seekFrame);
+const frameController = gui.add(debugState, 'frame', 0, 360, 1).name('프레임').onChange(seekFrame);
 gui.add(debugState, 'speed', .25, 5, .25).name('재생 속도').onChange((value: number) => { speed = value; });
 gui.add(settings, 'weight', .5, 1.5, .05).name('획 두께').onChange(render);
 gui.add(settings, 'guides').name('중심 경로').onChange(render);
@@ -289,7 +298,7 @@ orderFolder.add(debugState, 'character', ['', ...'abcdefghijklmnopqrstuvwxyzABCD
   contextController.updateDisplay();
   textInput.value = debugState.context; writeText(textInput.value);
 });
-const stepController = orderFolder.add(debugState, 'step', { '문장을 입력하세요': 0 }).name('검사 구간').listen().onChange((index: number) => {
+const stepController = orderFolder.add(debugState, 'step', { '문장을 입력하세요': 0 }).name('검사 구간').onChange((index: number) => {
   const step = orderView.steps[index];
   if (!step || !playback.duration) return;
   progress = (step.start + Math.min(.001, (step.end - step.start) / 2)) / playback.duration;
@@ -303,6 +312,7 @@ ropeFolder.hide();
 let debugVisible = new URLSearchParams(location.search).has('debug');
 function toggleDebug(visible: boolean) {
   debugVisible = visible; gui.show(visible);
+  frameController.listen(visible); stepController.listen(visible);
   if (!visible) { debugState.mode = 'ink'; setView('ink'); settings.guides = settings.reference = false; render(); }
 }
 toggleDebug(debugVisible);

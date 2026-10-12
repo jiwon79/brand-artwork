@@ -97,6 +97,28 @@ function arc(center: PenPoint, from: Point, to: Point, scale: Point, large = fal
   return `A${number(center.radius * scale[0])} ${number(center.radius * scale[1])} 0 ${Number(large)} ${sweep ?? Number(cross > 0)} ${coordinates(to)}`;
 }
 
+function capsule(a: PenPoint, b: PenPoint, nib: Point): string {
+  const separation = Math.hypot((b.x - a.x) / nib[0], (b.y - a.y) / nib[1]);
+  if (separation <= Math.abs(b.radius - a.radius) + .000001) return disk(a.radius >= b.radius ? a : b, nib);
+  const edge = tangent(a, b, nib);
+  return `M${coordinates(edge.rightA)}L${coordinates(edge.rightB)}` +
+    arc(b, edge.rightB, edge.leftB, nib, edge.slope > 0, 1) +
+    `L${coordinates(edge.leftA)}` + arc(a, edge.leftA, edge.rightA, nib, edge.slope < 0, 1) + 'Z';
+}
+
+interface CompiledPen { scale: number; points: PenPoint[]; sections: string[]; full: string }
+// Prepared pen paths are immutable. Keep one width variant per pen, so a
+// growing pressure dot cannot accumulate a cache entry for every frame.
+const geometryCache = new WeakMap<PenPath, CompiledPen>();
+function compileGeometry(pen: PenPath, scale: number): CompiledPen {
+  const previous = geometryCache.get(pen);
+  if (previous?.scale === scale) return previous;
+  const points = scale === 1 ? pen.points : pen.points.map(p => ({ ...p, radius: p.radius * scale }));
+  const sections = points.map((p, i) => i ? capsule(points[i - 1], p, pen.nibScale) : disk(p, pen.nibScale));
+  const compiled = { scale, points, sections, full: sections.join('') };
+  geometryCache.set(pen, compiled); return compiled;
+}
+
 /** Build a vector ribbon along the traveled Bézier center curve. Its boundary
  * follows brush tangents and round joins; it never samples a source image.
  */
@@ -104,29 +126,20 @@ export function penGeometry(pen: PenPath, written = pen.length, pressure = 1, we
   if (pen.retrace || written <= 0 || pressure <= 0 || weight <= 0 || !pen.points.length) return '';
   // Scale the nib after path sampling so weight never changes travel, timing,
   // color anchors, or the original radius profile used by a later reset.
-  const scale = Math.min(1, pressure) * weight;
-  if (scale !== 1) return penGeometry({ ...pen, points: pen.points.map(point => ({ ...point, radius: point.radius * scale })) }, written);
-  let d = disk(pen.points[0], pen.nibScale);
-  for (let i = 1; i < pen.points.length; i++) {
-    const a = pen.points[i - 1], sample = pen.points[i];
-    if (a.distance >= written) break;
-    const t = Math.min(1, (written - a.distance) / (sample.distance - a.distance || 1));
-    const b = t === 1 ? sample : { x: a.x + (sample.x - a.x) * t, y: a.y + (sample.y - a.y) * t, radius: a.radius + (sample.radius - a.radius) * t, distance: written };
-    // Each traveled interval contributes its own positively wound capsule.
-    // A self-crossing outline can cancel old ink or expose a remote sliver as
-    // the tip moves. Independent capsules form the union of the swept nib;
-    // their completed prefix never changes when another interval is added.
-    const separation = Math.hypot((b.x - a.x) / pen.nibScale[0], (b.y - a.y) / pen.nibScale[1]);
-    if (separation <= Math.abs(b.radius - a.radius) + .000001) {
-      d += disk(a.radius >= b.radius ? a : b, pen.nibScale);
-    } else {
-      const edge = tangent(a, b, pen.nibScale);
-      d += `M${coordinates(edge.rightA)}L${coordinates(edge.rightB)}` +
-        arc(b, edge.rightB, edge.leftB, pen.nibScale, edge.slope > 0, 1) +
-        `L${coordinates(edge.leftA)}` +
-        arc(a, edge.leftA, edge.rightA, pen.nibScale, edge.slope < 0, 1) + 'Z';
-    }
-    if (t < 1) break;
+  const { points, sections, full } = compileGeometry(pen, Math.min(1, pressure) * weight);
+  if (written >= pen.length) return full;
+  // Reuse completed capsules; only the moving tip needs tangent/arc math.
+  let low = 1, high = points.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (points[middle].distance <= written) low = middle + 1; else high = middle;
+  }
+  let d = sections.slice(0, low).join('');
+  const a = points[low - 1], sample = points[low];
+  if (sample && written > a.distance) {
+    const t = (written - a.distance) / (sample.distance - a.distance || 1);
+    const b = { x: a.x + (sample.x - a.x) * t, y: a.y + (sample.y - a.y) * t, radius: a.radius + (sample.radius - a.radius) * t, distance: written };
+    d += capsule(a, b, pen.nibScale);
   }
   return d;
 }
