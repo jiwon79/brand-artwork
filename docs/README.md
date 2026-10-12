@@ -32,6 +32,8 @@ docs/
 
 ### Cursive
 
+- [`architecture.md`](./artworks/cursive/architecture.md) - 저작 획·샘플 경로·재생 일정의 용어와 SVG 필기, 로프, 파일 출력의 현재 구조
+- [`pen-paths.md`](./artworks/cursive/pen-paths.md) - 글자별 펜 경로 선택과 원본 폰트·교본 비교, 형태·순서 검증 기준
 - [`social-share-image.md`](./artworks/cursive/social-share-image.md) - 실제 필기체 렌더링과 제목 합성, 공유 이미지 재생성 방법
 
 ### Body Echo
