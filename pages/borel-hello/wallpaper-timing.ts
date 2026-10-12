@@ -7,6 +7,11 @@ export function wallpaperProgress(seconds: number) {
   return Math.max(0, Math.min(1, (seconds - WALLPAPER.lead) / (WALLPAPER.complete - WALLPAPER.lead)));
 }
 
+/** The opening frame matches the still; the remaining frames replay the pen. */
+export function wallpaperFrameProgress(frame: number) {
+  return frame === 0 ? 1 : wallpaperProgress(frame / WALLPAPER.fps);
+}
+
 /** Place lettering below the lock-screen clock, with room for notifications. */
 export function wallpaperPlacement(bounds: Bounds) {
   const width = Math.max(1, bounds[2] - bounds[0]), height = Math.max(1, bounds[3] - bounds[1]);

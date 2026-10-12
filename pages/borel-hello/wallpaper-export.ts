@@ -4,7 +4,7 @@ import { penGeometry } from './pen-geometry';
 import { strokeState, type PenPlayback } from './pen-playback';
 import type { Bounds } from './lettering';
 import type { TubeColorMode } from './tube-color';
-import { WALLPAPER, wallpaperPlacement, wallpaperProgress } from './wallpaper-timing';
+import { WALLPAPER, wallpaperPlacement, wallpaperFrameProgress } from './wallpaper-timing';
 import { waitForWallpaperStep } from './wallpaper-deadline';
 
 export interface WallpaperOptions {
@@ -86,7 +86,7 @@ export async function exportWallpaper(options: WallpaperOptions, onProgress: (fr
       const seconds = index / WALLPAPER.fps;
       context.fillStyle = options.tube ? '#eee7ff' : options.paper;
       context.fillRect(0, 0, canvas.width, canvas.height);
-      await waitForWallpaperStep(draw(context, wallpaperProgress(seconds) * options.playback.duration));
+      await waitForWallpaperStep(draw(context, wallpaperFrameProgress(index) * options.playback.duration));
       if (index === Math.round(WALLPAPER.poster * WALLPAPER.fps)) {
         const still = document.createElement('canvas');
         still.width = canvas.width * WALLPAPER.supersample; still.height = canvas.height * WALLPAPER.supersample;
