@@ -5,6 +5,7 @@ import { strokeState, type PenPlayback } from './pen-playback';
 import type { Bounds } from './lettering';
 import type { TubeColorMode } from './tube-color';
 import { WALLPAPER, wallpaperPlacement, wallpaperProgress } from './wallpaper-timing';
+import { waitForWallpaperStep } from './wallpaper-deadline';
 
 export interface WallpaperOptions {
   playback: PenPlayback; bounds: Bounds; weight: number; ink: string; paper: string;
@@ -54,7 +55,7 @@ function svgFrameRenderer(options: WallpaperOptions) {
 /** Offline, frame-indexed encoding. Export never advances the on-screen player. */
 export async function exportWallpaper(options: WallpaperOptions, onProgress: (fraction: number) => void) {
   if (!options.playback.strokes.length) throw new Error('먼저 이름을 입력해 주세요.');
-  if (!await canEncodeVideo('avc', { width: WALLPAPER.width, height: WALLPAPER.height })) throw new Error('영상 저장을 지원하는 최신 Chrome 또는 Safari에서 열어 주세요.');
+  if (!await waitForWallpaperStep(canEncodeVideo('avc', { width: WALLPAPER.width, height: WALLPAPER.height }))) throw new Error('영상 저장을 지원하는 최신 Chrome 또는 Safari에서 열어 주세요.');
   const canvas = document.createElement('canvas'); canvas.width = WALLPAPER.width; canvas.height = WALLPAPER.height;
   const context = canvas.getContext('2d')!;
   const target = new BufferTarget(), output = new Output({ format: new Mp4OutputFormat(), target });
@@ -77,21 +78,22 @@ export async function exportWallpaper(options: WallpaperOptions, onProgress: (fr
         ctx.drawImage(tubeCanvas!, place.x, place.y, place.width, place.height);
       };
     }
-    await output.start();
+    await waitForWallpaperStep(output.start());
     const count = WALLPAPER.duration * WALLPAPER.fps;
     for (let index = 0; index < count; index++) {
       const seconds = index / WALLPAPER.fps;
       context.fillStyle = options.tube ? '#eee7ff' : options.paper;
       context.fillRect(0, 0, canvas.width, canvas.height);
-      await draw(context, wallpaperProgress(seconds) * options.playback.duration);
-      if (index === Math.round(WALLPAPER.poster * WALLPAPER.fps)) cover = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('완성 이미지를 만들지 못했습니다.')), 'image/png'));
-      await source.add(seconds, 1 / WALLPAPER.fps);
+      await waitForWallpaperStep(draw(context, wallpaperProgress(seconds) * options.playback.duration));
+      if (index === Math.round(WALLPAPER.poster * WALLPAPER.fps)) cover = await waitForWallpaperStep(new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('완성 이미지를 만들지 못했습니다.')), 'image/png')));
+      await waitForWallpaperStep(source.add(seconds, 1 / WALLPAPER.fps));
       onProgress((index + 1) / count);
     }
-    source.close(); await output.finalize();
+    source.close(); await waitForWallpaperStep(output.finalize());
     if (!target.buffer || !cover) throw new Error('영상 생성에 실패했습니다.');
     return { video: new Blob([target.buffer], { type: 'video/mp4' }), cover };
   } catch (error) {
-    await output.cancel(); throw error;
+    // Do not keep the editor locked while a stalled browser encoder is being closed.
+    void output.cancel().catch(() => {}); throw error;
   } finally { tube?.dispose(); tubeCanvas?.remove(); }
 }
