@@ -61,7 +61,7 @@ test.skipIf(!ffmpeg || !ffprobe)('HTTP PVT export preserves 120 frames, decodes 
     expect([video.width, video.height, video.nb_frames, video.r_frame_rate]).toEqual([1080, 2340, '120', '60/1']);
     expect(Number(info.format.duration)).toBe(2);
     expect(info.format.tags['com.apple.quicktime.content.identifier']).toMatch(/^[A-F0-9-]{36}$/);
-    expect(info.streams.filter((stream: { codec_tag_string: string }) => stream.codec_tag_string === 'mebx')).toHaveLength(1);
+    expect(info.streams.filter((stream: { codec_tag_string: string }) => stream.codec_tag_string === 'mebx')).toHaveLength(2);
     expect(video.codec_name).toBe('hevc'); expect(video.profile).toBe('Main 10');
     // No library import or permissions: ask PhotoKit to decode these two resources.
     const probe = `import Foundation
@@ -110,6 +110,53 @@ print("\\(image.width),\\(image.height),\\(pixel[0]),\\(pixel[1]),\\(pixel[2])")
     expect((await run('/usr/bin/swift', [probeFile, output], { timeout: 20_000 })).stdout.trim()).toBe('recognized');
     const missingCover = new FormData(); missingCover.append('video', form.get('video')!);
     expect((await fetch(endpoint, { method: 'POST', body: missingCover })).status).toBe(415);
+    const motionProbe = join(directory, 'motion.swift');
+    await writeFile(motionProbe, `import Foundation
+import AVFoundation
+import CoreMedia
+let asset = AVURLAsset(url: URL(fileURLWithPath: CommandLine.arguments[1]))
+var keys: [String] = [], frames = 0, marker = 0.0, identity = false, referenced = true
+for track in asset.tracks(withMediaType: .metadata) {
+    let format = track.formatDescriptions[0] as! CMFormatDescription
+    let identifiers = CMMetadataFormatDescriptionGetIdentifiers(format) as! [String]
+    keys += identifiers
+    referenced = referenced && track.associatedTracks(ofType: .metadataReferent).count == 1
+    let reader = try AVAssetReader(asset: asset), output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+    reader.add(output); reader.startReading()
+    while let sample = output.copyNextSampleBuffer() {
+        if CMSampleBufferGetNumSamples(sample) == 0 { continue }
+        if identifiers.contains("mdta/com.apple.quicktime.live-photo-info") {
+            precondition(CMSampleBufferGetTotalSampleSize(sample) == 144)
+            precondition(abs(CMSampleBufferGetPresentationTimeStamp(sample).seconds - Double(frames)/60) < 0.001)
+            frames += 1
+        } else {
+            let block = CMSampleBufferGetDataBuffer(sample)!
+            var bytes = [UInt8](repeating: 0, count: CMBlockBufferGetDataLength(block))
+            CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: bytes.count, destination: &bytes)
+            let expected: [Double] = [1,0,0,0,1,0,0,0,1]
+            identity = bytes.count == 89 && (0..<9).allSatisfy { i in
+                let bits = bytes[(17+i*8)..<(25+i*8)].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
+                return Double(bitPattern: bits) == expected[i]
+            }
+        }
+    }
+    if !identifiers.contains("mdta/com.apple.quicktime.live-photo-info") {
+        // The metadata adaptor maps media-relative sample times through the
+        // movie edit list; raw AVAssetReader samples can report a zero PTS.
+        let timedReader = try AVAssetReader(asset: asset)
+        let timedOutput = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        let adaptor = AVAssetReaderOutputMetadataAdaptor(assetReaderTrackOutput: timedOutput)
+        timedReader.add(timedOutput); timedReader.startReading()
+        marker = adaptor.nextTimedMetadataGroup()!.timeRange.start.seconds
+    }
+}
+let report: [String:Any] = ["keys": keys.sorted(), "frames": frames, "poster": marker, "identity": identity, "referenced": referenced]
+print(String(data: try JSONSerialization.data(withJSONObject: report), encoding: .utf8)!)`);
+    const motionReport = JSON.parse((await run('/usr/bin/swift', [motionProbe, join(output, 'name.MOV')])).stdout);
+    expect(motionReport).toEqual({
+      keys: ['mdta/com.apple.quicktime.live-photo-info', 'mdta/com.apple.quicktime.live-photo-still-image-transform', 'mdta/com.apple.quicktime.still-image-time'],
+      frames: 120, poster: 1.5, identity: true, referenced: true,
+    });
     const mac = await upload();
     expect(mac.headers.get('content-type')).toBe('application/zip');
     expect(Object.keys(unzipSync(new Uint8Array(await mac.arrayBuffer()))).sort()).toEqual(['READ-ME.txt', 'name.HEIC', 'name.MOV']);
