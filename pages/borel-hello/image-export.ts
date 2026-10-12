@@ -9,7 +9,7 @@ interface PhotoOptions {
 
 /** Freeze the current vector view before async image decoding. UI and the touch
  * cursor live outside this SVG, so neither appears in the downloaded image. */
-export async function downloadArtworkPhoto(artwork: SVGSVGElement, options: PhotoOptions): Promise<void> {
+export async function createArtworkPhoto(artwork: SVGSVGElement, options: PhotoOptions): Promise<File> {
   const snapshot = artwork.cloneNode(true) as SVGSVGElement;
   const width = 1440, height = 3200;
   const [left, top, right, bottom] = options.bounds;
@@ -38,15 +38,18 @@ export async function downloadArtworkPhoto(artwork: SVGSVGElement, options: Phot
     const photo = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => {
       if (blob) resolve(blob); else reject(new Error('사진을 저장하지 못했습니다. 다시 시도해 주세요.'));
     }, 'image/png'));
-    const download = URL.createObjectURL(photo);
-    const link = document.createElement('a');
-    link.href = download;
-    link.download = `borel-${options.text.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'handwriting'}.png`;
-    document.body.append(link); link.click(); link.remove();
-    // Give Safari time to consume the object URL after the click handler ends.
-    setTimeout(() => URL.revokeObjectURL(download), 60_000);
+    const name = `borel-${options.text.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'handwriting'}.png`;
+    return new File([photo], name, { type: 'image/png' });
   } finally {
     URL.revokeObjectURL(source);
     canvas.width = canvas.height = 0;
   }
+}
+
+export function downloadPhotoFile(photo: File): void {
+  const download = URL.createObjectURL(photo);
+  const link = document.createElement('a');
+  link.href = download; link.download = photo.name;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(download), 60_000);
 }

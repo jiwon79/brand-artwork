@@ -218,3 +218,9 @@ frame, color, paper background and dragged rope shape. The artwork is centered,
 fitting within 80% of the image width and 44% of its height, with room above and
 below for lock-screen controls. Dragged rope uses its current ink bounds. Controls and the
 touch cursor are excluded; no download controls appear in the public interface.
+On iPhone/iPad the button is "사진 공유" and sends only the PNG file to the native
+share sheet, where the user can choose Save Image. Other devices retain file
+downloads. If encoding outlasts Safari's transient activation, the same button
+becomes "준비된 사진 공유" for a fresh-tap retry of the prepared image. Dismissing
+the share sheet does not trigger a download; unsupported file sharing reports
+the limitation. Actual Photos/save-sheet behavior requires physical iOS QA.

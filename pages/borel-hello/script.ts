@@ -11,7 +11,8 @@ import { letterContexts } from './stroke-order';
 import { StrokeOrderView, stepName } from './stroke-order-view';
 import { GradientInkView } from './gradient-ink-view';
 import { teachingReference } from './teaching-model';
-import { downloadArtworkPhoto } from './image-export';
+import { createArtworkPhoto, downloadPhotoFile } from './image-export';
+import { prefersPhotoShare, shareArtworkPhoto } from './photo-share';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) {
@@ -109,6 +110,8 @@ function writeText(text: string) {
   roping = false;
   status.hidden = true;
   pauseButton.disabled = !totalLength;
+  preparedPhoto = undefined;
+  photoController.name(photoLabel);
   photoController.disable(!totalLength || savingPhoto);
   debugState.frame = Math.round(progress * settings.duration * 60);
   frameController?.max(Math.round(settings.duration * 60));
@@ -280,23 +283,39 @@ const debugState = { mode: 'ink', example: 'hello', character: '', context: '', 
 const gui = new GUI({ title: 'Borel · Debug' });
 gui.hide();
 let savingPhoto = false;
+let preparedPhoto: File | undefined;
+const sharePhoto = prefersPhotoShare();
+const photoLabel = sharePhoto ? '사진 공유' : '사진 다운로드';
 const photoController = gui.add({ photo: async () => {
   if (!ready || !totalLength || savingPhoto) return;
   savingPhoto = true; photoController.disable();
+  status.hidden = true;
   try {
-    render();
-    // Center the actual rope silhouette, including ink dragged outside the
-    // authored frame. An empty paused frame falls back to the text's bounds.
-    const ropeBounds = roping ? expandPenBounds([Infinity, Infinity, -Infinity, -Infinity], ropePaths.map((_, i) => rope.deformed(i)), settings.weight) : undefined;
-    const photoBounds = ropeBounds?.every(Number.isFinite) ? ropeBounds : bounds;
-    await downloadArtworkPhoto(artwork, { paper: settings.paper, ink: settings.ink, text: textInput.value, bounds: photoBounds });
+    let photo = preparedPhoto;
+    if (!photo) {
+      render();
+      // Center the actual rope silhouette, including ink dragged outside the
+      // authored frame. An empty paused frame falls back to the text's bounds.
+      const ropeBounds = roping ? expandPenBounds([Infinity, Infinity, -Infinity, -Infinity], ropePaths.map((_, i) => rope.deformed(i)), settings.weight) : undefined;
+      const photoBounds = ropeBounds?.every(Number.isFinite) ? ropeBounds : bounds;
+      photo = await createArtworkPhoto(artwork, { paper: settings.paper, ink: settings.ink, text: textInput.value, bounds: photoBounds });
+    }
+    // The prepared-file branch calls share immediately, in the new tap's
+    // activation, without rendering/encoding the PNG again.
+    const result = sharePhoto ? await shareArtworkPhoto(photo) : downloadPhotoFile(photo);
+    preparedPhoto = result === 'retry' ? photo : undefined;
+    photoController.name(preparedPhoto ? '준비된 사진 공유' : photoLabel);
+    if (preparedPhoto) {
+      status.textContent = '사진이 준비됐습니다. ‘준비된 사진 공유’를 눌러 공유 시트에서 이미지 저장을 선택하세요.';
+      status.hidden = false;
+    }
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : '사진을 저장하지 못했습니다.';
     status.hidden = false;
   } finally {
     savingPhoto = false; photoController.disable(!totalLength);
   }
-} }, 'photo').name('사진 다운로드').disable();
+} }, 'photo').name(photoLabel).disable();
 gui.add(debugState, 'mode', { '필기': 'ink', '획순 경로': 'order', '로프': 'rope' }).name('보기').onChange(setView);
 gui.add(debugState, 'example', debugExamples).name('테스트 문장').onChange((text: string) => { textInput.value = text; submitText(); });
 const frameController = gui.add(debugState, 'frame', 0, 360, 1).name('프레임').onChange(seekFrame);
