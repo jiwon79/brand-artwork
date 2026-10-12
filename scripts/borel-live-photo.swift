@@ -55,14 +55,14 @@ func motionSample(format: CMFormatDescription, payload: Data, time: CMTime) thro
 func makeLivePhoto(input: URL, directory: URL, cover: URL?) async throws {
     let asset = AVURLAsset(url: input)
     let duration = try await asset.load(.duration)
-    try require(abs(duration.seconds - 2) < 0.05, "Expected a two-second wallpaper")
+    try require(abs(duration.seconds - 1) < 0.001 && duration.seconds <= 1, "Expected a wallpaper no longer than one second")
     let tracks = try await asset.loadTracks(withMediaType: .video)
     try require(tracks.count == 1, "Expected one video track")
     let track = tracks[0]
     let size = try await track.load(.naturalSize)
     try require(size.width == 1290 && size.height == 2796 || size.width == 1080 && size.height == 2340, "Unexpected wallpaper dimensions")
     let identifier = UUID().uuidString
-    let posterTime = CMTime(value: 90, timescale: 60)
+    let posterTime = CMTime(value: 48, timescale: 60)
     let stillURL = directory.appendingPathComponent("name.HEIC")
     let movieURL = directory.appendingPathComponent("name.MOV")
 
@@ -201,7 +201,7 @@ func makeLivePhoto(input: URL, directory: URL, cover: URL?) async throws {
             "Invalid frame motion metadata")
         count += 1
     }
-    try require(count == 120 && motionCheck.status == .completed, "Incomplete frame motion metadata")
+    try require(count == 60 && motionCheck.status == .completed, "Incomplete frame motion metadata")
     let verify = try AVAssetReader(asset: result)
     let metadataOutput = AVAssetReaderTrackOutput(track: markerTrack!, outputSettings: nil)
     let metadataReader = AVAssetReaderOutputMetadataAdaptor(assetReaderTrackOutput: metadataOutput)
@@ -217,7 +217,7 @@ func makeLivePhoto(input: URL, directory: URL, cover: URL?) async throws {
     let savedValue = try await savedMarker.load(.value)
     try require((savedValue as? NSNumber)?.intValue == 0, "Poster marker value missing")
     verify.cancelReading()
-    print("Verified HEIC + MOV, matching identifiers, wallpaper motion metadata and poster marker at 1.5s")
+    print("Verified one-second HEIC + MOV, matching identifiers, wallpaper motion metadata and poster marker at 0.8s")
 }
 
 guard (3...4).contains(CommandLine.arguments.count) else {

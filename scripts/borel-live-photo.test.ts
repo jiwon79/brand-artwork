@@ -18,7 +18,7 @@ if (process.platform === 'darwin') {
   } catch { /* Native integration requires macOS, Swift and optional FFmpeg fixtures. */ }
 }
 
-test.skipIf(!ffmpeg || !ffprobe)('HTTP PVT export preserves 120 frames, decodes in PhotoKit, and retains the Mac ZIP', async () => {
+test.skipIf(!ffmpeg || !ffprobe)('HTTP PVT export stays within one second, decodes in PhotoKit, and retains the Mac ZIP', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'borel-live-test-'));
   let middleware: (req: IncomingMessage, res: ServerResponse, next: () => void) => Promise<void>;
   const server = createServer((req, res) => { void middleware(req, res, () => { res.statusCode = 404; res.end(); }); });
@@ -32,7 +32,7 @@ test.skipIf(!ffmpeg || !ffprobe)('HTTP PVT export preserves 120 frames, decodes 
     const origin = `http://127.0.0.1:${address.port}`, endpoint = `${origin}/api/borel-live-photo`;
     const input = join(directory, 'input.mp4'), output = join(directory, 'result');
     await mkdir(output);
-    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=beige:s=1080x2340:r=60:d=2', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', input]);
+    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=beige:s=1080x2340:r=60:d=1', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', input]);
     expect(await (await fetch(endpoint)).json()).toEqual({ available: true });
     const body = new Uint8Array(await readFile(input));
     const upload = (url = endpoint, headers = { 'Content-Type': 'video/mp4', Origin: origin }) => fetch(url, { method: 'POST', headers, body });
@@ -58,8 +58,8 @@ test.skipIf(!ffmpeg || !ffprobe)('HTTP PVT export preserves 120 frames, decodes 
     expect((await fetch(origin + file.downloadURL.replace('borel-test', 'wrong'))).status).toBe(410);
     const { stdout } = await run(ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', join(output, 'name.MOV')]);
     const info = JSON.parse(stdout), video = info.streams.find((stream: { codec_type: string }) => stream.codec_type === 'video');
-    expect([video.width, video.height, video.nb_frames, video.r_frame_rate]).toEqual([1080, 2340, '120', '60/1']);
-    expect(Number(info.format.duration)).toBe(2);
+    expect([video.width, video.height, video.nb_frames, video.r_frame_rate]).toEqual([1080, 2340, '60', '60/1']);
+    expect(Number(info.format.duration)).toBe(1);
     expect(info.format.tags['com.apple.quicktime.content.identifier']).toMatch(/^[A-F0-9-]{36}$/);
     expect(info.streams.filter((stream: { codec_tag_string: string }) => stream.codec_tag_string === 'mebx')).toHaveLength(2);
     expect(video.codec_name).toBe('hevc'); expect(video.profile).toBe('Main 10');
@@ -79,7 +79,7 @@ RunLoop.main.run()`;
     // A blue original PNG and a beige movie catch accidental extraction of
     // the lossy video frame instead of preserving the supplied 2x cover.
     const highVideo = join(directory, 'high.mp4'), highCover = join(directory, 'high.png');
-    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=beige:s=1290x2796:r=60:d=2', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', highVideo]);
+    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=beige:s=1290x2796:r=60:d=1', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', highVideo]);
     await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=2580x5592', '-frames:v', '1', highCover]);
     const form = new FormData();
     form.append('video', new Blob([new Uint8Array(await readFile(highVideo))], { type: 'video/mp4' }), 'name.mp4');
@@ -89,9 +89,10 @@ RunLoop.main.run()`;
     const highFile = await high.json(), highEntries = unzipSync(new Uint8Array(await (await fetch(origin + highFile.downloadURL)).arrayBuffer()));
     await writeFile(join(output, 'name.HEIC'), highEntries['high.pvt/high.HEIC']);
     await writeFile(join(output, 'name.MOV'), highEntries['high.pvt/high.MOV']);
-    const highInfo = JSON.parse((await run(ffprobe, ['-v', 'error', '-show_streams', '-of', 'json', join(output, 'name.MOV')])).stdout);
+    const highInfo = JSON.parse((await run(ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', join(output, 'name.MOV')])).stdout);
     const highStream = highInfo.streams.find((stream: { codec_type: string }) => stream.codec_type === 'video');
-    expect([highStream.width, highStream.height, highStream.nb_frames, highStream.profile]).toEqual([1290, 2796, '120', 'Main 10']);
+    expect([highStream.width, highStream.height, highStream.nb_frames, highStream.profile]).toEqual([1290, 2796, '60', 'Main 10']);
+    expect(Number(highInfo.format.duration)).toBe(1);
     const coverProbe = join(directory, 'cover.swift');
     await writeFile(coverProbe, `import Foundation
 import ImageIO
@@ -155,11 +156,15 @@ print(String(data: try JSONSerialization.data(withJSONObject: report), encoding:
     const motionReport = JSON.parse((await run('/usr/bin/swift', [motionProbe, join(output, 'name.MOV')])).stdout);
     expect(motionReport).toEqual({
       keys: ['mdta/com.apple.quicktime.live-photo-info', 'mdta/com.apple.quicktime.live-photo-still-image-transform', 'mdta/com.apple.quicktime.still-image-time'],
-      frames: 120, poster: 1.5, identity: true, referenced: true,
+      frames: 60, poster: .8, identity: true, referenced: true,
     });
     const mac = await upload();
     expect(mac.headers.get('content-type')).toBe('application/zip');
     expect(Object.keys(unzipSync(new Uint8Array(await mac.arrayBuffer()))).sort()).toEqual(['READ-ME.txt', 'name.HEIC', 'name.MOV']);
+    // Stale two-second clients cannot silently bypass the new output limit.
+    const longVideo = join(directory, 'long.mp4');
+    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=beige:s=1080x2340:r=60:d=2', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', longVideo]);
+    expect((await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'video/mp4', Origin: origin }, body: new Uint8Array(await readFile(longVideo)) })).status).toBe(500);
     // Malformed uploads must fail, rather than returning an apparently valid pair.
     expect((await fetch(`${endpoint}?format=pvt`, { method: 'POST', headers: { 'Content-Type': 'video/mp4', Origin: origin }, body: 'not a movie' })).status).toBe(500);
   } finally {

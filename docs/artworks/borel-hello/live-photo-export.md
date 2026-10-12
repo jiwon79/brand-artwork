@@ -1,6 +1,6 @@
 # Borel 잠금화면 저장
 
-페이지 아래의 **잠금화면 만들기**는 현재 입력창의 문자열, 굵기, 색상을 사용한다. 문장 쓰기 버튼을 누르지 않은 수정도 반영한다. 원래 필기 경로를 60fps로 직접 렌더링하며, 0.2초까지 빈 화면, 0.2–1.5초 필기, 1.5–2초 완성 화면으로 구성한다. 펜 이동과 점·가로획의 상대적인 순서는 유지한다. 영상은 1290×2796이고 글씨는 화면 높이의 55% 위치에 맞춘다.
+페이지 아래의 **잠금화면 만들기**는 현재 입력창의 문자열, 굵기, 색상을 사용한다. 문장 쓰기 버튼을 누르지 않은 수정도 반영한다. 원래 필기 경로를 60fps로 직접 렌더링하며, 0.1초까지 빈 화면, 0.1–0.8초 필기, 0.8–1초 완성 화면으로 구성한다. 펜 이동과 점·가로획의 상대적인 순서는 유지한다. 영상은 1290×2796이고 글씨는 화면 높이의 55% 위치에 맞춘다.
 
 잉크는 현재 단색/그라데이션을 사용한다. 로프와 획순 보기에서는 원래 잉크 필기를 내보낸다. 3D는 별도 렌더러에서 기본 시점으로 생성한다. 화면의 재생 진행률과 로프 변형은 내보내기에 의해 변경되지 않는다. 미리보기와 MP4, 완성 PNG를 함께 제공한다.
 
@@ -21,7 +21,7 @@
 
 ## Live Photo 파일
 
-macOS에서 `pnpm dev` 또는 `pnpm preview`로 제공하는 페이지는 생성한 MP4를 변환한다. `swiftc`와 HEIC 인코더가 필요하다. 브라우저는 2배 크기로 SVG를 래스터화하고 40Mbps H.264 중간 영상을 만든다. 정지 사진은 압축 영상에서 추출하지 않고 2580×5592 PNG를 직접 렌더링해 영상과 함께 업로드한다. 서버는 최대 품질의 HEIC와 32Mbps 목표 비트레이트의 10비트 HEVC MOV를 만들고 동일한 UUID를 기록하며, MOV의 timed metadata에 1.5초의 `still-image-time`을 넣는다. MOV에는 `live-photo-info` 120개 샘플과 `still-image-time` + 항등 `live-photo-still-image-transform` 샘플을 별도 트랙으로 기록하고, 두 트랙을 영상에 연결한다. 동작 트랙의 시간축은 60000, 영상과 표지 트랙은 600이다. 두 식별자, 전체 동작 샘플의 개수·크기·시각, 표지 마커의 시점·값을 다시 읽어 검증한다. 서버는 사진 보관함에 접근하지 않는다.
+macOS에서 `pnpm dev` 또는 `pnpm preview`로 제공하는 페이지는 생성한 MP4를 변환한다. `swiftc`와 HEIC 인코더가 필요하다. 브라우저는 2배 크기로 SVG를 래스터화하고 40Mbps H.264 중간 영상을 만든다. 정지 사진은 압축 영상에서 추출하지 않고 2580×5592 PNG를 직접 렌더링해 영상과 함께 업로드한다. 서버는 최대 품질의 HEIC와 32Mbps 목표 비트레이트의 10비트 HEVC MOV를 만들고 동일한 UUID를 기록하며, MOV의 timed metadata에 0.8초의 `still-image-time`을 넣는다. MOV에는 `live-photo-info` 60개 샘플과 `still-image-time` + 항등 `live-photo-still-image-transform` 샘플을 별도 트랙으로 기록하고, 두 트랙을 영상에 연결한다. 동작 트랙의 시간축은 60000, 영상과 표지 트랙은 600이다. 두 식별자, 전체 동작 샘플의 개수·크기·시각, 표지 마커의 시점·값을 다시 읽어 검증한다. 서버는 사진 보관함에 접근하지 않는다.
 
 `POST /api/borel-live-photo?format=pvt&name=borel-jiwon`은 파일 두 개를 `borel-jiwon.pvt/` 폴더에 넣고 `metadata.plist`를 추가한다. plist의 `PFVideoComplementMetadataVersionKey`는 문자열 `1`이다. 기존 쌍의 메타데이터와 미디어 바이트는 그대로 유지하며 폴더 전체를 `.pvt.zip`으로 묶는다. [makelive의 PVT 구성](https://github.com/RhetTbull/makelive/blob/main/makelive/makelive.py)을 참고한 구조이며 새 라이브러리는 추가하지 않는다. 응답 JSON의 `downloadURL`, `filename`, `expiresAt`을 사용해 다운로드 링크를 표시한다. `GET`/`HEAD /api/borel-live-photo/download/<uuid>/<name>.pvt.zip`은 해당 패키지를 attachment로 제공하며, 유효하지 않거나 만료된 링크는 410을 반환한다. 업로드는 기존과 같이 같은 출처의 MP4, 24MiB 이하, 한 번에 한 작업만 허용한다.
 
@@ -33,7 +33,7 @@ PhotoKit에서 쌍으로 인식되는 것과 실제 아이폰 잠금화면에서
 
 ## 잠금화면 길이와 호환성
 
-[Apple의 잠금화면 안내](https://support.apple.com/en-us/120734)는 iOS 17 이후의 자동 재생을 설명하지만 최대 길이를 숫자로 정하지 않는다. [intoLive의 현재 안내](https://intolive.zendesk.com/hc/en-us/articles/49753923778457-How-to-make-Live-Wallpaper)는 1–2초와 60fps, 처음과 끝의 0.2초가 생략될 수 있음을 명시한다. 이 서비스는 2초·60fps와 0.2초 도입부를 유지한다. 이를 Apple의 모든 버전에 적용되는 공식 최대치로 해석하지 않는다.
+[Apple의 잠금화면 안내](https://support.apple.com/en-us/120734)는 iOS 17 이후의 자동 재생을 설명하지만 최대 길이를 숫자로 정하지 않는다. [intoLive의 현재 안내](https://intolive.zendesk.com/hc/en-us/articles/49753923778457-How-to-make-Live-Wallpaper)는 1–2초와 60fps, 처음과 끝의 0.2초가 생략될 수 있음을 명시한다. 이 서비스는 사용자 요청에 따라 1초·60fps, 0.1초 도입부와 0.8초 완성 시점으로 저장한다. 변환기는 1초를 넘는 입력을 거절하며, 고화질 해상도와 원본 PNG 표지는 유지한다. 이를 Apple의 모든 버전에 적용되는 공식 최대치로 해석하지 않는다.
 
 [Apple DTS 답변](https://developer.apple.com/forums/thread/798044)은 사진 앱의 Live Photo 인식과 잠금화면 허용 조건이 다르며, 잠금화면에는 공개되지 않은 요구사항이 있음을 확인한다. 기존 쌍에는 `live-photo-info`와 정지 프레임 변환 정보가 빠져 있었다. 추가한 메타데이터의 포맷과 고정 샘플은 MIT 라이선스의 [live-photo-batch](https://github.com/pudding0503/live-photo-batch/blob/00b8ab2d19b7eca1c7e8f4097d886a7a65789603/prepare_wallpaper_video.py)에서 공개한 메타데이터 전용 데이터다. 사진·영상·오디오·GPS·기존 자산 식별자는 포함하지 않는다. `scripts/borel-live-photo-metadata.LICENSE`에 저작권과 라이선스를 보존한다.
 
@@ -45,8 +45,8 @@ PhotoKit에서 쌍으로 인식되는 것과 실제 아이폰 잠금화면에서
 
 ## 확인
 
-`wallpaper-timing.test.ts`는 120프레임 전체의 단조로운 진행, 프레임 90 이후 모든 획·점의 완성, 시계 아래 배치와 파일명을 검사한다. `scripts/borel-live-photo-package.test.ts`는 패키지 내부 경로와 plist, 미디어 바이트 보존, 안전한 파일명, 링크 만료·개수 제한·정리를 확인한다. Mac에서 실행하는 `scripts/borel-live-photo.test.ts`는 실제 HTTP 업로드·다운로드, HEAD와 오류 응답, Mac ZIP 유지, 120프레임·해상도·길이·HEVC Main 10·메타데이터, `PHLivePhoto.request`의 쌍 인식을 확인한다. 영상과 다른 색의 원본 PNG를 업로드해 HEIC가 원본의 2배 해상도와 색상을 보존하는지도 검사한다. 별도 AVFoundation 판독기로 120개 동작 샘플, 세 메타데이터 키, 1.5초 표지, 항등 행렬과 영상 트랙 연결을 검사한다.
+`wallpaper-timing.test.ts`는 60프레임 전체의 단조로운 진행, 프레임 48 이후 모든 획·점의 완성, 시계 아래 배치와 파일명을 검사한다. `scripts/borel-live-photo-package.test.ts`는 패키지 내부 경로와 plist, 미디어 바이트 보존, 안전한 파일명, 링크 만료·개수 제한·정리를 확인한다. Mac에서 실행하는 `scripts/borel-live-photo.test.ts`는 실제 HTTP 업로드·다운로드, HEAD와 오류 응답, Mac ZIP 유지, 60프레임·해상도·길이·HEVC Main 10·메타데이터, `PHLivePhoto.request`의 쌍 인식을 확인한다. 영상과 다른 색의 원본 PNG를 업로드해 HEIC가 원본의 2배 해상도와 색상을 보존하는지도 검사한다. 별도 AVFoundation 판독기로 60개 동작 샘플, 세 메타데이터 키, 0.8초 표지, 항등 행렬과 영상 트랙 연결을 검사한다.
 
-서비스의 Chrome 화면에서 `jiwon`을 생성하고 다운로드했다. 같은 서비스 다운로드 URL을 iOS 18.5 시뮬레이터의 Safari에서 열어 다운로드 → Quick Look 공유 → 이미지 저장으로 단일 LIVE 항목과 2초 영상, 1.5초 표지 프레임을 확인했다. Quick Look의 미리보기가 빈 화면이어도 가져오기는 성공했다. Chrome에서는 실제 10분 만료와 다시 준비하기를 확인했고, 393px 화면에 가로 넘침이 없었다. Tailscale HTTPS에서도 같은 패키지의 attachment 다운로드 응답을 확인했다. 실제 아이폰과 최신 iOS, 잠금화면 적합성·재생 구간은 기기 검사로 남는다.
+수동 확인은 서비스에서 파일을 새로 생성한 뒤 다운로드한 MOV의 길이·프레임 수·표지 시점과 HEIC 해상도를 확인한다. 아이폰 Safari에서 다운로드 → Quick Look 공유 → 이미지 저장을 거쳐 사진 앱의 LIVE 표시를 확인하고, 잠금화면의 움직임 버튼과 재생 구간을 따로 검사한다. Quick Look이나 사진 앱에서 인식되는 것만으로 잠금화면 지원을 판정하지 않는다.
 
 iOS 18.5 시뮬레이터에서 Safari의 H.264 인코딩이 7프레임 입력 후 결과 패킷 없이 멈췄다. 작품과 독립된 단순 캔버스에서도 소프트웨어 힌트와 낮은 지연 모드로 재현됐으므로, 프레임 보존을 우선하는 기존 품질 모드는 유지한다. 각 렌더링·인코딩 단계가 30초 동안 응답하지 않으면 오류를 표시하고 편집기 버튼을 복구한다. 진행 중인 단계마다 시간을 새로 측정하므로 총 생성 시간이 30초를 넘는 것만으로 실패하지는 않는다. `wallpaper-deadline.test.ts`는 정지 감지, 정상 완료·오류의 타이머 제거, 오래 걸려도 계속 진행하는 작업을 검사한다. 실제 아이폰의 Safari 영상 생성은 별도로 확인해야 하며, 멈춤이 계속되면 Mac/PC Chrome에서 생성한 뒤 아이폰 Safari로 패키지를 다운로드할 수 있다.

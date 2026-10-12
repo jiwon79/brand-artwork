@@ -11,9 +11,9 @@ import { livePhotoPackage, LivePhotoDownloads, livePhotoDownloadRoute } from './
 const run = promisify(execFile);
 const limit = 24 * 1024 * 1024;
 const route = '/api/borel-live-photo';
-const instructions = `Borel Live Photo — 1290 × 2796 video, 2580 × 5592 still, 60 fps, 2 seconds
+const instructions = `Borel Live Photo — 1290 × 2796 video, 2580 × 5592 still, 60 fps, 1 second
 
-The handwriting is complete at 1.5s. The completed frame at 1.5s is the still photo.
+The handwriting is complete at 0.8s. The completed frame at 0.8s is the still photo.
 name.HEIC and name.MOV share an Apple asset identifier and a timed still-image marker.
 
 On a Mac, extract this ZIP and import BOTH name.HEIC and name.MOV together into Photos.
