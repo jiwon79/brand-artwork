@@ -15,11 +15,14 @@ export class FloorRope {
   private neighbors = new Map<number, Set<number>>();
   private grab: { index: number; x: number; y: number; offsetX: number; offsetY: number } | undefined;
   private accumulator = 0;
+  private floor = Infinity;
+  private radius = 0;
   awake = false;
   constructor(readonly pens: readonly PenPath[]) {
     const owners: number[] = [], endpoints: { node: number; owner: number }[] = [];
     for (const [owner, pen] of pens.entries()) {
       if (pen.retrace || !pen.points.length) { this.knots.push([]); continue; }
+      for (const point of pen.points) this.radius = Math.max(this.radius, point.radius * pen.nibScale[1]);
       const count = Math.max(1, Math.ceil(pen.length / 20));
       const samples = Array.from({ length: count + 1 }, (_, i) => sampleRopePen(pen, pen.length * i / count));
       const previousNodeCount = this.nodes.length;
@@ -67,6 +70,23 @@ export class FloorRope {
       if (nearest >= 0 && !this.neighbors.get(endpoint.node)?.has(nearest)) this.links.push({ a: endpoint.node, b: nearest, length: distance, stiffness: 1 });
     }
   }
+  /** Reserve the brush radius and cubic reconstruction margin, not just the
+   * center particles. The boundary is in the same font coordinates as the rope. */
+  setFloor(y: number, weight = 1) {
+    const limit = y - this.radius * weight - 32;
+    if (limit === this.floor) return;
+    this.floor = limit; this.display = undefined;
+    if (this.grab) this.grab.y = Math.min(this.grab.y, limit);
+    if (this.projectFloor()) this.awake = true;
+  }
+  private projectFloor(): boolean {
+    let moved = false;
+    for (const node of this.nodes) if (node.y > this.floor) {
+      node.y = node.py = this.floor;
+      moved = true;
+    }
+    return moved;
+  }
   pick(x: number, y: number, reach: number): boolean {
     let distance = reach, index = -1;
     for (const [i, node] of this.nodes.entries()) {
@@ -78,7 +98,7 @@ export class FloorRope {
     this.awake = true;
     return true;
   }
-  move(x: number, y: number) { if (this.grab) { this.grab.x = x - this.grab.offsetX; this.grab.y = y - this.grab.offsetY; this.awake = true; } }
+  move(x: number, y: number) { if (this.grab) { this.grab.x = x - this.grab.offsetX; this.grab.y = Math.min(this.floor, y - this.grab.offsetY); this.awake = true; } }
   release() { this.grab = undefined; }
   step(seconds: number) {
     if (!this.awake) return;
@@ -97,7 +117,7 @@ export class FloorRope {
     const held = grab && this.nodes[grab.index];
     const distance = held && grab ? Math.hypot(grab.x - held.x, grab.y - held.y) : 0;
     const targetX = held && grab ? held.x + (grab.x - held.x) * Math.min(1, 120 / (distance || 1)) : 0;
-    const targetY = held && grab ? held.y + (grab.y - held.y) * Math.min(1, 120 / (distance || 1)) : 0;
+    const targetY = held && grab ? Math.min(this.floor, held.y + (grab.y - held.y) * Math.min(1, 120 / (distance || 1))) : 0;
     for (let iteration = 0; iteration < 32; iteration++) {
       for (const link of this.links) {
         const a = this.nodes[link.a], b = this.nodes[link.b];
@@ -127,6 +147,9 @@ export class FloorRope {
         if (!bHeld) { b.x -= dx * correction; b.y -= dy * correction; }
       }
       if (held) { held.x = targetX; held.y = targetY; }
+      // Resolve the wall after links and the held point, so neither constraints
+      // nor a captured pointer over the controls can push ink through it.
+      this.projectFloor();
     }
     if (held) { held.px = held.x; held.py = held.y; }
     let speed = 0;
@@ -170,6 +193,7 @@ export class FloorRope {
       if (!fixed[link.a]) { a.x += dx * scale; a.y += dy * scale; }
       if (!fixed[link.b]) { b.x -= dx * scale; b.y -= dy * scale; }
     }
+    for (const position of positions) position.y = Math.min(position.y, this.floor);
     return this.display = positions;
   }
   private tangents(knots: readonly RopeKnot[], display: readonly RopePosition[]): RopePosition[] {

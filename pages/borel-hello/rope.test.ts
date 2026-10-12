@@ -5,6 +5,14 @@ import { composeText } from './lettering';
 import { catalog, shaper } from './test-font';
 
 const line = (x: number, y = 0) => preparePen({ d: `M${x} ${y}L${x + 200} ${y}`, width: 30 });
+function inkBottom(rope: FloorRope, weight: number) {
+  let bottom = -Infinity;
+  for (const [index, pen] of rope.pens.entries()) {
+    if (pen.retrace) continue;
+    for (const point of rope.deformed(index).points) bottom = Math.max(bottom, point.y + point.radius * pen.nibScale[1] * weight);
+  }
+  return bottom;
+}
 function pull(rope: FloorRope, x: number, y: number, dx: number, dy: number) {
   expect(rope.pick(x, y, 20)).toBe(true);
   for (let frame = 1; frame <= 120; frame++) {
@@ -56,6 +64,51 @@ test('fixed substeps produce the same drag result at 30 and 120Hz and survive st
   a.step(1000); a.release(); a.step(1 / 60);
   expect(a.nodes.every(n => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
   expect(new FloorRope([]).pick(0, 0, 100)).toBe(false);
+});
+
+for (const text of ['hello', 'jiwon', 'my name is jiwon']) for (const weight of [.5, 1, 1.5]) {
+  test(`entire painted rope stays above the controls during extreme drags and release: ${text}, ${weight}x`, () => {
+    const pens = composeText(text, shaper, catalog).strokes.map(preparePen);
+    const rope = new FloorRope(pens), floor = inkBottom(rope, weight) + 120;
+    rope.setFloor(floor, weight);
+    const pen = pens.find(p => !p.retrace && p.length > 500)!;
+    const point = pen.points[Math.floor(pen.points.length / 2)];
+    expect(rope.pick(point.x, point.y, 40)).toBe(true);
+    for (let frame = 0; frame < 60; frame++) {
+      if (frame < 30) rope.move(point.x + Math.sin(frame / 5) * 150, floor + 3000);
+      if (frame === 30) rope.release();
+      rope.step(1 / 30);
+      expect(inkBottom(rope, weight)).toBeLessThanOrEqual(floor);
+      expect(rope.nodes.every(n => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
+    }
+  });
+}
+
+test('a smaller layout or thicker nib immediately respects the new wall; more room does not pull rope home', () => {
+  const rope = new FloorRope([line(0)]);
+  rope.setFloor(150);
+  pull(rope, 200, 0, 20, 500);
+  expect(inkBottom(rope, 1)).toBeLessThanOrEqual(150);
+  rope.setFloor(90, 1.5);
+  expect(inkBottom(rope, 1.5)).toBeLessThanOrEqual(90);
+  for (let i = 0; i < 600; i++) rope.step(1 / 60);
+  const position = JSON.stringify(rope.nodes);
+  expect(rope.awake).toBe(false);
+  rope.setFloor(90, 1.5);
+  expect(rope.awake).toBe(false);
+  rope.setFloor(1000, 1.5);
+  rope.step(1);
+  expect(JSON.stringify(rope.nodes)).toBe(position);
+});
+
+test('a pointer far beyond the wall can still slide the held rope sideways', () => {
+  const rope = new FloorRope([line(0)]);
+  rope.setFloor(200);
+  expect(rope.pick(200, 0, 20)).toBe(true);
+  rope.move(280, 1_000_000);
+  for (let i = 0; i < 60; i++) rope.step(1 / 60);
+  expect(rope.nodes[rope.nodes.length - 1].x).toBeCloseTo(280, 5);
+  expect(inkBottom(rope, 1)).toBeLessThanOrEqual(200);
 });
 
 test('a stroke endpoint contacting another stroke interior stays attached under a pull', () => {

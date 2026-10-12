@@ -21,6 +21,8 @@ function svgElement<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Re
   return element;
 }
 const artwork = document.querySelector<SVGSVGElement>('#artwork')!;
+const artworkArea = document.querySelector<HTMLElement>('main')!;
+const controls = document.querySelector<HTMLElement>('#text-form')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const settings = { duration: 6, weight: 1, guides: false, ink: '#6f4031', paper: '#f3e8de', reference: false };
@@ -53,10 +55,21 @@ let renderedRopePens: ReturnType<typeof preparePen>[] = [];
 let ropeWeight = 0;
 let ropePointer: number | undefined;
 let bounds: Bounds = [0, 0, 1100, 530];
+let ropeFloor = Infinity;
+
+function updateRopeFloor() {
+  const matrix = artwork.getScreenCTM();
+  if (!matrix) return;
+  const edge = Math.min(artworkArea.getBoundingClientRect().bottom, controls.getBoundingClientRect().top) - 12;
+  ropeFloor = new DOMPoint(0, edge).matrixTransform(matrix.inverse()).y;
+  rope.setFloor(ropeFloor, settings.weight);
+  if (roping) start();
+}
 
 function updateViewBox() {
   const [left, top, right, bottom] = bounds, pad = debugState.mode === 'rope' ? Math.max(right - left, bottom - top) * .3 : inspecting ? 180 : 0;
   artwork.setAttribute('viewBox', `${left - pad} ${top - pad} ${right - left + 2 * pad} ${bottom - top + 2 * pad}`);
+  updateRopeFloor();
 }
 let strokes: { path: SVGPathElement; written?: number; pressure?: number; weight?: number }[] = [];
 let playback: PenPlayback = { strokes: [], duration: 0 };
@@ -217,10 +230,12 @@ function submitText() {
 }
 weightInput.addEventListener('input', () => {
   settings.weight = weightInput.valueAsNumber;
+  rope.setFloor(ropeFloor, settings.weight);
   if (preparedPhoto) status.hidden = true;
   preparedPhoto = undefined;
   photoController.name(photoLabel);
   render();
+  if (roping && rope.awake) start();
 });
 let inputTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleText() {
@@ -243,6 +258,7 @@ function cancelRopeGrab() {
 function resetRope(time = playback.duration) {
   cancelRopeGrab();
   rope = new FloorRope(visibleRopePens(playback, time));
+  rope.setFloor(ropeFloor, settings.weight);
   renderedRopePens = []; ropeWeight = 0;
   ropePaths = playback.strokes.map(() => svgElement('path', {}));
   ropeShape.replaceChildren(...ropePaths);
@@ -356,6 +372,9 @@ const ropeFolder = gui.addFolder('로프 · 글씨를 드래그');
 ropeFolder.add({ reset: () => { resetRope(); render(); } }, 'reset').name('로프 초기화');
 ropeFolder.hide();
 let debugVisible = new URLSearchParams(location.search).has('debug');
+const ropeLayout = new ResizeObserver(updateRopeFloor);
+ropeLayout.observe(artwork); ropeLayout.observe(controls);
+window.addEventListener('resize', updateRopeFloor);
 function toggleDebug(visible: boolean) {
   debugVisible = visible; gui.show(visible);
   frameController.listen(visible); stepController.listen(visible);
@@ -371,6 +390,7 @@ window.addEventListener('keydown', debugKeys);
 import.meta.hot?.dispose(() => {
   cancelAnimationFrame(frame); clearTimeout(inputTimer); cancelRopeGrab(); gui.destroy();
   window.removeEventListener('keydown', debugKeys);
+  ropeLayout.disconnect(); window.removeEventListener('resize', updateRopeFloor);
 });
 loadBorel().then(value => {
   loaded = value; ready = true; textInput.disabled = weightInput.disabled = false;

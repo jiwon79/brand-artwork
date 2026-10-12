@@ -3,7 +3,7 @@
 html, body { overscroll-behavior-y: none; }
 body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; }
 [hidden] { display: none !important; }
-main { flex: 1; display: grid; place-items: center; padding: 24px 7vw; min-height: 280px; }
+main { flex: 1; display: grid; place-items: center; padding: 24px 7vw; min-height: 280px; overflow: hidden; }
 #artwork { display: block; width: min(100%, 1100px); height: clamp(280px, 48svh, 580px); overflow: visible; }
 .controls { width: min(480px, calc(100% - 40px)); margin: 20px auto max(32px, env(safe-area-inset-bottom)); }
 .controls textarea { display: block; width: 100%; height: 46px; resize: none; padding: 10px 14px; border: 1px solid #6f403130; border-radius: 14px; background: #ffffff35; color: inherit; font: inherit; font-size: 16px; line-height: 24px; }

@@ -212,6 +212,13 @@ speed, source outlines and stroke-order/context inspection live in this
 panel. Rainbow is selected initially. Pausing or finishing handwriting freezes
 only the painted strokes into a draggable floor rope without changing framing.
 Resuming restores the authored paths at the paused time; replay starts over.
+The rope has a lower collision boundary above the controls, measured in screen
+space and converted into font coordinates on layout changes. The solver reserves
+nib thickness and cubic reconstruction clearance, projects all particles after
+each constraint pass, and removes downward velocity at contact. Drag capture
+can continue over the controls without moving ink into them. Resize and weight
+changes update the wall, and the artwork container clips any overflow as a
+final visual guard.
 Partial dots preserve contact pressure, and partial gradient intervals retain
 their original material colors. The debug rope view can still expose full text. Live Photo export and 3D rendering are removed.
 
