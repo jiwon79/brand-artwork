@@ -105,7 +105,7 @@ function writeText(text: string) {
 }
 let progress = reducedMotion.matches ? 1 : 0;
 let playing = !reducedMotion.matches;
-let speed = 1;
+let speed = 2;
 let lastTime = 0;
 let frame = 0;
 function render() {
@@ -255,13 +255,13 @@ function seekFrame(value: number) {
   progress = Math.max(0, Math.min(1, value / (settings.duration * 60)));
   playing = false; render();
 }
-const debugState = { mode: 'ink', example: 'hello', character: '', context: '', frame: 0, step: 0, speed: 1 };
+const debugState = { mode: 'ink', example: 'hello', character: '', context: '', frame: 0, step: 0, speed: 2 };
 const gui = new GUI({ title: 'Borel · Debug' });
 gui.hide();
 gui.add(debugState, 'mode', { '필기': 'ink', '획순 경로': 'order', '로프': 'rope' }).name('보기').onChange(setView);
 gui.add(debugState, 'example', debugExamples).name('테스트 문장').onChange((text: string) => { textInput.value = text; submitText(); });
 const frameController = gui.add(debugState, 'frame', 0, 360, 1).name('프레임').listen().onChange(seekFrame);
-gui.add(debugState, 'speed', .25, 2, .25).name('재생 속도').onChange((value: number) => { speed = value; });
+gui.add(debugState, 'speed', .25, 5, .25).name('재생 속도').onChange((value: number) => { speed = value; });
 gui.add(settings, 'weight', .5, 1.5, .05).name('획 두께').onChange(render);
 gui.add(settings, 'guides').name('중심 경로').onChange(render);
 gui.add(settings, 'reference').name('원본 폰트').onChange(render);
