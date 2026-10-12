@@ -202,10 +202,13 @@ ink at 50%, 100% and 150% weight, with a deliberately offset negative control.
 This detects internal color slivers that final silhouette overlap cannot catch.
 Independent entry samples prevent the contact fit from warping the first pass.
 
-The default interface contains only text, color and playback. Text edits restart
+The default interface contains text, color, playback and a compact thickness
+slider (0.5–1.5×, initially 1×). The text field is one line tall while preserving
+multiline input/paste and internal scrolling. Thickness changes update the
+current handwriting or dragged rope without restarting playback. Text edits restart
 writing after a short debounce. Open `?debug` or press D outside a text field to
 show lil-gui; Escape hides it and restores ink view. Frame seeking, examples,
-weight, speed, source outlines and stroke-order/context inspection live in this
+speed, source outlines and stroke-order/context inspection live in this
 panel. Rainbow is selected initially. Pausing or finishing handwriting freezes
 only the painted strokes into a draggable floor rope without changing framing.
 Resuming restores the authored paths at the paused time; replay starts over.

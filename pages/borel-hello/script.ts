@@ -63,6 +63,7 @@ let playback: PenPlayback = { strokes: [], duration: 0 };
 let totalLength = 0;
 let ready = false;
 const textInput = document.querySelector<HTMLTextAreaElement>('#text-input')!;
+const weightInput = document.querySelector<HTMLInputElement>('#weight-input')!;
 const status = document.querySelector<HTMLElement>('#text-status')!;
 let loaded: Awaited<ReturnType<typeof loadBorel>>;
 
@@ -214,6 +215,13 @@ for (const button of colorButtons) button.addEventListener('click', () => {
 function submitText() {
   if (ready) writeText(textInput.value);
 }
+weightInput.addEventListener('input', () => {
+  settings.weight = weightInput.valueAsNumber;
+  if (preparedPhoto) status.hidden = true;
+  preparedPhoto = undefined;
+  photoController.name(photoLabel);
+  render();
+});
 let inputTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleText() {
   clearTimeout(inputTimer);
@@ -320,7 +328,6 @@ gui.add(debugState, 'mode', { '필기': 'ink', '획순 경로': 'order', '로프
 gui.add(debugState, 'example', debugExamples).name('테스트 문장').onChange((text: string) => { textInput.value = text; submitText(); });
 const frameController = gui.add(debugState, 'frame', 0, 360, 1).name('프레임').onChange(seekFrame);
 gui.add(debugState, 'speed', .25, 5, .25).name('재생 속도').onChange((value: number) => { speed = value; });
-gui.add(settings, 'weight', .5, 1.5, .05).name('획 두께').onChange(render);
 gui.add(settings, 'guides').name('중심 경로').onChange(render);
 gui.add(settings, 'reference').name('원본 폰트').onChange(render);
 gui.addColor(settings, 'ink').name('사용자 색상').onChange(() => { gradientEnabled = false; updateColors(); render(); });
@@ -366,7 +373,7 @@ import.meta.hot?.dispose(() => {
   window.removeEventListener('keydown', debugKeys);
 });
 loadBorel().then(value => {
-  loaded = value; ready = true; textInput.disabled = false;
+  loaded = value; ready = true; textInput.disabled = weightInput.disabled = false;
   writeText(textInput.value);
 }).catch(error => {
   status.hidden = false;
