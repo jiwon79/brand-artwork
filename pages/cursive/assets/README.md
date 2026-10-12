@@ -13,7 +13,7 @@ Unsupported characters produce an input error. Text stays in the browser.
 HarfBuzz shapes each line with Borel's default OpenType features. The original
 font supplies contextual glyph selection, advances, positioning and the `tt`
 ligature. `font-catalog.json` stores glyph IDs and metrics; regenerate the
-catalog with `python3 scripts/generate-borel-catalog.py` (requires fonttools).
+catalog with `python3 scripts/generate-cursive-catalog.py` (requires fonttools).
 
 `pen-paths.json` stores independent, editable pen trajectories keyed by glyph ID.
 Each `d` is an open cubic Bézier centerline, with one `widths` tuple per cubic:

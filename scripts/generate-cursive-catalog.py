@@ -1,8 +1,8 @@
 """Regenerate Borel's runtime metrics/composite catalog (requires fonttools).
 
-Run: python3 scripts/generate-borel-catalog.py
+Run: python3 scripts/generate-cursive-catalog.py
 The font is the checked-in, licensed source; pen trajectories are authored in
-pages/borel-hello/stroke-alphabet.ts, independently of this outline metadata.
+pages/cursive/stroke-alphabet.ts, independently of this outline metadata.
 """
 from collections import Counter
 from pathlib import Path
@@ -11,7 +11,7 @@ import json
 from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "pages/borel-hello/assets"
+ASSETS = ROOT / "pages/cursive/assets"
 font = TTFont(ASSETS / "Borel-Regular.ttf")
 names = font.getGlyphOrder()
 ids = {name: index for index, name in enumerate(names)}

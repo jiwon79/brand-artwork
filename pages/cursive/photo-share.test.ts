@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import { prefersPhotoShare, shareArtworkPhoto } from './photo-share';
 
-const photo = new File(['png'], 'borel-hello.png', { type: 'image/png' });
+const photo = new File(['png'], 'cursive.png', { type: 'image/png' });
 type Host = NonNullable<Parameters<typeof shareArtworkPhoto>[1]>;
 function host(overrides: Partial<Host> = {}): Host {
   return {
@@ -62,7 +62,7 @@ test('unexpected share failures remain visible to the caller', async () => {
 });
 
 test('shares the original MP4 file alone for iPhone video saving', async () => {
-  const video = new File(['mp4'], 'borel-hello.mp4', { type: 'video/mp4' });
+  const video = new File(['mp4'], 'cursive.mp4', { type: 'video/mp4' });
   const device = host();
   expect(await shareArtworkPhoto(video, device)).toBe('shared');
   expect(device.share).toHaveBeenCalledExactlyOnceWith({ files: [video] });

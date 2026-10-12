@@ -33,7 +33,7 @@ export class GradientInkView {
   private strokes: Patch[][] = [];
   private deformed: ({ pen: PenPath; weight: number } | undefined)[] = [];
 
-  constructor(private readonly prefix = 'borel') {}
+  constructor(private readonly prefix = 'cursive') {}
 
   setPens(pens: readonly PenPath[]) {
     this.definitions.replaceChildren(); this.layer.replaceChildren(); this.deformed = [];

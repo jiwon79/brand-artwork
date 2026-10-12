@@ -33,7 +33,7 @@ export async function createArtworkVideo(options: VideoOptions): Promise<File> {
   svg.setAttribute('viewBox', `${(left + right - width / scale) / 2} ${(top + bottom - height / scale) / 2} ${width / scale} ${height / scale}`);
   svg.setAttribute('width', String(width)); svg.setAttribute('height', String(height));
   svg.style.color = options.ink;
-  const gradient = new GradientInkView('borel-video');
+  const gradient = new GradientInkView('cursive-video');
   const paths = options.playback.strokes.map(() => {
     const path = document.createElementNS(svg.namespaceURI, 'path');
     path.setAttribute('fill', options.ink); return path;
@@ -92,7 +92,7 @@ export async function createArtworkVideo(options: VideoOptions): Promise<File> {
     if (!blob.size) throw new Error('빈 영상이 생성됐습니다. 다시 시도해 주세요.');
     const extension = recorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
     const name = options.text.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'handwriting';
-    return new File([blob], `borel-${name}.${extension}`, { type: recorder.mimeType });
+    return new File([blob], `cursive-${name}.${extension}`, { type: recorder.mimeType });
   } finally {
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     stream.getTracks().forEach(track => track.stop());

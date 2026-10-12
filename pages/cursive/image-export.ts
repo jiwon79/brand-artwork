@@ -38,7 +38,7 @@ export async function createArtworkPhoto(artwork: SVGSVGElement, options: PhotoO
     const photo = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => {
       if (blob) resolve(blob); else reject(new Error('사진을 저장하지 못했습니다. 다시 시도해 주세요.'));
     }, 'image/png'));
-    const name = `borel-${options.text.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'handwriting'}.png`;
+    const name = `cursive-${options.text.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'handwriting'}.png`;
     return new File([photo], name, { type: 'image/png' });
   } finally {
     URL.revokeObjectURL(source);
