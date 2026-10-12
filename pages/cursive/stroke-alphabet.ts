@@ -1,4 +1,6 @@
-export type Point = readonly [number, number];
+import type { Point } from './coordinates';
+
+/** Authored centerline and nib-width controls, before adaptive sampling. */
 export interface PenStroke {
   d: string;
   width?: number;

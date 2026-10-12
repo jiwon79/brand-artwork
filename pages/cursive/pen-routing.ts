@@ -1,4 +1,5 @@
-import type { PenStroke, Point } from './stroke-alphabet';
+import type { Point } from './coordinates';
+import type { PenStroke } from './stroke-alphabet';
 
 interface Curve { start: Point; controls: number[] }
 interface Endpoint { point: Point; radius: number }

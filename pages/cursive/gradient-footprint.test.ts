@@ -1,5 +1,6 @@
+import type { Bounds } from './coordinates';
 import { expect, test } from 'vitest';
-import { composeText, type Bounds } from './lettering';
+import { composeText } from './lettering';
 import { gradientPieceGeometry, gradientPieces } from './gradient-ink';
 import { preparePen, type PenPoint } from './pen-geometry';
 import { letterContexts } from './stroke-order';

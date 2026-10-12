@@ -1,4 +1,7 @@
-import type { Bounds } from './lettering';
+import { artworkFileName, exportViewBox } from './export-layout';
+import { svgElement } from './svg';
+import type { Bounds } from './coordinates';
+
 import { GradientInkView } from './gradient-ink-view';
 import { penGeometry } from './pen-geometry';
 import { strokeState, type PenPlayback } from './pen-playback';
@@ -27,16 +30,11 @@ export async function createArtworkVideo(options: VideoOptions): Promise<File> {
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context || !canvas.captureStream) throw new Error('이 브라우저는 영상 렌더링을 지원하지 않습니다.');
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  const [left, top, right, bottom] = options.bounds;
-  const scale = Math.min(width * .8 / Math.max(1, right - left), height * .44 / Math.max(1, bottom - top));
-  svg.setAttribute('viewBox', `${(left + right - width / scale) / 2} ${(top + bottom - height / scale) / 2} ${width / scale} ${height / scale}`);
-  svg.setAttribute('width', String(width)); svg.setAttribute('height', String(height));
+  const svg = svgElement('svg', { viewBox: exportViewBox(options.bounds, width, height), width: String(width), height: String(height) });
   svg.style.color = options.ink;
   const gradient = new GradientInkView('cursive-video');
   const paths = options.playback.strokes.map(() => {
-    const path = document.createElementNS(svg.namespaceURI, 'path');
-    path.setAttribute('fill', options.ink); return path;
+    return svgElement('path', { fill: options.ink });
   });
   if (options.gradient) {
     gradient.setPens(options.playback.strokes.map(stroke => stroke.pen));
@@ -91,8 +89,7 @@ export async function createArtworkVideo(options: VideoOptions): Promise<File> {
     const blob = new Blob(chunks, { type: recorder.mimeType });
     if (!blob.size) throw new Error('빈 영상이 생성됐습니다. 다시 시도해 주세요.');
     const extension = recorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
-    const name = options.text.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'handwriting';
-    return new File([blob], `cursive-${name}.${extension}`, { type: recorder.mimeType });
+    return new File([blob], artworkFileName(options.text, extension), { type: recorder.mimeType });
   } finally {
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     stream.getTracks().forEach(track => track.stop());

@@ -1,9 +1,8 @@
-import { alphabet, type PenStroke, type Point } from './stroke-alphabet';
+import { alphabet, type PenStroke } from './stroke-alphabet';
+import type { Bounds, Matrix, Point } from './coordinates';
 import { joinPenStrokes, routeWord } from './pen-routing';
 import { preparePen } from './pen-geometry';
 
-export type Matrix = readonly [number, number, number, number, number, number];
-export type Bounds = readonly [number, number, number, number];
 export interface GlyphRecord {
   name: string;
   advance: number;
@@ -21,6 +20,7 @@ export interface FontCatalog {
 export interface ShapedGlyph { id: number; x: number; y: number; advance: number; outline: string }
 export interface TextShaper { shape(text: string): ShapedGlyph[] }
 interface GlyphInk { fitted?: boolean; strokes: PenStroke[]; marks: PenStroke[]; entry?: Point; exit?: Point }
+/** Positioned authored strokes and optional source outlines in y-down artwork coordinates. */
 export interface Lettering { strokes: PenStroke[]; outlines: string[]; bounds: Bounds; lines: string[] }
 
 export function transformPoint([x, y]: Point, [a, b, c, d, e, f]: Matrix): Point {

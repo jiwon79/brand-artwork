@@ -2,7 +2,8 @@ import type { PenPath, PenPoint } from './pen-geometry';
 import type { PenPlayback } from './pen-playback';
 import type { FontCatalog, TextShaper } from './lettering';
 
-export interface OrderStep {
+/** Inspection interval within a stroke or pen lift, not a new authored stroke. */
+export interface StrokeOrderStep {
   index: number;
   stroke: number;
   kind: 'ink' | 'dot' | 'retrace' | 'lift';
@@ -32,9 +33,9 @@ const xy = (point: { x: number; y: number }) => `${+point.x.toFixed(3)} ${+point
 
 /** Segment the actual playback by arc length, not by tiny fitted cubics.
  * Numbers identify inspection intervals, not invented pen lifts or strokes. */
-export function createStrokeOrder(playback: PenPlayback): OrderStep[] {
-  const steps: OrderStep[] = [], spacing = Math.max(300, playback.strokes.reduce((sum, stroke) => sum + stroke.pen.length, 0) / 180);
-  const add = (stroke: number, kind: OrderStep['kind'], start: number, end: number, pen: PenPath, from: number, to: number) => {
+export function createStrokeOrder(playback: PenPlayback): StrokeOrderStep[] {
+  const steps: StrokeOrderStep[] = [], spacing = Math.max(300, playback.strokes.reduce((sum, stroke) => sum + stroke.pen.length, 0) / 180);
+  const add = (stroke: number, kind: StrokeOrderStep['kind'], start: number, end: number, pen: PenPath, from: number, to: number) => {
     const a = pointAt(pen, from), b = pointAt(pen, to), middle = pointAt(pen, (from + to) / 2);
     const before = pointAt(pen, (from + to) / 2 - 8), after = pointAt(pen, (from + to) / 2 + 8);
     const angle = Math.atan2(after.y - before.y, after.x - before.x);
@@ -64,12 +65,12 @@ export function createStrokeOrder(playback: PenPlayback): OrderStep[] {
   return steps;
 }
 
-export function activeOrderStep(steps: readonly OrderStep[], time: number): number {
+export function activeOrderStep(steps: readonly StrokeOrderStep[], time: number): number {
   const index = steps.findIndex(step => time < step.end);
   return index < 0 ? steps.length - 1 : index;
 }
 
-export function orderTip(playback: PenPlayback, step: OrderStep, time: number) {
+export function orderTip(playback: PenPlayback, step: StrokeOrderStep, time: number) {
   const t = Math.max(0, Math.min(1, (time - step.start) / (step.end - step.start || 1)));
   if (step.kind === 'lift') {
     const a = pointAt(playback.strokes[step.stroke - 1].pen, playback.strokes[step.stroke - 1].pen.length);
