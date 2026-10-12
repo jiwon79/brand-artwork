@@ -1,0 +1,145 @@
+import type { PenStroke, Point } from './stroke-alphabet';
+import type { Bounds } from './lettering';
+
+export interface PenPoint { x: number; y: number; radius: number; distance: number }
+export interface PenPath { points: PenPoint[]; length: number; nibScale: Point; retrace?: boolean; colorAnchors?: readonly Point[] }
+
+/** Reserve the largest allowed nib once, keeping framing fixed during edits. */
+export function expandPenBounds(bounds: Bounds, pens: readonly PenPath[], weight: number): Bounds {
+  let [left, top, right, bottom] = bounds;
+  for (const pen of pens) {
+    if (pen.retrace) continue;
+    for (const point of pen.points) {
+      const rx = point.radius * pen.nibScale[0] * weight + 2, ry = point.radius * pen.nibScale[1] * weight + 2;
+      left = Math.min(left, point.x - rx); right = Math.max(right, point.x + rx);
+      top = Math.min(top, point.y - ry); bottom = Math.max(bottom, point.y + ry);
+    }
+  }
+  return [left, top, right, bottom];
+}
+
+export function cubic(a: number, b: number, c: number, d: number, t: number): number {
+  const s = 1 - t;
+  return s * s * s * a + 3 * s * s * t * b + 3 * s * t * t * c + t * t * t * d;
+}
+
+/** Compile editable cubic center paths and cubic brush-width controls. */
+export function preparePen(stroke: PenStroke): PenPath {
+  const commands = stroke.d.match(/[MLC][^MLC]*/g) ?? [];
+  const points: PenPoint[] = [];
+  let start: Point = [0, 0], curveIndex = 0, distance = 0;
+  for (const command of commands) {
+    const values = (command.slice(1).match(/[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?/gi) ?? []).map(Number);
+    if (command[0] === 'M') { start = [values[0], values[1]]; continue; }
+    const end: Point = [values[values.length - 2], values[values.length - 1]];
+    const controls = command[0] === 'C' ? values : [
+      start[0] + (end[0] - start[0]) / 3, start[1] + (end[1] - start[1]) / 3,
+      start[0] + (end[0] - start[0]) * 2 / 3, start[1] + (end[1] - start[1]) * 2 / 3, ...end,
+    ];
+    const widths = stroke.widths?.[curveIndex] ?? [stroke.width ?? 90, stroke.width ?? 90, stroke.width ?? 90, stroke.width ?? 90];
+    const sample = (t: number): PenPoint => ({
+      x: cubic(start[0], controls[0], controls[2], end[0], t),
+      y: cubic(start[1], controls[1], controls[3], end[1], t),
+      radius: Math.max(.05, cubic(...widths, t) / 2), distance: 0,
+    });
+    const append = (point: PenPoint) => {
+      const previous = points[points.length - 1];
+      if (previous) distance += Math.hypot(point.x - previous.x, point.y - previous.y);
+      points.push({ ...point, distance });
+    };
+    const subdivide = (t0: number, a: PenPoint, t1: number, b: PenPoint, depth: number) => {
+      let error = 0;
+      for (const fraction of [.25, .5, .75]) {
+        const actual = sample(t0 + (t1 - t0) * fraction);
+        error = Math.max(error, Math.hypot(actual.x - a.x - (b.x - a.x) * fraction, actual.y - a.y - (b.y - a.y) * fraction), Math.abs(actual.radius - a.radius - (b.radius - a.radius) * fraction));
+      }
+      // Bound even perfectly straight intervals. Extending one very long SVG
+      // polygon can retessellate an old antialias fringe far behind the nib.
+      // Short, completed capsules remain stable while only the tip advances.
+      const span = Math.hypot(b.x - a.x, b.y - a.y);
+      if (error <= .2 && span <= Math.max(8, Math.min(a.radius, b.radius)) || depth >= 14) { append(b); return; }
+      const middle = (t0 + t1) / 2, midpoint = sample(middle);
+      subdivide(t0, a, middle, midpoint, depth + 1);
+      subdivide(middle, midpoint, t1, b, depth + 1);
+    };
+    const a = sample(0), b = sample(1);
+    if (!points.length) append(a);
+    subdivide(0, a, 1, b, 0);
+    start = end; curveIndex++;
+  }
+  return { points, length: distance, nibScale: stroke.nibScale ?? [1, 1], retrace: stroke.retrace, colorAnchors: stroke.colorAnchors };
+}
+
+const number = (value: number) => Number(value.toFixed(3));
+function disk(point: PenPoint, [sx, sy]: Point): string {
+  const { x, y, radius: r } = point;
+  const rx = r * sx, ry = r * sy;
+  return `M${number(x+rx)} ${number(y)}A${number(rx)} ${number(ry)} 0 1 1 ${number(x-rx)} ${number(y)}A${number(rx)} ${number(ry)} 0 1 1 ${number(x+rx)} ${number(y)}Z`;
+}
+
+interface Tangent { rightA: Point; rightB: Point; leftA: Point; leftB: Point; slope: number }
+
+/** Outer tangents between two brush discs, computed in nib coordinates. */
+function tangent(a: PenPoint, b: PenPoint, [sx, sy]: Point): Tangent {
+  const dx = (b.x - a.x) / sx, dy = (b.y - a.y) / sy;
+  const length = Math.hypot(dx, dy);
+  const slope = (b.radius - a.radius) / length;
+  const tx = dx / length, ty = dy / length, k = Math.sqrt(1 - slope * slope);
+  const right: Point = [-slope * tx + k * ty, -slope * ty - k * tx];
+  const left: Point = [-slope * tx - k * ty, -slope * ty + k * tx];
+  const at = (p: PenPoint, n: Point): Point => [p.x + p.radius * n[0] * sx, p.y + p.radius * n[1] * sy];
+  return { rightA: at(a, right), rightB: at(b, right), leftA: at(a, left), leftB: at(b, left), slope };
+}
+
+const coordinates = ([x, y]: Point) => `${number(x)} ${number(y)}`;
+function arc(center: PenPoint, from: Point, to: Point, scale: Point, large = false, sweep?: number): string {
+  const cross = (from[0] - center.x) * (to[1] - center.y) - (from[1] - center.y) * (to[0] - center.x);
+  return `A${number(center.radius * scale[0])} ${number(center.radius * scale[1])} 0 ${Number(large)} ${sweep ?? Number(cross > 0)} ${coordinates(to)}`;
+}
+
+function capsule(a: PenPoint, b: PenPoint, nib: Point): string {
+  const separation = Math.hypot((b.x - a.x) / nib[0], (b.y - a.y) / nib[1]);
+  if (separation <= Math.abs(b.radius - a.radius) + .000001) return disk(a.radius >= b.radius ? a : b, nib);
+  const edge = tangent(a, b, nib);
+  return `M${coordinates(edge.rightA)}L${coordinates(edge.rightB)}` +
+    arc(b, edge.rightB, edge.leftB, nib, edge.slope > 0, 1) +
+    `L${coordinates(edge.leftA)}` + arc(a, edge.leftA, edge.rightA, nib, edge.slope < 0, 1) + 'Z';
+}
+
+interface CompiledPen { scale: number; points: PenPoint[]; sections: string[]; full: string }
+// Prepared pen paths are immutable. Keep one width variant per pen, so a
+// growing pressure dot cannot accumulate a cache entry for every frame.
+const geometryCache = new WeakMap<PenPath, CompiledPen>();
+function compileGeometry(pen: PenPath, scale: number): CompiledPen {
+  const previous = geometryCache.get(pen);
+  if (previous?.scale === scale) return previous;
+  const points = scale === 1 ? pen.points : pen.points.map(p => ({ ...p, radius: p.radius * scale }));
+  const sections = points.map((p, i) => i ? capsule(points[i - 1], p, pen.nibScale) : disk(p, pen.nibScale));
+  const compiled = { scale, points, sections, full: sections.join('') };
+  geometryCache.set(pen, compiled); return compiled;
+}
+
+/** Build a vector ribbon along the traveled Bézier center curve. Its boundary
+ * follows brush tangents and round joins; it never samples a source image.
+ */
+export function penGeometry(pen: PenPath, written = pen.length, pressure = 1, weight = 1): string {
+  if (pen.retrace || written <= 0 || pressure <= 0 || weight <= 0 || !pen.points.length) return '';
+  // Scale the nib after path sampling so weight never changes travel, timing,
+  // color anchors, or the original radius profile used by a later reset.
+  const { points, sections, full } = compileGeometry(pen, Math.min(1, pressure) * weight);
+  if (written >= pen.length) return full;
+  // Reuse completed capsules; only the moving tip needs tangent/arc math.
+  let low = 1, high = points.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (points[middle].distance <= written) low = middle + 1; else high = middle;
+  }
+  let d = sections.slice(0, low).join('');
+  const a = points[low - 1], sample = points[low];
+  if (sample && written > a.distance) {
+    const t = (written - a.distance) / (sample.distance - a.distance || 1);
+    const b = { x: a.x + (sample.x - a.x) * t, y: a.y + (sample.y - a.y) * t, radius: a.radius + (sample.radius - a.radius) * t, distance: written };
+    d += capsule(a, b, pen.nibScale);
+  }
+  return d;
+}

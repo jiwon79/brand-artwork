@@ -1,0 +1,69 @@
+import { readFileSync } from 'node:fs';
+import * as hb from 'harfbuzzjs';
+import { Resvg } from '@resvg/resvg-js';
+import { composeText, supportedCharacter, type Bounds, type FontCatalog, type TextShaper } from './lettering';
+import { preparePen, penGeometry } from './pen-geometry';
+
+const assets = new URL('./assets/', import.meta.url);
+export const catalog: FontCatalog = {
+  ...JSON.parse(readFileSync(new URL('font-catalog.json', assets), 'utf8')),
+  penPaths: JSON.parse(readFileSync(new URL('pen-paths.json', assets), 'utf8')),
+};
+export const font = new hb.Font(new hb.Face(new hb.Blob(readFileSync(new URL('Borel-Regular.ttf', assets)))));
+const buffer = new hb.Buffer();
+export const shaper: TextShaper = {
+  shape(text) {
+    buffer.reset(); buffer.addText(text); buffer.guessSegmentProperties(); hb.shape(font, buffer);
+    const positions = buffer.getGlyphPositions();
+    let x = 0;
+    return buffer.getGlyphInfos().map((info, i) => {
+      const position = positions[i];
+      const glyph = { id: info.codepoint, x: x + position.xOffset, y: position.yOffset, advance: position.xAdvance, outline: font.glyphToPath(info.codepoint) };
+      x += position.xAdvance;
+      return glyph;
+    });
+  },
+};
+
+/** A reproducible unaccented text witness for every drawable contextual form. */
+export function supportedGlyphWitnesses(): Map<number, string> {
+  const witnesses = new Map<number, string>();
+  const add = (text: string) => shaper.shape(text).forEach(glyph => {
+    if (catalog.glyphs[glyph.id].bounds && !witnesses.has(glyph.id)) witnesses.set(glyph.id, text);
+  });
+  for (const cp of Object.keys(catalog.cmap)) {
+    const character = String.fromCodePoint(Number(cp));
+    if (supportedCharacter(character, catalog)) add(character);
+  }
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  for (const a of lowercase) for (const b of lowercase) {
+    for (const c of lowercase) add(a + b + c);
+    add(a + 'tt' + b);
+  }
+  return witnesses;
+}
+
+export function raster(body: string, bounds: Bounds, scale = .35): Uint8Array {
+  const [left, top, right, bottom] = bounds;
+  const width = Math.ceil((right - left) * scale), height = Math.ceil((bottom - top) * scale);
+  return new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${left} ${top} ${right - left} ${bottom - top}">${body}</svg>`, { font: { loadSystemFonts: false } }).render().pixels;
+}
+
+/** Soft-alpha foreground IoU: empty background contributes nothing. */
+export function foregroundIoU(a: Uint8Array, b: Uint8Array): number {
+  if (a.length !== b.length) throw new Error('Raster dimensions differ');
+  let intersection = 0, union = 0;
+  for (let i = 3; i < a.length; i += 4) {
+    intersection += Math.min(a[i], b[i]);
+    union += Math.max(a[i], b[i]);
+  }
+  return union ? intersection / union : 1;
+}
+
+export function textForegroundIoU(text: string, maxWidth = 6200, scale = .35): number {
+  const lettering = composeText(text, shaper, catalog, maxWidth);
+  const paths = (values: string[]) => values.map(d => `<path d="${d}"/>`).join('');
+  const actual = raster(paths(lettering.strokes.map(stroke => penGeometry(preparePen(stroke)))), lettering.bounds, scale);
+  const expected = raster(paths(lettering.outlines), lettering.bounds, scale);
+  return foregroundIoU(actual, expected);
+}

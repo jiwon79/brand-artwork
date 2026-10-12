@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3e8de">
+  <meta name="description" content="Cursive — 연결형 필기체를 쓰고 로프처럼 당기는 인터랙티브 작품.">
+  <link rel="canonical" href="https://studio.jiiwon.com/cursive/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://studio.jiiwon.com/cursive/">
+  <meta property="og:title" content="Cursive">
+  <meta property="og:description" content="Cursive — 연결형 필기체를 쓰고 로프처럼 당기는 인터랙티브 작품.">
+  <meta property="og:image" content="https://studio.jiiwon.com/cursive/assets/og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="베이지색 배경에 무지개색 hello 필기체와 왼쪽 위 Cursive 제목이 있는 공유 이미지">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cursive">
+  <meta name="twitter:description" content="Cursive — 연결형 필기체를 쓰고 로프처럼 당기는 인터랙티브 작품.">
+  <meta name="twitter:image" content="https://studio.jiiwon.com/cursive/assets/og-image.png">
+  <meta name="twitter:image:alt" content="베이지색 배경에 무지개색 hello 필기체와 왼쪽 위 Cursive 제목이 있는 공유 이미지">
+  <title>Cursive</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-load-state="loading">
+  <div id="loading-screen">
+    <p id="loading-message" role="status" aria-live="polite">로딩 중…</p>
+    <button id="loading-retry" type="button" hidden>다시 시도</button>
+  </div>
+  <main aria-busy="true"><svg id="artwork" viewBox="0 0 1100 530" role="img" aria-label="Cursive 필기체 애니메이션"></svg></main>
+  <form id="text-form" class="controls">
+    <textarea id="text-input" maxlength="160" rows="1" spellcheck="false" aria-label="쓰고 싶은 문장" aria-describedby="text-status" placeholder="영문으로 문장을 입력하세요" disabled>hello</textarea>
+    <div class="actions">
+      <div class="colors" role="group" aria-label="글씨 색상">
+        <button class="swatch" type="button" data-ink="#6f4031" style="--swatch:#6f4031" aria-label="브라운" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#292723" style="--swatch:#292723" aria-label="차콜" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#dc7962" style="--swatch:#dc7962" aria-label="코랄" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#527fa8" style="--swatch:#527fa8" aria-label="블루" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#66836a" style="--swatch:#66836a" aria-label="그린" aria-pressed="false"></button>
+        <button class="swatch" type="button" data-ink="#9472a5" style="--swatch:#9472a5" aria-label="퍼플" aria-pressed="false"></button>
+        <button id="gradient-color" class="swatch rainbow" type="button" aria-label="무지개" aria-pressed="true"></button>
+      </div>
+      <button id="pause" type="button" aria-label="재생" data-state="play" disabled>
+        <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7Z" fill="currentColor" stroke="none"/></svg>
+        <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+        <svg class="restart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></svg>
+      </button>
+    </div>
+    <label class="weight-control" for="weight-input">
+      <span>두께</span>
+      <input id="weight-input" type="range" min="0.5" max="1.5" step="0.05" value="1" aria-label="획 두께" disabled>
+    </label>
+    <p id="text-status" role="status" aria-live="polite" hidden></p>
+  </form>
+  <script type="module" src="/common/touch-pointer.ts"></script>
+  <script type="module" src="script.ts"></script>
+</body>
+</html>

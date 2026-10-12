@@ -30,6 +30,10 @@ docs/
 
 ## Artworks
 
+### Cursive
+
+- [`social-share-image.md`](./artworks/cursive/social-share-image.md) - 실제 필기체 렌더링과 제목 합성, 공유 이미지 재생성 방법
+
 ### Body Echo
 
 - [`architecture.md`](./artworks/body-echo/architecture.md) - SVG rope hold, wave-gated particle dissolve, Canvas 2D 합성 구조
@@ -106,6 +110,7 @@ Vibe의 **작품별 기록**에서 게시 상태, 캡션·초안, 크레딧과 �
 
 | 작품 | 운영 기록 |
 | --- | --- |
+| Cursive | [Cursive · 릴스 캡션](https://app.notion.com/p/3f7a89f7e31a814dbdc6cc52ca2e3803) |
 | Guseul | [Guseul · 1일차](https://app.notion.com/p/3cda89f7e31a81abb5d4e400ee742826) |
 | Color Text | [Color Text · 2일차](https://app.notion.com/p/3cda89f7e31a81d0b566fe5dd0d0b993) |
 | Body Echo | [Body Echo · 3일차](https://app.notion.com/p/3cda89f7e31a8147a835fcce47562c3d) |
