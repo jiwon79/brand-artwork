@@ -136,10 +136,10 @@ func makeLivePhoto(input: URL, directory: URL, cover: URL?) async throws {
         var bits = value.bitPattern.bigEndian
         withUnsafeBytes(of: &bits) { identity.append(contentsOf: $0) }
     }
-    // Boxed timed metadata: key 1 is int8(0), key 2 is the identity 3x3
+    // Boxed timed metadata: key 1 is int8(-1), key 2 is the identity 3x3
     // perspective transform in big-endian float64. Write the typed sample
     // directly; the metadata adaptor does not accept NSData for this matrix.
-    var posterPayload = Data([0, 0, 0, 9, 0, 0, 0, 1, 0, 0, 0, 0, 80, 0, 0, 0, 2])
+    var posterPayload = Data([0, 0, 0, 9, 0, 0, 0, 1, 255, 0, 0, 0, 80, 0, 0, 0, 2])
     posterPayload.append(identity)
     try require(metadata.append(try motionSample(format: description!, payload: posterPayload, time: posterTime)), "Could not write poster marker and transform")
     metadata.markAsFinished()
@@ -215,7 +215,7 @@ func makeLivePhoto(input: URL, directory: URL, cover: URL?) async throws {
         throw ConversionError.invalid("Poster marker key missing")
     }
     let savedValue = try await savedMarker.load(.value)
-    try require((savedValue as? NSNumber)?.intValue == 0, "Poster marker value missing")
+    try require((savedValue as? NSNumber)?.intValue == -1, "Poster marker value missing")
     verify.cancelReading()
     print("Verified one-second HEIC + MOV, matching identifiers, wallpaper motion metadata and poster marker at 0.8s")
 }

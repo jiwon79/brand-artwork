@@ -116,7 +116,7 @@ print("\\(image.width),\\(image.height),\\(pixel[0]),\\(pixel[1]),\\(pixel[2])")
 import AVFoundation
 import CoreMedia
 let asset = AVURLAsset(url: URL(fileURLWithPath: CommandLine.arguments[1]))
-var keys: [String] = [], frames = 0, marker = 0.0, identity = false, referenced = true
+var keys: [String] = [], frames = 0, marker = 0.0, markerValue = 0, identity = false, referenced = true
 for track in asset.tracks(withMediaType: .metadata) {
     let format = track.formatDescriptions[0] as! CMFormatDescription
     let identifiers = CMMetadataFormatDescriptionGetIdentifiers(format) as! [String]
@@ -148,15 +148,17 @@ for track in asset.tracks(withMediaType: .metadata) {
         let timedOutput = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
         let adaptor = AVAssetReaderOutputMetadataAdaptor(assetReaderTrackOutput: timedOutput)
         timedReader.add(timedOutput); timedReader.startReading()
-        marker = adaptor.nextTimedMetadataGroup()!.timeRange.start.seconds
+        let group = adaptor.nextTimedMetadataGroup()!
+        marker = group.timeRange.start.seconds
+        markerValue = (group.items.first { ($0.key as? String) == "com.apple.quicktime.still-image-time" }!.value as! NSNumber).intValue
     }
 }
-let report: [String:Any] = ["keys": keys.sorted(), "frames": frames, "poster": marker, "identity": identity, "referenced": referenced]
+let report: [String:Any] = ["keys": keys.sorted(), "frames": frames, "poster": marker, "markerValue": markerValue, "identity": identity, "referenced": referenced]
 print(String(data: try JSONSerialization.data(withJSONObject: report), encoding: .utf8)!)`);
     const motionReport = JSON.parse((await run('/usr/bin/swift', [motionProbe, join(output, 'name.MOV')])).stdout);
     expect(motionReport).toEqual({
       keys: ['mdta/com.apple.quicktime.live-photo-info', 'mdta/com.apple.quicktime.live-photo-still-image-transform', 'mdta/com.apple.quicktime.still-image-time'],
-      frames: 60, poster: .8, identity: true, referenced: true,
+      frames: 60, poster: .8, markerValue: -1, identity: true, referenced: true,
     });
     const mac = await upload();
     expect(mac.headers.get('content-type')).toBe('application/zip');
