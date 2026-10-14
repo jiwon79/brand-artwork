@@ -29,6 +29,10 @@
   ],
   "rewrites": [
     {
+      "source": "/docs/artworks/soft-forms/",
+      "destination": "/docs/artworks/soft-forms/index.html"
+    },
+    {
       "source": "/rose-glass/",
       "destination": "/pages/rose-glass/index.html"
     },
@@ -41,11 +45,11 @@
       "destination": "/pages/cursor-cat/index.html"
     },
     {
-      "source": "/:artwork((?!common$|pages$)[a-z0-9-]+)/",
+      "source": "/:artwork((?!common$|pages$|docs$)[a-z0-9-]+)/",
       "destination": "/pages/:artwork/index.html"
     },
     {
-      "source": "/:artwork((?!common$|pages$)[a-z0-9-]+)/:path*",
+      "source": "/:artwork((?!common$|pages$|docs$)[a-z0-9-]+)/:path*",
       "destination": "/pages/:artwork/:path*"
     }
   ],

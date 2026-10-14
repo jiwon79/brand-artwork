@@ -80,6 +80,15 @@ test('the Studio index only publishes clean artwork links', () => {
   expect(hrefs).toContain('/rose-glass/');
 });
 
+test('the documentation page resolves before the generic artwork rewrites', () => {
+  const index = config.rewrites.findIndex(route => route.source === '/docs/artworks/soft-forms/');
+  const generic = config.rewrites.findIndex(route => route.destination === '/pages/:artwork/:path*');
+  expect(index).toBeGreaterThanOrEqual(0);
+  expect(config.rewrites[index].destination).toBe('/docs/artworks/soft-forms/index.html');
+  expect(index).toBeLessThan(generic);
+  expect(config.rewrites[generic].source).toContain('|docs$');
+});
+
 test('published social metadata uses clean Studio URLs', () => {
   const pagesUrl = new URL('../pages/', import.meta.url);
   const pageNames = readdirSync(pagesUrl, { withFileTypes: true })

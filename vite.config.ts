@@ -58,6 +58,7 @@ const pageEntries = readdirSync(pagesDir, { withFileTypes: true })
 
 const input: Record<string, string> = {
   main: resolve(root, 'index.html'),
+  'soft-forms-architecture': resolve(root, 'docs/artworks/soft-forms/index.html'),
 };
 for (const name of pageEntries) {
   input[name] = resolve(pagesDir, name, 'index.html');
