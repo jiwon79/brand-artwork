@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { motionPeriod, sampleTrack, type Keyframe } from './motion-track';
 
-test('bone motion interpolation joins smoothly at the loop seam', () => {
+test('control motion interpolation joins smoothly at the loop seam', () => {
   const period = motionPeriod(120);
   const keys: Keyframe[] = [
     { frame: 0, value: 1 },

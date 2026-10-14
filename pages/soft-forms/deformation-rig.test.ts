@@ -1,18 +1,18 @@
 import { expect, test } from 'vitest';
-import { BoneRig } from './bone-rig';
-import { fitBoneFrames, fittedBoneTracks, referenceRadius, sampleBoneTracks } from './bone-animation';
+import { DeformationRig } from './deformation-rig';
+import { fitControlFrames, fittedControlTracks, referenceRadius, sampleControlTracks } from './motion-fit';
 import { motionFrames } from './motion-data';
 import { loopFrame } from './motion-loop';
 import { motionPeriod } from './motion-track';
 
 const contours = motionFrames.map((frame) => frame.radii);
-const fitted = fitBoneFrames(contours);
-const defaults = fittedBoneTracks(fitted);
+const fitted = fitControlFrames(contours);
+const defaults = fittedControlTracks(fitted);
 const period = motionPeriod(contours.length);
 const baseline = contours[0].map((_, index) => contours.reduce((sum, row) => sum + row[index], 0) / contours.length);
 
 test('rest pose preserves a point and skin weights sum to one', () => {
-  const rig = new BoneRig();
+  const rig = new DeformationRig();
   const weights = rig.weightsFor(-90, 24);
   const output = new Float32Array(3);
   rig.skinPoint(-90, 24, 82, weights, output, 0);
@@ -23,14 +23,14 @@ test('rest pose preserves a point and skin weights sum to one', () => {
 });
 
 test('fitted rig follows the measured surface throughout the loop', () => {
-  const rig = new BoneRig();
+  const rig = new DeformationRig();
   const output = new Float32Array(3);
   let squareError = 0, maximum = 0, count = 0;
   for (let frame = 0; frame <= period; frame += 2) {
     const source = loopFrame(frame / 24, contours.length);
     const a = Math.floor(source), b = Math.min(a + 1, contours.length - 1), fraction = source - a;
     const radii = contours[a].map((radius, index) => radius * (1 - fraction) + contours[b][index] * fraction);
-    rig.setPose(sampleBoneTracks(defaults, frame, period));
+    rig.setPose(sampleControlTracks(defaults, frame, period));
     for (let i = 0; i < 64; i++) {
       const angle = -(i + 0.5) * Math.PI * 2 / 64;
       const x = Math.cos(angle), y = Math.sin(angle);

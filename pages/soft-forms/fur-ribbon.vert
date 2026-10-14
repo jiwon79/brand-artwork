@@ -19,7 +19,7 @@ void main() {
   viewPosition.xy += across * instanceBend * sin(3.14159265 * along);
   viewPosition.xy += across * position.x * instanceWidth * pow(1.0 - along, 1.4);
 
-  vFurColor = peachColor(instanceRoot.xy, uCheek);
+  vFurColor = surfaceColor(instanceRoot.xy, uCheek);
   vAlong = along;
   vAcross = position.x;
   vSilhouette = 1.0 - abs(normalize(mat3(modelViewMatrix) * instanceDirection).z);
