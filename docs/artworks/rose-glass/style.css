@@ -1,6 +1,18 @@
 .rose-demo-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 26px; align-items: center; }
 .rose-scene { position: relative; aspect-ratio: 4 / 5; min-width: 0; overflow: hidden; border: 1px solid #ded6c7; border-radius: 8px; background: #efe7e2; }
 .rose-scene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.rose-scene .inverse-overlay { position: absolute; inset: 0; pointer-events: none; }
+.rose-scene .inverse-overlay[hidden] { display: none; }
+.inverse-debug { border-top: 1px solid #d5cbb9; margin-top: 24px; padding-top: 16px; }
+.inverse-debug > summary { font-size: 14px; font-weight: 500; cursor: pointer; }
+.inverse-options { display: flex; flex-wrap: wrap; gap: 12px 20px; font-size: 12px; margin: 18px 0; }
+.inverse-options label { display: flex; align-items: center; gap: 7px; }
+.inverse-options input { accent-color: #a65042; }
+.inverse-map { display: block; width: 100%; aspect-ratio: 640 / 340; background: #faf8f3; border: 1px solid #ded6c7; border-radius: 8px; }
+.inverse-map { cursor: crosshair; }
+.inverse-coordinates, .inverse-step { display: flex; flex-wrap: wrap; gap: 15px 25px; font-size: 11px; color: #746c5e; margin: 18px 0; }
+.inverse-coordinates strong, .inverse-step strong { display: block; font-family: ui-monospace, monospace; font-size: 13px; font-weight: 500; color: #423e36; }
+.inverse-matrix { font-size: 12px; margin-top: 20px; }
 #drag-demo .rose-scene canvas { cursor: grab; }
 #drag-demo .rose-scene canvas:active { cursor: grabbing; }
 .rose-controls { min-width: 0; font-size: 13px; }

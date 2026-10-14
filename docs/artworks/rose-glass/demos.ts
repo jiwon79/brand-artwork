@@ -1,5 +1,6 @@
 import { GlassView, scenePoint } from './glass-view';
 import { GlassBodyMotion } from '../../../pages/rose-glass/interaction';
+import { createInverseDebug } from './inverse-debug';
 
 const stages = [
   ['형태', '각 픽셀의 위치로 안팎을 판정합니다. 안쪽은 유리의 기본색, 바깥쪽은 배경색으로 칠합니다.'],
@@ -71,8 +72,9 @@ export function createDragDemo() {
     frame = 0;
     if (!inView || document.hidden) return;
     const dt = Math.min((now - previous) / 1000 || 1 / 60, 1 / 30); previous = now;
-    const active = motion.step(dt, 85, 1, { softness: 1.1, indentationDepth: 1, recovery: 1, stretchLimit: 430 }, reduced.matches);
+    const active = !debug.frozen && motion.step(dt, 85, 1, { softness: 1.1, indentationDepth: 1, recovery: 1, stretchLimit: 430 }, reduced.matches);
     view.draw(motion); view.canvas.dataset.interaction = motion.mode;
+    debug.update();
     if (lastMode !== motion.mode) {
       lastMode = motion.mode;
       controls.querySelector('.rose-drag-status')!.textContent = motion.mode === 'dragging' ? '잡은 곳 주변이 늘어나고 있습니다.' : motion.mode === 'returning' ? '손을 놓아 원래 형태로 돌아오는 중입니다.' : '유리 위를 잡아당겨 보세요.';
@@ -80,6 +82,10 @@ export function createDragDemo() {
     if (active) wake();
   };
   const wake = () => { if (!frame && inView && !document.hidden) frame = requestAnimationFrame(render); };
+  const debug = createInverseDebug(element, view.canvas, motion, wake, () => {
+    releaseAll(); motion.reset(true); motion.grab(-1, { x: 420, y: 645 }); motion.move(-1, { x: 600, y: 580 });
+    for (let i = 0; i < 90; i++) motion.step(1 / 60, 85, 1, { softness: 1.1, indentationDepth: 1, recovery: 1, stretchLimit: 430 }, reduced.matches);
+  });
   const releaseAll = () => {
     for (const id of pointers) { motion.release(id, reduced.matches); if (view.canvas.hasPointerCapture(id)) view.canvas.releasePointerCapture(id); }
     pointers.clear(); motion.release(-1, reduced.matches); wake();
@@ -90,6 +96,7 @@ export function createDragDemo() {
   };
   view.canvas.addEventListener('pointerdown', event => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (debug.selecting) { debug.select(position(event)); return; }
     motion.release(-1, reduced.matches);
     if (motion.grab(event.pointerId, position(event), event.pressure)) {
       pointers.add(event.pointerId); view.canvas.setPointerCapture(event.pointerId); wake();
@@ -101,11 +108,12 @@ export function createDragDemo() {
     if (pointers.delete(id)) { motion.release(id, reduced.matches); wake(); }
   });
   controls.querySelector('[data-action="pull"]')!.addEventListener('click', () => {
+    debug.resume();
     releaseAll(); motion.reset(true); motion.grab(-1, { x: 420, y: 645 }); motion.move(-1, { x: 600, y: 580 }); wake();
   });
   controls.querySelector('[data-action="release"]')!.addEventListener('click', releaseAll);
   controls.querySelector('[data-action="reset"]')!.addEventListener('click', () => { releaseAll(); motion.reset(true); wake(); });
-  new ResizeObserver(() => view.draw(motion)).observe(element.querySelector('.rose-scene')!);
+  new ResizeObserver(() => { view.draw(motion); debug.update(); }).observe(element.querySelector('.rose-scene')!);
   new IntersectionObserver(entries => { inView = entries[0].isIntersecting; if (inView) wake(); else releaseAll(); }).observe(element);
   document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); else wake(); });
   return element;

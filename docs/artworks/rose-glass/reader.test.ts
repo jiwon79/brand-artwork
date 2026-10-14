@@ -5,6 +5,7 @@ import { scenePoint } from './glass-view';
 import { GlassBodyMotion } from '../../../pages/rose-glass/interaction';
 import { applyDeformation, invertDeformation } from '../../../pages/rose-glass/deformation';
 import { reliefSample } from './relief-demo';
+import { inspectInverse } from './inverse-debug';
 
 test('Rose Glass renders its own Markdown with the material and drag demo slots', () => {
   const path = '/docs/artworks/rose-glass/architecture.md';
@@ -52,4 +53,20 @@ test('the demo pull carries the material point and recovers after release', () =
   for (let i = 0; i < 360; i++) motion.step(1 / 60, 85, 1, settings, false);
   expect(motion.mode).toBe('idle');
   expect(applyDeformation(point, motion)).toEqual(point);
+});
+
+test('inverse debug traces the same solver and reconstructs the selected scene point', () => {
+  const motion = new GlassBodyMotion();
+  motion.grab(-1, { x: 420, y: 645 }); motion.move(-1, { x: 600, y: 580 });
+  for (let i = 0; i < 90; i++) motion.step(1 / 60, 85, 1, { softness: 1.1, indentationDepth: 1, recovery: 1, stretchLimit: 430 }, false);
+  const result = inspectInverse({ x: 410, y: 645 }, motion);
+  expect(result.steps).toHaveLength(20);
+  expect(result.steps[0].fieldIndex).toBe(3);
+  expect(result.steps[result.steps.length - 1].fieldIndex).toBe(0);
+  expect(result.source).toEqual(invertDeformation(result.target, motion));
+  expect(result.steps[0].error.x).toBeCloseTo(result.steps[0].forward.x - result.steps[0].target.x);
+  expect(result.residual).toBeLessThan(0.001);
+  const still = inspectInverse({ x: 410, y: 645 }, new GlassBodyMotion());
+  expect(still.steps).toHaveLength(0);
+  expect(still.source).toEqual(still.target);
 });
