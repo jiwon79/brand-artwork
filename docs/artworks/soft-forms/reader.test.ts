@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { test, expect } from 'vitest';
 import { ribbonGeometry, shellDistance, SHELL_COUNT } from './demo-geometry';
 import { documentLink, renderMarkdown } from './markdown';
+import * as THREE from 'three';
+import { findSurface } from './touch-demo';
 
 test('the architecture renders its diagram and embeds demos beneath the relevant explanations', () => {
   const source = readFileSync(new URL('./architecture.md', import.meta.url), 'utf8');
@@ -9,8 +11,27 @@ test('the architecture renders its diagram and embeds demos beneath the relevant
   expect(html).toContain('src="/assets/fur.svg"');
   expect(html).toContain('<!-- interactive-demo: shells -->');
   expect(html).toContain('<!-- interactive-demo: ribbons -->');
+  expect(html).toContain('<!-- interactive-demo: touch -->');
+  expect(html.indexOf('interactive-demo: touch')).toBeLessThan(html.indexOf('2. 몸체 전체'));
   expect(html).not.toContain('\\[');
   expect(html.indexOf('interactive-demo: shells')).toBeLessThan(html.indexOf('리본: 외곽에서 한 가닥이 보이게 하기'));
+});
+
+test('screen picks hit the first visible mesh surface and miss empty space', () => {
+  const camera = new THREE.OrthographicCamera(-1.8, 1.8, 1.8, -1.8, 0.1, 20);
+  camera.position.set(0, 0, 6); camera.lookAt(0, 0, 0);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32));
+  body.scale.set(1.2, 1, 0.75);
+  const center = findSurface(camera, body, 0, 0);
+  const edge = findSurface(camera, body, 0.55, 0);
+  const outside = findSurface(camera, body, 0.85, 0.7);
+  expect(center.hit!.point.z).toBeCloseTo(0.75);
+  expect(edge.hit!.point.x).toBeCloseTo(0.99);
+  expect(edge.hit!.point.z).toBeLessThan(center.hit!.point.z);
+  expect(center.ray.direction.equals(edge.ray.direction)).toBe(true);
+  expect(outside.hit).toBeUndefined();
+  body.geometry.dispose();
+  (body.material as THREE.Material).dispose();
 });
 
 test('document links retain their repository location and anchors on the web', () => {

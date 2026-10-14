@@ -57,6 +57,14 @@ input[type=range] { display: block; width: 100%; accent-color: #b64e3c; margin: 
 .demo-controls:not(.ribbon-controls) .reset-button { grid-column: 1 / -1; }
 .document .demo-note { font-size: 12px; color: #746c5e; line-height: 1.9; }
 .no-script { padding: 24px; }
+.touch-views { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.touch-views h4 { margin: 0; padding: 12px 14px; font-size: 13px; font-weight: 500; }
+.touch-views canvas { aspect-ratio: 1; }
+.touch-front canvas { cursor: crosshair; touch-action: none; }
+.touch-presets { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.touch-presets button { padding: 9px 12px; border: 1px solid #c8bfae; border-radius: 5px; background: transparent; font: inherit; font-size: 12px; color: #645c4f; cursor: pointer; }
+.touch-presets button:hover { background: #e9e1d3; }
+@media (max-width: 540px) { .touch-views { grid-template-columns: 1fr; } }
 @media (min-width: 1450px) { .reading-layout { gap: 100px; } }
 @media (max-width: 1000px) { .reading-layout { grid-template-columns: 180px minmax(0, 1fr); gap: 32px; padding: 44px 28px 90px; } .site-header { padding: 22px 28px; } }
 @media (max-width: 720px) {

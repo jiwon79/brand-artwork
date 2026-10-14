@@ -3,6 +3,7 @@ import source from './architecture.md?raw';
 import furImage from '../../assets/fur-shells-and-ribbons.svg?url';
 import { renderMarkdown } from './markdown';
 import { createRibbonDemo, createShellDemo } from './demos';
+import { createTouchDemo } from './touch-demo';
 import './style.css';
 
 const article = document.querySelector<HTMLElement>('#document')!;
@@ -12,8 +13,8 @@ const placeholders: Comment[] = [];
 const comments = document.createTreeWalker(article, NodeFilter.SHOW_COMMENT);
 while (comments.nextNode()) placeholders.push(comments.currentNode as Comment);
 for (const comment of placeholders) {
-  const name = /^\s*interactive-demo: (shells|ribbons)\s*$/.exec(comment.data)?.[1];
-  if (name) comment.replaceWith(name === 'shells' ? createShellDemo() : createRibbonDemo());
+  const name = /^\s*interactive-demo: (shells|ribbons|touch)\s*$/.exec(comment.data)?.[1];
+  if (name) comment.replaceWith(name === 'touch' ? createTouchDemo() : name === 'shells' ? createShellDemo() : createRibbonDemo());
 }
 
 // Keep wide tables locally scrollable instead of stretching the mobile page.
