@@ -1,13 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from 'vitest';
 import { ribbonGeometry, shellDistance, SHELL_COUNT } from './demo-geometry';
-import { documentLink, renderMarkdown } from './markdown';
+import { documentLink as resolveLink, renderMarkdown } from '../../reader/markdown';
+const sourcePath = '/docs/artworks/soft-forms/architecture.md';
+const documentLink = (href: string) => resolveLink(href, sourcePath);
 import * as THREE from 'three';
 import { findSurface } from './touch-demo';
 
 test('the architecture renders its diagram and embeds demos beneath the relevant explanations', () => {
   const source = readFileSync(new URL('./architecture.md', import.meta.url), 'utf8');
-  const html = renderMarkdown(source, { '/docs/assets/fur-shells-and-ribbons.svg': '/assets/fur.svg' });
+  const html = renderMarkdown(source, { '/docs/assets/fur-shells-and-ribbons.svg': '/assets/fur.svg' }, sourcePath);
   expect(html).toContain('src="/assets/fur.svg"');
   expect(html).toContain('<!-- interactive-demo: shells -->');
   expect(html).toContain('<!-- interactive-demo: ribbons -->');
