@@ -47,6 +47,7 @@ a:hover { color: #ba4e39; }
 .demo-heading > p:last-child { font-size: 14px; color: #676156; margin-bottom: 22px; }
 .demo-figure { background: #faf8f3; border-radius: 8px; border: 1px solid #e2dbce; }
 .demo-figure canvas { display: block; width: 100%; aspect-ratio: 2; }
+.interactive-demo canvas { user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
 .document .figure-caption { border-top: 1px solid #e5dfd3; padding: 10px 14px; margin: 0; color: #776f62; font-size: 11px; line-height: 1.8; }
 .demo-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 26px; align-items: end; margin: 24px 0 18px; }
 .slider-label { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; font-weight: 500; }

@@ -1,5 +1,6 @@
 import { renderMarkdown } from './markdown';
 import './style.css';
+import { preventDragSelection } from '../../common/drag-selection';
 
 export function mountDocument(source: string, options: { sourcePath: string; images?: Record<string, string>; demos: Record<string, () => HTMLElement> }) {
   const article = document.querySelector<HTMLElement>('#document')!;
@@ -12,6 +13,7 @@ export function mountDocument(source: string, options: { sourcePath: string; ima
     const name = /^\s*interactive-demo: ([a-z-]+)\s*$/.exec(comment.data)?.[1];
     if (name && options.demos[name]) comment.replaceWith(options.demos[name]());
   }
+  article.querySelectorAll<HTMLElement>('canvas, .interactive-demo input[type="range"]').forEach(preventDragSelection);
 
   // Keep wide tables locally scrollable instead of stretching the mobile page.
   for (const table of article.querySelectorAll('table')) {

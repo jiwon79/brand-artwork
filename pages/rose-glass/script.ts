@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { preventDragSelection } from '../../common/drag-selection';
 import { exposeGuiInDebugMode } from '../../common/debug';
 import { glassBodyIds, glassBodyOrder, maxDeformationFields, deformationSubsteps, type GlassBodyId } from './deformation';
 import { createPresentation, renderLayers } from './presentation';
@@ -7,6 +8,7 @@ import { fragmentSource, resolveSource, vertexSource } from './shader';
 import { colorwayIndex, colorways } from './colorways';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork')!;
+preventDragSelection(canvas);
 const error = document.querySelector<HTMLParagraphElement>('#error')!;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let activeColorway = colorwayIndex(new URLSearchParams(location.search).get('color'));
