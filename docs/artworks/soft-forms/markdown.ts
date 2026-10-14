@@ -1,5 +1,4 @@
 import { Marked } from 'marked';
-import katex from 'katex';
 
 export const sourcePath = '/docs/artworks/soft-forms/architecture.md';
 const repository = 'https://github.com/jiwon79/studio/blob/main';
@@ -16,19 +15,6 @@ export function renderMarkdown(source: string, images: Record<string, string>): 
   const parser = new Marked({
     async: false,
     gfm: true,
-    extensions: [{
-      name: 'displayMath',
-      level: 'block',
-      start: source => source.indexOf('\\['),
-      tokenizer(source) {
-        const match = /^\\\[\s*\n([\s\S]*?)\n\\\][ \t]*(?:\n|$)/.exec(source);
-        if (match) return { type: 'displayMath', raw: match[0], text: match[1] };
-        return undefined;
-      },
-      renderer: token => `<div class="equation">${katex.renderToString(token.text, {
-        displayMode: true, throwOnError: true, trust: false,
-      })}</div>`,
-    }],
     walkTokens(token) {
       if (token.type === 'link') token.href = documentLink(token.href);
       if (token.type === 'image') {

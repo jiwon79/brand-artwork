@@ -67,8 +67,8 @@ docs/
 
 ### 솜결 (Soft Forms)
 
-- [`architecture.md`](./artworks/soft-forms/architecture.md) - 독립 변형 컨트롤, 표면 바인딩, 셸·리본 털과 터치 응답의 현재 실행 흐름
-- [`인터랙티브 웹 문서`](./artworks/soft-forms/index.html) - 같은 Markdown 본문을 웹에서 읽고 셸 간격·리본 기하를 바로 조작하는 문서
+- [`architecture.md`](./artworks/soft-forms/architecture.md) - 화면 터치를 3D 표면에서 찾기, 부드러운 몸체 변형, 털 표현과 부착을 큰 문제별로 설명
+- [`인터랙티브 웹 문서`](./artworks/soft-forms/index.html) - 같은 Markdown 본문을 읽으며 셸의 배치와 털 가닥의 모양을 조작하는 문서
 - [`social-share-image.md`](./artworks/soft-forms/social-share-image.md) - 실제 별 캐릭터 캡처에 한글·영어 제목을 합성하는 공유 PNG 제작 방법
 
 ### 웃음꽃 (Smile Flower)

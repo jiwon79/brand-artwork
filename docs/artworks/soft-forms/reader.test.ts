@@ -3,15 +3,14 @@ import { test, expect } from 'vitest';
 import { ribbonGeometry, shellDistance, SHELL_COUNT } from './demo-geometry';
 import { documentLink, renderMarkdown } from './markdown';
 
-test('the existing architecture renders its equations, diagram and both demo slots', () => {
+test('the architecture renders its diagram and embeds demos beneath the relevant explanations', () => {
   const source = readFileSync(new URL('./architecture.md', import.meta.url), 'utf8');
-  const html = renderMarkdown(source, { '/docs/assets/soft-forms-frame-pipeline.svg': '/assets/pipeline.svg' });
-  expect(html.match(/class="katex-display"/g)).toHaveLength(4);
-  expect(html).toContain('src="/assets/pipeline.svg"');
+  const html = renderMarkdown(source, { '/docs/assets/fur-shells-and-ribbons.svg': '/assets/fur.svg' });
+  expect(html).toContain('src="/assets/fur.svg"');
   expect(html).toContain('<!-- interactive-demo: shells -->');
   expect(html).toContain('<!-- interactive-demo: ribbons -->');
   expect(html).not.toContain('\\[');
-  expect(html.indexOf('interactive-demo: shells')).toBeLessThan(html.indexOf('리본: 한 가닥 그리기'));
+  expect(html.indexOf('interactive-demo: shells')).toBeLessThan(html.indexOf('리본: 외곽에서 한 가닥이 보이게 하기'));
 });
 
 test('document links retain their repository location and anchors on the web', () => {

@@ -1,13 +1,12 @@
 /// <reference types="vite/client" />
 import source from './architecture.md?raw';
-import pipelineImage from '../../assets/soft-forms-frame-pipeline.svg?url';
+import furImage from '../../assets/fur-shells-and-ribbons.svg?url';
 import { renderMarkdown } from './markdown';
 import { createRibbonDemo, createShellDemo } from './demos';
-import 'katex/dist/katex.min.css';
 import './style.css';
 
 const article = document.querySelector<HTMLElement>('#document')!;
-article.innerHTML = renderMarkdown(source, { '/docs/assets/soft-forms-frame-pipeline.svg': pipelineImage });
+article.innerHTML = renderMarkdown(source, { '/docs/assets/fur-shells-and-ribbons.svg': furImage });
 
 const placeholders: Comment[] = [];
 const comments = document.createTreeWalker(article, NodeFilter.SHOW_COMMENT);
