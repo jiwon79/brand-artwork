@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest --watch",
-    "typecheck": "tsc --noEmit --noUnusedLocals --noUnusedParameters"
+    "typecheck": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "generate:clouds": "node scripts/generate-clouds.mjs"
   },
   "dependencies": {
     "@types/d3-delaunay": "^6.0.4",

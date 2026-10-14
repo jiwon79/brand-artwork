@@ -30,6 +30,10 @@ docs/
 
 ## Artworks
 
+### Clouds
+
+- [`architecture.md`](./artworks/clouds/architecture.md) - 사전 생성한 3D 밀도, GPU 그림자 캐시와 조작·정지 화질 전환 구조
+
 ### Cursive
 
 - [`architecture.md`](./artworks/cursive/architecture.md) - 저작 획·샘플 경로·재생 일정의 용어와 SVG 필기, 로프, 파일 출력의 현재 구조

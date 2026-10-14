@@ -23,6 +23,7 @@
     "pages/cursive/**/*.ts",
     "pages/smile-flower/**/*.ts",
     "pages/glow-dice/**/*.ts",
+    "pages/clouds/**/*.ts",
     "common/**/*.test.ts",
     "common/**/*.spec.ts",
     "pages/**/*.test.ts",
