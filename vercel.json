@@ -29,6 +29,10 @@
   ],
   "rewrites": [
     {
+      "source": "/docs/artworks/rose-glass/",
+      "destination": "/docs/artworks/rose-glass/index.html"
+    },
+    {
       "source": "/docs/artworks/soft-forms/",
       "destination": "/docs/artworks/soft-forms/index.html"
     },

@@ -1,0 +1,20 @@
+.rose-demo-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 26px; align-items: center; }
+.rose-scene { position: relative; aspect-ratio: 4 / 5; min-width: 0; overflow: hidden; border: 1px solid #ded6c7; border-radius: 8px; background: #efe7e2; }
+.rose-scene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#drag-demo .rose-scene canvas { cursor: grab; }
+#drag-demo .rose-scene canvas:active { cursor: grabbing; }
+.rose-controls { min-width: 0; font-size: 13px; }
+.rose-controls button { padding: 9px 13px; color: #645c4f; background: transparent; border: 1px solid #c8bfae; border-radius: 5px; font: inherit; cursor: pointer; }
+.rose-controls button:hover { background: #e9e1d3; }
+.rose-controls button[aria-pressed=true] { color: #faf8f3; background: #a65042; border-color: #a65042; }
+.rose-stage-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rose-controls .rose-stage-description { min-height: 110px; line-height: 1.9; margin: 20px 0; }
+.rose-checkbox { display: flex; align-items: center; gap: 8px; margin-top: 20px; }
+.rose-checkbox input { accent-color: #a65042; width: 16px; height: 16px; }
+.rose-controls > button { display: block; width: 100%; margin: 12px 0; }
+.rose-controls input:disabled { opacity: .4; cursor: default; }
+@media (max-width: 720px) {
+  .rose-demo-layout { grid-template-columns: 1fr; gap: 20px; }
+  .rose-scene { max-width: 400px; width: 100%; margin: auto; }
+  .rose-controls .rose-stage-description { min-height: 0; }
+}
