@@ -4,6 +4,7 @@ import { renderMarkdown, documentLink } from '../../reader/markdown';
 import { scenePoint } from './glass-view';
 import { GlassBodyMotion } from '../../../pages/rose-glass/interaction';
 import { applyDeformation, invertDeformation } from '../../../pages/rose-glass/deformation';
+import { reliefSample } from './relief-demo';
 
 test('Rose Glass renders its own Markdown with the material and drag demo slots', () => {
   const path = '/docs/artworks/rose-glass/architecture.md';
@@ -11,8 +12,21 @@ test('Rose Glass renders its own Markdown with the material and drag demo slots'
   const html = renderMarkdown(source, {}, path);
   expect(html).toContain('<!-- interactive-demo: material -->');
   expect(html).toContain('<!-- interactive-demo: drag -->');
+  expect(html).toContain('<!-- interactive-demo: relief -->');
   expect(documentLink('./index.html', path)).toBe('./');
   expect(documentLink('../../../pages/rose-glass/shader.ts', path)).toBe('https://github.com/jiwon79/studio/blob/main/pages/rose-glass/shader.ts');
+});
+
+test('the relief uses the foreground shader height and the separate artistic lighting normal', () => {
+  const center = reliefSample(0, 0), edge = reliefSample(1, 0), middle = reliefSample(0.5, 0);
+  expect(center.depth).toBe(1); expect(center.height).toBe(225);
+  expect(edge.depth).toBe(0); expect(edge.height).toBe(100);
+  expect(middle.height).toBeGreaterThan(edge.height);
+  expect(middle.height).toBeLessThan(center.height);
+  expect(center.normal.x).toBe(0); expect(center.normal.y).toBe(0);
+  expect(center.normal.z).toBeCloseTo(1);
+  expect(middle.normal.length()).toBeCloseTo(1);
+  expect(edge.normal.z).toBeGreaterThan(0);
 });
 
 test('pointer mapping keeps the composition center and preserves distances at different aspect ratios', () => {
