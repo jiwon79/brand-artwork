@@ -76,11 +76,11 @@ export function createReliefDemo() {
     const sample = reliefSample(x, 0);
     point.position.copy(position(x, 0)); arrow.position.copy(point.position);
     arrow.setDirection(new THREE.Vector3(sample.normal.x, sample.normal.z, -sample.normal.y));
-    element.querySelector('#relief-point-value')!.textContent = `x=${x.toFixed(2)}, y=0`;
+    element.querySelector('#relief-point-value')!.textContent = `u=${x.toFixed(2)}, v=0`;
     element.querySelector('#relief-field')!.textContent = sample.field.toFixed(3);
     element.querySelector('#relief-depth')!.textContent = sample.depth.toFixed(3);
     element.querySelector('#relief-height')!.textContent = sample.height.toFixed(1);
-    element.querySelector('.relief-calculation')!.textContent = `f = |${x.toFixed(2)}|^2.45 + |0|^2.45 → depth = √(1−${sample.field.toFixed(3)}) = ${sample.depth.toFixed(3)} → 높이 = 100 + 125 × depth = ${sample.height.toFixed(1)} (작품 좌표의 단위)`;
+    element.querySelector('.relief-calculation')!.textContent = `f = |u|ⁿ + |v|ⁿ = ${sample.field.toFixed(3)} → depth = √(1−${sample.field.toFixed(3)}) = ${sample.depth.toFixed(3)} → 높이 = 100 + 125 × depth = ${sample.height.toFixed(1)} (작품 좌표의 단위)`;
     draw();
   };
   controls.addEventListener('change', draw);

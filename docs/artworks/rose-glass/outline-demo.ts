@@ -19,11 +19,11 @@ export function createOutlineDemo() {
     <h3 id="outline-demo-title">둥근 기본 도형이 앞쪽 유리가 되기까지</h3>
     <p>지수는 모서리의 둥근 정도를 바꿉니다. 같은 지수에 크기, 위아래 폭, 기울기를 차례로 적용해 보세요.</p></div>
     <label class="slider-label" for="outline-exponent"><span>지수 n</span><output id="outline-exponent-value" for="outline-exponent"></output></label>
-    <input id="outline-exponent" type="range" min="2" max="4" step="0.01" value="2.45" />
-    <div class="touch-presets" role="group" aria-label="지수 비교"><button type="button" data-exponent="2">2 · 원</button><button type="button" data-exponent="2.45">2.45 · 현재 값</button><button type="button" data-exponent="3">3 · 더 각지게</button></div>
+    <input id="outline-exponent" type="range" min="2" max="4" step="0.01" value="${foregroundGlassShape.exponent}" />
+    <div class="touch-presets" role="group" aria-label="지수 비교"><button type="button" data-exponent="2">2 · 원</button><button type="button" data-exponent="3">3 · 둥근 사각형</button><button type="button" data-exponent="4">4 · 더 각지게</button></div>
     <div class="outline-panels"></div>
     <p class="demo-note outline-readout" aria-live="polite"></p>
-    <p class="demo-note">각 패널의 점선은 직전 단계입니다. ①은 단위 좌표, ②~④는 같은 축척의 작품 좌표입니다. 중심 이동·드래그·음영은 제외했습니다. 원래 작품의 지수는 2.45로 유지됩니다.</p>`;
+    <p class="demo-note">각 패널의 점선은 직전 단계입니다. ①은 단위 좌표, ②~④는 같은 축척의 작품 좌표입니다. 중심 이동·드래그·음영은 제외했습니다. 지수 조작은 이 비교에만 적용됩니다.</p>`;
   const panels = element.querySelector('.outline-panels')!;
   const labels = ['① 기본 외곽선 f=1', '② 가로·세로 크기 적용', '③ 아래로 갈수록 좁히기', '④ 아래쪽을 오른쪽으로'];
   const canvases = labels.map(label => {
