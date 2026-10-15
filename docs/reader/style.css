@@ -82,3 +82,31 @@ input[type=range] { display: block; width: 100%; accent-color: #b64e3c; margin: 
   .demo-controls { grid-template-columns: 1fr; gap: 18px; }
   [id] { scroll-margin-top: 18px; }
 }
+
+/* Keep each explanation and its controls visible together in a split view. */
+.interactive-demo { margin: 24px 0 32px; padding: 14px; border-radius: 6px; line-height: 1.5; }
+.document .demo-heading h3 { font-size: 17px; margin: 0 0 6px; letter-spacing: -.02em; }
+.document .demo-heading > p { font-size: 12px; margin: 0 0 12px; }
+.demo-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 12px 0 8px; }
+.demo-figure canvas { max-height: 190px; object-fit: contain; }
+.document .figure-caption { padding: 5px 8px; font-size: 10px; line-height: 1.4; }
+.interactive-demo input[type=range] { margin: 2px 0 8px; min-height: 28px; }
+.interactive-demo .slider-label { font-size: 12px; }
+.document .demo-note { margin: 8px 0; font-size: 11px; line-height: 1.5; }
+.touch-presets { gap: 6px; margin: 8px 0; }
+.touch-presets button, .reset-button { min-height: 32px; padding: 5px 8px; font-size: 11px; }
+.touch-views { grid-template-columns: 1fr 1fr; gap: 8px; max-width: 520px; margin: auto; }
+.touch-views h4 { padding: 6px 8px; font-size: 11px; }
+.touch-views canvas { max-height: none; }
+.demo-details { margin-top: 8px; font-size: 11px; color: #746c5e; }
+.demo-details > summary { cursor: pointer; padding: 4px 0; }
+@media (max-width: 720px) {
+  .reading-layout { padding: 18px 14px 48px; }
+  .contents { margin-bottom: 22px; }
+  .contents > .eyebrow, .demo-shortcuts span { display: none; }
+  .demo-shortcuts { gap: 6px 12px; margin: 0; font-size: 11px; }
+  .site-header { padding: 12px 14px; }
+  .interactive-demo { margin: 20px 0 28px; padding: 12px; }
+  .demo-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+}
+.demo-figure > canvas { max-width: 380px; margin-inline: auto; }

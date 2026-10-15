@@ -29,8 +29,8 @@ function createDemo(id: string, title: string, description: string) {
 }
 
 export function createMaterialDemo() {
-  const { element, view } = createDemo('material-demo', '형태 위에 유리의 인상을 쌓기',
-    '버튼을 순서대로 눌러 보세요. 앞 단계에 어떤 표현이 더해지는지 같은 형태에서 비교할 수 있습니다.');
+  const { element, view } = createDemo('material-demo', '유리 표현 단계',
+    '각 단계를 눌러 추가되는 표현을 비교하세요.');
   if (!view) return element;
   const motion = new GlassBodyMotion();
   const controls = element.querySelector('.rose-controls')!;
@@ -55,8 +55,8 @@ export function createMaterialDemo() {
 }
 
 export function createDragDemo() {
-  const { element, view } = createDemo('drag-demo', '잡은 곳 주변만 늘어나게 하기',
-    '유리 위를 누른 채 끌어 보세요. 잡은 곳은 많이 움직이고 먼 곳은 덜 움직입니다. 손을 놓으면 원래 모습으로 돌아옵니다.');
+  const { element, view } = createDemo('drag-demo', '국소 변형',
+    '유리를 잡아당기고 손을 놓아 보세요.');
   if (!view) return element;
   const motion = new GlassBodyMotion();
   const controls = element.querySelector('.rose-controls')!;

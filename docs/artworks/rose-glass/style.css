@@ -47,3 +47,37 @@
 .edge-plot { margin: 24px 0 0; }
 .edge-plot canvas { width: 100%; display: block; height: auto; background: #faf8f3; border-radius: 8px; }
 .edge-plot figcaption { font-size: 12px; color: #746c5e; margin-top: 8px; }
+
+.rose-demo-layout { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 12px; align-items: start; }
+.rose-scene { width: 100%; max-width: none; margin: 0; height: clamp(180px, 38svh, 290px); aspect-ratio: auto; }
+.rose-controls { font-size: 12px; line-height: 1.45; }
+.rose-controls button { min-height: 32px; padding: 5px 7px; font-size: 11px; }
+.rose-stage-buttons { gap: 5px; }
+.rose-controls .rose-stage-description, .pixel-mode-description { min-height: 0; font-size: 11px; line-height: 1.5; margin: 8px 0; }
+.rose-controls > button { margin: 6px 0; }
+.rose-checkbox { margin-top: 8px; font-size: 11px; }
+.pixel-readout { padding: 7px; margin-top: 6px; font-size: 11px; line-height: 1.5; }
+.edge-plot { margin-top: 10px; }
+.edge-plot canvas { height: clamp(70px, 13svh, 110px); object-fit: contain; }
+.edge-plot figcaption { font-size: 10px; margin-top: 3px; }
+.relief-scene { height: clamp(170px, 32svh, 240px); }
+.relief-values { gap: 8px 18px; margin: 8px 0; font-size: 11px; }
+.relief-values strong { font-size: 16px; }
+.outline-panels { gap: 8px; margin: 12px 0; }
+.outline-panels canvas { height: clamp(90px, 18svh, 145px); object-fit: contain; }
+.outline-panels figcaption { font-size: 10px; line-height: 1.4; margin-top: 3px; }
+.inverse-debug { margin-top: 12px; padding-top: 10px; }
+.inverse-map { width: 100%; max-width: 340px; height: auto; max-height: none; margin: 8px auto; }
+.inverse-options { gap: 6px 12px; margin: 8px 0; font-size: 11px; }
+.inverse-coordinates, .inverse-step { gap: 6px 14px; margin: 8px 0; }
+.inverse-coordinates strong, .inverse-step strong { font-size: 11px; }
+@media (max-width: 359px) {
+  .rose-demo-layout { grid-template-columns: 1fr; }
+  .rose-scene { height: 160px; }
+}
+
+.outline-panels { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 420px) {
+  .outline-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .outline-panels canvas { height: 85px; }
+}

@@ -60,7 +60,7 @@ function point(ctx: CanvasRenderingContext2D, p: Point, radius = 3) {
 
 export function createShellDemo(): HTMLElement {
   const element = section('shell-demo', '01 / SHELL', '몸체 밖에 얇은 층을 겹치기',
-    '몸체 밖에 층을 쌓아 두께를 만듭니다. 강조할 층을 고르고, 안쪽과 바깥쪽 중 어디를 촘촘하게 할지 바꿔 보세요.');
+    '층을 고르고 안쪽·바깥쪽 배치 밀도를 바꿔 보세요.');
   element.insertAdjacentHTML('beforeend', `<div class="demo-figure">
     <canvas role="img" aria-label="몸체 단면 위의 셸 13개. 선택한 층은 붉은 실선, 나머지 층은 점선으로 표시됩니다."></canvas>
     <p class="figure-caption">위쪽은 몸체 바깥 · 거리를 일정 배율로 확대 · 곡선은 설명용 표면</p>
@@ -122,7 +122,7 @@ export function createShellDemo(): HTMLElement {
 
 export function createRibbonDemo(): HTMLElement {
   const element = section('ribbon-demo', '02 / RIBBON', '가느다란 띠로 한 가닥 만들기',
-    '뿌리와 끝을 잇고 양옆으로 폭을 펼칩니다. 끝을 좁히고 가운데를 휘게 하면 털 한 가닥의 형태가 됩니다.');
+    '굵기·휨·기울기를 바꾸며 가닥의 형태를 비교하세요.');
   element.insertAdjacentHTML('beforeend', `<div class="demo-figure">
     <canvas role="img" aria-label="화면을 향해 펼친 털 리본. 뿌리에서 끝으로 갈수록 좁아지는 모습입니다."></canvas>
     <p class="figure-caption">붉은 면은 가닥의 폭 · 파란 선은 가닥의 중심 · 설명을 위해 확대</p>

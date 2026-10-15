@@ -15,7 +15,7 @@ export function createTouchDemo(): HTMLElement {
   element.setAttribute('aria-labelledby', 'touch-demo-title');
   element.innerHTML = `<div class="demo-heading"><p class="eyebrow">TOUCH · 직접 조작하기</p>
     <h3 id="touch-demo-title">누른 화면에서 몸체까지 광선 보내기</h3>
-    <p>왼쪽 화면의 몸체를 눌러 보세요. 오른쪽에서는 같은 장면을 옆에서 보며 광선이 어디에 닿았는지 확인할 수 있습니다.</p></div>
+    <p>왼쪽을 누르면 오른쪽에서 광선과 접촉점을 볼 수 있습니다.</p></div>
     <div class="touch-views">
       <div class="demo-figure"><h4>① 화면을 누르기</h4><div class="touch-front"></div><p class="figure-caption">손가락·마우스로 누르거나 끌어 보세요.</p></div>
       <div class="demo-figure"><h4>② 옆에서 경로 보기</h4><div class="touch-side"></div><p class="figure-caption">네모는 화면 · 파란 선은 광선 · 붉은 점은 접촉점</p></div>

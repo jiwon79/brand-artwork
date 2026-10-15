@@ -21,8 +21,8 @@ export function createReliefDemo() {
   element.id = 'relief-demo'; element.className = 'interactive-demo';
   element.setAttribute('aria-labelledby', 'relief-demo-title');
   element.innerHTML = `<div class="demo-heading"><p class="eyebrow">가상 높이 · 직접 조작하기</p>
-    <h3 id="relief-demo-title">계산한 높이를 3D 표면으로 펼쳐 보기</h3>
-    <p>표면을 드래그해 돌려 보세요. 가운데가 솟고 가장자리로 갈수록 낮아지는 모양입니다. 아래에서 점의 위치를 바꾸면 높이와 조명용 법선도 함께 바뀝니다.</p></div>
+    <h3 id="relief-demo-title">높이와 표면 방향</h3>
+    <p>드래그로 회전하고, 점을 옮겨 높이와 법선을 비교하세요.</p></div>
     <div class="relief-scene"></div>
     <div class="touch-presets" role="group" aria-label="표면 시점"><button type="button" data-view="diagonal">비스듬히</button><button type="button" data-view="side">옆에서</button><button type="button" data-view="top">위에서</button></div>
     <label class="slider-label" for="relief-point"><span>중앙에서 가장자리까지</span><output id="relief-point-value" for="relief-point"></output></label>

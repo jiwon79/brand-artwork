@@ -6,9 +6,9 @@ import { inspectPixel, inspectionShader } from './pixel-inspection';
 
 type Kind = 'shape' | 'shading' | 'edge';
 const copy = {
-  shape: ['픽셀 한 점의 안팎을 판정하기', '점을 유리 안팎으로 옮겨 보세요. 위치에서 계산한 f가 1을 넘는 순간 바깥쪽이 됩니다.'],
-  shading: ['음영을 만드는 세 가지 재료', '각 버튼은 해당 계산의 영향만 보여줍니다. 흰 곳일수록 색 혼합이나 어둠이 강하게 적용됩니다. 마지막 버튼에서 합친 음영을 확인하세요.'],
-  edge: ['외곽에서 안쪽으로 들어갈 때 빛은 얼마나 남을까?', '외곽과의 거리, 통과하는 빛, 흡수가 적용된 색을 차례로 보세요. 흡수 폭을 바꾸면 어둠이 안쪽으로 얼마나 퍼질지 달라집니다.'],
+  shape: ['안팎 판정', '점을 옮겨 f와 안팎 판정을 확인하세요.'],
+  shading: ['음영 요소', '흰 곳일수록 효과가 강합니다. 요소별로 보고 합친 결과와 비교하세요.'],
+  edge: ['가장자리 흡수', '흡수 폭을 바꾸며 거리·통과율·결과를 비교하세요.'],
 } as const;
 const modes = {
   shape: [],
@@ -23,11 +23,11 @@ export function createPixelDemo(kind: Kind) {
     <div class="rose-demo-layout"><div class="rose-scene"><span class="pixel-marker" aria-hidden="true"></span></div><div class="rose-controls">
     ${kind === 'shape' ? '' : `<div class="rose-stage-buttons" role="group" aria-label="${copy[kind][0]} 보기">${modes[kind].map(([name, mode]) => `<button type="button" data-mode="${mode}" aria-pressed="false">${name}</button>`).join('')}</div>`}
     <p class="pixel-mode-description" aria-live="polite"></p>
-    <label for="${kind}-u">점의 좌우 위치 u</label><input id="${kind}-u" type="range" min="-1.25" max="1.25" step="0.01" value="0.6" />
-    <label for="${kind}-v">점의 위아래 위치 v</label><input id="${kind}-v" type="range" min="-1.25" max="1.25" step="0.01" value="0" />
+    <label for="${kind}-u">좌우 u</label><input id="${kind}-u" type="range" min="-1.25" max="1.25" step="0.01" value="0.6" />
+    <label for="${kind}-v">위아래 v</label><input id="${kind}-v" type="range" min="-1.25" max="1.25" step="0.01" value="0" />
     ${kind === 'edge' ? '<label for="edge-width">흡수 폭</label><input id="edge-width" type="range" min="0.3" max="2" step="0.05" value="1" />' : ''}
     <output class="pixel-readout" aria-live="polite"></output>
-    <p class="demo-note">화면을 누르거나 점을 드래그할 수 있습니다. 슬라이더는 키보드로도 조작할 수 있습니다.</p></div></div>
+    </div></div>
     ${kind === 'edge' ? '<figure class="edge-plot"><canvas width="600" height="210" role="img" aria-label="유리 오른쪽 외곽에서 중앙까지 빨강 성분의 빛이 통과하는 비율"></canvas><figcaption>오른쪽 외곽 → 중앙: 빨강 성분의 빛이 통과하는 비율</figcaption></figure>' : ''}
     <p class="demo-note">앞쪽 유리의 실제 셰이더에서 계산한 값을 분리해 표시합니다. 수치는 서리·드래그·눌림이 없는 기본 상태입니다.${kind === 'edge' ? ' 외곽과의 거리는 셰이더의 근사값이며 작품 좌표의 단위입니다.' : ''}</p>`;
   const host = element.querySelector<HTMLElement>('.rose-scene')!;
@@ -53,8 +53,11 @@ export function createPixelDemo(kind: Kind) {
     marker.style.top = `${host.clientHeight / 2 + (foregroundGlassShape.y + y - 640) * scale}px`;
     const place = Math.abs(sample.field - 1) < .00001 ? '경계' : sample.field < 1 ? '안쪽' : '바깥쪽';
     readout.textContent = `u=${u.toFixed(2)}, v=${v.toFixed(2)}\nf=${sample.field.toFixed(3)} → ${place}`;
-    if (kind === 'shading' && sample.field <= 1) readout.textContent += `\n색 영역 혼합 비율 ${sample.patch.toFixed(3)}\n대각선 띠 강도 ${sample.band.toFixed(3)}\n왼쪽 감쇠 ${sample.left.toFixed(3)} / 오른쪽 감쇠 ${sample.right.toFixed(3)}`;
-    if (kind === 'edge' && sample.field <= 1) readout.textContent += `\n외곽과의 거리 ≈ ${sample.distance.toFixed(1)}\n흡수 폭 배율 ${view.absorptionWidth.toFixed(2)}\n빛이 통과하는 비율 (RGB)\n${sample.transmission.map(t => `${(t * 100).toFixed(1)}%`).join(' / ')}`;
+    if (kind === 'shading' && sample.field <= 1) {
+      const measurements = { 1: `혼합 비율 ${sample.patch.toFixed(3)}`, 2: `띠 강도 ${sample.band.toFixed(3)}`, 3: `좌 ${sample.left.toFixed(3)} / 우 ${sample.right.toFixed(3)}`, 4: '세 요소를 합친 음영' };
+      readout.textContent += `\n${measurements[mode as keyof typeof measurements]}`;
+    }
+    if (kind === 'edge' && sample.field <= 1) readout.textContent += `\n거리 ≈ ${sample.distance.toFixed(1)}\n통과율 RGB\n${sample.transmission.map(t => `${(t * 100).toFixed(0)}%`).join(' / ')}`;
     if (kind === 'shape') element.querySelector('.pixel-mode-description')!.textContent = place === '경계' ? '경계에서는 유리색과 배경색을 섞어 매끄럽게 연결합니다.' : sample.field < 1 ? '이 위치에는 유리의 기본색을 표시합니다.' : '이 위치에는 배경색을 유지합니다.';
     if (plot) drawPlot(plot, view.absorptionWidth);
   };

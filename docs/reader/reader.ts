@@ -13,6 +13,15 @@ export function mountDocument(source: string, options: { sourcePath: string; ima
     const name = /^\s*interactive-demo: ([a-z-]+)\s*$/.exec(comment.data)?.[1];
     if (name && options.demos[name]) comment.replaceWith(options.demos[name]());
   }
+  for (const demo of article.querySelectorAll<HTMLElement>('.interactive-demo')) {
+    demo.querySelector('.demo-heading .eyebrow')?.remove();
+    const notes = [...demo.children].filter(child => child.matches('p.demo-note:not([aria-live])'));
+    if (notes.length) {
+      const details = document.createElement('details'); details.className = 'demo-details';
+      const summary = document.createElement('summary'); summary.textContent = '계산 범위';
+      details.append(summary, ...notes); demo.append(details);
+    }
+  }
   article.querySelectorAll<HTMLElement>('canvas, .interactive-demo input[type="range"]').forEach(preventDragSelection);
 
   // Keep wide tables locally scrollable instead of stretching the mobile page.
