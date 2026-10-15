@@ -29,7 +29,7 @@ export function createReliefDemo() {
     <input id="relief-point" type="range" min="0" max="1" step="0.01" value="0.45" />
     <div class="relief-values" aria-live="polite"><span>외곽 판별값 f <strong id="relief-field"></strong></span><span>상대 높이 depth <strong id="relief-depth"></strong></span><span>가상 높이 <strong id="relief-height"></strong></span></div>
     <p class="demo-note relief-calculation"></p>
-    <p class="demo-note">붉은 점은 선택한 위치, 파란 화살표는 실제 셰이더의 조명용 법선입니다. 높이는 실제 계산값을 3D로 시각화한 것이며, 원래 작품이 이 3D 메시를 그리는 것은 아닙니다. 서리·눌림·드래그가 없는 기본 표면입니다.</p>`;
+    <p class="demo-note">붉은 점은 선택한 위치, 파란 화살표는 실제 셰이더의 조명용 법선입니다. 높이는 실제 계산값을 3D로 시각화한 것입니다. 원래 작품은 픽셀마다 높이와 표면 반응을 계산해 색을 출력합니다. 서리·눌림·드래그가 없는 기본 표면입니다.</p>`;
   const host = element.querySelector<HTMLElement>('.relief-scene')!;
   let renderer: THREE.WebGLRenderer;
   try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }

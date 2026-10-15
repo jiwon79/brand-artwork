@@ -14,6 +14,9 @@ test('Rose Glass renders its own Markdown with the material and drag demo slots'
   expect(html).toContain('<!-- interactive-demo: material -->');
   expect(html).toContain('<!-- interactive-demo: drag -->');
   expect(html).toContain('<!-- interactive-demo: relief -->');
+  expect(html).toContain('<strong>안팎 판별값 f</strong>');
+  expect(html).toContain('<strong>혼합 비율 w</strong>');
+  expect(html).not.toContain('**');
   expect(documentLink('./index.html', path)).toBe('./');
   expect(documentLink('../../../pages/rose-glass/shader.ts', path)).toBe('https://github.com/jiwon79/studio/blob/main/pages/rose-glass/shader.ts');
 });

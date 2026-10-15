@@ -69,7 +69,7 @@ export function createShellDemo(): HTMLElement {
       <div>${slider('shell-exponent', '층을 모으는 쪽', 0.4, 2.6, 0.1, 1.3)}</div>
       <button type="button" class="reset-button">처음으로</button>
     </div><p class="demo-note" id="shell-observation" aria-live="polite"></p>
-    <p class="demo-note">선 하나는 털 한 가닥이 아니라 한 층의 단면입니다. 이 그림은 층의 배치를 보여줍니다. 실제 작품에서는 층에 잔무늬와 투명도를 더해 부드러운 털 덩어리로 보이게 합니다.</p>`);
+    <p class="demo-note">선 하나는 한 층의 단면입니다. 이 그림은 층의 배치를 보여줍니다. 실제 작품에서는 층에 잔무늬와 투명도를 더해 부드러운 털 덩어리로 보이게 합니다.</p>`);
   const paint = canvasView(element, ctx => {
     const selected = number(element, 'shell-layer');
     const exponent = number(element, 'shell-exponent');
