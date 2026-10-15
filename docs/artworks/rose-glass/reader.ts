@@ -3,9 +3,10 @@ import source from './architecture.md?raw';
 import { mountDocument } from '../../reader/reader';
 import { createDragDemo, createMaterialDemo } from './demos';
 import './style.css';
+import { createOutlineDemo } from './outline-demo';
 import { createReliefDemo } from './relief-demo';
 
 mountDocument(source, {
   sourcePath: '/docs/artworks/rose-glass/architecture.md',
-  demos: { relief: createReliefDemo, material: createMaterialDemo, drag: createDragDemo },
+  demos: { outline: createOutlineDemo, relief: createReliefDemo, material: createMaterialDemo, drag: createDragDemo },
 });
