@@ -20,15 +20,17 @@ export class GlassView {
   private readonly fields = new Float32Array(maxDeformationFields * 4);
   private readonly meta = new Float32Array(maxDeformationFields * 2);
   stage = 6;
+  debugMode = 0;
+  absorptionWidth = 1;
   light = 0.65;
   overlap = false;
 
-  constructor(host: HTMLElement, label: string) {
+  constructor(host: HTMLElement, label: string, materialSource = fragmentSource) {
     this.canvas.setAttribute('role', 'img'); this.canvas.setAttribute('aria-label', label);
     const gl = this.canvas.getContext('webgl2', { alpha: false, depth: false, antialias: false });
     if (!gl) throw new Error('WebGL 2를 사용할 수 없습니다.');
     this.gl = gl;
-    this.material = this.program(fragmentSource);
+    this.material = this.program(materialSource);
     this.resolve = this.program(resolveSource);
     this.texture = gl.createTexture()!; this.framebuffer = gl.createFramebuffer()!; this.vao = gl.createVertexArray()!;
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -87,12 +89,13 @@ export class GlassView {
     gl.uniform4fv(location(this.material, 'uDeformationFields[0]'), this.fields);
     gl.uniform2fv(location(this.material, 'uDeformationMeta[0]'), this.meta);
     gl.uniform2f(location(this.material, 'uLight'), 50 + this.light * 600, 360);
+    gl.uniform1i(location(this.material, 'uDocMode'), this.debugMode);
     flag('uUpperGlass', this.overlap); flag('uLowerGlass', this.overlap); flag('uForegroundGlass', true);
     flag('uShading', this.stage >= 2); flag('uShadows', this.stage >= 2);
     flag('uEdgeOptics', this.stage >= 3); flag('uLighting', this.stage >= 4);
     float('uGrain', this.stage >= 5 ? 1.25 : 0);
     for (const [key, value] of Object.entries({ uWarmth: 0, uSpecular: 1.1, uRim: 1.25, uLightIntensity: 1.85,
-      uForegroundAbsorption: 1, uRearAbsorption: 1, uAbsorptionWidth: 1, uSaturation: 1.1,
+      uForegroundAbsorption: 1, uRearAbsorption: 1, uAbsorptionWidth: this.absorptionWidth, uSaturation: 1.1,
       uRearBlur: 1, uEdgeRoll: 1, uShadowStrength: 1, uShadowSpread: 1 })) float(key, value);
     gl.uniform1i(location(this.material, 'uColorway'), 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

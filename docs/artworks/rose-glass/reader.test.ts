@@ -17,6 +17,7 @@ test('Rose Glass renders its own Markdown with the material and drag demo slots'
   expect(html).toContain('<strong>안팎 판별값 f</strong>');
   expect(html).toContain('<strong>혼합 비율 w</strong>');
   expect(html).not.toContain('**');
+  for (const kind of ['shape', 'shading', 'edge']) expect(html).toContain(`<!-- interactive-demo: ${kind}-pixels -->`);
   expect(documentLink('./index.html', path)).toBe('./');
   expect(documentLink('../../../pages/rose-glass/shader.ts', path)).toBe('https://github.com/jiwon79/studio/blob/main/pages/rose-glass/shader.ts');
 });
@@ -72,4 +73,22 @@ test('inverse debug traces the same solver and reconstructs the selected scene p
   const still = inspectInverse({ x: 410, y: 645 }, new GlassBodyMotion());
   expect(still.steps).toHaveLength(0);
   expect(still.source).toEqual(still.target);
+});
+
+test('pixel inspection follows shape boundaries, shade weights and edge absorption', async () => {
+  const { inspectPixel } = await import('./pixel-inspection');
+  expect(inspectPixel(0, 0).field).toBe(0);
+  expect(inspectPixel(1, 0).distance).toBe(0);
+  expect(inspectPixel(1.1, 0).distance).toBeLessThan(0);
+  expect(inspectPixel(.3, -.51).patch).toBe(1);
+  expect(inspectPixel(.3, -.51).patch).toBeGreaterThan(inspectPixel(-.8, .7).patch);
+  expect(inspectPixel(.6, .27 * .6 - .075).band).toBeGreaterThan(inspectPixel(.6, .6).band);
+  expect(inspectPixel(-.8, 0).left).toBeGreaterThan(0);
+  expect(inspectPixel(-.8, 0).right).toBe(0);
+  expect(inspectPixel(.8, 0).right).toBeGreaterThan(0);
+  const edge = inspectPixel(1, 0), inner = inspectPixel(.8, 0), center = inspectPixel(0, 0);
+  expect(center.transmission[0]).toBeGreaterThan(inner.transmission[0]);
+  expect(inner.transmission[0]).toBeGreaterThan(edge.transmission[0]);
+  expect(inspectPixel(.8, 0, 2).transmission[0]).toBeLessThan(inspectPixel(.8, 0, .5).transmission[0]);
+  expect(edge.transmission.every(value => value > 0 && value <= 1)).toBe(true);
 });
