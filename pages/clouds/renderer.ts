@@ -20,7 +20,7 @@ export class CloudRenderer {
   private sample = 0;
   private history = 0;
   private lastInput = -Infinity;
-  private camera = { yaw: 0.23, pitch: 0.10, distance: 30, target: [0, 3.7, 0] };
+  private camera = { yaw: 0.23, pitch: 0.10, distance: 30, target: [0, 3.1, 0] };
   private homeCamera = { ...this.camera, target: [...this.camera.target] };
   private requestedSun = normalize(DEFAULT_SUN);
   private shadowSun = this.requestedSun.slice();
@@ -28,7 +28,7 @@ export class CloudRenderer {
   private shadowBuilds = 0;
   private shadowDirty = false;
   private lastShadowPreview = -Infinity;
-  private movingScale = 0.5;
+  private movingScale = 0.6;
   private orbiting = false;
   private stopped = false;
   private frameId = 0;
@@ -123,7 +123,7 @@ export class CloudRenderer {
   }
   flash() { this.flashUntil = performance.now() + 450; this.schedule(); }
   resetCamera(tower?: boolean, bank?: boolean) {
-    if (tower !== undefined || bank !== undefined) this.homeCamera = { yaw: 0.23, pitch: bank ? 0.32 : 0.10, distance: bank ? 42 : tower ? 39 : 30, target: [0, tower ? 5.6 : bank ? 1.5 : 3.7, 0] };
+    if (tower !== undefined || bank !== undefined) this.homeCamera = { yaw: 0.23, pitch: bank ? 0.32 : 0.10, distance: bank ? 42 : tower ? 39 : 30, target: [0, tower ? 5.6 : bank ? 1.5 : 3.1, 0] };
     this.camera = { ...this.homeCamera, target: [...this.homeCamera.target] };
     this.interact();
   }
@@ -169,7 +169,7 @@ export class CloudRenderer {
   }
   private previewShadow() {
     if (!this.densityTexture) return;
-    const size = SHADOW_SIZE.map(n => n / 2), texture = this.volumeTexture(size);
+    const size = SHADOW_SIZE.map(n => n / 4), texture = this.volumeTexture(size);
     this.shadowSlices(texture, size, 0, size[2], this.requestedSun);
     if (this.shadowTexture) this.gl.deleteTexture(this.shadowTexture);
     this.shadowTexture = texture; this.shadowSun = this.requestedSun.slice(); this.shadowBuilds++;
@@ -238,7 +238,7 @@ export class CloudRenderer {
         this.v(p, 'uJitter', [jitter(this.sample + 1, 2), jitter(this.sample + 1, 3)]);
         this.f(p, 'uAspect', this.canvas.width / this.canvas.height); this.f(p, 'uTanFov', Math.max(0.38, 0.4 / (this.canvas.width / this.canvas.height))); this.f(p, 'uLensShift', this.canvas.clientWidth > 760 ? 0.24 : 0); this.f(p, 'uAmount', this.settings.density); this.f(p, 'uNight', this.settings.night ? 1 : 0);
         this.f(p, 'uFlash', flashing ? Math.max(0, Math.sin((450 - (this.flashUntil - now)) * 0.04)) * (this.flashUntil - now) / 450 : 0);
-        this.i(p, 'uSteps', plan.steps); this.i(p, 'uSample', this.sample); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        this.f(p, 'uStepJitter', moving ? 0.15 : 1); this.i(p, 'uSteps', plan.steps); this.i(p, 'uSample', this.sample); gl.drawArrays(gl.TRIANGLES, 0, 3);
         const average = this.programs.average, next = 1 - this.history; gl.useProgram(average.id); gl.bindFramebuffer(gl.FRAMEBUFFER, this.targets[next + 1].fbo);
         this.bind(average, 'uCurrent', 0, this.targets[0].texture); this.bind(average, 'uPrevious', 1, this.targets[this.history + 1].texture); this.f(average, 'uCount', this.sample);
         gl.drawArrays(gl.TRIANGLES, 0, 3); this.history = next; this.sample++; this.draws++;

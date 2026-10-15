@@ -41,3 +41,11 @@ for (const formation of ['cumulus', 'tower', 'bank']) {
     expect(() => decodeVolume(buffer)).toThrow();
   });
 }
+
+// Compare bytes rather than recursively inspecting millions of numeric entries.
+test('default high-resolution cache is reproducible by the runtime generator', () => {
+  const bytes = gunzipSync(readFileSync(new URL('./assets/cumulus.cloud', import.meta.url)));
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const cached = decodeVolume(buffer).density;
+  expect(Buffer.from(cached).equals(Buffer.from(generateDensity('cumulus', DEFAULT_SEED)))).toBe(true);
+});

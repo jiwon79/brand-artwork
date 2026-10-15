@@ -1,4 +1,4 @@
-import { MIN, EXTENT, SHADOW_STEP, SHADOW_STEPS } from './volume';
+import { MIN, EXTENT, EXTINCTION, SHADOW_STEP, SHADOW_STEPS } from './volume';
 export const vertex = `#version 300 es
 void main(){ vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2)); gl_Position=vec4(p*2.0-1.0,0.0,1.0); }`;
 const volume = `
@@ -20,7 +20,7 @@ void main(){
   vec3 q=p+uSun*(float(i)+0.5)*${SHADOW_STEP.toFixed(3)};
   vec3 uv=(q-boxMin)/boxSize;
   if(any(lessThan(uv,vec3(0)))||any(greaterThan(uv,vec3(1))))break;
-  tau+=density(q)*${SHADOW_STEP.toFixed(3)}; if(tau>8.0)break;
+  tau+=density(q)*${(SHADOW_STEP * EXTINCTION).toFixed(5)}; if(tau>8.0)break;
  }
  result=vec4(exp(-tau),0,0,1);
 }`;
@@ -30,7 +30,7 @@ ${volume}
 uniform highp sampler3D uShadow;
 uniform vec3 uEye,uRight,uUp,uForward,uSun;
 uniform vec2 uSize,uJitter;
-uniform float uAspect,uAmount,uNight,uFlash,uLensShift,uTanFov;
+uniform float uAspect,uAmount,uNight,uFlash,uLensShift,uTanFov,uStepJitter;
 uniform int uSteps,uSample;
 out vec4 result;
 float phase(float c,float g){return (1.0-g*g)/pow(max(0.05,1.0+g*g-2.0*g*c),1.5);}
@@ -66,21 +66,23 @@ void main(){
  if(uNight<0.5)background+=sunColor()*6.0*smoothstep(0.99994,0.99998,mu);
  if(exit<=entry){result=vec4(background,1);return;}
  float dt=(exit-entry)/float(uSteps), transmission=1.0;
- vec3 light=vec3(0);
+ vec3 light=vec3(0); vec3 boundaryPoint=vec3(0); bool boundaryFound=false;
  float rotation=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453+float(uSample)*0.61803399);
+ rotation=mix(0.5,rotation,uStepJitter);
  float forward=0.18*phase(mu,0.65)+0.82;
- for(int i=0;i<160;i++){
+ for(int i=0;i<256;i++){
   if(i>=uSteps||transmission<0.008)break;
   vec3 p=uEye+ray*(entry+(float(i)+rotation)*dt);
   float rho=density(p);
   if(rho<0.006)continue;
-  float alpha=1.0-exp(-rho*uAmount*dt);
+  if(!boundaryFound&&rho>0.2){boundaryPoint=p;boundaryFound=true;}
+  float alpha=1.0-exp(-rho*uAmount*dt*${EXTINCTION.toFixed(2)});
   float access=pow(max(0.0003,texture(uShadow,(p-boxMin)/boxSize).r),uAmount);
   // Two local density differences retain boundary relief without six-axis normals per step.
   float local=clamp((rho-density(p+uSun*0.32))*2.5,-0.2,0.55);
   float upper=clamp((rho-density(p+vec3(0,0.4,0)))*2.0,0.0,0.6);
   float direct=access*(0.9+local)*forward;
-  float multiple=0.25*pow(access,0.35)+0.12*pow(access,0.08);
+  float multiple=0.35*pow(access,0.50)+0.20*pow(access,0.20)+0.14*pow(access,0.055);
   vec3 radiance=sunColor()*(direct+multiple*0.8)+vec3(0.08,0.14,0.25)*(0.2+upper);
   radiance=mix(radiance,radiance*vec3(0.018,0.026,0.045),uNight);
   if(uFlash>0.001){
@@ -89,6 +91,14 @@ void main(){
    radiance+=vec3(0.55,0.7,1.0)*uFlash*(spread*3.0+bolt);
   }
   light+=transmission*alpha*radiance; transmission*=1.0-alpha;
+ }
+ // Reconstruct one volume boundary normal per pixel, not on every ray step.
+ if(boundaryFound){
+  vec3 p=boundaryPoint; float h=0.12;
+  vec3 gradient=vec3(density(p-vec3(h,0,0))-density(p+vec3(h,0,0)),density(p-vec3(0,h,0))-density(p+vec3(0,h,0)),density(p-vec3(0,0,h))-density(p+vec3(0,0,h)));
+  float strength=smoothstep(0.01,0.15,length(gradient));
+  float facing=dot(normalize(gradient+vec3(0,0.00001,0)),uSun);
+  light*=mix(1.0,0.85+0.30*max(0.0,facing),strength);
  }
  result=vec4(light+transmission*background,1);
 }`;

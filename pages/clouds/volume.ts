@@ -1,14 +1,15 @@
 /** Authored volumes, independent of the reference implementation. World units are arbitrary. */
 export type Formation = 'cumulus' | 'tower' | 'bank';
-export const VOLUME_SIZE = [192, 144, 128] as const;
-export const SHADOW_SIZE = [64, 48, 40] as const;
+export const VOLUME_SIZE = [256, 192, 192] as const;
+export const SHADOW_SIZE = [128, 96, 80] as const;
 export const MIN = [-11, -1.5, -7] as const;
 export const EXTENT = [22, 17, 14] as const;
 export const DEFAULT_SEED = 7351;
 const elevation = 38 * Math.PI / 180, azimuth = -65 * Math.PI / 180;
 export const DEFAULT_SUN = [Math.cos(elevation) * Math.sin(azimuth), Math.sin(elevation), Math.cos(elevation) * Math.cos(azimuth)] as const;
-export const SHADOW_STEP = 0.65;
-export const SHADOW_STEPS = 36;
+export const EXTINCTION = 3.2;
+export const SHADOW_STEP = 0.3;
+export const SHADOW_STEPS = 112;
 const MAGIC = 0x434c4431;
 
 function random(seed: number) {
@@ -49,7 +50,7 @@ export function generateDensity(formation: Formation, seed: number, size: readon
     }
   } else {
     add(-3.4, 0.7, 0, 4.5, 1.45, 3); add(2.5, 0.6, 0, 4.9, 1.3, 2.8);
-    add(-4, 2.25, 0.1, 2.65, 2.4, 2.6); add(-0.6, 3.2, -0.4, 3, 3.3, 2.8);
+    add(-4, 2.25, 0.1, 2.65, 2.4, 2.6); add(-0.6, 2.8, -0.4, 3, 2.85, 2.8);
     add(3.2, 2.05, 0.3, 2.6, 2, 2.4); add(6.2, 0.9, 0.5, 1.85, 1.2, 1.6);
     if (formation === 'tower') {
       add(-0.8, 6.5, -0.4, 3, 3.6, 2.7); add(0, 10, -0.6, 2.8, 3, 2.5);
@@ -65,40 +66,49 @@ export function generateDensity(formation: Formation, seed: number, size: readon
         parent[1] + h * parent[4] * 0.87, parent[2] + Math.sin(phi) * r * parent[5] * 0.84,
         scale, scale * (0.85 + rng() * 0.4), scale];
       lobes.push(p);
-      for (let j = 0; j < 3; j++) {
-        const angle = rng() * Math.PI * 2, up = rng() * 0.9, outward = Math.sqrt(1 - up * up), bud = scale * (0.22 + rng() * 0.15);
+      for (let j = 0; j < 6; j++) {
+        const angle = rng() * Math.PI * 2, up = rng() * 0.9, outward = Math.sqrt(1 - up * up), bud = scale * (0.26 + rng() * 0.21);
         add(p[0] + Math.cos(angle) * outward * scale * 0.9, p[1] + up * p[4] * 0.9,
           p[2] + Math.sin(angle) * outward * scale * 0.9, bud, bud, bud);
       }
     }
   }
-  // Spatial bins restrict envelope work to nearby lobes; deep interior skips noise entirely.
-  const bins = new Map<string, Lobe[]>(), cell = 2;
+  // Dense numeric bins and reciprocal radii keep random high-resolution generation off the hot string/Math.sqrt paths.
+  type Kernel = [number, number, number, number, number, number, number];
+  const cell = 2, origin = MIN.map(n => Math.floor(n / cell));
+  const binSize = MIN.map((n, a) => Math.floor((n + EXTENT[a]) / cell) - origin[a] + 1);
+  const bins: (Kernel[] | undefined)[] = new Array(binSize[0] * binSize[1] * binSize[2]);
   for (const l of lobes) {
-    for (let z = Math.floor((l[2] - l[5] - 0.5) / cell); z <= Math.floor((l[2] + l[5] + 0.5) / cell); z++) {
-      for (let y = Math.floor((l[1] - l[4] - 0.5) / cell); y <= Math.floor((l[1] + l[4] + 0.5) / cell); y++) {
-        for (let x = Math.floor((l[0] - l[3] - 0.5) / cell); x <= Math.floor((l[0] + l[3] + 0.5) / cell); x++) {
-          const key = `${x},${y},${z}`, list = bins.get(key) ?? []; list.push(l); bins.set(key, list);
-        }
-      }
+    const kernel: Kernel = [l[0], l[1], l[2], 1 / l[3], 1 / l[4], 1 / l[5], Math.min(l[3], l[4], l[5])];
+    const lo = [0, 1, 2].map(a => Math.max(0, Math.floor((l[a] - l[a + 3] - 0.5) / cell) - origin[a]));
+    const hi = [0, 1, 2].map(a => Math.min(binSize[a] - 1, Math.floor((l[a] + l[a + 3] + 0.5) / cell) - origin[a]));
+    for (let z = lo[2]; z <= hi[2]; z++) for (let y = lo[1]; y <= hi[1]; y++) for (let x = lo[0]; x <= hi[0]; x++) {
+      const key = x + binSize[0] * (y + binSize[1] * z); (bins[key] ??= []).push(kernel);
     }
   }
   const [nx, ny, nz] = size, density = new Uint8Array(nx * ny * nz);
+  const coordinates = size.map((n, a) => Float64Array.from({ length: n }, (_, i) => MIN[a] + (i + 0.5) / n * EXTENT[a]));
+  const cells = coordinates.map((values, a) => Int32Array.from(values, value => Math.floor(value / cell) - origin[a]));
   for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-    const px = MIN[0] + (x + 0.5) / nx * EXTENT[0], py = MIN[1] + (y + 0.5) / ny * EXTENT[1], pz = MIN[2] + (z + 0.5) / nz * EXTENT[2];
-    const nearby = bins.get(`${Math.floor(px / cell)},${Math.floor(py / cell)},${Math.floor(pz / cell)}`);
+    const px = coordinates[0][x], py = coordinates[1][y], pz = coordinates[2][z];
+    const nearby = bins[cells[0][x] + binSize[0] * (cells[1][y] + binSize[1] * cells[2][z])];
     if (!nearby || py < -0.25) continue;
-    let field = -100;
+    let field = -0.45, found = false;
     for (const l of nearby) {
-      const dx = (px - l[0]) / l[3], dy = (py - l[1]) / l[4], dz = (pz - l[2]) / l[5];
-      field = Math.max(field, (1 - Math.sqrt(dx * dx + dy * dy + dz * dz)) * Math.min(l[3], l[4], l[5]));
+      const limit = 1 - field / l[6];
+      if (limit <= 0) continue;
+      const dx = (px - l[0]) * l[3], dy = (py - l[1]) * l[4], dz = (pz - l[2]) * l[5];
+      const squared = dx * dx + dy * dy + dz * dz;
+      if (squared < limit * limit) { field = (1 - Math.sqrt(squared)) * l[6]; found = true; }
+      if (field >= 0.8) break;
     }
-    if (field < -0.45) continue;
+    if (!found) continue;
     let value = 1;
     if (field < 0.8) {
       const coarse = noise(px * 1.1, py * 1.1, pz * 1.1, seed);
       const fine = noise(px * 3.8, py * 3.8, pz * 3.8, seed ^ 0x12345);
-      value = smooth(-0.05, 0.16, field + (coarse - 0.53) * 0.65 + (fine - 0.5) * 0.2);
+      const micro = noise(px * 7.4, py * 7.4, pz * 7.4, seed ^ 0x68bc21);
+      value = smooth(-0.035, 0.11, field + (coarse - 0.53) * 0.65 + (fine - 0.5) * 0.24 + (micro - 0.5) * 0.08);
     }
     value *= smooth(-0.2, 0.25, py);
     density[x + nx * (y + ny * z)] = Math.round(value * 255);
@@ -127,7 +137,7 @@ export function bakeShadow(data: Uint8Array, size: readonly number[] = VOLUME_SI
     let tau = 0;
     for (let step = 0; step < SHADOW_STEPS; step++) {
       const d = (step + 0.5) * SHADOW_STEP;
-      tau += densityAt(data, p.map((v, a) => v + sun[a] * d), size) * SHADOW_STEP;
+      tau += densityAt(data, p.map((v, a) => v + sun[a] * d), size) * SHADOW_STEP * EXTINCTION;
       if (tau > 8) break;
     }
     shadow[x + nx * (y + ny * z)] = Math.round(Math.exp(-tau) * 255);
