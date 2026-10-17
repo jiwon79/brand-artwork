@@ -21,15 +21,15 @@
     <select id="formation"><option value="cumulus">맑은 날 · Fair weather</option><option value="tower">솟는 구름 · Towering cumulus</option><option value="sunset">저녁빛 · Evening light</option><option value="bank">구름 바다 · Cloud sea</option><option value="storm">폭풍의 밤 · Thunderstorm</option></select>
     <div class="divider"></div>
     <label class="label" for="elevation">태양 높이 <output id="elevation-value">38°</output></label><input id="elevation" type="range" min="3" max="85" value="38"><div class="range-hints"><span>지평선</span><span>머리 위</span></div>
-    <label class="label" for="azimuth">태양 방향 <output id="azimuth-value">−65°</output></label><input id="azimuth" type="range" min="-180" max="180" value="-65">
+    <label class="label" for="azimuth">태양 방향 <output id="azimuth-value">−82°</output></label><input id="azimuth" type="range" min="-180" max="180" value="-82">
     <label class="label" for="density">구름 밀도 <output id="density-value">1.55</output></label><input id="density" type="range" min="0.3" max="3" step="0.05" value="1.55">
     <label class="label" for="exposure">노출 <output id="exposure-value">0.00 EV</output></label><input id="exposure" type="range" min="-1.5" max="1.5" step="0.05" value="0">
     <div class="actions"><button id="new-cloud">↻ 새 구름</button><button id="orbit" aria-pressed="false">궤도 회전</button></div>
     <div id="storm-controls" hidden><button id="flash">번개</button><button id="lightning" aria-pressed="true">자동 번개 켜짐</button></div>
     <details><summary>화질과 카메라 <span>+</span></summary>
-      <label class="label" for="detail">정지 화면 화질</label><select id="detail"><option value="balanced">기본 · 선명한 화면</option><option value="high">정밀 · 더 부드러운 경계</option></select>
+      <label class="label" for="detail">화면 해상도</label><select id="detail"><option value="balanced">원본 · 128 샘플</option><option value="high" selected>레티나 · 128 샘플</option></select>
       <label class="label" for="glare">빛 번짐 <output id="glare-value">32%</output></label><input id="glare" type="range" min="0" max="1" step="0.01" value="0.32">
-      <p class="note">움직이는 동안 가볍게 그린 뒤, 멈추면 세부 묘사를 복원합니다.</p>
+      <p class="note">원본 가우시안과 조명 계산을 사용합니다. 멈추면 128개 샘플로 빛을 다듬습니다.</p>
       <dl><div><dt>구름 이미지</dt><dd id="resolution">—</dd></div><div><dt>누적 샘플</dt><dd id="samples">—</dd></div></dl>
     </details>
   </aside>
