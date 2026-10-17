@@ -29,3 +29,18 @@ test('the held grip composes four maps with advancing centers and carries its or
   expect(final.x).toBeCloseTo(anchor.x + fields.reduce((sum, f) => sum + f.displacement.x, 0), 10);
   expect(final.y).toBeCloseTo(anchor.y + fields.reduce((sum, f) => sum + f.displacement.y, 0), 10);
 });
+
+test('two-dimensional points at the same distance share the influence and move in both pull axes', () => {
+  const displacement = { x: -120, y: 90 };
+  const points = [{ x: 120, y: 160 }, { x: -160, y: 120 }, { x: -120, y: -160 }];
+  const expected = pullSample(points[0], displacement);
+  for (const point of points) {
+    const sample = pullSample(point, displacement);
+    expect(sample.distance).toBe(200);
+    expect(sample.weight).toBeCloseTo(expected.weight, 12);
+    expect(sample.travel).toBeCloseTo(expected.travel, 12);
+    expect(sample.moved.x).toBeLessThan(point.x);
+    expect(sample.moved.y).toBeGreaterThan(point.y);
+    expect((sample.moved.x - point.x) / (sample.moved.y - point.y)).toBeCloseTo(displacement.x / displacement.y, 10);
+  }
+});

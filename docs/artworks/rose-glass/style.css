@@ -130,10 +130,14 @@
 .pull-views button:focus-visible { outline: 2px solid #235c9a; }
 .pull-rule-canvas { display: block; width: 100%; height: clamp(170px, 37svh, 230px); background: #faf8f3; border: 1px solid #ded6c7; border-radius: 6px; touch-action: none; cursor: grab; }
 .document .pull-legend, .document .drag-legend { font-size: 10px; line-height: 1.5; color: #746c5e; margin: 4px 0 8px; }
-.pull-sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 11px; }
+.pull-sliders { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 11px; }
 .pull-sliders > div { min-width: 0; }
 .pull-sliders label { display: flex; gap: 6px; justify-content: space-between; }
 .pull-sliders input { width: 100%; }
+.pull-examples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 5px 0; }
+.pull-examples button { min-height: 28px; padding: 3px; border: 1px solid #c8bfae; border-radius: 4px; background: transparent; color: #645c4f; font: inherit; font-size: 11px; cursor: pointer; }
+.pull-examples button[aria-pressed=true] { background: #e6dbd0; border-color: #a65042; }
+.pull-coordinates { display: block; margin: 0 0 3px; font: 10px/1.5 ui-monospace, monospace; text-align: center; font-variant-numeric: tabular-nums; }
 .pull-calculation { display: block; padding: 7px; background: #faf8f3; border-radius: 4px; font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; }
 .rose-scene .deformation-overlay { position: absolute; inset: 0; pointer-events: none; }
 .rose-scene .deformation-overlay[hidden], .drag-legend[hidden] { display: none; }
