@@ -7,12 +7,12 @@ import { inspectPixel, inspectionShader } from './pixel-inspection';
 type Kind = 'shape' | 'shading' | 'edge';
 const copy = {
   shape: ['안팎 판정', '점을 옮겨 f와 안팎 판정을 확인하세요.'],
-  shading: ['음영 쌓기', '색 영역 → 대각선 띠 → 옆면 어둠 순서로 켜 보세요.'],
+  shading: ['음영 쌓기', '세 요소를 켜고 끄며 누적 결과를 비교하세요.'],
   edge: ['가장자리 흡수', '흡수 폭을 바꾸며 거리·통과율·결과를 비교하세요.'],
 } as const;
 const modes = {
   shape: [],
-  shading: [['음영 전', 5, '기본 핑크색입니다.'], ['음영 후', 4, '색 영역을 순서대로 섞고, 띠와 옆면의 감쇠를 적용한 결과입니다.'], ['색 영역 하나', 1, '오른쪽 위의 색 영역 하나입니다. 흰 곳은 그 영역의 색을 많이 섞고 검은 곳은 기존 색을 유지합니다.'], ['대각선 띠', 2, '기준선 주변에 띠가 나타납니다. 흰 곳일수록 짙은 붉은색과 어둠을 더합니다.'], ['좌우 옆면', 3, '표면이 옆으로 기울수록 밝게 표시됩니다. 이 비율만큼 색을 빼서 옆면을 어둡게 합니다.']],
+  shading: [['전체 끄기', 5, '기본 핑크색입니다.'], ['전체 켜기', 4, '색 영역을 순서대로 섞고, 띠와 옆면의 감쇠를 적용한 결과입니다.'], ['첫 색 영역 강도 · 1/8', 1, '색 영역 8곳 중 오른쪽 위 한 곳의 혼합 비율입니다.'], ['대각선 띠', 2, '기준선 주변에 띠가 나타납니다. 흰 곳일수록 짙은 붉은색과 어둠을 더합니다.'], ['좌우 옆면', 3, '표면이 옆으로 기울수록 밝게 표시됩니다. 이 비율만큼 색을 빼서 옆면을 어둡게 합니다.']],
   edge: [['흡수 전', 3, '기본 음영입니다. 가장자리 흡수와 끝부분의 배경 비침을 끈 상태입니다.'], ['흡수 후', 0, '가장자리에서 빛을 흡수하고 끝부분에 배경색을 비춘 결과입니다.'], ['외곽과의 거리', 1, '검은 경계에서 안쪽으로 들어갈수록 밝아집니다. 외곽 근처의 거리 근사를 표시하며, 120 이상은 흰색입니다.'], ['통과하는 빛', 2, '흰 곳은 빛이 많이 남고 어두운 곳은 많이 흡수됩니다. 좌우·아래쪽의 흡수 폭이 다릅니다.']],
 } as const;
 
@@ -22,13 +22,14 @@ export function createPixelDemo(kind: Kind) {
   element.innerHTML = `<div class="demo-heading"><p class="eyebrow">계산을 눈으로 보기</p><h3 id="${kind}-pixels-title">${copy[kind][0]}</h3><p>${copy[kind][1]}</p></div>
     <div class="rose-demo-layout"><div class="rose-scene"><span class="pixel-marker" aria-hidden="true"></span></div><div class="rose-controls">
     ${kind === 'shape' ? '' : `<div class="rose-stage-buttons" role="group" aria-label="${copy[kind][0]} 보기">${modes[kind].filter((_, index) => kind !== 'shading' || index < 2).map(([name, mode], index) => `<button type="button" class="${index < 2 ? 'comparison-button' : ''}" data-mode="${mode}" aria-pressed="false">${name}</button>`).join('')}</div>`}
-    ${kind === 'shading' ? `<div class="shade-toggles">${[['색 영역', 1], ['대각선 띠', 2], ['옆면 어둠', 4]].map(([label, bit]) => `<div class="shade-toggle-row" role="group" aria-label="${label}"><span>${label}</span><label><input type="radio" name="shade-${bit}" value="0" data-shade="${bit}" aria-label="${label} 끄기" checked />끔</label><label><input type="radio" name="shade-${bit}" value="1" data-shade="${bit}" aria-label="${label} 켜기" />켬</label></div>`).join('')}</div><p class="shade-color-note">색 영역·띠: 분홍·살구·짙은 붉은색 혼합<br />옆면: RGB 성분 감쇠</p>` : ''}
+    ${kind === 'shading' ? `<div class="shade-toggles">${[['색 영역', 1], ['대각선 띠', 2], ['옆면 어둠', 4]].map(([label, bit]) => `<div class="shade-toggle-row" role="group" aria-label="${label}"><span>${label}${bit === 1 ? ' <small>8곳</small>' : ''}</span><label><input type="radio" name="shade-${bit}" value="0" data-shade="${bit}" aria-label="${label} 끄기" checked />끔</label><label><input type="radio" name="shade-${bit}" value="1" data-shade="${bit}" aria-label="${label} 켜기" />켬</label></div>`).join('')}</div><p class="shade-color-note">색 영역은 기본색 5곳과 보정 3곳을 함께 적용합니다.</p>` : ''}
     <p class="pixel-mode-description" aria-live="polite"></p>
+    ${kind === 'shading' ? `<details class="shade-diagnostics"><summary>계산 보기</summary><label for="shade-inspect-view">표시</label><select id="shade-inspect-view"><option value="0">합친 색</option>${modes.shading.slice(2).map(([label, value]) => `<option value="${value}">${label}</option>`).join('')}</select>` : ''}
     <label for="${kind}-u">좌우 u</label><input id="${kind}-u" type="range" min="-1.25" max="1.25" step="0.01" value="0.6" />
     <label for="${kind}-v">위아래 v</label><input id="${kind}-v" type="range" min="-1.25" max="1.25" step="0.01" value="0" />
     ${kind === 'edge' ? '<label for="edge-width">흡수 폭</label><input id="edge-width" type="range" min="0.3" max="2" step="0.05" value="1" />' : ''}
     <output class="pixel-readout" aria-live="polite"></output>
-    ${kind === 'shading' ? `<details class="shade-diagnostics"><summary>요소별 강도 보기</summary><div class="rose-stage-buttons">${modes.shading.slice(2).map(([label, value]) => `<button type="button" data-mode="${value}" aria-pressed="false">${label}</button>`).join('')}</div></details>` : ''}
+    ${kind === 'shading' ? '</details>' : ''}
     </div></div>
     ${kind === 'edge' ? '<figure class="edge-plot"><canvas width="600" height="210" role="img" aria-label="유리 오른쪽 외곽에서 중앙까지 빨강 성분의 빛이 통과하는 비율"></canvas><figcaption>오른쪽 외곽 → 중앙: 빨강 성분의 빛이 통과하는 비율</figcaption></figure>' : ''}
     <p class="demo-note">앞쪽 유리의 실제 셰이더에서 계산한 값을 분리해 표시합니다. 수치는 서리·드래그·눌림이 없는 기본 상태입니다.${kind === 'edge' ? ' 외곽과의 거리는 셰이더의 근사값이며 작품 좌표의 단위입니다.' : ''}</p>`;
@@ -79,8 +80,10 @@ export function createPixelDemo(kind: Kind) {
       });
     }
     element.querySelector('.pixel-mode-description')!.textContent = kind === 'shading' && mode >= 16
-      ? '켜진 요소를 실제 계산 순서대로 적용합니다.'
+      ? mode === 16 ? '기본 핑크색' : `핑크색 + ${[['색 영역 8곳', 1], ['띠', 2], ['옆면', 4]].filter(([, bit]) => (mode & Number(bit)) !== 0).map(([label]) => label).join(' + ')}`
       : modes[kind].find(item => item[1] === mode)?.[2] ?? '';
+    const inspectionSelect = element.querySelector<HTMLSelectElement>('#shade-inspect-view');
+    if (inspectionSelect) inspectionSelect.value = String(mode >= 16 ? 0 : mode);
     update();
   };
   element.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => button.addEventListener('click', () => {
@@ -94,9 +97,23 @@ export function createPixelDemo(kind: Kind) {
     });
     setMode(16 | bits);
   }));
+  const shadingBits = () => [...element.querySelectorAll<HTMLInputElement>('[data-shade]:checked')].reduce((bits, input) => input.value === '1' ? bits | Number(input.dataset.shade) : bits, 0);
+  const inspectionDetails = element.querySelector<HTMLDetailsElement>('.shade-diagnostics');
+  element.querySelector('#shade-inspect-view')?.addEventListener('change', event => {
+    const value = Number((event.target as HTMLSelectElement).value);
+    setMode(value || (16 | shadingBits()));
+  });
+  if (inspectionDetails) {
+    marker.hidden = true;
+    inspectionDetails.addEventListener('toggle', () => {
+      marker.hidden = !inspectionDetails.open;
+      if (!inspectionDetails.open && mode < 16) setMode(16 | shadingBits());
+    });
+  }
   setMode(mode);
   for (const input of [uInput, vInput, widthInput]) input?.addEventListener('input', update);
   const pick = (event: PointerEvent) => {
+    if (inspectionDetails) inspectionDetails.open = true;
     const rect = view.canvas.getBoundingClientRect();
     const p = scenePoint(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height);
     const y = p.y - foregroundGlassShape.y, v = y / foregroundGlassShape.height;

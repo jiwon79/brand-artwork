@@ -93,3 +93,9 @@
 .document .shade-color-note { font-size: 10px; line-height: 1.5; color: #746c5e; margin: 5px 0; }
 .shade-diagnostics { margin-top: 6px; font-size: 11px; }
 .shade-diagnostics > summary { cursor: pointer; padding: 4px 0; }
+
+.shade-toggle-row small { font-size: 10px; color: #746c5e; margin-left: 4px; }
+.shade-toggle-row label { padding: 0 5px; border: 1px solid transparent; border-radius: 4px; }
+.shade-toggle-row label:has(input:checked) { background: #e6dbd0; border-color: #c8bfae; }
+.shade-diagnostics select { width: 100%; min-height: 32px; margin: 4px 0 10px; padding: 4px; font: inherit; color: inherit; background: #faf8f3; border: 1px solid #c8bfae; border-radius: 4px; }
+.pixel-marker[hidden] { display: none; }
