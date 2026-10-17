@@ -36,6 +36,22 @@ export function inspectPixel(u: number, v: number, absorptionWidth = 1) {
 export function inspectionShader(source: string, kind: 'shading' | 'edge') {
   const marker = kind === 'shading' ? '  if (!uShading)' : '  vec3 litSurface =';
   if (!source.includes(marker)) throw new Error('설명용 셰이더 삽입 위치를 찾을 수 없습니다.');
+  if (kind === 'shading') {
+    // Gate the original operations in place so their production order is preserved.
+    const groups: [string, string, number][] = [
+      ['    color = mix(color,vec3(.945,.738,.738)', '    // Wide, diagonal', 1],
+      ['    float bandY =', '    color -= vec3(.39,.29,.265)', 2],
+      ['    color -= vec3(.39,.29,.265)', '    color += vec3(.075,.022,.018)', 4],
+      ['    color += vec3(.075,.022,.018)', '    color -= vec3(.095,.10,.095)', 1],
+      ['    color -= vec3(.095,.10,.095)', '    color -= vec3(.125,.065,.050)', 4],
+      ['    color -= vec3(.125,.065,.050)', '  } else {\n    // Independent rear materials', 1],
+    ];
+    for (const [start, end, bit] of groups) {
+      const from = source.indexOf(start), to = source.indexOf(end, from);
+      if (from < 0 || to <= from) throw new Error('음영 단계의 계산 범위를 찾을 수 없습니다.');
+      source = source.slice(0, from) + `    if (uDocMode < 16 || (uDocMode & ${bit}) != 0) {\n` + source.slice(from, to) + '    }\n' + source.slice(to);
+    }
+  }
   const diagnostics = kind === 'shading' ? `
   if (uDocMode == 1) return mix(under,vec3(bell(q,vec2(.30,-.51),vec2(1.40,1.10))),mask);
   if (uDocMode == 2) {
@@ -44,6 +60,7 @@ export function inspectionShader(source: string, kind: 'shading' | 'edge') {
     return mix(under,vec3(band),mask);
   }
   if (uDocMode == 3) return mix(under,vec3(left+right),mask);
+  if (uDocMode >= 16) return mix(under,color,mask);
   if (uDocMode == 4) return mix(under,color,mask);
   if (uDocMode == 5) return mix(under,vec3(.945,.559,.550),mask);
 ` : `

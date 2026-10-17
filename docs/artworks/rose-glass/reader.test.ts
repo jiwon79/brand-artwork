@@ -92,3 +92,19 @@ test('pixel inspection follows shape boundaries, shade weights and edge absorpti
   expect(inspectPixel(.8, 0, 2).transmission[0]).toBeLessThan(inspectPixel(.8, 0, .5).transmission[0]);
   expect(edge.transmission.every(value => value > 0 && value <= 1)).toBe(true);
 });
+
+test('shading inspection can gate each original foreground group without dropping operations', async () => {
+  const { fragmentSource } = await import('../../../pages/rose-glass/shader');
+  const { inspectionShader } = await import('./pixel-inspection');
+  const shader = inspectionShader(fragmentSource, 'shading');
+  // Undo the inserted group gates to verify that the original color operations stay intact.
+  const start = '    color = vec3(.945,.559,.550);';
+  const end = '  } else {\n    // Independent rear materials';
+  const original = fragmentSource.slice(fragmentSource.indexOf(start), fragmentSource.indexOf(end));
+  const gated = shader.slice(shader.indexOf(start), shader.indexOf(end));
+  const restored = gated.replace(/    if \(uDocMode < 16 \|\| \(uDocMode & [124]\) != 0\) \{\n([\s\S]*?)    \}\n/g, '$1');
+  expect(restored).toBe(original);
+  expect(gated.match(/uDocMode & 1/g)).toHaveLength(3);
+  expect(gated.match(/uDocMode & 2/g)).toHaveLength(1);
+  expect(gated.match(/uDocMode & 4/g)).toHaveLength(2);
+});

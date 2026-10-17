@@ -85,3 +85,11 @@
 .pixel-demo .rose-stage-buttons button { grid-column: span 2; }
 .pixel-demo .rose-stage-buttons .comparison-button { grid-column: span 3; }
 #edge-pixels .rose-stage-buttons button { grid-column: span 3; }
+
+.shade-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 32px; font-size: 11px; }
+.shade-toggle-row > span { flex: 1; }
+.shade-toggle-row label { display: flex; gap: 3px; align-items: center; min-height: 32px; cursor: pointer; }
+.shade-toggle-row input { margin: 0; accent-color: #a65042; }
+.document .shade-color-note { font-size: 10px; line-height: 1.5; color: #746c5e; margin: 5px 0; }
+.shade-diagnostics { margin-top: 6px; font-size: 11px; }
+.shade-diagnostics > summary { cursor: pointer; padding: 4px 0; }
