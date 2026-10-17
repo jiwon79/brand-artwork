@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { fragmentShader, vertexShader } from './shader';
+import { softenInkField } from './tone-field';
 
 const WIDTH = 1200;
 const HEIGHT = 1500;
@@ -29,11 +30,18 @@ async function initialize() {
   screenTexture.wrapS = screenTexture.wrapT = THREE.RepeatWrapping;
   screenTexture.minFilter = screenTexture.magFilter = THREE.LinearFilter;
   screenTexture.generateMipmaps = false;
-  const image = surface();
-  const imageContext = image.getContext('2d')!;
+  // Build a broad tonal field once per image; render individual dots from that field.
+  const sourceCanvas = document.createElement('canvas');
+  sourceCanvas.width = WIDTH / 2;
+  sourceCanvas.height = HEIGHT / 2;
+  const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true })!;
+  const toneCanvas = document.createElement('canvas');
+  toneCanvas.width = sourceCanvas.width;
+  toneCanvas.height = sourceCanvas.height;
+  const toneContext = toneCanvas.getContext('2d')!;
   const mask = surface();
   const maskContext = mask.getContext('2d')!;
-  const imageTexture = new THREE.CanvasTexture(image);
+  const imageTexture = new THREE.CanvasTexture(toneCanvas);
   const maskTexture = new THREE.CanvasTexture(mask);
   imageTexture.minFilter = THREE.LinearFilter;
   maskTexture.minFilter = THREE.LinearFilter;
@@ -87,14 +95,28 @@ async function initialize() {
       source.src = url;
       await source.decode();
       if (id !== requestId) return;
-      imageContext.fillStyle = '#fff';
-      imageContext.fillRect(0, 0, WIDTH, HEIGHT);
-      const scale = Math.min(WIDTH * 0.83 / source.naturalWidth, HEIGHT * 0.8 / source.naturalHeight);
+      const width = sourceCanvas.width;
+      const height = sourceCanvas.height;
+      sourceContext.fillStyle = '#fff';
+      sourceContext.fillRect(0, 0, width, height);
+      const scale = Math.min(width * 0.83 / source.naturalWidth, height * 0.8 / source.naturalHeight);
       const w = source.naturalWidth * scale;
       const h = source.naturalHeight * scale;
-      imageContext.filter = 'blur(1.2px)';
-      imageContext.drawImage(source, (WIDTH - w) / 2, (HEIGHT - h) / 2, w, h);
-      imageContext.filter = 'none';
+      sourceContext.drawImage(source, (width - w) / 2, (height - h) / 2, w, h);
+      const pixels = sourceContext.getImageData(0, 0, width, height);
+      const darkness = new Float32Array(width * height);
+      for (let pixel = 0; pixel < darkness.length; pixel++) {
+        const i = pixel * 4;
+        darkness[pixel] = 1 - (pixels.data[i] * 0.2126 + pixels.data[i + 1] * 0.7152 + pixels.data[i + 2] * 0.0722) / 255;
+      }
+      const field = softenInkField(darkness, width, height);
+      for (let pixel = 0; pixel < field.length; pixel++) {
+        const i = pixel * 4;
+        const value = Math.round((1 - field[pixel]) * 255);
+        pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = value;
+        pixels.data[i + 3] = 255;
+      }
+      toneContext.putImageData(pixels, 0, 0);
       imageTexture.needsUpdate = true;
       loaded = true;
       reset();
