@@ -2,8 +2,8 @@ import { fragmentSource, resolveSource, vertexSource } from '../../../pages/rose
 import { GlassBodyMotion } from '../../../pages/rose-glass/interaction';
 import { maxDeformationFields, type Point } from '../../../pages/rose-glass/deformation';
 
-export function scenePoint(x: number, y: number, width: number, height: number): Point {
-  const scale = Math.min(width / 590, height / 1280);
+export function scenePoint(x: number, y: number, width: number, height: number, zoom = 1): Point {
+  const scale = Math.min(width / 590, height / 1280) * zoom;
   return { x: (x - width / 2) / scale + 295, y: (y - height / 2) / scale + 640 };
 }
 
