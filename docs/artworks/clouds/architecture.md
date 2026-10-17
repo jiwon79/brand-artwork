@@ -22,6 +22,20 @@
 
 메모리 LRU는 기본 240 MiB, coarse pointer 기기에서는 128 MiB이다. 디스크 캐시는 기본 320 MiB로 제한하고, 오래전에 저장한 항목부터 지운다. 버전이 바뀐 캐시도 삭제한다. Sunset과 Cumulus는 같은 geometry key를 사용한다. 저장 공간이 없거나 IndexedDB가 실패하면 원본 생성기로 돌아간다. 캐시는 이 브라우저와 origin에만 적용된다.
 
+## 중간 상태: 완성 HDR 캐시
+
+형태를 캐시해도 매 방문마다 조명 128샘플을 다시 계산하면 몇 초가 걸린다. `completed-frame.ts`, `completed-frame-cache.ts`, `completed-frame-worker.ts`는 한 번 완성한 HDR 평균 자체를 별도로 저장한다. 새 방문에서 같은 입력이 확인되면 그 평균을 GPU에 복원하고 후처리만 실행한다. 샘플 수를 줄이거나 PNG를 화면 위에 덮어 표시하는 방식이 아니다.
+
+캐시 key에는 source 프리셋·seed·개수·detail bake 방법, 카메라, 구름 배치, 출력과 내부 버퍼 크기, GPU 정밀도, raster subpixel, 목표 샘플 수와 모든 조명·형태 설정이 들어간다. 실행마다 달라지는 scene/light version 번호는 제외한다. 카메라·태양·밀도·해상도·정밀도 중 하나라도 달라지면 별도 결과를 조회하거나 실제 렌더링으로 돌아간다. 움직이는 시점과 동적인 폭풍은 완료 캐시 대상에서 제외한다.
+
+저장 대상은 노출·빛 번짐 이전의 누적 버퍼다. 따라서 노출, glare, vignette, aberration, detail crispness는 기존 HDR로 다시 후처리할 수 있다. 이들 값과 frame당 샘플 수·자동 LOD 같은 제출 정책은 key에서 제외한다.
+
+완성 frame의 GPU fence가 완료된 뒤 [WebGL 2의 Pixel Pack Buffer](https://registry.khronos.org/webgl/specs/latest/2.0/)에 Float32로 읽기를 예약한다. 별도 fence가 완료되면 CPU 배열로 옮겨 Worker에서 IndexedDB에 저장한다. 주 스레드가 GPU를 동기 대기하지 않는다. 16bit 렌더링에서는 원래 평균과 보정 잔차 두 plane을 모두 Float32로 읽는다. 원래 16bit 값은 Float32로 정확히 표현되며, 복원할 때 다시 같은 형식에 저장한다. 양자화와 이미지 압축을 사용하지 않는다.
+
+메모리 LRU는 128 MiB, 별도 HDR 디스크 캐시는 256 MiB로 제한한다. 오래전에 저장한 디스크 항목부터 지우며, 작은 metadata만 순회해 다른 HDR 배열의 역직렬화를 피한다. 기본 1265×804 Float32 평균은 약 16.3 MB다. 캐시가 없거나 저장소가 실패하면 기존 128샘플 렌더러가 실행된다. 디스크 조회도 최대 150 ms까지만 기다린 뒤 렌더링을 진행하고, 유효한 결과가 늦게 도착하면 현재 key가 같을 때만 복원한다.
+
+완료 판정은 HDR 업로드와 후처리의 GPU fence가 실제 완료된 뒤 한다. 복원한 시점에서는 그림자 필드를 새로 만들지 않는다. 사용자가 새 시점이나 태양을 선택하면 대기 중이던 조명 상태가 다시 계산을 맡는다. geometry 설치와 초기 화면 크기 결정, 명시적 시점 초기화는 연속 카메라 움직임으로 취급하지 않아 불필요한 180 ms 대기를 피한다.
+
 ## 렌더 패스
 
 | 순서 | 입력 → 출력 | 갱신 시점 |
@@ -44,15 +58,15 @@
 
 `refinement.ts`는 시점과 빛의 입력이 바뀌는 동안만 자동 LOD를 켠다. 마지막 변경 후 180 ms가 지나면 1x LOD로 바로 돌아가 최종 평균을 쌓는다. 원본의 여러 중간 LOD에서 128샘플씩 다시 수렴하던 작업을 생략한다. 정지 상태는 4샘플, 조작 중은 1샘플씩 제출한다. 노출과 빛 번짐은 기존 HDR 평균을 사용한다.
 
-GPU fence로 한 제출의 완료를 확인한 뒤 다음 작업을 보낸다. 첫 완료 frame부터 로딩 덮개를 내리고, 최종 geometry·128샘플이 모두 준비된 뒤 저장 버튼을 활성화한다. PNG에는 작품 Canvas만 들어간다. context가 손실되거나 필요한 WebGL 기능이 없으면 오류와 재로드 안내를 표시한다.
+GPU fence로 한 제출의 완료를 확인한 뒤 다음 작업을 보낸다. 첫 완료 frame부터 로딩 덮개를 내리고, 최종 geometry·128샘플의 계산 또는 유효한 HDR 복원이 실제 완료된 뒤 저장 버튼을 활성화한다. PNG에는 작품 Canvas만 들어간다. context가 손실되거나 필요한 WebGL 기능이 없으면 오류와 재로드 안내를 표시한다.
 
 ## 검증
 
-- `pnpm test pages/clouds scripts/public-routes.test.ts`: 원본 seed의 가우시안·조명 byte hash, LOD 공유 후 완전 일치, 캐시 메모리 제한, 원본 shader·상수 hash, 그림자 재사용, 샘플 순서, 조작 후 최종 화질 복원, 공개 경로.
+- `pnpm test pages/clouds scripts/public-routes.test.ts`: 원본 seed의 가우시안·조명 byte hash, LOD 공유 후 완전 일치, 캐시 메모리 제한, 원본 shader·상수 hash, 그림자 재사용, 샘플 순서, 조작 후 최종 화질 복원, HDR key의 입력별 무효화와 후처리 재사용, Float32·16bit 잔차의 bit 보존, 완료 이미지 LRU와 공개 경로.
 - `pnpm typecheck`, `pnpm build`: TypeScript 연결부와 Web Worker 번들 확인.
 - 기존 Chrome에서 원본과 같은 seed·카메라·태양·밀도·해상도를 맞춰 정지 이미지와 확대 화면을 비교한다. 프리셋, 새 seed, 연속 선택, 조명·밀도, 궤도, PNG 저장, 모바일 레이아웃과 콘솔도 확인한다.
-- `window.clouds.diagnostics()`는 source 수, LOD, GPU 완료 기준의 상태, 해상도, 샘플, generation cache hit와 시간을 반환한다. Canvas dataset에도 주요 측정값을 노출한다. `?cache=off`는 디스크 캐시를 우회한다.
+- `window.clouds.diagnostics()`는 source 수, LOD, GPU 완료 기준의 상태, 해상도, 샘플, generation cache hit와 시간을 반환한다. Canvas dataset에도 주요 측정값을 노출한다. `completedCache`는 복원 여부·출처·메모리·읽기/쓰기·GPU 완료까지의 복원 시간도 기록한다. `?cache=off`는 디스크 geometry와 완료 HDR 캐시를 우회하고, `?framecache=off`는 geometry 캐시를 유지한 채 완료 HDR만 끈다.
 
 ## 한계
 
-새 seed는 원본 geometry와 LOD를 만들어야 하며, 처음 방문한 기기의 저장 캐시도 비어 있다. 첫 미리보기와 완성된 128샘플의 시간은 구분해야 한다. 조작은 즉시 반영하지만 최종 빛의 수렴에는 추가 시간이 필요하다. 기기·해상도별 60fps나 완전한 실시간 수렴을 보장하지 않는다. 원본의 조명과 다중 산란도 근사 모델이며 기상 시뮬레이션은 아니다.
+같은 시점·빛·해상도로 이미 완성한 정지 화면은 재방문 때 빠르게 복원한다. 새 seed, 새로운 시점·빛·해상도는 원본 계산이 필요하며, 처음 방문한 기기의 저장 캐시도 비어 있다. 첫 미리보기와 완성된 128샘플의 시간은 구분해야 한다. 조작은 즉시 반영하지만 최종 빛의 수렴에는 추가 시간이 필요하다. 기기·해상도별 60fps나 완전한 실시간 수렴을 보장하지 않는다. 원본의 조명과 다중 산란도 근사 모델이며 기상 시뮬레이션은 아니다.

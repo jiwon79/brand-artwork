@@ -35,7 +35,7 @@ $('reload').addEventListener('click', () => location.reload());
 function status({ state, samples = 0, target = 128, count = 0, visibleCount = 0, error }: RenderStatus) {
   if (error) { fail(error); return; } if (failed || !renderer) return;
   const ready = state === 'ready' && !renderer.sampleFence && !generating;
-  canvas.dataset.phase = ready ? 'ready' : generating ? 'generating' : state ?? 'initializing';
+  canvas.dataset.phase = ready ? 'ready' : generating ? 'generating' : state === 'ready' ? 'refining' : state ?? 'initializing';
   Object.assign(canvas.dataset, { samples: String(samples), sourceCount: String(count), visibleCount: String(visibleCount) });
   if (metrics) Object.assign(canvas.dataset, {
     geometryMs: String(metrics.geometryMs ?? ''), cache: metrics.cache ?? '',
@@ -121,7 +121,7 @@ document.addEventListener('keydown', event => {
   if (event.key.toLowerCase() === 'h' || event.key === 'Escape') showControls(event.key === 'Escape' ? false : $('controls').hidden);
 });
 try {
-  renderer = new CloudRenderer(canvas, status);
+  renderer = new CloudRenderer(canvas, status, { completedCache: query.get('cache') !== 'off' && query.get('framecache') !== 'off' });
   renderer.configure({ quality: 1, lodMultiplier: 1, samplesPerFrame: 4, autoPerformance: true, lightning: !matchMedia('(prefers-reduced-motion: reduce)').matches });
   canvas.addEventListener('samplecomplete', event => {
     const completed = (event as CustomEvent<{ scene: GaussianScene | null }>).detail.scene;
@@ -132,8 +132,12 @@ try {
   });
   canvas.addEventListener('renderstats', () => {
     const stats = renderer.renderStats();
-    $('fps').textContent = generating ? '구름 준비 중' : stats.state === 'idle' ? '화면 완성 · Idle' : `${stats.fps === null ? '—' : Math.round(stats.fps)} FPS`;
+    $('fps').textContent = generating ? '구름 준비 중' : renderer.readyToSave && !renderer.sampleFence ? '화면 완성 · Idle' : `${stats.fps === null ? '—' : Math.round(stats.fps)} FPS`;
     $('gpu').textContent = stats.lod.scale === null ? 'GAUSSIAN' : `LOD ${stats.lod.scale}×`;
+  });
+  canvas.addEventListener('framecachechange', (event) => {
+    const stats = (event as CustomEvent<{ persisted: number; restored: number; source: string }>).detail;
+    Object.assign(canvas.dataset, { framePersisted: String(stats.persisted), frameRestored: String(stats.restored), frameCache: stats.source });
   });
   canvas.addEventListener('resolutionchange', () => { $('resolution').textContent = `${canvas.width} × ${canvas.height}`; });
   // Explicit diagnostics for reproducible source/quality/performance comparisons.

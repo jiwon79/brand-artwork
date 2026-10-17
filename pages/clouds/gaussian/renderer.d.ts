@@ -1,7 +1,7 @@
 import type { GaussianScene } from '../scene-cache';
 export type RenderStatus = { state?: string; progress?: number; samples?: number; target?: number; count?: number; visibleCount?: number; error?: string };
 export class CloudRenderer {
-  constructor(canvas: HTMLCanvasElement, onStatus?: (status: RenderStatus) => void);
+  constructor(canvas: HTMLCanvasElement, onStatus?: (status: RenderStatus) => void, options?: { completedCache?: boolean });
   canvas: HTMLCanvasElement;
   settings: Record<string, number | boolean> & { exposure: number; orbit: boolean; lightning: boolean };
   scene: GaussianScene | null;

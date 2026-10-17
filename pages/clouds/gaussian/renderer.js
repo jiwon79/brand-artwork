@@ -1,3 +1,5 @@
+import {CompletedFrameCache} from '../completed-frame-cache.ts';
+import {completedViewKey,FRAME_MEMORY_LIMIT} from '../completed-frame.ts';
 import {MotionRefinement} from '../refinement.ts';
 import {ambientSky} from './atmosphere.js';
 import { clamp, dot, cross, normalize, sunDirection, lightBasis } from './math.js';
@@ -54,9 +56,14 @@ export function program(gl, vertex, fragment) {
 }
 
 export class CloudRenderer {
-  constructor(canvas, onStatus = () => {}) {
+  constructor(canvas, onStatus = () => {}, {completedCache=true} = {}) {
     this.canvas = canvas;
     this.onStatus = onStatus;
+    this.completedFrames=new CompletedFrameCache(completedCache,(key,redraw)=>{
+      if(this.disposed)return;
+      if(redraw&&key===this.completedFrameKey())this.dirty=true;
+      this.canvas.dispatchEvent(new CustomEvent('framecachechange',{detail:this.completedFrames.diagnostics()}));
+    });
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
     if (!gl) throw new Error('This renderer needs WebGL 2. Enable graphics acceleration in your browser, then reload.');
     this.capabilities=renderCapabilities(gl);
@@ -206,7 +213,7 @@ export class CloudRenderer {
       ['data','lighting','detail','lightning','lightningDensity','lightBounds'].every(key=>scene[key]===this.scene[key]);
     if(keepLighting&&!sameSource)throw new Error('Existing lighting requires the same cloud source.');
     if(reuse&&sameSource&&scene.lod===this.scene.lod) {
-      this.scene=scene;this.sortDirty=true;if(!keepLighting)this.relight();return;
+      this.scene=scene;this.sortDirty=true;if(!keepLighting)this.relight();this.resize();this.motionRefinement=new MotionRefinement();return;
     }
     const renderScene=scene.lod?{...scene,...scene.lod}:scene;
     const packed=packSplatTextures(renderScene,this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE));
@@ -287,6 +294,9 @@ export class CloudRenderer {
       this.lightingWorker.postMessage({type:'scene',sceneId:++this.sceneVersion,data:scene.data});
       this.shadowReady = false;this.relight();
     }
+    // Installing geometry (including its initial resize) is not camera motion.
+    // Start at final LOD and let a cached HDR skip even the first shadow build.
+    this.resize();this.motionRefinement=new MotionRefinement();
   }
 
   get autoActive(){return !!this.settings?.autoPerformance&&this.settings.view===0&&this.motionRefinement.active;}
@@ -346,6 +356,7 @@ export class CloudRenderer {
 
   resetCamera(preset) {
     this.camera = { target: [...preset.target], distance: preset.distance, yaw: preset.yaw, pitch: preset.pitch };
+    this.motionRefinement=new MotionRefinement();
     this.sortDirty = true; this.dirty = true;
   }
 
@@ -614,12 +625,76 @@ export class CloudRenderer {
 
   get sampleTarget(){return this.storm?Math.min(this.settings.maxSamples,STORM.samples):this.settings.maxSamples;}
 
+  // The stored mean precedes lens/exposure processing and retains all 128 samples.
+  // Runtime scene/light version counters cannot identify an image across visits.
+  completedFrameKey() {
+    if(!this.completedFrames.enabled||!this.scene||this.scene.preview||this.storm||this.autoActive||this.effectiveLOD!==1||this.settings.orbit||this.settings.view!==0||this.settings.colorByLOD)return null;
+    return completedViewKey({
+      source:[this.scene.preset,this.scene.seed,this.scene.count,this.scene.detailBake?.method||'cpu'],
+      camera:this.cameraFrame(),instances:this.instances,
+      resolution:[this.canvas.width,this.canvas.height,this.sceneWidth,this.sceneHeight],
+      precision:[this.capabilities.imagePrecision,this.capabilities.shadowPrecision],rasterSubpixel:this.rasterSubpixel,
+      samples:this.sampleTarget,settings:this.settings,
+    });
+  }
+
+  get finishedFrameActive() {
+    return !!this.restoredFrameKey&&this.restoredFrameKey===this.completedFrameKey()&&this.accumulation.key===this.imageKey();
+  }
+
   get readyToSave() {
-    return !this.scene?.preview && this.pendingRenderMode==null && this.shadowReady && !this.pendingLight && this.accumulation.count>=this.sampleTarget && this.accumulation.key===this.imageKey();
+    return !this.scene?.preview && this.pendingRenderMode==null &&
+      (this.finishedFrameActive||(this.shadowReady&&!this.pendingLight)) &&
+      this.accumulation.count>=this.sampleTarget && this.accumulation.key===this.imageKey();
   }
 
   get renderState() {
-    return this.pendingRenderMode!=null?'switching':!this.scene?'initializing':this.pendingLight||!this.shadowReady?'lighting':this.readyToSave?'ready':'refining';
+    return this.pendingRenderMode!=null?'switching':!this.scene?'initializing':this.readyToSave?'ready':this.pendingLight||!this.shadowReady?'lighting':'refining';
+  }
+
+  restoreCompletedFrame(key,frame,source) {
+    const gl=this.gl,a=this.accumulation;
+    if(frame.width!==this.canvas.width||frame.height!==this.canvas.height||frame.samples!==this.sampleTarget||frame.precision!==this.capabilities.imagePrecision)return false;
+    gl.activeTexture(gl.TEXTURE0);
+    const textures=[a.current.texture,...(a.half?[a.current.residual]:[])];
+    for(let i=0;i<textures.length;i++){
+      gl.bindTexture(gl.TEXTURE_2D,textures[i]);
+      gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,frame.width,frame.height,gl.RGBA,gl.FLOAT,frame.planes[i]);
+    }
+    a.count=frame.samples;this.restoredFrameKey=key;
+    this.completedFrames.restored(source);this.restoreSubmittedAt=performance.now();
+    return true;
+  }
+
+  captureCompletedFrame() {
+    const key=this.completedFrameKey();
+    if(!key||this.frameReadback||this.frameReadbackFailed||this.finishedFrameActive||!this.readyToSave||this.completedFrames.hasStored(key))return;
+    const gl=this.gl,width=this.canvas.width,height=this.canvas.height,planes=this.accumulation.half?2:1,planeBytes=width*height*16;
+    if(planeBytes*planes>FRAME_MEMORY_LIMIT)return;
+    const previous=gl.getParameter(gl.READ_FRAMEBUFFER_BINDING),buffer=gl.createBuffer();
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER,buffer);gl.bufferData(gl.PIXEL_PACK_BUFFER,planeBytes*planes,gl.STREAM_READ);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER,this.accumulation.current.fbo);
+    for(let i=0;i<planes;i++){
+      gl.readBuffer(gl.COLOR_ATTACHMENT0+i);
+      gl.readPixels(0,0,width,height,gl.RGBA,gl.FLOAT,i*planeBytes);
+    }
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);gl.bindFramebuffer(gl.READ_FRAMEBUFFER,previous);gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
+    if(gl.getError()!==gl.NO_ERROR){gl.deleteBuffer(buffer);this.frameReadbackFailed=true;this.completedFrames.metrics.errors++;return;}
+    this.frameReadback={key,width,height,samples:this.accumulation.count,precision:this.capabilities.imagePrecision,planes,planeBytes,buffer,fence:gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0)};
+    gl.flush();
+  }
+
+  pollCompletedFrame() {
+    const read=this.frameReadback;if(!read)return;
+    const gl=this.gl,status=gl.clientWaitSync(read.fence,0,0);
+    if(status===gl.TIMEOUT_EXPIRED)return;
+    if(status!==gl.WAIT_FAILED){
+      const data=new Float32Array(read.planeBytes*read.planes/4);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER,read.buffer);gl.getBufferSubData(gl.PIXEL_PACK_BUFFER,0,data);gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
+      const planes=Array.from({length:read.planes},(_,i)=>data.subarray(i*read.planeBytes/4,(i+1)*read.planeBytes/4));
+      this.completedFrames.store(read.key,{width:read.width,height:read.height,samples:read.samples,precision:read.precision,planes});
+    }
+    gl.deleteSync(read.fence);gl.deleteBuffer(read.buffer);this.frameReadback=null;
   }
 
   reportProgress() {
@@ -704,8 +779,16 @@ export class CloudRenderer {
     this.effects.resize(w,h);this.accumulation.resize(w,h);
     const changed=this.accumulation.setKey(this.imageKey(frame));
     if(changed)this.storm?.reset();
+    let restored=false,cachePending=false;
+    const completedKey=this.completedFrameKey();
+    if(this.restoredFrameKey!==completedKey)this.restoredFrameKey=null;
+    if(completedKey&&!this.finishedFrameActive&&this.accumulation.count<this.sampleTarget){
+      const cached=this.completedFrames.lookup(completedKey);
+      if(cached.frame)restored=this.restoreCompletedFrame(completedKey,cached.frame,cached.source);
+      else cachePending=cached.pending;
+    }
     let added=0;
-    if(this.scene && (advance || changed || !this.accumulation.count)) {
+    if(this.scene && !this.finishedFrameActive && !cachePending && (advance || changed || !this.accumulation.count)) {
       const budget=this.accumulation.remaining(this.autoActive?1:this.settings.samplesPerFrame,this.sampleTarget);
       for(let i=0;i<budget;i++) {
         const sampleIndex=this.accumulation.count;
@@ -732,7 +815,7 @@ export class CloudRenderer {
     const detailScale=Math.min(2.5,30/Math.max(1,this.camera.distance));
     this.effects.render(this.settings.view===0?this.settings:{...this.settings,glare:0,vignette:0,aberration:0},!!(this.scene?.detail&&this.scene?.lighting),detailScale);
     gl.bindVertexArray(null);
-    if(added || this.storm || this.autoActive) {
+    if(added || restored || this.storm || this.autoActive) {
       clearTimeout(this.autoTimer);this.autoTiming=null;
       if(this.sampleFence)gl.deleteSync(this.sampleFence);
       this.sampleScene=this.scene;
@@ -796,7 +879,7 @@ export class CloudRenderer {
   }
 
   needsSceneFrame(){
-    return !!this.scene&&!!(this.pendingRenderMode!=null||this.pendingFrameForFPS||this.dirty||this.pendingLight||this.accumulation.count<this.sampleTarget||(this.settings.orbit&&this.shadowReady&&!this.animationPaused));
+    return !!this.scene&&!!(this.pendingRenderMode!=null||this.pendingFrameForFPS||this.dirty||(this.pendingLight&&!this.finishedFrameActive)||this.accumulation.count<this.sampleTarget||(this.settings.orbit&&this.shadowReady&&!this.animationPaused));
   }
 
   renderStats(now=performance.now()){
@@ -816,6 +899,7 @@ export class CloudRenderer {
   tick(time) {
     if(this.disposed || this.contextLost)return;
     try {
+      this.pollCompletedFrame();
       const dt=Math.max(0,Math.min(.05,(time-this.lastTime)/1000));this.lastTime=Math.max(this.lastTime,time);
       if(document.hidden){this.autoTiming=null;clearTimeout(this.autoTimer);this.frameRate?.reset();this.pendingFrameForFPS=false;this.updateIdlePerformance(time);this.animation=requestAnimationFrame(this.tick);return;}
       // The light clock advances even while a volume sample is in flight.
@@ -834,14 +918,18 @@ export class CloudRenderer {
         if(this.pendingFrameForFPS){this.frameRate?.complete(performance.now());this.pendingFrameForFPS=false;}
         this.recordAutoFrame();this.gl.deleteSync(this.sampleFence);this.sampleFence=null;
         this.canvas.dispatchEvent(new CustomEvent('samplecomplete',{detail:{scene:this.sampleScene}}));
-        if(this.readyToSave)this.reportProgress();
+        if(this.restoreSubmittedAt!=null){
+          this.completedFrames.metrics.restoreMs=performance.now()-this.restoreSubmittedAt;this.restoreSubmittedAt=null;
+          this.canvas.dispatchEvent(new CustomEvent('framecachechange',{detail:this.completedFrames.diagnostics()}));
+        }
+        if(this.readyToSave){this.captureCompletedFrame();this.reportProgress();}
       }
       this.applyRenderingMode();
       if(this.settings.orbit && this.shadowReady && !this.animationPaused) {
         this.camera.yaw+=dt*.08;this.sortDirty=true;this.dirty=true;
       }
       this.updateAutoPerformance();
-      if(this.dirty || this.pendingLight || (this.scene && this.accumulation.count<this.sampleTarget)){
+      if(this.dirty || (this.pendingLight&&!this.finishedFrameActive) || (this.scene && this.accumulation.count<this.sampleTarget)){
         this.render({advance:true});
         if(this.scene&&this.accumulation.count>0){
           if(this.sampleFence)this.pendingFrameForFPS=true;
@@ -868,6 +956,7 @@ export class CloudRenderer {
     return { count: this.scene?.count || 0, visibleCount: this.visibleCount || 0, seed: this.scene?.seed, preset: this.scene?.preset, resolution: [this.canvas.width, this.canvas.height], shadowResolution: this.shadowSize,
       capabilities:this.capabilities,
       pendingRenderingMode:this.pendingRenderMode,
+      completedCache:{active:this.finishedFrameActive,...this.completedFrames.diagnostics()},
       autoPerformance:{enabled:this.settings.autoPerformance,active:this.autoActive,idleRefining:!!this.idleRefinementKey,...this.autoPerformance.diagnostics()},
       renderStats:this.renderStats(),
       instances:this.instanceStats,cloudCount:this.instanceCount,lod:this.lodStats,cloudResolution:[this.sceneWidth,this.sceneHeight],
@@ -880,7 +969,8 @@ export class CloudRenderer {
 
   dispose() {
     this.disposed = true;clearTimeout(this.autoTimer);this.autoTiming=null; cancelAnimationFrame(this.animation); this.abort.abort(); this.resizeObserver.disconnect();
-    this.lightingWorker.terminate();
+    this.lightingWorker.terminate();this.completedFrames.dispose();
+    if(this.frameReadback){this.gl.deleteSync(this.frameReadback.fence);this.gl.deleteBuffer(this.frameReadback.buffer);}
     this.effects.dispose();this.accumulation.dispose();
     this.rayTerms.dispose();
     this.storm?.dispose();
