@@ -22,19 +22,26 @@ function surface() {
   return surface;
 }
 
-function initialize() {
+async function initialize() {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const screenTexture = await new THREE.TextureLoader().loadAsync(new URL('./assets/ink-screen.png', import.meta.url).href);
+  screenTexture.wrapS = screenTexture.wrapT = THREE.RepeatWrapping;
+  screenTexture.minFilter = screenTexture.magFilter = THREE.LinearFilter;
+  screenTexture.generateMipmaps = false;
   const image = surface();
   const imageContext = image.getContext('2d')!;
   const mask = surface();
   const maskContext = mask.getContext('2d')!;
   const imageTexture = new THREE.CanvasTexture(image);
   const maskTexture = new THREE.CanvasTexture(mask);
+  imageTexture.minFilter = THREE.LinearFilter;
+  maskTexture.minFilter = THREE.LinearFilter;
   imageTexture.generateMipmaps = false;
   maskTexture.generateMipmaps = false;
   const uniforms = {
     uImage: { value: imageTexture },
+    uScreen: { value: screenTexture },
     uMask: { value: maskTexture },
     uSize: { value: 0.85 },
     uDensity: { value: 1 },
@@ -85,7 +92,9 @@ function initialize() {
       const scale = Math.min(WIDTH * 0.83 / source.naturalWidth, HEIGHT * 0.8 / source.naturalHeight);
       const w = source.naturalWidth * scale;
       const h = source.naturalHeight * scale;
+      imageContext.filter = 'blur(1.2px)';
       imageContext.drawImage(source, (WIDTH - w) / 2, (HEIGHT - h) / 2, w, h);
+      imageContext.filter = 'none';
       imageTexture.needsUpdate = true;
       loaded = true;
       reset();
@@ -205,6 +214,6 @@ function initialize() {
   resize();
   void loadImage(samples.umbreon.url, samples.umbreon.label, 'umbreon');
 }
-try { initialize(); } catch {
-  status.textContent = '이 브라우저에서 WebGL을 시작하지 못했어요. 하드웨어 가속을 켠 Chrome에서 열어 주세요.';
-}
+void initialize().catch(() => {
+  status.textContent = '그리기를 시작하지 못했어요. 새로고침하거나 하드웨어 가속을 켠 Chrome에서 열어 주세요.';
+});
