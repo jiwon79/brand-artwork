@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eeece6">
+  <meta name="description" content="사진을 작은 잉크 점으로. 종이를 문질러 나만의 점묘화를 드러내세요.">
+  <title>Stipple — 작은 점으로 그리는 그림</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header><a href="/" class="wordmark">STUDIO <span> / </span> STIPPLE</a><span class="edition">AN EXPERIMENT IN INK · 01</span></header>
+  <main>
+    <section class="workspace" aria-label="점묘 작업 공간">
+      <div class="canvas-meta"><span id="art-label">NO. 197 / 블래키</span><span>INK ON PAPER</span></div>
+      <div id="paper"><canvas id="artwork" aria-label="마우스를 움직이거나 손가락으로 문질러 점묘화를 드러내세요"></canvas><div id="brush" aria-hidden="true"></div></div>
+      <div class="canvas-meta bottom"><span>움직이면 드러나고, 점으로 남아요.</span><span>1200 × 1500</span></div>
+    </section>
+    <aside>
+      <div class="eyebrow">사진에서, 점으로</div>
+      <h1>A little ink.<br>A little <em>magic.</em></h1>
+      <p class="intro">수많은 작은 점이 모여 하나의 그림으로.<br>종이 위를 문질러 천천히 발견해 보세요.</p>
+      <label class="upload" for="upload"><span>＋</span> 내 사진 불러오기 <span class="arrow">↗</span></label>
+      <input id="upload" type="file" accept="image/*" hidden>
+      <p class="privacy">사진은 이 브라우저 안에서만 처리돼요.</p>
+      <div class="section-title">또는, 이 친구들로 시작해 보세요</div>
+      <div class="samples" role="group" aria-label="포켓몬 예시">
+        <button data-sample="umbreon" aria-pressed="true"><img src="./assets/umbreon.png" alt=""><span>블래키</span></button>
+        <button data-sample="gengar" aria-pressed="false"><img src="./assets/gengar.png" alt=""><span>팬텀</span></button>
+        <button data-sample="pikachu" aria-pressed="false"><img src="./assets/pikachu.png" alt=""><span>피카츄</span></button>
+      </div>
+      <div class="settings">
+        <label for="size">점 크기 <output id="size-value">0.85</output></label>
+        <input id="size" type="range" min="0.4" max="1.7" step="0.05" value="0.85">
+        <label for="density">점 밀도 <output id="density-value">100%</output></label>
+        <input id="density" type="range" min="30" max="180" step="5" value="100">
+        <label for="brush-size">브러시 크기 <output id="brush-value">100</output></label>
+        <input id="brush-size" type="range" min="35" max="230" step="5" value="100">
+      </div>
+      <div class="actions"><button id="reveal">전체 드러내기</button><button id="reset">다시 문지르기 ↺</button></div>
+      <button id="save">점묘화 저장 <span>↓</span></button>
+      <p id="status" role="status" aria-live="polite">예시를 불러오는 중…</p>
+      <footer>REFERENCE · <a href="https://www.instagram.com/f_ge107/" target="_blank" rel="noreferrer">@f_ge107</a><br>POKÉMON ART · <a href="https://github.com/PokeAPI/sprites" target="_blank" rel="noreferrer">PokéAPI</a> · © Nintendo / Creatures / GAME FREAK</footer>
+    </aside>
+  </main>
+  <script type="module" src="./script.ts"></script>
+</body>
+</html>
