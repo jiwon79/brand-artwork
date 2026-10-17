@@ -113,11 +113,10 @@ test('effect and region changes preserve the chosen shading view', async () => {
   const { initialShadingState, reduceShadingState } = await import('./shading-state');
   let state = reduceShadingState(initialShadingState, { type: 'view', value: 'weight' });
   state = reduceShadingState(state, { type: 'region', value: 6 });
-  state = reduceShadingState(state, { type: 'inspect', value: 3 });
   state = reduceShadingState(state, { type: 'effect', bit: 2, enabled: true });
-  expect(state).toEqual({ effects: 2, view: 'weight', inspect: 3, region: 6 });
+  expect(state).toEqual({ effects: 2, view: 'weight', region: 6 });
   state = reduceShadingState(state, { type: 'all', enabled: true });
-  expect(state).toEqual({ effects: 7, view: 'weight', inspect: 3, region: 6 });
+  expect(state).toEqual({ effects: 7, view: 'weight', region: 6 });
   state = reduceShadingState(state, { type: 'view', value: 'color' });
   expect(state.effects).toBe(7); expect(state.region).toBe(6);
 });

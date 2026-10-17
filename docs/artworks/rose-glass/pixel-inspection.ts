@@ -1,5 +1,4 @@
 import { foregroundGlassShape, glassBodyWidthAt } from '../../../pages/rose-glass/deformation';
-import { shadingRegions } from './shading-regions';
 import { reliefSample } from './relief-demo';
 
 const smooth = (a: number, b: number, x: number) => {
@@ -55,31 +54,18 @@ export function inspectionShader(source: string, kind: 'shading' | 'edge') {
   }
   const diagnostics = kind === 'shading' ? `
   if (uDocMode == 1) {
-    int region = clamp(uDocRegion,0,7);
-    float weight = bell(q,docCenters[region],docRadii[region])*docStrengths[region];
-    return mix(under,vec3(weight),mask);
+    // Measure the result of the same enabled operations as the color view.
+    vec3 change = abs(clamp(color,0.0,1.0)-vec3(.945,.559,.550));
+    float strength = max(change.r,max(change.g,change.b));
+    return mix(under,vec3(strength),mask);
   }
-  if (uDocMode == 2) {
-    float b = q.y+.075-q.x*.27;
-    float band = exp(-pow(b/.19,2.0))*(.62+.38*smoothstep(-.8,.6,q.x));
-    return mix(under,vec3(band),mask);
-  }
-  if (uDocMode == 3) return mix(under,vec3(left+right),mask);
   return mix(under,color,mask);
 ` : `
   if (uDocMode == 1) return mix(under,vec3(clamp(inside/120.0,0.0,1.0)),mask);
   if (uDocMode == 2) return mix(under,transmission,mask);
 `;
-  const glslNumber = (n: number) => Number.isInteger(n) ? `${n}.0` : String(n);
-  const vectors = (key: 'center' | 'radius') => shadingRegions.map(region => `vec2(${region[key].map(glslNumber).join(',')})`).join(',');
-  const regionUniforms = kind === 'shading' ? `
-  uniform int uDocEffects;
-  uniform int uDocRegion;
-  const vec2 docCenters[8] = vec2[8](${vectors('center')});
-  const vec2 docRadii[8] = vec2[8](${vectors('radius')});
-  const float docStrengths[8] = float[8](${shadingRegions.map(region => glslNumber(region.strength)).join(',')});
-` : '';
-  return source.replace('uniform bool uShading;', `uniform bool uShading;\nuniform int uDocMode;\nuniform float uDocZoom;${regionUniforms}`)
+  const effectUniform = kind === 'shading' ? '\nuniform int uDocEffects;' : '';
+  return source.replace('uniform bool uShading;', `uniform bool uShading;\nuniform int uDocMode;\nuniform float uDocZoom;${effectUniform}`)
     .replace('vec2 p = (uv*uView-uView*.5)/scale+vec2(295,640);', 'vec2 p = (uv*uView-uView*.5)/(scale*uDocZoom)+vec2(295,640);')
     .replace(marker, diagnostics + marker);
 }

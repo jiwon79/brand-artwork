@@ -105,14 +105,14 @@
 .shade-switch input:checked + .switch-track { background: #a65042; }
 .shade-switch input:checked + .switch-track::after { transform: translateX(14px); }
 .shade-switch input:focus-visible + .switch-track { outline: 2px solid #235c9a; outline-offset: 3px; }
-.shade-presets, .shade-view { display: flex; gap: 5px; margin: 5px 0 10px; }
+.shade-presets { display: flex; gap: 5px; margin: 5px 0 10px; }
 .shade-presets button { flex: 1; border: 1px solid #c8bfae; border-radius: 4px; min-height: 32px; background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; }
 .shade-presets button[aria-pressed=true] { border-color: #a65042; color: #8b4234; }
-.shade-view label { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; flex: 1; border: 1px solid #c8bfae; border-radius: 4px; cursor: pointer; }
-.shade-view input { margin: 0; accent-color: #a65042; }
-.shade-view label:has(input:checked) { background: #e6dbd0; border-color: #a65042; }
+.shade-view { display: flex; gap: 2px; margin: 0 0 6px; padding: 3px; border-radius: 6px; background: #e6e0d5; }
+.shade-view button { flex: 1; min-width: 0; min-height: 36px; padding: 4px; border: 0; border-radius: 4px; background: transparent; color: #746c5e; font: inherit; cursor: pointer; }
+.shade-view button[aria-selected=true] { background: #faf8f3; color: #332c23; box-shadow: 0 1px 3px #332c2320; }
+.shade-view button:focus-visible { outline: 2px solid #235c9a; outline-offset: 1px; }
 .shade-panel select { width: 100%; min-height: 34px; color: inherit; font: inherit; font-size: 11px; background: #faf8f3; border: 1px solid #c8bfae; border-radius: 4px; margin: 3px 0 8px; }
-.shade-panel select[hidden], .shade-panel label[hidden] { display: none; }
 .region-color { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; }
 .region-swatch { display: inline-block; width: 24px; height: 24px; border: 1px solid #b9b4aa; border-radius: 3px; flex: none; }
 .region-info { display: block; margin-top: 4px; font-size: 10px; line-height: 1.5; color: #645c4f; }

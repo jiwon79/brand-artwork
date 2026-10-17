@@ -15,12 +15,8 @@ export function mountDocument(source: string, options: { sourcePath: string; ima
   }
   for (const demo of article.querySelectorAll<HTMLElement>('.interactive-demo')) {
     demo.querySelector('.demo-heading .eyebrow')?.remove();
-    const notes = [...demo.children].filter(child => child.matches('p.demo-note:not([aria-live])'));
-    if (notes.length) {
-      const details = document.createElement('details'); details.className = 'demo-details';
-      const summary = document.createElement('summary'); summary.textContent = '계산 범위';
-      details.append(summary, ...notes); demo.append(details);
-    }
+    // Keep live readouts and controls together without extra explanatory footers.
+    demo.querySelectorAll(':scope > p.demo-note:not([aria-live]):not(.relief-calculation)').forEach(note => note.remove());
   }
   article.querySelectorAll<HTMLElement>('canvas, .interactive-demo input[type="range"]').forEach(preventDragSelection);
 

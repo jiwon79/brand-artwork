@@ -22,7 +22,6 @@ export class GlassView {
   stage = 6;
   debugMode = 0;
   debugEffects = 7;
-  debugRegion = 0;
   previewZoom = 1;
   absorptionWidth = 1;
   light = 0.65;
@@ -94,7 +93,6 @@ export class GlassView {
     gl.uniform2f(location(this.material, 'uLight'), 50 + this.light * 600, 360);
     gl.uniform1i(location(this.material, 'uDocMode'), this.debugMode);
     gl.uniform1i(location(this.material, 'uDocEffects'), this.debugEffects);
-    gl.uniform1i(location(this.material, 'uDocRegion'), this.debugRegion);
     float('uDocZoom', this.previewZoom);
     flag('uUpperGlass', this.overlap); flag('uLowerGlass', this.overlap); flag('uForegroundGlass', true);
     flag('uShading', this.stage >= 2); flag('uShadows', this.stage >= 2);

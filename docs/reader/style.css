@@ -98,8 +98,6 @@ input[type=range] { display: block; width: 100%; accent-color: #b64e3c; margin: 
 .touch-views { grid-template-columns: 1fr 1fr; gap: 8px; max-width: 520px; margin: auto; }
 .touch-views h4 { padding: 6px 8px; font-size: 11px; }
 .touch-views canvas { max-height: none; }
-.demo-details { margin-top: 8px; font-size: 11px; color: #746c5e; }
-.demo-details > summary { cursor: pointer; padding: 4px 0; }
 @media (max-width: 720px) {
   .reading-layout { padding: 18px 14px 48px; }
   .contents { margin-bottom: 22px; }
