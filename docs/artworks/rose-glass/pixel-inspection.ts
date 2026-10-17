@@ -1,4 +1,5 @@
 import { foregroundGlassShape, glassBodyWidthAt } from '../../../pages/rose-glass/deformation';
+import { shadingRegions } from './shading-regions';
 import { reliefSample } from './relief-demo';
 
 const smooth = (a: number, b: number, x: number) => {
@@ -49,23 +50,36 @@ export function inspectionShader(source: string, kind: 'shading' | 'edge') {
     for (const [start, end, bit] of groups) {
       const from = source.indexOf(start), to = source.indexOf(end, from);
       if (from < 0 || to <= from) throw new Error('음영 단계의 계산 범위를 찾을 수 없습니다.');
-      source = source.slice(0, from) + `    if (uDocMode < 16 || (uDocMode & ${bit}) != 0) {\n` + source.slice(from, to) + '    }\n' + source.slice(to);
+      source = source.slice(0, from) + `    if ((uDocEffects & ${bit}) != 0) {\n` + source.slice(from, to) + '    }\n' + source.slice(to);
     }
   }
   const diagnostics = kind === 'shading' ? `
-  if (uDocMode == 1) return mix(under,vec3(bell(q,vec2(.30,-.51),vec2(1.40,1.10))),mask);
+  if (uDocMode == 1) {
+    int region = clamp(uDocRegion,0,7);
+    float weight = bell(q,docCenters[region],docRadii[region])*docStrengths[region];
+    return mix(under,vec3(weight),mask);
+  }
   if (uDocMode == 2) {
     float b = q.y+.075-q.x*.27;
     float band = exp(-pow(b/.19,2.0))*(.62+.38*smoothstep(-.8,.6,q.x));
     return mix(under,vec3(band),mask);
   }
   if (uDocMode == 3) return mix(under,vec3(left+right),mask);
-  if (uDocMode >= 16) return mix(under,color,mask);
-  if (uDocMode == 4) return mix(under,color,mask);
-  if (uDocMode == 5) return mix(under,vec3(.945,.559,.550),mask);
+  return mix(under,color,mask);
 ` : `
   if (uDocMode == 1) return mix(under,vec3(clamp(inside/120.0,0.0,1.0)),mask);
   if (uDocMode == 2) return mix(under,transmission,mask);
 `;
-  return source.replace('uniform bool uShading;', 'uniform bool uShading;\nuniform int uDocMode;').replace(marker, diagnostics + marker);
+  const glslNumber = (n: number) => Number.isInteger(n) ? `${n}.0` : String(n);
+  const vectors = (key: 'center' | 'radius') => shadingRegions.map(region => `vec2(${region[key].map(glslNumber).join(',')})`).join(',');
+  const regionUniforms = kind === 'shading' ? `
+  uniform int uDocEffects;
+  uniform int uDocRegion;
+  const vec2 docCenters[8] = vec2[8](${vectors('center')});
+  const vec2 docRadii[8] = vec2[8](${vectors('radius')});
+  const float docStrengths[8] = float[8](${shadingRegions.map(region => glslNumber(region.strength)).join(',')});
+` : '';
+  return source.replace('uniform bool uShading;', `uniform bool uShading;\nuniform int uDocMode;\nuniform float uDocZoom;${regionUniforms}`)
+    .replace('vec2 p = (uv*uView-uView*.5)/scale+vec2(295,640);', 'vec2 p = (uv*uView-uView*.5)/(scale*uDocZoom)+vec2(295,640);')
+    .replace(marker, diagnostics + marker);
 }

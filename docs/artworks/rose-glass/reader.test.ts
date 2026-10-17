@@ -102,9 +102,35 @@ test('shading inspection can gate each original foreground group without droppin
   const end = '  } else {\n    // Independent rear materials';
   const original = fragmentSource.slice(fragmentSource.indexOf(start), fragmentSource.indexOf(end));
   const gated = shader.slice(shader.indexOf(start), shader.indexOf(end));
-  const restored = gated.replace(/    if \(uDocMode < 16 \|\| \(uDocMode & [124]\) != 0\) \{\n([\s\S]*?)    \}\n/g, '$1');
+  const restored = gated.replace(/    if \(\(uDocEffects & [124]\) != 0\) \{\n([\s\S]*?)    \}\n/g, '$1');
   expect(restored).toBe(original);
-  expect(gated.match(/uDocMode & 1/g)).toHaveLength(3);
-  expect(gated.match(/uDocMode & 2/g)).toHaveLength(1);
-  expect(gated.match(/uDocMode & 4/g)).toHaveLength(2);
+  expect(gated.match(/uDocEffects & 1/g)).toHaveLength(3);
+  expect(gated.match(/uDocEffects & 2/g)).toHaveLength(1);
+  expect(gated.match(/uDocEffects & 4/g)).toHaveLength(2);
+});
+
+test('effect and region changes preserve the chosen shading view', async () => {
+  const { initialShadingState, reduceShadingState } = await import('./shading-state');
+  let state = reduceShadingState(initialShadingState, { type: 'view', value: 'weight' });
+  state = reduceShadingState(state, { type: 'region', value: 6 });
+  state = reduceShadingState(state, { type: 'inspect', value: 3 });
+  state = reduceShadingState(state, { type: 'effect', bit: 2, enabled: true });
+  expect(state).toEqual({ effects: 2, view: 'weight', inspect: 3, region: 6 });
+  state = reduceShadingState(state, { type: 'all', enabled: true });
+  expect(state).toEqual({ effects: 7, view: 'weight', inspect: 3, region: 6 });
+  state = reduceShadingState(state, { type: 'view', value: 'color' });
+  expect(state.effects).toBe(7); expect(state.region).toBe(6);
+});
+
+test('all eight selectable regions use the shader positions, colors and operations', async () => {
+  const { shadingRegions, shadingRegionWeight, colorHex } = await import('./shading-regions');
+  expect(shadingRegions).toHaveLength(8);
+  expect(shadingRegions.map(region => region.operation)).toEqual(['mix', 'mix', 'mix', 'mix', 'mix', 'add', 'subtract', 'subtract']);
+  expect(shadingRegions[0].center).toEqual([.3, -.51]);
+  expect(colorHex(shadingRegions[0].color)).toBe('#f1bcbc');
+  expect(shadingRegions[7].center).toEqual([.26, 1.02]);
+  for (const [index, region] of shadingRegions.entries()) {
+    expect(shadingRegionWeight(index, ...region.center)).toBeCloseTo(region.strength);
+    expect(shadingRegionWeight(index, region.center[0] + region.radius[0], region.center[1])).toBeLessThan(region.strength);
+  }
 });
