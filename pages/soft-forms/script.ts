@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three';
 import GUI from 'lil-gui';
+import { preventDragSelection } from '../../common/drag-selection';
 import { controlDefinitions, DeformationRig } from './deformation-rig';
 import { createMotionClips, cycleFrame, forwardFrame, smooth, SOURCE_END, LOOP_FRAMES, PREVIOUS_LOOP_FRAMES, sampleDefaultPose } from './motion-clips';
 import { restRadius, restSurface } from './rest-surface';
@@ -70,6 +71,7 @@ function blendColor(target: THREE.Vector3, channel: keyof VariantColors) {
 
 const canvas = document.querySelector<HTMLCanvasElement>('#artwork');
 if (!canvas) throw new Error('Artwork canvas is missing');
+preventDragSelection(canvas);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;

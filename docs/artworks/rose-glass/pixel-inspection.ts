@@ -1,0 +1,71 @@
+import { foregroundGlassShape, glassBodyWidthAt } from '../../../pages/rose-glass/deformation';
+import { reliefSample } from './relief-demo';
+
+const smooth = (a: number, b: number, x: number) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/** The foreground shader's undeformed measurements, in reference artwork units. */
+export function inspectPixel(u: number, v: number, absorptionWidth = 1) {
+  const { exponent: n, height, shear } = foregroundGlassShape;
+  const { field, normal } = reliefSample(u, v);
+  const gx = n * Math.sign(u) * Math.abs(u) ** (n - 1);
+  const gy = n * Math.sign(v) * Math.abs(v) ** (n - 1);
+  const width = glassBodyWidthAt(2, v);
+  const t = Math.max(0, Math.min(1, (v + .1) / .4));
+  const widthSlope = -foregroundGlassShape.width * (.11 + .0325 * 6 * t * (1 - t) / .4);
+  const gradientX = gx / width;
+  const gradientY = gy / height + gx * (-shear - u * widthSlope / height) / width;
+  const distance = (1 - field) / Math.max(Math.hypot(gradientX, gradientY), .0001);
+  const leftSide = 1 - smooth(-.92, -.22, u), rightSide = smooth(.22, .92, u);
+  const base = smooth(.25, .96, v), shoulder = Math.exp(-(((v + .12) / .9) ** 2));
+  const opticalWidth = (14 + 45 * leftSide * shoulder + 55 * rightSide + 20 * base) * absorptionWidth;
+  const density = .22 + .45 * leftSide * shoulder + .45 * rightSide + .18 * base;
+  const inside = Math.max(distance, 0);
+  const opticalDepth = density * (.78 * Math.exp(-((inside / opticalWidth) ** 1.45)) + .22 * Math.exp(-((inside / (opticalWidth * 1.8)) ** 2)));
+  return { field, distance, normal, opticalWidth,
+    patch: Math.exp(-2 * (((u - .3) / 1.4) ** 2 + ((v + .51) / 1.1) ** 2)),
+    band: Math.exp(-(((v + .075 - u * .27) / .19) ** 2)) * (.62 + .38 * smooth(-.8, .6, u)),
+    left: Math.max(0, -normal.x) ** 2, right: Math.max(0, normal.x) ** 2,
+    transmission: [.44, .48, .46].map(extinction => Math.exp(-extinction * opticalDepth)),
+  };
+}
+
+/** Insert diagnostics into the actual shader; the artwork's source stays unchanged. */
+export function inspectionShader(source: string, kind: 'shading' | 'edge') {
+  const marker = kind === 'shading' ? '  if (!uShading)' : '  vec3 litSurface =';
+  if (!source.includes(marker)) throw new Error('설명용 셰이더 삽입 위치를 찾을 수 없습니다.');
+  if (kind === 'shading') {
+    // Gate the original operations in place so their production order is preserved.
+    const groups: [string, string, number][] = [
+      ['    color = mix(color,vec3(.945,.738,.738)', '    // Wide, diagonal', 1],
+      ['    float bandY =', '    color -= vec3(.39,.29,.265)', 2],
+      ['    color -= vec3(.39,.29,.265)', '    color += vec3(.075,.022,.018)', 4],
+      ['    color += vec3(.075,.022,.018)', '    color -= vec3(.095,.10,.095)', 1],
+      ['    color -= vec3(.095,.10,.095)', '    color -= vec3(.125,.065,.050)', 4],
+      ['    color -= vec3(.125,.065,.050)', '  } else {\n    // Independent rear materials', 1],
+    ];
+    for (const [start, end, bit] of groups) {
+      const from = source.indexOf(start), to = source.indexOf(end, from);
+      if (from < 0 || to <= from) throw new Error('음영 단계의 계산 범위를 찾을 수 없습니다.');
+      source = source.slice(0, from) + `    if ((uDocEffects & ${bit}) != 0) {\n` + source.slice(from, to) + '    }\n' + source.slice(to);
+    }
+  }
+  const diagnostics = kind === 'shading' ? `
+  if (uDocMode == 1) {
+    // Measure the result of the same enabled operations as the color view.
+    vec3 change = abs(clamp(color,0.0,1.0)-vec3(.945,.559,.550));
+    float strength = max(change.r,max(change.g,change.b));
+    return mix(under,vec3(strength),mask);
+  }
+  return mix(under,color,mask);
+` : `
+  if (uDocMode == 1) return mix(under,vec3(clamp(inside/120.0,0.0,1.0)),mask);
+  if (uDocMode == 2) return mix(under,transmission,mask);
+`;
+  const effectUniform = kind === 'shading' ? '\nuniform int uDocEffects;' : '';
+  return source.replace('uniform bool uShading;', `uniform bool uShading;\nuniform int uDocMode;\nuniform float uDocZoom;${effectUniform}`)
+    .replace('vec2 p = (uv*uView-uView*.5)/scale+vec2(295,640);', 'vec2 p = (uv*uView-uView*.5)/(scale*uDocZoom)+vec2(295,640);')
+    .replace(marker, diagnostics + marker);
+}

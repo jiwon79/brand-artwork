@@ -62,12 +62,14 @@ docs/
 
 ### Rose Glass
 
-- [`architecture.md`](./artworks/rose-glass/architecture.md) - 세 유리 몸체의 멀티터치 변형, 재질·합성 패스와 성능 조절 구조
+- [`architecture.md`](./artworks/rose-glass/architecture.md) - 평면의 유리 표현, 서리 질감, 국소 드래그와 무늬 부착을 큰 문제별로 설명
+- [`인터랙티브 웹 문서`](./artworks/rose-glass/index.html) - 실제 작품의 재질 표현을 단계별로 더하고 유리를 직접 당겨 보는 문서
 - [`social-share-image.md`](./artworks/rose-glass/social-share-image.md) - 실제 WebGL 캡처를 가로로 회전해 채우고 Rose Glass 제목을 합성하는 PNG 제작 도구와 재생성 방법
 
 ### 솜결 (Soft Forms)
 
-- [`architecture.md`](./artworks/soft-forms/architecture.md) - 독립 변형 컨트롤, 표면 바인딩, 셸·리본 털과 터치 응답의 현재 실행 흐름
+- [`architecture.md`](./artworks/soft-forms/architecture.md) - 화면 터치를 3D 표면에서 찾기, 부드러운 몸체 변형, 털 표현과 부착을 큰 문제별로 설명
+- [`인터랙티브 웹 문서`](./artworks/soft-forms/index.html) - 화면 터치의 3D 접촉점, 셸의 배치와 털 가닥의 모양을 조작하는 문서
 - [`social-share-image.md`](./artworks/soft-forms/social-share-image.md) - 실제 별 캐릭터 캡처에 한글·영어 제목을 합성하는 공유 PNG 제작 방법
 
 ### 웃음꽃 (Smile Flower)

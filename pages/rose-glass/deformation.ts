@@ -65,16 +65,23 @@ export function deformationGradient(p: Point, state: DeformationState) {
   }
   return j;
 }
-export function invertDeformation(point: Point, state: DeformationState): Point {
+export type InverseDeformationStep = {
+  fieldIndex: number; iteration: number; guess: Point; forward: Point; target: Point;
+  error: Point; jacobian: { a: number; b: number; c: number; d: number }; next: Point;
+};
+export function invertDeformation(point: Point, state: DeformationState, trace?: (step: InverseDeformationStep) => void): Point {
   const deformationFields = state.deformationFields;
   for (let k=deformationFields.length-1;k>=0;k--) {
     const field = deformationFields[k];
     let p = { ...point };
     for (let i=0;i<5;i++) {
+      const guess = p;
       const warped = warp(p,field), j = gradient(p,field);
       const ex = warped.x-point.x, ey = warped.y-point.y;
       const determinant = Math.max(.05,j.a*j.d-j.b*j.c);
       p = { x: p.x-(j.d*ex-j.b*ey)/determinant, y: p.y-(-j.c*ex+j.a*ey)/determinant };
+      trace?.({ fieldIndex: k, iteration: i, guess, forward: warped, target: point,
+        error: { x: ex, y: ey }, jacobian: j, next: p });
     }
     point = p;
   }

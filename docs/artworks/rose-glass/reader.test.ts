@@ -1,0 +1,136 @@
+import { readFileSync } from 'node:fs';
+import { test, expect } from 'vitest';
+import { renderMarkdown, documentLink } from '../../reader/markdown';
+import { scenePoint } from './glass-view';
+import { GlassBodyMotion } from '../../../pages/rose-glass/interaction';
+import { applyDeformation, invertDeformation } from '../../../pages/rose-glass/deformation';
+import { reliefSample } from './relief-demo';
+import { inspectInverse } from './inverse-debug';
+
+test('Rose Glass renders its own Markdown with the material and drag demo slots', () => {
+  const path = '/docs/artworks/rose-glass/architecture.md';
+  const source = readFileSync(new URL('./architecture.md', import.meta.url), 'utf8');
+  const html = renderMarkdown(source, {}, path);
+  expect(html).toContain('<!-- interactive-demo: material -->');
+  expect(html).toContain('<!-- interactive-demo: drag -->');
+  expect(html).toContain('<!-- interactive-demo: relief -->');
+  expect(html).toContain('<!-- interactive-demo: deformation -->');
+  expect(html).toContain('<strong>안팎 판별값 f</strong>');
+  expect(html).toContain('<strong>혼합 비율 w</strong>');
+  expect(html).not.toContain('**');
+  for (const kind of ['shape', 'shading', 'edge']) expect(html).toContain(`<!-- interactive-demo: ${kind}-pixels -->`);
+  expect(documentLink('./index.html', path)).toBe('./');
+  expect(documentLink('../../../pages/rose-glass/shader.ts', path)).toBe('https://github.com/jiwon79/studio/blob/main/pages/rose-glass/shader.ts');
+});
+
+test('the relief uses the foreground shader height and the separate artistic lighting normal', () => {
+  const center = reliefSample(0, 0), edge = reliefSample(1, 0), middle = reliefSample(0.5, 0);
+  expect(center.depth).toBe(1); expect(center.height).toBe(225);
+  expect(edge.depth).toBe(0); expect(edge.height).toBe(100);
+  expect(middle.height).toBeGreaterThan(edge.height);
+  expect(middle.height).toBeLessThan(center.height);
+  expect(center.normal.x).toBe(0); expect(center.normal.y).toBe(0);
+  expect(center.normal.z).toBeCloseTo(1);
+  expect(middle.normal.length()).toBeCloseTo(1);
+  expect(edge.normal.z).toBeGreaterThan(0);
+});
+
+test('pointer mapping keeps the composition center and preserves distances at different aspect ratios', () => {
+  expect(scenePoint(200, 250, 400, 500)).toEqual({ x: 295, y: 640 });
+  const wide = scenePoint(450, 250, 800, 500);
+  const narrow = scenePoint(250, 250, 400, 500);
+  expect(wide).toEqual(narrow);
+});
+
+test('the demo pull carries the material point and recovers after release', () => {
+  const motion = new GlassBodyMotion();
+  const point = { x: 122, y: 0 };
+  expect(motion.grab(-1, { x: 420, y: 645 })).toBe(true);
+  motion.move(-1, { x: 600, y: 580 });
+  const settings = { softness: 1.1, indentationDepth: 1, recovery: 1, stretchLimit: 430 };
+  for (let i = 0; i < 90; i++) motion.step(1 / 60, 85, 1, settings, false);
+  const carried = applyDeformation(point, motion);
+  expect(carried.x).toBeGreaterThan(point.x + 100);
+  const original = invertDeformation(carried, motion);
+  expect(original.x).toBeCloseTo(point.x, 2);
+  expect(original.y).toBeCloseTo(point.y, 2);
+  motion.release(-1, false);
+  for (let i = 0; i < 360; i++) motion.step(1 / 60, 85, 1, settings, false);
+  expect(motion.mode).toBe('idle');
+  expect(applyDeformation(point, motion)).toEqual(point);
+});
+
+test('inverse debug traces the same solver and reconstructs the selected scene point', () => {
+  const motion = new GlassBodyMotion();
+  motion.grab(-1, { x: 420, y: 645 }); motion.move(-1, { x: 600, y: 580 });
+  for (let i = 0; i < 90; i++) motion.step(1 / 60, 85, 1, { softness: 1.1, indentationDepth: 1, recovery: 1, stretchLimit: 430 }, false);
+  const result = inspectInverse({ x: 410, y: 645 }, motion);
+  expect(result.steps).toHaveLength(20);
+  expect(result.steps[0].fieldIndex).toBe(3);
+  expect(result.steps[result.steps.length - 1].fieldIndex).toBe(0);
+  expect(result.source).toEqual(invertDeformation(result.target, motion));
+  expect(result.steps[0].error.x).toBeCloseTo(result.steps[0].forward.x - result.steps[0].target.x);
+  expect(result.residual).toBeLessThan(0.001);
+  const still = inspectInverse({ x: 410, y: 645 }, new GlassBodyMotion());
+  expect(still.steps).toHaveLength(0);
+  expect(still.source).toEqual(still.target);
+});
+
+test('pixel inspection follows shape boundaries, shade weights and edge absorption', async () => {
+  const { inspectPixel } = await import('./pixel-inspection');
+  expect(inspectPixel(0, 0).field).toBe(0);
+  expect(inspectPixel(1, 0).distance).toBe(0);
+  expect(inspectPixel(1.1, 0).distance).toBeLessThan(0);
+  expect(inspectPixel(.3, -.51).patch).toBe(1);
+  expect(inspectPixel(.3, -.51).patch).toBeGreaterThan(inspectPixel(-.8, .7).patch);
+  expect(inspectPixel(.6, .27 * .6 - .075).band).toBeGreaterThan(inspectPixel(.6, .6).band);
+  expect(inspectPixel(-.8, 0).left).toBeGreaterThan(0);
+  expect(inspectPixel(-.8, 0).right).toBe(0);
+  expect(inspectPixel(.8, 0).right).toBeGreaterThan(0);
+  const edge = inspectPixel(1, 0), inner = inspectPixel(.8, 0), center = inspectPixel(0, 0);
+  expect(center.transmission[0]).toBeGreaterThan(inner.transmission[0]);
+  expect(inner.transmission[0]).toBeGreaterThan(edge.transmission[0]);
+  expect(inspectPixel(.8, 0, 2).transmission[0]).toBeLessThan(inspectPixel(.8, 0, .5).transmission[0]);
+  expect(edge.transmission.every(value => value > 0 && value <= 1)).toBe(true);
+});
+
+test('shading inspection can gate each original foreground group without dropping operations', async () => {
+  const { fragmentSource } = await import('../../../pages/rose-glass/shader');
+  const { inspectionShader } = await import('./pixel-inspection');
+  const shader = inspectionShader(fragmentSource, 'shading');
+  // Undo the inserted group gates to verify that the original color operations stay intact.
+  const start = '    color = vec3(.945,.559,.550);';
+  const end = '  } else {\n    // Independent rear materials';
+  const original = fragmentSource.slice(fragmentSource.indexOf(start), fragmentSource.indexOf(end));
+  const gated = shader.slice(shader.indexOf(start), shader.indexOf(end));
+  const restored = gated.replace(/    if \(\(uDocEffects & [124]\) != 0\) \{\n([\s\S]*?)    \}\n/g, '$1');
+  expect(restored).toBe(original);
+  expect(gated.match(/uDocEffects & 1/g)).toHaveLength(3);
+  expect(gated.match(/uDocEffects & 2/g)).toHaveLength(1);
+  expect(gated.match(/uDocEffects & 4/g)).toHaveLength(2);
+});
+
+test('effect and region changes preserve the chosen shading view', async () => {
+  const { initialShadingState, reduceShadingState } = await import('./shading-state');
+  let state = reduceShadingState(initialShadingState, { type: 'view', value: 'weight' });
+  state = reduceShadingState(state, { type: 'region', value: 6 });
+  state = reduceShadingState(state, { type: 'effect', bit: 2, enabled: true });
+  expect(state).toEqual({ effects: 2, view: 'weight', region: 6 });
+  state = reduceShadingState(state, { type: 'all', enabled: true });
+  expect(state).toEqual({ effects: 7, view: 'weight', region: 6 });
+  state = reduceShadingState(state, { type: 'view', value: 'color' });
+  expect(state.effects).toBe(7); expect(state.region).toBe(6);
+});
+
+test('all eight selectable regions use the shader positions, colors and operations', async () => {
+  const { shadingRegions, shadingRegionWeight, colorHex } = await import('./shading-regions');
+  expect(shadingRegions).toHaveLength(8);
+  expect(shadingRegions.map(region => region.operation)).toEqual(['mix', 'mix', 'mix', 'mix', 'mix', 'add', 'subtract', 'subtract']);
+  expect(shadingRegions[0].center).toEqual([.3, -.51]);
+  expect(colorHex(shadingRegions[0].color)).toBe('#f1bcbc');
+  expect(shadingRegions[7].center).toEqual([.26, 1.02]);
+  for (const [index, region] of shadingRegions.entries()) {
+    expect(shadingRegionWeight(index, ...region.center)).toBeCloseTo(region.strength);
+    expect(shadingRegionWeight(index, region.center[0] + region.radius[0], region.center[1])).toBeLessThan(region.strength);
+  }
+});

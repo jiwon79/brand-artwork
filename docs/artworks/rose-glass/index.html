@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Rose Glass의 유리 표현과 드래그 원리를 읽고 실제 재질과 변형을 조작해 보는 문서." />
+    <title>Rose Glass — 인터랙티브 아키텍처</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#document">본문으로 이동</a>
+    <header class="site-header">
+      <a href="/">Jiiwon Studio</a>
+      <span>구현 들여다보기 / 02</span>
+      <a href="/rose-glass/">작품 열기 ↗</a>
+    </header>
+    <div class="reading-layout">
+      <aside class="contents" aria-label="문서 탐색">
+        <p class="eyebrow">ROSE GLASS</p>
+        <h2>유리의 안쪽</h2>
+        <p>글을 읽고,<br />계산을 움직여 보세요.</p>
+        <nav id="contents" aria-label="목차"></nav>
+        <div class="demo-shortcuts">
+          <span>바로 조작하기</span>
+          <a href="#outline-demo">외곽선과 지수 비교하기 ↓</a>
+          <a href="#relief-demo">가상 표면을 3D로 보기 ↓</a>
+          <a href="#shape-pixels">형태·음영·가장자리 계산 보기 ↓</a>
+          <a href="#material-demo">유리의 표현 쌓기 ↓</a>
+          <a href="#deformation-demo">국소 변형 F의 규칙 ↓</a>
+          <a href="#drag-demo">유리 당기기 ↓</a>
+          <a href="#inverse-debug">픽셀의 원래 위치 찾기 ↓</a>
+        </div>
+        <a class="source-link" href="https://github.com/jiwon79/studio/blob/main/docs/artworks/rose-glass/architecture.md">Markdown 원본 ↗</a>
+      </aside>
+      <main id="document" class="document" tabindex="-1">
+        <p>문서를 불러오고 있습니다.</p>
+      </main>
+    </div>
+    <noscript><p class="no-script">이 웹 문서는 JavaScript가 필요합니다. <a href="https://github.com/jiwon79/studio/blob/main/docs/artworks/rose-glass/architecture.md">Markdown 원본 읽기</a></p></noscript>
+    <script type="module" src="./reader.ts"></script>
+  </body>
+</html>
