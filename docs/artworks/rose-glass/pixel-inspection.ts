@@ -45,6 +45,7 @@ export function inspectionShader(source: string, kind: 'shading' | 'edge') {
   }
   if (uDocMode == 3) return mix(under,vec3(left+right),mask);
   if (uDocMode == 4) return mix(under,color,mask);
+  if (uDocMode == 5) return mix(under,vec3(.945,.559,.550),mask);
 ` : `
   if (uDocMode == 1) return mix(under,vec3(clamp(inside/120.0,0.0,1.0)),mask);
   if (uDocMode == 2) return mix(under,transmission,mask);

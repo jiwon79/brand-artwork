@@ -81,3 +81,7 @@
   .outline-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .outline-panels canvas { height: 85px; }
 }
+.pixel-demo .rose-stage-buttons { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.pixel-demo .rose-stage-buttons button { grid-column: span 2; }
+.pixel-demo .rose-stage-buttons .comparison-button { grid-column: span 3; }
+#edge-pixels .rose-stage-buttons button { grid-column: span 3; }

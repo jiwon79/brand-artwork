@@ -12,8 +12,8 @@ const copy = {
 } as const;
 const modes = {
   shape: [],
-  shading: [['색 영역 하나', 1, '오른쪽 위의 색 영역 하나입니다. 흰 곳은 그 영역의 색을 많이 섞고 검은 곳은 기존 색을 유지합니다.'], ['대각선 띠', 2, '기준선 주변에 띠가 나타납니다. 흰 곳일수록 짙은 붉은색과 어둠을 더합니다.'], ['좌우 옆면', 3, '표면이 옆으로 기울수록 밝게 표시됩니다. 이 비율만큼 색을 빼서 옆면을 어둡게 합니다.'], ['합친 음영', 4, '여러 색 영역, 대각선 띠, 좌우 옆면 감쇠를 실제 계산 순서로 합친 기본 음영입니다.']],
-  edge: [['외곽과의 거리', 1, '검은 경계에서 안쪽으로 들어갈수록 밝아집니다. 외곽 근처의 거리 근사를 표시하며, 120 이상은 흰색입니다.'], ['통과하는 빛', 2, '흰 곳은 빛이 많이 남고 어두운 곳은 많이 흡수됩니다. 좌우·아래쪽의 흡수 폭이 다릅니다.'], ['흡수 적용', 0, '기본 음영에 가장자리 흡수를 적용한 색입니다.']],
+  shading: [['음영 전', 5, '기본 핑크색입니다.'], ['음영 후', 4, '색 영역을 순서대로 섞고, 띠와 옆면의 감쇠를 적용한 결과입니다.'], ['색 영역 하나', 1, '오른쪽 위의 색 영역 하나입니다. 흰 곳은 그 영역의 색을 많이 섞고 검은 곳은 기존 색을 유지합니다.'], ['대각선 띠', 2, '기준선 주변에 띠가 나타납니다. 흰 곳일수록 짙은 붉은색과 어둠을 더합니다.'], ['좌우 옆면', 3, '표면이 옆으로 기울수록 밝게 표시됩니다. 이 비율만큼 색을 빼서 옆면을 어둡게 합니다.']],
+  edge: [['흡수 전', 3, '기본 음영입니다. 가장자리 흡수와 끝부분의 배경 비침을 끈 상태입니다.'], ['흡수 후', 0, '가장자리에서 빛을 흡수하고 끝부분에 배경색을 비춘 결과입니다.'], ['외곽과의 거리', 1, '검은 경계에서 안쪽으로 들어갈수록 밝아집니다. 외곽 근처의 거리 근사를 표시하며, 120 이상은 흰색입니다.'], ['통과하는 빛', 2, '흰 곳은 빛이 많이 남고 어두운 곳은 많이 흡수됩니다. 좌우·아래쪽의 흡수 폭이 다릅니다.']],
 } as const;
 
 export function createPixelDemo(kind: Kind) {
@@ -21,7 +21,7 @@ export function createPixelDemo(kind: Kind) {
   element.setAttribute('aria-labelledby', `${kind}-pixels-title`);
   element.innerHTML = `<div class="demo-heading"><p class="eyebrow">계산을 눈으로 보기</p><h3 id="${kind}-pixels-title">${copy[kind][0]}</h3><p>${copy[kind][1]}</p></div>
     <div class="rose-demo-layout"><div class="rose-scene"><span class="pixel-marker" aria-hidden="true"></span></div><div class="rose-controls">
-    ${kind === 'shape' ? '' : `<div class="rose-stage-buttons" role="group" aria-label="${copy[kind][0]} 보기">${modes[kind].map(([name, mode]) => `<button type="button" data-mode="${mode}" aria-pressed="false">${name}</button>`).join('')}</div>`}
+    ${kind === 'shape' ? '' : `<div class="rose-stage-buttons" role="group" aria-label="${copy[kind][0]} 보기">${modes[kind].map(([name, mode], index) => `<button type="button" class="${index < 2 ? 'comparison-button' : ''}" data-mode="${mode}" aria-pressed="false">${name}</button>`).join('')}</div>`}
     <p class="pixel-mode-description" aria-live="polite"></p>
     <label for="${kind}-u">좌우 u</label><input id="${kind}-u" type="range" min="-1.25" max="1.25" step="0.01" value="0.6" />
     <label for="${kind}-v">위아래 v</label><input id="${kind}-v" type="range" min="-1.25" max="1.25" step="0.01" value="0" />
@@ -42,10 +42,12 @@ export function createPixelDemo(kind: Kind) {
   const readout = element.querySelector<HTMLOutputElement>('.pixel-readout')!;
   const marker = host.querySelector<HTMLElement>('.pixel-marker')!;
   const plot = element.querySelector<HTMLCanvasElement>('.edge-plot canvas');
-  let mode = kind === 'shape' ? 0 : 1;
+  let mode = kind === 'shading' ? 4 : 0;
   const update = () => {
     const u = Number(uInput.value), v = Number(vInput.value);
-    view.absorptionWidth = Number(widthInput?.value ?? 1); view.debugMode = mode; view.draw(motion);
+    view.absorptionWidth = Number(widthInput?.value ?? 1);
+    view.stage = kind === 'shape' ? 1 : kind === 'shading' || mode === 3 ? 2 : 3;
+    view.debugMode = kind === 'edge' && mode === 3 ? 0 : mode; view.draw(motion);
     const sample = inspectPixel(u, v, view.absorptionWidth);
     const scale = Math.min(host.clientWidth / 590, host.clientHeight / 1280);
     const y = v * foregroundGlassShape.height;
@@ -54,12 +56,12 @@ export function createPixelDemo(kind: Kind) {
     const place = Math.abs(sample.field - 1) < .00001 ? '경계' : sample.field < 1 ? '안쪽' : '바깥쪽';
     readout.textContent = `u=${u.toFixed(2)}, v=${v.toFixed(2)}\nf=${sample.field.toFixed(3)} → ${place}`;
     if (kind === 'shading' && sample.field <= 1) {
-      const measurements = { 1: `혼합 비율 ${sample.patch.toFixed(3)}`, 2: `띠 강도 ${sample.band.toFixed(3)}`, 3: `좌 ${sample.left.toFixed(3)} / 우 ${sample.right.toFixed(3)}`, 4: '세 요소를 합친 음영' };
+      const measurements = { 1: `혼합 비율 ${sample.patch.toFixed(3)}`, 2: `띠 강도 ${sample.band.toFixed(3)}`, 3: `좌 ${sample.left.toFixed(3)} / 우 ${sample.right.toFixed(3)}`, 4: '혼합·감쇠 적용', 5: '기본 핑크색' };
       readout.textContent += `\n${measurements[mode as keyof typeof measurements]}`;
     }
-    if (kind === 'edge' && sample.field <= 1) readout.textContent += `\n거리 ≈ ${sample.distance.toFixed(1)}\n통과율 RGB\n${sample.transmission.map(t => `${(t * 100).toFixed(0)}%`).join(' / ')}`;
+    if (kind === 'edge' && sample.field <= 1) readout.textContent += `\n거리 ≈ ${sample.distance.toFixed(1)}\n통과율 RGB\n${(mode === 3 ? [1, 1, 1] : sample.transmission).map(t => `${(t * 100).toFixed(0)}%`).join(' / ')}`;
     if (kind === 'shape') element.querySelector('.pixel-mode-description')!.textContent = place === '경계' ? '경계에서는 유리색과 배경색을 섞어 매끄럽게 연결합니다.' : sample.field < 1 ? '이 위치에는 유리의 기본색을 표시합니다.' : '이 위치에는 배경색을 유지합니다.';
-    if (plot) drawPlot(plot, view.absorptionWidth);
+    if (plot) drawPlot(plot, view.absorptionWidth, mode !== 3);
   };
   element.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => button.addEventListener('click', () => {
     mode = Number(button.dataset.mode);
@@ -67,8 +69,8 @@ export function createPixelDemo(kind: Kind) {
     element.querySelector('.pixel-mode-description')!.textContent = modes[kind].find(item => item[1] === mode)?.[2] ?? '';
     update();
   }));
-  const first = element.querySelector<HTMLButtonElement>('[data-mode]');
-  if (first) { first.setAttribute('aria-pressed', 'true'); element.querySelector('.pixel-mode-description')!.textContent = modes[kind][0]?.[2] ?? ''; }
+  const first = element.querySelector<HTMLButtonElement>(`[data-mode="${mode}"]`);
+  if (first) { first.setAttribute('aria-pressed', 'true'); element.querySelector('.pixel-mode-description')!.textContent = modes[kind].find(item => item[1] === mode)?.[2] ?? ''; }
   for (const input of [uInput, vInput, widthInput]) input?.addEventListener('input', update);
   const pick = (event: PointerEvent) => {
     const rect = view.canvas.getBoundingClientRect();
@@ -89,7 +91,7 @@ export function createPixelDemo(kind: Kind) {
   new ResizeObserver(update).observe(host); update(); return element;
 }
 
-function drawPlot(canvas: HTMLCanvasElement, width: number) {
+function drawPlot(canvas: HTMLCanvasElement, width: number, absorption: boolean) {
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, 600, 210); ctx.font = '13px sans-serif'; ctx.fillStyle = '#645c4f';
   ctx.fillText('100%', 8, 24); ctx.fillText('0%', 20, 177);
@@ -97,7 +99,7 @@ function drawPlot(canvas: HTMLCanvasElement, width: number) {
   ctx.beginPath(); ctx.moveTo(55, 20); ctx.lineTo(55, 175); ctx.lineTo(580, 175); ctx.stroke();
   ctx.strokeStyle = '#a65042'; ctx.lineWidth = 3; ctx.beginPath();
   for (let i = 0; i <= 160; i++) {
-    const t = inspectPixel(1 - i / 160, 0, width).transmission[0];
+    const t = absorption ? inspectPixel(1 - i / 160, 0, width).transmission[0] : 1;
     const x = 55 + i / 160 * 525, y = 175 - t * 155;
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
