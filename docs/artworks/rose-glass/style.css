@@ -123,3 +123,18 @@
 @media (max-width: 359px) { .shading-layout { grid-template-columns: 1fr; } .shading-preview .rose-scene { height: 230px; } }
 
 .shading-demo .demo-heading h3 { margin-bottom: 10px; }
+
+.pull-views { display: flex; gap: 3px; padding: 3px; border-radius: 6px; background: #e6e0d5; margin-bottom: 8px; }
+.pull-views button { flex: 1; min-height: 34px; border: 0; border-radius: 4px; background: transparent; color: #746c5e; font: inherit; font-size: 12px; cursor: pointer; }
+.pull-views button[aria-pressed=true] { background: #faf8f3; color: #332c23; box-shadow: 0 1px 3px #332c2320; }
+.pull-views button:focus-visible { outline: 2px solid #235c9a; }
+.pull-rule-canvas { display: block; width: 100%; height: clamp(170px, 37svh, 230px); background: #faf8f3; border: 1px solid #ded6c7; border-radius: 6px; touch-action: none; cursor: grab; }
+.document .pull-legend, .document .drag-legend { font-size: 10px; line-height: 1.5; color: #746c5e; margin: 4px 0 8px; }
+.pull-sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 11px; }
+.pull-sliders > div { min-width: 0; }
+.pull-sliders label { display: flex; gap: 6px; justify-content: space-between; }
+.pull-sliders input { width: 100%; }
+.pull-calculation { display: block; padding: 7px; background: #faf8f3; border-radius: 4px; font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; }
+.rose-scene .deformation-overlay { position: absolute; inset: 0; pointer-events: none; }
+.rose-scene .deformation-overlay[hidden], .drag-legend[hidden] { display: none; }
+#drag-demo .rose-scene { height: clamp(230px, 46svh, 300px); }

@@ -1,6 +1,7 @@
 import { GlassView, scenePoint } from './glass-view';
 import { GlassBodyMotion } from '../../../pages/rose-glass/interaction';
 import { createInverseDebug } from './inverse-debug';
+import { drawDeformationOverlay } from './deformation-overlay';
 
 const stages = [
   ['형태', '각 픽셀의 위치로 안팎을 판정합니다. 안쪽은 유리의 기본색, 바깥쪽은 배경색으로 칠합니다.'],
@@ -60,20 +61,29 @@ export function createDragDemo() {
   if (!view) return element;
   const motion = new GlassBodyMotion();
   const controls = element.querySelector('.rose-controls')!;
-  controls.innerHTML = `<p class="rose-drag-status" aria-live="polite">유리 위를 잡아당겨 보세요.</p>
+  controls.innerHTML = `<div class="rose-stage-buttons" role="group" aria-label="국소 변형 보기"><button type="button" data-drag-view="grid" aria-pressed="true">격자</button><button type="button" data-drag-view="glass" aria-pressed="false">유리</button></div>
+    <p class="rose-drag-status" aria-live="polite">유리 위를 잡아당겨 보세요.</p>
     <button type="button" data-action="pull">오른쪽으로 당겨 보기</button>
     <button type="button" data-action="release">손 놓기</button>
-    <button type="button" data-action="reset">처음으로</button>
-    <p class="demo-note">버튼으로도 당기기와 복원을 비교할 수 있습니다. 유리 표면의 무늬가 형태와 함께 따라가는 모습도 보세요.</p>`;
+    <button type="button" data-action="reset">처음으로</button>`;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const pointers = new Set<number>();
+  const overlay = document.createElement('canvas'); overlay.className = 'deformation-overlay'; overlay.setAttribute('aria-hidden', 'true'); view.canvas.after(overlay);
+  const legend = document.createElement('p'); legend.className = 'drag-legend'; legend.textContent = '점선: 원래 외곽 · 파란 선: 점의 이동'; element.querySelector('.rose-demo-layout')!.after(legend);
+  let dragView = 'grid';
+  const draw = () => {
+    view.stage = dragView === 'grid' ? 2 : 6; view.draw(motion);
+    overlay.hidden = dragView !== 'grid' || Boolean(element.querySelector('.inverse-debug[open]'));
+    legend.hidden = overlay.hidden;
+    if (!overlay.hidden) drawDeformationOverlay(overlay, motion, view.previewZoom);
+  };
   let frame = 0, previous = 0, inView = true, lastMode = '';
   const render = (now: number) => {
     frame = 0;
     if (!inView || document.hidden) return;
     const dt = Math.min((now - previous) / 1000 || 1 / 60, 1 / 30); previous = now;
     const active = !debug.frozen && motion.step(dt, 85, 1, { softness: 1.1, indentationDepth: 1, recovery: 1, stretchLimit: 430 }, reduced.matches);
-    view.draw(motion); view.canvas.dataset.interaction = motion.mode;
+    draw(); view.canvas.dataset.interaction = motion.mode;
     debug.update();
     if (lastMode !== motion.mode) {
       lastMode = motion.mode;
@@ -92,11 +102,12 @@ export function createDragDemo() {
   };
   const position = (event: PointerEvent) => {
     const rect = view.canvas.getBoundingClientRect();
-    return scenePoint(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height);
+    return scenePoint(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height, view.previewZoom);
   };
   view.canvas.addEventListener('pointerdown', event => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     if (debug.selecting) { debug.select(position(event)); return; }
+    debug.resume();
     motion.release(-1, reduced.matches);
     if (motion.grab(event.pointerId, position(event), event.pressure)) {
       pointers.add(event.pointerId); view.canvas.setPointerCapture(event.pointerId); wake();
@@ -111,9 +122,14 @@ export function createDragDemo() {
     debug.resume();
     releaseAll(); motion.reset(true); motion.grab(-1, { x: 420, y: 645 }); motion.move(-1, { x: 600, y: 580 }); wake();
   });
-  controls.querySelector('[data-action="release"]')!.addEventListener('click', releaseAll);
-  controls.querySelector('[data-action="reset"]')!.addEventListener('click', () => { releaseAll(); motion.reset(true); wake(); });
-  new ResizeObserver(() => { view.draw(motion); debug.update(); }).observe(element.querySelector('.rose-scene')!);
+  controls.querySelector('[data-action="release"]')!.addEventListener('click', () => { debug.resume(); releaseAll(); });
+  controls.querySelector('[data-action="reset"]')!.addEventListener('click', () => { debug.resume(); releaseAll(); motion.reset(true); wake(); });
+  controls.querySelectorAll<HTMLButtonElement>('[data-drag-view]').forEach(button => button.addEventListener('click', () => {
+    dragView = button.dataset.dragView!;
+    controls.querySelectorAll<HTMLButtonElement>('[data-drag-view]').forEach(item => item.setAttribute('aria-pressed', String(item.dataset.dragView === dragView)));
+    draw();
+  }));
+  new ResizeObserver(() => { draw(); debug.update(); }).observe(element.querySelector('.rose-scene')!);
   new IntersectionObserver(entries => { inView = entries[0].isIntersecting; if (inView) wake(); else releaseAll(); }).observe(element);
   document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); else wake(); });
   return element;

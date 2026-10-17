@@ -14,6 +14,7 @@ test('Rose Glass renders its own Markdown with the material and drag demo slots'
   expect(html).toContain('<!-- interactive-demo: material -->');
   expect(html).toContain('<!-- interactive-demo: drag -->');
   expect(html).toContain('<!-- interactive-demo: relief -->');
+  expect(html).toContain('<!-- interactive-demo: deformation -->');
   expect(html).toContain('<strong>안팎 판별값 f</strong>');
   expect(html).toContain('<strong>혼합 비율 w</strong>');
   expect(html).not.toContain('**');
